@@ -7,11 +7,13 @@ import {
 import {
   approveResearchScopeExpansionV1,
   appendResearchSessionTurnV1,
+  continueResearchSessionClarificationPlanningV1,
   initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
   proposeResearchGraphForReadyBriefV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
+  resolveResearchSessionClarificationsV1,
 } from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
@@ -115,6 +117,89 @@ describe("durable research session execution gate", () => {
       "resolve_clarifications",
       "propose_graph",
     ]);
+  });
+
+  test("recovers a clarification after answers committed but before graph proposal", async () => {
+    const pending = createResearchBriefV1({
+      ...brief("automatic"),
+      clarificationQuestions: [{
+        id: "clarification:window",
+        prompt: "Which reporting window should be used?",
+        required: true,
+      }],
+    });
+    const store = new InMemoryResearchSessionStoreV1();
+    const waiting = await initializeResearchSessionClarificationWaitV1({
+      store,
+      session: session(),
+      brief: pending,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const answerCommitted = (await store.commit(waiting.sessionId, {
+      kind: "resolve_clarifications",
+      briefRevision: pending.revision,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week." }],
+      assumptionDecisions: [],
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    })).session;
+    const recovered = await continueResearchSessionClarificationPlanningV1({
+      store,
+      sessionId: answerCommitted.sessionId,
+      expectedRevision: answerCommitted.revision,
+      expectedLeaseEpoch: answerCommitted.lease.epoch,
+      briefRevision: 2,
+      approveAutomatically: true,
+      releaseApprovedLease: true,
+      at: "2026-08-01T15:00:03.000Z",
+    });
+    expect(recovered).toMatchObject({
+      status: "running",
+      lease: { expiresAt: "2026-08-01T15:00:03.000Z" },
+      turns: [{ graph: { status: "approved", basedOnBriefRevision: 2 } }],
+    });
+    expect((await store.events(recovered.sessionId)).map((event) => event.kind)).toEqual([
+      "create_turn",
+      "record_brief",
+      "resolve_clarifications",
+      "propose_graph",
+      "approve_graph",
+      "release_lease",
+    ]);
+  });
+
+  test("resolves questions, then plans only after the answer CAS succeeds", async () => {
+    const pending = createResearchBriefV1({
+      ...brief("required"),
+      clarificationQuestions: [{
+        id: "clarification:window",
+        prompt: "Which reporting window should be used?",
+        required: true,
+      }],
+    });
+    const store = new InMemoryResearchSessionStoreV1();
+    const waiting = await initializeResearchSessionClarificationWaitV1({
+      store,
+      session: session(),
+      brief: pending,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const proposed = await resolveResearchSessionClarificationsV1({
+      store,
+      sessionId: waiting.sessionId,
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      briefRevision: 1,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week." }],
+      assumptionDecisions: [],
+      approveAutomatically: false,
+      at: "2026-08-01T15:00:02.000Z",
+    });
+    expect(proposed).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{ brief: { revision: 2 }, graph: { basedOnBriefRevision: 2 } }],
+    });
   });
 
   test("persists an accepted turn, brief, exact proposed graph, and separate automatic approval before execution", async () => {

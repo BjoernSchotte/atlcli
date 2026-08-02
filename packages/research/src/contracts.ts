@@ -639,6 +639,32 @@ export interface ResearchPort {
     briefRevision: number;
     graphRevision: number;
   }): Promise<import("./session.js").ResearchResumableSessionV1>;
+  /**
+   * Persist a required brief clarification before credentials, a provider, or
+   * graph construction. Browser hosts bind it to the active tenant.
+   */
+  prepareClarificationReview?(
+    request: ResearchRequestV1,
+    policy: ResearchOneShotPolicyV1,
+  ): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+  /** Tenant-bound discovery of answer and post-answer planning checkpoints. */
+  listClarificationReviews?(): Promise<
+    import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]
+  >;
+  /** Commits the exact answer/assumption set and then proposes the next graph. */
+  resolveClarificationReview?(input: {
+    sessionId: string;
+    revision: number;
+    briefRevision: number;
+    answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+    assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+  }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+  /** Finishes a prior answer-committed checkpoint without accepting new input. */
+  continueClarificationReview?(input: {
+    sessionId: string;
+    revision: number;
+    briefRevision: number;
+  }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }

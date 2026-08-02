@@ -4,6 +4,7 @@ import {
   RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
   acceptResearchGraphProposalV1,
   composeResearchGraphV1,
+  createStandardResearchBriefV1,
   composeStandardResearchGraphV1,
   diffResearchPlansV1,
   projectSelectedResearchRolesV1,
@@ -125,6 +126,32 @@ describe("dynamic research graph composition", () => {
       "synthesizer",
     ]);
     expect(graph.nodes.filter((node) => node.roleId === "focused-researcher")).toHaveLength(2);
+  });
+
+  test("asks for an exact window when a standard brief uses an unresolved relative time", () => {
+    const unresolved = createStandardResearchBriefV1("What is the current Jira status?", {
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+    });
+    expect(unresolved.clarificationQuestions).toEqual([{
+      id: "clarification:time-window",
+      prompt: "Which exact reporting window should this research use?",
+      required: true,
+    }]);
+    expect(() => composeResearchGraphV1(unresolved)).toThrow("clarification");
+
+    const bounded = createStandardResearchBriefV1("What is the current Jira status?", {
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+        timeWindow: { from: "2026-08-01", to: "2026-08-02" },
+      },
+    });
+    expect(bounded.clarificationQuestions).toEqual([]);
   });
 
   test("binds productive graph budgets and scope to the normalized host request", () => {

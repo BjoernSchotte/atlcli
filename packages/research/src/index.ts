@@ -34,6 +34,7 @@ export * from "./task-ledger.js";
 export * from "./session.js";
 export * from "./session-scope-review.js";
 export * from "./session-plan-review.js";
+export * from "./session-clarification-review.js";
 export * from "./session-store.js";
 export * from "./session-store-conformance.js";
 export * from "./checkpoint-identity.js";

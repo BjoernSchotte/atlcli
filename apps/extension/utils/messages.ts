@@ -26,6 +26,8 @@ import type {
 } from "./research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchClarificationReviewResolutionV1,
+  ResearchSessionClarificationReviewV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
@@ -110,6 +112,22 @@ export interface ResearchPlanReviewActionRequest {
   graphRevision: number;
 }
 
+/** Revision-fenced answers and decisions for one durable brief revision. */
+export interface ResearchClarificationReviewActionRequest {
+  sessionId: string;
+  revision: number;
+  briefRevision: number;
+  answers: Array<{ questionId: string; response: string }>;
+  assumptionDecisions: Array<{ assumptionId: string; decision: "accepted" | "rejected" }>;
+}
+
+/** Revision fence for a previous answer-committed planning checkpoint. */
+export interface ResearchClarificationPlanningActionRequest {
+  sessionId: string;
+  revision: number;
+  briefRevision: number;
+}
+
 /** Bounded timing/result projection for cross-realm DOCX runtime preparation. */
 export interface DocxRuntimePreparationMessage {
   totalMs: number;
@@ -163,6 +181,15 @@ export type ExtRequest =
     }
   | { kind: "research:list-plan-reviews"; windowId: number }
   | ({ kind: "research:approve-plan-review"; windowId: number } & ResearchPlanReviewActionRequest)
+  | {
+      kind: "research:prepare-clarification-review";
+      windowId: number;
+      request: ResearchRequestV1;
+      policy: ResearchOneShotPolicyV1;
+    }
+  | { kind: "research:list-clarification-reviews"; windowId: number }
+  | ({ kind: "research:resolve-clarification-review"; windowId: number } & ResearchClarificationReviewActionRequest)
+  | ({ kind: "research:continue-clarification-review"; windowId: number } & ResearchClarificationPlanningActionRequest)
   | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
@@ -300,6 +327,50 @@ export type ExtResponse =
       code: ResearchErrorCode;
       error: string;
     }
+  | {
+      kind: "research:prepare-clarification-review-result";
+      ok: true;
+      review: ResearchSessionClarificationReviewV1;
+    }
+  | {
+      kind: "research:prepare-clarification-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:list-clarification-reviews-result";
+      ok: true;
+      reviews: ResearchSessionClarificationReviewV1[];
+    }
+  | {
+      kind: "research:list-clarification-reviews-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:resolve-clarification-review-result";
+      ok: true;
+      outcome: ResearchClarificationReviewResolutionV1;
+    }
+  | {
+      kind: "research:resolve-clarification-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:continue-clarification-review-result";
+      ok: true;
+      outcome: ResearchClarificationReviewResolutionV1;
+    }
+  | {
+      kind: "research:continue-clarification-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
   | { kind: "research:cancel-result"; runId: string; cancelled: boolean };
 
 /**
@@ -426,6 +497,10 @@ export interface ResponseMap {
   "research:prepare-plan-review": Extract<ExtResponse, { kind: "research:prepare-plan-review-result" }>;
   "research:list-plan-reviews": Extract<ExtResponse, { kind: "research:list-plan-reviews-result" }>;
   "research:approve-plan-review": Extract<ExtResponse, { kind: "research:approve-plan-review-result" }>;
+  "research:prepare-clarification-review": Extract<ExtResponse, { kind: "research:prepare-clarification-review-result" }>;
+  "research:list-clarification-reviews": Extract<ExtResponse, { kind: "research:list-clarification-reviews-result" }>;
+  "research:resolve-clarification-review": Extract<ExtResponse, { kind: "research:resolve-clarification-review-result" }>;
+  "research:continue-clarification-review": Extract<ExtResponse, { kind: "research:continue-clarification-review-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
@@ -536,6 +611,42 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       isResearchRevision(action.revision) &&
       isResearchRevision(action.briefRevision) &&
       isResearchRevision(action.graphRevision);
+  }
+  if (kind === "research:prepare-clarification-review") {
+    const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "request", "policy"]) &&
+      isWindowId(prepare.windowId) &&
+      typeof prepare.request === "object" && prepare.request !== null &&
+      typeof prepare.policy === "object" && prepare.policy !== null;
+  }
+  if (kind === "research:list-clarification-reviews") {
+    return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:resolve-clarification-review") {
+    const action = value as Partial<ResearchClarificationReviewActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, [
+      "kind",
+      "windowId",
+      "sessionId",
+      "revision",
+      "briefRevision",
+      "answers",
+      "assumptionDecisions",
+    ]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      isResearchRevision(action.briefRevision) &&
+      hasValidClarificationAnswers(action.answers) &&
+      hasValidAssumptionDecisions(action.assumptionDecisions);
+  }
+  if (kind === "research:continue-clarification-review") {
+    const action = value as Partial<ResearchClarificationPlanningActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, ["kind", "windowId", "sessionId", "revision", "briefRevision"]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      isResearchRevision(action.briefRevision);
   }
   if (kind === "research:resolve-scope") {
     const preflight = value as { windowId?: unknown; request?: unknown; options?: unknown };
@@ -706,6 +817,27 @@ function hasValidScopePreflightOptions(value: unknown): boolean {
       /^research-scope-candidate:[A-Za-z0-9._-]{1,200}$/.test(
         (selection as { candidateId: string }).candidateId,
       ),
+  );
+}
+
+function hasValidClarificationAnswers(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= 24 && value.every((answer) =>
+    hasOnlyKeys(answer, ["questionId", "response"]) &&
+    typeof (answer as { questionId?: unknown }).questionId === "string" &&
+    /^clarification:[A-Za-z0-9._-]{1,120}$/.test((answer as { questionId: string }).questionId) &&
+    typeof (answer as { response?: unknown }).response === "string" &&
+    (answer as { response: string }).response.trim().length > 0 &&
+    (answer as { response: string }).response.length <= 2_000,
+  );
+}
+
+function hasValidAssumptionDecisions(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= 24 && value.every((decision) =>
+    hasOnlyKeys(decision, ["assumptionId", "decision"]) &&
+    typeof (decision as { assumptionId?: unknown }).assumptionId === "string" &&
+    /^assumption:[A-Za-z0-9._-]{1,120}$/.test((decision as { assumptionId: string }).assumptionId) &&
+    ((decision as { decision?: unknown }).decision === "accepted" ||
+      (decision as { decision?: unknown }).decision === "rejected"),
   );
 }
 

@@ -13,6 +13,7 @@ import {
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   type ResearchOneShotEventV1,
+  type ResearchPort,
   type ResearchRequestedEffortV1,
   type ResearchRequestedPlanApprovalV1,
   type ResearchRequestedReconciliationV1,
@@ -29,6 +30,7 @@ import {
 } from "@atlcli/research";
 import type {
   ResearchBriefClarificationRequiredV1,
+  ResearchSessionClarificationReviewV1,
   ResearchResumableSessionV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
@@ -447,9 +449,15 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     ResearchSessionScopeReviewV1[]
   >([]);
   const [planReviews, setPlanReviews] = useState<ResearchSessionPlanReviewV1[]>([]);
+  const [clarificationReviews, setClarificationReviews] = useState<
+    ResearchSessionClarificationReviewV1[]
+  >([]);
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [clarificationDecisions, setClarificationDecisions] = useState<Record<string, "accepted" | "rejected" | "">>({});
   const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
   const [scopePlanReviewActionId, setScopePlanReviewActionId] = useState<string | null>(null);
   const [planReviewActionId, setPlanReviewActionId] = useState<string | null>(null);
+  const [clarificationActionId, setClarificationActionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const planReviewListingGeneration = useRef(0);
 
@@ -479,6 +487,22 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       // explicit resume request instead of presenting it during mount.
       .catch(() => {
         if (active) setResumableSessions([]);
+      });
+    return () => { active = false; };
+  }, [port, site]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.listClarificationReviews || !site) {
+      setClarificationReviews([]);
+      return () => { active = false; };
+    }
+    void port.listClarificationReviews()
+      .then((reviews) => {
+        if (active) setClarificationReviews(reviews);
+      })
+      .catch(() => {
+        if (active) setClarificationReviews([]);
       });
     return () => { active = false; };
   }, [port, site]);
@@ -587,6 +611,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     }
   }
 
+  async function refreshClarificationReviews(): Promise<void> {
+    if (!port?.listClarificationReviews || !site) {
+      setClarificationReviews([]);
+      return;
+    }
+    try {
+      setClarificationReviews(await port.listClarificationReviews());
+    } catch {
+      setClarificationReviews([]);
+    }
+  }
+
   if (!port) return <Alert tone="muted">{t("screen.unmet.capability.research")}</Alert>;
 
   async function run(retry?: ScopePreflightRetry): Promise<void> {
@@ -660,6 +696,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         policy,
       }));
       if (briefOutcome.kind === "clarification_required") {
+        if (port!.prepareClarificationReview) {
+          const review = await port!.prepareClarificationReview(request, policy);
+          setClarificationReviews((current) => [
+            review,
+            ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
+          ]);
+          setActivity([]);
+          setReport(null);
+          setProgress("");
+          setActionStatus(t("research.clarificationReview.prepared"));
+          return;
+        }
         setBriefClarification(briefOutcome.clarification);
         setActivity([]);
         setReport(null);
@@ -722,6 +770,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       void refreshScopeReviews();
       void refreshScopePlanReviews();
       void refreshPlanReviews();
+      void refreshClarificationReviews();
     }
   }
 
@@ -764,6 +813,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       void refreshScopeReviews();
       void refreshScopePlanReviews();
       void refreshPlanReviews();
+      void refreshClarificationReviews();
     }
   }
 
@@ -860,6 +910,100 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setError(value instanceof Error ? value.message : t("research.error"));
     } finally {
       setPlanReviewActionId(null);
+    }
+  }
+
+  function clarificationAnswerKey(
+    review: ResearchSessionClarificationReviewV1,
+    questionId: string,
+  ): string {
+    return `${review.sessionId}:${review.revision}:${questionId}`;
+  }
+
+  function clarificationDecisionKey(
+    review: ResearchSessionClarificationReviewV1,
+    assumptionId: string,
+  ): string {
+    return `${review.sessionId}:${review.revision}:${assumptionId}`;
+  }
+
+  function applyClarificationOutcome(
+    review: ResearchSessionClarificationReviewV1,
+    outcome: Awaited<ReturnType<NonNullable<ResearchPort["resolveClarificationReview"]>>>,
+  ): void {
+    setClarificationReviews((current) => current.filter((candidate) =>
+      candidate.sessionId !== review.sessionId,
+    ));
+    if (outcome.kind === "plan_review") {
+      setPlanReviews((current) => [
+        outcome.review,
+        ...current.filter((candidate) => candidate.sessionId !== outcome.review.sessionId),
+      ]);
+      setActionStatus(t("research.clarificationReview.planPrepared"));
+      return;
+    }
+    setResumableSessions((current) => [
+      outcome.session,
+      ...current.filter((candidate) => candidate.sessionId !== outcome.session.sessionId),
+    ]);
+    setActionStatus(t("research.clarificationReview.resumable"));
+  }
+
+  async function resolveClarificationReview(
+    review: ResearchSessionClarificationReviewV1,
+  ): Promise<void> {
+    if (!port?.resolveClarificationReview || review.stage !== "answer_required") return;
+    const actionId = `${review.sessionId}:${review.revision}`;
+    setError(null);
+    setActionStatus("");
+    setClarificationActionId(actionId);
+    try {
+      const outcome = await port.resolveClarificationReview({
+        sessionId: review.sessionId,
+        revision: review.revision,
+        briefRevision: review.turn.briefRevision,
+        answers: review.turn.questions.map((question) => ({
+          questionId: question.id,
+          response: clarificationAnswers[clarificationAnswerKey(review, question.id)] ?? "",
+        })),
+        assumptionDecisions: review.turn.assumptions.map((assumption) => ({
+          assumptionId: assumption.id,
+          decision: clarificationDecisions[clarificationDecisionKey(review, assumption.id)] as "accepted" | "rejected",
+        })),
+      });
+      applyClarificationOutcome(review, outcome);
+      await refreshClarificationReviews();
+      void refreshPlanReviews();
+      void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setClarificationActionId(null);
+    }
+  }
+
+  async function continueClarificationReview(
+    review: ResearchSessionClarificationReviewV1,
+  ): Promise<void> {
+    if (!port?.continueClarificationReview || review.stage !== "plan_required") return;
+    const actionId = `${review.sessionId}:${review.revision}`;
+    setError(null);
+    setActionStatus("");
+    setClarificationActionId(actionId);
+    try {
+      const outcome = await port.continueClarificationReview({
+        sessionId: review.sessionId,
+        revision: review.revision,
+        briefRevision: review.turn.briefRevision,
+      });
+      applyClarificationOutcome(review, outcome);
+      await refreshClarificationReviews();
+      void refreshPlanReviews();
+      void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setClarificationActionId(null);
     }
   }
 
@@ -1274,6 +1418,126 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   </Button>
                 </div>
               )];
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {clarificationReviews.length > 0 && (
+        <Card data-testid="research-clarification-reviews">
+          <CardHeader>
+            <CardTitle>{t("research.clarificationReview.title")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {clarificationReviews.map((review, index) => {
+              const deciding = clarificationActionId === `${review.sessionId}:${review.revision}`;
+              const answersReady = review.stage !== "answer_required" || review.turn.questions.every(
+                (question) => (clarificationAnswers[clarificationAnswerKey(review, question.id)] ?? "").trim(),
+              );
+              const decisionsReady = review.stage !== "answer_required" || review.turn.assumptions.every(
+                (assumption) => {
+                  const decision = clarificationDecisions[clarificationDecisionKey(review, assumption.id)];
+                  return decision === "accepted" || decision === "rejected";
+                },
+              );
+              return (
+                <div
+                  key={review.sessionId}
+                  className="rounded-md border p-2 text-xs"
+                  data-testid={`research-clarification-review-${index}`}
+                >
+                  <p className="m-0 font-medium">
+                    {t("research.clarificationReview.value", {
+                      brief: String(review.turn.briefRevision),
+                    })}
+                  </p>
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.clarificationReview.scope", {
+                      jira: review.turn.scope.jiraProjectKeys.join(", ") || "—",
+                      confluence: review.turn.scope.confluenceSpaceKeys.join(", ") || "—",
+                    })}
+                  </p>
+                  {review.stage === "answer_required" ? (
+                    <div className="mt-2 flex flex-col gap-3">
+                      {review.turn.questions.map((question) => {
+                        const key = clarificationAnswerKey(review, question.id);
+                        return (
+                          <div key={question.id} className="flex flex-col gap-1">
+                            <Label htmlFor={`research-clarification-answer-${index}-${question.id}`}>
+                              {question.prompt}
+                            </Label>
+                            <textarea
+                              id={`research-clarification-answer-${index}-${question.id}`}
+                              data-testid={`research-clarification-answer-${index}-${question.id}`}
+                              className="min-h-20 w-full resize-y rounded-md border bg-background px-2.5 py-2 text-sm text-foreground"
+                              value={clarificationAnswers[key] ?? ""}
+                              maxLength={2_000}
+                              disabled={running || deciding}
+                              onChange={(event) => setClarificationAnswers((current) => ({
+                                ...current,
+                                [key]: event.target.value,
+                              }))}
+                            />
+                          </div>
+                        );
+                      })}
+                      {review.turn.assumptions.map((assumption) => {
+                        const key = clarificationDecisionKey(review, assumption.id);
+                        return (
+                          <div key={assumption.id} className="flex flex-col gap-1">
+                            <Label htmlFor={`research-clarification-assumption-${index}-${assumption.id}`}>
+                              {assumption.text}
+                            </Label>
+                            <Select
+                              id={`research-clarification-assumption-${index}-${assumption.id}`}
+                              data-testid={`research-clarification-assumption-${index}-${assumption.id}`}
+                              value={clarificationDecisions[key] ?? ""}
+                              disabled={running || deciding}
+                              onChange={(event) => setClarificationDecisions((current) => ({
+                                ...current,
+                                [key]: event.target.value as "accepted" | "rejected" | "",
+                              }))}
+                            >
+                              <option value="">{t("research.clarificationReview.decisionPlaceholder")}</option>
+                              <option value="accepted">{t("research.clarificationReview.accept")}</option>
+                              <option value="rejected">{t("research.clarificationReview.reject")}</option>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                      <p className="mb-0 text-muted-foreground">
+                        {t("research.clarificationReview.noRetrieval")}
+                      </p>
+                      <Button
+                        size="sm"
+                        disabled={running || deciding || !answersReady || !decisionsReady}
+                        data-testid={`research-clarification-resolve-${index}`}
+                        onClick={() => void resolveClarificationReview(review)}
+                      >
+                        {deciding
+                          ? t("research.clarificationReview.deciding")
+                          : t("research.clarificationReview.resolve")}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <p className="mb-0 text-muted-foreground">
+                        {t("research.clarificationReview.planRequired")}
+                      </p>
+                      <Button
+                        size="sm"
+                        disabled={running || deciding}
+                        data-testid={`research-clarification-continue-${index}`}
+                        onClick={() => void continueClarificationReview(review)}
+                      >
+                        {deciding
+                          ? t("research.clarificationReview.deciding")
+                          : t("research.clarificationReview.continue")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
             })}
           </CardContent>
         </Card>

@@ -187,6 +187,38 @@ export function handleExtMessage(
             error: toMessage(err),
           });
           break;
+        case "research:prepare-clarification-review":
+          sendResponse({
+            kind: "research:prepare-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-clarification-reviews":
+          sendResponse({
+            kind: "research:list-clarification-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:resolve-clarification-review":
+          sendResponse({
+            kind: "research:resolve-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:continue-clarification-review":
+          sendResponse({
+            kind: "research:continue-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:resolve-scope":
           sendResponse({
             kind: "research:resolve-scope-result",

@@ -116,6 +116,41 @@ describe("message guards", () => {
       scope: { mustNotCross: true },
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:prepare-clarification-review",
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" },
+      policy: { schema: "atlcli.research-one-shot-policy/v1" },
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:list-clarification-reviews",
+      windowId: 7,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:resolve-clarification-review",
+      windowId: 7,
+      sessionId: "research-session:clarification-review",
+      revision: 12,
+      briefRevision: 3,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week." }],
+      assumptionDecisions: [{ assumptionId: "assumption:archive", decision: "rejected" }],
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:resolve-clarification-review",
+      windowId: 7,
+      sessionId: "research-session:clarification-review",
+      revision: 12,
+      briefRevision: 3,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week.", scope: "must-not-cross" }],
+      assumptionDecisions: [],
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:continue-clarification-review",
+      windowId: 7,
+      sessionId: "research-session:clarification-review",
+      revision: 13,
+      briefRevision: 4,
+    })).toBe(true);
+    expect(isExtRequest({
       kind: "research:approve-scope-review",
       windowId: 7,
       sessionId: "research-session:scope-review",

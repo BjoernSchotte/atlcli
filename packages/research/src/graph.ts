@@ -794,6 +794,22 @@ export interface ComposeStandardResearchGraphOptionsV1 {
   policy?: ResearchOneShotPolicyV1;
 }
 
+function standardClarificationQuestions(
+  question: string,
+  scope: ResearchScopeV1 | undefined,
+): import("./brief.js").ResearchClarificationQuestionV1[] {
+  const hasExplicitWindow = Boolean(scope?.timeWindow?.from || scope?.timeWindow?.to) ||
+    /\b(?:last|past|previous)\s+\d+\s+(?:day|week|month|year)s?\b/i.test(question) ||
+    /\b(?:letzten?|vergangenen?)\s+\d+\s+(?:tag(?:en)?|woche(?:n)?|monat(?:en)?|jahr(?:en)?)\b/i.test(question);
+  const usesRelativeTime = /\b(?:latest|recent|current|currently|neueste[nr]?|aktuell(?:e[nmrs]?|en)?)\b/i.test(question);
+  if (hasExplicitWindow || !usesRelativeTime) return [];
+  return [{
+    id: "clarification:time-window",
+    prompt: "Which exact reporting window should this research use?",
+    required: true,
+  }];
+}
+
 /**
  * Construct the common host-owned one-shot brief before any graph/model work.
  * Callers that need to surface clarification must run the brief preflight
@@ -825,6 +841,7 @@ export function createStandardResearchBriefV1(
     requestedEffort: policy.requestedEffort,
     requestedPlanApproval: policy.requestedPlanApproval,
     requestedReconciliation: policy.requestedReconciliation,
+    clarificationQuestions: standardClarificationQuestions(question, options.scope),
     ...(options.limits ? { limits: options.limits } : {}),
   });
 }

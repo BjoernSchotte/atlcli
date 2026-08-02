@@ -3268,9 +3268,13 @@ Extension/browser:
         a fresh graph is proposed only in the subsequent commit. The request
         reconstructed for an eventual provider run includes that user-supplied
         context while retaining the original scope, limits, and capabilities.
-  - [ ] Wire the identical transition and review controls through the extension
+  - [x] Wire the identical transition and review controls through the extension
         side panel/offscreen host, including recovery after the answer commit
-        but before graph proposal.
+        but before graph proposal. The tenant-bound review exposes only the
+        required prompts, explicit assumption decisions, scope keys, and
+        revision fences. Packed MV3 proof covers answer persistence, stale
+        rejection, the no-key/no-retrieval boundary, and a recovered
+        answer-committed planning checkpoint.
 - [ ] Persist scope candidates, bindings, resolution decisions, and expansion
       proposals by brief/graph revision. Add candidate selection and
       scope-proposal approval/rejection controls; closing the sidebar or

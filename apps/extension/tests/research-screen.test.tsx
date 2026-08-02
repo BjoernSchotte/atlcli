@@ -15,6 +15,7 @@ import {
 import { I18nProvider } from "../utils/i18n/context.js";
 import type {
   ResearchBriefClarificationRequiredV1,
+  ResearchSessionClarificationReviewV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
@@ -897,6 +898,114 @@ describe("portable Research screen", () => {
       .toContain("Synthetic durable question.");
   });
 
+  it("persists and resolves an initial clarification before key storage or retrieval", async () => {
+    const review: ResearchSessionClarificationReviewV1 = {
+      schema: "atlcli.research-session-clarification-review/v1",
+      sessionId: "research-session:initial-clarification-review",
+      revision: 3,
+      status: "waiting_clarification",
+      stage: "answer_required",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:initial-clarification-review",
+        briefRevision: 1,
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        questions: [{
+          id: "clarification:time-window",
+          prompt: "Which exact reporting window should this research use?",
+        }],
+        assumptions: [],
+      },
+    };
+    let prepared = false;
+    let resolved = false;
+    let keyWrites = 0;
+    let runs = 0;
+    const resolutions: unknown[] = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => { keyWrites += 1; },
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      prepareClarificationReview: async () => {
+        prepared = true;
+        return review;
+      },
+      listClarificationReviews: async () => (prepared && !resolved ? [review] : []),
+      listResumableSessions: async () => (resolved ? [{
+        schema: "atlcli.research-resumable-session/v1" as const,
+        sessionId: review.sessionId,
+        turnId: review.turn.id,
+        status: "running" as const,
+        updatedAt: review.updatedAt,
+        question: "Synthetic durable clarification question.",
+        scope: review.turn.scope,
+      }] : []),
+      resolveClarificationReview: async (input) => {
+        resolutions.push(input);
+        resolved = true;
+        return {
+          kind: "resumable" as const,
+          session: {
+            schema: "atlcli.research-resumable-session/v1" as const,
+            sessionId: review.sessionId,
+            turnId: review.turn.id,
+            status: "running" as const,
+            updatedAt: review.updatedAt,
+            question: "Synthetic durable clarification question.",
+            scope: review.turn.scope,
+          },
+        };
+      },
+      run: async () => {
+        runs += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-key", "synthetic-key");
+    await dom.setValue(
+      "research-question",
+      "How is the current Jira work in DEMO related to Confluence space KB?",
+    );
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+    expect(dom.find("research-clarification-reviews").textContent)
+      .toContain("does not store a key");
+    await dom.setValue(
+      "research-clarification-answer-0-clarification:time-window",
+      "Use the last seven days.",
+    );
+    await dom.click("research-clarification-resolve-0");
+    await dom.flush();
+
+    expect(resolutions).toEqual([{
+      sessionId: review.sessionId,
+      revision: 3,
+      briefRevision: 1,
+      answers: [{ questionId: "clarification:time-window", response: "Use the last seven days." }],
+      assumptionDecisions: [],
+    }]);
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+    expect(dom.find("research-resumable-sessions").textContent)
+      .toContain("Synthetic durable clarification question.");
+  });
+
   it("renders removable context chips and freezes the submitted scope across tab changes", async () => {
     let observedRequest: ResearchRequestV1 | undefined;
     const port: ResearchPort = {
@@ -922,7 +1031,7 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port, "KB")} />
       </I18nProvider>,
     );
-    await dom.setValue("research-question", "Research the current context.");
+    await dom.setValue("research-question", "Research this context.");
     await dom.setValue("research-jira", "MANUAL");
     expect(dom.find("research-scope-chips").textContent).toContain("jira: MANUAL");
     expect(dom.find("research-scope-chips").textContent).toContain("confluence: KB");

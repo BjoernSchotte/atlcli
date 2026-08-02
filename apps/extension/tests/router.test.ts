@@ -494,6 +494,130 @@ describe("routeMessage (pure router)", () => {
     expect(JSON.stringify(approval)).not.toContain("scope");
   });
 
+  it("routes revision-fenced clarification answers and post-answer recovery", async () => {
+    const review = {
+      schema: "atlcli.research-session-clarification-review/v1" as const,
+      sessionId: "research-session:clarification-review",
+      revision: 13,
+      status: "waiting_clarification" as const,
+      stage: "answer_required" as const,
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:clarification-review",
+        briefRevision: 4,
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        questions: [{
+          id: "clarification:window",
+          prompt: "Which reporting window should be used?",
+        }],
+        assumptions: [{ id: "assumption:archive", text: "Include archived items." }],
+      },
+    };
+    const prepare = {
+      kind: "research:prepare-clarification-review" as const,
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" } as ResearchRequestV1,
+      policy: { schema: "atlcli.research-one-shot-policy/v1" } as ResearchOneShotPolicyV1,
+    };
+    expect(await routeMessage(prepare, {
+      ...okDeps,
+      prepareResearchClarificationReview: async (windowId, request, policy) => {
+        expect({ windowId, request, policy }).toEqual({
+          windowId: 7,
+          request: prepare.request,
+          policy: prepare.policy,
+        });
+        return review;
+      },
+    })).toEqual({
+      kind: "research:prepare-clarification-review-result",
+      ok: true,
+      review,
+    });
+
+    const resolve = {
+      kind: "research:resolve-clarification-review" as const,
+      windowId: 7,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week." }],
+      assumptionDecisions: [{ assumptionId: "assumption:archive", decision: "rejected" as const }],
+    };
+    expect(await routeMessage(resolve, {
+      ...okDeps,
+      resolveResearchClarificationReview: async (_windowId, action) => {
+        expect(action).toEqual({
+          sessionId: review.sessionId,
+          revision: 13,
+          briefRevision: 4,
+          answers: resolve.answers,
+          assumptionDecisions: resolve.assumptionDecisions,
+        });
+        return {
+          kind: "resumable" as const,
+          session: {
+            schema: "atlcli.research-resumable-session/v1" as const,
+            sessionId: review.sessionId,
+            turnId: review.turn.id,
+            status: "running" as const,
+            updatedAt: review.updatedAt,
+            question: "not present in the request",
+            scope: review.turn.scope,
+          },
+        };
+      },
+    })).toMatchObject({
+      kind: "research:resolve-clarification-review-result",
+      ok: true,
+      outcome: { kind: "resumable", session: { sessionId: review.sessionId } },
+    });
+    expect(JSON.stringify(resolve)).not.toContain("scope");
+    expect(JSON.stringify(resolve)).not.toContain("tenantOrigin");
+
+    const continueRequest = {
+      kind: "research:continue-clarification-review" as const,
+      windowId: 7,
+      sessionId: review.sessionId,
+      revision: 14,
+      briefRevision: 5,
+    };
+    expect(await routeMessage(continueRequest, {
+      ...okDeps,
+      continueResearchClarificationReview: async (_windowId, action) => {
+        expect(action).toEqual({
+          sessionId: review.sessionId,
+          revision: 14,
+          briefRevision: 5,
+        });
+        return {
+          kind: "plan_review" as const,
+          review: {
+            schema: "atlcli.research-session-plan-review/v1" as const,
+            sessionId: review.sessionId,
+            revision: 15,
+            status: "waiting_plan_approval" as const,
+            updatedAt: review.updatedAt,
+            turn: {
+              id: review.turn.id,
+              briefRevision: 5,
+              graphRevision: 1,
+              resolvedEffort: "analysis" as const,
+              selectedRoleIds: ["focused-researcher"],
+              scopeExpansionMode: "ask" as const,
+              reconciliationMode: "auto" as const,
+              scope: review.turn.scope,
+            },
+          },
+        };
+      },
+    })).toMatchObject({
+      kind: "research:continue-clarification-review-result",
+      ok: true,
+      outcome: { kind: "plan_review" },
+    });
+  });
+
   it("routes catalog-only research scope preflight without an Anthropic key", async () => {
     const request = {
       schema: "atlcli.research-request/v1",

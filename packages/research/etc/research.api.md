@@ -116,6 +116,21 @@ export interface ContentProjectionLimits {
     maxDepth: number;
 }
 
+// export: ContinueResearchSessionClarificationPlanningInputV1
+export interface ContinueResearchSessionClarificationPlanningInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: continueResearchSessionClarificationPlanningV1
+export declare function continueResearchSessionClarificationPlanningV1(input: ContinueResearchSessionClarificationPlanningInputV1): Promise<ResearchSessionV1>;
+
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
@@ -669,6 +684,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionClarificationReviewV1
+export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
+
 // export: projectResearchSessionPlanReviewV1
 export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
 
@@ -1167,6 +1185,9 @@ export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-sessi
 // export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
 export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
 
+// export: RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.research-session-clarification-review/v1";
+
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
 
@@ -1516,6 +1537,21 @@ export interface ResearchClarificationQuestionV1 {
 
 // export: ResearchClarificationRequiredV1
 export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
+
+// export: ResearchClarificationReviewResolutionInputV1
+export interface ResearchClarificationReviewResolutionInputV1 {
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}
+
+// export: ResearchClarificationReviewResolutionV1
+export type ResearchClarificationReviewResolutionV1 = {
+    kind: "plan_review";
+    review: ResearchSessionPlanReviewV1;
+} | {
+    kind: "resumable";
+    session: ResearchResumableSessionV1;
+};
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -2476,6 +2512,20 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+    listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
+    resolveClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+        assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+    continueClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -3184,6 +3234,33 @@ export interface ResearchSessionCheckpointV1 {
     kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
     recordedAt: string;
     artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationReviewV1
+export interface ResearchSessionClarificationReviewV1 {
+    schema: typeof RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_clarification" | "planning";
+    stage: "answer_required" | "plan_required";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+        questions: Array<{
+            id: string;
+            prompt: string;
+            candidateIds?: string[];
+        }>;
+        assumptions: Array<{
+            id: string;
+            text: string;
+        }>;
+    };
 }
 
 // export: ResearchSessionClarificationV1
@@ -3961,6 +4038,23 @@ export declare function resolveResearchPlanApprovalV1(input: {
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
+
+// export: ResolveResearchSessionClarificationsInputV1
+export interface ResolveResearchSessionClarificationsInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: resolveResearchSessionClarificationsV1
+export declare function resolveResearchSessionClarificationsV1(input: ResolveResearchSessionClarificationsInputV1): Promise<ResearchSessionV1>;
 
 // export: RestResearchProviderOptions
 export interface RestResearchProviderOptions {
@@ -4221,6 +4315,21 @@ export interface ContentProjectionLimits {
     maxDepth: number;
 }
 
+// export: ContinueResearchSessionClarificationPlanningInputV1
+export interface ContinueResearchSessionClarificationPlanningInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: continueResearchSessionClarificationPlanningV1
+export declare function continueResearchSessionClarificationPlanningV1(input: ContinueResearchSessionClarificationPlanningInputV1): Promise<ResearchSessionV1>;
+
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
@@ -4765,6 +4874,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionClarificationReviewV1
+export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
+
 // export: projectResearchSessionPlanReviewV1
 export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
 
@@ -5263,6 +5375,9 @@ export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-sessi
 // export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
 export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
 
+// export: RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.research-session-clarification-review/v1";
+
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
 
@@ -5612,6 +5727,21 @@ export interface ResearchClarificationQuestionV1 {
 
 // export: ResearchClarificationRequiredV1
 export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
+
+// export: ResearchClarificationReviewResolutionInputV1
+export interface ResearchClarificationReviewResolutionInputV1 {
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}
+
+// export: ResearchClarificationReviewResolutionV1
+export type ResearchClarificationReviewResolutionV1 = {
+    kind: "plan_review";
+    review: ResearchSessionPlanReviewV1;
+} | {
+    kind: "resumable";
+    session: ResearchResumableSessionV1;
+};
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -6572,6 +6702,20 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+    listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
+    resolveClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+        assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+    continueClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -7280,6 +7424,33 @@ export interface ResearchSessionCheckpointV1 {
     kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
     recordedAt: string;
     artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationReviewV1
+export interface ResearchSessionClarificationReviewV1 {
+    schema: typeof RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_clarification" | "planning";
+    stage: "answer_required" | "plan_required";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+        questions: Array<{
+            id: string;
+            prompt: string;
+            candidateIds?: string[];
+        }>;
+        assumptions: Array<{
+            id: string;
+            text: string;
+        }>;
+    };
 }
 
 // export: ResearchSessionClarificationV1
@@ -8058,6 +8229,23 @@ export declare function resolveResearchPlanApprovalV1(input: {
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
+// export: ResolveResearchSessionClarificationsInputV1
+export interface ResolveResearchSessionClarificationsInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: resolveResearchSessionClarificationsV1
+export declare function resolveResearchSessionClarificationsV1(input: ResolveResearchSessionClarificationsInputV1): Promise<ResearchSessionV1>;
+
 // export: reviseResearchBriefPlanV1
 export declare function reviseResearchBriefPlanV1(input: {
     brief: ResearchBriefV1;
@@ -8305,6 +8493,21 @@ export interface ContentProjectionLimits {
     maxNodes: number;
     maxDepth: number;
 }
+
+// export: ContinueResearchSessionClarificationPlanningInputV1
+export interface ContinueResearchSessionClarificationPlanningInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: continueResearchSessionClarificationPlanningV1
+export declare function continueResearchSessionClarificationPlanningV1(input: ContinueResearchSessionClarificationPlanningInputV1): Promise<ResearchSessionV1>;
 
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
@@ -8859,6 +9062,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionClarificationReviewV1
+export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
+
 // export: projectResearchSessionPlanReviewV1
 export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
 
@@ -9357,6 +9563,9 @@ export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-sessi
 // export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
 export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
 
+// export: RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.research-session-clarification-review/v1";
+
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
 
@@ -9706,6 +9915,21 @@ export interface ResearchClarificationQuestionV1 {
 
 // export: ResearchClarificationRequiredV1
 export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
+
+// export: ResearchClarificationReviewResolutionInputV1
+export interface ResearchClarificationReviewResolutionInputV1 {
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}
+
+// export: ResearchClarificationReviewResolutionV1
+export type ResearchClarificationReviewResolutionV1 = {
+    kind: "plan_review";
+    review: ResearchSessionPlanReviewV1;
+} | {
+    kind: "resumable";
+    session: ResearchResumableSessionV1;
+};
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -10666,6 +10890,20 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+    listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
+    resolveClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+        assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+    continueClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -11374,6 +11612,33 @@ export interface ResearchSessionCheckpointV1 {
     kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
     recordedAt: string;
     artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationReviewV1
+export interface ResearchSessionClarificationReviewV1 {
+    schema: typeof RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_clarification" | "planning";
+    stage: "answer_required" | "plan_required";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+        questions: Array<{
+            id: string;
+            prompt: string;
+            candidateIds?: string[];
+        }>;
+        assumptions: Array<{
+            id: string;
+            text: string;
+        }>;
+    };
 }
 
 // export: ResearchSessionClarificationV1
@@ -12151,6 +12416,23 @@ export declare function resolveResearchPlanApprovalV1(input: {
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
+
+// export: ResolveResearchSessionClarificationsInputV1
+export interface ResolveResearchSessionClarificationsInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: resolveResearchSessionClarificationsV1
+export declare function resolveResearchSessionClarificationsV1(input: ResolveResearchSessionClarificationsInputV1): Promise<ResearchSessionV1>;
 
 // export: RestResearchProviderOptions
 export interface RestResearchProviderOptions {
@@ -12419,6 +12701,21 @@ export interface ContentProjectionLimits {
     maxNodes: number;
     maxDepth: number;
 }
+
+// export: ContinueResearchSessionClarificationPlanningInputV1
+export interface ContinueResearchSessionClarificationPlanningInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: continueResearchSessionClarificationPlanningV1
+export declare function continueResearchSessionClarificationPlanningV1(input: ContinueResearchSessionClarificationPlanningInputV1): Promise<ResearchSessionV1>;
 
 // export: createBoundedResearchSubagentMiddleware
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, graph: ResearchGraphV1, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
@@ -13129,6 +13426,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionClarificationReviewV1
+export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
+
 // export: projectResearchSessionPlanReviewV1
 export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
 
@@ -13651,6 +13951,9 @@ export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-sessi
 // export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
 export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
 
+// export: RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.research-session-clarification-review/v1";
+
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
 
@@ -14022,6 +14325,21 @@ export interface ResearchClarificationQuestionV1 {
 
 // export: ResearchClarificationRequiredV1
 export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
+
+// export: ResearchClarificationReviewResolutionInputV1
+export interface ResearchClarificationReviewResolutionInputV1 {
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}
+
+// export: ResearchClarificationReviewResolutionV1
+export type ResearchClarificationReviewResolutionV1 = {
+    kind: "plan_review";
+    review: ResearchSessionPlanReviewV1;
+} | {
+    kind: "resumable";
+    session: ResearchResumableSessionV1;
+};
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -14982,6 +15300,20 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+    listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
+    resolveClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+        assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+    continueClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -15737,6 +16069,33 @@ export interface ResearchSessionCheckpointV1 {
     kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
     recordedAt: string;
     artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationReviewV1
+export interface ResearchSessionClarificationReviewV1 {
+    schema: typeof RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_clarification" | "planning";
+    stage: "answer_required" | "plan_required";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+        questions: Array<{
+            id: string;
+            prompt: string;
+            candidateIds?: string[];
+        }>;
+        assumptions: Array<{
+            id: string;
+            text: string;
+        }>;
+    };
 }
 
 // export: ResearchSessionClarificationV1
@@ -16556,6 +16915,23 @@ export declare function resolveResearchPlanApprovalV1(input: {
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
+// export: ResolveResearchSessionClarificationsInputV1
+export interface ResolveResearchSessionClarificationsInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: resolveResearchSessionClarificationsV1
+export declare function resolveResearchSessionClarificationsV1(input: ResolveResearchSessionClarificationsInputV1): Promise<ResearchSessionV1>;
+
 // export: responseSchemaForResearchRole
 export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1, outputSchema?: ResearchTaskOutputSchemaV1): Record<string, unknown>;
 
@@ -16856,6 +17232,21 @@ export interface ContentProjectionLimits {
     maxNodes: number;
     maxDepth: number;
 }
+
+// export: ContinueResearchSessionClarificationPlanningInputV1
+export interface ContinueResearchSessionClarificationPlanningInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: continueResearchSessionClarificationPlanningV1
+export declare function continueResearchSessionClarificationPlanningV1(input: ContinueResearchSessionClarificationPlanningInputV1): Promise<ResearchSessionV1>;
 
 // export: createBoundedResearchSubagentMiddleware
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, graph: ResearchGraphV1, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
@@ -17581,6 +17972,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionClarificationReviewV1
+export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
+
 // export: projectResearchSessionPlanReviewV1
 export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
 
@@ -18103,6 +18497,9 @@ export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-sessi
 // export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
 export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
 
+// export: RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.research-session-clarification-review/v1";
+
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
 
@@ -18474,6 +18871,21 @@ export interface ResearchClarificationQuestionV1 {
 
 // export: ResearchClarificationRequiredV1
 export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
+
+// export: ResearchClarificationReviewResolutionInputV1
+export interface ResearchClarificationReviewResolutionInputV1 {
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}
+
+// export: ResearchClarificationReviewResolutionV1
+export type ResearchClarificationReviewResolutionV1 = {
+    kind: "plan_review";
+    review: ResearchSessionPlanReviewV1;
+} | {
+    kind: "resumable";
+    session: ResearchResumableSessionV1;
+};
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -19434,6 +19846,20 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+    listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
+    resolveClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+        assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+    continueClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -20189,6 +20615,33 @@ export interface ResearchSessionCheckpointV1 {
     kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
     recordedAt: string;
     artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationReviewV1
+export interface ResearchSessionClarificationReviewV1 {
+    schema: typeof RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_clarification" | "planning";
+    stage: "answer_required" | "plan_required";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+        questions: Array<{
+            id: string;
+            prompt: string;
+            candidateIds?: string[];
+        }>;
+        assumptions: Array<{
+            id: string;
+            text: string;
+        }>;
+    };
 }
 
 // export: ResearchSessionClarificationV1
@@ -21003,6 +21456,23 @@ export declare function resolveResearchPlanApprovalV1(input: {
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
+
+// export: ResolveResearchSessionClarificationsInputV1
+export interface ResolveResearchSessionClarificationsInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: resolveResearchSessionClarificationsV1
+export declare function resolveResearchSessionClarificationsV1(input: ResolveResearchSessionClarificationsInputV1): Promise<ResearchSessionV1>;
 
 // export: responseSchemaForResearchRole
 export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1, outputSchema?: ResearchTaskOutputSchemaV1): Record<string, unknown>;
@@ -21776,6 +22246,20 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+    listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
+    resolveClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+        assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+    continueClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -22505,6 +22989,21 @@ export interface ContentProjectionLimits {
     maxDepth: number;
 }
 
+// export: ContinueResearchSessionClarificationPlanningInputV1
+export interface ContinueResearchSessionClarificationPlanningInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: continueResearchSessionClarificationPlanningV1
+export declare function continueResearchSessionClarificationPlanningV1(input: ContinueResearchSessionClarificationPlanningInputV1): Promise<ResearchSessionV1>;
+
 // export: createBoundedResearchSubagentMiddleware
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, graph: ResearchGraphV1, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
     now?: () => number;
@@ -23229,6 +23728,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionClarificationReviewV1
+export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
+
 // export: projectResearchSessionPlanReviewV1
 export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
 
@@ -23751,6 +24253,9 @@ export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-sessi
 // export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
 export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
 
+// export: RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.research-session-clarification-review/v1";
+
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
 
@@ -24122,6 +24627,21 @@ export interface ResearchClarificationQuestionV1 {
 
 // export: ResearchClarificationRequiredV1
 export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
+
+// export: ResearchClarificationReviewResolutionInputV1
+export interface ResearchClarificationReviewResolutionInputV1 {
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}
+
+// export: ResearchClarificationReviewResolutionV1
+export type ResearchClarificationReviewResolutionV1 = {
+    kind: "plan_review";
+    review: ResearchSessionPlanReviewV1;
+} | {
+    kind: "resumable";
+    session: ResearchResumableSessionV1;
+};
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -25082,6 +25602,20 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
+    listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
+    resolveClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        answers: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["answers"];
+        assumptionDecisions: import("./session-clarification-review.js").ResearchClarificationReviewResolutionInputV1["assumptionDecisions"];
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+    continueClarificationReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+    }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -25837,6 +26371,33 @@ export interface ResearchSessionCheckpointV1 {
     kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
     recordedAt: string;
     artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationReviewV1
+export interface ResearchSessionClarificationReviewV1 {
+    schema: typeof RESEARCH_SESSION_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_clarification" | "planning";
+    stage: "answer_required" | "plan_required";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+        questions: Array<{
+            id: string;
+            prompt: string;
+            candidateIds?: string[];
+        }>;
+        assumptions: Array<{
+            id: string;
+            text: string;
+        }>;
+    };
 }
 
 // export: ResearchSessionClarificationV1
@@ -26651,6 +27212,23 @@ export declare function resolveResearchPlanApprovalV1(input: {
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
+
+// export: ResolveResearchSessionClarificationsInputV1
+export interface ResolveResearchSessionClarificationsInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: resolveResearchSessionClarificationsV1
+export declare function resolveResearchSessionClarificationsV1(input: ResolveResearchSessionClarificationsInputV1): Promise<ResearchSessionV1>;
 
 // export: responseSchemaForResearchRole
 export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1, outputSchema?: ResearchTaskOutputSchemaV1): Record<string, unknown>;

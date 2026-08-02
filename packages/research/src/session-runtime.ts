@@ -1,6 +1,8 @@
 import {
   approveResearchBriefWholeScopeExpansionV1,
   briefRequiresClarificationV1,
+  type ResearchBriefAssumptionDecisionV1,
+  type ResearchBriefClarificationResponseV1,
   type ResearchBriefV1,
 } from "./brief.js";
 import type { ResearchScopeBindingV1 } from "./contracts.js";
@@ -66,6 +68,31 @@ export interface ProposeResearchGraphForReadyBriefInputV1 {
   packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
   approveAutomatically: boolean;
   /** A control command has no live runner, so its approved plan must be reclaimable. */
+  releaseApprovedLease?: boolean;
+  at: string;
+}
+
+export interface ResolveResearchSessionClarificationsInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  expectedRevision: number;
+  expectedLeaseEpoch: number;
+  briefRevision: number;
+  answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+  assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+  approveAutomatically: boolean;
+  /** A browser control command must leave its approved successor resumable. */
+  releaseApprovedLease?: boolean;
+  at: string;
+}
+
+export interface ContinueResearchSessionClarificationPlanningInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  expectedRevision: number;
+  expectedLeaseEpoch: number;
+  briefRevision: number;
+  approveAutomatically: boolean;
   releaseApprovedLease?: boolean;
   at: string;
 }
@@ -185,6 +212,74 @@ export async function initializeResearchSessionClarificationWaitV1(
     throw new Error("Durable research clarification wait did not persist its required state.");
   }
   return persisted;
+}
+
+/**
+ * Commit all user answers and decisions before graph construction. If the
+ * second operation is interrupted, the resulting ready `planning` state is a
+ * durable recovery checkpoint that `continueResearchSessionClarificationPlanningV1`
+ * can finish under a new explicit revision fence.
+ */
+export async function resolveResearchSessionClarificationsV1(
+  input: ResolveResearchSessionClarificationsInputV1,
+): Promise<ResearchSessionV1> {
+  const current = await input.store.read(input.sessionId);
+  if (!current || current.revision !== input.expectedRevision ||
+      current.lease.epoch !== input.expectedLeaseEpoch) {
+    throw new Error("Research clarification session revision or lease epoch is stale.");
+  }
+  const turn = activeTurn(current);
+  if (current.status !== "waiting_clarification" || !turn?.brief ||
+      turn.brief.revision !== input.briefRevision || !briefRequiresClarificationV1(turn.brief)) {
+    throw new Error("Research clarification session is not awaiting these answers.");
+  }
+  const resolved = (await input.store.commit(input.sessionId, {
+    kind: "resolve_clarifications",
+    briefRevision: input.briefRevision,
+    answers: input.answers,
+    assumptionDecisions: input.assumptionDecisions,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+  return proposeResearchGraphForReadyBriefV1({
+    store: input.store,
+    sessionId: resolved.sessionId,
+    expectedRevision: resolved.revision,
+    expectedLeaseEpoch: resolved.lease.epoch,
+    approveAutomatically: input.approveAutomatically,
+    ...(input.releaseApprovedLease ? { releaseApprovedLease: true } : {}),
+    at: input.at,
+  });
+}
+
+/**
+ * Finish the durable post-answer planning checkpoint without accepting a new
+ * answer, scope, policy, or graph from the caller.
+ */
+export async function continueResearchSessionClarificationPlanningV1(
+  input: ContinueResearchSessionClarificationPlanningInputV1,
+): Promise<ResearchSessionV1> {
+  const current = await input.store.read(input.sessionId);
+  if (!current || current.revision !== input.expectedRevision ||
+      current.lease.epoch !== input.expectedLeaseEpoch) {
+    throw new Error("Research clarification planning revision or lease epoch is stale.");
+  }
+  const turn = activeTurn(current);
+  if (current.status !== "planning" || !turn?.brief || turn.graph ||
+      turn.brief.revision !== input.briefRevision || briefRequiresClarificationV1(turn.brief) ||
+      (turn.clarifications.length === 0 && turn.assumptionDecisions.length === 0)) {
+    throw new Error("Research clarification planning checkpoint is not recoverable.");
+  }
+  return proposeResearchGraphForReadyBriefV1({
+    store: input.store,
+    sessionId: current.sessionId,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    approveAutomatically: input.approveAutomatically,
+    ...(input.releaseApprovedLease ? { releaseApprovedLease: true } : {}),
+    at: input.at,
+  });
 }
 
 /**

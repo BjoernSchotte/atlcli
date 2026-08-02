@@ -1830,6 +1830,39 @@ function packedScopeReviewSession(): ResearchSessionV1 {
   }, "2026-08-02T15:00:05.000Z");
 }
 
+function packedClarificationPlanningSession(): ResearchSessionV1 {
+  const sessionId = "research-session:packed-clarification-recovery";
+  const turnId = "research-turn:packed-clarification-recovery";
+  const at = "2026-08-01T15:00:00.000Z";
+  const request = hostParityRequest();
+  const brief = createStandardResearchBriefV1(
+    "How does the current synthetic Jira work relate to Confluence content?",
+    {
+      sessionId,
+      turnId,
+      scope: request.scope,
+      scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+      limits: request.limits,
+      asOf: at,
+      policy: HOST_PARITY_POLICY,
+    },
+  );
+  let session = createResearchSessionV1({
+    sessionId,
+    ownerId: "owner:packed-clarification-recovery",
+    createdAt: at,
+    leaseExpiresAt: "2026-08-01T15:10:00.000Z",
+  });
+  session = updatePackedResearchSession(session, { kind: "create_turn", turnId }, "2026-08-01T15:00:01.000Z");
+  session = updatePackedResearchSession(session, { kind: "record_brief", brief }, "2026-08-01T15:00:02.000Z");
+  return updatePackedResearchSession(session, {
+    kind: "resolve_clarifications",
+    briefRevision: 1,
+    answers: [{ questionId: "clarification:time-window", response: "Use the latest seven days." }],
+    assumptionDecisions: [],
+  }, "2026-08-01T15:00:03.000Z");
+}
+
 async function runNodeHostParityFixture(): Promise<{
   report: ResearchReport;
   events: ResearchOneShotEventV1[];
@@ -2542,6 +2575,167 @@ test("persists and approves an initial packed plan before key storage or retriev
   const events = await harnessEvents(page);
   expect(events.some((event) => event.kind === "fetch")).toBe(false);
   expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+});
+
+test("persists and resolves an initial packed clarification before key storage or retrieval", async () => {
+  await installEventCapture(page);
+  const request = {
+    ...hostParityRequest(),
+    question: "How does the current synthetic Jira work relate to Confluence content?",
+  };
+  const prepared = await page.evaluate(async ({ request, policy }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:prepare-clarification-review",
+      windowId: window.id,
+      request,
+      policy,
+    });
+  }, { request, policy: HOST_PARITY_POLICY }) as {
+    kind: string;
+    ok: boolean;
+    review?: {
+      sessionId: string;
+      revision: number;
+      status: string;
+      stage: string;
+      turn: {
+        id: string;
+        briefRevision: number;
+        questions: Array<{ id: string; prompt: string }>;
+      };
+    };
+  };
+  if (!prepared.ok || !prepared.review) throw new Error("Initial clarification preparation failed.");
+  expect(prepared).toMatchObject({
+    kind: "research:prepare-clarification-review-result",
+    ok: true,
+    review: {
+      status: "waiting_clarification",
+      stage: "answer_required",
+      turn: {
+        briefRevision: 1,
+        questions: [{ id: "clarification:time-window" }],
+      },
+    },
+  });
+  expect(JSON.stringify(prepared)).not.toContain(request.question);
+  expect(JSON.stringify(prepared)).not.toContain("tenantOrigin");
+
+  const durableWait = await readPackedDurableResearchSession(
+    page,
+    prepared.review.sessionId,
+    `artifact:report:${prepared.review.turn.id}`,
+  );
+  expect(durableWait.session.state).toMatchObject({
+    status: "waiting_clarification",
+    turns: [{ tasks: [], acceptedPackets: [] }],
+  });
+  expect(durableWait.session.state.turns[0]?.graph).toBeUndefined();
+  expect(durableWait.artifact).toBeUndefined();
+  expect((await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY)))
+    .not.toHaveProperty(RESEARCH_ANTHROPIC_SESSION_KEY);
+
+  const resolved = await page.evaluate(async (review) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:resolve-clarification-review",
+      windowId: window.id,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      answers: [{ questionId: "clarification:time-window", response: "Use the latest seven days." }],
+      assumptionDecisions: [],
+    });
+  }, prepared.review) as {
+    kind: string;
+    ok: boolean;
+    outcome?: { kind: string; session?: { sessionId: string; status: string } };
+  };
+  expect(resolved).toMatchObject({
+    kind: "research:resolve-clarification-review-result",
+    ok: true,
+    outcome: { kind: "resumable", session: { sessionId: prepared.review.sessionId, status: "running" } },
+  });
+  const durableResolved = await readPackedDurableResearchSession(
+    page,
+    prepared.review.sessionId,
+    `artifact:report:${prepared.review.turn.id}`,
+  );
+  expect(durableResolved.session.state).toMatchObject({
+    status: "running",
+    turns: [{
+      brief: {
+        revision: 2,
+        clarificationResponses: [{ response: "Use the latest seven days." }],
+      },
+      graph: { revision: 1, basedOnBriefRevision: 2, status: "approved" },
+      tasks: [],
+      acceptedPackets: [],
+    }],
+  });
+  const events = await harnessEvents(page);
+  expect(events.some((event) => event.kind === "fetch")).toBe(false);
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+
+  const stale = await page.evaluate(async (review) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:resolve-clarification-review",
+      windowId: window.id,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      answers: [{ questionId: "clarification:time-window", response: "A stale answer." }],
+      assumptionDecisions: [],
+    });
+  }, prepared.review);
+  expect(stale).toMatchObject({
+    kind: "research:resolve-clarification-review-result",
+    ok: false,
+    code: "invalid-request",
+  });
+
+  // This is the durable interruption boundary: the answer CAS is already in
+  // IndexedDB, but no graph exists yet. A fresh MV3 background must finish it
+  // from only the persisted revision fence, not by replaying the answer.
+  const recovery = packedClarificationPlanningSession();
+  await writePackedDurableResearchSession(page, recovery);
+  const continued = await page.evaluate(async ({ sessionId, revision, briefRevision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:continue-clarification-review",
+      windowId: window.id,
+      sessionId,
+      revision,
+      briefRevision,
+    });
+  }, {
+    sessionId: recovery.sessionId,
+    revision: recovery.revision,
+    briefRevision: recovery.turns[0]!.brief!.revision,
+  });
+  if (!(continued as { ok?: unknown }).ok) {
+    throw new Error("Clarification planning recovery failed.");
+  }
+  expect(continued).toMatchObject({
+    kind: "research:continue-clarification-review-result",
+    ok: true,
+    outcome: { kind: "resumable", session: { sessionId: recovery.sessionId } },
+  });
+  const recovered = await readPackedDurableResearchSession(
+    page,
+    recovery.sessionId,
+    `artifact:report:${recovery.turns[0]!.id}`,
+  );
+  expect(recovered.session.state.turns[0]).toMatchObject({
+    brief: { revision: 2, clarificationResponses: [{ response: "Use the latest seven days." }] },
+    graph: { revision: 1, basedOnBriefRevision: 2, status: "approved" },
+  });
 });
 
 test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {
