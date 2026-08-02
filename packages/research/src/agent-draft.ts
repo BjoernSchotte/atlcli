@@ -14,6 +14,10 @@ import { finalizeResearchReportV1 } from "./report.js";
 const boundedText = (maximum: number): z.ZodString =>
   z.string().trim().min(1).max(maximum);
 
+const selectedClaimIdsSchema = z.array(
+  boundedText(96).regex(/^claim:[a-f0-9]{48}$/, "Claim ID is invalid."),
+).max(8);
+
 export const RESEARCH_AGENT_DRAFT_SCHEMA_V1 = z
   .object({
     title: boundedText(300),
@@ -44,6 +48,8 @@ export const RESEARCH_AGENT_DRAFT_SCHEMA_V1 = z
       )
       .max(12),
     limitations: z.array(boundedText(700)).max(12),
+    /** Optional in the legacy format; mandatory for dynamic V2 synthesis. */
+    selectedClaimIds: selectedClaimIdsSchema.optional(),
   })
   .strict()
   .meta({ title: "AtlcliResearchAgentDraftV1" });
@@ -58,6 +64,26 @@ export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1
 export const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 = {
   ...z.toJSONSchema(RESEARCH_AGENT_DRAFT_SCHEMA_V1, { target: "draft-7" }),
   title: "AtlcliResearchAgentDraftV1",
+} as Record<string, unknown>;
+
+/**
+ * Dynamic V2 research needs one further control-plane value: the smallest
+ * question-answering set of already host-normalized Claim IDs. It is distinct
+ * from the legacy report draft because it never accepts model-authored claim
+ * text and cannot point outside the host's claim ledger.
+ */
+export const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1 = RESEARCH_AGENT_DRAFT_SCHEMA_V1
+  .extend({
+    selectedClaimIds: selectedClaimIdsSchema,
+  })
+  .strict()
+  .meta({ title: "AtlcliDynamicResearchAgentDraftV1" });
+
+export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
+
+export const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1 = {
+  ...z.toJSONSchema(RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1, { target: "draft-7" }),
+  title: "AtlcliDynamicResearchAgentDraftV1",
 } as Record<string, unknown>;
 
 function uniqueKnownSourceIds(
@@ -404,6 +430,9 @@ function clampProviderDraft(input: unknown): unknown {
   const limitations = Array.isArray(draft.limitations)
     ? draft.limitations.slice(0, 12).map((value) => clampText(value, 700))
     : draft.limitations;
+  const selectedClaimIds = Array.isArray(draft.selectedClaimIds)
+    ? draft.selectedClaimIds.slice(0, 8).map((value) => clampText(value, 96))
+    : draft.selectedClaimIds;
   return {
     ...draft,
     title: clampText(draft.title, 300),
@@ -411,6 +440,7 @@ function clampProviderDraft(input: unknown): unknown {
     findings,
     relationships,
     limitations,
+    ...(selectedClaimIds === undefined ? {} : { selectedClaimIds }),
   };
 }
 
@@ -421,6 +451,11 @@ function clampProviderDraft(input: unknown): unknown {
  */
 export function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1 {
   return RESEARCH_AGENT_DRAFT_SCHEMA_V1.parse(clampProviderDraft(input));
+}
+
+/** Validate the stricter dynamic-synthesis control-plane contract. */
+export function parseResearchDynamicAgentDraftV1(input: unknown): ResearchDynamicAgentDraftV1 {
+  return RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1.parse(clampProviderDraft(input));
 }
 
 export function finalizeResearchAgentDraftV1(input: {

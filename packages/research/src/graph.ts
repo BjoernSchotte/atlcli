@@ -498,6 +498,7 @@ function approvalEnvelope(
   nodes: ResearchGraphNodeV1[],
   policy: ResearchGraphReconciliationPolicyV1,
   budget: ResearchNodeBudgetV1,
+  maxResearchWaves: number,
   createdAt: string,
 ): ResearchApprovalEnvelopeV1 {
   const automatic = brief.resolvedPlanApproval === "automatic";
@@ -522,12 +523,53 @@ function approvalEnvelope(
     allowedCapabilityIds: [...new Set(nodes.flatMap((node) => node.grantedCapabilityIds))],
     totalBudgetCeiling: budget,
     maxParallelNodes: 3,
-    maxResearchWaves: 2,
+    maxResearchWaves,
     maxReconciliationWaves: 1,
     maxDepth: 0,
     reconciliationPolicy: structuredClone(policy),
     ...(automatic ? { approvedAt: createdAt } : {}),
   };
+}
+
+/**
+ * The host owns the maximum number of sequential pre-reconciliation research
+ * waves. It is derived from the admitted DAG rather than from a broad effort
+ * label: a V2 outline can legitimately follow a cross-product join, coverage
+ * review, and verification. Reconciliation, repair, and synthesis remain
+ * separately bounded execution phases.
+ */
+function researchWaveCeiling(nodes: readonly ResearchGraphNodeV1[]): number {
+  const researchNodes = new Map(nodes
+    .filter((node) =>
+      node.executor === "subagent" &&
+      node.roleId !== undefined &&
+      node.roleId !== "reconciler" &&
+      node.roleId !== "synthesizer" &&
+      node.kind !== "repair" &&
+      node.status !== "pruned"
+    )
+    .map((node) => [node.id, node]));
+  const waves = new Map<string, number>();
+  const visiting = new Set<string>();
+  const visit = (nodeId: string): number => {
+    const known = waves.get(nodeId);
+    if (known !== undefined) return known;
+    if (visiting.has(nodeId)) invalid("Research graph dependencies must be acyclic.");
+    const node = researchNodes.get(nodeId);
+    if (!node) return 0;
+    visiting.add(nodeId);
+    const dependencies = node.dependencies
+      .filter((dependency) => researchNodes.has(dependency))
+      .map(visit);
+    visiting.delete(nodeId);
+    const wave = dependencies.length === 0 ? 1 : Math.max(...dependencies) + 1;
+    waves.set(nodeId, wave);
+    return wave;
+  };
+  researchNodes.forEach((_, nodeId) => visit(nodeId));
+  // Retain one bounded reconciliation-repair slot for simple graphs while
+  // increasing the ceiling only when the host-composed topology requires it.
+  return Math.max(2, ...waves.values());
 }
 
 export interface ComposeStandardResearchGraphOptionsV1 {
@@ -645,6 +687,7 @@ export function composeResearchGraphV1(
   const relation = brief.sourceClasses.includes("jira") && brief.sourceClasses.includes("confluence");
   const policy = reconciliationPolicy(brief, relation);
   const totalBudget = aggregateBudget(nodes);
+  const maxResearchWaves = researchWaveCeiling(nodes);
   const graph: ResearchGraphV1 = {
     schema: RESEARCH_GRAPH_SCHEMA_V1,
     sessionId: brief.sessionId,
@@ -656,13 +699,21 @@ export function composeResearchGraphV1(
     nodes,
     roleDecisions: roleDecisions(nodes),
     maxParallelNodes: 3,
-    maxResearchWaves: 2,
+    maxResearchWaves,
     maxReconciliationWaves: 1,
     researchWavesCompleted: 0,
     reconciliationWavesCompleted: 0,
     reconciliationPolicy: policy,
     totalBudget,
-    approvalEnvelope: approvalEnvelope(brief, revision, nodes, policy, totalBudget, createdAt),
+    approvalEnvelope: approvalEnvelope(
+      brief,
+      revision,
+      nodes,
+      policy,
+      totalBudget,
+      maxResearchWaves,
+      createdAt,
+    ),
     createdAt,
     ...(automatic ? { approvedAt: createdAt } : {}),
   };
@@ -758,7 +809,9 @@ export function validateResearchGraphV1(graph: ResearchGraphV1): void {
   if (graph.schema !== RESEARCH_GRAPH_SCHEMA_V1) invalid("Unsupported research graph schema.");
   if (!/^research-session:[A-Za-z0-9._-]{1,120}$/.test(graph.sessionId) || !/^research-turn:[A-Za-z0-9._-]{1,120}$/.test(graph.turnId)) invalid("Research graph identity is invalid.");
   if (!Number.isSafeInteger(graph.revision) || graph.revision < 1 || !Number.isSafeInteger(graph.basedOnBriefRevision) || graph.basedOnBriefRevision < 1) invalid("Research graph revisions are invalid.");
-  if (graph.maxParallelNodes < 1 || graph.maxParallelNodes > 3 || graph.maxResearchWaves !== 2 || graph.maxReconciliationWaves !== 1) invalid("Research graph concurrency or wave limits are invalid.");
+  if (graph.maxParallelNodes < 1 || graph.maxParallelNodes > 3 ||
+      graph.maxResearchWaves !== researchWaveCeiling(graph.nodes) ||
+      graph.maxReconciliationWaves !== 1) invalid("Research graph concurrency or wave limits are invalid.");
   if (graph.nodes.length === 0 || graph.nodes.length > 9) invalid("Research graph node count is invalid.");
   if (graph.researchWavesCompleted < 0 || graph.researchWavesCompleted > graph.maxResearchWaves || graph.reconciliationWavesCompleted < 0 || graph.reconciliationWavesCompleted > graph.maxReconciliationWaves) invalid("Research graph completed-wave count is invalid.");
   const ids = new Set<string>();
@@ -983,6 +1036,11 @@ export function acceptResearchGraphProposalV1(
     nodes,
     roleDecisions: roleDecisions(nodes),
     totalBudget: aggregateBudget(nodes),
+    maxResearchWaves: researchWaveCeiling(nodes),
+    approvalEnvelope: {
+      ...catalogGraph.approvalEnvelope,
+      maxResearchWaves: researchWaveCeiling(nodes),
+    },
   };
   validateResearchGraphV1(accepted);
   return accepted;

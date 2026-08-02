@@ -191,6 +191,7 @@ describe("dynamic research graph composition", () => {
     );
     validateResearchGraphV1(graph);
     expect(graph.nodes).toHaveLength(9);
+    expect(graph.maxResearchWaves).toBe(5);
     const planner = graph.nodes.find((node) => node.roleId === "outline-planner")!;
     expect(planner).toMatchObject({
       kind: "outline",
@@ -203,6 +204,7 @@ describe("dynamic research graph composition", () => {
       .filter((node) => node.kind !== "repair")
       .map((node) => node.id);
     const accepted = acceptResearchGraphProposalV1(graph, proposalFor(graph, selected));
+    expect(accepted.maxResearchWaves).toBe(3);
     const acceptedPlanner = accepted.nodes.find((node) => node.id === planner.id)!;
     expect(acceptedPlanner.dependencies).toEqual([
       "research-node:jira-research",
@@ -245,6 +247,7 @@ describe("dynamic research graph composition", () => {
       "reconciler",
       "synthesizer",
     ]);
+    expect(deep.maxResearchWaves).toBe(3);
     const contradiction = composeResearchGraphV1(brief(
       "Which Confluence content explicitly contradicts Jira tickets?",
       ["jira", "confluence"],
@@ -323,7 +326,10 @@ describe("dynamic research graph composition", () => {
         "research-node:cross-product-join",
         "research-node:coverage-moderation",
       ]);
-    expect(concise.approvalEnvelope).toEqual(catalog.approvalEnvelope);
+    expect(concise.approvalEnvelope).toEqual({
+      ...catalog.approvalEnvelope,
+      maxResearchWaves: 2,
+    });
     expect(concise.totalBudget.maxInputTokens).toBeLessThan(
       concise.approvalEnvelope.totalBudgetCeiling.maxInputTokens,
     );

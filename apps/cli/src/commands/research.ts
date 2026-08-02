@@ -729,7 +729,10 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
       maxBodyCharsPerItem: 50_000,
       maxPtcCalls: 32,
       maxHttpCalls: 40,
-      maxModelOutputTokens: 4_096,
+      // The dynamic supervisor emits one complete QuickJS workflow before any
+      // subagent runs. Its provider budget must accommodate that program;
+      // 4,096 tokens can terminate mid-tool-input for a valid six-node graph.
+      maxModelOutputTokens: 8_000,
       // The CLI controls only the complete workflow deadline. Individual
       // QuickJS/PTC operations retain their tighter contract limits.
       maxRunMs: input.maxRunMinutes * 60_000,

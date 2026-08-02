@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { fakeModel } from "@langchain/core/testing";
 import {
   RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
-  RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+  RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
   createMemoryResearchWorkspace,
   createResearchBriefV1,
   encodeResearchTaskDescriptionV1,
@@ -41,19 +41,21 @@ const graph = composeResearchGraphV1(createResearchBriefV1({
   sourceClasses: ["jira", "confluence"],
   asOf: "2026-07-31T12:00:00.000Z",
   timezone: "UTC",
-  requestedEffort: "analysis",
+  requestedEffort: "deep",
   requestedPlanApproval: "automatic",
   requestedReconciliation: "auto",
 }));
 const jiraNode = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
 const wikiNode = graph.nodes.find((node) => node.id === "research-node:wiki-research")!;
 const joinNode = graph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+const coverageNode = graph.nodes.find((node) => node.id === "research-node:coverage-moderation")!;
 const reconciliationNode = graph.nodes.find((node) => node.roleId === "reconciler")!;
 const synthesizerNode = graph.nodes.find((node) => node.roleId === "synthesizer")!;
 
 const draft = {
   title: "Cross-host synthetic report",
   executiveSummary: "No source evidence was supplied to this parity run.",
+  selectedClaimIds: [],
   findings: [],
   relationships: [],
   limitations: ["Synthetic host-parity scenario."],
@@ -75,7 +77,7 @@ const critique = {
   defects: [{
     id: "defect:host-parity-coverage",
     severity: "important",
-    target: { kind: "node", id: joinNode.id },
+    target: { kind: "coverage", id: "coverage:primary-question" },
     code: "missing_coverage",
     references: [],
     explanation: "The synthetic host-parity scenario contains no source evidence.",
@@ -132,6 +134,20 @@ function model() {
       subagentType: ${JSON.stringify(subagentType(joinNode))},
       responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
     });
+    const coverage = await task({
+      description: JSON.stringify({
+        schema: "atlcli.research-task-dispatch/v1",
+        taskId: ${JSON.stringify(taskId(coverageNode))},
+        objective: ${JSON.stringify(coverageNode.objective)},
+        dependencyResults: [
+          { taskId: ${JSON.stringify(taskId(jiraNode))}, result: packets[0] },
+          { taskId: ${JSON.stringify(taskId(wikiNode))}, result: packets[1] },
+          { taskId: ${JSON.stringify(taskId(joinNode))}, result: joined }
+        ]
+      }),
+      subagentType: ${JSON.stringify(subagentType(coverageNode))},
+      responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
+    });
     const critique = await task({
       description: JSON.stringify({
         schema: "atlcli.research-task-dispatch/v1",
@@ -140,7 +156,8 @@ function model() {
         dependencyResults: [
           { taskId: ${JSON.stringify(taskId(jiraNode))}, result: packets[0] },
           { taskId: ${JSON.stringify(taskId(wikiNode))}, result: packets[1] },
-          { taskId: ${JSON.stringify(taskId(joinNode))}, result: joined }
+          { taskId: ${JSON.stringify(taskId(joinNode))}, result: joined },
+          { taskId: ${JSON.stringify(taskId(coverageNode))}, result: coverage }
         ]
       }),
       subagentType: ${JSON.stringify(subagentType(reconciliationNode))},
@@ -164,22 +181,33 @@ function model() {
           { taskId: ${JSON.stringify(taskId(jiraNode))}, result: packets[0] },
           { taskId: ${JSON.stringify(taskId(wikiNode))}, result: packets[1] },
           { taskId: ${JSON.stringify(taskId(joinNode))}, result: joined },
+          { taskId: ${JSON.stringify(taskId(coverageNode))}, result: coverage },
           { taskId: ${JSON.stringify(taskId(reconciliationNode))}, result: critique }
         ]
       }),
       subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizerNode))},
-      responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
     });
     finalDraft;
   `;
   return fakeModel()
     .respondWithTools([{ name: "eval", args: { code } }])
-    .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Jira branch") }])
-    .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Confluence branch") }])
-    .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Joined branch") }])
-    .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }])
-    .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
-    .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+    .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
+}
+
+function subagentModels() {
+  const packetModel = (answeredQuestion: string) => fakeModel()
+    .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket(answeredQuestion) }]);
+  return {
+    [jiraNode.id]: packetModel("Jira branch"),
+    [wikiNode.id]: packetModel("Confluence branch"),
+    [joinNode.id]: packetModel("Joined branch"),
+    [coverageNode.id]: packetModel("Coverage branch"),
+    [reconciliationNode.id]: fakeModel()
+      .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }]),
+    [synthesizerNode.id]: fakeModel()
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]),
+  };
 }
 
 const providers = {
@@ -211,12 +239,14 @@ describe("research one-shot host parity", () => {
       runNodeResearchAgent({
         ...common,
         model: model(),
+        subagentModelsByNode: subagentModels(),
         workspace: nodeWorkspace,
         options: { onEvent: (event) => nodeEvents.push(event) },
       }),
       runBrowserResearchAgent({
         ...common,
         model: model(),
+        subagentModelsByNode: subagentModels(),
         workspace: browserWorkspace,
         options: { onEvent: (event) => browserEvents.push(event) },
       }),

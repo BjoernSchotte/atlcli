@@ -562,9 +562,16 @@ function boundedString(value: unknown, label: string, maximum: number): string {
   return value;
 }
 
-function stringArray(value: unknown, label: string, maximum: number): string[] {
+function stringArray(
+  value: unknown,
+  label: string,
+  maximum: number,
+  maximumItemLength = 240,
+): string[] {
   if (!Array.isArray(value) || value.length > maximum) invalid(`${label} must be a bounded array.`);
-  const result = value.map((item, index) => boundedString(item, `${label}[${index}]`, 240));
+  const result = value.map((item, index) =>
+    boundedString(item, `${label}[${index}]`, maximumItemLength)
+  );
   if (new Set(result).size !== result.length) invalid(`${label} must not contain duplicates.`);
   return result;
 }
@@ -712,7 +719,7 @@ export function parseResearchPacketModelBodyV2(value: unknown): ResearchPacketMo
     "abstentionReason",
   ], "Research V2 model packet body");
   if (packet.schema !== RESEARCH_PACKET_BODY_SCHEMA_V2 ||
-      !Array.isArray(packet.claimCandidates) || packet.claimCandidates.length > 20 ||
+      !Array.isArray(packet.claimCandidates) || packet.claimCandidates.length > 8 ||
       !Array.isArray(packet.contradictionCandidates) || packet.contradictionCandidates.length > 12 ||
       !Array.isArray(packet.outlineProposals) || packet.outlineProposals.length > 12 ||
       !Array.isArray(packet.gaps) || packet.gaps.length > 16 ||
@@ -770,7 +777,7 @@ export function parseResearchPacketModelBodyV2(value: unknown): ResearchPacketMo
     outlineProposals,
     gaps: packet.gaps.map(parseGap),
     proposedFollowUps: packet.proposedFollowUps.map(parseFollowUp),
-    coverageLimits: stringArray(packet.coverageLimits, "Research V2 coverage limits", 16),
+    coverageLimits: stringArray(packet.coverageLimits, "Research V2 coverage limits", 16, 600),
     ...(packet.abstentionReason === undefined ? {} : { abstentionReason: boundedString(packet.abstentionReason, "Research V2 abstention reason", 1_000) }),
   };
 }
@@ -854,7 +861,7 @@ export function parseResearchPacketReferenceModelBodyV2(
     outlineProposals,
     gaps: packet.gaps.map(parseGap),
     proposedFollowUps: packet.proposedFollowUps.map(parseFollowUp),
-    coverageLimits: stringArray(packet.coverageLimits, "Research V2 reference coverage limits", 16),
+    coverageLimits: stringArray(packet.coverageLimits, "Research V2 reference coverage limits", 16, 600),
     ...(packet.abstentionReason === undefined
       ? {}
       : { abstentionReason: boundedString(packet.abstentionReason, "Research V2 reference abstention reason", 1_000) }),
@@ -949,7 +956,7 @@ export function parseResearchPacketBodyV2(value: unknown): ResearchPacketBodyV2 
     outlineProposals,
     gaps: packet.gaps.map(parseGap),
     proposedFollowUps: packet.proposedFollowUps.map(parseFollowUp),
-    coverageLimits: stringArray(packet.coverageLimits, "Research V2 coverage limits", 16),
+    coverageLimits: stringArray(packet.coverageLimits, "Research V2 coverage limits", 16, 600),
     ...(packet.abstentionReason === undefined ? {} : { abstentionReason: boundedString(packet.abstentionReason, "Research V2 abstention reason", 1_000) }),
   };
 }
@@ -1025,6 +1032,47 @@ export function parseResearchReconciliationInputV1(
 }
 
 /**
+ * Reject a critic result before it enters the supervisor control plane when it
+ * points outside the body-free namespace that the host gave that critic. This
+ * makes one schema-only subagent repair possible instead of leaving the
+ * later disposition tool to reject an otherwise accepted critic packet.
+ */
+export function validateResearchReconciliationBodyNamespaceV1(
+  body: ReconciliationBodyV1,
+  input: ResearchReconciliationInputV1,
+): ReconciliationBodyV1 {
+  const coverageIds = new Set([
+    ...input.coverageTargetIds,
+    ...input.projection.gapIds,
+  ]);
+  const v1 = input.projection.kind === "v1-packet-set" ? input.projection : undefined;
+  const v2 = input.projection.kind === "v2-claim-set" ? input.projection : undefined;
+  for (const defect of body.defects) {
+    const targetKnown = defect.target.kind === "coverage"
+      ? coverageIds.has(defect.target.id)
+      : defect.target.kind === "finding"
+        ? v1?.findingCandidateIds.includes(defect.target.id) === true
+        : defect.target.kind === "relationship"
+          ? v1?.relationshipCandidateIds.includes(defect.target.id) === true
+          : defect.target.kind === "claim"
+            ? v2?.claimIds.includes(defect.target.id) === true
+            : false;
+    if (!targetKnown) {
+      invalid(`Reconciliation defect target is outside the host namespace: ${defect.id}`);
+    }
+    for (const reference of defect.references) {
+      const referenceKnown = reference.kind === "source"
+        ? v1?.sourceIds.includes(reference.id) === true
+        : v2?.evidenceIds.includes(reference.id) === true;
+      if (!referenceKnown) {
+        invalid(`Reconciliation defect reference is outside the host namespace: ${defect.id}`);
+      }
+    }
+  }
+  return body;
+}
+
+/**
  * Build the deterministic, body-free index that tells the T3 reconciler which
  * accepted packet references and candidate IDs it may critique. Packet bodies
  * remain in the admitted dependency envelope; this projection never copies
@@ -1081,12 +1129,16 @@ export function projectResearchReconciliationInputV1(input: {
         contradiction.evidenceIds.forEach((evidenceId) => evidenceIds.add(evidenceId)));
       body.outlineProposals.forEach((proposal) =>
         proposal.evidenceIds.forEach((evidenceId) => evidenceIds.add(evidenceId)));
-      appendUniqueCandidateIds(
-        body.gaps.map((gap) => gap.id),
-        seenGapIds,
-        gapIds,
-        "gap id",
-      );
+      // A V2 gap ID is model-local metadata, rather than a durable Claim or
+      // Evidence identity. The reconciler receives each packet's gap records
+      // in its dependency envelope, while this body-free index has no
+      // target-kind for a gap. Repeating a local label across independent
+      // packets must therefore not quarantine otherwise accepted evidence.
+      for (const gap of body.gaps) {
+        if (seenGapIds.has(gap.id)) continue;
+        seenGapIds.add(gap.id);
+        gapIds.push(gap.id);
+      }
     }
     return parseResearchReconciliationInputV1({
       schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,

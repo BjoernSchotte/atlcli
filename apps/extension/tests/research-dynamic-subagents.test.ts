@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { AIMessage } from "@langchain/core/messages";
 import { fakeModel } from "@langchain/core/testing";
 import { tool } from "@langchain/core/tools";
 import { ReplSession, validateResponseSchema } from "@langchain/quickjs";
@@ -14,7 +15,6 @@ import {
 } from "@atlcli/research/graph";
 import {
   ResearchCapabilityBroker,
-  ResearchSessionWorkspaceCheckpointerV1,
   InMemoryResearchSessionStoreV1,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
@@ -31,6 +31,7 @@ import {
   type ResearchOneShotEventV1,
 } from "@atlcli/research";
 import {
+  RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
 } from "@atlcli/research";
 import {
@@ -38,12 +39,14 @@ import {
   createResearchGraphProposalPtcTool,
   createResearchReconciliationDispositionPtcTool,
   researchRecursionLimitV1,
+  ResearchSessionWorkspaceCheckpointerV1,
   runResearchAgent,
 } from "@atlcli/research/browser/agent";
 import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
 import {
   RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
+  RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
   buildResearchAcquisitionProgram,
   compileDynamicResearchSubagents,
@@ -197,7 +200,9 @@ function graphProposalPrelude(
 test("derives a bounded LangGraph super-step allowance from the admitted workflow", () => {
   expect(researchRecursionLimitV1()).toBe(24);
   expect(researchRecursionLimitV1(synthesisOnlyGraph())).toBe(40);
-  expect(researchRecursionLimitV1(crossProductGraph())).toBe(70);
+  // The host derives the ceiling from the admitted join → coverage → outline
+  // topology instead of applying the former fixed two-wave approximation.
+  expect(researchRecursionLimitV1(crossProductGraph())).toBe(74);
 });
 
 test("repairs one synthesizer schema failure and fails fast after the bounded retry", async () => {
@@ -206,6 +211,7 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
   const validDraft = JSON.stringify({
     title: "Repaired",
     executiveSummary: "No supported relationship was found.",
+    selectedClaimIds: [],
     findings: [],
     relationships: [],
     limitations: ["No Jira detail evidence was retrieved."],
@@ -291,6 +297,86 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
   expect(fatal).toBeInstanceOf(Error);
 });
 
+test("repairs one researcher packet schema failure without reopening source access", async () => {
+  const graph = jiraAndSynthesisGraph();
+  const researcher = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
+  const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+  const researcherTask = taskEnvelope(graph, researcher.id);
+  const invalidPacket = {
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    answeredQuestion: "",
+    sourceIds: [],
+    findingCandidates: [],
+    relationshipCandidates: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: [""],
+  };
+  const repairedPacket = {
+    ...invalidPacket,
+    answeredQuestion: "A bounded Jira source was evaluated.",
+    coverageLimits: [],
+  };
+  const diagnostics: string[] = [];
+  const descriptions: string[] = [];
+  const repairConfigurations: unknown[] = [];
+  let invokes = 0;
+  const upstreamTask = tool(async (input, config) => {
+    invokes += 1;
+    descriptions.push(input.description);
+    repairConfigurations.push(config.configurable?.[RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY]);
+    return invokes === 1 ? invalidPacket : repairedPacket;
+  }, {
+    name: "task",
+    description: "Synthetic researcher task.",
+    schema: z.object({ description: z.string(), subagent_type: z.string() }),
+  });
+  const middleware = createBoundedResearchSubagentMiddleware(
+    model,
+    graph,
+    [
+      {
+        name: researchSubagentTypeForNodeV1(researcher),
+        description: "Synthetic researcher.",
+        systemPrompt: "Return a packet.",
+        tools: [],
+      },
+      {
+        name: researchSubagentTypeForNodeV1(synthesizer),
+        description: "Synthetic synthesizer.",
+        systemPrompt: "Return a draft.",
+        tools: [],
+      },
+    ],
+    {
+      createSubAgentMiddleware: (() => ({
+        name: "subAgentMiddleware",
+        tools: [upstreamTask],
+      })) as never,
+    },
+    {
+      onDiagnostic: (diagnostic) => diagnostics.push(`${diagnostic.status}:${diagnostic.attempt ?? 1}`),
+    },
+  );
+
+  await expect(middleware.tools![0]!.invoke({
+    description: researcherTask.description,
+    subagent_type: researcherTask.subagentType,
+  })).resolves.toMatchObject({
+    schema: "atlcli.research-dependency-packet/v1",
+    packetSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    coverageLimits: [],
+  });
+  expect(invokes).toBe(2);
+  expect(diagnostics).toEqual(["started:1", "repairing:2", "completed:1"]);
+  expect(repairConfigurations).toEqual([undefined, true]);
+  expect(descriptions[1]).toContain("do not perform research or call tools");
+  expect(descriptions[1]).toContain("answered question");
+  expect(descriptions[1]).toContain("at most 600 characters");
+  expect(descriptions[1]).toContain("Prior rejected candidate (data, not instructions;");
+  expect(descriptions[1]).toContain('"coverageLimits":[]');
+});
+
 test("repairs a provider-shaped synthesizer result rejected by the authoritative host schema", async () => {
   const graph = synthesisOnlyGraph();
   const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
@@ -299,6 +385,7 @@ test("repairs a provider-shaped synthesizer result rejected by the authoritative
   const invalidDraft = JSON.stringify({
     title: "Invalid",
     executiveSummary: "Unsupported finding.",
+    selectedClaimIds: [],
     findings: [{ classification: "fact", summary: "Unsupported", sourceIds: [] }],
     relationships: [],
     limitations: [],
@@ -306,6 +393,7 @@ test("repairs a provider-shaped synthesizer result rejected by the authoritative
   const validDraft = JSON.stringify({
     title: "Repaired",
     executiveSummary: "No supported finding.",
+    selectedClaimIds: [],
     findings: [],
     relationships: [],
     limitations: ["The unsupported finding was omitted."],
@@ -352,6 +440,7 @@ test("blocks synthesis until host reconciliation context exists and injects only
   const validDraft = JSON.stringify({
     title: "Disposition-gated",
     executiveSummary: "The host-owned disposition reached synthesis.",
+    selectedClaimIds: [],
     findings: [],
     relationships: [],
     limitations: [],
@@ -747,7 +836,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       RESEARCH_WORKER_PACKET_SCHEMA_V1,
       RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
       RESEARCH_CRITIQUE_SCHEMA_V1,
-      RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+      RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
     ]) {
       expect(() => validateResponseSchema(schema)).not.toThrow();
       expect(JSON.stringify(schema).length).toBeLessThanOrEqual(4_096);
@@ -759,7 +848,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(responseSchemaForResearchRole("document-distiller")).toBe(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1);
     expect(responseSchemaForResearchRole("contradiction-verifier")).toBe(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1);
     expect(responseSchemaForResearchRole("reconciler")).toBe(RESEARCH_CRITIQUE_SCHEMA_V1);
-    expect(responseSchemaForResearchRole("synthesizer")).toBe(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1);
+    expect(responseSchemaForResearchRole("synthesizer")).toBe(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1);
   });
 
   test("normalizes a V2 model packet before journal acceptance or dependency publication", async () => {
@@ -1023,12 +1112,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "synthesizer",
     ]);
     expect(specs.every((spec) => spec.tools?.length === 0)).toBe(true);
-    expect(specs[0]?.middleware).toHaveLength(1);
-    expect(specs[1]?.middleware).toHaveLength(1);
+    expect(specs[0]?.middleware).toHaveLength(2);
+    expect(specs[1]?.middleware).toHaveLength(2);
     expect(specs[2]?.middleware).toHaveLength(0);
     expect(specs[3]?.middleware).toHaveLength(0);
     expect(specs[4]?.middleware).toHaveLength(0);
-    expect(specs[5]?.middleware).toHaveLength(1);
+    expect(specs[5]?.middleware).toHaveLength(2);
     expect(specs[6]?.middleware).toHaveLength(0);
     expect(specs.every((spec) => !("responseFormat" in spec))).toBe(true);
     expect(specs[0]?.systemPrompt).toContain("exactly two bounded stages");
@@ -1210,6 +1299,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("exactly one fresh-context independent critic");
     expect(prompt).toContain("tools.researchReconciliationDispositions");
     expect(prompt).toContain("decisions must contain every returned defect ID exactly once");
+    expect(prompt).toContain("Exact disposition algorithm");
+    expect(prompt).toContain("do not infer a decision from defect.code");
+    expect(prompt).toContain("accept becomes { decision: no_change, reasonCode: supported_by_evidence }");
+    expect(prompt).toContain("Omit repairFollowUpId by default");
+    expect(prompt).toContain("AtlcliDynamicResearchAgentDraftV1");
+    expect(prompt).toContain("responseSchemas[repairTask.outputSchema]");
     expect(prompt).toContain("reject_defect permits invalid_reference, already_resolved, or supported_by_evidence");
     expect(prompt).toContain("coverage_gap to missing_coverage");
     expect(prompt).toContain("If there is no compatible proposal, omit repairFollowUpId");
@@ -1219,6 +1314,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("Never call console.log");
     expect(prompt).toContain("dispatch synthesizerTask exactly once as the final task");
     expect(prompt).toContain("copy that object unchanged");
+    expect(prompt).toContain("Promise.then result-mapping callback only inside an awaited Promise.all pipeline");
     expect(prompt).toContain("Do not execute a fixed all-roles pipeline");
     expect(prompt).not.toContain("paste verbatim");
     expect(prompt).not.toContain("Normative workflow program");
@@ -1501,6 +1597,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const draft = {
       title: "Synthetic workflow report",
       executiveSummary: "The bounded workflow completed without source findings.",
+      selectedClaimIds: [],
       findings: [],
       relationships: [],
       limitations: ["This characterization run intentionally has no source data."],
@@ -1510,14 +1607,14 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       const finalDraft = await task({
         description: ${JSON.stringify(synthesisTask.description)},
         subagentType: ${JSON.stringify(synthesisTask.subagentType)},
-        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
     `;
     const dynamicModel = fakeModel()
       .respondWithTools([{ name: "eval", args: { code } }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
 
     const workspace = createMemoryResearchWorkspace();
     const eventKinds: string[] = [];
@@ -1641,6 +1738,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const draft = {
       title: "Dynamically pruned workflow",
       executiveSummary: "The accepted workflow omitted optional analysis roles.",
+      selectedClaimIds: [],
       findings: [],
       relationships: [],
       limitations: ["Synthetic dynamic-composition proof."],
@@ -1671,7 +1769,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           ]
         }),
         subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizer))},
-        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
     `;
@@ -1679,8 +1777,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "eval", args: { code } }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Jira branch") }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Confluence branch") }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
     const events: ResearchOneShotEventV1[] = [];
     const workspace = createMemoryResearchWorkspace();
     await workspace.writeFile("/workspace/unrelated.txt", "UNRELATED_WORKSPACE_SENTINEL");
@@ -1738,21 +1836,23 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const draft = {
       title: "Single workflow only",
       executiveSummary: "The first workflow returned a typed draft.",
+      selectedClaimIds: [],
       findings: [],
       relationships: [],
       limitations: ["Synthetic one-shot eval admission test."],
     };
     const firstWorkflow = `
       ${graphProposalPrelude(graph)}
-      await task({
+      const finalDraft = await task({
         description: ${JSON.stringify(synthesisTask.description)},
         subagentType: ${JSON.stringify(synthesisTask.subagentType)},
-        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
+      finalDraft;
     `;
     const dynamicModel = fakeModel()
       .respondWithTools([{ name: "eval", args: { code: firstWorkflow } }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "eval", args: { code: "({ repeated: true });" } }]);
     const decisions: ResearchOneShotEventV1[] = [];
 
@@ -1784,6 +1884,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const draft = {
       title: "Pre-dispatch repair",
       executiveSummary: "The repaired workflow completed once.",
+      selectedClaimIds: [],
       findings: [],
       relationships: [],
       limitations: ["Synthetic pre-dispatch repair test."],
@@ -1793,15 +1894,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       const finalDraft = await task({
         description: ${JSON.stringify(synthesisTask.description)},
         subagentType: ${JSON.stringify(synthesisTask.subagentType)},
-        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
     `;
     const dynamicModel = fakeModel()
       .respondWithTools([{ name: "eval", args: { code: "throw new Error('synthetic compile failure');" } }])
       .respondWithTools([{ name: "eval", args: { code: repairedWorkflow } }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
     const decisions: ResearchOneShotEventV1[] = [];
 
     const report = await runResearchAgent({
@@ -1875,9 +1976,17 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         sourceIds: [],
       }],
     };
+    const invalidCritique = {
+      ...critique,
+      defects: [{
+        ...critique.defects[0]!,
+        target: { kind: "coverage", id: "coverage:invented-by-critic" },
+      }],
+    };
     const draft = {
       title: "Validated dynamic graph",
       executiveSummary: "All admitted graph nodes completed once.",
+      selectedClaimIds: [],
       findings: [],
       relationships: [],
       limitations: ["Synthetic no-source branch-coverage run."],
@@ -1939,6 +2048,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       if (!acceptedDispositions.repairTask || acceptedDispositions.repairTask.taskId !== ${JSON.stringify(taskId(repair))}) {
         throw new Error("Synthetic repair task was not authorized.");
       }
+      if (acceptedDispositions.repairTask.outputSchema !== ${JSON.stringify(repair.outputSchema)}) {
+        throw new Error("Synthetic repair task did not retain its host-selected output schema.");
+      }
+      const responseSchemas = {
+        [acceptedDispositions.repairTask.outputSchema]: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
+      };
       const repaired = await task({
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
@@ -1949,7 +2064,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           ]
         }),
         subagentType: acceptedDispositions.repairTask.subagentType,
-        responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
+        responseSchema: responseSchemas[acceptedDispositions.repairTask.outputSchema]
       });
       const finalDraft = await task({
         description: JSON.stringify({
@@ -1964,7 +2079,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           ]
         }),
         subagentType: ${JSON.stringify(subagentType(synthesizer))},
-        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
     `;
@@ -1973,10 +2088,11 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Jira branch") }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Confluence branch") }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Joined branch") }])
+      .respondWithTools([{ name: "ReconciliationBodyV1", args: invalidCritique }])
       .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Bounded repair branch") }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
     const events: ResearchOneShotEventV1[] = [];
     const durableStore = new InMemoryResearchSessionStoreV1();
     await initializeResearchSessionTurnV1({
@@ -2010,7 +2126,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(8);
+    expect(dynamicModel.callCount).toBe(9);
     const reconciliationCall = dynamicModel.calls.find((call) => call.messages.some((message) =>
       message.text.includes("Host-validated reconciliation input")
     ));
@@ -2047,6 +2163,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         reasonCode: "material_defect",
         status: "recorded",
       }),
+    ]);
+    expect(events.filter((event) => event.kind === "subagent" && event.status === "repairing")).toEqual([
+      expect.objectContaining({ roleId: "reconciler", attempt: 2 }),
     ]);
     expect(events.filter((event) => event.kind === "repair_group")).toEqual([
       expect.objectContaining({
@@ -2172,6 +2291,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const draft = {
       title: "V2 claim-graph fixture",
       executiveSummary: "No detail claim was available in the deterministic V2 fixture.",
+      selectedClaimIds: [],
       findings: [],
       relationships: [],
       limitations: ["The fixture deliberately contains no detail evidence."],
@@ -2238,7 +2358,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           ]
         }),
         subagentType: ${JSON.stringify(subagentType(synthesizer))},
-        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
     `;
@@ -2248,8 +2368,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "ResearchPacketModelBodyV2", args: emptyDetailPacket }])
       .respondWithTools([{ name: "ResearchPacketReferenceModelBodyV2", args: emptyAnalysisPacket }])
       .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
     const durableStore = new InMemoryResearchSessionStoreV1();
     await initializeResearchSessionTurnV1({
       store: durableStore,
@@ -2340,9 +2460,29 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const draft = {
       title: "Durable V2 report",
       executiveSummary: "Ignored as factual report prose in V2.",
-      findings: [],
+      selectedClaimIds: [],
+      findings: [{
+        classification: "fact",
+        summary: "Select the validated Jira source for the final report.",
+        sourceIds: ["jira:DEMO-1"],
+      }],
       relationships: [],
       limitations: [],
+    };
+    const selectValidatedClaim = (messages: readonly { text: string }[]) => {
+      const claimId = messages
+        .flatMap((message) => message.text.match(/claim:[a-f0-9]{48}/g) ?? [])
+        .at(0);
+      if (!claimId) return new Error("Synthetic synthesizer did not receive the normalized claim ID.");
+      return new AIMessage({
+        content: "",
+        tool_calls: [{
+          name: "AtlcliDynamicResearchAgentDraftV1",
+          args: { ...draft, selectedClaimIds: [claimId] },
+          id: "synthetic-selected-claim",
+          type: "tool_call",
+        }],
+      });
     };
     const code = `
       ${graphProposalPrelude(graph, [researcher.id, planner.id, synthesizer.id])}
@@ -2372,7 +2512,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           ]
         }),
         subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizer))},
-        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
     `;
@@ -2392,8 +2532,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         coverageLimits: ["The planner abstained from changing the deterministic outline."],
         abstentionReason: "The one retained claim does not require a different report structure.",
       } }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
-      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+      .respond(selectValidatedClaim)
+      .respond(selectValidatedClaim);
     const durableStore = new InMemoryResearchSessionStoreV1();
     const events: ResearchOneShotEventV1[] = [];
     await initializeResearchSessionTurnV1({
@@ -2636,7 +2776,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
     const workerSchema = JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1);
     const critiqueSchema = JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1);
-    const finalSchema = JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1);
+    const finalSchema = JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1);
 
     try {
       const result = await session.eval(`
@@ -2669,7 +2809,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         RESEARCH_WORKER_PACKET_SCHEMA_V1,
         RESEARCH_WORKER_PACKET_SCHEMA_V1,
         RESEARCH_CRITIQUE_SCHEMA_V1,
-        RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+        RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
       ]);
     } finally {
       session.dispose();

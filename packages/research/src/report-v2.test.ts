@@ -13,8 +13,10 @@ import { assertResearchReportV2, finalizeResearchReportV2 } from "./report-v2.js
 
 const CURRENT_CLAIM = `claim:${"a".repeat(48)}`;
 const STALE_CLAIM = `claim:${"b".repeat(48)}`;
+const SECOND_CLAIM = `claim:${"e".repeat(48)}`;
 const EVIDENCE = `evidence:${"c".repeat(48)}`;
 const STALE_EVIDENCE = `evidence:${"d".repeat(48)}`;
+const SECOND_EVIDENCE = `evidence:${"f".repeat(48)}`;
 
 const request = normalizeResearchRequestV1({
   schema: RESEARCH_REQUEST_SCHEMA_V1,
@@ -201,6 +203,54 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("## Delivery \\*evidence\\*");
     expect(report.markdown).toContain("> Focus: What \\<is\\> currently established?");
     expect(report.markdown).not.toContain("## Findings");
+  });
+
+  test("uses only synthesizer-selected current sources and carries host run warnings into limitations", async () => {
+    const current = claim(CURRENT_CLAIM, EVIDENCE, "current");
+    const second = claim(SECOND_CLAIM, SECOND_EVIDENCE, "current");
+    const secondRecord = {
+      ...record(SECOND_EVIDENCE, "jira:ATLCLI-43"),
+      identity: {
+        tenantOrigin: "https://example.atlassian.net",
+        product: "jira" as const,
+        entityKind: "issue" as const,
+        entityId: "ATLCLI-43",
+        canonicalId: "https://example.atlassian.net|jira|issue|ATLCLI-43",
+      },
+      source: {
+        id: "jira:ATLCLI-43",
+        product: "jira" as const,
+        title: "Selected implementation item",
+        url: "https://example.atlassian.net/browse/ATLCLI-43",
+        issueKey: "ATLCLI-43",
+        projectKey: "ATLCLI",
+      },
+    } satisfies ResearchEvidenceRecordV1;
+    const support = ports({
+      claims: [current, second],
+      records: [record(EVIDENCE, "jira:ATLCLI-42"), secondRecord],
+    });
+
+    const report = await finalizeResearchReportV2({
+      request,
+      ...support,
+      claimIds: [CURRENT_CLAIM, SECOND_CLAIM],
+      selectedSourceIds: ["jira:ATLCLI-43"],
+      run: { ...run, warnings: ["Confluence search incomplete: item-limit."] },
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+
+    expect(report.claims.map((entry) => entry.id)).toEqual([SECOND_CLAIM]);
+    expect(report.sources.map((source) => source.id)).toEqual(["jira:ATLCLI-43"]);
+    expect(report.limitations).toContain("Confluence search incomplete: item-limit.");
+    await expect(finalizeResearchReportV2({
+      request,
+      ...support,
+      claimIds: [CURRENT_CLAIM, SECOND_CLAIM],
+      selectedSourceIds: ["jira:UNKNOWN"],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    })).rejects.toThrow("outside its current evidence");
   });
 
   test("fails closed when selected support is unknown or forged", async () => {

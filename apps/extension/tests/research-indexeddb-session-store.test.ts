@@ -4,7 +4,6 @@ import {
   IndexedDbResearchSessionStoreV1,
   RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
   RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
-  ResearchSessionWorkspaceCheckpointerV1,
   WorkspaceResearchEvidenceStoreV1,
   WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchOutlineStoreV1,
@@ -15,6 +14,7 @@ import {
   researchCheckpointConfigV1,
   verifyResearchSessionStoreConformanceV1,
 } from "@atlcli/research";
+import { ResearchSessionWorkspaceCheckpointerV1 } from "@atlcli/research/browser/agent";
 
 const stores: IndexedDbResearchSessionStoreV1[] = [];
 

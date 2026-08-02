@@ -262,6 +262,14 @@ export class ResearchSessionDispatchJournalV1 {
     });
   }
 
+  /** End an interrupted execution without persisting provider or source text. */
+  fail(reason = "Research execution ended before report validation."): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "fail", reason }, (next) => next);
+    });
+  }
+
   #transitionTask(
     kind: "outcome_unknown",
     taskId: string,

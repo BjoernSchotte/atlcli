@@ -192,6 +192,14 @@ describe("durable research task dispatch journal", () => {
     });
   });
 
+  test("marks a durable run failed when execution ends before report validation", async () => {
+    const { store, sessionId, journal } = await initializedJournal();
+
+    await expect(journal.fail()).resolves.toMatchObject({ status: "failed" });
+    expect((await store.read(sessionId))?.turns[0]?.failureReason)
+      .toBe("Research execution ended before report validation.");
+  });
+
   test("commits every reconciliation disposition and the optional repair activation in one CAS event", async () => {
     const { store, sessionId, turnId, journal, catalog, graph } = await initializedJournal();
     const reconciliationNode = graph.nodes.find((node) => node.roleId === "reconciler")!;

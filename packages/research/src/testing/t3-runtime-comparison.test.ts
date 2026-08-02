@@ -16,7 +16,10 @@ import {
   researchSubagentTypeForNodeV1,
   researchTaskIdForNodeV1,
 } from "../dynamic-subagents.js";
-import { RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 } from "../agent-draft.js";
+import {
+  RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+  RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+} from "../agent-draft.js";
 import {
   RESEARCH_EVALUATION_SCHEMA_V1,
   type ResearchEvaluationGoldV1,
@@ -96,6 +99,7 @@ const emptyCritique = {
 const draft = {
   title: "Synthetic S0–S3 runtime comparison",
   executiveSummary: "The host verifies explicit Jira and Confluence links during deterministic finalization.",
+  selectedClaimIds: [],
   findings: [],
   relationships: [],
   limitations: ["Customer-free deterministic runtime comparison."],
@@ -245,7 +249,7 @@ function graphFor(variant: Exclude<ResearchT3ComparisonVariantV1, "S0">): Resear
 }
 
 function responseSchema(node: ResearchGraphNodeV1): Record<string, unknown> {
-  if (node.roleId === "synthesizer") return RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1;
+  if (node.roleId === "synthesizer") return RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1;
   if (node.roleId === "reconciler") return RESEARCH_CRITIQUE_SCHEMA_V1;
   return node.kind === "search"
     ? RESEARCH_WORKER_PACKET_SCHEMA_V1
@@ -327,8 +331,8 @@ function workflowProgram(graph: ResearchGraphV1): string {
       decisions: []
     }));`);
   }
-  statements.push(`const ${nodeVariable(synthesizer)} = await ${taskExpression(graph, synthesizer)};`);
-  statements.push(`${nodeVariable(synthesizer)};`);
+  statements.push(`const finalDraft = await ${taskExpression(graph, synthesizer)};`);
+  statements.push("finalDraft;");
   return statements.join("\n");
 }
 
@@ -337,7 +341,7 @@ function supervisorModel(graph: ResearchGraphV1): BaseChatModel {
     .respondWithTools([{ name: "eval", args: { code: workflowProgram(graph) } }])
     // The parent retains its provider-native structured publication boundary
     // after the one allowed QuickJS eval returns the synthesizer object.
-    .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+    .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
 }
 
 function subagentModels(graph: ResearchGraphV1): Partial<Record<string, BaseChatModel>> {
@@ -350,7 +354,7 @@ function subagentModels(graph: ResearchGraphV1): Partial<Record<string, BaseChat
       : node.roleId === "reconciler"
         ? fakeModel().respondWithTools([{ name: "ReconciliationBodyV1", args: emptyCritique }])
         : node.roleId === "synthesizer"
-          ? fakeModel().respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
+          ? fakeModel().respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
           : fakeModel().respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket(node.objective) }]),
     ]));
 }

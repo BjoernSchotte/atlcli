@@ -13,6 +13,7 @@ import {
   type ResearchReport,
   type ResearchRequestV1,
   type ResearchRunOptions,
+  type ResearchRunSummaryV1,
   type ResearchRunUsageV1,
 } from "./contracts.js";
 import {
@@ -22,9 +23,12 @@ import {
 import type { ResearchRunBudget } from "./budget.js";
 import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import {
+  RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+  RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1,
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
   RESEARCH_AGENT_DRAFT_SCHEMA_V1,
   finalizeResearchAgentDraftV1,
+  parseResearchDynamicAgentDraftV1,
   parseResearchAgentDraftV1,
 } from "./agent-draft.js";
 import { finalizeResearchReportV2 } from "./report-v2.js";
@@ -134,6 +138,43 @@ function topologicalResearchWavesV1(graph: ResearchGraphV1): Map<string, number>
   };
   nodesById.forEach((_, nodeId) => visit(nodeId));
   return waves;
+}
+
+function selectedSearchProductsV1(graph: ResearchGraphV1 | undefined): Array<"jira" | "confluence"> | undefined {
+  if (!graph) return undefined;
+  const products = new Set<"jira" | "confluence">();
+  for (const node of graph.nodes) {
+    if (node.status === "pruned") continue;
+    if (node.grantedCapabilityIds.some((capability) => capability === "jira.issue.search")) {
+      products.add("jira");
+    }
+    if (node.grantedCapabilityIds.some((capability) => capability === "wiki.search")) {
+      products.add("confluence");
+    }
+  }
+  return [...products];
+}
+
+/**
+ * These limitations are derived from host counters only.  Unlike an LLM's
+ * prose, they cannot turn an empty bounded search into an unsupported
+ * negative claim: they merely say which admitted product produced no result.
+ */
+export function hostSearchCoverageLimitationsV1(
+  graph: ResearchGraphV1 | undefined,
+  run: Pick<ResearchRunSummaryV1, "complete" | "counts">,
+): string[] {
+  if (!run.complete) return [];
+  const searchedProducts = selectedSearchProductsV1(graph);
+  if (!searchedProducts) return [];
+  const limitations: string[] = [];
+  if (searchedProducts.includes("jira") && run.counts.jiraItems === 0) {
+    limitations.push("The admitted Jira search returned no items in the approved scope.");
+  }
+  if (searchedProducts.includes("confluence") && run.counts.confluenceItems === 0) {
+    limitations.push("The admitted Confluence search returned no items in the approved scope.");
+  }
+  return limitations;
 }
 
 /**
@@ -251,7 +292,9 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
     "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
     "atlcli.research-packet-reference-model/v2": RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
     "atlcli.reconciliation-body/v1": RESEARCH_CRITIQUE_SCHEMA_V1,
-    "atlcli.research-agent-draft/v1": RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+    // Dynamic synthesis requires selected claim IDs even though the durable
+    // task-envelope identifier remains V1 for backward-compatible journals.
+    "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
   });
   return [
     "You are the central supervisor for a bounded, read-only Jira and Confluence deep-research workflow.",
@@ -260,7 +303,7 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
     "",
     "Run exactly one QuickJS eval workflow. The first awaited operation must call tools.researchGraphPropose with your task-shaped selection. The host validates that proposal and returns the exact accepted tasks. Continue in the same eval and dispatch only those accepted tasks with native task({ description, subagentType, responseSchema }). Do not execute a fixed all-roles pipeline.",
     "One-eval atomicity is mandatory: the one JavaScript string passed to eval must contain the proposal call, every accepted task call, the one explicit synthesizerTask call, and the finalDraft expression. A proposal-only eval is invalid. Never return the accepted graph to the parent, never end eval after researchGraphPropose, and never plan to generate a second eval after seeing its result.",
-    "Required control-flow shape inside that single code string: const accepted = JSON.parse(await tools.researchGraphPropose(...)); const results = {}; execute accepted.tasks by their returned waves while filling results; if accepted.reconciliationTaskId is present, call tools.researchReconciliationDispositions exactly once after that critic result and execute its optional repairTask exactly once; then call accepted.synthesizerTask exactly once with its exact dependency results; finish with finalDraft as the last expression. You write the proposal, dispositions, and task-specific orchestration; this shape only fixes the atomic security boundary.",
+    "Required control-flow shape inside that single code string: const accepted = JSON.parse(await tools.researchGraphPropose(...)); const results = {}; execute accepted.tasks by their returned waves while filling results; if accepted.reconciliationTaskId is present, call tools.researchReconciliationDispositions exactly once after that critic result and execute its optional repairTask exactly once; then call accepted.synthesizerTask exactly once with its exact dependency results; bind it directly at top level as const finalDraft = await task(...); finish with finalDraft as the last expression. In Promise.all, await every task promise. You may use a Promise.then result-mapping callback only inside an awaited Promise.all pipeline, as documented by QuickJS; never leave a task promise detached. Do not wrap the program in an async IIFE or detach a promise: the host rejects invalid completion shapes before any task dispatch. You write the proposal, dispositions, and task-specific orchestration; this shape only fixes the atomic security boundary.",
     "",
     "Host-reviewed candidate subagent catalog for this run:",
     catalog,
@@ -280,7 +323,9 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
     `2. For each task, description must be JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: <the exact returned taskId>, objective: <the exact returned objective>, dependencyResults: [{ taskId: <exact dependency taskId>, result: <the exact host-projected typed result returned by that task> }] }). Copy dependencyTaskIds exactly: do not omit one merely because you think tasks can run in parallel. Omit dependencyResults only when dependencyTaskIds is empty. The only allowed envelope keys are schema, taskId, objective, and dependencyResults; never add question, context, instructions, or prose. Added fields, omitted dependencies, changed results, and unreturned task IDs are rejected.`,
     "3. The accepted topology is complete for this one-shot run: do not add a follow-up retrieval wave. Later tasks receive only the compact typed predecessor results named in dependencyTaskIds. Use document-distiller, contradiction-verifier, or coverage-moderator only when represented by an accepted task.",
     `4. When reconciler is admitted, dispatch exactly one fresh-context independent critic after its dependencies complete. It receives compact packets, never child trajectories. Do not exceed ${graph.maxReconciliationWaves} critique pass. Then call tools.researchReconciliationDispositions({ basedOnGraphRevision: accepted.graphRevision, reconciliationTaskId: accepted.reconciliationTaskId, decisions: [...], repairFollowUpId?: <one exact proposed follow-up ID> }) exactly once. Do not pass schema. decisions must contain every returned defect ID exactly once and no others. Allowed decisions are ${RESEARCH_RECONCILIATION_DECISIONS_V1.join(",")}; allowed reasonCodes are ${RESEARCH_RECONCILIATION_REASON_CODES_V1.join(",")}. The decision/reason compatibility matrix is strict: reject_defect permits invalid_reference, already_resolved, or supported_by_evidence; no_change permits already_resolved, supported_by_evidence, insufficient_budget, or outside_approval_envelope; revise, downgrade, add_follow_up, and abstain permit material_defect, insufficient_budget, or outside_approval_envelope. An empty critic defect list requires decisions: []. repairFollowUpId is optional, may select only one proposal whose defect decision is add_follow_up, and requests execution rather than guaranteeing budget. Match follow-up reason to defect code exactly: coverage_gap to missing_coverage, contradiction to contradicted, stale_or_truncated to stale, and negative_claim to unsupported or overstated. If there is no compatible proposal, omit repairFollowUpId. The host records packet reference, revision, IDs, and timestamp; do not alter the critic result.`,
+    "4a. Exact disposition algorithm: do not infer a decision from defect.code. For each returned defect, copy defect.suggestedAction directly into one decision: accept becomes { decision: no_change, reasonCode: supported_by_evidence }; revise, downgrade, abstain, and add_follow_up retain that exact decision with reasonCode: material_defect. Do not replace a suggested action merely because its code seems similar. The only exception is reject_defect, only when the defect has an invalid reference, is already resolved, or is supported by accepted evidence; use the matching reject reasonCode. Omit repairFollowUpId by default: retaining an add_follow_up disposition preserves the gap without dispatching a repair. Include repairFollowUpId only when one chosen add_follow_up decision and one critic-proposed follow-up match exactly by ID and the stated reason-to-defect-code mapping. Never derive a repairFollowUpId from a generic error-code mapping.",
     "5. Parse the disposition result. If and only if it contains repairTask, dispatch that exact task once after reconciliation and before synthesis, using its returned objective, subagentType, dependencyTaskIds, and the analysis responseSchema. Never guess a repair task or dispatch a retained_without_execution follow-up. The host injects the authorized follow-up into that worker and injects only accepted disposition/repair packets into synthesis.",
+    "5a. A returned repairTask also carries the host-selected outputSchema. Its dispatch must use responseSchema: responseSchemas[repairTask.outputSchema]; do not substitute a role default or leave the response schema undefined.",
     "6. After every entry in tasks and any returned repairTask complete, dispatch synthesizerTask exactly once as the final task. Never include synthesizerTask in a generic wave loop and never call it again after that one explicit final dispatch. It must use the final synthesizer responseSchema and author the complete structured report draft. A synthesizer call before disposition acceptance is rejected. An authorized repair also blocks synthesis until its packet is accepted.",
     "7. Return the synthesizer's typed object as the eval result. After eval, copy that object unchanged into the required parent structured response. Do not re-research or rewrite its prose in the supervisor.",
     "8. If the first eval fails before any task starts, the host permits one code-repair eval. After any task starts, never call eval again; the host rejects it without repeating work.",
@@ -418,6 +463,7 @@ export interface ResearchRepairAuthorizationV1 {
   nodeId: string;
   roleId: "contradiction-verifier";
   subagentType: string;
+  outputSchema: ResearchTaskOutputSchemaV1;
   objective: string;
   dependencyTaskIds: string[];
   grantedCapabilityIds: string[];
@@ -685,6 +731,7 @@ export function createResearchReconciliationDispositionPtcTool(
             nodeId: repairAuthorization.nodeId,
             roleId: repairAuthorization.roleId,
             subagentType: repairAuthorization.subagentType,
+            outputSchema: repairAuthorization.outputSchema,
             objective: repairAuthorization.objective,
             dependencyTaskIds: repairAuthorization.dependencyTaskIds,
             grantedCapabilityIds: repairAuthorization.grantedCapabilityIds,
@@ -712,6 +759,7 @@ function createResearchSupervisorCodeInterpreterMiddleware(
   evaluator.description = [
     "Execute the single host-bounded research workflow in the QuickJS sandbox.",
     "This one code string must propose the graph, execute all accepted tasks, and return the synthesizer draft; a proposal-only eval is invalid.",
+    "Bind the final synthesizer call directly as top-level `const finalDraft = await task(...)` and end with `finalDraft;`; async IIFEs and detached promises are rejected before dispatch. A task(...).then(...) result map is allowed only as part of an awaited Promise.all pipeline.",
     "Console APIs are unavailable; do not call console.log or any console method.",
     "Return the final typed synthesizer object as the last expression.",
   ].join(" ");
@@ -749,6 +797,135 @@ function workflowCodeHashV1(code: string): string {
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+}
+
+/**
+ * The supervisor's program is intentionally not an arbitrary QuickJS
+ * continuation.  It is an auditable, one-shot orchestration envelope: graph
+ * admission first, then bounded task dispatch, then one directly awaited
+ * synthesizer result.  QuickJS itself correctly accepts detached async IIFEs,
+ * but a detached promise can outlive the eval result and therefore cannot be
+ * the transaction boundary for an admitted graph.
+ *
+ * This is deliberately a small lexical guard rather than a second evaluator
+ * or a JavaScript rewriter.  The host still validates every PTC and task call
+ * at execution time.  Here we only reject program shapes which cannot safely
+ * represent the promised one-shot completion contract before the eval tool is
+ * allowed to dispatch anything.
+ */
+function blankJavaScriptStringsAndCommentsV1(code: string): string {
+  let output = "";
+  let quote: '"' | "'" | "`" | undefined;
+  let lineComment = false;
+  let blockComment = false;
+  let escaped = false;
+  for (let index = 0; index < code.length; index += 1) {
+    const character = code[index]!;
+    const next = code[index + 1];
+    if (lineComment) {
+      if (character === "\n") {
+        lineComment = false;
+        output += "\n";
+      } else {
+        output += " ";
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        output += "  ";
+        index += 1;
+      } else {
+        output += character === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        output += character === "\n" ? "\n" : " ";
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        output += " ";
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      output += character === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (character === "/" && next === "/") {
+      lineComment = true;
+      output += "  ";
+      index += 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      blockComment = true;
+      output += "  ";
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      output += " ";
+      continue;
+    }
+    output += character;
+  }
+  return output;
+}
+
+function topLevelJavaScriptCodeV1(code: string): string {
+  const lexicalCode = blankJavaScriptStringsAndCommentsV1(code);
+  let depth = 0;
+  let output = "";
+  for (const character of lexicalCode) {
+    if (character === "{") {
+      if (depth === 0) output += character;
+      depth += 1;
+      continue;
+    }
+    if (character === "}") {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) output += character;
+      continue;
+    }
+    output += depth === 0 ? character : character === "\n" ? "\n" : " ";
+  }
+  return output;
+}
+
+function assertSupervisorWorkflowControlFlowV1(code: string): void {
+  const lexicalCode = blankJavaScriptStringsAndCommentsV1(code);
+  const topLevelCode = topLevelJavaScriptCodeV1(code);
+  const graphProposal = /\bconst\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*JSON\.parse\s*\(\s*await\s+tools\.researchGraphPropose\s*\(/.exec(topLevelCode);
+  const finalDraft = /\bconst\s+finalDraft\s*=\s*await\s+task\s*\(/.exec(topLevelCode);
+  const firstAwait = lexicalCode.search(/\bawait\b/);
+  const finalExpression = /\bfinalDraft\s*;?\s*$/.test(topLevelCode.trim());
+  const proposalBeforeAnyAwait = graphProposal !== null &&
+    firstAwait >= 0 &&
+    graphProposal.index <= firstAwait;
+
+  if (!proposalBeforeAnyAwait || !finalDraft || !finalExpression) {
+    throw new ResearchContractError(
+      "invalid-report",
+      "Supervisor workflow control flow is invalid. Start with a direct awaited " +
+        "tools.researchGraphPropose call, bind the synthesizer as top-level " +
+        "`const finalDraft = await task(...)`, and end the program with `finalDraft;`. " +
+        "Do not wrap the workflow in an async IIFE or detach its promise.",
+    );
+  }
+  if (/\bcodeToReasonCode\b/.test(lexicalCode)) {
+    throw new ResearchContractError(
+      "invalid-report",
+      "Supervisor workflow reconciliation is invalid. Do not derive repairFollowUpId from " +
+        "a defect-code map; keep it omitted unless one critic-proposed follow-up is matched " +
+        "exactly under the approved disposition contract.",
+    );
+  }
 }
 
 function quickJsFailureCode(result: unknown): string | undefined {
@@ -813,7 +990,6 @@ export function createOneShotSupervisorEvalMiddleware(options: {
         : "";
       const codeBytes = new TextEncoder().encode(code).byteLength;
       const codeHash = workflowCodeHashV1(code);
-      await options.onWorkflowCode?.(evalCalls, code);
       const retryStillSideEffectFree = options.canRetryAfterFailure?.() ?? false;
       const repairAllowed = evalCalls === 2 && previousFailed && retryStillSideEffectFree;
       if (evalCalls > 1 && !repairAllowed) {
@@ -837,6 +1013,26 @@ export function createOneShotSupervisorEvalMiddleware(options: {
         options.onFatal?.(error);
         throw error;
       }
+      try {
+        assertSupervisorWorkflowControlFlowV1(code);
+      } catch (error) {
+        previousFailed = true;
+        successfulEvalCompleted = false;
+        options.onDiagnostic?.({
+          attempt: evalCalls,
+          status: "failed",
+          reasonCode: "supervisor-eval-failed",
+          errorCode: "invalid-workflow-control-flow",
+          codeBytes,
+          codeHash,
+        });
+        return new ToolMessage({
+          content: `Error: ${error instanceof Error ? error.message : "Invalid supervisor workflow control flow."}`,
+          tool_call_id: request.toolCall.id ?? "research-supervisor-eval:invalid-workflow",
+          name: request.toolCall.name,
+        });
+      }
+      await options.onWorkflowCode?.(evalCalls, code);
       options.onDiagnostic?.({
         attempt: evalCalls,
         status: "started",
@@ -911,7 +1107,11 @@ function createAnthropicSubagentModels(
   apiKey: string,
 ): Partial<Record<ResearchGraphRoleV1, BaseChatModel>> {
   return {
-    "focused-researcher": createAnthropicModel(apiKey, 3_000),
+    // Acquisition is protocol-bound: it must use the supervisor-selected
+    // PTC calls and return host-validated evidence candidates. Low effort
+    // avoids spending the bounded per-node wall-clock budget on hidden
+    // deliberation after all source reads have already completed.
+    "focused-researcher": createAnthropicModel(apiKey, 3_000, "low"),
     "document-distiller": createAnthropicModel(apiKey, 2_400),
     "contradiction-verifier": createAnthropicModel(apiKey, 2_000, "low"),
     "coverage-moderator": createAnthropicModel(apiKey, 2_000, "low"),
@@ -1037,6 +1237,13 @@ async function runResearchAgentWithBindings(
   let acceptedResultBytes = 0;
   let acceptedGraph: ResearchGraphV1 | undefined;
   const acceptedPacketsByTaskId = new Map<string, ResearchAcceptedPacketV1>();
+  /*
+   * V2 packet bodies intentionally contain only claim/evidence identities,
+   * not source identifiers. Retain the host-projected source set separately
+   * so a later, explicitly authorized repair can be limited to sources that
+   * actually supported its reconciled dependency packets.
+   */
+  const normalizedV2SourceIdsByTaskId = new Map<string, readonly string[]>();
   let reconciliationDispositions: ResearchReconciliationDispositionV1[] | undefined;
   let repairAuthorization: ResearchRepairAuthorizationV1 | undefined;
   let acceptedRepairPacket: ResearchAcceptedPacketV1 | undefined;
@@ -1344,10 +1551,15 @@ async function runResearchAgentWithBindings(
           claimLedger: durableClaims,
           createdAt: new Date(now()).toISOString(),
         });
-        return {
+        const normalized = {
           packet,
           dependencyResult: await projectV2PacketDependency!(packet),
         };
+        normalizedV2SourceIdsByTaskId.set(
+          inputForPacket.taskId,
+          normalized.dependencyResult.sourceIds,
+        );
+        return normalized;
       }
     : undefined;
   const normalizePacketReferenceV2 = durableClaims && projectV2PacketDependency
@@ -1675,10 +1887,20 @@ async function runResearchAgentWithBindings(
           const repairNode = input.researchGraph!.nodes.find((node) => node.kind === "repair");
           if (!repairNode || !repairNode.roleId || repairAuthorization ||
               researchWavesConsumed >= graph.maxResearchWaves) return undefined;
+          const reconciliationNode = graph.nodes.find((node) =>
+            researchTaskIdForNodeV1(graph, node) === reconciliationTaskId,
+          );
           const knownSourceIds = new Set(
-            [...acceptedPacketsByTaskId.values()].flatMap((acceptedPacket) =>
-              "sourceIds" in acceptedPacket.body ? acceptedPacket.body.sourceIds : []
-            ),
+            reconciliationNode?.dependencies.flatMap((nodeId) => {
+              const dependencyTaskId = researchTaskIdForNodeV1(
+                graph,
+                graph.nodes.find((node) => node.id === nodeId)!,
+              );
+              const accepted = acceptedPacketsByTaskId.get(dependencyTaskId);
+              return accepted && "sourceIds" in accepted.body
+                ? accepted.body.sourceIds
+                : normalizedV2SourceIdsByTaskId.get(dependencyTaskId) ?? [];
+            }) ?? [],
           );
           if (followUp.sourceIds.some((sourceId) => !knownSourceIds.has(sourceId))) {
             throw new ResearchContractError(
@@ -1718,6 +1940,7 @@ async function runResearchAgentWithBindings(
             nodeId: repairNode.id,
             roleId: "contradiction-verifier",
             subagentType: researchSubagentTypeForNodeV1(repairNode),
+            outputSchema: repairNode.outputSchema,
             objective: repairNode.objective,
             dependencyTaskIds: [reconciliationTaskId],
             grantedCapabilityIds: [...repairNode.grantedCapabilityIds],
@@ -1846,7 +2069,7 @@ async function runResearchAgentWithBindings(
           }),
         ],
     responseFormat: input.model
-      ? toolStrategy(RESEARCH_AGENT_DRAFT_SCHEMA_V1, {
+      ? toolStrategy(isDynamic ? RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1 : RESEARCH_AGENT_DRAFT_SCHEMA_V1, {
           handleError: (error) => {
             structuredRepairAttempts += 1;
             if (structuredRepairAttempts > 1) throw error;
@@ -1854,7 +2077,9 @@ async function runResearchAgentWithBindings(
           },
           toolMessageContent: "Research draft accepted.",
         })
-      : providerStrategy(providerCompatibleResearchSchema(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)),
+      : providerStrategy(providerCompatibleResearchSchema(
+          isDynamic ? RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1 : RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+        )),
   });
   let supervisorActive = false;
 
@@ -1903,7 +2128,9 @@ async function runResearchAgentWithBindings(
     broker.signal.throwIfAborted();
     const completedAtMs = now();
     const counts = broker.budget.counts();
-    const completion = broker.completionStatus();
+    const completion = broker.completionStatus(
+      isDynamic ? selectedSearchProductsV1(acceptedGraph) : undefined,
+    );
     emitProgress({
       phase: "rendering",
       message: "Validating evidence and rendering Markdown.",
@@ -1975,16 +2202,29 @@ async function runResearchAgentWithBindings(
         throw new ResearchContractError("invalid-report", "A V2 report requires one validated evidence-linked outline.");
       }
     }
+    const synthesizerDraft = isDynamic
+      ? parseResearchDynamicAgentDraftV1(result.structuredResponse)
+      : parseResearchAgentDraftV1(result.structuredResponse);
+    const selectedV2ClaimIds = isDynamic && durableEvidence && durableClaims && acceptedV2Bodies.length > 0
+      ? synthesizerDraft.selectedClaimIds
+      : undefined;
+    if (selectedV2ClaimIds && selectedV2ClaimIds.some((claimId) => !v2ClaimIds.includes(claimId))) {
+      throw new ResearchContractError(
+        "invalid-report",
+        "The synthesizer selected a claim outside its current accepted evidence.",
+      );
+    }
     const report = durableEvidence && durableClaims && acceptedV2Bodies.length > 0
       ? await finalizeResearchReportV2({
           request: input.request,
           evidenceStore: durableEvidence,
           claimLedger: durableClaims,
-          claimIds: v2ClaimIds,
+          claimIds: selectedV2ClaimIds ?? v2ClaimIds,
           ...(outline ? { outline } : {}),
-          title: parseResearchAgentDraftV1(result.structuredResponse).title,
+          title: synthesizerDraft.title,
           limitations: [
             ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),
+            ...hostSearchCoverageLimitationsV1(acceptedGraph, run),
           ],
           run,
           checkedAt: new Date(completedAtMs).toISOString(),
@@ -2056,8 +2296,10 @@ async function runResearchAgentWithBindings(
       );
     }
     if (broker.signal.aborted) {
+      await durableDispatchJournal?.fail("Research execution was cancelled before report validation.");
       throw new ResearchContractError("cancelled", "The research run was cancelled.");
     }
+    await durableDispatchJournal?.fail();
     throw error;
   } finally {
     input.options?.signal?.removeEventListener("abort", onAbort);

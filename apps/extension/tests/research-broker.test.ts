@@ -525,6 +525,10 @@ describe("bounded research capability broker", () => {
         "Confluence search incomplete: page-limit.",
       ],
     });
+    expect(broker.completionStatus(["confluence"])).toEqual({
+      complete: false,
+      warnings: ["Confluence search incomplete: page-limit."],
+    });
   });
 
   it("counts invalid PTC calls and enforces HTTP attempts synchronously", async () => {

@@ -10,4 +10,5 @@ export * from "./index.browser.js";
 export * from "./scope-catalog-tools.js";
 export * from "./agent-tools.js";
 export * from "./dynamic-subagents.js";
+export * from "./workspace-checkpointer.js";
 export * from "./agent-runtime.browser.js";

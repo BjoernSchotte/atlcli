@@ -221,8 +221,25 @@ export interface FinalizeResearchReportV2Input {
   title?: string;
   /** Host-authored, evidence-state limitations only; model prose is not accepted here. */
   limitations?: readonly string[];
+  /**
+   * Optional source focus selected by the schema-bound synthesizer. Each ID is
+   * checked against the current claim/evidence set before it can affect which
+   * host-validated claims are published; the synthesizer never supplies the
+   * factual report prose.
+   */
+  selectedSourceIds?: readonly string[];
   run: ResearchRunSummaryV1;
   checkedAt: string;
+}
+
+function selectedSourceSet(value: readonly string[] | undefined): Set<string> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MAXIMUM_REPORT_CLAIMS) {
+    invalid("V2 report selected source IDs are invalid.");
+  }
+  return new Set(value.map((sourceId) =>
+    boundedText(sourceId, "V2 report selected source ID", 320)
+  ));
 }
 
 /**
@@ -234,6 +251,7 @@ export async function finalizeResearchReportV2(
   input: FinalizeResearchReportV2Input,
 ): Promise<ResearchReportV2> {
   if (!Number.isFinite(Date.parse(input.checkedAt))) invalid("V2 report freshness check time is invalid.");
+  const selectedSources = selectedSourceSet(input.selectedSourceIds);
   const requestedIds = input.claimIds === undefined
     ? input.outline
       ? [...new Set([
@@ -268,7 +286,14 @@ export async function finalizeResearchReportV2(
     }
     claims.push(claim);
   }
-  const reportClaims: ResearchReportClaimV2[] = claims.map((claim) => ({
+  if (selectedSources && [...selectedSources].some((sourceId) => !sources.has(sourceId))) {
+    invalid("V2 report selects a source outside its current evidence.");
+  }
+  const selectedClaims = selectedSources === undefined
+    ? claims
+    : claims.filter((claim) => sourceIdsForClaim(claim, records)
+      .some((sourceId) => selectedSources.has(sourceId)));
+  const reportClaims: ResearchReportClaimV2[] = selectedClaims.map((claim) => ({
     id: claim.id,
     classification: claim.classification,
     statement: claim.statement,
@@ -302,9 +327,12 @@ export async function finalizeResearchReportV2(
     }),
     limitations: [...new Set([
       ...(input.limitations ?? []).map((value) => boundedText(value, "V2 report limitation", 700)),
+      ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),
       ...staleLimitations,
     ])].slice(0, 12),
-    sources: [...sources.values()].sort((left, right) => left.id.localeCompare(right.id)),
+    sources: [...new Set(reportClaims.flatMap((claim) => claim.sourceIds))]
+      .map((sourceId) => sources.get(sourceId)!)
+      .sort((left, right) => left.id.localeCompare(right.id)),
     run: structuredClone(input.run),
   } satisfies Omit<ResearchReportV2, "markdown">;
   const finalized: ResearchReportV2 = { ...report, markdown: renderMarkdown(report) };

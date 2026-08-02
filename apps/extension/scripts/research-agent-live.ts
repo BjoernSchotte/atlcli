@@ -183,7 +183,7 @@ async function main(): Promise<void> {
       maxDetailItemsPerProduct: 4,
       maxPtcCalls: 16,
       maxHttpCalls: 16,
-      maxModelOutputTokens: 4_096,
+      maxModelOutputTokens: 8_000,
       maxRunMs: 120_000,
     },
     wikiProvider: "rest",

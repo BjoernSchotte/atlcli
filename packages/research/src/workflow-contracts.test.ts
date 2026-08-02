@@ -14,6 +14,7 @@ import {
   parseResearchPacketBodyV2,
   parseResearchPacketModelBodyV2,
   parseResearchTaskBodyV1,
+  validateResearchReconciliationBodyNamespaceV1,
   projectResearchReconciliationInputV1,
   validateResearchTaskAdmissionV1,
   type ResearchAcceptedPacketV1,
@@ -138,6 +139,14 @@ describe("T3 workflow contracts", () => {
       coverageLimits: [],
     };
     expect(parseResearchPacketModelBodyV2(modelBody)).toEqual(modelBody);
+    expect(parseResearchPacketModelBodyV2({
+      ...modelBody,
+      coverageLimits: ["a".repeat(600)],
+    }).coverageLimits).toEqual(["a".repeat(600)]);
+    expect(() => parseResearchPacketModelBodyV2({
+      ...modelBody,
+      coverageLimits: ["a".repeat(601)],
+    })).toThrow("Research V2 coverage limits[0]");
     const canonical = {
       schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
       claims: [{ candidateId: "candidate:one", claimId: `claim:${"a".repeat(48)}` }],
@@ -155,6 +164,13 @@ describe("T3 workflow contracts", () => {
       ...modelBody,
       claimCandidates: [{ ...modelBody.claimCandidates[0], support: [{ sourceId: "jira:DEMO-1", quote: "x".repeat(641) }] }],
     })).toThrow("quote");
+    expect(() => parseResearchPacketModelBodyV2({
+      ...modelBody,
+      claimCandidates: Array.from({ length: 9 }, (_, index) => ({
+        ...modelBody.claimCandidates[0],
+        id: `candidate:${index}`,
+      })),
+    })).toThrow("packet body");
   });
 
   test("keeps reconciliation defects typed and rejects executable-shaped extra fields", () => {
@@ -173,6 +189,48 @@ describe("T3 workflow contracts", () => {
     };
     expect(parseReconciliationBodyV1(body)).toEqual(body);
     expect(() => parseReconciliationBodyV1({ ...body, query: "project = SECRET" })).toThrow("unexpected field");
+  });
+
+  test("rejects critic references and coverage targets outside its host namespace before disposition", () => {
+    const input = parseResearchReconciliationInputV1({
+      schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+      briefRevision: 2,
+      graphRevision: 3,
+      acceptedPacketRefs: ["packet:detail:1"],
+      coverageTargetIds: ["coverage:question"],
+      projection: {
+        kind: "v2-claim-set",
+        claimIds: ["claim:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        evidenceIds: ["evidence:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+        gapIds: ["gap:known"],
+      },
+    });
+    const valid = parseReconciliationBodyV1({
+      schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      defects: [{
+        id: "defect:coverage",
+        severity: "important",
+        target: { kind: "coverage", id: "coverage:question" },
+        code: "missing_coverage",
+        references: [{ kind: "evidence", id: "evidence:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }],
+        explanation: "The approved coverage target has one unresolved gap.",
+        suggestedAction: "add_follow_up",
+      }],
+      proposedFollowUps: [],
+    });
+
+    expect(validateResearchReconciliationBodyNamespaceV1(valid, input)).toEqual(valid);
+    expect(() => validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      defects: [{ ...valid.defects[0]!, target: { kind: "coverage", id: "coverage:invented" } }],
+    }, input)).toThrow("outside the host namespace");
+    expect(() => validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      defects: [{
+        ...valid.defects[0]!,
+        references: [{ kind: "evidence", id: "evidence:cccccccccccccccccccccccccccccccccccccccccccccccc" }],
+      }],
+    }, input)).toThrow("outside the host namespace");
   });
 
   test("projects accepted packet references and stable critique IDs in dependency order", () => {
@@ -266,6 +324,24 @@ describe("T3 workflow contracts", () => {
         evidenceIds: [evidenceId],
         gapIds: ["gap:v2:1"],
       },
+    });
+
+    const repeatedLocalGap = acceptedPacket("task:analysis:2", "packet:analysis:2", {
+      ...(analysisPacket.body as ResearchPacketBodyV2),
+      gaps: [{
+        id: "gap:v2:1",
+        summary: "A second packet records a distinct boundary using the same local label.",
+        sourceIds: [],
+      }],
+    });
+    expect(projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      coverageTargetIds: ["coverage:question"],
+      acceptedPackets: [detailPacket, analysisPacket, repeatedLocalGap],
+    }).projection).toMatchObject({
+      kind: "v2-claim-set",
+      gapIds: ["gap:v2:1"],
     });
 
     expect(() => projectResearchReconciliationInputV1({

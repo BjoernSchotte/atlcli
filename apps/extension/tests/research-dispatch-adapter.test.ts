@@ -626,7 +626,7 @@ describe("research-owned native task dispatch interception", () => {
         nestingDepth: 4,
       },
       ResearchPacketBodyV2: {
-        serializedBytes: 3_052,
+        serializedBytes: 3_051,
         propertyCount: 32,
         nestingDepth: 5,
       },

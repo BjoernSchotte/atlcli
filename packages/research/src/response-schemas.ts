@@ -159,7 +159,9 @@ export const RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown> 
   "ResearchPacketModelBodyV2",
   {
     schema: { const: "atlcli.research-packet-body/v2" },
-    claimCandidates: boundedObjectArray(20, researchClaimCandidateV2Schema),
+    // One prioritized claim per production detail item keeps transient model
+    // output bounded without reducing host-side retrieval coverage.
+    claimCandidates: boundedObjectArray(8, researchClaimCandidateV2Schema),
     contradictionCandidates: boundedObjectArray(12, researchContradictionCandidateV2Schema),
     outlineProposals: boundedObjectArray(12, researchOutlineProposalCandidateV2Schema),
     gaps: boundedObjectArray(16, gapSchema),

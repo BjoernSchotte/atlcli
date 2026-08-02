@@ -409,11 +409,12 @@ async function checkAndNotifyUpdate(): Promise<void> {
   }
 }
 
-main().catch((err) => {
+await main().catch((err) => {
   if (err instanceof ReportedPdfTemplateCliError) {
-    process.exit(err.exitCode);
+    process.exitCode = err.exitCode;
+    return;
   }
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`${message}\n`);
-  process.exit(1);
+  process.exitCode = 1;
 });

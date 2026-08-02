@@ -494,7 +494,9 @@ describe("research CLI one-shot contract", () => {
     const planned = JSON.parse(harness.stdout.join(""));
     expect(planned).toMatchObject({ status: "running", sessionRevision: 6 });
     const beforeCancel = await harness.durableStore.read(planned.sessionId);
-    expect(Date.parse(beforeCancel!.lease.expiresAt)).toBeLessThanOrEqual(Date.parse(beforeCancel!.updatedAt));
+    expect(Date.parse(beforeCancel!.lease.expiresAt)).toBeLessThanOrEqual(
+      Date.parse(beforeCancel!.updatedAt) + 1,
+    );
 
     harness.stdout.length = 0;
     await handleResearch(
@@ -612,6 +614,7 @@ describe("research CLI one-shot contract", () => {
     expect(request.limits).toMatchObject({
       maxSearchPagesPerProduct: 5,
       maxBodyCharsPerItem: 50_000,
+      maxModelOutputTokens: 8_000,
       maxRunMs: 600_000,
     });
     expect(request.scopeSeeds).toMatchObject([

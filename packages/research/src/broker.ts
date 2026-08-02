@@ -1,6 +1,7 @@
 import {
   RESEARCH_TOOL_IDS,
   ResearchContractError,
+  type ResearchProduct,
   type ResearchRequestV1,
   type ResearchScopeBindingV1,
   type ResearchSourceReferenceV1,
@@ -284,9 +285,18 @@ export class ResearchCapabilityBroker {
     });
   }
 
-  completionStatus(): { complete: boolean; warnings: string[] } {
+  /**
+   * The dynamic supervisor may omit an entire product branch.  Completion is
+   * therefore judged only against the product searches actually admitted to
+   * the accepted graph; legacy callers retain the conservative two-product
+   * default.
+   */
+  completionStatus(products: readonly ResearchProduct[] = ["jira", "confluence"]): {
+    complete: boolean;
+    warnings: string[];
+  } {
     const warnings: string[] = [];
-    for (const product of ["jira", "confluence"] as const) {
+    for (const product of new Set(products)) {
       const status = this.#searchCompletion[product];
       if (status.complete) continue;
       const label = product === "jira" ? "Jira" : "Confluence";
