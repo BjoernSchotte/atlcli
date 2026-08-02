@@ -361,6 +361,12 @@ export interface ResearchSessionV1 {
 export interface ResearchResumableSessionV1 {
   schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
   sessionId: string;
+  /**
+   * Opaque optimistic-concurrency fence for a host action. It conveys no
+   * research content and prevents an older sidebar view from changing a
+   * session after another action has advanced it.
+   */
+  revision: number;
   turnId: string;
   status: Extract<
     ResearchSessionStatusV1,

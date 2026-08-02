@@ -1074,6 +1074,7 @@ describe("durable research session execution gate", () => {
     })).toEqual({
       schema: "atlcli.research-resumable-session/v1",
       sessionId: initialized.sessionId,
+      revision: waiting.session.revision,
       turnId: "research-turn:runtime-test",
       status: "waiting_authentication",
       updatedAt: "2026-08-01T15:00:02.000Z",

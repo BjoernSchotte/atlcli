@@ -21,6 +21,7 @@ import type {
   ResearchScopeClarificationReviewActionRequest,
   ResearchScopePlanReviewActionRequest,
   ResearchScopeReviewActionRequest,
+  ResearchSessionSteeringActionRequest,
   ResearchSessionDeletionActionRequest,
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
@@ -84,6 +85,10 @@ export interface RouterDeps {
   listResumableResearchSessions?: (
     windowId: number,
   ) => Promise<ResearchResumableSessionV1[]>;
+  requestResearchSteering?: (
+    windowId: number,
+    action: ResearchSessionSteeringActionRequest,
+  ) => Promise<{ sessionId: string; revision: number; status: "waiting_steering" }>;
   deleteResearchSession?: (
     windowId: number,
     action: ResearchSessionDeletionActionRequest,
@@ -317,6 +322,32 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:list-resumable-sessions-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:steer-session": {
+      if (!deps.requestResearchSteering) {
+        return {
+          kind: "research:steer-session-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research steering is not configured.",
+        };
+      }
+      try {
+        const result = await deps.requestResearchSteering(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          instruction: msg.instruction,
+        });
+        return { kind: "research:steer-session-result", ok: true, ...result };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:steer-session-result",
           ok: false,
           code: classified.code,
           error: classified.message,

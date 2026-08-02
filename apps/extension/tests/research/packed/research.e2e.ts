@@ -2000,6 +2000,16 @@ function packedExpiredRetrievalCheckpointSession(identity = "packed-startup-reco
   }, "2020-01-01T00:00:09.000Z");
 }
 
+function packedPausedRetrievalCheckpointSession(identity = "packed-steering"): ResearchSessionV1 {
+  let session = packedExpiredRetrievalCheckpointSession(identity);
+  session = updatePackedResearchSession(session, {
+    kind: "request_pause",
+  }, "2020-01-01T00:00:10.000Z");
+  return updatePackedResearchSession(session, {
+    kind: "acknowledge_pause",
+  }, "2020-01-01T00:00:11.000Z");
+}
+
 async function runNodeHostParityFixture(): Promise<{
   report: ResearchReport;
   events: ResearchOneShotEventV1[];
@@ -2109,6 +2119,16 @@ type PackedSessionDeletionResponse =
   | { kind: "research:delete-session-result"; ok: true; deleted: boolean }
   | { kind: "research:delete-session-result"; ok: false; code: string; error: string };
 
+type PackedSessionSteeringResponse =
+  | {
+      kind: "research:steer-session-result";
+      ok: true;
+      sessionId: string;
+      revision: number;
+      status: "waiting_steering";
+    }
+  | { kind: "research:steer-session-result"; ok: false; code: string; error: string };
+
 function withoutEventSequence(event: ResearchOneShotEventV1): Omit<ResearchOneShotEventV1, "seq"> {
   const { seq: _sequence, ...withoutSequence } = event;
   return withoutSequence;
@@ -2181,6 +2201,24 @@ async function deletePackedResearchSession(
   }, { sessionId, revision }) as Promise<PackedSessionDeletionResponse>;
 }
 
+async function steerPackedResearchSession(
+  page: Page,
+  sessionId: string,
+  revision: number,
+): Promise<PackedSessionSteeringResponse> {
+  return page.evaluate(async ({ sessionId, revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:steer-session",
+      windowId: window.id,
+      sessionId,
+      revision,
+      instruction: "Prioritize the approved relationship analysis.",
+    });
+  }, { sessionId, revision }) as Promise<PackedSessionSteeringResponse>;
+}
+
 async function readPackedDurableResearchSession(
   page: Page,
   sessionId: string,
@@ -2201,6 +2239,12 @@ async function readPackedDurableResearchSession(
         budgetState?: { ptcCalls?: number };
         retrievalAssessments?: Array<{
           continuation?: { status?: string };
+        }>;
+        steering?: Array<{
+          id?: string;
+          state?: string;
+          basedOnGraphRevision?: number;
+          appliedGraphRevision?: number;
         }>;
         brief?: { scope?: { jiraProjectKeys?: string[]; confluenceSpaceKeys?: string[] } };
         graph?: {
@@ -3377,6 +3421,64 @@ test("recovers an expired retrieval checkpoint when the first offscreen document
       await chrome.storage.session.remove(key);
     }, RESEARCH_ANTHROPIC_SESSION_KEY);
   }
+});
+
+test("persists one bounded packed steering request without exposing it to the resume catalog", async () => {
+  await installEventCapture(page);
+  const checkpoint = packedPausedRetrievalCheckpointSession();
+  await writePackedDurableResearchSession(page, checkpoint);
+
+  const steered = await steerPackedResearchSession(page, checkpoint.sessionId, checkpoint.revision);
+  expect(steered).toEqual({
+    kind: "research:steer-session-result",
+    ok: true,
+    sessionId: checkpoint.sessionId,
+    revision: checkpoint.revision + 1,
+    status: "waiting_steering",
+  });
+  const stale = await steerPackedResearchSession(page, checkpoint.sessionId, checkpoint.revision);
+  expect(stale).toMatchObject({
+    kind: "research:steer-session-result",
+    ok: false,
+    code: "invalid-request",
+  });
+
+  const resumable = await page.evaluate(async () => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:list-resumable-sessions",
+      windowId: window.id,
+    });
+  }) as {
+    kind: "research:list-resumable-sessions-result";
+    ok: boolean;
+    sessions?: unknown[];
+  };
+  expect(resumable).toMatchObject({
+    kind: "research:list-resumable-sessions-result",
+    ok: true,
+  });
+  expect(resumable.sessions).toContainEqual(expect.objectContaining({
+      sessionId: checkpoint.sessionId,
+      revision: checkpoint.revision + 1,
+      status: "waiting_steering",
+    }));
+  expect(JSON.stringify(resumable)).not.toContain("Prioritize the approved relationship analysis.");
+
+  const durable = await readPackedDurableResearchSession(
+    page,
+    checkpoint.sessionId,
+    "artifact:report:research-turn:packed-steering",
+  );
+  expect(durable.session.state.status).toBe("waiting_steering");
+  expect(durable.session.state.turns[0]?.steering).toEqual([
+    expect.objectContaining({
+      state: "requested",
+      basedOnGraphRevision: checkpoint.turns[0]!.graph!.revision,
+    }),
+  ]);
+  expect((await harnessEvents(page)).some((event) => event.kind === "worker-start")).toBe(false);
 });
 
 test("fences concurrent packed resumes so only one fresh worker owns a checkpoint", async () => {

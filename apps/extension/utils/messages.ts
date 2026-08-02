@@ -161,6 +161,13 @@ export interface ResearchSessionDeletionActionRequest {
   revision: number;
 }
 
+/** One bounded user instruction applied only at a persisted retrieval checkpoint. */
+export interface ResearchSessionSteeringActionRequest {
+  sessionId: string;
+  revision: number;
+  instruction: string;
+}
+
 /** Bounded timing/result projection for cross-realm DOCX runtime preparation. */
 export interface DocxRuntimePreparationMessage {
   totalMs: number;
@@ -201,6 +208,7 @@ export type ExtRequest =
       windowId: number;
     }
   | { kind: "research:list-resumable-sessions"; windowId: number }
+  | ({ kind: "research:steer-session"; windowId: number } & ResearchSessionSteeringActionRequest)
   | ({ kind: "research:delete-session"; windowId: number } & ResearchSessionDeletionActionRequest)
   | { kind: "research:list-scope-reviews"; windowId: number }
   | ({ kind: "research:approve-scope-review"; windowId: number } & ResearchScopeReviewActionRequest)
@@ -284,6 +292,19 @@ export type ExtResponse =
     }
   | {
       kind: "research:list-resumable-sessions-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:steer-session-result";
+      ok: true;
+      sessionId: string;
+      revision: number;
+      status: "waiting_steering";
+    }
+  | {
+      kind: "research:steer-session-result";
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -621,6 +642,7 @@ export interface ResponseMap {
   "research:run": Extract<ExtResponse, { kind: "research:run-result" }>;
   "research:resume": Extract<ExtResponse, { kind: "research:resume-result" }>;
   "research:list-resumable-sessions": Extract<ExtResponse, { kind: "research:list-resumable-sessions-result" }>;
+  "research:steer-session": Extract<ExtResponse, { kind: "research:steer-session-result" }>;
   "research:delete-session": Extract<ExtResponse, { kind: "research:delete-session-result" }>;
   "research:list-scope-reviews": Extract<ExtResponse, { kind: "research:list-scope-reviews-result" }>;
   "research:approve-scope-review": Extract<ExtResponse, { kind: "research:approve-scope-review-result" }>;
@@ -685,6 +707,15 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   }
   if (kind === "research:list-resumable-sessions") {
     return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:steer-session") {
+    const action = value as Partial<ResearchSessionSteeringActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, ["kind", "windowId", "sessionId", "revision", "instruction"]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      typeof action.instruction === "string" && action.instruction.trim().length > 0 &&
+      action.instruction.length <= 2_000;
   }
   if (kind === "research:delete-session") {
     const action = value as Partial<ResearchSessionDeletionActionRequest & { windowId: unknown }>;

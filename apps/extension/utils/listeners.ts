@@ -124,6 +124,14 @@ export function handleExtMessage(
             error: toMessage(err),
           });
           break;
+        case "research:steer-session":
+          sendResponse({
+            kind: "research:steer-session-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:delete-session":
           sendResponse({
             kind: "research:delete-session-result",

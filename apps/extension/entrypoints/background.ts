@@ -26,6 +26,7 @@ import {
   type ResearchPlanReviewActionRequest,
   type ResearchPlanRevisionActionRequest,
   type ResearchScopeReviewActionRequest,
+  type ResearchSessionSteeringActionRequest,
   type ResearchSessionDeletionActionRequest,
   isExportJobsChanged,
 } from "../utils/messages.js";
@@ -697,6 +698,53 @@ export default defineBackground({
         })
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
         .slice(0, 20);
+    } finally {
+      store.close();
+    }
+  };
+
+  /**
+   * Store one bounded focus/prioritization request. The active-tab tenant,
+   * durable revision, graph revision, and safe checkpoint are all enforced by
+   * the host/session reducer; caller text never chooses capabilities or scope.
+   */
+  const requestResearchSteering = async (
+    windowId: number,
+    action: ResearchSessionSteeringActionRequest,
+  ): Promise<{ sessionId: string; revision: number; status: "waiting_steering" }> => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    if ([...activeResearchRuns.values()].some((active) => active.sessionId === action.sessionId)) {
+      throw new ResearchContractError("invalid-request", "An active research run cannot be steered.");
+    }
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(action.sessionId);
+      if (!stored) {
+        throw new ResearchContractError("invalid-request", "The durable research session is unavailable for steering.");
+      }
+      const turn = stored.activeTurnId
+        ? stored.turns.find((candidate) => candidate.id === stored.activeTurnId)
+        : undefined;
+      if (!turn?.brief || !turn.graph || turn.brief.scope.siteOrigin !== tenantOrigin) {
+        throw new ResearchContractError("access-denied", "The durable research session does not belong to the active Atlassian site.");
+      }
+      if (stored.revision !== action.revision) {
+        throw new ResearchContractError("invalid-request", "The research session revision is stale. Refresh the sidebar before steering.");
+      }
+      const steered = (await store.commit(stored.sessionId, {
+        kind: "request_steering",
+        steeringId: `steering:${crypto.randomUUID()}`,
+        basedOnGraphRevision: turn.graph.revision,
+        request: action.instruction,
+        expectedRevision: stored.revision,
+        expectedLeaseEpoch: stored.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      return {
+        sessionId: steered.sessionId,
+        revision: steered.revision,
+        status: "waiting_steering",
+      };
     } finally {
       store.close();
     }
@@ -1697,6 +1745,7 @@ export default defineBackground({
       runResearch,
       resumeResearch,
       listResumableResearchSessions,
+      requestResearchSteering,
       deleteResearchSession,
       listResearchScopeReviews,
       listResearchScopePlanReviews,

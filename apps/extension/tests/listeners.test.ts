@@ -134,6 +134,7 @@ describe("handleExtMessage (background listener adapter)", () => {
         listResumableResearchSessions: async () => [{
           schema: "atlcli.research-resumable-session/v1",
           sessionId: "research-session:resume",
+          revision: 4,
           turnId: "research-turn:resume",
           status: "paused",
           updatedAt: "2026-08-02T12:00:00.000Z",
@@ -149,6 +150,7 @@ describe("handleExtMessage (background listener adapter)", () => {
       sessions: [{
         schema: "atlcli.research-resumable-session/v1",
         sessionId: "research-session:resume",
+        revision: 4,
         turnId: "research-turn:resume",
         status: "paused",
         updatedAt: "2026-08-02T12:00:00.000Z",

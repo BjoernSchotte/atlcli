@@ -76,6 +76,28 @@ describe("message guards", () => {
       sessionId: "must-not-cross",
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:steer-session",
+      windowId: 7,
+      sessionId: "research-session:checkpoint",
+      revision: 12,
+      instruction: "Prioritize the approved comparison.",
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:steer-session",
+      windowId: 7,
+      sessionId: "research-session:checkpoint",
+      revision: 12,
+      instruction: "Prioritize the approved comparison.",
+      graphRevision: 7,
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:steer-session",
+      windowId: 7,
+      sessionId: "research-session:checkpoint",
+      revision: 12,
+      instruction: "   ",
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:delete-session",
       windowId: 7,
       sessionId: "research-session:terminal",

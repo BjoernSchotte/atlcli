@@ -329,6 +329,7 @@ describe("routeMessage (pure router)", () => {
     const sessions = [{
       schema: "atlcli.research-resumable-session/v1" as const,
       sessionId: "research-session:resume",
+      revision: 4,
       turnId: "research-turn:resume",
       status: "paused" as const,
       updatedAt: "2026-08-02T12:00:00.000Z",
@@ -348,6 +349,38 @@ describe("routeMessage (pure router)", () => {
       kind: "research:list-resumable-sessions-result",
       ok: true,
       sessions,
+    });
+  });
+
+  it("routes revision-fenced steering without caller graph authority", async () => {
+    const request = {
+      kind: "research:steer-session" as const,
+      windowId: 7,
+      sessionId: "research-session:checkpoint",
+      revision: 12,
+      instruction: "Prioritize the approved comparison.",
+    };
+    expect(await routeMessage(request, {
+      ...okDeps,
+      requestResearchSteering: async (windowId, action) => {
+        expect(windowId).toBe(7);
+        expect(action).toEqual({
+          sessionId: "research-session:checkpoint",
+          revision: 12,
+          instruction: "Prioritize the approved comparison.",
+        });
+        return {
+          sessionId: "research-session:checkpoint",
+          revision: 13,
+          status: "waiting_steering",
+        };
+      },
+    })).toEqual({
+      kind: "research:steer-session-result",
+      ok: true,
+      sessionId: "research-session:checkpoint",
+      revision: 13,
+      status: "waiting_steering",
     });
   });
 
@@ -529,6 +562,7 @@ describe("routeMessage (pure router)", () => {
         return {
           schema: "atlcli.research-resumable-session/v1",
           sessionId: review.sessionId,
+          revision: 14,
           turnId: review.turn.id,
           status: "running",
           updatedAt: review.updatedAt,
@@ -641,6 +675,7 @@ describe("routeMessage (pure router)", () => {
           session: {
             schema: "atlcli.research-resumable-session/v1" as const,
             sessionId: review.sessionId,
+            revision: 14,
             turnId: review.turn.id,
             status: "running" as const,
             updatedAt: review.updatedAt,

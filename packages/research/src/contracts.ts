@@ -585,6 +585,15 @@ export interface ResearchPort {
   listResumableSessions?(): Promise<
     import("./session.js").ResearchResumableSessionV1[]
   >;
+  /**
+   * Persist one user-originated focus/prioritization request at an already
+   * settled retrieval checkpoint. Hosts bind tenant and revisions themselves.
+   */
+  requestSteering?(input: {
+    sessionId: string;
+    revision: number;
+    instruction: string;
+  }): Promise<void>;
   run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
   resume?(
     sessionId: string,

@@ -270,6 +270,7 @@ export function projectResearchResumableSessionV1(
   return {
     schema: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
     sessionId: session.sessionId,
+    revision: session.revision,
     turnId: turn.id,
     status: session.status,
     updatedAt: session.updatedAt,

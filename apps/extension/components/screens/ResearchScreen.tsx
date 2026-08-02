@@ -461,6 +461,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [clarificationDecisions, setClarificationDecisions] = useState<Record<string, "accepted" | "rejected" | "">>({});
   const [scopeClarificationSelections, setScopeClarificationSelections] = useState<Record<string, string>>({});
   const [planRevisionInstructions, setPlanRevisionInstructions] = useState<Record<string, string>>({});
+  const [steeringInstructions, setSteeringInstructions] = useState<Record<string, string>>({});
   const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
   const [scopePlanReviewActionId, setScopePlanReviewActionId] = useState<string | null>(null);
   const [planReviewActionId, setPlanReviewActionId] = useState<string | null>(null);
@@ -890,6 +891,24 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       ));
     } catch (value) {
       setPauseRequested(false);
+      setError(value instanceof Error ? value.message : t("research.error"));
+    }
+  }
+
+  async function requestSteering(session: ResearchResumableSessionV1): Promise<void> {
+    const instruction = steeringInstructions[session.sessionId]?.trim();
+    if (!instruction || !port?.requestSteering) return;
+    setError(null);
+    try {
+      await port.requestSteering({
+        sessionId: session.sessionId,
+        revision: session.revision,
+        instruction,
+      });
+      setSteeringInstructions((current) => ({ ...current, [session.sessionId]: "" }));
+      setActionStatus(t("research.steering.saved"));
+      await refreshResumableSessions();
+    } catch (value) {
       setError(value instanceof Error ? value.message : t("research.error"));
     }
   }
@@ -1509,6 +1528,29 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                 >
                   {t("research.resume")}
                 </Button>
+                {port?.requestSteering && session.status === "paused" && (
+                  <div className="mt-2 flex gap-2">
+                    <Input
+                      value={steeringInstructions[session.sessionId] ?? ""}
+                      onChange={(event) => setSteeringInstructions((current) => ({
+                        ...current,
+                        [session.sessionId]: event.target.value,
+                      }))}
+                      placeholder={t("research.steering.placeholder")}
+                      disabled={running}
+                      data-testid={`research-steering-input-${index}`}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={running || !(steeringInstructions[session.sessionId] ?? "").trim()}
+                      data-testid={`research-steering-submit-${index}`}
+                      onClick={() => void requestSteering(session)}
+                    >
+                      {t("research.steering.submit")}
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </CardContent>

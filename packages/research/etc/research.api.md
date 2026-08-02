@@ -2545,6 +2545,11 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    requestSteering?(input: {
+        sessionId: string;
+        revision: number;
+        instruction: string;
+    }): Promise<void>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
@@ -2870,6 +2875,7 @@ export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprov
 export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
+    revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
@@ -6927,6 +6933,11 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    requestSteering?(input: {
+        sessionId: string;
+        revision: number;
+        instruction: string;
+    }): Promise<void>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
@@ -7252,6 +7263,7 @@ export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprov
 export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
+    revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
@@ -11307,6 +11319,11 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    requestSteering?(input: {
+        sessionId: string;
+        revision: number;
+        instruction: string;
+    }): Promise<void>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
@@ -11632,6 +11649,7 @@ export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprov
 export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
+    revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
@@ -15909,6 +15927,11 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    requestSteering?(input: {
+        sessionId: string;
+        revision: number;
+        instruction: string;
+    }): Promise<void>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
@@ -16273,6 +16296,7 @@ export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprov
 export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
+    revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
@@ -20647,6 +20671,11 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    requestSteering?(input: {
+        sessionId: string;
+        revision: number;
+        instruction: string;
+    }): Promise<void>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
@@ -21011,6 +21040,7 @@ export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprov
 export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
+    revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
@@ -23174,6 +23204,11 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    requestSteering?(input: {
+        sessionId: string;
+        revision: number;
+        instruction: string;
+    }): Promise<void>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
@@ -26614,6 +26649,11 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    requestSteering?(input: {
+        sessionId: string;
+        revision: number;
+        instruction: string;
+    }): Promise<void>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
@@ -26978,6 +27018,7 @@ export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprov
 export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
+    revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;

@@ -587,6 +587,7 @@ describe("portable Research screen", () => {
     const resumable = {
       schema: "atlcli.research-resumable-session/v1" as const,
       sessionId: "research-session:resume",
+      revision: 4,
       turnId: "research-turn:resume",
       status: "waiting_authentication" as const,
       updatedAt: "2026-08-02T12:00:00.000Z",
@@ -640,6 +641,55 @@ describe("portable Research screen", () => {
       .toContain("phase · researching");
     expect(dom.find("research-formatted-report").textContent)
       .toContain("The page explicitly links the issue.");
+  });
+
+  it("stores one bounded steering instruction from a paused durable session", async () => {
+    const resumable = {
+      schema: "atlcli.research-resumable-session/v1" as const,
+      sessionId: "research-session:checkpoint",
+      revision: 12,
+      turnId: "research-turn:checkpoint",
+      status: "paused" as const,
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      question: "Continue the approved research.",
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+    };
+    const instructions: Array<{ sessionId: string; revision: number; instruction: string }> = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      listResumableSessions: async () => [resumable],
+      requestSteering: async (input) => { instructions.push(input); },
+      run: async () => report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    await dom.setValue("research-steering-input-0", "Prioritize the approved comparison.");
+    await dom.click("research-steering-submit-0");
+    await dom.flush();
+
+    expect(instructions).toEqual([{
+      sessionId: "research-session:checkpoint",
+      revision: 12,
+      instruction: "Prioritize the approved comparison.",
+    }]);
+    expect(dom.find("research-action-status").textContent)
+      .toContain("Steering saved. Resume to apply the bounded graph update.");
   });
 
   it("shows a persisted scope proposal and sends only its revision-fenced decision", async () => {
@@ -930,6 +980,7 @@ describe("portable Research screen", () => {
       listResumableSessions: async () => (approvedSession ? [{
         schema: "atlcli.research-resumable-session/v1" as const,
         sessionId: review.sessionId,
+        revision: 14,
         turnId: review.turn.id,
         status: "running" as const,
         updatedAt: review.updatedAt,
@@ -942,6 +993,7 @@ describe("portable Research screen", () => {
         return {
           schema: "atlcli.research-resumable-session/v1",
           sessionId: review.sessionId,
+          revision: 14,
           turnId: review.turn.id,
           status: "running",
           updatedAt: review.updatedAt,
@@ -1109,6 +1161,7 @@ describe("portable Research screen", () => {
       listResumableSessions: async () => (resolved ? [{
         schema: "atlcli.research-resumable-session/v1" as const,
         sessionId: review.sessionId,
+        revision: 14,
         turnId: review.turn.id,
         status: "running" as const,
         updatedAt: review.updatedAt,
@@ -1123,6 +1176,7 @@ describe("portable Research screen", () => {
           session: {
             schema: "atlcli.research-resumable-session/v1" as const,
             sessionId: review.sessionId,
+            revision: 14,
             turnId: review.turn.id,
             status: "running" as const,
             updatedAt: review.updatedAt,
@@ -1226,6 +1280,7 @@ describe("portable Research screen", () => {
       listResumableSessions: async () => (resolved ? [{
         schema: "atlcli.research-resumable-session/v1" as const,
         sessionId: review.sessionId,
+        revision: 14,
         turnId: "research-turn:scope-choice-review",
         status: "running" as const,
         updatedAt: review.updatedAt,
@@ -1240,6 +1295,7 @@ describe("portable Research screen", () => {
           session: {
             schema: "atlcli.research-resumable-session/v1" as const,
             sessionId: review.sessionId,
+            revision: 14,
             turnId: "research-turn:scope-choice-review",
             status: "running" as const,
             updatedAt: review.updatedAt,
