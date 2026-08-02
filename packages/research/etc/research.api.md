@@ -2191,6 +2191,9 @@ export interface ResearchGraphRevisionPruneV1 {
     reasonCode: ResearchCompositionReasonV1;
 }
 
+// export: ResearchGraphRevisionReasonV1
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
     roleId: ResearchSubagentRoleIdV1;
@@ -2319,7 +2322,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -2868,7 +2871,7 @@ export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
     turnId: string;
-    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
     question: string;
     scope: {
@@ -3405,7 +3408,8 @@ export declare class ResearchSessionDispatchJournalV1 {
         graph: ResearchGraphV1;
         evidenceIds: string[];
         gapIds: string[];
-        reason: ResearchRetrievalAssessmentReasonV1;
+        reason: ResearchGraphRevisionReasonV1;
+        steeringId?: string;
     }): Promise<ResearchGraphV1>;
     admitAndStart(input: ResearchTaskAttemptV1 & {
         providerRequestId?: string;
@@ -3480,7 +3484,9 @@ export interface ResearchSessionGraphRevisionV1 {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
+    planDiff?: ResearchPlanDiffV1;
     recordedAt: string;
 }
 
@@ -3694,8 +3700,12 @@ export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_scope_clari
 export interface ResearchSessionSteeringV1 {
     id: string;
     request: string;
+    basedOnGraphRevision: number;
     requestedAt: string;
-    acknowledgedAt?: string;
+    state: "requested" | "applied";
+    appliedAt?: string;
+    appliedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
 }
 
 // export: ResearchSessionStoreConformanceFactoryV1
@@ -3834,7 +3844,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_clarification";
     briefRevision: number;
@@ -3874,10 +3885,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_steering";
     steeringId: string;
+    basedOnGraphRevision: number;
     request: string;
-}) | (ResearchSessionFencedUpdateV1 & {
-    kind: "acknowledge_steering";
-    steeringId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
@@ -6564,6 +6573,9 @@ export interface ResearchGraphRevisionPruneV1 {
     reasonCode: ResearchCompositionReasonV1;
 }
 
+// export: ResearchGraphRevisionReasonV1
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
     roleId: ResearchSubagentRoleIdV1;
@@ -6692,7 +6704,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -7241,7 +7253,7 @@ export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
     turnId: string;
-    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
     question: string;
     scope: {
@@ -7778,7 +7790,8 @@ export declare class ResearchSessionDispatchJournalV1 {
         graph: ResearchGraphV1;
         evidenceIds: string[];
         gapIds: string[];
-        reason: ResearchRetrievalAssessmentReasonV1;
+        reason: ResearchGraphRevisionReasonV1;
+        steeringId?: string;
     }): Promise<ResearchGraphV1>;
     admitAndStart(input: ResearchTaskAttemptV1 & {
         providerRequestId?: string;
@@ -7853,7 +7866,9 @@ export interface ResearchSessionGraphRevisionV1 {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
+    planDiff?: ResearchPlanDiffV1;
     recordedAt: string;
 }
 
@@ -8067,8 +8082,12 @@ export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_scope_clari
 export interface ResearchSessionSteeringV1 {
     id: string;
     request: string;
+    basedOnGraphRevision: number;
     requestedAt: string;
-    acknowledgedAt?: string;
+    state: "requested" | "applied";
+    appliedAt?: string;
+    appliedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
 }
 
 // export: ResearchSessionStoreConformanceFactoryV1
@@ -8207,7 +8226,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_clarification";
     briefRevision: number;
@@ -8247,10 +8267,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_steering";
     steeringId: string;
+    basedOnGraphRevision: number;
     request: string;
-}) | (ResearchSessionFencedUpdateV1 & {
-    kind: "acknowledge_steering";
-    steeringId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
@@ -10935,6 +10953,9 @@ export interface ResearchGraphRevisionPruneV1 {
     reasonCode: ResearchCompositionReasonV1;
 }
 
+// export: ResearchGraphRevisionReasonV1
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
     roleId: ResearchSubagentRoleIdV1;
@@ -11063,7 +11084,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -11612,7 +11633,7 @@ export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
     turnId: string;
-    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
     question: string;
     scope: {
@@ -12149,7 +12170,8 @@ export declare class ResearchSessionDispatchJournalV1 {
         graph: ResearchGraphV1;
         evidenceIds: string[];
         gapIds: string[];
-        reason: ResearchRetrievalAssessmentReasonV1;
+        reason: ResearchGraphRevisionReasonV1;
+        steeringId?: string;
     }): Promise<ResearchGraphV1>;
     admitAndStart(input: ResearchTaskAttemptV1 & {
         providerRequestId?: string;
@@ -12224,7 +12246,9 @@ export interface ResearchSessionGraphRevisionV1 {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
+    planDiff?: ResearchPlanDiffV1;
     recordedAt: string;
 }
 
@@ -12438,8 +12462,12 @@ export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_scope_clari
 export interface ResearchSessionSteeringV1 {
     id: string;
     request: string;
+    basedOnGraphRevision: number;
     requestedAt: string;
-    acknowledgedAt?: string;
+    state: "requested" | "applied";
+    appliedAt?: string;
+    appliedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
 }
 
 // export: ResearchSessionStoreConformanceFactoryV1
@@ -12578,7 +12606,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_clarification";
     briefRevision: number;
@@ -12618,10 +12647,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_steering";
     steeringId: string;
+    basedOnGraphRevision: number;
     request: string;
-}) | (ResearchSessionFencedUpdateV1 & {
-    kind: "acknowledge_steering";
-    steeringId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
@@ -15528,6 +15555,9 @@ export interface ResearchGraphRevisionPruneV1 {
     reasonCode: ResearchCompositionReasonV1;
 }
 
+// export: ResearchGraphRevisionReasonV1
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
     roleId: ResearchSubagentRoleIdV1;
@@ -15656,7 +15686,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -16244,7 +16274,7 @@ export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
     turnId: string;
-    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
     question: string;
     scope: {
@@ -16789,7 +16819,8 @@ export declare class ResearchSessionDispatchJournalV1 {
         graph: ResearchGraphV1;
         evidenceIds: string[];
         gapIds: string[];
-        reason: ResearchRetrievalAssessmentReasonV1;
+        reason: ResearchGraphRevisionReasonV1;
+        steeringId?: string;
     }): Promise<ResearchGraphV1>;
     admitAndStart(input: ResearchTaskAttemptV1 & {
         providerRequestId?: string;
@@ -16864,7 +16895,9 @@ export interface ResearchSessionGraphRevisionV1 {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
+    planDiff?: ResearchPlanDiffV1;
     recordedAt: string;
 }
 
@@ -17078,8 +17111,12 @@ export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_scope_clari
 export interface ResearchSessionSteeringV1 {
     id: string;
     request: string;
+    basedOnGraphRevision: number;
     requestedAt: string;
-    acknowledgedAt?: string;
+    state: "requested" | "applied";
+    appliedAt?: string;
+    appliedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
 }
 
 // export: ResearchSessionStoreConformanceFactoryV1
@@ -17218,7 +17255,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_clarification";
     briefRevision: number;
@@ -17258,10 +17296,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_steering";
     steeringId: string;
+    basedOnGraphRevision: number;
     request: string;
-}) | (ResearchSessionFencedUpdateV1 & {
-    kind: "acknowledge_steering";
-    steeringId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
@@ -20257,6 +20293,9 @@ export interface ResearchGraphRevisionPruneV1 {
     reasonCode: ResearchCompositionReasonV1;
 }
 
+// export: ResearchGraphRevisionReasonV1
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
     roleId: ResearchSubagentRoleIdV1;
@@ -20385,7 +20424,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -20973,7 +21012,7 @@ export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
     turnId: string;
-    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
     question: string;
     scope: {
@@ -21518,7 +21557,8 @@ export declare class ResearchSessionDispatchJournalV1 {
         graph: ResearchGraphV1;
         evidenceIds: string[];
         gapIds: string[];
-        reason: ResearchRetrievalAssessmentReasonV1;
+        reason: ResearchGraphRevisionReasonV1;
+        steeringId?: string;
     }): Promise<ResearchGraphV1>;
     admitAndStart(input: ResearchTaskAttemptV1 & {
         providerRequestId?: string;
@@ -21593,7 +21633,9 @@ export interface ResearchSessionGraphRevisionV1 {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
+    planDiff?: ResearchPlanDiffV1;
     recordedAt: string;
 }
 
@@ -21818,8 +21860,12 @@ export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_scope_clari
 export interface ResearchSessionSteeringV1 {
     id: string;
     request: string;
+    basedOnGraphRevision: number;
     requestedAt: string;
-    acknowledgedAt?: string;
+    state: "requested" | "applied";
+    appliedAt?: string;
+    appliedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
 }
 
 // export: ResearchSessionStoreConformanceFactoryV1
@@ -21958,7 +22004,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_clarification";
     briefRevision: number;
@@ -21998,10 +22045,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_steering";
     steeringId: string;
+    basedOnGraphRevision: number;
     request: string;
-}) | (ResearchSessionFencedUpdateV1 & {
-    kind: "acknowledge_steering";
-    steeringId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
@@ -23110,7 +23155,7 @@ export interface ResearchLimitsV1 {
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -26215,6 +26260,9 @@ export interface ResearchGraphRevisionPruneV1 {
     reasonCode: ResearchCompositionReasonV1;
 }
 
+// export: ResearchGraphRevisionReasonV1
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
     roleId: ResearchSubagentRoleIdV1;
@@ -26343,7 +26391,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -26931,7 +26979,7 @@ export interface ResearchResumableSessionV1 {
     schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
     sessionId: string;
     turnId: string;
-    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
     updatedAt: string;
     question: string;
     scope: {
@@ -27476,7 +27524,8 @@ export declare class ResearchSessionDispatchJournalV1 {
         graph: ResearchGraphV1;
         evidenceIds: string[];
         gapIds: string[];
-        reason: ResearchRetrievalAssessmentReasonV1;
+        reason: ResearchGraphRevisionReasonV1;
+        steeringId?: string;
     }): Promise<ResearchGraphV1>;
     admitAndStart(input: ResearchTaskAttemptV1 & {
         providerRequestId?: string;
@@ -27551,7 +27600,9 @@ export interface ResearchSessionGraphRevisionV1 {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
+    planDiff?: ResearchPlanDiffV1;
     recordedAt: string;
 }
 
@@ -27776,8 +27827,12 @@ export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_scope_clari
 export interface ResearchSessionSteeringV1 {
     id: string;
     request: string;
+    basedOnGraphRevision: number;
     requestedAt: string;
-    acknowledgedAt?: string;
+    state: "requested" | "applied";
+    appliedAt?: string;
+    appliedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
 }
 
 // export: ResearchSessionStoreConformanceFactoryV1
@@ -27916,7 +27971,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_clarification";
     briefRevision: number;
@@ -27956,10 +28012,8 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_steering";
     steeringId: string;
+    basedOnGraphRevision: number;
     request: string;
-}) | (ResearchSessionFencedUpdateV1 & {
-    kind: "acknowledge_steering";
-    steeringId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "request_pause";
 }) | (ResearchSessionFencedUpdateV1 & {

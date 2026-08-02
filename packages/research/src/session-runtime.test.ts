@@ -914,6 +914,60 @@ describe("durable research session execution gate", () => {
       .toEqual(["recover", "resume"]);
   });
 
+  test("reclaims a released steering checkpoint without losing its pending graph control", async () => {
+    const { store, sessionId } = await settledRuntimeRetrievalCheckpoint();
+    let current = await store.read(sessionId);
+    if (!current) throw new Error("Synthetic checkpoint session is missing.");
+    current = (await store.commit(sessionId, {
+      kind: "request_pause",
+      expectedRevision: current.revision,
+      expectedLeaseEpoch: current.lease.epoch,
+      at: "2026-08-01T15:11:00.000Z",
+    })).session;
+    current = (await store.commit(sessionId, {
+      kind: "acknowledge_pause",
+      expectedRevision: current.revision,
+      expectedLeaseEpoch: current.lease.epoch,
+      at: "2026-08-01T15:11:00.001Z",
+    })).session;
+    const graphRevision = current.turns[0]!.graph!.revision;
+    current = (await store.commit(sessionId, {
+      kind: "request_steering",
+      steeringId: "steering:runtime-focus",
+      basedOnGraphRevision: graphRevision,
+      request: "Prioritize the approved relationship analysis.",
+      expectedRevision: current.revision,
+      expectedLeaseEpoch: current.lease.epoch,
+      at: "2026-08-01T15:11:00.002Z",
+    })).session;
+
+    const resumed = await recoverResearchSessionForResumeV1({
+      store,
+      sessionId,
+      ownerId: "owner:steering-resumed",
+      leaseExpiresAt: "2026-08-01T15:20:00.000Z",
+      at: "2026-08-01T15:11:00.003Z",
+    });
+
+    expect(current).toMatchObject({
+      status: "waiting_steering",
+      lease: { expiresAt: "2026-08-01T15:11:00.002Z" },
+    });
+    expect(resumed).toMatchObject({
+      status: "running",
+      lease: { epoch: 2, ownerId: "owner:steering-resumed" },
+      turns: [expect.objectContaining({
+        steering: [expect.objectContaining({
+          id: "steering:runtime-focus",
+          state: "requested",
+          basedOnGraphRevision: graphRevision,
+        })],
+      })],
+    });
+    expect((await store.events(sessionId)).slice(-5).map((event) => event.kind))
+      .toEqual(["request_pause", "acknowledge_pause", "request_steering", "recover", "resume"]);
+  });
+
   test("converts an expired settled retrieval checkpoint into a paused, explicitly resumable session", async () => {
     const { store, sessionId } = await settledRuntimeRetrievalCheckpoint();
     const recovered = await recoverExpiredResearchSessionsAtSafeBoundaryV1({

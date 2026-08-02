@@ -201,6 +201,11 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       nonNegativeInteger(event.unresolvedCoverageTargetCount) &&
       nonNegativeInteger(event.unresolvedContradictionCount);
   }
+  if (event.kind === "steering") {
+    return hasOnlyKeys(event, ["kind", "seq", "at", "revision", "status"]) &&
+      positiveInteger(event.revision) &&
+      event.status === "applied";
+  }
   if (event.kind === "budget") {
     return hasOnlyKeys(event, ["kind", "seq", "at", "metric", "consumed", "maximum"]) &&
       ["capability_calls", "tokens", "bytes", "duration_ms", "cost_micros"]
@@ -318,6 +323,7 @@ export function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): str
       event.unresolvedCoverageTargetCount === 0 ? "" : `${event.unresolvedCoverageTargetCount} coverage gaps`,
       event.unresolvedContradictionCount === 0 ? "" : `${event.unresolvedContradictionCount} contradictions`,
     ].filter(Boolean).join(" · ");
+    case "steering": return `steering · graph ${event.revision} · ${event.status}`;
     case "budget": return `budget · ${event.metric} · ${event.consumed}/${event.maximum}`;
     case "artifact": return `artifact · ${event.path}`;
   }

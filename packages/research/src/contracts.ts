@@ -523,6 +523,7 @@ export type ResearchOneShotEventV1 = Extract<
       | "reconciliation"
       | "reconciliation_disposition"
       | "repair_group"
+      | "steering"
       | "retrieval"
       | "budget"
       | "artifact";

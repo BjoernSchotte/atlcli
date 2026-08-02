@@ -147,8 +147,14 @@ export interface ResearchSessionScopeClarificationV1 {
 export interface ResearchSessionSteeringV1 {
   id: string;
   request: string;
+  /** The immutable graph the user inspected when submitting this control. */
+  basedOnGraphRevision: number;
   requestedAt: string;
-  acknowledgedAt?: string;
+  state: "requested" | "applied";
+  appliedAt?: string;
+  appliedGraphRevision?: number;
+  /** Body-free projection of the one host-validated in-envelope revision. */
+  planDiff?: ResearchPlanDiffV1;
 }
 
 export interface ResearchSessionCheckpointV1 {
@@ -222,9 +228,25 @@ export interface ResearchSessionGraphRevisionV1 {
   graph: ResearchGraphV1;
   evidenceIds: string[];
   gapIds: string[];
-  reason: ResearchRetrievalAssessmentReasonV1;
+  reason: ResearchGraphRevisionReasonV1;
+  steeringId?: string;
+  planDiff?: ResearchPlanDiffV1;
   recordedAt: string;
 }
+
+/**
+ * Retrieval assessments remain evidence-derived. A user steering request is a
+ * separate durable control cause; it must never be forged as a retrieval
+ * assessment merely to branch the scheduler.
+ */
+export type ResearchGraphRevisionReasonV1 =
+  | ResearchRetrievalAssessmentReasonV1
+  | "user_steering";
+
+const RESEARCH_GRAPH_REVISION_REASONS_V1: readonly ResearchGraphRevisionReasonV1[] = [
+  ...RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1,
+  "user_steering",
+];
 
 /**
  * Durable history for one rejected plan and its user-requested replacement.
@@ -342,7 +364,7 @@ export interface ResearchResumableSessionV1 {
   turnId: string;
   status: Extract<
     ResearchSessionStatusV1,
-    "waiting_authentication" | "waiting_quota" | "paused" | "running"
+    "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running"
   >;
   updatedAt: string;
   question: string;
@@ -414,7 +436,9 @@ export type ResearchSessionUpdateV1 =
       graph: ResearchGraphV1;
       evidenceIds: string[];
       gapIds: string[];
-      reason: ResearchRetrievalAssessmentReasonV1;
+      reason: ResearchGraphRevisionReasonV1;
+      /** Present only for the pending steering control that this exact revision resolves. */
+      steeringId?: string;
     })
   | (ResearchSessionFencedUpdateV1 & {
       kind: "record_clarification";
@@ -453,8 +477,12 @@ export type ResearchSessionUpdateV1 =
       replacementGraph?: ResearchGraphV1;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "reject_scope_expansion"; proposalId: string })
-  | (ResearchSessionFencedUpdateV1 & { kind: "request_steering"; steeringId: string; request: string })
-  | (ResearchSessionFencedUpdateV1 & { kind: "acknowledge_steering"; steeringId: string })
+  | (ResearchSessionFencedUpdateV1 & {
+      kind: "request_steering";
+      steeringId: string;
+      basedOnGraphRevision: number;
+      request: string;
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "request_pause" })
   | (ResearchSessionFencedUpdateV1 & { kind: "acknowledge_pause" })
   | (ResearchSessionFencedUpdateV1 & { kind: "admit_tasks"; graphRevision: number; tasks: ResearchTaskAttemptV1[] })
@@ -844,7 +872,16 @@ function validateSession(session: ResearchSessionV1): void {
         if (revision.schema !== RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1 ||
             revision.graph.sessionId !== session.sessionId || revision.graph.turnId !== candidate.id ||
             revision.graph.revision <= previousRevision ||
-            !RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1.includes(revision.reason)) {
+            !RESEARCH_GRAPH_REVISION_REASONS_V1.includes(revision.reason) ||
+            (revision.reason === "user_steering" &&
+              (revision.steeringId === undefined || revision.planDiff === undefined)) ||
+            ((revision.steeringId !== undefined || revision.planDiff !== undefined) &&
+              (revision.steeringId === undefined || revision.planDiff === undefined ||
+                revision.reason !== "user_steering" ||
+                !/^steering:[A-Za-z0-9._-]{1,120}$/.test(revision.steeringId) ||
+                revision.planDiff.schema !== "atlcli.research-plan-diff/v1" ||
+                revision.planDiff.fromRevision !== revision.graph.revision - 1 ||
+                revision.planDiff.toRevision !== revision.graph.revision))) {
           invalid("Research session graph revision is invalid.");
         }
         validateResearchGraphV1(revision.graph);
@@ -853,6 +890,27 @@ function validateSession(session: ResearchSessionV1): void {
         timestamp(revision.recordedAt, "Research session graph revision timestamp");
         previousRevision = revision.graph.revision;
       }
+    }
+    if (!Array.isArray(candidate.steering) || candidate.steering.length > 16 ||
+        new Set(candidate.steering.map((steering) => steering.id)).size !== candidate.steering.length) {
+      invalid("Research session steering history is invalid.");
+    }
+    for (const steering of candidate.steering) {
+      const applied = steering.state === "applied";
+      if (!/^steering:[A-Za-z0-9._-]{1,120}$/.test(steering.id) ||
+          !steering.request.trim() || steering.request.length > 2_000 ||
+          !Number.isSafeInteger(steering.basedOnGraphRevision) || steering.basedOnGraphRevision < 1 ||
+          (steering.state !== "requested" && steering.state !== "applied") ||
+          (applied !== (steering.appliedAt !== undefined && steering.appliedGraphRevision !== undefined && steering.planDiff !== undefined)) ||
+          (steering.appliedGraphRevision !== undefined && steering.appliedGraphRevision <= steering.basedOnGraphRevision) ||
+          (steering.planDiff !== undefined &&
+            (steering.planDiff.schema !== "atlcli.research-plan-diff/v1" ||
+              steering.planDiff.fromRevision !== steering.basedOnGraphRevision ||
+              steering.planDiff.toRevision !== steering.appliedGraphRevision))) {
+        invalid("Research session steering record is invalid.");
+      }
+      timestamp(steering.requestedAt, "Research steering request timestamp");
+      if (steering.appliedAt !== undefined) timestamp(steering.appliedAt, "Research steering application timestamp");
     }
     if (candidate.retrievalAssessments !== undefined) {
       if (!Array.isArray(candidate.retrievalAssessments) || candidate.retrievalAssessments.length > 64) {
@@ -898,6 +956,15 @@ function validateSession(session: ResearchSessionV1): void {
           invalid("Research session retrieval assessment waves are not contiguous.");
         }
       }
+    }
+  }
+  if (session.status === "waiting_steering") {
+    const active = session.activeTurnId
+      ? session.turns.find((turn) => turn.id === session.activeTurnId)
+      : undefined;
+    if (!active?.graph ||
+        active.steering.filter((steering) => steering.state === "requested").length !== 1) {
+      invalid("A steering wait requires exactly one pending durable control.");
     }
   }
   if (session.status === "deleted" && session.retention.state !== "deleted") invalid("A deleted research session must have deleted retention.");
@@ -1256,8 +1323,29 @@ export function reduceResearchSessionV1(
         update.graph.basedOnBriefRevision !== previous.basedOnBriefRevision ||
         update.graph.revision !== previous.revision + 1 ||
         update.graph.status !== "running" || update.graph.approvalEnvelope.status !== "approved" ||
-        !RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1.includes(update.reason)) {
+        !RESEARCH_GRAPH_REVISION_REASONS_V1.includes(update.reason)) {
       invalid("Research graph revision does not match the active durable graph.");
+    }
+    const steering = update.steeringId === undefined
+      ? undefined
+      : current.steering.find((candidate) => candidate.id === update.steeringId);
+    if ((update.steeringId === undefined && update.reason === "user_steering") ||
+        (update.steeringId !== undefined &&
+          (!steering || steering.state !== "requested" ||
+            steering.basedOnGraphRevision !== previous.revision ||
+            update.reason !== "user_steering"))) {
+      invalid("Research graph revision steering control is invalid or stale.");
+    }
+    const planDiff = steering
+      ? diffResearchPlansV1({
+          fromBrief: current.brief!,
+          fromGraph: previous,
+          toBrief: current.brief!,
+          toGraph: update.graph,
+        })
+      : undefined;
+    if (planDiff?.exceededApprovalEnvelopeFields.length) {
+      invalid("Research steering revision exceeds the approved graph envelope.");
     }
     const previousHistory = current.graphRevisions ?? [];
     const history = previousHistory.some((record) => record.graph.revision === previous.revision)
@@ -1282,6 +1370,8 @@ export function reduceResearchSessionV1(
       evidenceIds: [...update.evidenceIds],
       gapIds: [...update.gapIds],
       reason: update.reason,
+      ...(update.steeringId === undefined ? {} : { steeringId: update.steeringId }),
+      ...(planDiff === undefined ? {} : { planDiff }),
       recordedAt: update.at,
     };
     return withNext(session, update, {
@@ -1291,6 +1381,17 @@ export function reduceResearchSessionV1(
         revision: current.revision + 1,
         graph: clone(update.graph),
         graphRevisions: [...history, record],
+        ...(steering ? {
+          steering: current.steering.map((candidate) => candidate.id === steering.id
+            ? {
+                ...candidate,
+                state: "applied" as const,
+                appliedAt: update.at,
+                appliedGraphRevision: update.graph.revision,
+                planDiff,
+              }
+            : candidate),
+        } : {}),
       }),
     });
   }
@@ -1513,21 +1614,34 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "request_steering") {
-    const current = ensureActive(session, ["running"]);
-    if (!/^steering:[A-Za-z0-9._-]{1,120}$/.test(update.steeringId) || !update.request.trim() || update.request.length > 2_000 || current.steering.some((steering) => steering.id === update.steeringId)) invalid("Research steering request is invalid or duplicated.");
-    const nextTurn = { ...current, steering: [...current.steering, { id: update.steeringId, request: update.request.trim(), requestedAt: update.at }] };
+    const current = ensureActive(session, ["paused"]);
+    const graph = requireGraph(current, update.basedOnGraphRevision);
+    const issuedContinuation = current.retrievalAssessments?.filter((assessment) =>
+      assessment.graphRevision === graph.revision && assessment.continuation?.status === "issued",
+    ) ?? [];
+    if (!/^steering:[A-Za-z0-9._-]{1,120}$/.test(update.steeringId) ||
+        !update.request.trim() || update.request.length > 2_000 ||
+        current.steering.some((steering) => steering.id === update.steeringId) ||
+        issuedContinuation.length !== 1 ||
+        current.tasks.length === 0 || current.acceptedPackets.length === 0 ||
+        current.budgetState === undefined ||
+        current.tasks.some((task) => task.status === "ready" || task.status === "running" || task.status === "outcome_unknown")) {
+      invalid("Research steering request requires one settled durable retrieval checkpoint.");
+    }
+    const nextTurn = {
+      ...current,
+      steering: [...current.steering, {
+        id: update.steeringId,
+        request: update.request.trim(),
+        basedOnGraphRevision: graph.revision,
+        requestedAt: update.at,
+        state: "requested" as const,
+      }],
+    };
     return withReleasedDurableWait(session, update, {
       status: "waiting_steering",
       turns: replaceTurn(session, nextTurn),
     });
-  }
-
-  if (update.kind === "acknowledge_steering") {
-    const current = ensureActive(session, ["waiting_steering"]);
-    const steering = current.steering.find((candidate) => candidate.id === update.steeringId && !candidate.acknowledgedAt);
-    if (!steering) invalid("Research steering request is unknown or already acknowledged.");
-    const nextTurn = { ...current, steering: current.steering.map((candidate) => candidate.id === steering.id ? { ...candidate, acknowledgedAt: update.at } : candidate) };
-    return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
   }
 
   if (update.kind === "request_pause") {
@@ -1856,7 +1970,11 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "resume") {
-    ensureActive(session, ["paused", "waiting_authentication", "waiting_quota"]);
+    const current = ensureActive(session, ["paused", "waiting_steering", "waiting_authentication", "waiting_quota"]);
+    if (session.status === "waiting_steering" &&
+        !current.steering.some((steering) => steering.state === "requested")) {
+      invalid("Research steering wait has no pending durable control.");
+    }
     return withNext(session, update, { status: "running" });
   }
 

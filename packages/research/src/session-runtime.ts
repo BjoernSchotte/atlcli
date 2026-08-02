@@ -226,6 +226,7 @@ function isResumableStatus(
   return [
     "waiting_authentication",
     "waiting_quota",
+    "waiting_steering",
     "paused",
     "running",
   ].includes(status);
@@ -714,7 +715,7 @@ export async function recoverResearchSessionForResumeV1(
 ): Promise<ResearchSessionV1> {
   const current = await input.store.read(input.sessionId);
   if (!current) throw new Error("Research session was not found.");
-  const resumesWait = ["paused", "waiting_authentication", "waiting_quota"].includes(current.status);
+  const resumesWait = ["paused", "waiting_steering", "waiting_authentication", "waiting_quota"].includes(current.status);
   if (!current.activeTurnId || (!resumesWait && current.status !== "running")) {
     throw new Error("Research session is not in a resumable durable state.");
   }

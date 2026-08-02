@@ -74,4 +74,17 @@ describe("research one-shot events", () => {
     expect(isResearchOneShotEventV1({ ...event, sourceId: "private:source" })).toBe(false);
     expect(isResearchOneShotEventV1({ ...event, reason: "private source title" })).toBe(false);
   });
+
+  it("streams only a body-free steering completion", () => {
+    const event = {
+      kind: "steering" as const,
+      seq: 5,
+      at: "2026-08-02T12:00:00.000Z",
+      revision: 3,
+      status: "applied",
+    };
+    expect(isResearchOneShotEventV1(event)).toBe(true);
+    expect(formatResearchOneShotEventV1(event)).toBe("steering · graph 3 · applied");
+    expect(isResearchOneShotEventV1({ ...event, instruction: "private user text" })).toBe(false);
+  });
 });

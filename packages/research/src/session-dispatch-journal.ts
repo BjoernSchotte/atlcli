@@ -2,10 +2,10 @@ import { ResearchContractError } from "./contracts.js";
 import type { ResearchGraphProposalV1, ResearchGraphV1 } from "./graph.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
 import type {
-  ResearchRetrievalAssessmentReasonV1,
   ResearchRetrievalAssessmentV1,
 } from "./retrieval-assessment.js";
 import type {
+  ResearchGraphRevisionReasonV1,
   ResearchSessionRetrievalContinuationV1,
   ResearchSessionRetrievalAssessmentV1,
   ResearchSessionRepairAuthorizationV1,
@@ -140,7 +140,8 @@ export class ResearchSessionDispatchJournalV1 {
     graph: ResearchGraphV1;
     evidenceIds: string[];
     gapIds: string[];
-    reason: ResearchRetrievalAssessmentReasonV1;
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
   }): Promise<ResearchGraphV1> {
     return this.#enqueue(async () => {
       const session = await this.#read();
@@ -152,6 +153,7 @@ export class ResearchSessionDispatchJournalV1 {
         evidenceIds: input.evidenceIds,
         gapIds: input.gapIds,
         reason: input.reason,
+        ...(input.steeringId === undefined ? {} : { steeringId: input.steeringId }),
       }, (next) => activeTurn(next, this.#turnId).graph!);
     });
   }

@@ -125,6 +125,80 @@ function fullGraphProposal(current: ResearchSessionV1): ResearchGraphProposalV1 
   };
 }
 
+/** Build the only checkpoint from which a user may steer: a completed retrieval wave. */
+function settledPausedSteeringCheckpoint(): {
+  catalog: ReturnType<typeof composeResearchGraphV1>;
+  current: ResearchSessionV1;
+} {
+  let current = readyToRun();
+  const catalog = current.turns[0]!.graph!;
+  current = update(current, {
+    kind: "commit_graph_selection",
+    proposal: fullGraphProposal(current),
+  }, "2026-08-01T09:00:04.500Z");
+  const task = admittedTask(current);
+  current = update(current, {
+    kind: "admit_tasks",
+    graphRevision: task.graphRevision,
+    tasks: [task],
+  }, "2026-08-01T09:00:04.600Z");
+  current = update(current, {
+    kind: "dispatch_started",
+    taskId: task.taskId,
+    graphRevision: task.graphRevision,
+  }, "2026-08-01T09:00:04.700Z");
+  const budgetState = {
+    schema: "atlcli.research-run-budget/v1" as const,
+    ptcCalls: 1,
+    httpAttempts: 1,
+    responseBytes: 256,
+    pages: { jira: 1, confluence: 0 },
+    items: { jira: 1, confluence: 0 },
+    details: { jira: 1, confluence: 0 },
+  };
+  current = update(current, {
+    kind: "accept_packet",
+    taskId: task.taskId,
+    graphRevision: task.graphRevision,
+    body: {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+      answeredQuestion: "The bounded retrieval wave completed.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    },
+    usage: { capabilityCalls: 1, inputTokens: 1, outputTokens: 1, resultBytes: 256, durationMs: 1, costMicros: 0 },
+    availableSourceIds: [],
+    maximumResultBytes: task.budget.maxResultBytes,
+    budgetState,
+  }, "2026-08-01T09:00:04.800Z");
+  current = update(current, {
+    kind: "record_retrieval_assessment",
+    graphRevision: task.graphRevision,
+    assessment: assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1"],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    }),
+    issueContinuation: true,
+    budgetState,
+  }, "2026-08-01T09:00:04.900Z");
+  current = update(current, { kind: "request_pause" }, "2026-08-01T09:00:05.000Z");
+  current = update(current, { kind: "acknowledge_pause" }, "2026-08-01T09:00:05.100Z");
+  return { catalog, current };
+}
+
 describe("durable host-neutral research session reducer", () => {
   test("persists a revision-fenced accepted turn and plan before any dispatch", () => {
     const running = readyToRun();
@@ -562,25 +636,37 @@ describe("durable host-neutral research session reducer", () => {
       lease: { expiresAt: "2026-08-01T09:00:04.000Z" },
     });
 
-    let steering = readyToRun(brief({ scopeCandidates: [scopeCandidate()] }));
+    const pausedSteering = settledPausedSteeringCheckpoint();
+    let steering = pausedSteering.current;
+    const steeringGraph = steering.turns[0]!.graph!;
     steering = update(steering, {
       kind: "request_steering",
       steeringId: "steering:focus-links",
+      basedOnGraphRevision: steeringGraph.revision,
       request: "Prioritize exact linked Jira and Confluence items.",
     }, "2026-08-01T09:00:05.000Z");
     expect(steering).toMatchObject({
       status: "waiting_steering",
       lease: { expiresAt: "2026-08-01T09:00:05.000Z" },
     });
-    const steeringTurn = steering.turns[0]!;
-    steering = update(steering, {
+    expect(steering.turns[0]!.steering).toEqual([
+      expect.objectContaining({
+        id: "steering:focus-links",
+        basedOnGraphRevision: steeringGraph.revision,
+        state: "requested",
+      }),
+    ]);
+
+    let scope = readyToRun(brief({ scopeCandidates: [scopeCandidate()] }));
+    const scopeTurn = scope.turns[0]!;
+    scope = update(scope, {
       kind: "propose_scope_expansion",
       proposal: createResearchScopeExpansionProposalV1({
         id: "scope-expansion:related-space",
-        sessionId: steering.sessionId,
-        turnId: steeringTurn.id,
-        basedOnBriefRevision: steeringTurn.brief!.revision,
-        basedOnGraphRevision: steeringTurn.graph!.revision,
+        sessionId: scope.sessionId,
+        turnId: scopeTurn.id,
+        basedOnBriefRevision: scopeTurn.brief!.revision,
+        basedOnGraphRevision: scopeTurn.graph!.revision,
         candidateId: "research-scope-candidate:confluence-space-related",
         expansionKind: "whole_scope",
         reason: "A retained link targets a related approved space.",
@@ -588,9 +674,60 @@ describe("durable host-neutral research session reducer", () => {
         status: "proposed",
       }),
     }, "2026-08-01T09:00:06.000Z");
-    expect(steering).toMatchObject({
+    expect(scope).toMatchObject({
       status: "waiting_scope_approval",
       lease: { expiresAt: "2026-08-01T09:00:06.000Z" },
+    });
+  });
+
+  test("applies one user steering graph diff atomically at its resumed checkpoint", () => {
+    const checkpoint = settledPausedSteeringCheckpoint();
+    let current = update(checkpoint.current, {
+      kind: "request_steering",
+      steeringId: "steering:prioritize-join",
+      basedOnGraphRevision: checkpoint.current.turns[0]!.graph!.revision,
+      request: "Prioritize the approved cross-product relationship analysis.",
+    }, "2026-08-01T09:00:05.200Z");
+    current = update(current, { kind: "resume" }, "2026-08-01T09:00:05.300Z");
+    const active = current.turns[0]!.graph!;
+    const revised = reviseResearchGraphSelectionV1(checkpoint.catalog, active, {
+      schema: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+      basedOnBriefRevision: active.basedOnBriefRevision,
+      basedOnGraphRevision: active.revision,
+      nodes: active.nodes.map((node) => ({
+        nodeId: node.id,
+        dependencies: [...node.dependencies],
+        reasonCodes: [...node.reasonCodes],
+        priority: node.id === "research-node:cross-product-join" ? 100 : node.priority,
+      })),
+      prune: [],
+    });
+    current = update(current, {
+      kind: "apply_graph_revision",
+      graph: revised,
+      evidenceIds: [],
+      gapIds: [],
+      reason: "user_steering",
+      steeringId: "steering:prioritize-join",
+    }, "2026-08-01T09:00:05.400Z");
+
+    const turn = current.turns[0]!;
+    expect(current.status).toBe("running");
+    expect(turn.graph).toMatchObject({ revision: active.revision + 1 });
+    expect(turn.steering).toEqual([expect.objectContaining({
+      id: "steering:prioritize-join",
+      state: "applied",
+      appliedGraphRevision: active.revision + 1,
+      planDiff: expect.objectContaining({
+        reprioritizedNodeIds: ["research-node:cross-product-join"],
+        exceededApprovalEnvelopeFields: [],
+      }),
+    })]);
+    expect(turn.graphRevisions?.at(-1)).toMatchObject({
+      reason: "user_steering",
+      steeringId: "steering:prioritize-join",
+      graph: { revision: active.revision + 1 },
+      planDiff: expect.objectContaining({ exceededApprovalEnvelopeFields: [] }),
     });
   });
 
