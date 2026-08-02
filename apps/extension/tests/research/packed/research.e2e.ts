@@ -2322,6 +2322,29 @@ async function readPackedDurableResearchSession(
   }, { sessionId, artifactId });
 }
 
+/** Read every persisted research namespace, deliberately excluding chrome.storage.session. */
+async function readPackedResearchDatabaseText(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const open = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("atlcli-research-sessions");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const stores = [...open.objectStoreNames];
+      const transaction = open.transaction(stores, "readonly");
+      const rows = await Promise.all(stores.map((name) => new Promise<[string, unknown[]]>((resolve, reject) => {
+        const request = transaction.objectStore(name).getAll();
+        request.onsuccess = () => resolve([name, request.result]);
+        request.onerror = () => reject(request.error);
+      })));
+      return JSON.stringify(Object.fromEntries(rows));
+    } finally {
+      open.close();
+    }
+  });
+}
+
 async function countPackedResearchSessionRows(
   page: Page,
   sessionId: string,
@@ -4900,6 +4923,9 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(wikiSearches[0]?.cql).toContain('lastmodified >= "2026-07-23"');
   expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(11);
   expect(JSON.stringify(successEvents)).not.toContain(FAKE_KEY);
+  const persistedResearchDatabase = await readPackedResearchDatabaseText(page);
+  expect(persistedResearchDatabase).not.toContain(FAKE_KEY);
+  expect(persistedResearchDatabase).not.toContain("/wiki/rest/api/content/search?cursor=wiki-next-1");
   expect(
     fetches.some((event) =>
       ["PUT", "PATCH", "DELETE"].includes(event.method ?? "")
