@@ -3495,7 +3495,10 @@ Shared:
       is advisory and cannot be the sole continue/stop condition.
 - [ ] Allow repeated bounded QuickJS calls, but make each call replayable and
       disposable.
-- [ ] Record why each detail was fetched and why the retrieval loop stopped.
+- [x] Persist body-free, host-bound rationale for each detail fetch (the
+      question-relevance rank and source identity); reject mismatched
+      provenance before evidence publication.
+- [ ] Record why the retrieval loop stopped.
 - [ ] Record why each role/node was selected or omitted, why reconciliation
       was triggered or skipped, and why each proposed follow-up was accepted,
       rejected, or pruned.
