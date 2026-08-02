@@ -1,0 +1,10 @@
+{
+  "name": "export-blocks-astro-plain-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "astro build", "dev": "astro dev" },
+  "dependencies": {
+    "@atlcli/export-blocks-astro": "workspace:*",
+    "astro": "7.1.6"
+  }
+}

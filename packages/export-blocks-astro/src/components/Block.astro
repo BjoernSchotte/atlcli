@@ -1,0 +1,72 @@
+---
+import {
+  materializeTable,
+  mediaFallbackDisplayText,
+  resolveCalloutIcon,
+  smartCardDisplayText,
+  type ExportBlock,
+} from "@atlcli/export-blocks";
+import { exportBlockKindV1 } from "../contracts.js";
+import { astroExportAssetKeyV1, type AstroExportBlockOverridesV1, type AstroExportBlockRenderContextV1 } from "../index.js";
+import type { AstroExportBlockOverrideSlotV1 } from "../overrides.js";
+import { safeExportBlockAssetSrcV1, safeExportBlockPercentageV1 } from "../security.js";
+import Inline from "./Inline.astro";
+import ExportDocument from "./ExportDocument.astro";
+import Caption from "./Caption.astro";
+
+interface Props { block: ExportBlock; blockPath?: string; context: AstroExportBlockRenderContextV1; overrides?: AstroExportBlockOverridesV1; }
+const { block, blockPath, context, overrides } = Astro.props;
+const kind = exportBlockKindV1(block);
+const table = kind === "table" ? materializeTable(block) : undefined;
+const HeadingTag = kind === "heading" ? `h${block.level}` : "div";
+const asset = kind === "image" ? context.assets[astroExportAssetKeyV1(block.source)] : undefined;
+const assetSrc = safeExportBlockAssetSrcV1(asset?.src);
+const assetVariants = asset?.srcset?.flatMap((variant) => {
+  const src = safeExportBlockAssetSrcV1(variant.src);
+  return src === undefined || !Number.isSafeInteger(variant.width) || variant.width < 1 ? [] : [{ ...variant, src }];
+}) ?? [];
+const assetSizes = typeof asset?.sizes === "string" && asset.sizes.length <= 200 ? asset.sizes : undefined;
+const assetDownload = safeExportBlockAssetSrcV1(asset?.downloadHref);
+const calloutIcon = kind === "callout" ? resolveCalloutIcon(block) : undefined;
+function overrideSlotForKind(value: ExportBlock["type"]): AstroExportBlockOverrideSlotV1 | undefined {
+  switch (value) {
+    case "heading": case "paragraph": case "callout": case "expand": case "list":
+    case "layout": case "table": case "image": case "mediaFallback": case "blockquote":
+    case "unknown": return value;
+    case "codeBlock": return "code";
+    case "smartCard": return "smart-card";
+    case "divider": case "pageBreak": case "orientation": case "anchor": return undefined;
+  }
+}
+const overrideSlot = overrideSlotForKind(kind);
+const BlockOverride = overrideSlot ? overrides?.[overrideSlot] : undefined;
+const headingId = kind === "heading" ? (blockPath === undefined ? block.explicitAnchor : context.headingAnchors?.[blockPath] ?? block.explicitAnchor) : undefined;
+---
+
+{BlockOverride ? <BlockOverride block={block} context={context} /> : <>
+{kind === "heading" && <HeadingTag id={headingId} data-atlcli-block="heading"><Inline nodes={block.content} locale={context.locale} context={context} /></HeadingTag>}
+{kind === "paragraph" && <p data-atlcli-block="paragraph"><Inline nodes={block.content} locale={context.locale} context={context} /></p>}
+{kind === "smartCard" && <aside data-atlcli-block="smart-card">{smartCardDisplayText(block.card)}</aside>}
+{kind === "codeBlock" && <figure data-atlcli-block="code">{block.title && <header>{block.title}</header>}<pre><code class:list={{ [`language-${block.language ?? "plain"}`]: true }}>{block.code}</code></pre>{block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}</figure>}
+{kind === "callout" && <aside data-atlcli-block="callout" data-kind={block.kind}>{calloutIcon && <span aria-hidden="true">{calloutIcon.source === "explicit" ? calloutIcon.text : calloutIcon.icon.symbol}</span>}<strong>{block.title ?? block.kind}</strong><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></aside>}
+{kind === "expand" && <details data-atlcli-block="expand" open><summary>{block.title ?? "Details"}</summary><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></details>}
+{kind === "list" && (block.ordered
+  ? <ol data-atlcli-block="list" start={block.start}>{block.items.map((item, index) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} path={blockPath === undefined ? undefined : `${blockPath}.items[${index}].content`} context={context} overrides={overrides} /></li>)}</ol>
+  : <ul data-atlcli-block="list">{block.items.map((item, index) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} path={blockPath === undefined ? undefined : `${blockPath}.items[${index}].content`} context={context} overrides={overrides} /></li>)}</ul>)}
+{kind === "layout" && <section data-atlcli-block="layout" style={`--atlcli-layout-columns:${block.columns.length}`}>{block.columns.map((column, index) => <div style={safeExportBlockPercentageV1(column.width) ? `--atlcli-layout-width:${safeExportBlockPercentageV1(column.width)}` : undefined}><ExportDocument blocks={column.content} path={blockPath === undefined ? undefined : `${blockPath}.columns[${index}].content`} context={context} overrides={overrides} /></div>)}</section>}
+{kind === "table" && <table data-atlcli-block="table">{block.caption && <caption><Inline nodes={block.caption.content} locale={context.locale} context={context} /></caption>}<tbody>{table?.rows.map((row, rowIndex) => <tr>{row.cells.map((cell, cellIndex) => cell.header ? <th scope="col" colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} path={blockPath === undefined ? undefined : `${blockPath}.rows[${rowIndex}].cells[${cellIndex}].content`} context={context} overrides={overrides} /></th> : <td colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} path={blockPath === undefined ? undefined : `${blockPath}.rows[${rowIndex}].cells[${cellIndex}].content`} context={context} overrides={overrides} /></td>)}</tr>)}</tbody></table>}
+{kind === "image" && <figure data-atlcli-block="image">{assetSrc ? <>
+  <picture data-atlcli-image-mode={asset?.mode ?? "verified-original"}>
+    {assetVariants.map((variant) => <source srcset={`${variant.src} ${variant.width}w`} type={variant.mediaType} />)}
+    <img src={assetSrc} alt={block.alt ?? asset?.alt ?? ""} srcset={assetVariants.length === 0 ? undefined : assetVariants.map((variant) => `${variant.src} ${variant.width}w`).join(", ")} sizes={assetSizes} width={asset?.width} height={asset?.height} loading="lazy" decoding="async" />
+  </picture>
+  {assetDownload && <a href={assetDownload} download={asset?.downloadName} data-atlcli-original-download>Download original</a>}
+</> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}</figure>}
+{kind === "mediaFallback" && <aside data-atlcli-block="media-fallback">{mediaFallbackDisplayText(block)}</aside>}
+{kind === "blockquote" && <blockquote data-atlcli-block="blockquote"><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></blockquote>}
+{kind === "divider" && <hr data-atlcli-block="divider" />}
+{kind === "pageBreak" && <hr data-atlcli-block="page-break" />}
+{kind === "orientation" && <section data-atlcli-block="orientation" data-landscape={String(block.landscape)}><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></section>}
+{kind === "anchor" && <span id={block.name} data-atlcli-block="anchor"></span>}
+{kind === "unknown" && <aside data-atlcli-block="unknown" data-macro-name={block.macroName}><strong>Unsupported macro: {block.macroName}</strong>{block.body && <ExportDocument blocks={block.body} path={blockPath === undefined ? undefined : `${blockPath}.body`} context={context} overrides={overrides} />}{block.plainBody && <pre>{block.plainBody}</pre>}</aside>}
+</>}

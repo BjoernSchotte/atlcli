@@ -1,0 +1,12 @@
+---
+import PublicationPage from "../../../components/PublicationPage.astro";
+import { getPublicationPaths } from "../../../lib/publication-paths";
+
+export async function getStaticPaths() {
+  return getPublicationPaths("ar");
+}
+
+const { breadcrumbs, entry, navigation, related } = Astro.props;
+---
+
+<PublicationPage breadcrumbs={breadcrumbs} entry={entry} navigation={navigation} related={related} />

@@ -1,0 +1,47 @@
+{
+  "name": "@atlcli/web-publish-astro",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./components/PagefindSearch.astro": "./dist/components/PagefindSearch.astro",
+    "./components/PagefindSearchPage.astro": "./dist/components/PagefindSearchPage.astro",
+    "./components/PublicationSeoHead.astro": "./dist/components/PublicationSeoHead.astro",
+    "./components/PublicationPrefetch.astro": "./dist/components/PublicationPrefetch.astro",
+    "./components/PublicationAnalytics.astro": "./dist/components/PublicationAnalytics.astro"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && bun scripts/copy-assets.ts",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+  },
+  "dependencies": {
+    "@atlcli/export-blocks": "workspace:*",
+    "@atlcli/export-blocks-astro": "workspace:*",
+    "@atlcli/web-publish": "workspace:*",
+    "pagefind": "1.5.2"
+  },
+  "peerDependencies": {
+    "astro": ">=7.1.6 <8"
+  },
+  "devDependencies": {
+    "@atlcli/web-publish-starlight": "workspace:*"
+  }
+}

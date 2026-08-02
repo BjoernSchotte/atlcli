@@ -1,0 +1,52 @@
+{
+  "name": "@atlcli/export-blocks-astro",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./fixtures": {
+      "types": "./dist/fixtures.d.ts",
+      "default": "./dist/fixtures.js"
+    },
+    "./components/ExportDocument.astro": "./dist/components/ExportDocument.astro",
+    "./components/Caption.astro": "./dist/components/Caption.astro",
+    "./components/StaticChart.astro": "./dist/components/StaticChart.astro",
+    "./components/InteractiveChart.astro": "./dist/components/InteractiveChart.astro",
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && bun scripts/copy-assets.ts",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+  },
+  "dependencies": {
+    "@atlcli/export-blocks": "workspace:*",
+    "@tanstack/charts": "0.3.1",
+    "d3-scale": "4.0.2"
+  },
+  "peerDependencies": {
+    "astro": ">=7.1.6 <8"
+  },
+  "devDependencies": {
+    "@types/d3-scale": "4.0.9"
+  }
+}

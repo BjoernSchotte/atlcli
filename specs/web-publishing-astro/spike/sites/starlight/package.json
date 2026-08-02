@@ -1,0 +1,27 @@
+{
+  "name": "@atlcli/web-publish-starlight-t0",
+  "version": "0.0.0-t0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "build": "astro build",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "7.0.5",
+    "@astrojs/sitemap": "3.7.3",
+    "@astrojs/starlight": "0.41.5",
+    "@atlcli/export-blocks-astro": "workspace:*",
+    "@atlcli/web-publish-astro-spike": "workspace:*",
+    "@plausible-analytics/tracker": "0.4.5",
+    "astro": "7.1.6",
+    "astro-expressive-code": "0.44.1",
+    "sharp": "0.34.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.6",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3"
+  }
+}

@@ -121,7 +121,7 @@ function sourceOptions<Request extends PdfExportJobRequestV1 | DocxExportJobRequ
   options: SharedSourceOptionsV1,
   request: Request,
   context: ExportJobExecutionContext,
-  exporter: "pdf" | "word",
+  exporter: "pdf" | "word" | "web",
   onProgress?: (progress: ConfluenceSourceProgressV1) => void,
 ): ResolveConfluenceSourceOptionsV1 {
   const sourcePlan = options.createSourcePlan?.(request, context) ?? options.sourcePlan;
@@ -176,7 +176,7 @@ async function resolveSourceWithProgressV1(
   options: SharedSourceOptionsV1,
   request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
   context: ExportJobExecutionContext,
-  exporter: "pdf" | "word",
+  exporter: "pdf" | "word" | "web",
 ): Promise<ResolvedConfluenceSourceV1> {
   const progress = sourceProgressChannel(options, request, context);
   let resolved: ResolvedConfluenceSourceV1 | undefined;

@@ -1,0 +1,65 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import type { AstroExportBlockRenderContextV1 } from "@atlcli/export-blocks-astro";
+import type { PublicationPageV1 } from "@atlcli/web-publish";
+import type {
+  StarlightPublicationPageNavigationV1,
+  StarlightPublicationSidebarEntryV1,
+} from "../navigation.js";
+import StarlightDocumentBody from "./StarlightDocumentBody.astro";
+import StarlightPublicationNavigation from "./StarlightPublicationNavigation.astro";
+import StarlightPublicationEditLink from "./StarlightPublicationEditLink.astro";
+
+interface PublicationSeoHeadTagV1 {
+  tag: "title" | "meta" | "link" | "script";
+  attrs?: Readonly<Record<string, string>>;
+  content?: string;
+}
+
+interface Props {
+  /** Trusted, structured source page selected by the static path identity. */
+  page: PublicationPageV1;
+  /** Navigation preplanned from the complete page graph. */
+  navigation: StarlightPublicationPageNavigationV1;
+  /** Documented Starlight sidebar shape, preplanned from the same graph. */
+  sidebar: readonly StarlightPublicationSidebarEntryV1[];
+  context: AstroExportBlockRenderContextV1;
+  copy?: {
+    breadcrumbs?: string;
+    relatedPages?: string;
+    previous?: string;
+    next?: string;
+    pagination?: string;
+  };
+  /** Shared SEO tags generated from the publication route/locale planner. */
+  seoHead?: readonly PublicationSeoHeadTagV1[];
+  /** Optional provider-validated action; the component never derives an URL. */
+  editLink?: { href: string; label?: string };
+}
+
+const { page, navigation, sidebar, context, copy, seoHead, editLink } = Astro.props;
+---
+
+<StarlightPage
+  lang={context.locale}
+  dir={context.direction}
+  frontmatter={{
+    title: page.title,
+    // The publication planner, rather than Starlight's file/MDX traversal,
+    // owns the deterministic previous/next sequence rendered below.
+    prev: false,
+    next: false,
+    ...(seoHead === undefined ? {} : { head: seoHead }),
+  }}
+  headings={navigation.toc.map((heading) => ({ depth: heading.level, slug: heading.anchorId, text: heading.text }))}
+  sidebar={sidebar}
+>
+  {editLink && <StarlightPublicationEditLink href={editLink.href} label={editLink.label} />}
+  <StarlightPublicationNavigation navigation={navigation} copy={copy} />
+  <slot />
+  <StarlightDocumentBody
+    blocks={page.blocks}
+    context={context}
+    search={{ sourceId: page.sourceId, title: page.title, labels: page.labels, locale: context.locale }}
+  />
+</StarlightPage>

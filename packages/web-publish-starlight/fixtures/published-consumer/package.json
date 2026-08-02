@@ -1,0 +1,17 @@
+{
+  "name": "@atlcli/web-publish-starlight-published-consumer-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "astro build",
+    "dev": "astro dev"
+  },
+  "dependencies": {
+    "@atlcli/export-blocks-astro": "workspace:*",
+    "@atlcli/web-publish": "workspace:*",
+    "@atlcli/web-publish-astro": "workspace:*",
+    "@atlcli/web-publish-starlight": "workspace:*",
+    "@astrojs/starlight": "0.41.5",
+    "astro": "7.1.6"
+  }
+}

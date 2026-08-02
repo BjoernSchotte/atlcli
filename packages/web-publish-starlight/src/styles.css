@@ -1,0 +1,101 @@
+/* Maps documented Starlight tokens onto the stable render-kit token contract. */
+[data-atlcli-starlight-slot="main-content"] {
+  --atlcli-content-foreground: var(--sl-color-text);
+  --atlcli-content-muted: var(--sl-color-gray-3);
+  --atlcli-content-border: var(--sl-color-gray-5);
+  --atlcli-content-surface: var(--sl-color-gray-6);
+  --atlcli-content-code-background: var(--sl-color-gray-6);
+}
+
+/* Graph-derived chrome uses only stable atlcli semantic slots, never generated
+   Starlight class names. It remains legible when a future theme replaces the
+   Starlight page shell. */
+[data-atlcli-publication-slot="breadcrumbs"] {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-sm);
+  margin-block: 0 1.25rem;
+}
+
+[data-atlcli-publication-slot="breadcrumbs"] ol {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+[data-atlcli-publication-slot="breadcrumbs"] li + li::before {
+  content: "/";
+  margin-inline-end: 0.4rem;
+}
+
+[data-atlcli-publication-slot="related-pages"] {
+  background: var(--sl-color-gray-6);
+  border-inline-start: 0.2rem solid var(--sl-color-accent);
+  border-radius: 0.35rem;
+  margin-block: 1.5rem;
+  padding: 1rem 1.125rem;
+}
+
+[data-atlcli-publication-slot="related-pages"] h2 {
+  font-size: var(--sl-text-lg);
+  margin-block: 0 0.5rem;
+}
+
+[data-atlcli-publication-slot="related-pages"] ul {
+  margin-block: 0;
+  padding-inline-start: 1.25rem;
+}
+
+[data-atlcli-publication-slot="previous-next"] {
+  border-top: 1px solid var(--sl-color-gray-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  justify-content: space-between;
+  margin-block: 2rem 0;
+  padding-block-start: 1.25rem;
+}
+
+[data-atlcli-publication-slot="previous-next"] a:last-child {
+  margin-inline-start: auto;
+}
+
+[data-atlcli-publication-slot="label-landing"] {
+  max-inline-size: 48rem;
+}
+
+[data-atlcli-publication-slot="label-landing"] > p {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-lg);
+}
+
+[data-atlcli-publication-slot="label-landing"] section {
+  border-top: 1px solid var(--sl-color-gray-5);
+  margin-block-start: 2rem;
+  padding-block-start: 1.25rem;
+}
+
+[data-atlcli-edit-link] {
+  display: inline-block;
+  margin-block-end: 1rem;
+}
+
+@media print {
+  [data-atlcli-edit-link] {
+    display: none;
+  }
+
+  [data-atlcli-starlight-slot="main-content"] {
+    --atlcli-content-foreground: #000;
+    --atlcli-content-muted: #333;
+    --atlcli-content-border: #666;
+  }
+
+  [data-atlcli-publication-slot="related-pages"] {
+    background: transparent;
+    break-inside: avoid;
+  }
+}

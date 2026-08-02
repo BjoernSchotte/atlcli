@@ -26,9 +26,11 @@ import type {
   ExportNote,
   InlineNode,
   LinkTarget,
+  PageLinkResolver,
   SmartCardSemantics,
 } from "./export-blocks.js";
 import {
+  createPageLinkResolver,
   formatAdfDateTimestamp,
   inlineMediaDisplayText,
   mentionDisplayText,
@@ -428,68 +430,12 @@ function registerPageAnchors(
 }
 
 // ---------------------------------------------------------------------------
-// Emit pass: link resolution
-// ---------------------------------------------------------------------------
-
-type Resolution =
-  | { kind: "resolved"; targetId: string }
-  | { kind: "ambiguous" }
-  | { kind: "out-of-scope" };
-
-interface PageIndex {
-  byId: Map<string, ExportPageNode>;
-  bySpaceTitle: Map<string, ExportPageNode[]>;
-}
-
-/** Unambiguous composite key for (spaceKey, title) lookups. */
-function spaceTitleKey(spaceKey: string, title: string): string {
-  return JSON.stringify([spaceKey, title]);
-}
-
-function buildPageIndex(pages: readonly ExportPageNode[]): PageIndex {
-  const byId = new Map<string, ExportPageNode>();
-  const bySpaceTitle = new Map<string, ExportPageNode[]>();
-  for (const page of pages) {
-    byId.set(page.pageId, page);
-    const space = page.meta.spaceKey;
-    if (space) {
-      const key = spaceTitleKey(space, page.title);
-      const list = bySpaceTitle.get(key);
-      if (list) list.push(page);
-      else bySpaceTitle.set(key, [page]);
-    }
-  }
-  return { byId, bySpaceTitle };
-}
-
-function resolvePageLink(
-  target: Extract<LinkTarget, { kind: "page" }>,
-  currentSpaceKey: string | undefined,
-  index: PageIndex
-): Resolution {
-  // (1) contentId exact match.
-  if (target.contentId) {
-    const node = index.byId.get(target.contentId);
-    if (node) return { kind: "resolved", targetId: node.pageId };
-    return { kind: "out-of-scope" };
-  }
-  // (2)/(3) title within a space: the link's own space, else the current page's.
-  const space = target.spaceKey ?? currentSpaceKey;
-  if (space) {
-    const cands = index.bySpaceTitle.get(spaceTitleKey(space, target.contentTitle)) ?? [];
-    if (cands.length === 1) return { kind: "resolved", targetId: cands[0]!.pageId };
-    if (cands.length > 1) return { kind: "ambiguous" };
-  }
-  return { kind: "out-of-scope" };
-}
-
-// ---------------------------------------------------------------------------
 // Emit pass: inline + block transform
 // ---------------------------------------------------------------------------
 
 interface EmitCtx {
   page: ExportPageNode;
-  index: PageIndex;
+  pageLinkResolver: PageLinkResolver;
   registry: AnchorRegistry;
   chapterDestById: Map<string, string>;
   destByBlock: DestByBlock;
@@ -582,7 +528,7 @@ function rewriteLink(
       return [{ type: "link", target: { kind: "anchor", anchor: dest }, content }];
     }
     case "page": {
-      const resolution = resolvePageLink(target, ctx.page.meta.spaceKey, ctx.index);
+      const resolution = ctx.pageLinkResolver.resolve(target, ctx.page.meta.spaceKey);
       if (resolution.kind === "ambiguous") {
         ctx.notes.push({
           level: target.href ? "info" : "warning",
@@ -818,7 +764,11 @@ export function composeChapters(
   }
 
   const pages = nodes.filter((n): n is ExportPageNode => n.kind === "page");
-  const index = buildPageIndex(pages);
+  const pageLinkResolver = createPageLinkResolver(pages.map((page) => ({
+    id: page.pageId,
+    title: page.title,
+    ...(page.meta.spaceKey ? { spaceKey: page.meta.spaceKey } : {}),
+  })));
 
   // ---- Pass 2: emit blocks (document order) ----
   const blocks: ExportBlock[] = [];
@@ -849,7 +799,7 @@ export function composeChapters(
         const shift = chapterLevel - offset;
         const ctx: EmitCtx = {
           page: node,
-          index,
+          pageLinkResolver,
           registry,
           chapterDestById,
           destByBlock,

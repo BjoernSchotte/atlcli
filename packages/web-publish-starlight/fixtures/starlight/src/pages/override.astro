@@ -1,0 +1,16 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import StarlightDocumentBody from "@atlcli/web-publish-starlight/components/StarlightDocumentBody.astro";
+import TrustedHeading from "../components/TrustedHeading.astro";
+import { PUBLISHED_KNOWLEDGE_SIDEBAR_V1 } from "../navigation";
+import { OVERRIDE_INVARIANT_BLOCKS_V1, OVERRIDE_INVARIANT_CONTEXT_V1 } from "../override-fixture";
+---
+
+<StarlightPage frontmatter={{ title: "Override presentation" }} sidebar={PUBLISHED_KNOWLEDGE_SIDEBAR_V1}>
+  <StarlightDocumentBody
+    blocks={OVERRIDE_INVARIANT_BLOCKS_V1}
+    context={OVERRIDE_INVARIANT_CONTEXT_V1}
+    overrides={{ heading: TrustedHeading }}
+    search={{ sourceId: "override", title: "Override invariant", labels: ["invariant"] }}
+  />
+</StarlightPage>

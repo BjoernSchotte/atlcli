@@ -15,7 +15,7 @@ function lookupPort(available: Set<string>): AttachmentLookupPort {
   };
 }
 
-function ctx(attachments?: AttachmentLookupPort, targetEngine?: "docx" | "pdf"): MacroExportContext {
+function ctx(attachments?: AttachmentLookupPort, targetEngine?: "docx" | "pdf" | "web"): MacroExportContext {
   return {
     page: { id: "42" },
     depth: 0,
@@ -71,6 +71,21 @@ describe("diagramMacroRenderer", () => {
     } else {
       throw new Error("expected blocks");
     }
+  });
+
+  test("Web retains the static SVG preview when available", async () => {
+    const result = await diagramMacroRenderer().render(
+      { name: "drawio", params: [{ name: "name", text: "architecture" }] },
+      ctx({
+        async lookup(_pageId, filename) {
+          return filename === "architecture.svg" ? { filename, version: 1 } : undefined;
+        },
+      }, "web"),
+    );
+    expect(result).toMatchObject({
+      kind: "blocks",
+      blocks: [{ type: "image", source: { kind: "attachment", filename: "architecture.svg" } }],
+    });
   });
 
   test("DOCX stays on PNG even when an SVG preview exists (TODO T1.15)", async () => {

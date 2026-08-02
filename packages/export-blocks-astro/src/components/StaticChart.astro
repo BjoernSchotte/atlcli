@@ -1,0 +1,26 @@
+---
+import { normalizeStaticChartV1, type StaticChartModelV1 } from "../charts.js";
+
+interface Props { chart: StaticChartModelV1; }
+const { chart } = Astro.props;
+const normalized = normalizeStaticChartV1(chart);
+const width = 720;
+const height = 320;
+const plotHeight = 240;
+const groupWidth = width / normalized.labels.length;
+const barWidth = Math.max(2, (groupWidth - 12) / normalized.series.length);
+const colors = ["#0c66e4", "#00875a", "#974f0c", "#6554c0", "#de350b"];
+---
+
+<figure data-atlcli-block="chart">
+  <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={normalized.title}>
+    <title>{normalized.title}</title>
+    <desc>{normalized.series.map((series) => `${series.name}: ${series.values.join(", ")}`).join("; ")}</desc>
+    {normalized.labels.map((label, labelIndex) => <text x={labelIndex * groupWidth + groupWidth / 2} y={height - 12} text-anchor="middle" font-size="12">{label}</text>)}
+    {normalized.series.map((series, seriesIndex) => series.values.map((value, labelIndex) => {
+      const barHeight = value / normalized.maximum * plotHeight;
+      return <rect data-atlcli-chart-series={series.name} data-atlcli-chart-label={normalized.labels[labelIndex]} data-atlcli-chart-value={String(value)} x={labelIndex * groupWidth + 6 + seriesIndex * barWidth} y={plotHeight - barHeight} width={barWidth - 2} height={barHeight} fill={colors[seriesIndex % colors.length]}><title>{`${series.name}, ${normalized.labels[labelIndex]}: ${value}`}</title></rect>;
+    }))}
+  </svg>
+  <figcaption>{normalized.title}</figcaption>
+</figure>

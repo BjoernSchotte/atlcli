@@ -34,6 +34,23 @@ jobs, and machine-readable reports for repeatable publishing and CI.
 
 [Explore DOCX and PDF export →](https://atlcli.sh/confluence/export/)
 
+### Static web publishing with Astro
+
+Build a Confluence page tree or space into a verified static Astro site. The
+pipeline acquires a private immutable bundle, renders `ExportBlock[]` through
+the supported Starlight experience or a plain Astro render kit, builds local
+Pagefind search, and verifies the final output before an operator deploys it.
+It does not use Markdown as an intermediate format and does not claim remote
+deployment, PWA, or request-time Confluence access.
+
+```bash
+atlcli wiki publish plan --project .atlcli/publish.json --profile work
+atlcli wiki publish run --project .atlcli/publish.json --profile work
+atlcli wiki publish verify --project .atlcli/publish.json
+```
+
+[Explore Astro web publishing →](https://atlcli.sh/publishing/)
+
 ### World-class document fidelity
 
 atlcli does not print a web page or flatten Confluence into a screenshot. It

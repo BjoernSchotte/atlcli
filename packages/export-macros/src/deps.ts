@@ -10,7 +10,7 @@ import type { ExportBlock, ExportNote } from "@atlcli/confluence";
 export type StorageToBlocksDep = (
   storage: string,
   opts?: {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     pageContext?: { id: string; version?: number; spaceKey?: string };
   }
 ) => { blocks: ExportBlock[]; notes: ExportNote[] };

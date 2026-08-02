@@ -1022,6 +1022,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -1118,6 +1121,9 @@ export declare function decodeSvgSource(bytes: Uint8Array): string;
 // export: DEFAULT_ADF_PARSE_BUDGET
 export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
+// export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
+export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -1148,6 +1154,9 @@ export interface EmojiSemantics {
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
+
+// export: EXPORT_BLOCK_MODEL_SCHEMA_V1
+export declare const EXPORT_BLOCK_MODEL_SCHEMA_V1: "atlcli.export-blocks/1";
 
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
@@ -1234,6 +1243,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "usage-error",
     "cancelled",
     "asset-budget-exceeded",
+    "blocked-asset",
     "space-homepage-missing",
     "auth-error",
     "remote-error",
@@ -1307,6 +1317,7 @@ export type ExportBlock = {
     initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
+    highlightLines?: readonly number[];
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
     localId?: string;
@@ -1408,6 +1419,38 @@ export type ExportBlock = {
     };
 };
 
+// export: ExportBlockDocumentV1
+export interface ExportBlockDocumentV1 {
+    schema: typeof EXPORT_BLOCK_MODEL_SCHEMA_V1;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+}
+
+// export: ExportBlockValidationBudgetV1
+export interface ExportBlockValidationBudgetV1 {
+    maxDepth: number;
+    maxNodes: number;
+    maxStringBytes: number;
+}
+
+// export: ExportBlockValidationErrorV1
+export declare class ExportBlockValidationErrorV1 extends Error {
+    readonly path: string;
+    constructor(path: string, message: string);
+}
+
+// export: ExportBlockVisitContextV1
+export interface ExportBlockVisitContextV1 {
+    path: string;
+    ancestors: readonly ExportBlock[];
+}
+
+// export: ExportBlockVisitorV1
+export interface ExportBlockVisitorV1 {
+    block?(block: ExportBlock, context: ExportBlockVisitContextV1): void;
+    inline?(inline: InlineNode, context: ExportInlineVisitContextV1): void;
+}
+
 // export: ExportCompletenessError
 export declare class ExportCompletenessError extends Error {
     readonly code: CompletenessCode;
@@ -1430,6 +1473,11 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportInlineVisitContextV1
+export interface ExportInlineVisitContextV1 extends ExportBlockVisitContextV1 {
+    owner: ExportBlock;
 }
 
 // export: ExportLink
@@ -2128,6 +2176,30 @@ export interface PageLayout {
     breakout?: LayoutBreakout;
 }
 
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
+}
+
 // export: PagePropertiesMacro
 export interface PagePropertiesMacro {
     id?: string;
@@ -2173,6 +2245,15 @@ export declare function parseAdfDateTimestamp(timestamp: string): Date | undefin
 
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
+// export: parseExportBlockDocumentV1
+export declare function parseExportBlockDocumentV1(value: unknown, budget?: ExportBlockValidationBudgetV1): ExportBlockDocumentV1;
+
+// export: parseExportBlocksV1
+export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
+
+// export: parseExportNotesV1
+export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
@@ -2421,7 +2502,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -2741,6 +2822,9 @@ export interface ValidatedAdfDocument {
 
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
+
+// export: visitExportBlocksV1
+export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -3787,6 +3871,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -3883,6 +3970,9 @@ export declare function decodeSvgSource(bytes: Uint8Array): string;
 // export: DEFAULT_ADF_PARSE_BUDGET
 export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
+// export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
+export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -3913,6 +4003,9 @@ export interface EmojiSemantics {
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
+
+// export: EXPORT_BLOCK_MODEL_SCHEMA_V1
+export declare const EXPORT_BLOCK_MODEL_SCHEMA_V1: "atlcli.export-blocks/1";
 
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
@@ -3999,6 +4092,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "usage-error",
     "cancelled",
     "asset-budget-exceeded",
+    "blocked-asset",
     "space-homepage-missing",
     "auth-error",
     "remote-error",
@@ -4072,6 +4166,7 @@ export type ExportBlock = {
     initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
+    highlightLines?: readonly number[];
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
     localId?: string;
@@ -4173,6 +4268,38 @@ export type ExportBlock = {
     };
 };
 
+// export: ExportBlockDocumentV1
+export interface ExportBlockDocumentV1 {
+    schema: typeof EXPORT_BLOCK_MODEL_SCHEMA_V1;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+}
+
+// export: ExportBlockValidationBudgetV1
+export interface ExportBlockValidationBudgetV1 {
+    maxDepth: number;
+    maxNodes: number;
+    maxStringBytes: number;
+}
+
+// export: ExportBlockValidationErrorV1
+export declare class ExportBlockValidationErrorV1 extends Error {
+    readonly path: string;
+    constructor(path: string, message: string);
+}
+
+// export: ExportBlockVisitContextV1
+export interface ExportBlockVisitContextV1 {
+    path: string;
+    ancestors: readonly ExportBlock[];
+}
+
+// export: ExportBlockVisitorV1
+export interface ExportBlockVisitorV1 {
+    block?(block: ExportBlock, context: ExportBlockVisitContextV1): void;
+    inline?(inline: InlineNode, context: ExportInlineVisitContextV1): void;
+}
+
 // export: ExportCompletenessError
 export declare class ExportCompletenessError extends Error {
     readonly code: CompletenessCode;
@@ -4195,6 +4322,11 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportInlineVisitContextV1
+export interface ExportInlineVisitContextV1 extends ExportBlockVisitContextV1 {
+    owner: ExportBlock;
 }
 
 // export: ExportLink
@@ -4893,6 +5025,30 @@ export interface PageLayout {
     breakout?: LayoutBreakout;
 }
 
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
+}
+
 // export: PagePropertiesMacro
 export interface PagePropertiesMacro {
     id?: string;
@@ -4938,6 +5094,15 @@ export declare function parseAdfDateTimestamp(timestamp: string): Date | undefin
 
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
+// export: parseExportBlockDocumentV1
+export declare function parseExportBlockDocumentV1(value: unknown, budget?: ExportBlockValidationBudgetV1): ExportBlockDocumentV1;
+
+// export: parseExportBlocksV1
+export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
+
+// export: parseExportNotesV1
+export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
@@ -5186,7 +5351,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -5506,6 +5671,9 @@ export interface ValidatedAdfDocument {
 
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
+
+// export: visitExportBlocksV1
+export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -6552,6 +6720,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -6648,6 +6819,9 @@ export declare function decodeSvgSource(bytes: Uint8Array): string;
 // export: DEFAULT_ADF_PARSE_BUDGET
 export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
+// export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
+export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -6678,6 +6852,9 @@ export interface EmojiSemantics {
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
+
+// export: EXPORT_BLOCK_MODEL_SCHEMA_V1
+export declare const EXPORT_BLOCK_MODEL_SCHEMA_V1: "atlcli.export-blocks/1";
 
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
@@ -6764,6 +6941,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "usage-error",
     "cancelled",
     "asset-budget-exceeded",
+    "blocked-asset",
     "space-homepage-missing",
     "auth-error",
     "remote-error",
@@ -6837,6 +7015,7 @@ export type ExportBlock = {
     initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
+    highlightLines?: readonly number[];
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
     localId?: string;
@@ -6938,6 +7117,38 @@ export type ExportBlock = {
     };
 };
 
+// export: ExportBlockDocumentV1
+export interface ExportBlockDocumentV1 {
+    schema: typeof EXPORT_BLOCK_MODEL_SCHEMA_V1;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+}
+
+// export: ExportBlockValidationBudgetV1
+export interface ExportBlockValidationBudgetV1 {
+    maxDepth: number;
+    maxNodes: number;
+    maxStringBytes: number;
+}
+
+// export: ExportBlockValidationErrorV1
+export declare class ExportBlockValidationErrorV1 extends Error {
+    readonly path: string;
+    constructor(path: string, message: string);
+}
+
+// export: ExportBlockVisitContextV1
+export interface ExportBlockVisitContextV1 {
+    path: string;
+    ancestors: readonly ExportBlock[];
+}
+
+// export: ExportBlockVisitorV1
+export interface ExportBlockVisitorV1 {
+    block?(block: ExportBlock, context: ExportBlockVisitContextV1): void;
+    inline?(inline: InlineNode, context: ExportInlineVisitContextV1): void;
+}
+
 // export: ExportCompletenessError
 export declare class ExportCompletenessError extends Error {
     readonly code: CompletenessCode;
@@ -6960,6 +7171,11 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportInlineVisitContextV1
+export interface ExportInlineVisitContextV1 extends ExportBlockVisitContextV1 {
+    owner: ExportBlock;
 }
 
 // export: ExportLink
@@ -7658,6 +7874,30 @@ export interface PageLayout {
     breakout?: LayoutBreakout;
 }
 
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
+}
+
 // export: PagePropertiesMacro
 export interface PagePropertiesMacro {
     id?: string;
@@ -7703,6 +7943,15 @@ export declare function parseAdfDateTimestamp(timestamp: string): Date | undefin
 
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
+// export: parseExportBlockDocumentV1
+export declare function parseExportBlockDocumentV1(value: unknown, budget?: ExportBlockValidationBudgetV1): ExportBlockDocumentV1;
+
+// export: parseExportBlocksV1
+export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
+
+// export: parseExportNotesV1
+export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
@@ -7951,7 +8200,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -8271,6 +8520,9 @@ export interface ValidatedAdfDocument {
 
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
+
+// export: visitExportBlocksV1
+export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -9092,6 +9344,9 @@ export declare function createContributorRecords(page: ConfluencePageDetails, pa
 // export: createIgnore
 export declare function createIgnore(patterns: string[]): Ignore;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: createPagePoller
 export declare function createPagePoller(client: ConfluenceClient, pageId: string, intervalMs?: number): ConfluencePoller;
 
@@ -9127,6 +9382,9 @@ export declare function createWebhookServer(port: number, options?: Partial<Webh
 
 // export: CURRENT_SCHEMA_VERSION
 export declare const CURRENT_SCHEMA_VERSION = 2;
+
+// export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
+export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
 
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
@@ -9211,6 +9469,9 @@ export declare function ensureUsersFromPages(pages: ConfluencePageDetails[], ada
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
+
+// export: EXPORT_BLOCK_MODEL_SCHEMA_V1
+export declare const EXPORT_BLOCK_MODEL_SCHEMA_V1: "atlcli.export-blocks/1";
 
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
@@ -9297,6 +9558,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "usage-error",
     "cancelled",
     "asset-budget-exceeded",
+    "blocked-asset",
     "space-homepage-missing",
     "auth-error",
     "remote-error",
@@ -9370,6 +9632,7 @@ export type ExportBlock = {
     initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
+    highlightLines?: readonly number[];
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
     localId?: string;
@@ -9470,6 +9733,43 @@ export type ExportBlock = {
         spaceKey?: string;
     };
 };
+
+// export: ExportBlockDocumentV1
+export interface ExportBlockDocumentV1 {
+    schema: typeof EXPORT_BLOCK_MODEL_SCHEMA_V1;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+}
+
+// export: ExportBlockValidationBudgetV1
+export interface ExportBlockValidationBudgetV1 {
+    maxDepth: number;
+    maxNodes: number;
+    maxStringBytes: number;
+}
+
+// export: ExportBlockValidationErrorV1
+export declare class ExportBlockValidationErrorV1 extends Error {
+    readonly path: string;
+    constructor(path: string, message: string);
+}
+
+// export: ExportBlockVisitContextV1
+export interface ExportBlockVisitContextV1 {
+    path: string;
+    ancestors: readonly ExportBlock[];
+}
+
+// export: ExportBlockVisitorV1
+export interface ExportBlockVisitorV1 {
+    block?(block: ExportBlock, context: ExportBlockVisitContextV1): void;
+    inline?(inline: InlineNode, context: ExportInlineVisitContextV1): void;
+}
+
+// export: ExportInlineVisitContextV1
+export interface ExportInlineVisitContextV1 extends ExportBlockVisitContextV1 {
+    owner: ExportBlock;
+}
 
 // export: ExportLink
 export interface ExportLink {
@@ -10333,6 +10633,30 @@ export interface PageLayout {
     breakout?: LayoutBreakout;
 }
 
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
+}
+
 // export: PagePropertiesMacro
 export interface PagePropertiesMacro {
     id?: string;
@@ -10435,6 +10759,15 @@ export interface ParsedScope {
     scope: SyncScope;
     spaceKey?: string;
 }
+
+// export: parseExportBlockDocumentV1
+export declare function parseExportBlockDocumentV1(value: unknown, budget?: ExportBlockValidationBudgetV1): ExportBlockDocumentV1;
+
+// export: parseExportBlocksV1
+export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
+
+// export: parseExportNotesV1
+export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parseFilePath
 export declare function parseFilePath(relativePath: string): {
@@ -10813,7 +11146,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -11183,6 +11516,9 @@ export interface ValidationResult {
 
 // export: ValidationSeverity
 export type ValidationSeverity = "error" | "warning";
+
+// export: visitExportBlocksV1
+export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
 
 // export: WebhookEventType
 export type WebhookEventType = "page_created" | "page_updated" | "page_removed" | "page_trashed" | "page_restored" | "page_moved";
@@ -12291,6 +12627,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -12387,6 +12726,9 @@ export declare function decodeSvgSource(bytes: Uint8Array): string;
 // export: DEFAULT_ADF_PARSE_BUDGET
 export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
+// export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
+export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -12417,6 +12759,9 @@ export interface EmojiSemantics {
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
+
+// export: EXPORT_BLOCK_MODEL_SCHEMA_V1
+export declare const EXPORT_BLOCK_MODEL_SCHEMA_V1: "atlcli.export-blocks/1";
 
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
@@ -12503,6 +12848,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "usage-error",
     "cancelled",
     "asset-budget-exceeded",
+    "blocked-asset",
     "space-homepage-missing",
     "auth-error",
     "remote-error",
@@ -12576,6 +12922,7 @@ export type ExportBlock = {
     initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
+    highlightLines?: readonly number[];
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
     localId?: string;
@@ -12677,6 +13024,38 @@ export type ExportBlock = {
     };
 };
 
+// export: ExportBlockDocumentV1
+export interface ExportBlockDocumentV1 {
+    schema: typeof EXPORT_BLOCK_MODEL_SCHEMA_V1;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+}
+
+// export: ExportBlockValidationBudgetV1
+export interface ExportBlockValidationBudgetV1 {
+    maxDepth: number;
+    maxNodes: number;
+    maxStringBytes: number;
+}
+
+// export: ExportBlockValidationErrorV1
+export declare class ExportBlockValidationErrorV1 extends Error {
+    readonly path: string;
+    constructor(path: string, message: string);
+}
+
+// export: ExportBlockVisitContextV1
+export interface ExportBlockVisitContextV1 {
+    path: string;
+    ancestors: readonly ExportBlock[];
+}
+
+// export: ExportBlockVisitorV1
+export interface ExportBlockVisitorV1 {
+    block?(block: ExportBlock, context: ExportBlockVisitContextV1): void;
+    inline?(inline: InlineNode, context: ExportInlineVisitContextV1): void;
+}
+
 // export: ExportCompletenessError
 export declare class ExportCompletenessError extends Error {
     readonly code: CompletenessCode;
@@ -12699,6 +13078,11 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportInlineVisitContextV1
+export interface ExportInlineVisitContextV1 extends ExportBlockVisitContextV1 {
+    owner: ExportBlock;
 }
 
 // export: ExportLink
@@ -13397,6 +13781,30 @@ export interface PageLayout {
     breakout?: LayoutBreakout;
 }
 
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
+}
+
 // export: PagePropertiesMacro
 export interface PagePropertiesMacro {
     id?: string;
@@ -13442,6 +13850,15 @@ export declare function parseAdfDateTimestamp(timestamp: string): Date | undefin
 
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
+// export: parseExportBlockDocumentV1
+export declare function parseExportBlockDocumentV1(value: unknown, budget?: ExportBlockValidationBudgetV1): ExportBlockDocumentV1;
+
+// export: parseExportBlocksV1
+export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
+
+// export: parseExportNotesV1
+export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
@@ -13690,7 +14107,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -14010,6 +14427,9 @@ export interface ValidatedAdfDocument {
 
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
+
+// export: visitExportBlocksV1
+export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {

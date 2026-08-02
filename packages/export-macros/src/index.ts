@@ -31,6 +31,8 @@ export type {
   MacroRendererRegistry,
   MacroRenderer,
   MacroRenderResult,
+  MacroWebRenderModelDescriptorV1,
+  MacroWebRenderModelKindV1,
   MacroInstance,
   MacroInstanceId,
   MacroExportContext,
@@ -68,4 +70,4 @@ export {
   MACRO_DEGRADED,
   MACRO_SKIPPED_BY_CONFIG,
 } from "./resolve.js";
-export type { UnknownBlock } from "./resolve.js";
+export type { MacroResolutionTraceV1, UnknownBlock } from "./resolve.js";

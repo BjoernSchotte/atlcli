@@ -1,0 +1,37 @@
+---
+import { assertT0ChartModel } from "../contract.mjs";
+import StaticChart from "./StaticChart.astro";
+
+const { model } = Astro.props;
+assertT0ChartModel(model);
+---
+
+<astro-atlcli-chart data-atlcli-chart-island>
+  <button type="button" data-chart-toggle aria-expanded="true">Hide data table</button>
+  <StaticChart model={model} />
+</astro-atlcli-chart>
+
+<script>
+  class AtlcliChartIsland extends HTMLElement {
+    connectedCallback() {
+      if (this.dataset.enhanced === "true") return;
+      this.dataset.enhanced = "true";
+      const figure = this.querySelector("[data-atlcli-chart]");
+      const table = this.querySelector("[data-chart-table]");
+      const button = this.querySelector("[data-chart-toggle]");
+      if (!(figure instanceof HTMLElement) || !(table instanceof HTMLTableElement) || !(button instanceof HTMLButtonElement)) return;
+      figure.dataset.enhanced = "true";
+      table.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+      button.textContent = "Show data table";
+      button.addEventListener("click", () => {
+        table.hidden = !table.hidden;
+        button.setAttribute("aria-expanded", String(!table.hidden));
+        button.textContent = table.hidden ? "Show data table" : "Hide data table";
+      });
+    }
+  }
+  if (!customElements.get("astro-atlcli-chart")) {
+    customElements.define("astro-atlcli-chart", AtlcliChartIsland);
+  }
+</script>

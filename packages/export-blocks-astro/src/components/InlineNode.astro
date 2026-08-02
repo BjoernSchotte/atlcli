@@ -1,0 +1,52 @@
+---
+import {
+  formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  mentionDisplayText,
+  smartCardDisplayText,
+  statusDisplayText,
+  type InlineNode,
+} from "@atlcli/export-blocks";
+import { inlineNodeKindV1 } from "../contracts.js";
+import { astroExportLinkKeyV1, type AstroExportBlockRenderContextV1 } from "../index.js";
+import { safeExportBlockColorV1, safeExportBlockHrefV1 } from "../security.js";
+import Inline from "./Inline.astro";
+
+interface Props { node: InlineNode; locale: string; context: AstroExportBlockRenderContextV1; }
+const { node, locale, context } = Astro.props;
+const kind = inlineNodeKindV1(node);
+const textClasses = kind === "text" ? {
+  "atlcli-mark-bold": node.marks?.includes("bold") ?? false,
+  "atlcli-mark-italic": node.marks?.includes("italic") ?? false,
+  "atlcli-mark-code": node.marks?.includes("code") ?? false,
+  "atlcli-mark-strike": node.marks?.includes("strike") ?? false,
+  "atlcli-mark-underline": node.marks?.includes("underline") ?? false,
+  "atlcli-mark-subscript": node.marks?.includes("subscript") ?? false,
+  "atlcli-mark-superscript": node.marks?.includes("superscript") ?? false,
+} : {};
+
+function hrefFor(node: Extract<InlineNode, { type: "link" }>): string | undefined {
+  const resolved = context.links[astroExportLinkKeyV1(node.target)];
+  if (resolved !== undefined && resolved.kind !== "unresolved") return safeExportBlockHrefV1(resolved.href);
+  switch (node.target.kind) {
+    case "external": return safeExportBlockHrefV1(node.target.href);
+    case "anchor": return resolved === undefined ? safeExportBlockHrefV1(`#${node.target.anchor}`) : undefined;
+    case "page": case "attachment": return undefined;
+  }
+}
+
+const linkHref = kind === "link" ? hrefFor(node) : undefined;
+const textColor = kind === "text" ? safeExportBlockColorV1(node.color) : undefined;
+---
+
+{kind === "text" && <span class:list={textClasses} style={textColor ? `color:${textColor}` : undefined}>{node.text}</span>}
+{kind === "link" && (linkHref
+  ? <a href={linkHref}><Inline nodes={node.content} locale={locale} context={context} /></a>
+  : <span data-atlcli-link-unresolved><Inline nodes={node.content} locale={locale} context={context} /></span>)}
+{kind === "mention" && <span data-atlcli-mention>@{mentionDisplayText(node)}</span>}
+{kind === "date" && <time datetime={node.timestamp}>{formatAdfDateTimestamp(node.timestamp, locale)}</time>}
+{kind === "status" && <span data-atlcli-status data-color={node.color}>{statusDisplayText(node)}</span>}
+{kind === "smartCard" && <span data-atlcli-smart-card>{smartCardDisplayText(node.card)}</span>}
+{kind === "media" && <span data-atlcli-inline-media>{inlineMediaDisplayText(node)}</span>}
+{kind === "placeholder" && <span data-atlcli-placeholder-hidden aria-hidden="true"></span>}
+{kind === "lineBreak" && <br />}

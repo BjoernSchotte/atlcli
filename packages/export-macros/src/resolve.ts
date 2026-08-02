@@ -26,6 +26,7 @@ import type {
   MacroRenderer,
   MacroRendererRegistry,
   MacroRenderResult,
+  MacroWebRenderModelDescriptorV1,
 } from "./types.js";
 import { isAbortError, isPortError, portError } from "./types.js";
 
@@ -35,6 +36,22 @@ import { isAbortError, isPortError, portError } from "./types.js";
  * registry surface, so it must be a nameable part of the contract.
  */
 export type UnknownBlock = Extract<ExportBlock, { type: "unknown" }>;
+
+/**
+ * Trusted resolution metadata for a block macro. This is an observation hook,
+ * not another source representation: it contains only the closed registry
+ * descriptor and macro name. Content remains available only through the normal
+ * resolved block result, so an observer cannot accidentally become a second
+ * source-payload transport.
+ */
+export interface MacroResolutionTraceV1 {
+  readonly macroName: string;
+  readonly sourcePage?: UnknownBlock["sourcePage"];
+  readonly outcome: "rendered" | "fallback";
+  readonly rendererId?: string;
+  readonly rendererRequiresLivePort?: boolean;
+  readonly webRenderModel?: MacroWebRenderModelDescriptorV1;
+}
 
 type InlineExtensionNode = Extract<InlineNode, { type: "text" }> & {
   adfExtension: NonNullable<Extract<InlineNode, { type: "text" }>["adfExtension"]>;
@@ -65,6 +82,8 @@ interface Resolution {
   replacement: ExportBlock[];
   /** Notes replacing the walker's paired note, in order. */
   notes: ExportNote[];
+  outcome: "rendered" | "fallback";
+  renderer?: MacroRenderer;
 }
 
 interface InlineResolution {
@@ -88,7 +107,13 @@ export async function resolveMacroBlocks(
     contextFor?: (page: UnknownBlock["sourcePage"]) => MacroExportContext;
     /** Stamped onto every per-instance context so the diagram renderer picks
      *  the SVG (pdf) vs. PNG (docx) preview correctly. */
-    targetEngine?: "docx" | "pdf";
+    targetEngine?: "docx" | "pdf" | "web";
+    /**
+     * Called in source order after every block-macro resolution. Consumers
+     * such as web publishing can retain closed renderer provenance without
+     * re-parsing source or inspecting opaque ports.
+     */
+    onResolvedMacro?: (trace: MacroResolutionTraceV1) => void;
   }
 ): Promise<StorageToBlocksResult> {
   const live = opts?.live !== false;
@@ -127,6 +152,30 @@ export async function resolveMacroBlocks(
     const instanceCtx = buildInstanceCtx(block, baseCtx, opts?.contextFor, shared, targetEngine);
     resolutions.set(block, await resolveInstance(block, registry, instanceCtx, live, shared));
   });
+
+  // Invoke trace observers after the concurrent work has completed so their
+  // order is source order, not port-response order. The payload deliberately
+  // exposes neither MacroInstance parameters nor raw export_view HTML.
+  if (opts?.onResolvedMacro) {
+    for (const block of instances) {
+      const resolution = resolutions.get(block);
+      if (!resolution) continue;
+      opts.onResolvedMacro({
+        macroName: block.macroName,
+        ...(block.sourcePage === undefined ? {} : { sourcePage: block.sourcePage }),
+        outcome: resolution.outcome,
+        ...(resolution.renderer === undefined
+          ? {}
+          : {
+              rendererId: resolution.renderer.id,
+              rendererRequiresLivePort: resolution.renderer.requiresLivePort,
+              ...(resolution.renderer.webRenderModel === undefined
+                ? {}
+                : { webRenderModel: resolution.renderer.webRenderModel }),
+            }),
+      });
+    }
+  }
 
   // 5. Rebuild the tree, replacing each unknown block by identity.
   let blocks = rebuild(input.blocks, resolutions);
@@ -273,7 +322,12 @@ async function resolveInstance(
       }
       // Promote bodyNotes only when the rendered content derives from the body.
       if (result.bodyConsumed && block.bodyNotes) notes.push(...block.bodyNotes);
-      return { replacement: result.blocks, notes };
+      return {
+        replacement: result.blocks,
+        notes,
+        outcome: "rendered",
+        renderer,
+      };
     }
 
     // skip → collect its notes and fall through to the next stage.
@@ -326,7 +380,7 @@ function floor(
     ),
   ];
   if (block.bodyNotes) notes.push(...block.bodyNotes);
-  return { replacement: [block], notes };
+  return { replacement: [block], notes, outcome: "fallback" };
 }
 
 async function resolveInlineInstance(
@@ -531,7 +585,7 @@ function buildInstanceCtx(
   base: MacroExportContext,
   contextFor: ((page: UnknownBlock["sourcePage"]) => MacroExportContext) | undefined,
   shared: SharedState,
-  targetEngine: "docx" | "pdf" | undefined
+  targetEngine: "docx" | "pdf" | "web" | undefined
 ): MacroExportContext {
   return buildSourceCtx(
     block.sourcePage,
@@ -547,7 +601,7 @@ function buildSourceCtx(
   base: MacroExportContext,
   contextFor: ((page: UnknownBlock["sourcePage"]) => MacroExportContext) | undefined,
   shared: SharedState,
-  targetEngine: "docx" | "pdf" | undefined,
+  targetEngine: "docx" | "pdf" | "web" | undefined,
 ): MacroExportContext {
   // Cross-plan sync point with 002: resolve each macro against its own source
   // page. `contextFor` (when supplied) yields a fresh ports/context bundle for

@@ -22,6 +22,7 @@ export function exportViewFallbackRenderer(deps: {
     id: "export-view",
     macros: ["*"],
     requiresLivePort: true,
+    webRenderModel: { kind: "unknown", dependencies: ["export-view"] },
     async render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult> {
       // Storage macros use ac:macro-id. Forge ADF extensions use localId as the
       // macro ID for Confluence's macro-body/export REST contract. Keep both

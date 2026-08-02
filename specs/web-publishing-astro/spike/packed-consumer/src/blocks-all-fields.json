@@ -1,0 +1,199 @@
+[
+  {
+    "type": "heading",
+    "level": 1,
+    "content": [{ "type": "text", "text": "Block model coverage" }],
+    "explicitAnchor": "intro"
+  },
+  {
+    "type": "paragraph",
+    "content": [{ "type": "text", "text": "Every enriched field renders in a packed consumer." }]
+  },
+  {
+    "type": "paragraph",
+    "content": [
+      { "type": "text", "text": "Rich text", "marks": ["bold", "italic", "underline"] },
+      { "type": "text", "text": " — " },
+      {
+        "type": "link",
+        "target": { "kind": "external", "href": "https://example.com/safe" },
+        "content": [{ "type": "text", "text": "Safe external link" }]
+      },
+      { "type": "text", "text": " — " },
+      {
+        "type": "link",
+        "target": { "kind": "external", "href": "javascript:alert(1)" },
+        "content": [{ "type": "text", "text": "Blocked unsafe link" }]
+      },
+      { "type": "text", "text": " — " },
+      { "type": "mention", "accountId": "private-id", "displayName": "Example User" },
+      { "type": "text", "text": " — " },
+      { "type": "date", "timestamp": "1785456000000" },
+      { "type": "text", "text": " — " },
+      { "type": "status", "text": "On track", "color": "green" },
+      { "type": "text", "text": " — " },
+      {
+        "type": "smartCard",
+        "card": { "url": "https://example.com/inline-card", "title": "Inline smart card" }
+      },
+      { "type": "text", "text": " — " },
+      { "type": "media", "media": { "filename": "diagram.png" }, "alt": "Inline media fallback" },
+      { "type": "text", "text": " — " },
+      { "type": "placeholder", "text": "Template placeholder" },
+      { "type": "lineBreak" },
+      { "type": "text", "text": "After line break" },
+      { "type": "futureInline" }
+    ]
+  },
+  {
+    "type": "smartCard",
+    "card": { "url": "https://example.com/card", "title": "Smart card proof" }
+  },
+  { "type": "pageBreak" },
+  {
+    "type": "heading",
+    "level": 2,
+    "content": [{ "type": "text", "text": "Captions and widths" }]
+  },
+  {
+    "type": "table",
+    "columnWidths": [300, 100],
+    "caption": { "kind": "table", "content": [{ "type": "text", "text": "Sizing matrix" }] },
+    "rows": [
+      {
+        "cells": [
+          {
+            "header": true,
+            "colspan": 1,
+            "rowspan": 1,
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Wide" }] }]
+          },
+          {
+            "header": true,
+            "colspan": 1,
+            "rowspan": 1,
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Narrow" }] }]
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "header": false,
+            "colspan": 1,
+            "rowspan": 1,
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "left" }] }]
+          },
+          {
+            "header": false,
+            "colspan": 1,
+            "rowspan": 1,
+            "content": [
+              {
+                "type": "callout",
+                "kind": "warning",
+                "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Dense table warning" }] }]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": false,
+    "items": [
+      {
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "List callout container" }] },
+          {
+            "type": "callout",
+            "kind": "tip",
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Tip inside list item" }] }]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "ordered": true,
+    "start": 3,
+    "items": [
+      {
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "Ordered from three" }] }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "callout",
+    "kind": "info",
+    "content": [
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Outer info callout" }] },
+      {
+        "type": "callout",
+        "kind": "note",
+        "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Note inside callout" }] }]
+      }
+    ]
+  },
+  {
+    "type": "codeBlock",
+    "language": "typescript",
+    "code": "export const answer = 42;",
+    "title": "Legacy code header",
+    "initiallyCollapsed": true,
+    "caption": { "kind": "code", "content": [{ "type": "text", "text": "Listing one" }] }
+  },
+  {
+    "type": "expand",
+    "title": "Expanded details",
+    "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Complete details body" }] }]
+  },
+  {
+    "type": "layout",
+    "columns": [
+      {
+        "width": 0.6,
+        "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Layout column one" }] }]
+      },
+      {
+        "width": 0.4,
+        "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Layout column two" }] }]
+      }
+    ]
+  },
+  {
+    "type": "image",
+    "source": { "kind": "attachment", "filename": "missing-image.png" },
+    "alt": "Image unavailable proof",
+    "width": 640,
+    "height": 360
+  },
+  {
+    "type": "mediaFallback",
+    "media": { "filename": "presentation.pptx" },
+    "alt": "Media file fallback"
+  },
+  {
+    "type": "blockquote",
+    "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Quoted content" }] }]
+  },
+  { "type": "divider" },
+  {
+    "type": "orientation",
+    "landscape": true,
+    "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "This region is landscape." }] }]
+  },
+  { "type": "anchor", "name": "appendix" },
+  {
+    "type": "unknown",
+    "macroName": "customwidget",
+    "params": [{ "name": "id", "text": "42" }],
+    "body": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Preserved widget body." }] }]
+  },
+  { "type": "futureBlock" }
+]

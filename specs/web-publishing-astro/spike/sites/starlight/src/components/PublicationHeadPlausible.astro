@@ -1,0 +1,14 @@
+---
+import { trustedAnalyticsConfig } from "@atlcli/web-publish-astro-spike";
+import PublicationHead from "./PublicationHead.astro";
+
+const analytics = trustedAnalyticsConfig({
+  domain: process.env.ATLCLI_T0_ANALYTICS_DOMAIN,
+  endpoint: process.env.ATLCLI_T0_ANALYTICS_ENDPOINT,
+}, [process.env.ATLCLI_T0_ANALYTICS_ALLOWED_ORIGIN ?? ""]);
+if (!analytics) throw new Error("invalid T0 Plausible analytics configuration");
+---
+
+<PublicationHead />
+<meta name="atlcli:analytics" content={JSON.stringify(analytics)} />
+<script src="../scripts/publication-analytics.ts"></script>

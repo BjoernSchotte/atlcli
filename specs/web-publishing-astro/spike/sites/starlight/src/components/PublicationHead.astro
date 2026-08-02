@@ -1,0 +1,32 @@
+---
+import { publicationLocaleLinks } from "../lib/publication-i18n";
+
+const { alternateLinks, currentEntry } = await publicationLocaleLinks(Astro.url.pathname, import.meta.env.BASE_URL);
+const head = Astro.locals.starlightRoute.head.filter((entry) =>
+  !(entry.tag === "link" && entry.attrs?.rel === "alternate"),
+);
+const defaultAlternate = alternateLinks.find((link) => link.locale === "en") ?? alternateLinks[0];
+const structuredData = currentEntry ? JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": currentEntry.data.contentType === "landing" ? "CollectionPage" : "TechArticle",
+  description: currentEntry.data.description,
+  headline: currentEntry.data.title,
+  inLanguage: currentEntry.data.locale,
+  url: new URL(Astro.url.pathname, Astro.site).href,
+}).replace(/</gu, "\\u003c").replace(/\u2028/gu, "\\u2028").replace(/\u2029/gu, "\\u2029") : undefined;
+---
+
+{head.map(({ tag, attrs, content }) => (
+  tag === "meta" ? <meta {...attrs} />
+    : tag === "link" ? <link {...attrs} />
+    : tag === "title" ? <title>{content}</title>
+    : tag === "base" ? <base {...attrs} />
+    : null
+))}
+{alternateLinks.map((link) => (
+  <link rel="alternate" hreflang={link.locale} href={new URL(link.href, Astro.site)} />
+))}
+{defaultAlternate && (
+  <link rel="alternate" hreflang="x-default" href={new URL(defaultAlternate.href, Astro.site)} />
+)}
+{structuredData && <script is:inline type="application/ld+json" set:html={structuredData}></script>}

@@ -1,0 +1,25 @@
+---
+import { resolveChartRendererAdapterV1, type ChartRendererAdapterIdV1, type StaticChartModelV1 } from "../charts.js";
+import StaticChart from "./StaticChart.astro";
+
+interface Props {
+  chart: StaticChartModelV1;
+  /** A trusted project must select interaction explicitly. Source content cannot. */
+  enabled?: boolean;
+  /** Closed renderer selection owned by the Astro project, never by source content. */
+  renderer?: ChartRendererAdapterIdV1;
+}
+
+const { chart, enabled = false, renderer = "tanstack-v0.3" } = Astro.props;
+const adapter = resolveChartRendererAdapterV1(renderer);
+if (enabled) adapter.validate(chart);
+---
+
+<section data-atlcli-chart-island={enabled ? "enabled" : "static"} data-atlcli-chart-renderer={enabled ? adapter.id : undefined}>
+  <StaticChart chart={chart} />
+</section>
+
+{enabled && <script>
+  import { activateChartIslandV1 } from "./chart-island-client.ts";
+  for (const root of document.querySelectorAll<HTMLElement>("[data-atlcli-chart-island=enabled]")) activateChartIslandV1(root);
+</script>}

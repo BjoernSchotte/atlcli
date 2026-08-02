@@ -1,0 +1,23 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import StarlightDocumentBody from "@atlcli/web-publish-starlight/components/StarlightDocumentBody.astro";
+import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
+import { PUBLISHED_KNOWLEDGE_SIDEBAR_V1 } from "../../navigation";
+
+const title = "A deliberately long deep-tree page title for a responsive navigation proof";
+const blocks = [{
+  type: "paragraph",
+  content: [{ type: "text", text: "This route proves that a deep Starlight tree and a long title remain accessible in the static experience." }],
+}] as const;
+---
+
+<StarlightPage
+  frontmatter={{ title, description: "Deep navigation and long-title visual fixture." }}
+  sidebar={PUBLISHED_KNOWLEDGE_SIDEBAR_V1}
+>
+  <StarlightDocumentBody
+    blocks={blocks}
+    context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, page: { id: "deep-tree", title } }}
+    search={{ sourceId: "deep-tree", title, labels: ["guide", "deep-tree"] }}
+  />
+</StarlightPage>
