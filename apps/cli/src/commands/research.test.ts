@@ -1396,7 +1396,7 @@ describe("research CLI one-shot contract", () => {
     });
   });
 
-  test("stops on typed scope clarification before reading the key or creating a workspace", async () => {
+  test("persists a typed scope clarification before reading the key or creating a workspace", async () => {
     const harness = cliHarness();
     let keyReads = 0;
     harness.dependencies.readApiKey = () => {
@@ -1418,7 +1418,32 @@ describe("research CLI one-shot contract", () => {
         entityKindHint: "space",
         rerunGuidance: ["Pass an exact Confluence space with --space <KEY>."],
       },
-      candidateChoices: [],
+      candidateChoices: [
+        {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:confluence-space-account-1",
+          tenantOrigin: "https://tenant-a.atlassian.net",
+          product: "confluence",
+          entityKind: "space",
+          entityRef: "space:account-1",
+          key: "ACCOUNT1",
+          name: "Account Management One",
+          accessible: true,
+          providerFreshnessAt: "2026-08-02T12:00:00.000Z",
+        },
+        {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:confluence-space-account-2",
+          tenantOrigin: "https://tenant-a.atlassian.net",
+          product: "confluence",
+          entityKind: "space",
+          entityRef: "space:account-2",
+          key: "ACCOUNT2",
+          name: "Account Management Two",
+          accessible: true,
+          providerFreshnessAt: "2026-08-02T12:00:00.000Z",
+        },
+      ],
       mentions: [],
       resolutions: [],
     });
@@ -1427,23 +1452,222 @@ describe("research CLI one-shot contract", () => {
       { json: true },
       { json: true },
       harness.dependencies,
-    )).rejects.toThrow("Research scope requires clarification");
+    )).rejects.toThrow("Research scope requires a durable candidate choice");
     expect(keyReads).toBe(0);
     expect(harness.workspaces).toHaveLength(0);
     expect(harness.runInputs).toHaveLength(0);
     expect(harness.stderr.join("")).toContain(
-      "stop_reason=clarification-required reason=ambiguous mention=mention:scope-1 candidates=2",
+      "session=research-session:cli-plan status=waiting_scope_clarification stop_reason=scope-clarification-required reason=ambiguous mention=mention:scope-1 candidates=2",
     );
+    const persisted = await harness.durableStore.read("research-session:cli-plan");
+    expect(persisted).toMatchObject({
+      status: "waiting_scope_clarification",
+      revision: 2,
+      scopeClarification: {
+        state: "waiting_choice",
+        clarification: { mentionId: "mention:scope-1" },
+        candidateChoices: [{ key: "ACCOUNT1" }, { key: "ACCOUNT2" }],
+      },
+    });
+    expect((await harness.durableStore.events("research-session:cli-plan")).map((event) => event.kind))
+      .toEqual(["record_scope_clarification"]);
     expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
       error: {
         details: {
-          outcome: {
-            schema: "atlcli.research-scope-preflight-outcome/v1",
-            kind: "clarification_required",
-            clarification: { reason: "ambiguous" },
+          session: {
+            sessionId: "research-session:cli-plan",
+            status: "waiting_scope_clarification",
+          },
+          review: {
+            schema: "atlcli.research-session-scope-clarification-review/v1",
+            stage: "choice_required",
+            clarification: { candidates: [{ key: "ACCOUNT1" }, { key: "ACCOUNT2" }] },
           },
         },
       },
+    });
+  });
+
+  test("reviews and resolves a persisted CLI scope choice through a fresh catalog selection only", async () => {
+    const harness = cliHarness();
+    let keyReads = 0;
+    let scopeCalls = 0;
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "sk-ant-must-not-be-read";
+    };
+    const candidate = {
+      schema: "atlcli.research-scope-candidate/v1" as const,
+      id: "research-scope-candidate:confluence-space-account-1",
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      product: "confluence" as const,
+      entityKind: "space" as const,
+      entityRef: "space:account-1",
+      key: "ACCOUNT1",
+      name: "Account Management One",
+      accessible: true as const,
+      providerFreshnessAt: "2026-08-02T12:00:00.000Z",
+    };
+    harness.dependencies.resolveScope = async ({ request, options }) => {
+      scopeCalls += 1;
+      if (options?.candidateSelections) {
+        expect(options).toEqual({
+          candidateSelections: [{
+            schema: "atlcli.research-scope-candidate-selection/v1",
+            mentionId: "mention:scope-1",
+            candidateId: candidate.id,
+          }],
+        });
+        return {
+          schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+          kind: "ready" as const,
+          request,
+          mentions: [],
+          resolutions: [],
+        };
+      }
+      return {
+        schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+        kind: "clarification_required" as const,
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1" as const,
+          reason: "ambiguous" as const,
+          mentionId: "mention:scope-1",
+          candidateIds: [candidate.id],
+          productHint: "confluence" as const,
+          entityKindHint: "space" as const,
+          rerunGuidance: ["Choose one exact Confluence space candidate."],
+        },
+        candidateChoices: [candidate],
+        mentions: [],
+        resolutions: [],
+      };
+    };
+    await expect(handleResearch(
+      ["Research the Account Management space."],
+      {},
+      { json: false },
+      harness.dependencies,
+    )).rejects.toThrow("Research scope requires a durable candidate choice");
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "scope-clarification", "research-session:cli-plan"],
+      {},
+      { json: true },
+      harness.dependencies,
+    );
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      schema: "atlcli.research-session-scope-clarification-review/v1",
+      revision: 2,
+      stage: "choice_required",
+      clarification: { candidates: [{ id: candidate.id, key: "ACCOUNT1" }] },
+    });
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "choose-scope", "research-session:cli-plan"],
+      {
+        revision: "2",
+        mention: "mention:scope-1",
+        candidate: candidate.id,
+      },
+      { json: true },
+      harness.dependencies,
+    );
+    expect(scopeCalls).toBe(2);
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      schema: "atlcli.research-scope-clarification-resolution/v1",
+      stage: "resolved",
+      session: {
+        status: "running",
+        turn: { brief: { scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] } } },
+      },
+    });
+    const persisted = await harness.durableStore.read("research-session:cli-plan");
+    expect(persisted).toMatchObject({
+      status: "running",
+      scopeClarification: {
+        state: "choice_resolved",
+        selection: { candidateId: candidate.id },
+      },
+    });
+  });
+
+  test("continues a CLI scope choice committed before the first brief without accepting replacement input", async () => {
+    const harness = cliHarness();
+    let keyReads = 0;
+    const candidate = {
+      schema: "atlcli.research-scope-candidate/v1" as const,
+      id: "research-scope-candidate:confluence-space-account-1",
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      product: "confluence" as const,
+      entityKind: "space" as const,
+      entityRef: "space:account-1",
+      key: "ACCOUNT1",
+      name: "Account Management One",
+      accessible: true as const,
+      providerFreshnessAt: "2026-08-02T12:00:00.000Z",
+    };
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "sk-ant-must-not-be-read";
+    };
+    harness.dependencies.resolveScope = async () => ({
+      schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+      kind: "clarification_required" as const,
+      clarification: {
+        schema: "atlcli.research-clarification-required/v1" as const,
+        reason: "ambiguous" as const,
+        mentionId: "mention:scope-1",
+        candidateIds: [candidate.id],
+        rerunGuidance: ["Choose one exact Confluence space candidate."],
+      },
+      candidateChoices: [candidate],
+      mentions: [],
+      resolutions: [],
+    });
+    await expect(handleResearch(
+      ["Research the Account Management space."],
+      {},
+      { json: false },
+      harness.dependencies,
+    )).rejects.toThrow("Research scope requires a durable candidate choice");
+    const waiting = await harness.durableStore.read("research-session:cli-plan");
+    if (!waiting?.scopeClarification) throw new Error("expected durable scope clarification");
+    const committedChoice = (await harness.durableStore.commit(waiting.sessionId, {
+      kind: "resolve_scope_clarification",
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope-1",
+        candidateId: candidate.id,
+      },
+      resolvedRequest: waiting.scopeClarification.request,
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      at: "2026-08-02T12:00:01.000Z",
+    })).session;
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "continue-scope-clarification", "research-session:cli-plan"],
+      { revision: String(committedChoice.revision) },
+      { json: true },
+      harness.dependencies,
+    );
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      schema: "atlcli.research-scope-clarification-resolution/v1",
+      stage: "resolved",
+      session: { status: "running", turn: { graph: { status: "approved" } } },
     });
   });
 

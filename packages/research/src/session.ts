@@ -544,14 +544,42 @@ function sameScopeClarificationRequest(
     required.every((entry) => actual.includes(entry));
   const originalSeeds = original.scopeSeeds ?? [];
   const resolvedSeeds = resolved.scopeSeeds ?? [];
+  // Scope precedence remains meaningful on the recovery boundary. A natural
+  // name may replace a lower-precedence profile/global/current-context default,
+  // but it may never replace an explicit CLI/UI binding or an already-resolved
+  // natural/exact binding from the accepted question. Legacy requests without
+  // provenance retain their complete raw V1 scope as the conservative default.
+  const protectedSeeds = originalSeeds.filter((seed) =>
+    seed.binding.authority === "locked" ||
+    ["cli_flag", "ui_added", "natural_language", "exact_link"].includes(seed.binding.source),
+  );
+  const protectedKeys = (
+    product: "jira" | "confluence",
+    entityKind: "project" | "space",
+    rawKeys: readonly string[],
+  ) => {
+    const scopedSeeds = originalSeeds.filter((seed) =>
+      seed.binding.product === product && seed.binding.entityKind === entityKind,
+    );
+    const seededKeys = protectedSeeds
+      .filter((seed) => seed.binding.product === product && seed.binding.entityKind === entityKind)
+      .flatMap((seed) => seed.binding.key === undefined ? [] : [seed.binding.key]);
+    return scopedSeeds.length === 0 ? [...new Set([...seededKeys, ...rawKeys])] : seededKeys;
+  };
   return original.question === resolved.question &&
     original.scope.siteOrigin === resolved.scope.siteOrigin &&
     original.wikiProvider === resolved.wikiProvider &&
     JSON.stringify(original.limits) === JSON.stringify(resolved.limits) &&
     JSON.stringify(original.scope.timeWindow ?? {}) === JSON.stringify(resolved.scope.timeWindow ?? {}) &&
-    includesAll(original.scope.jiraProjectKeys, resolved.scope.jiraProjectKeys) &&
-    includesAll(original.scope.confluenceSpaceKeys, resolved.scope.confluenceSpaceKeys) &&
-    originalSeeds.every((seed) => resolvedSeeds.some((candidate) =>
+    includesAll(
+      protectedKeys("jira", "project", original.scope.jiraProjectKeys),
+      resolved.scope.jiraProjectKeys,
+    ) &&
+    includesAll(
+      protectedKeys("confluence", "space", original.scope.confluenceSpaceKeys),
+      resolved.scope.confluenceSpaceKeys,
+    ) &&
+    protectedSeeds.every((seed) => resolvedSeeds.some((candidate) =>
       candidate.binding.id === seed.binding.id && JSON.stringify(candidate) === JSON.stringify(seed)
     ));
 }

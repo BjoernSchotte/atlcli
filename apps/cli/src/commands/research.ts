@@ -29,6 +29,7 @@ import {
   ResearchScopeCatalogBroker,
   ResearchRunBudget,
   approveResearchScopeExpansionV1,
+  continueResearchSessionScopeClarificationV1,
   WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchEvidenceStoreV1,
   WorkspaceResearchOutlineStoreV1,
@@ -50,6 +51,7 @@ import {
   type ResearchRequestV1,
   type ResearchOneShotEventV1,
   type ResearchReport,
+  type ResearchScopePreflightOptionsV1,
   type ResearchScopePreflightOutcomeV1,
   type ResearchScopeSeedV1,
   type ResearchScopeBindingV1,
@@ -62,9 +64,13 @@ import {
   type ResearchOutlineV1,
   appendResearchSessionTurnV1,
   initializeResearchSessionClarificationWaitV1,
+  initializeResearchSessionScopeClarificationWaitV1,
   initializeResearchSessionTurnV1,
+  projectResearchSessionScopeClarificationReviewV1,
   proposeResearchGraphForReadyBriefV1,
+  refreshResearchSessionScopeClarificationV1,
   recoverResearchSessionForResumeV1,
+  resolveResearchSessionScopeClarificationV1,
 } from "@atlcli/research/node";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
@@ -172,6 +178,8 @@ export interface ResearchCliDependencies {
   resolveScope(input: {
     profile: Profile;
     request: ResearchRequestV1;
+    /** Only an exact durable candidate selection can be submitted on recovery. */
+    options?: ResearchScopePreflightOptionsV1;
   }): Promise<ResearchScopePreflightOutcomeV1>;
   prepareBrief(input: {
     request: ResearchRequestV1;
@@ -525,6 +533,32 @@ function assumptionDecisionsFromSessionFlags(
   return decisions;
 }
 
+/**
+ * The CLI may name only one already-persisted candidate. It cannot attach a
+ * replacement request, scope, policy, or candidate body to this action.
+ */
+function scopeClarificationSelectionFromSessionFlags(
+  flags: Record<string, string | boolean | string[]>,
+): {
+  schema: "atlcli.research-scope-candidate-selection/v1";
+  mentionId: string;
+  candidateId: string;
+} {
+  const mentionId = singleSessionFlag(flags, "mention", true)!;
+  const candidateId = singleSessionFlag(flags, "candidate", true)!;
+  if (!/^mention:[A-Za-z0-9._-]{1,120}$/.test(mentionId)) {
+    throw new Error("--mention requires a valid durable scope mention ID.");
+  }
+  if (!/^research-scope-candidate:[A-Za-z0-9._-]{1,160}$/.test(candidateId)) {
+    throw new Error("--candidate requires a valid durable scope candidate ID.");
+  }
+  return {
+    schema: "atlcli.research-scope-candidate-selection/v1",
+    mentionId,
+    candidateId,
+  };
+}
+
 function requiredEvidenceId(value: string | undefined): string {
   if (!value || !/^evidence:[a-f0-9]{48}$/.test(value)) {
     throw new Error("A valid retained evidence ID is required.");
@@ -534,6 +568,33 @@ function requiredEvidenceId(value: string | undefined): string {
 
 function activeSessionTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefined {
   return session.turns.find((turn) => turn.id === session.activeTurnId) ?? session.turns.at(-1);
+}
+
+async function scopeClarificationReviewForCliSession(input: {
+  session: ResearchSessionV1;
+  profileName: string | undefined;
+  opts: OutputOptions;
+  dependencies: ResearchCliDependencies;
+}) {
+  const profile = await input.dependencies.resolveProfile(input.profileName);
+  if (!profile) {
+    input.dependencies.fail(
+      input.opts,
+      1,
+      ERROR_CODES.AUTH,
+      "No active profile found. Run `atlcli auth login` or select --profile.",
+      { profile: input.profileName },
+    );
+  }
+  const tenantOrigin = new URL(profile.baseUrl).origin;
+  const review = projectResearchSessionScopeClarificationReviewV1(
+    input.session,
+    tenantOrigin,
+  );
+  if (!review) {
+    throw new Error("The selected profile cannot access a pending research scope clarification for this session.");
+  }
+  return { profile, tenantOrigin, review };
 }
 
 function scopeApprovalBindingV1(input: {
@@ -863,7 +924,12 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "clarify" && command !== "approve" && command !== "reject-plan" && command !== "revise-plan" && command !== "approve-scope" && command !== "reject-scope" && command !== "cancel" && command !== "delete") {
+  if (command !== "show" && command !== "plan" && command !== "evidence" &&
+      command !== "scope-clarification" && command !== "choose-scope" &&
+      command !== "continue-scope-clarification" && command !== "clarify" &&
+      command !== "approve" && command !== "reject-plan" && command !== "revise-plan" &&
+      command !== "approve-scope" && command !== "reject-scope" && command !== "cancel" &&
+      command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
   const sessionId = requireSessionId(sessionArg);
@@ -912,6 +978,150 @@ export async function handleResearchSessions(
         sessionId,
         evidence: projectResearchEvidenceMetadataV1(record),
         ...(chunks === undefined ? {} : { sourceText: chunks.map((chunk) => chunk.text).join("") }),
+      }, opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "scope-clarification") {
+    if (args.length !== 2) {
+      throw new Error("Usage: atlcli research sessions scope-clarification <session-id> [--profile <name>].");
+    }
+    assertSessionFlags(flags, ["profile"]);
+    const profileName = singleSessionFlag(flags, "profile");
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const { review } = await scopeClarificationReviewForCliSession({
+        session,
+        profileName,
+        opts,
+        dependencies,
+      });
+      dependencies.emitOutput(review, opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "choose-scope") {
+    if (args.length !== 2) {
+      throw new Error("Usage: atlcli research sessions choose-scope <session-id> --revision <session-revision> --mention <scope-mention-id> --candidate <scope-candidate-id> [--profile <name>].");
+    }
+    assertSessionFlags(flags, ["revision", "mention", "candidate", "profile"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const selection = scopeClarificationSelectionFromSessionFlags(flags);
+    const profileName = singleSessionFlag(flags, "profile");
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) {
+        throw new Error("Research session revision is stale; inspect the current scope clarification and retry with its exact revision.");
+      }
+      const { profile, tenantOrigin, review } = await scopeClarificationReviewForCliSession({
+        session,
+        profileName,
+        opts,
+        dependencies,
+      });
+      if (review.stage !== "choice_required" || selection.mentionId !== review.clarification.mentionId) {
+        throw new Error("Research scope clarification is stale; inspect the current candidate choice and retry.");
+      }
+      if (!review.clarification.candidates.some((candidate) => candidate.id === selection.candidateId)) {
+        throw new Error("The selected research scope candidate is unavailable.");
+      }
+      const scopeClarification = session.scopeClarification;
+      if (!scopeClarification) {
+        throw new Error("The durable research scope clarification is missing its original request.");
+      }
+      // This fresh catalog pass is intentionally the only provider activity in
+      // this command. The caller submits a candidate ID; the host retains the
+      // tenant, original request, policy, and every resolved scope value.
+      const scopeOutcome = await dependencies.resolveScope({
+        profile,
+        request: scopeClarification.request,
+        options: { candidateSelections: [selection] },
+      });
+      const at = new Date().toISOString();
+      if (scopeOutcome.kind === "clarification_required") {
+        const refreshed = await refreshResearchSessionScopeClarificationV1({
+          store: opened.store,
+          sessionId,
+          expectedRevision: session.revision,
+          expectedLeaseEpoch: session.lease.epoch,
+          clarification: scopeOutcome.clarification,
+          candidateChoices: scopeOutcome.candidateChoices,
+          at,
+        });
+        const nextReview = projectResearchSessionScopeClarificationReviewV1(refreshed, tenantOrigin);
+        if (!nextReview) throw new Error("The refreshed research scope clarification could not be projected.");
+        dependencies.writeStderr(`[research] session=${sessionId} action=choose-scope status=${refreshed.status} refreshed=true\n`);
+        dependencies.emitOutput(nextReview, opts);
+        return;
+      }
+      const committed = await resolveResearchSessionScopeClarificationV1({
+        store: opened.store,
+        sessionId,
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        selection,
+        resolvedRequest: scopeOutcome.request,
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+        releaseApprovedLease: true,
+        at,
+      });
+      const nextReview = projectResearchSessionScopeClarificationReviewV1(committed, tenantOrigin);
+      dependencies.writeStderr(`[research] session=${sessionId} action=choose-scope revision=${committed.revision} status=${committed.status}\n`);
+      dependencies.emitOutput({
+        schema: "atlcli.research-scope-clarification-resolution/v1",
+        ...(nextReview === undefined
+          ? { stage: "resolved", session: projectResearchSessionV1(committed) }
+          : { stage: "recovery_required", review: nextReview }),
+      }, opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "continue-scope-clarification") {
+    if (args.length !== 2) {
+      throw new Error("Usage: atlcli research sessions continue-scope-clarification <session-id> --revision <session-revision> [--profile <name>].");
+    }
+    assertSessionFlags(flags, ["revision", "profile"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const profileName = singleSessionFlag(flags, "profile");
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) {
+        throw new Error("Research session revision is stale; inspect the current scope clarification and retry with its exact revision.");
+      }
+      const { tenantOrigin, review } = await scopeClarificationReviewForCliSession({
+        session,
+        profileName,
+        opts,
+        dependencies,
+      });
+      if (review.stage === "choice_required") {
+        throw new Error("Research scope clarification still requires a candidate choice.");
+      }
+      const committed = await continueResearchSessionScopeClarificationV1({
+        store: opened.store,
+        sessionId,
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+        releaseApprovedLease: true,
+        at: new Date().toISOString(),
+      });
+      const nextReview = projectResearchSessionScopeClarificationReviewV1(committed, tenantOrigin);
+      dependencies.writeStderr(`[research] session=${sessionId} action=continue-scope-clarification revision=${committed.revision} status=${committed.status}\n`);
+      dependencies.emitOutput({
+        schema: "atlcli.research-scope-clarification-resolution/v1",
+        ...(nextReview === undefined
+          ? { stage: "resolved", session: projectResearchSessionV1(committed) }
+          : { stage: "recovery_required", review: nextReview }),
       }, opts);
     } finally {
       opened.close();
@@ -1312,6 +1522,9 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       request: input.request,
       catalog: broker,
       automaticApproval: true,
+      ...(input.options?.candidateSelections === undefined
+        ? {}
+        : { candidateSelections: input.options.candidateSelections }),
     });
   },
   prepareBrief(input) {
@@ -1744,15 +1957,51 @@ export async function handleResearch(
   });
   if (scopeOutcome.kind === "clarification_required") {
     const clarification = scopeOutcome.clarification;
+    const opened = await dependencies.openSessionStore();
+    let waiting: ResearchSessionV1 | undefined;
+    let review: ReturnType<typeof projectResearchSessionScopeClarificationReviewV1>;
+    try {
+      const now = new Date().toISOString();
+      waiting = await initializeResearchSessionScopeClarificationWaitV1({
+        store: opened.store,
+        session: createResearchSessionV1({
+          sessionId: dependencies.createDurableSessionId(),
+          ownerId: `owner:cli-scope-clarification-${process.pid}`,
+          createdAt: now,
+          leaseExpiresAt: new Date(Date.parse(now) + initialRequest.limits.maxRunMs).toISOString(),
+        }),
+        request: initialRequest,
+        policy: input.policy,
+        clarification,
+        candidateChoices: scopeOutcome.candidateChoices,
+        at: now,
+      });
+      review = projectResearchSessionScopeClarificationReviewV1(
+        waiting,
+        initialRequest.scope.siteOrigin,
+      );
+      if (!review || review.stage !== "choice_required") {
+        throw new Error("The durable research scope clarification could not be projected.");
+      }
+    } finally {
+      opened.close();
+    }
     dependencies.writeStderr(
-      `[research] stop_reason=clarification-required reason=${clarification.reason} mention=${clarification.mentionId} candidates=${clarification.candidateIds.length}\n`,
+      `[research] session=${waiting!.sessionId} status=${waiting!.status} stop_reason=scope-clarification-required reason=${clarification.reason} mention=${clarification.mentionId} candidates=${clarification.candidateIds.length}\n`,
     );
     dependencies.fail(
       opts,
       2,
       ERROR_CODES.VALIDATION,
-      `Research scope requires clarification. ${clarification.rerunGuidance.join(" ")}`,
-      { outcome: scopeOutcome },
+      "Research scope requires a durable candidate choice. Inspect the retained session, then submit its exact revision, mention, and candidate IDs.",
+      {
+        session: {
+          sessionId: waiting!.sessionId,
+          revision: waiting!.revision,
+          status: waiting!.status,
+        },
+        review,
+      },
     );
   }
   const request = scopeOutcome.request;
@@ -1949,7 +2198,7 @@ export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
 atlcli research --session <session-id> <question>
-atlcli research sessions <list|show|evidence|plan|clarify|approve|reject-plan|revise-plan|approve-scope|reject-scope|cancel|delete>
+atlcli research sessions <list|show|evidence|plan|scope-clarification|choose-scope|continue-scope-clarification|clarify|approve|reject-plan|revise-plan|approve-scope|reject-scope|cancel|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -1986,6 +2235,10 @@ Durable session commands:
       --instruction <correction>
   sessions revise-plan <session-id> --revision <session-revision> --graph-revision <graph-revision>
       [--instruction <correction>]
+  sessions scope-clarification <session-id> [--profile <name>]
+  sessions choose-scope <session-id> --revision <session-revision>
+      --mention <scope-mention-id> --candidate <scope-candidate-id> [--profile <name>]
+  sessions continue-scope-clarification <session-id> --revision <session-revision> [--profile <name>]
   sessions approve-scope <session-id> --revision <session-revision> --brief-revision <brief-revision>
       --graph-revision <graph-revision> --proposal <scope-expansion-id>
   sessions reject-scope <session-id> --revision <session-revision> --brief-revision <brief-revision>
@@ -1995,6 +2248,10 @@ Durable session commands:
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
 --plan-only persists the brief and graph before any key, workspace, provider, or model access.
+An ambiguous natural-language project or space is stored as a tenant-bound, catalog-only
+scope-clarification wait before key, workspace, provider, or model access. Inspect it with
+the sessions scope-clarification command, then choose its exact revision-fenced candidate; the CLI
+freshly rechecks only that candidate against the retained request before it can create a brief.
 --resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable budget. It resumes only an undispatched wait or one host-issued retrieval continuation; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
 --session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
 Approving a durable plan persists its exact graph revision only; it starts no model research until durable task dispatch arrives.

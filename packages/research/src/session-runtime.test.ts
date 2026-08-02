@@ -20,7 +20,10 @@ import {
 } from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
-import { createResearchScopeExpansionProposalV1 } from "./scope-discovery.js";
+import {
+  createResearchKeyScopeSeedV1,
+  createResearchScopeExpansionProposalV1,
+} from "./scope-discovery.js";
 import { RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
@@ -201,6 +204,96 @@ describe("durable research session execution gate", () => {
       at: "2026-08-01T15:00:02.000Z",
     })).rejects.toThrow("Research session scope clarification resolution is invalid.");
     expect((await store.read(waiting.sessionId))?.revision).toBe(waiting.revision);
+  });
+
+  test("lets a selected natural scope replace only a lower-precedence profile default", async () => {
+    const store = new InMemoryResearchSessionStoreV1();
+    const projectDefault = createResearchKeyScopeSeedV1({
+      tenantOrigin: "https://example.atlassian.net",
+      product: "jira",
+      key: "DEFAULT",
+      source: "profile_default",
+      authority: "approved",
+    });
+    const spaceDefault = createResearchKeyScopeSeedV1({
+      tenantOrigin: "https://example.atlassian.net",
+      product: "confluence",
+      key: "LEGACY",
+      source: "profile_default",
+      authority: "approved",
+    });
+    const request = {
+      ...scopeClarificationRequest(),
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEFAULT"],
+        confluenceSpaceKeys: ["LEGACY"],
+        timeWindow: { from: "2026-08-01", to: "2026-08-02" },
+      },
+      scopeSeeds: [projectDefault, spaceDefault],
+    };
+    const waiting = await initializeResearchSessionScopeClarificationWaitV1({
+      store,
+      session: session(),
+      request,
+      policy: { ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1, requestedPlanApproval: "required" },
+      clarification: scopeClarification(),
+      candidateChoices: [scopeCandidate()],
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const resolved = {
+      ...request,
+      scope: {
+        ...request.scope,
+        confluenceSpaceKeys: ["DOCS"],
+      },
+      scopeSeeds: [
+        projectDefault,
+        spaceDefault,
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1" as const,
+            id: `scope-binding:${scopeCandidate().id}`,
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence" as const,
+            entityKind: "space" as const,
+            entityRef: scopeCandidate().entityRef,
+            key: "DOCS",
+            name: scopeCandidate().name,
+            source: "natural_language" as const,
+            authority: "approved" as const,
+            mentionId: "mention:scope-1",
+            candidateId: scopeCandidate().id,
+          },
+          precedence: 400,
+        },
+      ],
+    };
+    const result = await resolveResearchSessionScopeClarificationV1({
+      store,
+      sessionId: waiting.sessionId,
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope-1",
+        candidateId: scopeCandidate().id,
+      },
+      resolvedRequest: resolved,
+      at: "2026-08-01T15:00:02.000Z",
+    });
+    expect(result).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{
+        brief: {
+          scope: {
+            jiraProjectKeys: ["DEFAULT"],
+            confluenceSpaceKeys: ["DOCS"],
+            timeWindow: { from: "2026-08-01", to: "2026-08-02" },
+          },
+        },
+      }],
+    });
   });
 
   test("recovers a committed scope choice without accepting a new scope or policy", async () => {

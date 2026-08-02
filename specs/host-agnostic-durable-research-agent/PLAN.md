@@ -3119,7 +3119,7 @@ provider capability to QuickJS.
         replacement graph/envelope, and plan diff together, then return to
         explicit plan approval. Exact page/issue approval retains only the
         approved entity binding and cannot widen `ResearchScopeV1`.
-  - [ ] Persist unresolved scope-catalog clarification before a brief exists,
+  - [x] Persist unresolved scope-catalog clarification before a brief exists,
         and expose the candidate-choice controls in both hosts.
 
     - [x] Browser: persist the tenant-bound original request, bounded catalog
@@ -3128,8 +3128,12 @@ provider capability to QuickJS.
           accepting a new scope or policy. The packed MV3 suite proves the
           ambiguity, IndexedDB wait, revision fence, no-key/no-worker boundary,
           and automatic resumable handoff (21/21, 2026-08-02).
-    - [ ] CLI: expose the same pre-brief choice/recovery controls without
-          inventing a free-form scope or policy on resume.
+    - [x] CLI: expose the same pre-brief choice/recovery controls without
+          inventing a free-form scope or policy on resume. The CLI persists a
+          catalog-only wait, projects a tenant-bound review, freshly rechecks
+          only the revision-fenced candidate ID, and can continue a
+          choice-committed pre-brief checkpoint (56 targeted CLI/runtime tests,
+          2026-08-02).
 
 T4 durable-wait checkpoint (2026-08-02): the shared reducer records every
 named wait as a revision- and epoch-fenced state and immediately releases its
@@ -3144,8 +3148,9 @@ provider, or model construction. The CLI invokes that initializer and returns
 only the safe session reference. Reducer/runtime/CLI tests cover the released
 session clarification, plan approval/rejection, steering, scope, pause,
 authentication, and quota mechanisms. Persisting catalog-discovery questions
-that arise before a brief exists, and the host controls that submit answers and
-decisions, remain the next CLI/browser work items.
+that arise before a brief exists is now complete in both hosts: each projects
+only bounded tenant-bound candidates, accepts only a revision-fenced candidate
+ID, and rechecks that choice through the host catalog before creating a brief.
 - [x] Persist `dispatch_started`, `result_committed`, and `outcome_unknown`.
       Reuse committed results; after an unknown outcome, apply an explicit
       bounded retry/abstain policy and record any possible duplicate external
