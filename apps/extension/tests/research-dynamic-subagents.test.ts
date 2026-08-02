@@ -1141,6 +1141,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     );
     expect(specs[1]?.systemPrompt).toContain("Make exactly one eval call");
     expect(specs[1]?.systemPrompt).toContain("tools.wikiSearch");
+    expect(specs[5]?.systemPrompt).toContain("tools.researchCandidateRank");
+    expect(specs[5]?.systemPrompt).toContain("at most two candidate-ranking calls total");
     expect(specs[6]?.systemPrompt).toContain("sole report author");
   });
 
@@ -1364,7 +1366,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     }).find((spec) => spec.name === researchSubagentTypeForNodeV1(repair));
     expect(repairSpec?.systemPrompt).toContain("acquisition order is mandatory");
     expect(repairSpec?.systemPrompt).toContain("A sourceId is citation metadata, not a detail capability");
-    expect(repairSpec?.systemPrompt).toContain("item.entityRef copied unchanged from those same repair-search results");
+    expect(repairSpec?.systemPrompt).toContain("tools.researchCandidateRank");
+    expect(repairSpec?.systemPrompt).toContain("entityRef values returned by that host ranking");
   });
 
   test("projects the accepted synthesizer separately from generic research waves", async () => {

@@ -1884,7 +1884,8 @@ async function runResearchAgentWithBindings(
             repairNode.grantedCapabilityIds.includes("jira.issue.search") ? "jira" as const : undefined,
             repairNode.grantedCapabilityIds.includes("wiki.search") ? "confluence" as const : undefined,
           ].filter((product): product is "jira" | "confluence" => product !== undefined);
-          const minimumRepairCalls = repairProducts.length * 2;
+          const minimumRepairPtcCalls = repairProducts.length * 3;
+          const minimumRepairHttpCalls = repairProducts.length * 2;
           const hasProductReadBudget = repairProducts.length > 0 && repairProducts.every((product) =>
             broker.budget.canSearchAnotherPage(product) &&
             broker.budget.canReadAnotherDetail(product)
@@ -1893,9 +1894,9 @@ async function runResearchAgentWithBindings(
             hasProductReadBudget &&
             brokerBudget.ptcRemaining >= Math.max(
               policyMinimum.maxCapabilityCalls,
-              minimumRepairCalls,
+              minimumRepairPtcCalls,
             ) &&
-            brokerBudget.httpAttemptsRemaining >= minimumRepairCalls &&
+            brokerBudget.httpAttemptsRemaining >= minimumRepairHttpCalls &&
             ceiling.maxInputTokens - acceptedInputTokens >= policyMinimum.maxInputTokens &&
             ceiling.maxOutputTokens - acceptedOutputTokens >= policyMinimum.maxOutputTokens &&
             ceiling.maxResultBytes - acceptedResultBytes >= policyMinimum.maxResultBytes &&
