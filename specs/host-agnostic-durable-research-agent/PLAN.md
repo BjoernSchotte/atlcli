@@ -3413,10 +3413,20 @@ quota without exposing a retained evidence path through that workspace.
 Fake-indexeddb close/reopen, cross-namespace isolation, quota-release, focused
 evidence tests, TypeScript checks, and the packed MV3 suite passed.
 
-- [ ] Display stale/unknown freshness and exact coverage in the formatted
-      report.
-- [ ] Display which reconciliation defects changed, downgraded, or abstained
+- [x] Display current-claim freshness and exact coverage in the formatted
+      report; disclose stale/invalidated claim exclusion as a limitation rather
+      than rendering it as factual output.
+- [x] Display which reconciliation defects changed, downgraded, or abstained
       from a claim without presenting critique as source evidence.
+
+T5 formatted-report checkpoint (2026-08-02): V2 permits publication only of
+claims with `current` evidence; stale or invalidated claims are excluded during
+finalization and their exclusion is rendered as a limitation. The formatted
+sidebar shows current freshness, exact per-target coverage and retained-source
+counts. It now also projects host-recorded reconciliation target, decision and
+reason into the report and canonical Markdown. Critic explanations, references,
+source bodies and evidence spans are intentionally absent from that projection.
+Legacy V2 reports without the new optional reconciliation field remain readable.
 
 Gate:
 

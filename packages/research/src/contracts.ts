@@ -301,6 +301,21 @@ export interface ResearchReportSectionV2 {
 }
 
 /**
+ * Host-validated reconciliation outcome. This is process metadata, not source
+ * evidence: it deliberately excludes critic prose, source references, and
+ * private evidence spans.
+ */
+export interface ResearchReportReconciliationV2 {
+  defectId: string;
+  target: {
+    kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+    id: string;
+  };
+  decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+  reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
+/**
  * New evidence-first report contract. `markdown` remains an exact
  * deterministic projection so CLI, browser, copy, download, and future
  * exporters consume identical bytes.
@@ -320,6 +335,8 @@ export interface ResearchReportV2 {
     evidenceIds: string[];
     distinctSourceCount: number;
   }>;
+  /** Absent on historical V2 reports created before reconciliation projection. */
+  reconciliation?: ResearchReportReconciliationV2[];
   limitations: string[];
   sources: ResearchSourceReferenceV1[];
   run: ResearchRunSummaryV1;

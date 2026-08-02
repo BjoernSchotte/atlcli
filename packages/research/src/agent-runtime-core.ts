@@ -31,7 +31,10 @@ import {
   parseResearchDynamicAgentDraftV1,
   parseResearchAgentDraftV1,
 } from "./agent-draft.js";
-import { finalizeResearchReportV2 } from "./report-v2.js";
+import {
+  finalizeResearchReportV2,
+  projectResearchReportReconciliationV2,
+} from "./report-v2.js";
 import {
   projectResearchProposedAssumptionLimitationsV1,
   type ResearchBriefV1,
@@ -91,6 +94,7 @@ import {
   RESEARCH_RECONCILIATION_REASON_CODES_V1,
   isResearchPacketBodyV1,
   isResearchPacketBodyV2,
+  parseReconciliationBodyV1,
   parseResearchReconciliationDispositionV1,
   projectResearchReconciliationInputV1,
   isResearchReconciliationReferenceKnownV1,
@@ -2172,6 +2176,18 @@ async function runResearchAgentWithBindings(
         "The synthesizer selected a claim outside its current accepted evidence.",
       );
     }
+    const reconciliationNode = acceptedGraph?.nodes.find((node) =>
+      node.roleId === "reconciler" && node.status !== "pruned",
+    );
+    const reconciliationPacket = reconciliationNode && acceptedGraph
+      ? acceptedPacketsByTaskId.get(researchTaskIdForNodeV1(acceptedGraph, reconciliationNode))
+      : undefined;
+    const reconciliationOutcomes = reconciliationPacket && reconciliationDispositions
+      ? projectResearchReportReconciliationV2(
+          parseReconciliationBodyV1(reconciliationPacket.body).defects,
+          reconciliationDispositions,
+        )
+      : [];
     const report = durableEvidence && durableClaims && acceptedV2Bodies.length > 0
       ? await finalizeResearchReportV2({
           request: input.request,
@@ -2179,6 +2195,7 @@ async function runResearchAgentWithBindings(
           claimLedger: durableClaims,
           claimIds: selectedV2ClaimIds ?? v2ClaimIds,
           ...(outline ? { outline } : {}),
+          reconciliation: reconciliationOutcomes,
           title: synthesizerDraft.title,
           limitations: [
             ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),

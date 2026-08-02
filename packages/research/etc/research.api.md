@@ -289,6 +289,7 @@ export interface FinalizeResearchReportV2Input {
     title?: string;
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
+    reconciliation?: readonly ResearchReportReconciliationV2[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -599,6 +600,9 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportReconciliationV2
+export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -2320,6 +2324,17 @@ export interface ResearchReportClaimV2 {
     sourceIds: string[];
 }
 
+// export: ResearchReportReconciliationV2
+export interface ResearchReportReconciliationV2 {
+    defectId: string;
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
 // export: ResearchReportSectionV2
 export interface ResearchReportSectionV2 {
     id: string;
@@ -2360,6 +2375,7 @@ export interface ResearchReportV2 {
         evidenceIds: string[];
         distinctSourceCount: number;
     }>;
+    reconciliation?: ResearchReportReconciliationV2[];
     limitations: string[];
     sources: ResearchSourceReferenceV1[];
     run: ResearchRunSummaryV1;
@@ -3734,6 +3750,7 @@ export interface FinalizeResearchReportV2Input {
     title?: string;
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
+    reconciliation?: readonly ResearchReportReconciliationV2[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -4044,6 +4061,9 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportReconciliationV2
+export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -5765,6 +5785,17 @@ export interface ResearchReportClaimV2 {
     sourceIds: string[];
 }
 
+// export: ResearchReportReconciliationV2
+export interface ResearchReportReconciliationV2 {
+    defectId: string;
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
 // export: ResearchReportSectionV2
 export interface ResearchReportSectionV2 {
     id: string;
@@ -5805,6 +5836,7 @@ export interface ResearchReportV2 {
         evidenceIds: string[];
         distinctSourceCount: number;
     }>;
+    reconciliation?: ResearchReportReconciliationV2[];
     limitations: string[];
     sources: ResearchSourceReferenceV1[];
     run: ResearchRunSummaryV1;
@@ -7177,6 +7209,7 @@ export interface FinalizeResearchReportV2Input {
     title?: string;
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
+    reconciliation?: readonly ResearchReportReconciliationV2[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -7487,6 +7520,9 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportReconciliationV2
+export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -9208,6 +9244,17 @@ export interface ResearchReportClaimV2 {
     sourceIds: string[];
 }
 
+// export: ResearchReportReconciliationV2
+export interface ResearchReportReconciliationV2 {
+    defectId: string;
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
 // export: ResearchReportSectionV2
 export interface ResearchReportSectionV2 {
     id: string;
@@ -9248,6 +9295,7 @@ export interface ResearchReportV2 {
         evidenceIds: string[];
         distinctSourceCount: number;
     }>;
+    reconciliation?: ResearchReportReconciliationV2[];
     limitations: string[];
     sources: ResearchSourceReferenceV1[];
     run: ResearchRunSummaryV1;
@@ -10791,6 +10839,7 @@ export interface FinalizeResearchReportV2Input {
     title?: string;
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
+    reconciliation?: readonly ResearchReportReconciliationV2[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -11101,6 +11150,9 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportReconciliationV2
+export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -12891,6 +12943,17 @@ export interface ResearchReportClaimV2 {
     sourceIds: string[];
 }
 
+// export: ResearchReportReconciliationV2
+export interface ResearchReportReconciliationV2 {
+    defectId: string;
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
 // export: ResearchReportSectionV2
 export interface ResearchReportSectionV2 {
     id: string;
@@ -12931,6 +12994,7 @@ export interface ResearchReportV2 {
         evidenceIds: string[];
         distinctSourceCount: number;
     }>;
+    reconciliation?: ResearchReportReconciliationV2[];
     limitations: string[];
     sources: ResearchSourceReferenceV1[];
     run: ResearchRunSummaryV1;
@@ -14568,6 +14632,7 @@ export interface FinalizeResearchReportV2Input {
     title?: string;
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
+    reconciliation?: readonly ResearchReportReconciliationV2[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -14878,6 +14943,9 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportReconciliationV2
+export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -16668,6 +16736,17 @@ export interface ResearchReportClaimV2 {
     sourceIds: string[];
 }
 
+// export: ResearchReportReconciliationV2
+export interface ResearchReportReconciliationV2 {
+    defectId: string;
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
 // export: ResearchReportSectionV2
 export interface ResearchReportSectionV2 {
     id: string;
@@ -16708,6 +16787,7 @@ export interface ResearchReportV2 {
         evidenceIds: string[];
         distinctSourceCount: number;
     }>;
+    reconciliation?: ResearchReportReconciliationV2[];
     limitations: string[];
     sources: ResearchSourceReferenceV1[];
     run: ResearchRunSummaryV1;
@@ -18435,6 +18515,17 @@ export interface ResearchReportClaimV2 {
     sourceIds: string[];
 }
 
+// export: ResearchReportReconciliationV2
+export interface ResearchReportReconciliationV2 {
+    defectId: string;
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
 // export: ResearchReportSectionV2
 export interface ResearchReportSectionV2 {
     id: string;
@@ -18475,6 +18566,7 @@ export interface ResearchReportV2 {
         evidenceIds: string[];
         distinctSourceCount: number;
     }>;
+    reconciliation?: ResearchReportReconciliationV2[];
     limitations: string[];
     sources: ResearchSourceReferenceV1[];
     run: ResearchRunSummaryV1;
@@ -19372,6 +19464,7 @@ export interface FinalizeResearchReportV2Input {
     title?: string;
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
+    reconciliation?: readonly ResearchReportReconciliationV2[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -19682,6 +19775,9 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportReconciliationV2
+export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -21472,6 +21568,17 @@ export interface ResearchReportClaimV2 {
     sourceIds: string[];
 }
 
+// export: ResearchReportReconciliationV2
+export interface ResearchReportReconciliationV2 {
+    defectId: string;
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+}
+
 // export: ResearchReportSectionV2
 export interface ResearchReportSectionV2 {
     id: string;
@@ -21512,6 +21619,7 @@ export interface ResearchReportV2 {
         evidenceIds: string[];
         distinctSourceCount: number;
     }>;
+    reconciliation?: ResearchReportReconciliationV2[];
     limitations: string[];
     sources: ResearchSourceReferenceV1[];
     run: ResearchRunSummaryV1;

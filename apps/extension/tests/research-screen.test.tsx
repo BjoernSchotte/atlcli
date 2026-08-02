@@ -126,6 +126,12 @@ const v2Report: ResearchReportV2 = {
     evidenceIds: ["evidence:validated"],
     distinctSourceCount: 1,
   }],
+  reconciliation: [{
+    defectId: "defect:validated-coverage",
+    target: { kind: "coverage", id: "target:validated" },
+    decision: "abstain",
+    reasonCode: "insufficient_budget",
+  }],
   limitations: [],
   sources: [report.sources[0]!],
   run: report.run,
@@ -472,6 +478,7 @@ describe("portable Research screen", () => {
     expect(formatted.textContent).toContain("Evidence coverage");
     expect(formatted.textContent).toContain("1 distinct retained source");
     expect(dom.find("research-claim-freshness-claim:validated").textContent).toBe("Current evidence");
+    expect(dom.find("research-reconciliation-defect:validated-coverage").textContent).toContain("coverage: target:validated: abstain (insufficient_budget)");
     expect(formatted.textContent).toContain("None reported.");
     expect(dom.html()).toContain("https://example.atlassian.net/browse/DEMO-1");
 

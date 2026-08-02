@@ -3,6 +3,7 @@ import {
   RESEARCH_REPORT_SCHEMA_V2,
   ResearchContractError,
   type ResearchReportClaimV2,
+  type ResearchReportReconciliationV2,
   type ResearchReportSectionV2,
   type ResearchReportV1,
   type ResearchReportV2,
@@ -13,11 +14,16 @@ import {
 import type { ResearchClaimLedgerV1, ResearchClaimV1 } from "./claim-ledger.js";
 import type { ResearchEvidenceRecordV1, ResearchEvidenceStoreV1 } from "./evidence-store.js";
 import type { ResearchOutlineV1 } from "./outline.js";
+import type {
+  ResearchReconciliationDefectV1,
+  ResearchReconciliationDispositionV1,
+} from "./workflow-contracts.js";
 import { finalizeResearchReportV1, renderResearchReportWithFindingSectionsMarkdown } from "./report.js";
 
 const CLAIM_ID = /^claim:[a-f0-9]{48}$/;
 const MAXIMUM_REPORT_CLAIMS = 96;
 const MAXIMUM_REPORT_SECTIONS = 24;
+const MAXIMUM_RECONCILIATION_OUTCOMES = 16;
 
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-report", message);
@@ -102,6 +108,28 @@ function coverageMarkdown(report: ResearchReportV2): string[] {
   ];
 }
 
+function markdownText(value: string): string {
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/([`*_[\]<>])/g, "\\$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function reconciliationMarkdown(report: ResearchReportV2): string[] {
+  const outcomes = report.reconciliation ?? [];
+  if (outcomes.length === 0) return [];
+  return [
+    "## Reconciliation decisions",
+    "",
+    ...outcomes.map((entry) =>
+      `- ${markdownText(entry.target.kind)} ${markdownText(entry.target.id)}: ${entry.decision} (${entry.reasonCode}).`,
+    ),
+    "",
+  ];
+}
+
 function renderMarkdown(report: Omit<ResearchReportV2, "markdown">): string {
   const claimsById = new Map(report.claims.map((claim) => [claim.id, claim]));
   const sections = report.sections.map((section) => ({
@@ -145,7 +173,28 @@ function renderMarkdown(report: Omit<ResearchReportV2, "markdown">): string {
       sections,
     }).trimEnd().split("\n"),
     ...coverageMarkdown({ ...report, markdown: "" }),
+    ...reconciliationMarkdown({ ...report, markdown: "" }),
   ].join("\n");
+}
+
+function reconciliationOutcome(value: unknown): ResearchReportReconciliationV2 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalid("V2 report reconciliation outcome is invalid.");
+  const outcome = value as Partial<ResearchReportReconciliationV2>;
+  const target = outcome.target;
+  if (typeof outcome.defectId !== "string" || outcome.defectId.length === 0 || outcome.defectId.length > 160 ||
+      !target || typeof target !== "object" ||
+      !["finding", "relationship", "claim", "section", "node", "coverage"].includes(target.kind ?? "") ||
+      typeof target.id !== "string" || target.id.length === 0 || target.id.length > 160 ||
+      !["reject_defect", "revise", "downgrade", "add_follow_up", "abstain", "no_change"].includes(outcome.decision ?? "") ||
+      !["invalid_reference", "already_resolved", "supported_by_evidence", "material_defect", "insufficient_budget", "outside_approval_envelope"].includes(outcome.reasonCode ?? "")) {
+    invalid("V2 report reconciliation outcome is invalid.");
+  }
+  return {
+    defectId: outcome.defectId,
+    target: { kind: target.kind, id: target.id },
+    decision: outcome.decision,
+    reasonCode: outcome.reasonCode,
+  } as ResearchReportReconciliationV2;
 }
 
 /**
@@ -159,6 +208,10 @@ export function assertResearchReportV2(value: unknown): asserts value is Researc
   if (report.schema !== RESEARCH_REPORT_SCHEMA_V2 || !Array.isArray(report.claims) || !Array.isArray(report.sections) ||
       !Array.isArray(report.coverage) || !Array.isArray(report.limitations) || !Array.isArray(report.sources) || !Array.isArray(report.executiveSummaryClaimIds)) {
     invalid("V2 report schema is invalid.");
+  }
+  if (report.reconciliation !== undefined &&
+      (!Array.isArray(report.reconciliation) || report.reconciliation.length > MAXIMUM_RECONCILIATION_OUTCOMES)) {
+    invalid("V2 report reconciliation is invalid.");
   }
   boundedText(report.title, "V2 report title", 300);
   boundedText(report.question, "V2 report question", 4_000);
@@ -207,6 +260,12 @@ export function assertResearchReportV2(value: unknown): asserts value is Researc
       invalid("V2 report coverage references unavailable support.");
     }
   }
+  const reconciliationDefectIds = new Set<string>();
+  for (const outcome of report.reconciliation ?? []) {
+    const validated = reconciliationOutcome(outcome);
+    if (reconciliationDefectIds.has(validated.defectId)) invalid("V2 report reconciliation defect is duplicated.");
+    reconciliationDefectIds.add(validated.defectId);
+  }
   if (!report.run || typeof report.run !== "object" || typeof report.markdown !== "string") invalid("V2 report run or Markdown is invalid.");
 }
 
@@ -228,6 +287,8 @@ export interface FinalizeResearchReportV2Input {
    * factual report prose.
    */
   selectedSourceIds?: readonly string[];
+  /** Host-recorded reconciliation results; never critic prose or source support. */
+  reconciliation?: readonly ResearchReportReconciliationV2[];
   run: ResearchRunSummaryV1;
   checkedAt: string;
 }
@@ -240,6 +301,47 @@ function selectedSourceSet(value: readonly string[] | undefined): Set<string> | 
   return new Set(value.map((sourceId) =>
     boundedText(sourceId, "V2 report selected source ID", 320)
   ));
+}
+
+function normalizedReconciliation(
+  value: readonly ResearchReportReconciliationV2[] | undefined,
+): ResearchReportReconciliationV2[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAXIMUM_RECONCILIATION_OUTCOMES) {
+    invalid("V2 report reconciliation is invalid.");
+  }
+  const outcomes = value.map(reconciliationOutcome);
+  if (new Set(outcomes.map((outcome) => outcome.defectId)).size !== outcomes.length) {
+    invalid("V2 report reconciliation defect is duplicated.");
+  }
+  return outcomes.map((outcome) => structuredClone(outcome));
+}
+
+/**
+ * Project host-accepted reconciliation outcomes for operator visibility. The
+ * critic's explanation and support references deliberately do not cross this
+ * boundary: neither is report evidence nor report prose.
+ */
+export function projectResearchReportReconciliationV2(
+  defects: readonly ResearchReconciliationDefectV1[],
+  dispositions: readonly ResearchReconciliationDispositionV1[],
+): ResearchReportReconciliationV2[] {
+  const dispositionsByDefectId = new Map(
+    dispositions.map((disposition) => [disposition.defectId, disposition]),
+  );
+  if (defects.length !== dispositionsByDefectId.size) {
+    invalid("Every reconciliation defect requires one host-recorded disposition.");
+  }
+  return normalizedReconciliation(defects.map((defect) => {
+    const disposition = dispositionsByDefectId.get(defect.id);
+    if (!disposition) invalid("A reconciliation disposition is missing its defect.");
+    return {
+      defectId: defect.id,
+      target: structuredClone(defect.target),
+      decision: disposition.decision,
+      reasonCode: disposition.reasonCode,
+    };
+  }));
 }
 
 /**
@@ -325,6 +427,7 @@ export async function finalizeResearchReportV2(
         distinctSourceCount,
       };
     }),
+    reconciliation: normalizedReconciliation(input.reconciliation),
     limitations: [...new Set([
       ...(input.limitations ?? []).map((value) => boundedText(value, "V2 report limitation", 700)),
       ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),

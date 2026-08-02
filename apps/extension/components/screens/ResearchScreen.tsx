@@ -297,6 +297,7 @@ function V1FormattedReport({ report }: { report: Extract<ResearchReport, { schem
 function V2FormattedReport({ report }: { report: Extract<ResearchReport, { schema: "atlcli.research-report/v2" }> }): React.JSX.Element {
   const t = useT();
   const claims = new Map(report.claims.map((claim) => [claim.id, claim]));
+  const reconciliation = report.reconciliation ?? [];
   return (
     <article className="flex flex-col gap-4 text-sm" data-testid="research-formatted-report">
       <header>
@@ -346,6 +347,18 @@ function V2FormattedReport({ report }: { report: Extract<ResearchReport, { schem
                     ? "research.coverage.distinctSource"
                     : "research.coverage.distinctSources",
                 )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {reconciliation.length > 0 && (
+        <section>
+          <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.reconciliation.outcomes")}</h3>
+          <ul className="m-0 pl-5">
+            {reconciliation.map((outcome) => (
+              <li key={outcome.defectId} data-testid={`research-reconciliation-${outcome.defectId}`}>
+                <code>{outcome.target.kind}: {outcome.target.id}</code>: {outcome.decision} ({outcome.reasonCode})
               </li>
             ))}
           </ul>

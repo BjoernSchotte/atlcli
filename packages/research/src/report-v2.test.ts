@@ -9,7 +9,11 @@ import {
 import type { ResearchClaimLedgerV1, ResearchClaimV1 } from "./claim-ledger.js";
 import type { ResearchEvidenceRecordV1, ResearchEvidenceStoreV1 } from "./evidence-store.js";
 import type { ResearchOutlineV1 } from "./outline.js";
-import { assertResearchReportV2, finalizeResearchReportV2 } from "./report-v2.js";
+import {
+  assertResearchReportV2,
+  finalizeResearchReportV2,
+  projectResearchReportReconciliationV2,
+} from "./report-v2.js";
 
 const CURRENT_CLAIM = `claim:${"a".repeat(48)}`;
 const STALE_CLAIM = `claim:${"b".repeat(48)}`;
@@ -114,6 +118,36 @@ function ports(input: {
 }
 
 describe("V2 research report finalization", () => {
+  test("projects host-recorded reconciliation decisions without publishing critic text or support", () => {
+    const projected = projectResearchReportReconciliationV2([{
+      id: "defect:report-coverage",
+      severity: "important",
+      target: { kind: "claim", id: CURRENT_CLAIM },
+      code: "overstated",
+      references: [{ kind: "evidence", id: EVIDENCE }],
+      explanation: "Private critic rationale must not be report content.",
+      suggestedAction: "downgrade",
+    }], [{
+      schema: "atlcli.reconciliation-disposition/v1",
+      id: "reconciliation-disposition:report-coverage",
+      reconciliationPacketRef: "packet:report-reconciler",
+      defectId: "defect:report-coverage",
+      basedOnGraphRevision: 1,
+      decision: "downgrade",
+      reasonCode: "material_defect",
+      resultingClaimIds: [],
+      recordedAt: "2026-08-01T12:00:00.000Z",
+    }]);
+    expect(projected).toEqual([{
+      defectId: "defect:report-coverage",
+      target: { kind: "claim", id: CURRENT_CLAIM },
+      decision: "downgrade",
+      reasonCode: "material_defect",
+    }]);
+    expect(JSON.stringify(projected)).not.toContain("Private critic rationale");
+    expect(JSON.stringify(projected)).not.toContain(EVIDENCE);
+  });
+
   test("renders canonical Markdown only from current ledger claims and retained sources", async () => {
     const current = claim(CURRENT_CLAIM, EVIDENCE, "current");
     const support = ports({ claims: [current], records: [record(EVIDENCE, "jira:ATLCLI-42")] });
@@ -124,6 +158,12 @@ describe("V2 research report finalization", () => {
       claimIds: [CURRENT_CLAIM],
       title: "Validated implementation report",
       limitations: ["The deterministic fixture covers one retained issue."],
+      reconciliation: [{
+        defectId: "defect:report-coverage",
+        target: { kind: "coverage", id: "coverage:delivery" },
+        decision: "abstain",
+        reasonCode: "insufficient_budget",
+      }],
       run,
       checkedAt: "2026-08-01T12:01:00.000Z",
     });
@@ -137,6 +177,8 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("[Validated implementation item](https://example.atlassian.net/browse/ATLCLI-42)");
     expect(report.markdown).not.toContain(EVIDENCE);
     expect(report.markdown).not.toContain(CURRENT_CLAIM);
+    expect(report.markdown).toContain("## Reconciliation decisions");
+    expect(report.markdown).toContain("coverage coverage:delivery: abstain (insufficient_budget).");
   });
 
   test("derives sections and coverage from a validated outline without publishing stale support", async () => {
