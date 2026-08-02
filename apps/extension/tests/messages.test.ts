@@ -64,6 +64,38 @@ describe("message guards", () => {
       sessionId: "must-not-cross",
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:list-scope-reviews",
+      windowId: 7,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:approve-scope-review",
+      windowId: 7,
+      sessionId: "research-session:scope-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      proposalId: "scope-expansion:related-space",
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:approve-scope-review",
+      windowId: 7,
+      sessionId: "research-session:scope-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      proposalId: "scope-expansion:related-space",
+      candidateId: "must-not-cross",
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:reject-scope-review",
+      windowId: 7,
+      sessionId: "research-session:scope-review",
+      revision: 0,
+      briefRevision: 3,
+      graphRevision: 4,
+      proposalId: "scope-expansion:related-space",
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:resolve-scope",
       windowId: 7,
       request: { schema: "atlcli.research-request/v1" },

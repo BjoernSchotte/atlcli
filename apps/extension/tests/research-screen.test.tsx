@@ -13,7 +13,10 @@ import {
   inferResearchScope,
 } from "../components/screens/ResearchScreen.js";
 import { I18nProvider } from "../utils/i18n/context.js";
-import type { ResearchBriefClarificationRequiredV1 } from "@atlcli/research";
+import type {
+  ResearchBriefClarificationRequiredV1,
+  ResearchSessionScopeReviewV1,
+} from "@atlcli/research";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import type {
   ResearchPort,
@@ -544,6 +547,103 @@ describe("portable Research screen", () => {
       .toContain("phase · researching");
     expect(dom.find("research-formatted-report").textContent)
       .toContain("The page explicitly links the issue.");
+  });
+
+  it("shows a persisted scope proposal and sends only its revision-fenced decision", async () => {
+    const review: ResearchSessionScopeReviewV1 = {
+      schema: "atlcli.research-session-scope-review/v1",
+      sessionId: "research-session:scope-review",
+      revision: 12,
+      status: "waiting_scope_approval",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:scope-review",
+        briefRevision: 3,
+        graphRevision: 4,
+        candidates: [{
+          id: "research-scope-candidate:confluence-space-related",
+          product: "confluence",
+          entityKind: "space",
+          key: "RELATED",
+          name: "Related documentation",
+        }],
+        bindings: [],
+        expansionProposals: [{
+          id: "scope-expansion:related-space",
+          candidateId: "research-scope-candidate:confluence-space-related",
+          expansionKind: "whole_scope",
+          basedOnBriefRevision: 3,
+          basedOnGraphRevision: 4,
+          reason: "An exact reference points to this space.",
+          status: "proposed",
+        }],
+        scopeRevisions: [],
+      },
+    };
+    const approved: Array<{
+      sessionId: string;
+      revision: number;
+      briefRevision: number;
+      graphRevision: number;
+      proposalId: string;
+    }> = [];
+    let listings = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      listScopeReviews: async () => (++listings === 1 ? [review] : []),
+      approveScopeReview: async (input) => {
+        approved.push(input);
+        return {
+          ...review,
+          revision: 13,
+          status: "waiting_plan_approval",
+          turn: {
+            ...review.turn,
+            expansionProposals: [{
+              ...review.turn.expansionProposals[0]!,
+              status: "approved",
+              approvedBindingId: "scope-binding:related-space",
+            }],
+          },
+        };
+      },
+      rejectScopeReview: async () => review,
+      run: async () => report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    expect(dom.find("research-scope-reviews").textContent)
+      .toContain("RELATED");
+    expect(dom.find("research-scope-review-0-0").textContent)
+      .toContain("An exact reference points to this space.");
+    await dom.click("research-scope-review-approve-0-0");
+    await dom.flush();
+
+    expect(approved).toEqual([{
+      sessionId: "research-session:scope-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      proposalId: "scope-expansion:related-space",
+    }]);
+    expect(dom.html()).toContain("Scope decision saved.");
+    expect(dom.html()).not.toContain("candidateId");
   });
 
   it("shows the shared deep-plan stop before storing a key or calling the host", async () => {

@@ -34,14 +34,23 @@ import {
   createStandardResearchBriefV1,
   initializeResearchSessionTurnV1,
   normalizeResearchOneShotPolicyV1,
+  reduceResearchSessionV1,
   type ResearchOneShotEventV1,
   type ResearchReport,
   type ResearchRequestV1,
   type ResearchScopePreflightOutcomeV1,
+  type ResearchSessionUpdateV1,
+  type ResearchSessionV1,
 } from "@atlcli/research";
 import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
-import { composeResearchGraphV1 } from "@atlcli/research/graph";
-import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
+import {
+  composeResearchGraphV1,
+  stageResearchGraphForDurableSessionV1,
+} from "@atlcli/research/graph";
+import {
+  createResearchKeyScopeSeedV1,
+  createResearchScopeExpansionProposalV1,
+} from "@atlcli/research/scope-discovery";
 import {
   RESEARCH_CRITIQUE_SCHEMA_V1,
 } from "@atlcli/research/browser/agent";
@@ -1735,6 +1744,92 @@ function packedSentinelRequest(): ResearchRequestV1 {
   };
 }
 
+function updatePackedResearchSession<
+  T extends Omit<ResearchSessionUpdateV1, "expectedRevision" | "expectedLeaseEpoch" | "at">
+>(
+  session: ResearchSessionV1,
+  update: T,
+  at: string,
+): ResearchSessionV1 {
+  return reduceResearchSessionV1(session, {
+    ...update,
+    expectedRevision: session.revision,
+    expectedLeaseEpoch: session.lease.epoch,
+    at,
+  } as ResearchSessionUpdateV1);
+}
+
+function packedScopeReviewSession(): ResearchSessionV1 {
+  const sessionId = "research-session:packed-scope-review";
+  const turnId = "research-turn:packed-scope-review";
+  const at = "2026-08-02T15:00:00.000Z";
+  const request = hostParityRequest();
+  const brief = createStandardResearchBriefV1("Packed scope-review fixture.", {
+    sessionId,
+    turnId,
+    scope: request.scope,
+    scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+    limits: request.limits,
+    asOf: at,
+    policy: HOST_PARITY_POLICY,
+  });
+  let session = createResearchSessionV1({
+    sessionId,
+    ownerId: "owner:packed-scope-review",
+    createdAt: at,
+    leaseExpiresAt: "2026-08-02T15:10:00.000Z",
+  });
+  session = updatePackedResearchSession(session, {
+    kind: "create_turn",
+    turnId,
+  }, "2026-08-02T15:00:01.000Z");
+  session = updatePackedResearchSession(session, {
+    kind: "record_brief",
+    brief,
+    scopeCandidates: [{
+      schema: "atlcli.research-scope-candidate/v1",
+      id: "research-scope-candidate:confluence-space-related",
+      tenantOrigin: SITE_ORIGIN,
+      product: "confluence",
+      entityKind: "space",
+      entityRef: "opaque-packed-related-space",
+      key: "RELATED",
+      name: "Related documentation",
+      status: "current",
+      match: "exact_link",
+      accessible: true,
+      providerFreshnessAt: at,
+    }],
+  }, "2026-08-02T15:00:02.000Z");
+  const graph = stageResearchGraphForDurableSessionV1(composeResearchGraphV1(
+    session.turns[0]!.brief!,
+    { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+  ));
+  session = updatePackedResearchSession(session, {
+    kind: "propose_graph",
+    graph,
+  }, "2026-08-02T15:00:03.000Z");
+  session = updatePackedResearchSession(session, {
+    kind: "approve_graph",
+    graphRevision: graph.revision,
+  }, "2026-08-02T15:00:04.000Z");
+  return updatePackedResearchSession(session, {
+    kind: "propose_scope_expansion",
+    proposal: createResearchScopeExpansionProposalV1({
+      id: "scope-expansion:packed-related-space",
+      sessionId,
+      turnId,
+      basedOnBriefRevision: 1,
+      basedOnGraphRevision: 1,
+      candidateId: "research-scope-candidate:confluence-space-related",
+      expansionKind: "whole_scope",
+      reason: "An exact reference needs bounded follow-up.",
+      provenanceRefs: ["source:packed-related-space"],
+      status: "proposed",
+    }),
+  }, "2026-08-02T15:00:05.000Z");
+}
+
 async function runNodeHostParityFixture(): Promise<{
   report: ResearchReport;
   events: ResearchOneShotEventV1[];
@@ -1893,6 +1988,15 @@ async function readPackedDurableResearchSession(
         tasks: Array<{ taskId: string }>;
         acceptedPackets: unknown[];
         budgetState?: { ptcCalls?: number };
+        brief?: { scope?: { jiraProjectKeys?: string[]; confluenceSpaceKeys?: string[] } };
+        graph?: {
+          revision?: number;
+          basedOnBriefRevision?: number;
+          status?: string;
+          nodes?: Array<{ outputSchema?: string }>;
+        };
+        scopeExpansionProposals?: Array<{ id?: string; status?: string }>;
+        scopeRevisions?: Array<{ state?: string; proposedGraphRevision?: number }>;
       }>;
     };
   };
@@ -1917,6 +2021,33 @@ async function readPackedDurableResearchSession(
       open.close();
     }
   }, { sessionId, artifactId });
+}
+
+async function writePackedDurableResearchSession(
+  page: Page,
+  session: ResearchSessionV1,
+): Promise<void> {
+  await page.evaluate(async (state) => {
+    const open = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("atlcli-research-sessions");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = open.transaction("sessions", "readwrite");
+        transaction.objectStore("sessions").put({
+          sessionId: state.sessionId,
+          state,
+        });
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(transaction.error);
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally {
+      open.close();
+    }
+  }, session);
 }
 
 let context: BrowserContext;
@@ -2112,6 +2243,134 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   });
   expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
+});
+
+test("reviews a durable scope proposal in packed MV3 without allowing caller-owned scope authority", async () => {
+  await installEventCapture(page);
+  const pending = packedScopeReviewSession();
+  // Let the actual background adapter create the versioned store. The fixture
+  // writes only its synthetic session snapshot after this productive opening;
+  // it does not reimplement the IndexedDB schema in test code.
+  const empty = await page.evaluate(async () => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:list-scope-reviews",
+      windowId: window.id,
+    });
+  });
+  expect(empty).toMatchObject({
+    kind: "research:list-scope-reviews-result",
+    ok: true,
+    reviews: [],
+  });
+  await writePackedDurableResearchSession(page, pending);
+
+  const listed = await page.evaluate(async () => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:list-scope-reviews",
+      windowId: window.id,
+    });
+  }) as {
+    kind: string;
+    ok: boolean;
+    reviews?: Array<{
+      sessionId: string;
+      revision: number;
+      status: string;
+      turn: {
+        briefRevision: number;
+        graphRevision: number;
+        candidates: Array<{ key?: string; name: string }>;
+        expansionProposals: Array<{ id: string; candidateId: string; status: string }>;
+      };
+    }>;
+  };
+  expect(listed).toMatchObject({
+    kind: "research:list-scope-reviews-result",
+    ok: true,
+    reviews: [{
+      sessionId: pending.sessionId,
+      revision: pending.revision,
+      status: "waiting_scope_approval",
+      turn: {
+        briefRevision: 1,
+        graphRevision: 1,
+        candidates: [{ key: "RELATED" }],
+        expansionProposals: [{ id: "scope-expansion:packed-related-space", status: "proposed" }],
+      },
+    }],
+  });
+  expect(JSON.stringify(listed)).not.toContain("tenantOrigin");
+  expect(JSON.stringify(listed)).not.toContain("entityRef");
+
+  const approved = await page.evaluate(async ({ sessionId, revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:approve-scope-review",
+      windowId: window.id,
+      sessionId,
+      revision,
+      briefRevision: 1,
+      graphRevision: 1,
+      proposalId: "scope-expansion:packed-related-space",
+    });
+  }, { sessionId: pending.sessionId, revision: pending.revision }) as {
+    kind: string;
+    ok: boolean;
+    review?: { revision: number; status: string };
+  };
+  expect(approved).toMatchObject({
+    kind: "research:approve-scope-review-result",
+    ok: true,
+    review: { revision: pending.revision + 1, status: "waiting_plan_approval" },
+  });
+
+  const durable = await readPackedDurableResearchSession(
+    page,
+    pending.sessionId,
+    "artifact:report:research-turn:packed-scope-review",
+  );
+  expect(durable.session.state).toMatchObject({
+    status: "waiting_plan_approval",
+    turns: [{
+      brief: { scope: { confluenceSpaceKeys: ["KB", "RELATED"] } },
+      graph: { revision: 2, basedOnBriefRevision: 2, status: "proposed" },
+      scopeExpansionProposals: [{
+        id: "scope-expansion:packed-related-space",
+        status: "approved",
+      }],
+      scopeRevisions: [{ state: "proposed", proposedGraphRevision: 2 }],
+    }],
+  });
+  expect(durable.session.state.turns[0]?.graph?.nodes?.some((node) =>
+    node.outputSchema === "atlcli.research-packet-body/v2",
+  )).toBe(true);
+  expect(durable.artifact).toBeUndefined();
+  const events = await harnessEvents(page);
+  expect(events.some((event) => event.kind === "fetch")).toBe(false);
+
+  const stale = await page.evaluate(async ({ sessionId, revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:approve-scope-review",
+      windowId: window.id,
+      sessionId,
+      revision,
+      briefRevision: 1,
+      graphRevision: 1,
+      proposalId: "scope-expansion:packed-related-space",
+    });
+  }, { sessionId: pending.sessionId, revision: pending.revision });
+  expect(stale).toMatchObject({
+    kind: "research:approve-scope-review-result",
+    ok: false,
+    code: "invalid-request",
+  });
 });
 
 test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {

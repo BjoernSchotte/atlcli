@@ -10,6 +10,10 @@ import {
   type ResearchGraphCompositionOptionsV1,
   type ResearchGraphV1,
 } from "./graph.js";
+import {
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
+  RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
+} from "./workflow-contracts.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
 import {
   RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
@@ -266,11 +270,20 @@ export async function approveResearchScopeExpansionV1(
     throw new Error("Research scope expansion is not awaiting an approval.");
   }
   const replacementGraph = proposal.expansionKind === "whole_scope"
-    ? stageResearchGraphForDurableSessionV1(composeResearchGraphV1(approveResearchBriefWholeScopeExpansionV1({
-        brief,
-        binding: input.binding,
-        existingBindings: active.scopeBindings,
-      }), { graphRevision: graph.revision + 1 }))
+    ? stageResearchGraphForDurableSessionV1(composeResearchGraphV1(
+        approveResearchBriefWholeScopeExpansionV1({
+          brief,
+          binding: input.binding,
+          existingBindings: active.scopeBindings,
+        }),
+        {
+          graphRevision: graph.revision + 1,
+          ...(graph.nodes.some((node) =>
+            node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2 ||
+            node.outputSchema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
+          ) ? { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 } : {}),
+        },
+      ))
     : undefined;
   return (await input.store.commit(input.sessionId, {
     kind: "approve_scope_expansion",

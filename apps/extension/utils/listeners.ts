@@ -123,6 +123,30 @@ export function handleExtMessage(
             error: toMessage(err),
           });
           break;
+        case "research:list-scope-reviews":
+          sendResponse({
+            kind: "research:list-scope-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:approve-scope-review":
+          sendResponse({
+            kind: "research:approve-scope-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:reject-scope-review":
+          sendResponse({
+            kind: "research:reject-scope-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:resolve-scope":
           sendResponse({
             kind: "research:resolve-scope-result",

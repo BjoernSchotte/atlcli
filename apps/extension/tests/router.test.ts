@@ -5,7 +5,10 @@ import type {
   ResearchReportV1,
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
-import type { ResearchScopePreflightOutcomeV1 } from "@atlcli/research";
+import type {
+  ResearchScopePreflightOutcomeV1,
+  ResearchSessionScopeReviewV1,
+} from "@atlcli/research";
 
 const noEntity: EntityDetection = { windowId: 7, url: null, entity: null, seq: 0 };
 const preparation = {
@@ -295,6 +298,72 @@ describe("routeMessage (pure router)", () => {
       ok: true,
       sessions,
     });
+  });
+
+  it("routes revision-fenced body-free scope reviews without caller scope authority", async () => {
+    const review: ResearchSessionScopeReviewV1 = {
+      schema: "atlcli.research-session-scope-review/v1",
+      sessionId: "research-session:scope-review",
+      revision: 12,
+      status: "waiting_scope_approval",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:scope-review",
+        briefRevision: 3,
+        graphRevision: 4,
+        candidates: [{
+          id: "research-scope-candidate:confluence-space-related",
+          product: "confluence",
+          entityKind: "space",
+          key: "RELATED",
+          name: "Related documentation",
+        }],
+        bindings: [],
+        expansionProposals: [{
+          id: "scope-expansion:related-space",
+          candidateId: "research-scope-candidate:confluence-space-related",
+          expansionKind: "whole_scope",
+          basedOnBriefRevision: 3,
+          basedOnGraphRevision: 4,
+          reason: "An exact reference was found.",
+          status: "proposed",
+        }],
+        scopeRevisions: [],
+      },
+    };
+    const request = {
+      kind: "research:approve-scope-review" as const,
+      windowId: 7,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+      proposalId: review.turn.expansionProposals[0]!.id,
+    };
+    let observed: unknown;
+    expect(await routeMessage(request, {
+      ...okDeps,
+      approveResearchScopeReview: async (windowId, action) => {
+        observed = { windowId, action };
+        return review;
+      },
+    })).toEqual({
+      kind: "research:approve-scope-review-result",
+      ok: true,
+      review,
+    });
+    expect(observed).toEqual({
+      windowId: 7,
+      action: {
+        sessionId: review.sessionId,
+        revision: 12,
+        briefRevision: 3,
+        graphRevision: 4,
+        proposalId: "scope-expansion:related-space",
+      },
+    });
+    expect(JSON.stringify(request)).not.toContain("candidateId");
+    expect(JSON.stringify(request)).not.toContain("tenantOrigin");
   });
 
   it("routes catalog-only research scope preflight without an Anthropic key", async () => {

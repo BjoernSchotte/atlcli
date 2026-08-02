@@ -3,7 +3,10 @@ import {
   normalizeResearchOneShotPolicyV1,
   type ResearchPort,
 } from "../../../utils/research/contracts.js";
-import type { ResearchResumableSessionV1 } from "@atlcli/research";
+import type {
+  ResearchResumableSessionV1,
+  ResearchSessionScopeReviewV1,
+} from "@atlcli/research";
 import {
   RESEARCH_ANTHROPIC_SESSION_KEY,
   normalizeAnthropicApiKey,
@@ -117,6 +120,110 @@ export function chromeResearchPort(): ResearchPort {
       }
       if (!response.ok) throw new ResearchContractError(response.code, response.error);
       return response.sessions;
+    },
+
+    async listScopeReviews() {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:list-scope-reviews",
+        windowId: window.id,
+      }) as
+        | {
+            kind: "research:list-scope-reviews-result";
+            ok: true;
+            reviews: ResearchSessionScopeReviewV1[];
+          }
+        | {
+            kind: "research:list-scope-reviews-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:list-scope-reviews-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research scope-review host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.reviews;
+    },
+
+    async approveScopeReview(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:approve-scope-review",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:approve-scope-review-result";
+            ok: true;
+            review: ResearchSessionScopeReviewV1;
+          }
+        | {
+            kind: "research:approve-scope-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:approve-scope-review-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research scope-approval host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.review;
+    },
+
+    async rejectScopeReview(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:reject-scope-review",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:reject-scope-review-result";
+            ok: true;
+            review: ResearchSessionScopeReviewV1;
+          }
+        | {
+            kind: "research:reject-scope-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:reject-scope-review-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research scope-rejection host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.review;
     },
 
     async run(request, options) {

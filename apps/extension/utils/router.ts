@@ -13,6 +13,7 @@ import type {
   ExtRequest,
   ExtResponse,
   PdfCompileHints,
+  ResearchScopeReviewActionRequest,
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
@@ -22,6 +23,7 @@ import type {
 } from "./research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
@@ -69,6 +71,17 @@ export interface RouterDeps {
   listResumableResearchSessions?: (
     windowId: number,
   ) => Promise<ResearchResumableSessionV1[]>;
+  listResearchScopeReviews?: (
+    windowId: number,
+  ) => Promise<ResearchSessionScopeReviewV1[]>;
+  approveResearchScopeReview?: (
+    windowId: number,
+    action: ResearchScopeReviewActionRequest,
+  ) => Promise<ResearchSessionScopeReviewV1>;
+  rejectResearchScopeReview?: (
+    windowId: number,
+    action: ResearchScopeReviewActionRequest,
+  ) => Promise<ResearchSessionScopeReviewV1>;
   resolveResearchScope?: (
     windowId: number,
     request: ResearchRequestV1,
@@ -230,6 +243,84 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:list-resumable-sessions-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:list-scope-reviews": {
+      if (!deps.listResearchScopeReviews) {
+        return {
+          kind: "research:list-scope-reviews-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope review is not configured.",
+        };
+      }
+      try {
+        const reviews = await deps.listResearchScopeReviews(msg.windowId);
+        return { kind: "research:list-scope-reviews-result", ok: true, reviews };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:list-scope-reviews-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:approve-scope-review": {
+      if (!deps.approveResearchScopeReview) {
+        return {
+          kind: "research:approve-scope-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope approval is not configured.",
+        };
+      }
+      try {
+        const review = await deps.approveResearchScopeReview(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          briefRevision: msg.briefRevision,
+          graphRevision: msg.graphRevision,
+          proposalId: msg.proposalId,
+        });
+        return { kind: "research:approve-scope-review-result", ok: true, review };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:approve-scope-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:reject-scope-review": {
+      if (!deps.rejectResearchScopeReview) {
+        return {
+          kind: "research:reject-scope-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope rejection is not configured.",
+        };
+      }
+      try {
+        const review = await deps.rejectResearchScopeReview(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          briefRevision: msg.briefRevision,
+          graphRevision: msg.graphRevision,
+          proposalId: msg.proposalId,
+        });
+        return { kind: "research:reject-scope-review-result", ok: true, review };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:reject-scope-review-result",
           ok: false,
           code: classified.code,
           error: classified.message,

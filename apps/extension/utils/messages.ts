@@ -26,6 +26,7 @@ import type {
 } from "./research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
@@ -78,6 +79,20 @@ export interface PdfCompileHints {
   pages?: number;
 }
 
+/**
+ * A revision-fenced decision over one durable scope-expansion proposal. The
+ * side panel never sends a scope key, candidate, binding, tenant, or lease:
+ * the background host derives those from the persisted proposal after it has
+ * bound the session to the active tab's tenant.
+ */
+export interface ResearchScopeReviewActionRequest {
+  sessionId: string;
+  revision: number;
+  briefRevision: number;
+  graphRevision: number;
+  proposalId: string;
+}
+
 /** Bounded timing/result projection for cross-realm DOCX runtime preparation. */
 export interface DocxRuntimePreparationMessage {
   totalMs: number;
@@ -118,6 +133,9 @@ export type ExtRequest =
       windowId: number;
     }
   | { kind: "research:list-resumable-sessions"; windowId: number }
+  | { kind: "research:list-scope-reviews"; windowId: number }
+  | ({ kind: "research:approve-scope-review"; windowId: number } & ResearchScopeReviewActionRequest)
+  | ({ kind: "research:reject-scope-review"; windowId: number } & ResearchScopeReviewActionRequest)
   | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
@@ -163,6 +181,39 @@ export type ExtResponse =
     }
   | {
       kind: "research:list-resumable-sessions-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:list-scope-reviews-result";
+      ok: true;
+      reviews: ResearchSessionScopeReviewV1[];
+    }
+  | {
+      kind: "research:list-scope-reviews-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:approve-scope-review-result";
+      ok: true;
+      review: ResearchSessionScopeReviewV1;
+    }
+  | {
+      kind: "research:approve-scope-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:reject-scope-review-result";
+      ok: true;
+      review: ResearchSessionScopeReviewV1;
+    }
+  | {
+      kind: "research:reject-scope-review-result";
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -285,6 +336,9 @@ export interface ResponseMap {
   "research:run": Extract<ExtResponse, { kind: "research:run-result" }>;
   "research:resume": Extract<ExtResponse, { kind: "research:resume-result" }>;
   "research:list-resumable-sessions": Extract<ExtResponse, { kind: "research:list-resumable-sessions-result" }>;
+  "research:list-scope-reviews": Extract<ExtResponse, { kind: "research:list-scope-reviews-result" }>;
+  "research:approve-scope-review": Extract<ExtResponse, { kind: "research:approve-scope-review-result" }>;
+  "research:reject-scope-review": Extract<ExtResponse, { kind: "research:reject-scope-review-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
@@ -329,6 +383,27 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   }
   if (kind === "research:list-resumable-sessions") {
     return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:list-scope-reviews") {
+    return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:approve-scope-review" || kind === "research:reject-scope-review") {
+    const action = value as Partial<ResearchScopeReviewActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, [
+      "kind",
+      "windowId",
+      "sessionId",
+      "revision",
+      "briefRevision",
+      "graphRevision",
+      "proposalId",
+    ]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      isResearchRevision(action.briefRevision) &&
+      isResearchRevision(action.graphRevision) &&
+      isResearchScopeProposalId(action.proposalId);
   }
   if (kind === "research:resolve-scope") {
     const preflight = value as { windowId?: unknown; request?: unknown; options?: unknown };
@@ -552,4 +627,12 @@ function isResearchSessionId(value: unknown): value is string {
 
 function isResearchTurnId(value: unknown): value is string {
   return typeof value === "string" && /^research-turn:[A-Za-z0-9._-]{1,120}$/.test(value);
+}
+
+function isResearchScopeProposalId(value: unknown): value is string {
+  return typeof value === "string" && /^scope-expansion:[A-Za-z0-9._-]{1,120}$/.test(value);
+}
+
+function isResearchRevision(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 1 && (value as number) <= 1_000_000;
 }

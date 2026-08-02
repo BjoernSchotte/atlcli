@@ -30,6 +30,7 @@ import {
 import type {
   ResearchBriefClarificationRequiredV1,
   ResearchResumableSessionV1,
+  ResearchSessionScopeReviewV1,
   ResearchScopeCandidateSelectionV1,
   ResearchScopeCandidateV1,
   ResearchScopeClarificationRequiredV1,
@@ -438,6 +439,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [resumableSessions, setResumableSessions] = useState<
     ResearchResumableSessionV1[]
   >([]);
+  const [scopeReviews, setScopeReviews] = useState<
+    ResearchSessionScopeReviewV1[]
+  >([]);
+  const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -470,6 +475,25 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     return () => { active = false; };
   }, [port, site]);
 
+  useEffect(() => {
+    let active = true;
+    if (!port?.listScopeReviews || !site) {
+      setScopeReviews([]);
+      return () => { active = false; };
+    }
+    void port.listScopeReviews()
+      .then((reviews) => {
+        if (active) setScopeReviews(reviews);
+      })
+      // Scope-review discovery is advisory. A visible card always performs a
+      // fully revision-fenced host action, so a background refresh failure can
+      // never turn into an implicit decision.
+      .catch(() => {
+        if (active) setScopeReviews([]);
+      });
+    return () => { active = false; };
+  }, [port, site]);
+
   async function refreshResumableSessions(): Promise<void> {
     if (!port?.listResumableSessions || !site) {
       setResumableSessions([]);
@@ -479,6 +503,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setResumableSessions(await port.listResumableSessions());
     } catch {
       setResumableSessions([]);
+    }
+  }
+
+  async function refreshScopeReviews(): Promise<void> {
+    if (!port?.listScopeReviews || !site) {
+      setScopeReviews([]);
+      return;
+    }
+    try {
+      setScopeReviews(await port.listScopeReviews());
+    } catch {
+      setScopeReviews([]);
     }
   }
 
@@ -601,6 +637,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current = null;
       setRunning(false);
       void refreshResumableSessions();
+      void refreshScopeReviews();
     }
   }
 
@@ -640,6 +677,45 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current = null;
       setRunning(false);
       void refreshResumableSessions();
+      void refreshScopeReviews();
+    }
+  }
+
+  async function decideScopeReview(
+    review: ResearchSessionScopeReviewV1,
+    proposal: ResearchSessionScopeReviewV1["turn"]["expansionProposals"][number],
+    decision: "approve" | "reject",
+  ): Promise<void> {
+    const actionId = `${review.sessionId}:${proposal.id}`;
+    const decide = decision === "approve"
+      ? port?.approveScopeReview
+      : port?.rejectScopeReview;
+    if (!decide) return;
+    setError(null);
+    setActionStatus("");
+    setScopeReviewActionId(actionId);
+    try {
+      const updated = await decide({
+        sessionId: review.sessionId,
+        revision: review.revision,
+        briefRevision: review.turn.briefRevision,
+        graphRevision: review.turn.graphRevision,
+        proposalId: proposal.id,
+      });
+      setScopeReviews((current) => current.map((candidate) =>
+        candidate.sessionId === updated.sessionId ? updated : candidate,
+      ));
+      setActionStatus(t(
+        decision === "approve"
+          ? "research.scopeReview.approved"
+          : "research.scopeReview.rejected",
+      ));
+      await refreshScopeReviews();
+      void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setScopeReviewActionId(null);
     }
   }
 
@@ -925,6 +1001,80 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             ))}
           </CardContent>
         </Card>
+      )}
+
+      {scopeReviews.length > 0 && (
+        <Card data-testid="research-scope-reviews">
+          <CardHeader>
+            <CardTitle>{t("research.scopeReview.title")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {scopeReviews.flatMap((review, reviewIndex) => review.turn.expansionProposals
+              .filter((proposal) => proposal.status === "proposed")
+              .map((proposal, proposalIndex) => {
+                const candidate = review.turn.candidates.find(
+                  (entry) => entry.id === proposal.candidateId,
+                );
+                const actionId = `${review.sessionId}:${proposal.id}`;
+                const deciding = scopeReviewActionId === actionId;
+                return (
+                  <div
+                    key={proposal.id}
+                    className="rounded-md border p-2 text-xs"
+                    data-testid={`research-scope-review-${reviewIndex}-${proposalIndex}`}
+                  >
+                    <p className="m-0 font-medium">
+                      {candidate
+                        ? t("research.scopeReview.candidate", {
+                          product: candidate.product,
+                          scope: candidate.key ?? candidate.name,
+                        })
+                        : t("research.scopeReview.unknownCandidate")}
+                    </p>
+                    <p className="mb-0 mt-1 text-muted-foreground">
+                      {t("research.scopeReview.kind", { kind: proposal.expansionKind })}
+                    </p>
+                    <p className="mb-0 mt-1 text-muted-foreground">{proposal.reason}</p>
+                    <p className="mb-0 mt-1 text-muted-foreground">
+                      {t("research.scopeReview.revision", {
+                        brief: String(review.turn.briefRevision),
+                        graph: String(review.turn.graphRevision),
+                      })}
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={running || scopeReviewActionId !== null}
+                        data-testid={`research-scope-review-approve-${reviewIndex}-${proposalIndex}`}
+                        onClick={() => void decideScopeReview(review, proposal, "approve")}
+                      >
+                        {deciding ? t("research.scopeReview.deciding") : t("research.scopeReview.approve")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={running || scopeReviewActionId !== null}
+                        data-testid={`research-scope-review-reject-${reviewIndex}-${proposalIndex}`}
+                        onClick={() => void decideScopeReview(review, proposal, "reject")}
+                      >
+                        {t("research.scopeReview.reject")}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }))}
+          </CardContent>
+        </Card>
+      )}
+
+      {actionStatus && !report && (
+        <p
+          role="status"
+          className="m-0 text-xs text-muted-foreground"
+          data-testid="research-action-status"
+        >
+          {actionStatus}
+        </p>
       )}
 
       {error && (

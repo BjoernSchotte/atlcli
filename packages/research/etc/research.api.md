@@ -669,6 +669,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionScopeReviewV1
+export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -1187,6 +1190,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1: "atlcli.research-session-scope-review/v1";
 
 // export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
@@ -2434,6 +2440,21 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
+    approveScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    rejectScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -3313,6 +3334,73 @@ export interface ResearchSessionRetrievalContinuationV1 {
     status: "issued" | "consumed";
     issuedAt: string;
     consumedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewBindingV1
+export interface ResearchSessionScopeReviewBindingV1 {
+    id: string;
+    product: ResearchScopeBindingV1["product"];
+    entityKind: ResearchScopeBindingV1["entityKind"];
+    key?: string;
+    name: string;
+    source: ResearchScopeBindingV1["source"];
+    authority: ResearchScopeBindingV1["authority"];
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewCandidateV1
+export interface ResearchSessionScopeReviewCandidateV1 {
+    id: string;
+    product: ResearchScopeCandidateV1["product"];
+    entityKind: ResearchScopeCandidateV1["entityKind"];
+    key?: string;
+    name: string;
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+}
+
+// export: ResearchSessionScopeReviewProposalV1
+export interface ResearchSessionScopeReviewProposalV1 {
+    id: string;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    reason: string;
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
+// export: ResearchSessionScopeReviewRevisionV1
+export interface ResearchSessionScopeReviewRevisionV1 {
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    state: "proposed" | "approved";
+    planDiff?: ResearchPlanDiffV1;
+}
+
+// export: ResearchSessionScopeReviewV1
+export interface ResearchSessionScopeReviewV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        candidates: ResearchSessionScopeReviewCandidateV1[];
+        bindings: ResearchSessionScopeReviewBindingV1[];
+        expansionProposals: ResearchSessionScopeReviewProposalV1[];
+        scopeRevisions: ResearchSessionScopeReviewRevisionV1[];
+    };
 }
 
 // export: ResearchSessionScopeRevisionV1
@@ -4634,6 +4722,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionScopeReviewV1
+export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -5152,6 +5243,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1: "atlcli.research-session-scope-review/v1";
 
 // export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
@@ -6399,6 +6493,21 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
+    approveScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    rejectScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -7278,6 +7387,73 @@ export interface ResearchSessionRetrievalContinuationV1 {
     status: "issued" | "consumed";
     issuedAt: string;
     consumedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewBindingV1
+export interface ResearchSessionScopeReviewBindingV1 {
+    id: string;
+    product: ResearchScopeBindingV1["product"];
+    entityKind: ResearchScopeBindingV1["entityKind"];
+    key?: string;
+    name: string;
+    source: ResearchScopeBindingV1["source"];
+    authority: ResearchScopeBindingV1["authority"];
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewCandidateV1
+export interface ResearchSessionScopeReviewCandidateV1 {
+    id: string;
+    product: ResearchScopeCandidateV1["product"];
+    entityKind: ResearchScopeCandidateV1["entityKind"];
+    key?: string;
+    name: string;
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+}
+
+// export: ResearchSessionScopeReviewProposalV1
+export interface ResearchSessionScopeReviewProposalV1 {
+    id: string;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    reason: string;
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
+// export: ResearchSessionScopeReviewRevisionV1
+export interface ResearchSessionScopeReviewRevisionV1 {
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    state: "proposed" | "approved";
+    planDiff?: ResearchPlanDiffV1;
+}
+
+// export: ResearchSessionScopeReviewV1
+export interface ResearchSessionScopeReviewV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        candidates: ResearchSessionScopeReviewCandidateV1[];
+        bindings: ResearchSessionScopeReviewBindingV1[];
+        expansionProposals: ResearchSessionScopeReviewProposalV1[];
+        scopeRevisions: ResearchSessionScopeReviewRevisionV1[];
+    };
 }
 
 // export: ResearchSessionScopeRevisionV1
@@ -8597,6 +8773,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionScopeReviewV1
+export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -9115,6 +9294,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1: "atlcli.research-session-scope-review/v1";
 
 // export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
@@ -10362,6 +10544,21 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
+    approveScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    rejectScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -11241,6 +11438,73 @@ export interface ResearchSessionRetrievalContinuationV1 {
     status: "issued" | "consumed";
     issuedAt: string;
     consumedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewBindingV1
+export interface ResearchSessionScopeReviewBindingV1 {
+    id: string;
+    product: ResearchScopeBindingV1["product"];
+    entityKind: ResearchScopeBindingV1["entityKind"];
+    key?: string;
+    name: string;
+    source: ResearchScopeBindingV1["source"];
+    authority: ResearchScopeBindingV1["authority"];
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewCandidateV1
+export interface ResearchSessionScopeReviewCandidateV1 {
+    id: string;
+    product: ResearchScopeCandidateV1["product"];
+    entityKind: ResearchScopeCandidateV1["entityKind"];
+    key?: string;
+    name: string;
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+}
+
+// export: ResearchSessionScopeReviewProposalV1
+export interface ResearchSessionScopeReviewProposalV1 {
+    id: string;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    reason: string;
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
+// export: ResearchSessionScopeReviewRevisionV1
+export interface ResearchSessionScopeReviewRevisionV1 {
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    state: "proposed" | "approved";
+    planDiff?: ResearchPlanDiffV1;
+}
+
+// export: ResearchSessionScopeReviewV1
+export interface ResearchSessionScopeReviewV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        candidates: ResearchSessionScopeReviewCandidateV1[];
+        bindings: ResearchSessionScopeReviewBindingV1[];
+        expansionProposals: ResearchSessionScopeReviewProposalV1[];
+        scopeRevisions: ResearchSessionScopeReviewRevisionV1[];
+    };
 }
 
 // export: ResearchSessionScopeRevisionV1
@@ -12736,6 +13000,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionScopeReviewV1
+export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -13278,6 +13545,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1: "atlcli.research-session-scope-review/v1";
 
 // export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
@@ -14547,6 +14817,21 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
+    approveScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    rejectScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -15473,6 +15758,73 @@ export interface ResearchSessionRetrievalContinuationV1 {
     status: "issued" | "consumed";
     issuedAt: string;
     consumedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewBindingV1
+export interface ResearchSessionScopeReviewBindingV1 {
+    id: string;
+    product: ResearchScopeBindingV1["product"];
+    entityKind: ResearchScopeBindingV1["entityKind"];
+    key?: string;
+    name: string;
+    source: ResearchScopeBindingV1["source"];
+    authority: ResearchScopeBindingV1["authority"];
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewCandidateV1
+export interface ResearchSessionScopeReviewCandidateV1 {
+    id: string;
+    product: ResearchScopeCandidateV1["product"];
+    entityKind: ResearchScopeCandidateV1["entityKind"];
+    key?: string;
+    name: string;
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+}
+
+// export: ResearchSessionScopeReviewProposalV1
+export interface ResearchSessionScopeReviewProposalV1 {
+    id: string;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    reason: string;
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
+// export: ResearchSessionScopeReviewRevisionV1
+export interface ResearchSessionScopeReviewRevisionV1 {
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    state: "proposed" | "approved";
+    planDiff?: ResearchPlanDiffV1;
+}
+
+// export: ResearchSessionScopeReviewV1
+export interface ResearchSessionScopeReviewV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        candidates: ResearchSessionScopeReviewCandidateV1[];
+        bindings: ResearchSessionScopeReviewBindingV1[];
+        expansionProposals: ResearchSessionScopeReviewProposalV1[];
+        scopeRevisions: ResearchSessionScopeReviewRevisionV1[];
+    };
 }
 
 // export: ResearchSessionScopeRevisionV1
@@ -17057,6 +17409,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionScopeReviewV1
+export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -17599,6 +17954,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1: "atlcli.research-session-scope-review/v1";
 
 // export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
@@ -18868,6 +19226,21 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
+    approveScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    rejectScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -19805,6 +20178,73 @@ export interface ResearchSessionRetrievalContinuationV1 {
     status: "issued" | "consumed";
     issuedAt: string;
     consumedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewBindingV1
+export interface ResearchSessionScopeReviewBindingV1 {
+    id: string;
+    product: ResearchScopeBindingV1["product"];
+    entityKind: ResearchScopeBindingV1["entityKind"];
+    key?: string;
+    name: string;
+    source: ResearchScopeBindingV1["source"];
+    authority: ResearchScopeBindingV1["authority"];
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewCandidateV1
+export interface ResearchSessionScopeReviewCandidateV1 {
+    id: string;
+    product: ResearchScopeCandidateV1["product"];
+    entityKind: ResearchScopeCandidateV1["entityKind"];
+    key?: string;
+    name: string;
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+}
+
+// export: ResearchSessionScopeReviewProposalV1
+export interface ResearchSessionScopeReviewProposalV1 {
+    id: string;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    reason: string;
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
+// export: ResearchSessionScopeReviewRevisionV1
+export interface ResearchSessionScopeReviewRevisionV1 {
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    state: "proposed" | "approved";
+    planDiff?: ResearchPlanDiffV1;
+}
+
+// export: ResearchSessionScopeReviewV1
+export interface ResearchSessionScopeReviewV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        candidates: ResearchSessionScopeReviewCandidateV1[];
+        bindings: ResearchSessionScopeReviewBindingV1[];
+        expansionProposals: ResearchSessionScopeReviewProposalV1[];
+        scopeRevisions: ResearchSessionScopeReviewRevisionV1[];
+    };
 }
 
 // export: ResearchSessionScopeRevisionV1
@@ -21091,6 +21531,21 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
+    approveScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    rejectScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -22544,6 +22999,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionScopeReviewV1
+export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -23086,6 +23544,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1: "atlcli.research-session-scope-review/v1";
 
 // export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
@@ -24355,6 +24816,21 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
+    approveScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    rejectScopeReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        proposalId: string;
+    }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -25292,6 +25768,73 @@ export interface ResearchSessionRetrievalContinuationV1 {
     status: "issued" | "consumed";
     issuedAt: string;
     consumedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewBindingV1
+export interface ResearchSessionScopeReviewBindingV1 {
+    id: string;
+    product: ResearchScopeBindingV1["product"];
+    entityKind: ResearchScopeBindingV1["entityKind"];
+    key?: string;
+    name: string;
+    source: ResearchScopeBindingV1["source"];
+    authority: ResearchScopeBindingV1["authority"];
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchSessionScopeReviewCandidateV1
+export interface ResearchSessionScopeReviewCandidateV1 {
+    id: string;
+    product: ResearchScopeCandidateV1["product"];
+    entityKind: ResearchScopeCandidateV1["entityKind"];
+    key?: string;
+    name: string;
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+}
+
+// export: ResearchSessionScopeReviewProposalV1
+export interface ResearchSessionScopeReviewProposalV1 {
+    id: string;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    reason: string;
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
+// export: ResearchSessionScopeReviewRevisionV1
+export interface ResearchSessionScopeReviewRevisionV1 {
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    state: "proposed" | "approved";
+    planDiff?: ResearchPlanDiffV1;
+}
+
+// export: ResearchSessionScopeReviewV1
+export interface ResearchSessionScopeReviewV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        candidates: ResearchSessionScopeReviewCandidateV1[];
+        bindings: ResearchSessionScopeReviewBindingV1[];
+        expansionProposals: ResearchSessionScopeReviewProposalV1[];
+        scopeRevisions: ResearchSessionScopeReviewRevisionV1[];
+    };
 }
 
 // export: ResearchSessionScopeRevisionV1

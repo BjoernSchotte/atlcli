@@ -158,6 +158,27 @@ describe("handleExtMessage (background listener adapter)", () => {
     }]);
   });
 
+  it("returns true and lists tenant-bound scope reviews", async () => {
+    const cap = captureResponse<ExtResponse>();
+    expect(handleExtMessage(
+      { kind: "research:list-scope-reviews", windowId: 7 },
+      cap.sendResponse,
+      {
+        ...okRouterDeps,
+        listResearchScopeReviews: async (windowId) => {
+          expect(windowId).toBe(7);
+          return [];
+        },
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{
+      kind: "research:list-scope-reviews-result",
+      ok: true,
+      reviews: [],
+    }]);
+  });
+
   it("returns true and responds to DOCX runtime preparation", async () => {
     const cap = captureResponse<ExtResponse>();
     expect(handleExtMessage(

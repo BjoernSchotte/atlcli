@@ -588,6 +588,28 @@ export interface ResearchPort {
     sessionId: string,
     options?: Omit<ResearchRunOptions, "policy">,
   ): Promise<ResearchReport>;
+  /**
+   * Optional tenant-bound review surface for durable related-scope proposals.
+   * Hosts return only body-free snapshots and derive an approved binding from
+   * the persisted proposal/candidate, never from caller-provided scope keys.
+   */
+  listScopeReviews?(): Promise<
+    import("./session-scope-review.js").ResearchSessionScopeReviewV1[]
+  >;
+  approveScopeReview?(input: {
+    sessionId: string;
+    revision: number;
+    briefRevision: number;
+    graphRevision: number;
+    proposalId: string;
+  }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+  rejectScopeReview?(input: {
+    sessionId: string;
+    revision: number;
+    briefRevision: number;
+    graphRevision: number;
+    proposalId: string;
+  }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }

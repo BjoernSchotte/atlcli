@@ -3268,6 +3268,13 @@ Extension/browser:
       proposals by brief/graph revision. Add candidate selection and
       scope-proposal approval/rejection controls; closing the sidebar or
       changing tabs never accepts one.
+
+  - [x] Add tenant-bound, body-free scope-proposal review to the extension.
+        The sidebar sends only a persisted session/brief/graph/proposal
+        revision; the background derives the candidate and approved binding,
+        atomically commits approve/reject, and never starts retrieval as a
+        side effect. Whole-scope approval remains at the renewed plan-review
+        boundary rather than silently resuming.
 - [ ] Persist plan rejection, correction requests, pause requests,
       checkpoint acknowledgements, and resume transitions. A rejected plan
       never executes, and closing the sidebar while pause is pending never

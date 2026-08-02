@@ -18,6 +18,7 @@ import {
   type EntityDetection,
   type OffscreenResponse,
   type PdfCompileHints,
+  type ResearchScopeReviewActionRequest,
   isExportJobsChanged,
 } from "../utils/messages.js";
 import type {
@@ -36,12 +37,16 @@ import {
 import { profileFromTabUrl } from "../utils/profile.js";
 import {
   ResearchScopeCatalogBroker,
+  approveResearchScopeExpansionV1,
+  createResearchScopeBindingV1,
   createRestScopeCatalogProviders,
   IndexedDbResearchSessionStoreV1,
   prepareResearchScopePreflightV1,
+  projectResearchSessionScopeReviewV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
   researchRequestFromBriefV1,
+  type ResearchSessionV1,
   type ResearchScopePreflightOptionsV1,
 } from "@atlcli/research/browser";
 import { handleExtMessage } from "../utils/listeners.js";
@@ -624,6 +629,125 @@ export default defineBackground({
     }
   };
 
+  const activeResearchTenantOrigin = async (windowId: number): Promise<string> => {
+    const detection = await getCurrentEntity(windowId);
+    const profile = detection.url ? profileFromTabUrl(detection.url) : null;
+    if (!profile) {
+      throw new ResearchContractError(
+        "not-atlassian",
+        "Open an Atlassian Cloud page before reviewing durable research scope.",
+      );
+    }
+    return new URL(profile.baseUrl).origin;
+  };
+
+  const scopeReviewForActiveTenant = async (input: {
+    windowId: number;
+    action: ResearchScopeReviewActionRequest;
+    approve: boolean;
+  }) => {
+    const tenantOrigin = await activeResearchTenantOrigin(input.windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(input.action.sessionId);
+      if (!stored) {
+        throw new ResearchContractError("invalid-request", "The durable research session no longer exists.");
+      }
+      const review = projectResearchSessionScopeReviewV1(stored, tenantOrigin);
+      if (!review) {
+        throw new ResearchContractError(
+          "access-denied",
+          "The durable research session does not belong to the active Atlassian site.",
+        );
+      }
+      if (
+        review.status !== "waiting_scope_approval" ||
+        review.revision !== input.action.revision ||
+        review.turn.briefRevision !== input.action.briefRevision ||
+        review.turn.graphRevision !== input.action.graphRevision
+      ) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The scope review revision is stale. Refresh the sidebar before deciding.",
+        );
+      }
+      const proposal = stored.turns
+        .find((turn) => turn.id === review.turn.id)
+        ?.scopeExpansionProposals.find((candidate) => candidate.id === input.action.proposalId);
+      if (!proposal || proposal.status !== "proposed" ||
+          proposal.basedOnBriefRevision !== review.turn.briefRevision ||
+          proposal.basedOnGraphRevision !== review.turn.graphRevision) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The scope proposal is stale, unknown, or already resolved.",
+        );
+      }
+      let committed: ResearchSessionV1;
+      const at = new Date().toISOString();
+      if (input.approve) {
+        const turn = stored.turns.find((candidate) => candidate.id === review.turn.id)!;
+        const candidate = turn.scopeCandidates.find((entry) => entry.id === proposal.candidateId);
+        if (!candidate) {
+          throw new ResearchContractError(
+            "invalid-request",
+            "The persisted scope candidate is no longer available.",
+          );
+        }
+        committed = await approveResearchScopeExpansionV1({
+          store,
+          sessionId: stored.sessionId,
+          expectedRevision: input.action.revision,
+          expectedLeaseEpoch: stored.lease.epoch,
+          proposalId: proposal.id,
+          binding: createResearchScopeBindingV1({
+            candidate,
+            source: "research_discovery",
+            authority: "approved",
+            approvedAt: at,
+          }),
+          at,
+        });
+      } else {
+        committed = (await store.commit(stored.sessionId, {
+          kind: "reject_scope_expansion",
+          proposalId: proposal.id,
+          expectedRevision: input.action.revision,
+          expectedLeaseEpoch: stored.lease.epoch,
+          at,
+        })).session;
+      }
+      const next = projectResearchSessionScopeReviewV1(committed, tenantOrigin);
+      if (!next) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The durable scope decision could not be projected for the active site.",
+        );
+      }
+      return next;
+    } finally {
+      store.close();
+    }
+  };
+
+  const listResearchScopeReviews = async (windowId: number) => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const page = await store.list({ limit: 100 });
+      return page.sessions
+        .flatMap((session) => {
+          const review = projectResearchSessionScopeReviewV1(session, tenantOrigin);
+          return review?.status === "waiting_scope_approval" &&
+              review.turn.expansionProposals.some((proposal) => proposal.status === "proposed")
+            ? [review]
+            : [];
+        })
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    } finally {
+      store.close();
+    }
+  };
+
   const resolveResearchScope = async (
     windowId: number,
     value: ResearchRequestV1,
@@ -689,6 +813,17 @@ export default defineBackground({
       runResearch,
       resumeResearch,
       listResumableResearchSessions,
+      listResearchScopeReviews,
+      approveResearchScopeReview: (windowId, action) => scopeReviewForActiveTenant({
+        windowId,
+        action,
+        approve: true,
+      }),
+      rejectResearchScopeReview: (windowId, action) => scopeReviewForActiveTenant({
+        windowId,
+        action,
+        approve: false,
+      }),
       resolveResearchScope,
       cancelResearch,
     });

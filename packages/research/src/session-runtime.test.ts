@@ -16,6 +16,7 @@ import {
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
 import { createResearchScopeExpansionProposalV1 } from "./scope-discovery.js";
+import { RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
 
 function brief(approval: "automatic" | "required", turnId = "research-turn:runtime-test") {
   return createResearchBriefV1({
@@ -229,7 +230,9 @@ describe("durable research session execution gate", () => {
       store,
       session: session(),
       brief: initialBrief,
-      graph: composeResearchGraphV1(initialBrief),
+      graph: composeResearchGraphV1(initialBrief, {
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      }),
       approveAutomatically: false,
       at: "2026-08-01T15:00:01.000Z",
     });
@@ -299,6 +302,9 @@ describe("durable research session execution gate", () => {
       "propose_scope_expansion",
       "approve_scope_expansion",
     ]);
+    expect(replacement.turns[0]!.graph!.nodes.some((node) =>
+      node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2,
+    )).toBe(true);
   });
 
   test("appends an approved follow-up turn without replacing terminal turn history", async () => {
