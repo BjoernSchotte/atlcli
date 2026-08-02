@@ -161,7 +161,89 @@ describe("durable research task dispatch journal", () => {
     ]);
     expect(turn.scopeCandidates).toContainEqual(expect.objectContaining({ key: "RELATED" }));
     expect(turn.scopeBindings).toEqual([]);
+    expect(turn.scopeDiscoveryDispositions).toEqual([]);
     expect(turn.scopeExpansionProposals).toEqual([]);
+  });
+
+  test("atomically records central scope decisions and pauses before a whole-scope read", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:jira-research:linked-project",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "atlassian.reference.resolve",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-project",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "research-scope-entity:related-project",
+          key: "RELATED",
+          name: "Related project",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node resolved an exact current-tenant reference.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:atlassian.reference.resolve:1",
+          "capability:atlassian.reference.resolve",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    const result = await journal.dispositionScopeDiscoveries({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: "scope-discovery:jira-research:linked-project",
+        decision: "propose_whole_scope",
+        reasonCode: "exact_reference",
+      }],
+    });
+
+    expect(result).toMatchObject({
+      dispositions: [{
+        discoveryId: "scope-discovery:jira-research:linked-project",
+        decision: "propose_whole_scope",
+        reasonCode: "exact_reference",
+      }],
+      proposal: {
+        candidateId: "research-scope-candidate:related-project",
+        expansionKind: "whole_scope",
+        status: "proposed",
+      },
+    });
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns[0]!;
+    expect(stored!.status).toBe("waiting_scope_approval");
+    expect(turn.scopeBindings).toEqual([]);
+    expect(turn.scopeDiscoveryDispositions).toEqual([
+      expect.objectContaining({
+        proposedExpansionId: result.proposal!.id,
+        candidateId: "research-scope-candidate:related-project",
+      }),
+    ]);
+    expect(turn.scopeExpansionProposals).toEqual([
+      expect.objectContaining({
+        id: result.proposal!.id,
+        provenanceRefs: expect.arrayContaining([
+          "scope-discovery:jira-research:linked-project",
+          `task:${attempt.taskId}`,
+          "capability:atlassian.reference.resolve",
+        ]),
+      }),
+    ]);
   });
 
   test("commits selected graph, ready task, dispatch start, and accepted packet through one session journal", async () => {

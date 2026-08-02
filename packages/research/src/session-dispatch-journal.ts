@@ -13,7 +13,13 @@ import type {
   ResearchSessionUpdateV1,
   ResearchSessionV1,
 } from "./session.js";
-import type { ResearchScopeDiscoveryV1 } from "./scope-discovery.js";
+import type {
+  ResearchScopeDiscoveryDispositionDecisionV1,
+  ResearchScopeDiscoveryDispositionReasonV1,
+  ResearchScopeDiscoveryDispositionV1,
+  ResearchScopeDiscoveryV1,
+  ResearchScopeExpansionProposalV1,
+} from "./scope-discovery.js";
 import type {
   ResearchAcceptedPacketV1,
   ResearchReconciliationDispositionV1,
@@ -177,6 +183,50 @@ export class ResearchSessionDispatchJournalV1 {
         graphRevision: input.graphRevision,
         discoveries: input.discoveries,
       }, () => undefined);
+    });
+  }
+
+  /**
+   * Atomically persist central-supervisor decisions over previously observed
+   * metadata candidates. The session reducer owns generated disposition and
+   * proposal IDs and moves to user scope approval before any content read.
+   */
+  dispositionScopeDiscoveries(input: {
+    graphRevision: number;
+    decisions: Array<{
+      discoveryId: string;
+      decision: ResearchScopeDiscoveryDispositionDecisionV1;
+      reasonCode: ResearchScopeDiscoveryDispositionReasonV1;
+      coverageGapId?: string;
+    }>;
+  }): Promise<{
+    dispositions: ResearchScopeDiscoveryDispositionV1[];
+    proposal?: ResearchScopeExpansionProposalV1;
+  }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      const existingDispositionCount = (turn.scopeDiscoveryDispositions ?? []).length;
+      const existingProposalIds = new Set(turn.scopeExpansionProposals.map((proposal) => proposal.id));
+      return this.#commit(session, {
+        kind: "disposition_scope_discoveries",
+        graphRevision: input.graphRevision,
+        decisions: input.decisions,
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const dispositions = (nextTurn.scopeDiscoveryDispositions ?? []).slice(existingDispositionCount);
+        if (dispositions.length !== input.decisions.length) {
+          invalid("Research durable dispatch did not retain every scope discovery disposition.");
+        }
+        const proposal = nextTurn.scopeExpansionProposals.find((candidate) =>
+          !existingProposalIds.has(candidate.id),
+        );
+        return {
+          dispositions,
+          ...(proposal === undefined ? {} : { proposal }),
+        };
+      });
     });
   }
 

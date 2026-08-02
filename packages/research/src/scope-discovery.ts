@@ -20,6 +20,30 @@ export const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1 =
   "atlcli.research-scope-expansion-proposal/v1" as const;
 export const RESEARCH_SCOPE_DISCOVERY_SCHEMA_V1 =
   "atlcli.research-scope-discovery/v1" as const;
+export const RESEARCH_SCOPE_DISCOVERY_DISPOSITION_SCHEMA_V1 =
+  "atlcli.research-scope-discovery-disposition/v1" as const;
+
+export const RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_V1 = [
+  "accept_metadata",
+  "reject",
+  "propose_exact_entity",
+  "propose_whole_scope",
+] as const;
+
+export type ResearchScopeDiscoveryDispositionDecisionV1 =
+  typeof RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_V1[number];
+
+export const RESEARCH_SCOPE_DISCOVERY_DISPOSITION_REASONS_V1 = [
+  "metadata_sufficient",
+  "not_material",
+  "out_of_scope",
+  "insufficient_budget",
+  "coverage_gap",
+  "exact_reference",
+] as const;
+
+export type ResearchScopeDiscoveryDispositionReasonV1 =
+  typeof RESEARCH_SCOPE_DISCOVERY_DISPOSITION_REASONS_V1[number];
 
 export type {
   ResearchScopeAuthorityV1,
@@ -169,6 +193,69 @@ export function createResearchScopeDiscoveryV1(
     candidate: structuredClone(candidate),
     reason,
     provenanceRefs: [...input.provenanceRefs],
+  };
+}
+
+/**
+ * A body-free, host-persisted central-supervisor decision about one observed
+ * related-scope candidate. It remains separate from both a binding and a
+ * user approval: a proposal is only one possible decision outcome.
+ */
+export interface ResearchScopeDiscoveryDispositionV1 {
+  schema: typeof RESEARCH_SCOPE_DISCOVERY_DISPOSITION_SCHEMA_V1;
+  id: string;
+  discoveryId: string;
+  candidateId: string;
+  decision: ResearchScopeDiscoveryDispositionDecisionV1;
+  reasonCode: ResearchScopeDiscoveryDispositionReasonV1;
+  coverageGapId?: string;
+  proposedExpansionId?: string;
+  recordedAt: string;
+}
+
+function dispositionReasonIsValid(
+  decision: ResearchScopeDiscoveryDispositionDecisionV1,
+  reasonCode: ResearchScopeDiscoveryDispositionReasonV1,
+): boolean {
+  switch (decision) {
+    case "accept_metadata":
+      return reasonCode === "metadata_sufficient";
+    case "reject":
+      return reasonCode === "not_material" ||
+        reasonCode === "out_of_scope" ||
+        reasonCode === "insufficient_budget";
+    case "propose_exact_entity":
+    case "propose_whole_scope":
+      return reasonCode === "coverage_gap" || reasonCode === "exact_reference";
+  }
+}
+
+export function createResearchScopeDiscoveryDispositionV1(
+  input: Omit<ResearchScopeDiscoveryDispositionV1, "schema">,
+): ResearchScopeDiscoveryDispositionV1 {
+  if (!/^scope-disposition:[A-Za-z0-9._:-]{1,160}$/.test(input.id)) {
+    invalidMention("Research scope discovery disposition ID is invalid.");
+  }
+  if (!/^scope-discovery:[A-Za-z0-9._:-]{1,160}$/.test(input.discoveryId) ||
+      !/^research-scope-candidate:[A-Za-z0-9._-]{1,160}$/.test(input.candidateId) ||
+      !RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_V1.includes(input.decision) ||
+      !RESEARCH_SCOPE_DISCOVERY_DISPOSITION_REASONS_V1.includes(input.reasonCode) ||
+      !dispositionReasonIsValid(input.decision, input.reasonCode)) {
+    invalidMention("Research scope discovery disposition is invalid.");
+  }
+  const proposesExpansion = input.decision === "propose_exact_entity" ||
+    input.decision === "propose_whole_scope";
+  if ((input.reasonCode === "coverage_gap") !== Boolean(input.coverageGapId) ||
+      (input.coverageGapId !== undefined && !/^gap:[A-Za-z0-9._:-]{1,180}$/.test(input.coverageGapId)) ||
+      proposesExpansion !== Boolean(input.proposedExpansionId) ||
+      (input.proposedExpansionId !== undefined &&
+        !/^scope-expansion:[A-Za-z0-9._-]{1,120}$/.test(input.proposedExpansionId)) ||
+      !Number.isFinite(Date.parse(input.recordedAt))) {
+    invalidMention("Research scope discovery disposition references are invalid.");
+  }
+  return {
+    schema: RESEARCH_SCOPE_DISCOVERY_DISPOSITION_SCHEMA_V1,
+    ...structuredClone(input),
   };
 }
 

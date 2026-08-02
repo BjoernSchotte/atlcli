@@ -52,6 +52,18 @@ export interface ResearchSessionScopeReviewProposalV1 {
   approvedBindingId?: string;
 }
 
+/** Body-free central-supervisor outcome for a discovered related candidate. */
+export interface ResearchSessionScopeReviewDiscoveryDispositionV1 {
+  id: string;
+  discoveryId: string;
+  candidateId: string;
+  decision: "accept_metadata" | "reject" | "propose_exact_entity" | "propose_whole_scope";
+  reasonCode: "metadata_sufficient" | "not_material" | "out_of_scope" | "insufficient_budget" | "coverage_gap" | "exact_reference";
+  coverageGapId?: string;
+  proposedExpansionId?: string;
+  recordedAt: string;
+}
+
 export interface ResearchSessionScopeReviewRevisionV1 {
   id: string;
   proposalId: string;
@@ -75,6 +87,7 @@ export interface ResearchSessionScopeReviewV1 {
     graphRevision: number;
     candidates: ResearchSessionScopeReviewCandidateV1[];
     bindings: ResearchSessionScopeReviewBindingV1[];
+    discoveryDispositions: ResearchSessionScopeReviewDiscoveryDispositionV1[];
     expansionProposals: ResearchSessionScopeReviewProposalV1[];
     scopeRevisions: ResearchSessionScopeReviewRevisionV1[];
   };
@@ -151,6 +164,20 @@ export function projectResearchSessionScopeReviewV1(
         authority: binding.authority,
         ...(binding.candidateId === undefined ? {} : { candidateId: binding.candidateId }),
         ...(binding.approvedAt === undefined ? {} : { approvedAt: binding.approvedAt }),
+      })),
+      discoveryDispositions: (turn.scopeDiscoveryDispositions ?? []).map((disposition) => ({
+        id: disposition.id,
+        discoveryId: disposition.discoveryId,
+        candidateId: disposition.candidateId,
+        decision: disposition.decision,
+        reasonCode: disposition.reasonCode,
+        ...(disposition.coverageGapId === undefined
+          ? {}
+          : { coverageGapId: disposition.coverageGapId }),
+        ...(disposition.proposedExpansionId === undefined
+          ? {}
+          : { proposedExpansionId: disposition.proposedExpansionId }),
+        recordedAt: disposition.recordedAt,
       })),
       expansionProposals: turn.scopeExpansionProposals.map((proposal) => ({
         id: proposal.id,

@@ -403,6 +403,7 @@ describe("routeMessage (pure router)", () => {
           name: "Related documentation",
         }],
         bindings: [],
+        discoveryDispositions: [],
         expansionProposals: [{
           id: "scope-expansion:related-space",
           candidateId: "research-scope-candidate:confluence-space-related",
@@ -463,6 +464,7 @@ describe("routeMessage (pure router)", () => {
         graphRevision: 5,
         candidates: [],
         bindings: [],
+        discoveryDispositions: [],
         expansionProposals: [],
         scopeRevisions: [{
           id: "scope-revision:related-space",

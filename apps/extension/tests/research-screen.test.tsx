@@ -711,6 +711,7 @@ describe("portable Research screen", () => {
           name: "Related documentation",
         }],
         bindings: [],
+        discoveryDispositions: [],
         expansionProposals: [{
           id: "scope-expansion:related-space",
           candidateId: "research-scope-candidate:confluence-space-related",
@@ -810,6 +811,7 @@ describe("portable Research screen", () => {
           source: "research_discovery",
           authority: "approved",
         }],
+        discoveryDispositions: [],
         expansionProposals: [],
         scopeRevisions: [{
           id: "scope-revision:related-space",

@@ -26,10 +26,15 @@ import {
 } from "./graph.js";
 import {
   createResearchScopeDiscoveryV1,
+  createResearchScopeDiscoveryDispositionV1,
+  createResearchScopeExpansionProposalV1,
 } from "./scope-discovery.js";
 import type {
   ResearchScopeCandidateV1,
   ResearchScopeDiscoveryV1,
+  ResearchScopeDiscoveryDispositionDecisionV1,
+  ResearchScopeDiscoveryDispositionReasonV1,
+  ResearchScopeDiscoveryDispositionV1,
   ResearchScopeExpansionProposalV1,
   ResearchScopeResolutionV1,
 } from "./scope-discovery.js";
@@ -333,6 +338,8 @@ export interface ResearchSessionTurnV1 {
   scopeCandidates: ResearchScopeCandidateV1[];
   /** Host-observed catalog/reference candidates; neither bindings nor authority. */
   scopeDiscoveries: ResearchScopeDiscoveryV1[];
+  /** Undefined denotes a legacy turn predating central related-scope decisions. */
+  scopeDiscoveryDispositions?: ResearchScopeDiscoveryDispositionV1[];
   scopeBindings: ResearchScopeBindingV1[];
   scopeResolutions: ResearchScopeResolutionV1[];
   scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
@@ -502,6 +509,20 @@ export type ResearchSessionUpdateV1 =
       kind: "record_scope_discoveries";
       graphRevision: number;
       discoveries: ResearchScopeDiscoveryV1[];
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      /**
+       * Atomically retain central-supervisor dispositions and, at most, one
+       * user-reviewable content-scope expansion proposal.
+       */
+      kind: "disposition_scope_discoveries";
+      graphRevision: number;
+      decisions: Array<{
+        discoveryId: string;
+        decision: ResearchScopeDiscoveryDispositionDecisionV1;
+        reasonCode: ResearchScopeDiscoveryDispositionReasonV1;
+        coverageGapId?: string;
+      }>;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "propose_scope_expansion"; proposal: ResearchScopeExpansionProposalV1 })
   | (ResearchSessionFencedUpdateV1 & {
@@ -1172,6 +1193,7 @@ export function reduceResearchSessionV1(
       brief: clone(update.brief),
       scopeCandidates: clone(update.scopeCandidates ?? update.brief.scopeCandidates),
       scopeDiscoveries: [],
+      scopeDiscoveryDispositions: [],
       scopeBindings: clone(update.scopeBindings ?? update.brief.scopeBindings),
       scopeResolutions: clone(update.scopeResolutions ?? update.brief.scopeResolutions),
       scopeExpansionProposals: [],
@@ -1209,7 +1231,7 @@ export function reduceResearchSessionV1(
       id: update.turnId,
       revision: 1,
       createdAt: update.at,
-      scopeCandidates: [], scopeDiscoveries: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], planRevisions: [], scopeRevisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
+      scopeCandidates: [], scopeDiscoveries: [], scopeDiscoveryDispositions: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], planRevisions: [], scopeRevisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
     };
     return withNext(session, update, { status: "planning", activeTurnId: update.turnId, turns: [...session.turns, nextTurn] });
   }
@@ -1625,6 +1647,124 @@ export function reduceResearchSessionV1(
         scopeDiscoveries: nextDiscoveries,
       }),
     });
+  }
+
+  if (update.kind === "disposition_scope_discoveries") {
+    const current = ensureActive(session, ["running", "waiting_steering"]);
+    const graph = requireGraph(current, update.graphRevision);
+    const brief = current.brief;
+    if (!brief || !Array.isArray(update.decisions) || update.decisions.length < 1 ||
+        update.decisions.length > 16) {
+      invalid("Research scope discovery dispositions are invalid.");
+    }
+    const priorDispositions = current.scopeDiscoveryDispositions ?? [];
+    const priorDiscoveryIds = new Set(priorDispositions.map((disposition) => disposition.discoveryId));
+    const discoveryById = new Map((current.scopeDiscoveries ?? []).map((discovery) => [
+      discovery.id,
+      discovery,
+    ]));
+    const candidateById = new Map(current.scopeCandidates.map((candidate) => [candidate.id, candidate]));
+    const decisionDiscoveryIds = new Set<string>();
+    const proposalDecisions = update.decisions.filter((decision) =>
+      decision.decision === "propose_exact_entity" || decision.decision === "propose_whole_scope",
+    );
+    const knownGapIds = new Set(
+      current.acceptedPackets.flatMap((packet) =>
+        "gaps" in packet.body && Array.isArray(packet.body.gaps)
+          ? packet.body.gaps.flatMap((gap) => typeof gap?.id === "string" ? [gap.id] : [])
+          : [],
+      ),
+    );
+    if (new Set(update.decisions.map((decision) => decision.discoveryId)).size !== update.decisions.length ||
+        proposalDecisions.length > 1 ||
+        current.scopeExpansionProposals.some((proposal) => proposal.status === "proposed") ||
+        current.scopeExpansionProposals.length + proposalDecisions.length >
+          brief.scopeDiscoveryPolicy.maxScopeExpansionProposals) {
+      invalid("Research scope discovery dispositions are duplicated or over budget.");
+    }
+    let proposal: ResearchScopeExpansionProposalV1 | undefined;
+    const nextDispositions: ResearchScopeDiscoveryDispositionV1[] = [];
+    for (let index = 0; index < update.decisions.length; index += 1) {
+      const decision = update.decisions[index]!;
+      const discovery = discoveryById.get(decision.discoveryId);
+      if (!discovery || priorDiscoveryIds.has(decision.discoveryId) ||
+          decisionDiscoveryIds.has(decision.discoveryId) ||
+          discovery.graphRevision !== graph.revision ||
+          discovery.candidate.tenantOrigin !== brief.scope.siteOrigin) {
+        invalid("Research scope discovery disposition is unknown or stale.");
+      }
+      decisionDiscoveryIds.add(decision.discoveryId);
+      const candidate = candidateById.get(discovery.candidate.id);
+      if (!candidate || JSON.stringify(candidate) !== JSON.stringify(discovery.candidate) ||
+          candidate.status === "archived") {
+        invalid("Research scope discovery disposition candidate is invalid.");
+      }
+      const proposesWholeScope = decision.decision === "propose_whole_scope";
+      const proposesExactEntity = decision.decision === "propose_exact_entity";
+      const validWholeScope = proposesWholeScope &&
+        ((candidate.product === "jira" && candidate.entityKind === "project") ||
+          (candidate.product === "confluence" && candidate.entityKind === "space")) &&
+        Boolean(candidate.key);
+      const validExactEntity = proposesExactEntity &&
+        (candidate.entityKind === "issue" || candidate.entityKind === "page");
+      if (decision.coverageGapId !== undefined && !knownGapIds.has(decision.coverageGapId)) {
+        invalid("Research scope discovery disposition coverage gap is unknown.");
+      }
+      if ((proposesWholeScope || proposesExactEntity) &&
+          (brief.scopeDiscoveryPolicy.expansionMode === "strict" ||
+            (!validWholeScope && !validExactEntity))) {
+        invalid("Research scope discovery disposition cannot expand this scope.");
+      }
+      const proposalId = (proposesWholeScope || proposesExactEntity)
+        ? `scope-expansion:r${graph.revision}-d${current.scopeExpansionProposals.length + 1}`
+        : undefined;
+      const disposition = createResearchScopeDiscoveryDispositionV1({
+        id: `scope-disposition:r${graph.revision}:${priorDispositions.length + index + 1}`,
+        discoveryId: discovery.id,
+        candidateId: candidate.id,
+        decision: decision.decision,
+        reasonCode: decision.reasonCode,
+        ...(decision.coverageGapId === undefined ? {} : { coverageGapId: decision.coverageGapId }),
+        ...(proposalId === undefined ? {} : { proposedExpansionId: proposalId }),
+        recordedAt: update.at,
+      });
+      nextDispositions.push(disposition);
+      if (proposalId !== undefined) {
+        proposal = createResearchScopeExpansionProposalV1({
+          id: proposalId,
+          sessionId: session.sessionId,
+          turnId: current.id,
+          basedOnBriefRevision: brief.revision,
+          basedOnGraphRevision: graph.revision,
+          candidateId: candidate.id,
+          expansionKind: proposesWholeScope ? "whole_scope" : "exact_entity",
+          reason: decision.reasonCode === "coverage_gap"
+            ? "The central supervisor identified a material coverage gap."
+            : "The central supervisor accepted an exact related reference.",
+          provenanceRefs: [
+            discovery.id,
+            `task:${discovery.taskId}`,
+            `capability:${discovery.capability}`,
+            ...(decision.coverageGapId === undefined ? [] : [decision.coverageGapId]),
+          ],
+          status: "proposed",
+        });
+      }
+    }
+    const nextTurn = {
+      ...current,
+      scopeDiscoveryDispositions: [...priorDispositions, ...nextDispositions],
+      ...(proposal ? { scopeExpansionProposals: [...current.scopeExpansionProposals, proposal] } : {}),
+    };
+    return proposal
+      ? withReleasedDurableWait(session, update, {
+          status: "waiting_scope_approval",
+          turns: replaceTurn(session, nextTurn),
+        })
+      : withNext(session, update, {
+          status: session.status,
+          turns: replaceTurn(session, nextTurn),
+        });
   }
 
   if (update.kind === "propose_scope_expansion") {
