@@ -1470,6 +1470,86 @@ describe("research CLI one-shot contract", () => {
     )).toHaveLength(1);
   });
 
+  test("records a revision-fenced steering request only at a paused retrieval checkpoint", async () => {
+    const harness = cliHarness();
+    const { sessionId, turnId, continuationId } = await seedIssuedContinuationSession(harness);
+    let current = await harness.durableStore.read(sessionId);
+    if (!current) throw new Error("Expected a synthetic continuation session.");
+    current = (await harness.durableStore.commit(sessionId, {
+      kind: "resume",
+      expectedRevision: current.revision,
+      expectedLeaseEpoch: current.lease.epoch,
+      at: "2026-08-01T12:01:01.000Z",
+    })).session;
+    current = (await harness.durableStore.commit(sessionId, {
+      kind: "request_pause",
+      expectedRevision: current.revision,
+      expectedLeaseEpoch: current.lease.epoch,
+      at: "2026-08-01T12:01:02.000Z",
+    })).session;
+    current = (await harness.durableStore.commit(sessionId, {
+      kind: "acknowledge_pause",
+      expectedRevision: current.revision,
+      expectedLeaseEpoch: current.lease.epoch,
+      at: "2026-08-01T12:01:03.000Z",
+    })).session;
+    const graphRevision = current.turns.find((turn) => turn.id === turnId)?.graph?.revision;
+    if (graphRevision === undefined) throw new Error("Expected a synthetic checkpoint graph.");
+
+    await handleResearch(
+      ["sessions", "steer", sessionId],
+      {
+        revision: String(current.revision),
+        "graph-revision": String(graphRevision),
+        instruction: "Prioritize the already-approved relationship analysis.",
+      },
+      { json: true },
+      harness.dependencies,
+    );
+
+    const steered = JSON.parse(harness.stdout.join(""));
+    expect(steered).toMatchObject({
+      status: "waiting_steering",
+      turn: {
+        steering: [expect.objectContaining({
+          basedOnGraphRevision: graphRevision,
+          state: "requested",
+        })],
+      },
+    });
+    expect(JSON.stringify(steered)).not.toContain("Prioritize the already-approved");
+    expect(harness.stderr.join("")).toContain("action=steer");
+    expect(harness.runInputs).toHaveLength(0);
+    expect(harness.workspaces).toHaveLength(0);
+
+    harness.dependencies.runAgent = async (input) => {
+      harness.runInputs.push(input);
+      const persisted = await input.durableSession.store.read(input.sessionId);
+      const turn = persisted?.turns.find((candidate) => candidate.id === input.durableSession.turnId);
+      expect(turn?.steering).toEqual([expect.objectContaining({
+        state: "requested",
+        basedOnGraphRevision: graphRevision,
+      })]);
+      const continuation = turn?.retrievalAssessments?.find((assessment) =>
+        assessment.continuation?.id === continuationId,
+      );
+      await new ResearchSessionDispatchJournalV1({
+        store: input.durableSession.store,
+        sessionId: input.sessionId,
+        turnId: input.durableSession.turnId,
+      }).consumeRetrievalContinuation({
+        graphRevision: continuation!.graphRevision,
+        wave: continuation!.wave!,
+        continuationId,
+      });
+      await input.workspace.writeFile("/artifacts/report.md", report.markdown);
+      return report;
+    };
+    harness.stdout.length = 0;
+    await handleResearch([], { resume: sessionId }, { json: false }, harness.dependencies);
+    expect(harness.runInputs).toHaveLength(1);
+  });
+
   test("leaves a durable authentication wait untouched when the resumed host lacks a key", async () => {
     const harness = cliHarness();
     harness.dependencies.readApiKey = () => undefined;

@@ -696,6 +696,17 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
         state: revision.state,
         ...(revision.planDiff ? { planDiff: revision.planDiff } : {}),
       })),
+      steering: turn.steering.map((control) => ({
+        id: control.id,
+        basedOnGraphRevision: control.basedOnGraphRevision,
+        requestedAt: control.requestedAt,
+        state: control.state,
+        ...(control.appliedAt === undefined ? {} : { appliedAt: control.appliedAt }),
+        ...(control.appliedGraphRevision === undefined
+          ? {}
+          : { appliedGraphRevision: control.appliedGraphRevision }),
+        ...(control.planDiff === undefined ? {} : { planDiff: control.planDiff }),
+      })),
       scope: {
         candidates: turn.scopeCandidates.map((candidate) => ({
           id: candidate.id,
@@ -929,7 +940,7 @@ export async function handleResearchSessions(
       command !== "continue-scope-clarification" && command !== "clarify" &&
       command !== "approve" && command !== "reject-plan" && command !== "revise-plan" &&
       command !== "approve-scope" && command !== "reject-scope" && command !== "cancel" &&
-      command !== "pause" && command !== "resume" &&
+      command !== "pause" && command !== "steer" && command !== "resume" &&
       command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
@@ -1023,6 +1034,39 @@ export async function handleResearchSessions(
       }
       dependencies.writeStderr(`[research] session=${sessionId} action=pause revision=${paused.revision} status=${paused.status}${canAcknowledgeLocally ? " checkpoint=acknowledged" : " checkpoint=pending"}\n`);
       dependencies.emitOutput(projectResearchSessionV1(paused), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "steer") {
+    if (args.length !== 2) {
+      throw new Error("Usage: atlcli research sessions steer <session-id> --revision <session-revision> --graph-revision <graph-revision> --instruction <focus-or-priority>.");
+    }
+    assertSessionFlags(flags, ["revision", "graph-revision", "instruction"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
+    const instruction = singleSessionFlag(flags, "instruction", true);
+    if (!instruction) throw new Error("--instruction requires a value.");
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) {
+        throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+      }
+      const steered = (await opened.store.commit(sessionId, {
+        kind: "request_steering",
+        steeringId: `steering:${randomUUID()}`,
+        basedOnGraphRevision: graphRevision,
+        request: instruction,
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=steer revision=${steered.revision} status=${steered.status} graph_revision=${graphRevision}\n`,
+      );
+      dependencies.emitOutput(projectResearchSessionV1(steered), opts);
     } finally {
       opened.close();
     }
@@ -1929,7 +1973,7 @@ async function resumeAuthenticationWaitingResearchSession(
   try {
     const stored = await requireStoredResearchSession(opened.store, sessionId);
     const turn = activeSessionTurn(stored);
-    if (!turn?.brief || !turn.graph || !["waiting_authentication", "waiting_quota", "paused", "running"].includes(stored.status)) {
+    if (!turn?.brief || !turn.graph || !["waiting_authentication", "waiting_quota", "waiting_steering", "paused", "running"].includes(stored.status)) {
       throw new Error("Only a released durable research turn can be resumed by this command.");
     }
     const issuedContinuations = turn.retrievalAssessments?.filter((assessment) =>
@@ -2284,7 +2328,7 @@ export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
 atlcli research --session <session-id> <question>
-atlcli research sessions <list|show|evidence|plan|scope-clarification|choose-scope|continue-scope-clarification|clarify|approve|reject-plan|revise-plan|approve-scope|reject-scope|pause|resume|cancel|delete>
+atlcli research sessions <list|show|evidence|plan|scope-clarification|choose-scope|continue-scope-clarification|clarify|approve|reject-plan|revise-plan|approve-scope|reject-scope|pause|steer|resume|cancel|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -2330,6 +2374,8 @@ Durable session commands:
   sessions reject-scope <session-id> --revision <session-revision> --brief-revision <brief-revision>
       --graph-revision <graph-revision> --proposal <scope-expansion-id>
   sessions pause <session-id> --revision <session-revision>
+  sessions steer <session-id> --revision <session-revision> --graph-revision <graph-revision>
+      --instruction <focus-or-priority>
   sessions resume <session-id> --revision <session-revision>
   sessions cancel <session-id> --revision <session-revision>
   sessions delete <session-id> --revision <session-revision>
@@ -2341,9 +2387,12 @@ scope-clarification wait before key, workspace, provider, or model access. Inspe
 the sessions scope-clarification command, then choose its exact revision-fenced candidate; the CLI
 freshly rechecks only that candidate against the retained request before it can create a brief.
 The sessions pause command records a cooperative pause request and acknowledges it only at a durable
-no-in-flight-task checkpoint. The sessions resume command makes an acknowledged pause runnable again,
+no-in-flight-task checkpoint. The sessions steer command accepts a bounded focus/prioritization request
+only from that persisted checkpoint; it cannot add scope, tools, roles, or budget. Then run
+\`atlcli research --resume <session-id>\` to let the existing supervisor continuation apply the graph diff.
+The sessions resume command makes an acknowledged undispatched pause runnable again,
 then releases its lease; it does not start provider/model work—use research --resume to dispatch.
---resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable budget. It resumes only an undispatched wait or one host-issued retrieval continuation; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
+--resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable budget. It resumes only an undispatched wait or one host-issued retrieval continuation; a pending steering request is applied only through that continuation.
 --session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
 Approving a durable plan persists its exact graph revision only; it starts no model research until durable task dispatch arrives.
 Rejecting a plan records the exact correction, materializes a new immutable brief and graph revision, and stops again for explicit approval.
