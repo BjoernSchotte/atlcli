@@ -56,6 +56,7 @@ export interface OffscreenListenerDeps {
     turnId: string,
     apiKey: string,
   ) => Promise<ResearchReport>;
+  pauseResearch?: (runId: string) => Promise<boolean>;
   cancelResearch?: (runId: string) => Promise<boolean>;
 }
 
@@ -266,6 +267,15 @@ export function handleExtMessage(
             cancelled: false,
           });
           break;
+        case "research:pause-session":
+          sendResponse({
+            kind: "research:pause-session-result",
+            runId: message.runId,
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:resolve-scope":
           sendResponse({
             kind: "research:resolve-scope-result",
@@ -423,6 +433,19 @@ export function handleOffscreenMessage(
           kind: "offscreen:research-cancel-result",
           runId: message.runId,
           cancelled: false,
+        }));
+      break;
+    case "offscreen:research-pause":
+      (deps.pauseResearch?.(message.runId) ?? Promise.resolve(false))
+        .then((paused) => sendResponse({
+          kind: "offscreen:research-pause-result",
+          runId: message.runId,
+          paused,
+        }))
+        .catch(() => sendResponse({
+          kind: "offscreen:research-pause-result",
+          runId: message.runId,
+          paused: false,
         }));
       break;
   }

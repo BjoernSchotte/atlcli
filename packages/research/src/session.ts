@@ -1320,7 +1320,7 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "commit_graph_selection") {
-    const current = ensureActive(session, ["running"]);
+    const current = ensureActive(session, ["running", "pause_requested"]);
     const graph = requireGraph(current);
     if (current.graphSelectionCommittedAt || current.tasks.length > 0 ||
         current.acceptedPackets.length > 0 || current.reconciliationDispositions.length > 0) {
@@ -1338,7 +1338,7 @@ export function reduceResearchSessionV1(
       ...(latentRepairNode ? { latentRepairNode: clone(latentRepairNode) } : {}),
       revision: current.revision + 1,
     };
-    return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
+    return withNext(session, update, { status: session.status, turns: replaceTurn(session, nextTurn) });
   }
 
   if (update.kind === "reject_plan") {
@@ -1531,8 +1531,20 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "request_pause") {
-    const current = ensureActive(session, ["running", "waiting_steering", "waiting_scope_approval", "waiting_authentication", "waiting_quota"]);
-    return withReleasedDurableWait(session, update, {
+    // A running owner must retain its lease while it reaches a durable
+    // checkpoint. Releasing it here would let another runner reclaim a turn
+    // whose provider work has not yet settled.
+    const current = ensureActive(session, ["running"]);
+    const continuationWasConsumed = current.retrievalAssessments?.some(
+      (assessment) => assessment.continuation?.status === "consumed",
+    ) ?? false;
+    const retrievalAlreadyStopped = current.retrievalAssessments?.some(
+      (assessment) => assessment.assessment.action === "stop",
+    ) ?? false;
+    if (continuationWasConsumed || retrievalAlreadyStopped) {
+      invalid("Research pause is only available before the durable retrieval continuation is consumed.");
+    }
+    return withNext(session, update, {
       status: "pause_requested",
       turns: replaceTurn(session, { ...current, pauseRequestedAt: update.at }),
     });
@@ -1540,6 +1552,15 @@ export function reduceResearchSessionV1(
 
   if (update.kind === "acknowledge_pause") {
     const current = ensureActive(session, ["pause_requested"]);
+    const hasUnsettledWork = current.tasks.some((task) =>
+      task.status === "ready" || task.status === "running" || task.status === "outcome_unknown",
+    );
+    const hasIssuedContinuation = current.retrievalAssessments?.some((assessment) =>
+      assessment.continuation?.status === "issued",
+    ) ?? false;
+    if (hasUnsettledWork || (current.graphSelectionCommittedAt !== undefined && !hasIssuedContinuation)) {
+      invalid("Research pause acknowledgement requires a durable retrieval checkpoint without unsettled work.");
+    }
     return withReleasedDurableWait(session, update, {
       status: "paused",
       turns: replaceTurn(session, { ...current, pausedAt: update.at }),
@@ -1547,7 +1568,10 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "admit_tasks") {
-    const current = ensureActive(session, ["running"]);
+    const current = ensureActive(session, ["running", "pause_requested"]);
+    if (session.status === "pause_requested" && (current.retrievalAssessments?.length ?? 0) > 0) {
+      invalid("Research pause request prevents task admission after the retrieval checkpoint.");
+    }
     const graph = requireGraph(current, update.graphRevision);
     if (!Array.isArray(update.tasks) || update.tasks.length === 0 || update.tasks.length > 16) invalid("Research task admission is invalid.");
     const nodeIds = new Set(graph.nodes.filter((node) => node.status === "ready").map((node) => node.id));
@@ -1557,11 +1581,15 @@ export function reduceResearchSessionV1(
       ids.add(task.taskId);
     }
     const nextTurn = { ...current, tasks: [...current.tasks, ...clone(update.tasks)] };
-    return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
+    return withNext(session, update, { status: session.status, turns: replaceTurn(session, nextTurn) });
   }
 
   if (update.kind === "dispatch_started" || update.kind === "outcome_unknown" || update.kind === "accept_packet" || update.kind === "quarantine_packet") {
-    const current = ensureActive(session, ["running"]);
+    const current = ensureActive(session, ["running", "pause_requested"]);
+    if (update.kind === "dispatch_started" && session.status === "pause_requested" &&
+        (current.retrievalAssessments?.length ?? 0) > 0) {
+      invalid("Research pause request prevents a new task dispatch after the retrieval checkpoint.");
+    }
     const graph = requireGraph(current, update.graphRevision);
     const taskIndex = current.tasks.findIndex((task) => task.taskId === update.taskId && task.graphRevision === graph.revision);
     if (taskIndex < 0) invalid("Research task is unknown or stale.");
@@ -1600,7 +1628,7 @@ export function reduceResearchSessionV1(
         budgetState: parseResearchRunBudgetStateV1(acceptedBudgetState),
       }),
     };
-    return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
+    return withNext(session, update, { status: session.status, turns: replaceTurn(session, nextTurn) });
   }
 
   if (update.kind === "record_reconciliation") {
@@ -1698,7 +1726,7 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "record_retrieval_assessment") {
-    const current = ensureActive(session, ["running"]);
+    const current = ensureActive(session, ["running", "pause_requested"]);
     const graph = requireGraph(current, update.graphRevision);
     const retrievalAssessments = (current.retrievalAssessments ?? []).map((candidate) =>
       candidate.wave === undefined ? { ...candidate, wave: 1 } : candidate,
@@ -1737,7 +1765,7 @@ export function reduceResearchSessionV1(
       recordedAt: update.at,
     };
     return withNext(session, update, {
-      status: "running",
+      status: session.status,
       turns: replaceTurn(session, {
         ...current,
         graph: nextGraph,

@@ -564,6 +564,12 @@ export default defineBackground({
           "The durable browser session is not at a safe resume checkpoint for this Atlassian site.",
         );
       }
+      if ([...activeResearchRuns.values()].some((active) => active.sessionId === sessionId)) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "This durable research session is already active.",
+        );
+      }
       const turn = stored.turns.find((candidate) => candidate.id === resumable.turnId);
       if (!turn?.brief) {
         throw new ResearchContractError(
@@ -1449,6 +1455,105 @@ export default defineBackground({
     );
   };
 
+  const pauseResearchWorker = async (runId: string): Promise<boolean> => {
+    await ensureOffscreen();
+    const response = (await chrome.runtime.sendMessage({
+      kind: "offscreen:research-pause",
+      runId,
+    })) as OffscreenResponse | undefined;
+    return Boolean(
+      response &&
+        response.kind === "offscreen:research-pause-result" &&
+        response.runId === runId &&
+        response.paused,
+    );
+  };
+
+  /**
+   * Request cooperative browser pause without accepting a session identifier
+   * from the caller. A running retrieval wave keeps its lease and settles its
+   * own checkpoint. If that checkpoint already exists, stop the worker first,
+   * then release the durable session in the same pause boundary.
+   */
+  const requestResearchPause = async (
+    runId: string,
+  ): Promise<"pause_requested" | "paused"> => {
+    const active = activeResearchRuns.get(runId);
+    if (!active) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "There is no active research run to pause.",
+      );
+    }
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const current = await store.read(active.sessionId);
+      if (!current) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The active research run no longer has a durable session.",
+        );
+      }
+      if (current.status === "paused") return "paused";
+      if (current.status === "pause_requested") return "pause_requested";
+      if (current.status !== "running") {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Only a running research session can be paused.",
+        );
+      }
+      const requested = (await store.commit(current.sessionId, {
+        kind: "request_pause",
+        expectedRevision: current.revision,
+        expectedLeaseEpoch: current.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      const activeTurn = requested.activeTurnId
+        ? requested.turns.find((candidate) => candidate.id === requested.activeTurnId)
+        : undefined;
+      const issuedContinuation = activeTurn?.retrievalAssessments?.some(
+        (assessment) => assessment.continuation?.status === "issued",
+      ) ?? false;
+      if (!issuedContinuation) return "pause_requested";
+
+      // The session is already at a safe continuation boundary. Stop this
+      // exact worker before releasing its lease, so no later provider action
+      // can race a resumed owner.
+      const interrupted = await pauseResearchWorker(runId);
+      if (!interrupted) {
+        const afterInterrupt = await store.read(active.sessionId);
+        if (afterInterrupt?.status === "paused") return "paused";
+        throw new ResearchContractError(
+          "provider-error",
+          "The research worker could not acknowledge the durable pause.",
+        );
+      }
+      const beforeAcknowledgement = await store.read(active.sessionId);
+      if (!beforeAcknowledgement) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The paused research session is no longer available.",
+        );
+      }
+      if (beforeAcknowledgement.status === "paused") return "paused";
+      const paused = (await store.commit(beforeAcknowledgement.sessionId, {
+        kind: "acknowledge_pause",
+        expectedRevision: beforeAcknowledgement.revision,
+        expectedLeaseEpoch: beforeAcknowledgement.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      if (paused.status !== "paused") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research worker did not reach a durable pause checkpoint.",
+        );
+      }
+      return "paused";
+    } finally {
+      store.close();
+    }
+  };
+
   /**
    * A deliberate sidebar cancellation is terminal only after its dedicated
    * worker has stopped. An uncorrelated worker interrupt remains resumable for
@@ -1551,6 +1656,7 @@ export default defineBackground({
       }),
       resolveResearchScope,
       cancelResearch,
+      requestResearchPause,
       cancelResearchSession,
     });
     if (handled) {

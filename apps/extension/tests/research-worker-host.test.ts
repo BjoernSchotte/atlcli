@@ -123,6 +123,23 @@ describe("dedicated research worker host", () => {
     expect(host.cancel("run-cancel")).toBe(false);
   });
 
+  it("uses a distinct paused result for a durable pause interruption", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const resultPromise = host.run({
+      runId: "run-pause",
+      sessionId: "research-session:run-pause",
+      turnId: "research-turn:run-pause",
+      apiKey: "synthetic-key",
+      request,
+    });
+
+    expect(host.pause("run-pause")).toBe(true);
+    await expect(resultPromise).rejects.toMatchObject({ code: "paused" });
+    expect(worker.terminated).toBe(true);
+    expect(host.pause("run-pause")).toBe(false);
+  });
+
   it("forwards a durable resume without caller-controlled request or policy", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });

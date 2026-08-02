@@ -862,6 +862,48 @@ export function chromeResearchPort(): ResearchPort {
       }
     },
 
+    async pauseActiveRun() {
+      const runId = activeRunId;
+      if (!runId) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "There is no active research run to pause.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:pause-session",
+        runId,
+      }) as
+        | {
+            kind: "research:pause-session-result";
+            runId: string;
+            ok: true;
+            status: "pause_requested" | "paused";
+          }
+        | {
+            kind: "research:pause-session-result";
+            runId: string;
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (
+        !response ||
+        response.kind !== "research:pause-session-result" ||
+        response.runId !== runId
+      ) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research pause host returned no correlated result.",
+        );
+      }
+      if (!response.ok) {
+        throw new ResearchContractError(response.code, response.error);
+      }
+      return response.status;
+    },
+
     async copyMarkdown(markdown) {
       await navigator.clipboard.writeText(markdown);
     },

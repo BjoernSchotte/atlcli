@@ -320,6 +320,70 @@ describe("durable research task dispatch journal", () => {
     ]);
   });
 
+  test("acknowledges a requested pause only after an issued retrieval continuation", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) => candidate.status === "ready")!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.acceptPacket({
+      taskId: attempt.taskId,
+      graphRevision: graph.revision,
+      body: {
+        schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+        answeredQuestion: "The first bounded acquisition wave completed.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      usage: { capabilityCalls: 0, inputTokens: 0, outputTokens: 0, resultBytes: 256, durationMs: 1, costMicros: 0 },
+      availableSourceIds: [],
+      maximumResultBytes: node.budget.maxResultBytes,
+    });
+    const beforePause = (await store.read(sessionId))!;
+    await store.commit(sessionId, {
+      kind: "request_pause",
+      expectedRevision: beforePause.revision,
+      expectedLeaseEpoch: beforePause.lease.epoch,
+      at: "2026-08-01T16:01:00.000Z",
+    });
+    const checkpointJournal = new ResearchSessionDispatchJournalV1({
+      store,
+      sessionId,
+      turnId,
+      now: () => "2026-08-01T16:02:00.000Z",
+    });
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    await checkpointJournal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    await expect(checkpointJournal.acknowledgePauseAtRetrievalCheckpoint()).resolves.toBe(true);
+    const paused = (await store.read(sessionId))!;
+    expect(paused).toMatchObject({ status: "paused" });
+    expect(paused.turns.find((candidate) => candidate.id === turnId)).toMatchObject({
+      pausedAt: "2026-08-01T16:02:00.000Z",
+      retrievalAssessments: [expect.objectContaining({
+        continuation: expect.objectContaining({ status: "issued" }),
+      })],
+    });
+  });
+
   test("permits one finalization continuation after a terminal retrieval decision", async () => {
     const { store, sessionId, turnId, journal, graph } = await initializedJournal();
     const assessment = assessResearchRetrievalV1({

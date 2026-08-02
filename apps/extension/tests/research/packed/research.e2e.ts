@@ -918,6 +918,7 @@ let packedJiraOnlyRun = false;
 let packedHostParityRun = false;
 let packedSentinelRun = false;
 let packedResumeRun = false;
+let packedResumePauseInitialRun = false;
 let packedResumeSupervisorEvals = 0;
 let supervisorWorkflowStarted = false;
 let jiraOnlySelectedClaimIds = [];
@@ -930,6 +931,7 @@ globalThis.addEventListener("message", (event) => {
     event.data.runId.includes("packed-resume")
   ) {
     packedResumeRun = true;
+    packedResumePauseInitialRun = event.data.runId === "packed-resume-pause-initial";
   }
 });
 globalThis.addEventListener("error", (event) => {
@@ -1152,6 +1154,13 @@ globalThis.fetch = async (input, init) => {
 
     if (serializedMessages.includes("cancel-before-ptc") && modelCalls === 1) {
       await waitForRelease("never", request.signal);
+    }
+    if (
+      packedResumePauseInitialRun &&
+      modelCalls === 1
+    ) {
+      channel.postMessage({ kind: "packed-resume-pause-ready", workerId });
+      await waitForRelease("packed-resume-pause-first-model", request.signal);
     }
     if (
       serializedRequest.includes("hold-after-ptc") &&
@@ -1953,6 +1962,21 @@ type PackedResumeResponse =
   | { kind: "research:resume-result"; runId: string; ok: true; report: ResearchReport }
   | { kind: "research:resume-result"; runId: string; ok: false; code: string; error: string };
 
+type PackedPauseResponse =
+  | {
+      kind: "research:pause-session-result";
+      runId: string;
+      ok: true;
+      status: "pause_requested" | "paused";
+    }
+  | {
+      kind: "research:pause-session-result";
+      runId: string;
+      ok: false;
+      code: string;
+      error: string;
+    };
+
 function withoutEventSequence(event: ResearchOneShotEventV1): Omit<ResearchOneShotEventV1, "seq"> {
   const { seq: _sequence, ...withoutSequence } = event;
   return withoutSequence;
@@ -2025,6 +2049,9 @@ async function readPackedDurableResearchSession(
         tasks: Array<{ taskId: string }>;
         acceptedPackets: unknown[];
         budgetState?: { ptcCalls?: number };
+        retrievalAssessments?: Array<{
+          continuation?: { status?: string };
+        }>;
         brief?: { scope?: { jiraProjectKeys?: string[]; confluenceSpaceKeys?: string[] } };
         graph?: {
           revision?: number;
@@ -3202,13 +3229,95 @@ test("resumes a checkpointed packed session in a fresh dedicated worker without 
   }
 });
 
+test("pauses a checkpointed packed session and resumes its issued continuation", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  const initialRunId = "packed-resume-pause-initial";
+  const sessionId = `research-session:${initialRunId}`;
+  const initial = runPackedResearchInBackground(page, {
+    ...hostParityRequest(),
+    question: HOST_PARITY_QUESTION,
+  }, initialRunId);
+  try {
+    await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+      event.kind === "packed-resume-pause-ready"
+    ), { timeout: 30_000 }).toBe(true);
+
+    const paused = await page.evaluate(async (runId) =>
+      chrome.runtime.sendMessage({ kind: "research:pause-session", runId }),
+    initialRunId) as PackedPauseResponse;
+    expect(paused).toEqual({
+      kind: "research:pause-session-result",
+      runId: initialRunId,
+      ok: true,
+      status: "pause_requested",
+    });
+
+    await page.evaluate((channelName) => {
+      const channel = (globalThis as unknown as {
+        __packedResearchChannel: BroadcastChannel;
+      }).__packedResearchChannel;
+      if (channel.name !== channelName) throw new Error("Packed channel mismatch.");
+      channel.postMessage({ kind: "release", marker: "packed-resume-pause-first-model" });
+    }, CHANNEL_NAME);
+
+    await expect(initial).resolves.toMatchObject({
+      kind: "research:run-result",
+      runId: initialRunId,
+      ok: false,
+      code: "paused",
+    });
+
+    const durable = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${initialRunId}`,
+    );
+    expect(durable.session.state.status).toBe("paused");
+    expect(durable.session.state.turns[0]?.retrievalAssessments).toEqual([
+      expect.objectContaining({
+        continuation: expect.objectContaining({ status: "issued" }),
+      }),
+    ]);
+    expect(durable.artifact).toBeUndefined();
+
+    const resumed = await resumePackedResearchInBackground(
+      page,
+      sessionId,
+      "packed-resume-pause-fresh-worker",
+    );
+    if (!resumed.ok) {
+      throw new Error(JSON.stringify({ resumed, events: await harnessEvents(page) }, null, 2));
+    }
+    expect(resumed.report.title).toBe(HOST_PARITY_DRAFT.title);
+    const completed = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${initialRunId}`,
+    );
+    expect(completed.session.state.status).toBe("complete");
+    expect(completed.artifact?.contents).toBe(resumed.report.markdown);
+    const events = await harnessEvents(page);
+    expect(events.filter((event) => event.kind === "worker-start")).toHaveLength(2);
+    expect(events.some((event) => event.kind === "packed-resume-continuation-eval")).toBe(true);
+    expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
+});
+
 test("persists an explicit packed user cancellation and rejects later recovery", async () => {
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
     await chrome.storage.session.set({ [key]: value });
   }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
 
-  const runId = "packed-durable-cancel";
+  const runId = "packed-resume-durable-cancel";
   const sessionId = `research-session:${runId}`;
   const initial = runPackedResearchInBackground(page, {
     ...hostParityRequest(),

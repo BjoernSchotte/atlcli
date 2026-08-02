@@ -55,6 +55,12 @@ describe("message guards", () => {
       request: { mustNotCross: true },
     })).toBe(false);
     expect(isExtRequest({ kind: "research:cancel-session", runId: "run-1" })).toBe(true);
+    expect(isExtRequest({ kind: "research:pause-session", runId: "run-1" })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:pause-session",
+      runId: "run-1",
+      sessionId: "must-not-cross",
+    })).toBe(false);
     expect(isExtRequest({
       kind: "research:cancel-session",
       runId: "run-1",
@@ -609,6 +615,12 @@ describe("message guards", () => {
   it("isOffscreenRequest accepts offscreen-bound requests only", () => {
     const jobId = "123e4567-e89b-42d3-a456-426614174000";
     expect(isOffscreenRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(true);
+    expect(isOffscreenRequest({ kind: "offscreen:research-pause", runId: "run-1" })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-pause",
+      runId: "run-1",
+      sessionId: "must-not-cross",
+    })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-cancel", jobId })).toBe(true);
     expect(isOffscreenRequest({

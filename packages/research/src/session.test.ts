@@ -276,6 +276,9 @@ describe("durable host-neutral research session reducer", () => {
       wave: 1,
       continuationId: issued.id,
     }, "2026-08-01T09:00:07.000Z")).toThrow("already consumed");
+    expect(() => update(current, {
+      kind: "request_pause",
+    }, "2026-08-01T09:00:08.000Z")).toThrow("continuation is consumed");
 
     const terminal = update(readyToRun(), {
       kind: "record_retrieval_assessment",
@@ -462,7 +465,7 @@ describe("durable host-neutral research session reducer", () => {
     current = update(current, { kind: "request_pause" }, "2026-08-01T09:00:05.000Z");
     expect(current).toMatchObject({
       status: "pause_requested",
-      lease: { expiresAt: "2026-08-01T09:00:05.000Z" },
+      lease: { expiresAt: "2026-08-01T09:00:03.000Z" },
     });
     current = update(current, { kind: "acknowledge_pause" }, "2026-08-01T09:00:06.000Z");
     expect(current).toMatchObject({

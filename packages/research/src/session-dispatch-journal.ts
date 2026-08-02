@@ -324,6 +324,28 @@ export class ResearchSessionDispatchJournalV1 {
   }
 
   /**
+   * Confirm a user-requested pause only after a settled retrieval wave has
+   * persisted its one-time continuation. This is the only point at which a
+   * new worker can resume without replaying an unobservable provider outcome.
+   */
+  acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      if (session.status !== "pause_requested") return false;
+      const turn = activeTurn(session, this.#turnId);
+      const hasUnsettledWork = turn.tasks.some((task) =>
+        task.status === "ready" || task.status === "running" || task.status === "outcome_unknown",
+      );
+      const hasIssuedContinuation = turn.retrievalAssessments?.some((assessment) =>
+        assessment.continuation?.status === "issued",
+      ) ?? false;
+      if (hasUnsettledWork || !hasIssuedContinuation) return false;
+      const paused = await this.#commit(session, { kind: "acknowledge_pause" }, (next) => next);
+      return paused.status === "paused";
+    });
+  }
+
+  /**
    * Atomically acquire the exact continuation issued for a settled retrieval
    * wave. A restarted host reads the same state and cannot acquire it twice.
    */

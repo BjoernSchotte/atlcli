@@ -541,6 +541,7 @@ export type ResearchErrorCode =
   | "rate-limited"
   | "provider-error"
   | "limit-exceeded"
+  | "paused"
   | "cancelled"
   | "invalid-report"
   | "unknown";
@@ -588,6 +589,12 @@ export interface ResearchPort {
     sessionId: string,
     options?: Omit<ResearchRunOptions, "policy">,
   ): Promise<ResearchReport>;
+  /**
+   * Cooperatively stop the active run at its next persisted retrieval
+   * checkpoint. The port owns the ephemeral run identity; callers cannot name
+   * a session or a worker.
+   */
+  pauseActiveRun?(): Promise<"pause_requested" | "paused">;
   /**
    * Optional tenant-bound review surface for durable related-scope proposals.
    * Hosts return only body-free snapshots and derive an approved binding from

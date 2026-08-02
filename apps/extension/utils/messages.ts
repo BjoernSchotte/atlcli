@@ -229,6 +229,8 @@ export type ExtRequest =
   | ({ kind: "research:continue-scope-clarification-review"; windowId: number } & ResearchScopeClarificationPlanningActionRequest)
   /** Stop only the in-flight worker; recovery remains possible. */
   | { kind: "research:cancel"; runId: string }
+  /** Request a cooperative stop at the next durable retrieval checkpoint. */
+  | { kind: "research:pause-session"; runId: string }
   /** Explicit user cancellation also terminally records the owned session. */
   | { kind: "research:cancel-session"; runId: string };
 
@@ -467,6 +469,19 @@ export type ExtResponse =
       error: string;
     }
   | { kind: "research:cancel-result"; runId: string; cancelled: boolean }
+  | {
+      kind: "research:pause-session-result";
+      runId: string;
+      ok: true;
+      status: "pause_requested" | "paused";
+    }
+  | {
+      kind: "research:pause-session-result";
+      runId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
   | { kind: "research:cancel-session-result"; runId: string; cancelled: boolean };
 
 /**
@@ -516,6 +531,7 @@ export type OffscreenRequest =
       turnId: string;
       apiKey: string;
     }
+  | { kind: "offscreen:research-pause"; runId: string }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
@@ -553,6 +569,7 @@ export type OffscreenResponse =
       code: ResearchErrorCode;
       error: string;
     }
+  | { kind: "offscreen:research-pause-result"; runId: string; paused: boolean }
   | { kind: "offscreen:research-cancel-result"; runId: string; cancelled: boolean };
 
 /** Every message that can travel over the protocol. */
@@ -603,6 +620,7 @@ export interface ResponseMap {
   "research:resolve-scope-clarification-review": Extract<ExtResponse, { kind: "research:resolve-scope-clarification-review-result" }>;
   "research:continue-scope-clarification-review": Extract<ExtResponse, { kind: "research:continue-scope-clarification-review-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
+  "research:pause-session": Extract<ExtResponse, { kind: "research:pause-session-result" }>;
   "research:cancel-session": Extract<ExtResponse, { kind: "research:cancel-session-result" }>;
 }
 
@@ -801,7 +819,7 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       preflight.request !== null &&
       hasValidScopePreflightOptions(preflight.options);
   }
-  if (kind === "research:cancel" || kind === "research:cancel-session") {
+  if (kind === "research:cancel" || kind === "research:pause-session" || kind === "research:cancel-session") {
     const cancel = value as { runId?: unknown };
     return hasOnlyKeys(value, ["kind", "runId"]) && isResearchRunId(cancel.runId);
   }
@@ -919,7 +937,7 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       isResearchTurnId(resume.turnId) &&
       isResearchApiKey(resume.apiKey);
   }
-  if (candidate.kind === "offscreen:research-cancel") {
+  if (candidate.kind === "offscreen:research-cancel" || candidate.kind === "offscreen:research-pause") {
     const cancel = value as { runId?: unknown };
     return hasOnlyKeys(value, ["kind", "runId"]) && isResearchRunId(cancel.runId);
   }

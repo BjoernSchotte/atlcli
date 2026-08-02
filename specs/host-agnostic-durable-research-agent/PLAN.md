@@ -3312,7 +3312,7 @@ Extension/browser:
         revision; the background verifies a proposed scope revision, marks the
         graph approved atomically, and merely makes the session resumable. The
         packed MV3 proof confirms that neither approval path starts retrieval.
-- [ ] Persist plan rejection, correction requests, pause requests,
+- [x] Persist plan rejection, correction requests, pause requests,
       checkpoint acknowledgements, and resume transitions. A rejected plan
       never executes, and closing the sidebar while pause is pending never
       converts the request into cancellation or approval.
@@ -3332,6 +3332,15 @@ Extension/browser:
         tests, and sidebar unmount no longer aborts a durable run. The packed
         MV3 test proves the visible cancellation retains a `cancelled` session
         and rejects a later recovery attempt (23 packed tests, 2026-08-02).
+  - [x] Add cooperative browser pause at the retrieval-checkpoint boundary.
+        A public pause request carries only an opaque run ID; the background
+        resolves the owned session, preserves its lease while the active
+        retrieval wave settles, atomically persists an issued continuation,
+        then pauses the exact worker and releases the durable session. Resume
+        consumes that continuation once in a fresh worker; a sidebar close is
+        neither pause nor cancellation. Packed MV3 proof covers request,
+        checkpoint acknowledgement, fresh-worker continuation, terminal
+        Markdown publication, and cancellation regression (24/24, 2026-08-02).
 - [ ] Prove service-worker suspension, offscreen recreation, dedicated-worker
       termination, browser restart, cancellation, and concurrent-resume
       fencing.

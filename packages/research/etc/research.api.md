@@ -1769,7 +1769,7 @@ export interface ResearchEntityVaultOptions {
 }
 
 // export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "paused" | "cancelled" | "invalid-report" | "unknown";
 
 // export: ResearchEventV1
 export type ResearchEventV1 = {
@@ -2533,6 +2533,7 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
     approveScopeReview?(input: {
         sessionId: string;
@@ -3429,6 +3430,7 @@ export declare class ResearchSessionDispatchJournalV1 {
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
+    acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean>;
     consumeRetrievalContinuation(input: {
         graphRevision: number;
         wave: number;
@@ -6129,7 +6131,7 @@ export interface ResearchEntityVaultOptions {
 }
 
 // export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "paused" | "cancelled" | "invalid-report" | "unknown";
 
 // export: ResearchEventV1
 export type ResearchEventV1 = {
@@ -6893,6 +6895,7 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
     approveScopeReview?(input: {
         sessionId: string;
@@ -7789,6 +7792,7 @@ export declare class ResearchSessionDispatchJournalV1 {
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
+    acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean>;
     consumeRetrievalContinuation(input: {
         graphRevision: number;
         wave: number;
@@ -10487,7 +10491,7 @@ export interface ResearchEntityVaultOptions {
 }
 
 // export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "paused" | "cancelled" | "invalid-report" | "unknown";
 
 // export: ResearchEventV1
 export type ResearchEventV1 = {
@@ -11251,6 +11255,7 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
     approveScopeReview?(input: {
         sessionId: string;
@@ -12147,6 +12152,7 @@ export declare class ResearchSessionDispatchJournalV1 {
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
+    acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean>;
     consumeRetrievalContinuation(input: {
         graphRevision: number;
         wave: number;
@@ -15067,7 +15073,7 @@ export interface ResearchEntityVaultOptions {
 }
 
 // export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "paused" | "cancelled" | "invalid-report" | "unknown";
 
 // export: ResearchEventV1
 export type ResearchEventV1 = {
@@ -15831,6 +15837,7 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
     approveScopeReview?(input: {
         sessionId: string;
@@ -16774,6 +16781,7 @@ export declare class ResearchSessionDispatchJournalV1 {
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
+    acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean>;
     consumeRetrievalContinuation(input: {
         graphRevision: number;
         wave: number;
@@ -19783,7 +19791,7 @@ export interface ResearchEntityVaultOptions {
 }
 
 // export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "paused" | "cancelled" | "invalid-report" | "unknown";
 
 // export: ResearchEventV1
 export type ResearchEventV1 = {
@@ -20547,6 +20555,7 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
     approveScopeReview?(input: {
         sessionId: string;
@@ -21490,6 +21499,7 @@ export declare class ResearchSessionDispatchJournalV1 {
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
+    acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean>;
     consumeRetrievalContinuation(input: {
         graphRevision: number;
         wave: number;
@@ -22819,7 +22829,7 @@ export declare class ResearchContractError extends Error {
 }
 
 // export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "paused" | "cancelled" | "invalid-report" | "unknown";
 
 // export: ResearchEventV1
 export type ResearchEventV1 = {
@@ -23066,6 +23076,7 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
     approveScopeReview?(input: {
         sessionId: string;
@@ -25727,7 +25738,7 @@ export interface ResearchEntityVaultOptions {
 }
 
 // export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "paused" | "cancelled" | "invalid-report" | "unknown";
 
 // export: ResearchEventV1
 export type ResearchEventV1 = {
@@ -26491,6 +26502,7 @@ export interface ResearchPort {
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
+    pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
     approveScopeReview?(input: {
         sessionId: string;
@@ -27434,6 +27446,7 @@ export declare class ResearchSessionDispatchJournalV1 {
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
+    acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean>;
     consumeRetrievalContinuation(input: {
         graphRevision: number;
         wave: number;

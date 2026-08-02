@@ -732,7 +732,7 @@ export function createResearchRetrievalCheckpointPtcTool(options: {
     assessment: ResearchRetrievalAssessmentV1;
     issueContinuation: boolean;
   }) => Promise<ResearchSessionRetrievalAssessmentV1 & { graph: ResearchGraphV1 }>;
-  onRecorded?: (checkpoint: ResearchRetrievalCheckpointProjectionV1) => void;
+  onRecorded?: (checkpoint: ResearchRetrievalCheckpointProjectionV1) => void | Promise<void>;
 }): DynamicStructuredTool {
   const schema = z.object({
     graphRevision: z.number().int().positive(),
@@ -761,7 +761,7 @@ export function createResearchRetrievalCheckpointPtcTool(options: {
       );
     }
     const checkpoint = projectResearchRetrievalCheckpointV1(recorded);
-    options.onRecorded?.(checkpoint);
+    await options.onRecorded?.(checkpoint);
     return JSON.stringify(checkpoint);
   }, {
     name: "research_retrieval_checkpoint",
@@ -1693,6 +1693,17 @@ type ResearchOneShotEventInputV1 = ResearchOneShotEventV1 extends infer Event
     ? Omit<Event, "seq" | "at">
     : never
   : never;
+
+/**
+ * Internal control-flow signal: unlike cancellation, a pause has already
+ * persisted a resumable checkpoint and must never be converted into failure.
+ */
+class ResearchPauseRequestedError extends Error {
+  constructor() {
+    super("Research reached a durable pause checkpoint.");
+    this.name = "ResearchPauseRequestedError";
+  }
+}
 
 async function runResearchAgentWithBindings(
   input: RunResearchAgentInput,
@@ -2846,6 +2857,9 @@ async function runResearchAgentWithBindings(
         },
         onRecorded: (checkpoint) => {
           retrievalCheckpoint = checkpoint;
+          return durableDispatchJournal!.acknowledgePauseAtRetrievalCheckpoint().then((paused) => {
+            if (paused) broker.cancel(new ResearchPauseRequestedError());
+          });
         },
       })
     : undefined;
@@ -3242,6 +3256,12 @@ async function runResearchAgentWithBindings(
       );
     }
     if (broker.signal.aborted) {
+      if (broker.signal.reason instanceof ResearchPauseRequestedError) {
+        throw new ResearchContractError(
+          "paused",
+          "Research paused at a durable retrieval checkpoint.",
+        );
+      }
       await durableDispatchJournal?.fail("Research execution was cancelled before report validation.");
       throw new ResearchContractError("cancelled", "The research run was cancelled.");
     }

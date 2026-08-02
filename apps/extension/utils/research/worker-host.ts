@@ -105,13 +105,26 @@ export class ResearchAgentWorkerHost {
   }
 
   cancel(runId: string): boolean {
+    return this.#interrupt(
+      runId,
+      new ResearchContractError("cancelled", "The research run was cancelled."),
+    );
+  }
+
+  /** Stop a worker at an already persisted durable pause checkpoint. */
+  pause(runId: string): boolean {
+    return this.#interrupt(
+      runId,
+      new ResearchContractError("paused", "The research run reached a durable pause checkpoint."),
+    );
+  }
+
+  #interrupt(runId: string, reason: ResearchContractError): boolean {
     const active = this.#active.get(runId);
     if (!active) return false;
     this.#active.delete(runId);
     active.worker.terminate();
-    active.reject(
-      new ResearchContractError("cancelled", "The research run was cancelled.")
-    );
+    active.reject(reason);
     return true;
   }
 }

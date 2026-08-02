@@ -155,6 +155,7 @@ export interface RouterDeps {
     options?: ResearchScopePreflightOptionsV1,
   ) => Promise<ResearchScopePreflightOutcomeV1>;
   cancelResearch?: (runId: string) => Promise<boolean>;
+  requestResearchPause?: (runId: string) => Promise<"pause_requested" | "paused">;
   cancelResearchSession?: (runId: string) => Promise<boolean>;
 }
 
@@ -781,6 +782,35 @@ export async function routeMessage(
         runId: msg.runId,
         cancelled: cancelled ?? false,
       };
+    }
+    case "research:pause-session": {
+      if (!deps.requestResearchPause) {
+        return {
+          kind: "research:pause-session-result",
+          runId: msg.runId,
+          ok: false,
+          code: "provider-error",
+          error: "Research pause is not configured.",
+        };
+      }
+      try {
+        const status = await deps.requestResearchPause(msg.runId);
+        return {
+          kind: "research:pause-session-result",
+          runId: msg.runId,
+          ok: true,
+          status,
+        };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:pause-session-result",
+          runId: msg.runId,
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
     }
     case "research:cancel-session": {
       const cancelled = await deps.cancelResearchSession?.(msg.runId).catch(() => false);

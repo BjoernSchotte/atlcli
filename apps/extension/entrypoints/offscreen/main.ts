@@ -182,6 +182,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
         },
       });
     },
+    pauseResearch: async (runId) => researchHost.pause(runId),
     cancelResearch: async (runId) => researchHost.cancel(runId),
   })
 );

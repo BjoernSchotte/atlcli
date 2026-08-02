@@ -426,6 +426,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   );
   const [disclosed, setDisclosed] = useState(false);
   const [running, setRunning] = useState(false);
+  const [pauseRequested, setPauseRequested] = useState(false);
   const [progress, setProgress] = useState("");
   const [activity, setActivity] = useState<ResearchOneShotEventV1[]>([]);
   const [report, setReport] = useState<ResearchReport | null>(null);
@@ -794,6 +795,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       const controller = new AbortController();
       abortRef.current = controller;
       setRunning(true);
+      setPauseRequested(false);
       setProgress(t("research.running"));
       setActivity([]);
       setReport(null);
@@ -808,10 +810,16 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setReport(result);
       setProgress("");
     } catch (value) {
-      setError(value instanceof Error ? value.message : t("research.error"));
+      if (value instanceof ResearchContractError && value.code === "paused") {
+        setActionStatus(t("research.paused"));
+        setProgress("");
+      } else {
+        setError(value instanceof Error ? value.message : t("research.error"));
+      }
     } finally {
       abortRef.current = null;
       setRunning(false);
+      setPauseRequested(false);
       void refreshResumableSessions();
       void refreshScopeReviews();
       void refreshScopePlanReviews();
@@ -839,6 +847,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       const controller = new AbortController();
       abortRef.current = controller;
       setRunning(true);
+      setPauseRequested(false);
       setProgress(t("research.running"));
       setActivity([]);
       setReport(null);
@@ -852,15 +861,36 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setReport(result);
       setProgress("");
     } catch (value) {
-      setError(value instanceof Error ? value.message : t("research.error"));
+      if (value instanceof ResearchContractError && value.code === "paused") {
+        setActionStatus(t("research.paused"));
+        setProgress("");
+      } else {
+        setError(value instanceof Error ? value.message : t("research.error"));
+      }
     } finally {
       abortRef.current = null;
       setRunning(false);
+      setPauseRequested(false);
       void refreshResumableSessions();
       void refreshScopeReviews();
       void refreshScopePlanReviews();
       void refreshPlanReviews();
       void refreshClarificationReviews();
+    }
+  }
+
+  async function requestPause(): Promise<void> {
+    if (!port?.pauseActiveRun || !running || pauseRequested) return;
+    setError(null);
+    try {
+      setPauseRequested(true);
+      const status = await port.pauseActiveRun();
+      setActionStatus(t(
+        status === "paused" ? "research.paused" : "research.pauseRequested",
+      ));
+    } catch (value) {
+      setPauseRequested(false);
+      setError(value instanceof Error ? value.message : t("research.error"));
     }
   }
 
@@ -1415,6 +1445,16 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             >
               {running ? t("research.running") : t("research.run")}
             </Button>
+            {port.pauseActiveRun && (
+              <Button
+                variant="outline"
+                onClick={() => void requestPause()}
+                disabled={!running || pauseRequested}
+                data-testid="research-pause"
+              >
+                {t("research.pause")}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => abortRef.current?.abort()}

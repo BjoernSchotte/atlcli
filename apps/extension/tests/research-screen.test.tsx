@@ -21,6 +21,7 @@ import type {
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
+import { ResearchContractError } from "../utils/research/contracts.js";
 import type {
   ResearchPort,
   ResearchReportV1,
@@ -450,6 +451,95 @@ describe("portable Research screen", () => {
     )).toBe(false);
     expect(dom.html()).not.toContain("<script");
     expect((globalThis as Record<string, unknown>).chrome).toBeUndefined();
+  });
+
+  it("requests a cooperative durable pause without cancelling the active run", async () => {
+    let pauseCalls = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request: {
+          ...request,
+          scope: {
+            ...request.scope,
+            jiraProjectKeys: ["DEMO"],
+            confluenceSpaceKeys: ["KB"],
+          },
+        },
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => new Promise<ResearchReportV1>(() => undefined),
+      pauseActiveRun: async () => {
+        pauseCalls += 1;
+        return "pause_requested";
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-question", "How are DEMO-1 and KB related?");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+    expect((dom.find("research-pause") as HTMLButtonElement).disabled).toBe(false);
+
+    await dom.click("research-pause");
+    expect(pauseCalls).toBe(1);
+    expect(dom.find("research-action-status").textContent).toContain(
+      "Pause requested — finishing the current retrieval wave.",
+    );
+    expect((dom.find("research-pause") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("treats a durable paused result as resumable status rather than an error", async () => {
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request: {
+          ...request,
+          scope: {
+            ...request.scope,
+            jiraProjectKeys: ["DEMO"],
+            confluenceSpaceKeys: ["KB"],
+          },
+        },
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => {
+        throw new ResearchContractError(
+          "paused",
+          "Research paused at a durable retrieval checkpoint.",
+        );
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-question", "How are DEMO-1 and KB related?");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    expect(dom.find("research-action-status").textContent).toContain(
+      "Research paused at a durable checkpoint. Resume it below.",
+    );
+    expect(dom.maybeFind("research-error")).toBeNull();
   });
 
   it("renders a V2 claim report and preserves its canonical Markdown", async () => {

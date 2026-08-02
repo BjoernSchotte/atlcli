@@ -445,6 +445,29 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     }]);
   });
 
+  it("pauses an offscreen worker using only its opaque run id", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    const received: string[] = [];
+    expect(handleOffscreenMessage(
+      { kind: "offscreen:research-pause", runId: "run-pause" },
+      cap.sendResponse,
+      {
+        ...okOffscreenDeps,
+        pauseResearch: async (runId) => {
+          received.push(runId);
+          return true;
+        },
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(received).toEqual(["run-pause"]);
+    expect(cap.values).toEqual([{
+      kind: "offscreen:research-pause-result",
+      runId: "run-pause",
+      paused: true,
+    }]);
+  });
+
   it("keeps an offscreen queue wake failure distinct from an empty queue", async () => {
     const cap = captureResponse<OffscreenResponse>();
     expect(handleOffscreenMessage(

@@ -242,6 +242,21 @@ describe("routeMessage (pure router)", () => {
       cancelled: true,
     });
     expect(await routeMessage({
+      kind: "research:pause-session",
+      runId: "run-1",
+    }, {
+      ...okDeps,
+      requestResearchPause: async (runId) => {
+        expect(runId).toBe("run-1");
+        return "pause_requested";
+      },
+    })).toEqual({
+      kind: "research:pause-session-result",
+      runId: "run-1",
+      ok: true,
+      status: "pause_requested",
+    });
+    expect(await routeMessage({
       kind: "research:cancel-session",
       runId: "run-1",
     }, {
