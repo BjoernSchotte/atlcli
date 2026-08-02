@@ -5,6 +5,7 @@ import {
   type ResearchGraphProposalV1,
 } from "./graph.js";
 import {
+  approveResearchScopeExpansionV1,
   appendResearchSessionTurnV1,
   initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
@@ -14,6 +15,7 @@ import {
 } from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
+import { createResearchScopeExpansionProposalV1 } from "./scope-discovery.js";
 
 function brief(approval: "automatic" | "required", turnId = "research-turn:runtime-test") {
   return createResearchBriefV1({
@@ -201,6 +203,101 @@ describe("durable research session execution gate", () => {
       "reject_plan",
       "request_plan_revision",
       "revise_graph",
+    ]);
+  });
+
+  test("commits whole-scope approval and its replacement plan in one durable event", async () => {
+    const candidate = {
+      schema: "atlcli.research-scope-candidate/v1" as const,
+      id: "research-scope-candidate:confluence-space-related",
+      tenantOrigin: "https://example.atlassian.net",
+      product: "confluence" as const,
+      entityKind: "space" as const,
+      entityRef: "research-scope-entity:confluence-space-related",
+      key: "RELATED",
+      name: "Related documentation",
+      status: "current" as const,
+      accessible: true as const,
+      providerFreshnessAt: "2026-08-01T15:00:00.000Z",
+    };
+    const initialBrief = createResearchBriefV1({
+      ...brief("required"),
+      scopeCandidates: [candidate],
+    });
+    const store = new InMemoryResearchSessionStoreV1();
+    const proposed = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: initialBrief,
+      graph: composeResearchGraphV1(initialBrief),
+      approveAutomatically: false,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const running = (await store.commit(proposed.sessionId, {
+      kind: "approve_graph",
+      graphRevision: 1,
+      expectedRevision: proposed.revision,
+      expectedLeaseEpoch: proposed.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    })).session;
+    const turn = running.turns[0]!;
+    const awaitingScope = (await store.commit(running.sessionId, {
+      kind: "propose_scope_expansion",
+      proposal: createResearchScopeExpansionProposalV1({
+        id: "scope-expansion:related-space",
+        sessionId: running.sessionId,
+        turnId: turn.id,
+        basedOnBriefRevision: turn.brief!.revision,
+        basedOnGraphRevision: turn.graph!.revision,
+        candidateId: candidate.id,
+        expansionKind: "whole_scope",
+        reason: "A supported relationship needs space-level follow-up.",
+        provenanceRefs: ["source:related-space"],
+        status: "proposed",
+      }),
+      expectedRevision: running.revision,
+      expectedLeaseEpoch: running.lease.epoch,
+      at: "2026-08-01T15:00:03.000Z",
+    })).session;
+
+    const replacement = await approveResearchScopeExpansionV1({
+      store,
+      sessionId: awaitingScope.sessionId,
+      proposalId: "scope-expansion:related-space",
+      binding: {
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:research-scope-candidate:confluence-space-related",
+        tenantOrigin: candidate.tenantOrigin,
+        product: candidate.product,
+        entityKind: candidate.entityKind,
+        entityRef: candidate.entityRef,
+        key: candidate.key,
+        name: candidate.name,
+        source: "research_discovery",
+        authority: "approved",
+        candidateId: candidate.id,
+        approvedAt: "2026-08-01T15:00:04.000Z",
+      },
+      expectedRevision: awaitingScope.revision,
+      expectedLeaseEpoch: awaitingScope.lease.epoch,
+      at: "2026-08-01T15:00:04.000Z",
+    });
+
+    expect(replacement).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{
+        brief: { revision: 2, scope: { confluenceSpaceKeys: ["DOCS", "RELATED"] } },
+        graph: { revision: 2, basedOnBriefRevision: 2, status: "proposed" },
+        scopeRevisions: [{ state: "proposed", proposedGraphRevision: 2 }],
+      }],
+    });
+    expect((await store.events(replacement.sessionId)).map((event) => event.kind)).toEqual([
+      "create_turn",
+      "record_brief",
+      "propose_graph",
+      "approve_graph",
+      "propose_scope_expansion",
+      "approve_scope_expansion",
     ]);
   });
 

@@ -3114,6 +3114,11 @@ provider capability to QuickJS.
   - [x] Make all typed *session* wait transitions lease-releasing and
         restart-observable, including brief clarification after a valid brief
         was accepted.
+  - [x] Make a whole-project/space approval one atomic revision-fenced
+        transition: persist its approved binding, immutable brief scope,
+        replacement graph/envelope, and plan diff together, then return to
+        explicit plan approval. Exact page/issue approval retains only the
+        approved entity binding and cannot widen `ResearchScopeV1`.
   - [ ] Persist unresolved scope-catalog clarification before a brief exists,
         and expose the candidate-choice controls in both hosts.
 

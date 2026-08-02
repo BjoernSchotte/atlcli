@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   briefRequiresClarificationV1,
+  approveResearchBriefWholeScopeExpansionV1,
   createResearchBriefV1,
   prepareResearchBriefPreflightV1,
   projectResearchProposedAssumptionLimitationsV1,
@@ -224,6 +225,37 @@ describe("host-owned research brief", () => {
       instruction: "no",
       requestedAt: "2026-08-02T10:00:00.000Z",
     })).toThrow("invalid");
+  });
+
+  test("adds an approved discovered whole scope only through a new brief revision", () => {
+    const original = create({
+      scope: { siteOrigin: "https://example.atlassian.net", jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: [] },
+      sourceClasses: ["jira"],
+    });
+    const revised = approveResearchBriefWholeScopeExpansionV1({
+      brief: original,
+      binding: {
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:research-scope-candidate:confluence-space-docs",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "space",
+        entityRef: "space:docs",
+        key: "DOCS",
+        name: "Documentation",
+        source: "research_discovery",
+        authority: "approved",
+        candidateId: "research-scope-candidate:confluence-space-docs",
+        approvedAt: "2026-08-02T10:00:00.000Z",
+      },
+    });
+    expect(revised).toMatchObject({
+      revision: 2,
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["DOCS"] },
+      sourceClasses: ["jira", "confluence"],
+      limits: original.limits,
+      scopeBindings: [{ authority: "approved", source: "research_discovery", key: "DOCS" }],
+    });
   });
 
   test("rejects silently accepted new assumptions and invalid time context", () => {

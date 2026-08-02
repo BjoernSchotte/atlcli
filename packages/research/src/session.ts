@@ -1,5 +1,6 @@
 import { ResearchContractError, type ResearchScopeBindingV1 } from "./contracts.js";
 import {
+  approveResearchBriefWholeScopeExpansionV1,
   reviseResearchBriefPlanV1,
   resolveResearchBriefClarificationsV1,
   type ResearchBriefAssumptionDecisionV1,
@@ -61,6 +62,8 @@ export const RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1 =
   "atlcli.research-session-graph-revision/v1" as const;
 export const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1 =
   "atlcli.research-session-plan-revision/v1" as const;
+export const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1 =
+  "atlcli.research-session-scope-revision/v1" as const;
 export const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1 =
   "atlcli.research-resumable-session/v1" as const;
 
@@ -216,6 +219,28 @@ export interface ResearchSessionPlanRevisionV1 {
   approvedAt?: string;
 }
 
+/**
+ * Durable replacement-plan lineage for an approved whole-project/space scope
+ * discovery. Exact-entity approvals do not widen the brief and therefore do
+ * not create this record.
+ */
+export interface ResearchSessionScopeRevisionV1 {
+  schema: typeof RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1;
+  id: string;
+  proposalId: string;
+  basedOnBriefRevision: number;
+  basedOnGraphRevision: number;
+  expansionKind: "whole_scope";
+  approvedBinding: ResearchScopeBindingV1;
+  previousBrief: ResearchBriefV1;
+  previousGraph: ResearchGraphV1;
+  state: "proposed" | "approved";
+  revisedBriefRevision: number;
+  proposedGraphRevision?: number;
+  planDiff?: ResearchPlanDiffV1;
+  approvedAt?: string;
+}
+
 export interface ResearchSessionTurnV1 {
   id: string;
   revision: number;
@@ -240,6 +265,8 @@ export interface ResearchSessionTurnV1 {
   assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
   /** Undefined denotes a pre-plan-revision legacy turn. */
   planRevisions?: ResearchSessionPlanRevisionV1[];
+  /** Undefined denotes a pre-whole-scope-revision legacy turn. */
+  scopeRevisions?: ResearchSessionScopeRevisionV1[];
   steering: ResearchSessionSteeringV1[];
   tasks: ResearchTaskAttemptV1[];
   acceptedPackets: ResearchAcceptedPacketV1[];
@@ -358,7 +385,13 @@ export type ResearchSessionUpdateV1 =
       instruction: string;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "propose_scope_expansion"; proposal: ResearchScopeExpansionProposalV1 })
-  | (ResearchSessionFencedUpdateV1 & { kind: "approve_scope_expansion"; proposalId: string; binding: ResearchScopeBindingV1 })
+  | (ResearchSessionFencedUpdateV1 & {
+      kind: "approve_scope_expansion";
+      proposalId: string;
+      binding: ResearchScopeBindingV1;
+      /** Required for a whole project/space, forbidden for an exact entity. */
+      replacementGraph?: ResearchGraphV1;
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "reject_scope_expansion"; proposalId: string })
   | (ResearchSessionFencedUpdateV1 & { kind: "request_steering"; steeringId: string; request: string })
   | (ResearchSessionFencedUpdateV1 & { kind: "acknowledge_steering"; steeringId: string })
@@ -582,6 +615,50 @@ function validateSession(session: ResearchSessionV1): void {
         previousGraphRevision = revision.basedOnGraphRevision;
       }
     }
+    if (candidate.scopeRevisions !== undefined) {
+      if (!Array.isArray(candidate.scopeRevisions) || candidate.scopeRevisions.length > 16 ||
+          new Set(candidate.scopeRevisions.map((revision) => revision.id)).size !== candidate.scopeRevisions.length) {
+        invalid("Research session scope revisions are invalid.");
+      }
+      let previousGraphRevision = 0;
+      for (const revision of candidate.scopeRevisions) {
+        const proposedGraphRevision = revision.proposedGraphRevision;
+        const binding = revision.approvedBinding;
+        const isWholeScopeBinding = (binding.product === "jira" && binding.entityKind === "project") ||
+          (binding.product === "confluence" && binding.entityKind === "space");
+        if (revision.schema !== RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1 ||
+            !/^scope-revision:[A-Za-z0-9._-]{1,160}$/.test(revision.id) ||
+            !/^scope-expansion:[A-Za-z0-9._-]{1,120}$/.test(revision.proposalId) ||
+            revision.expansionKind !== "whole_scope" ||
+            !Number.isSafeInteger(revision.basedOnBriefRevision) || revision.basedOnBriefRevision < 1 ||
+            !Number.isSafeInteger(revision.basedOnGraphRevision) || revision.basedOnGraphRevision < 1 ||
+            revision.basedOnGraphRevision <= previousGraphRevision ||
+            !isWholeScopeBinding || !binding.key || binding.authority !== "approved" || binding.source !== "research_discovery" ||
+            binding.tenantOrigin !== candidate.brief?.scope.siteOrigin ||
+            revision.previousBrief.sessionId !== session.sessionId || revision.previousBrief.turnId !== candidate.id ||
+            revision.previousBrief.revision !== revision.basedOnBriefRevision ||
+            revision.previousGraph.sessionId !== session.sessionId || revision.previousGraph.turnId !== candidate.id ||
+            revision.previousGraph.revision !== revision.basedOnGraphRevision ||
+            revision.previousGraph.basedOnBriefRevision !== revision.basedOnBriefRevision ||
+            revision.revisedBriefRevision <= revision.basedOnBriefRevision ||
+            !["proposed", "approved"].includes(revision.state)) {
+          invalid("Research session scope revision is invalid.");
+        }
+        validateResearchGraphV1(revision.previousGraph);
+        if (revision.planDiff === undefined ||
+            !Number.isSafeInteger(proposedGraphRevision) || (proposedGraphRevision ?? -1) <= revision.basedOnGraphRevision ||
+            (revision.planDiff !== undefined &&
+              (revision.planDiff.schema !== "atlcli.research-plan-diff/v1" ||
+                revision.planDiff.fromRevision !== revision.basedOnGraphRevision ||
+                revision.planDiff.toRevision !== (proposedGraphRevision ?? -1))) ||
+            (revision.state === "approved" && revision.approvedAt === undefined) ||
+            (revision.state !== "approved" && revision.approvedAt !== undefined)) {
+          invalid("Research session scope revision transition is invalid.");
+        }
+        if (revision.approvedAt !== undefined) timestamp(revision.approvedAt, "Research session scope revision approval timestamp");
+        previousGraphRevision = revision.basedOnGraphRevision;
+      }
+    }
     if (candidate.graphRevisions !== undefined) {
       if (!Array.isArray(candidate.graphRevisions) || candidate.graphRevisions.length > 16) {
         invalid("Research session graph revisions are invalid.");
@@ -702,7 +779,7 @@ export function reduceResearchSessionV1(
       id: update.turnId,
       revision: 1,
       createdAt: update.at,
-      scopeCandidates: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], planRevisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
+      scopeCandidates: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], planRevisions: [], scopeRevisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
     };
     return withNext(session, update, { status: "planning", activeTurnId: update.turnId, turns: [...session.turns, nextTurn] });
   }
@@ -834,19 +911,25 @@ export function reduceResearchSessionV1(
     validateResearchGraphV1(update.graph);
     if (!current.brief || update.graph.sessionId !== session.sessionId || update.graph.turnId !== current.id || update.graph.basedOnBriefRevision !== current.brief.revision || update.graph.status !== "proposed") invalid("Research graph proposal does not match the active brief.");
     if (update.kind === "propose_graph" && current.graph) invalid("Research graph proposal already exists.");
-    const revisionRecord = (current.planRevisions ?? []).at(-1);
+    const planRevisionRecord = (current.planRevisions ?? []).at(-1);
+    const revisingPlan = update.kind === "revise_graph" && Boolean(
+      current.graph && planRevisionRecord?.state === "revision_requested" &&
+      planRevisionRecord.basedOnGraphRevision === current.graph.revision &&
+      planRevisionRecord.revisedBriefRevision === current.brief.revision,
+    );
     if (update.kind === "revise_graph" &&
         (!current.graph || update.graph.revision !== current.graph.revision + 1 ||
-          !revisionRecord || revisionRecord.state !== "revision_requested" ||
-          revisionRecord.basedOnGraphRevision !== current.graph.revision ||
-          revisionRecord.revisedBriefRevision !== current.brief.revision)) {
+          !revisingPlan)) {
       invalid("Research graph revision is invalid.");
     }
+    const pendingScopeExpansionProposalIds = current.scopeExpansionProposals
+      .filter((proposal) => proposal.status === "proposed")
+      .map((proposal) => proposal.id);
     const nextTurn = {
       ...current,
       graph: clone(update.graph),
-      ...(update.kind === "revise_graph" ? {
-        planRevisions: (current.planRevisions ?? []).map((record) => record.id === revisionRecord!.id ? {
+      ...(revisingPlan ? {
+        planRevisions: (current.planRevisions ?? []).map((record) => record.id === planRevisionRecord!.id ? {
           ...record,
           state: "proposed" as const,
           proposedGraphRevision: update.graph.revision,
@@ -855,9 +938,7 @@ export function reduceResearchSessionV1(
             fromGraph: record.rejectedGraph,
             toBrief: current.brief!,
             toGraph: update.graph,
-            scopeExpansionProposalIds: current.scopeExpansionProposals
-              .filter((proposal) => proposal.status === "proposed")
-              .map((proposal) => proposal.id),
+            scopeExpansionProposalIds: pendingScopeExpansionProposalIds,
           }),
         } : record),
       } : {}),
@@ -929,6 +1010,13 @@ export function reduceResearchSessionV1(
       graph: reduceResearchGraphV1(graph, { kind: "approve", expectedRevision: graph.revision, approvedAt: update.at }),
       ...(current.planRevisions?.some((record) => record.state === "proposed" && record.proposedGraphRevision === graph.revision) ? {
         planRevisions: current.planRevisions.map((record) =>
+          record.state === "proposed" && record.proposedGraphRevision === graph.revision
+            ? { ...record, state: "approved" as const, approvedAt: update.at }
+            : record,
+        ),
+      } : {}),
+      ...(current.scopeRevisions?.some((record) => record.state === "proposed" && record.proposedGraphRevision === graph.revision) ? {
+        scopeRevisions: current.scopeRevisions.map((record) =>
           record.state === "proposed" && record.proposedGraphRevision === graph.revision
             ? { ...record, state: "approved" as const, approvedAt: update.at }
             : record,
@@ -1029,7 +1117,13 @@ export function reduceResearchSessionV1(
   if (update.kind === "propose_scope_expansion") {
     const current = ensureActive(session, ["running", "waiting_steering"]);
     const graph = requireGraph(current);
-    if (update.proposal.sessionId !== session.sessionId || update.proposal.turnId !== current.id || update.proposal.basedOnBriefRevision !== current.brief?.revision || update.proposal.basedOnGraphRevision !== graph.revision || update.proposal.status !== "proposed" || current.scopeExpansionProposals.some((proposal) => proposal.id === update.proposal.id)) invalid("Research scope expansion proposal is invalid or stale.");
+    const candidate = current.scopeCandidates.find((entry) => entry.id === update.proposal.candidateId);
+    const validWholeScope = update.proposal.expansionKind === "whole_scope" &&
+      ((candidate?.product === "jira" && candidate.entityKind === "project") ||
+        (candidate?.product === "confluence" && candidate.entityKind === "space")) && Boolean(candidate?.key);
+    const validExactEntity = update.proposal.expansionKind === "exact_entity" &&
+      (candidate?.entityKind === "issue" || candidate?.entityKind === "page");
+    if (update.proposal.sessionId !== session.sessionId || update.proposal.turnId !== current.id || update.proposal.basedOnBriefRevision !== current.brief?.revision || update.proposal.basedOnGraphRevision !== graph.revision || update.proposal.status !== "proposed" || current.scopeExpansionProposals.some((proposal) => proposal.id === update.proposal.id) || current.brief?.scopeDiscoveryPolicy.expansionMode === "strict" || !candidate || candidate.tenantOrigin !== current.brief?.scope.siteOrigin || candidate.status === "archived" || (!validWholeScope && !validExactEntity)) invalid("Research scope expansion proposal is invalid or stale.");
     const nextTurn = { ...current, scopeExpansionProposals: [...current.scopeExpansionProposals, clone(update.proposal)] };
     return withReleasedDurableWait(session, update, {
       status: "waiting_scope_approval",
@@ -1042,14 +1136,85 @@ export function reduceResearchSessionV1(
     const proposal = current.scopeExpansionProposals.find((candidate) => candidate.id === update.proposalId);
     if (!proposal || proposal.status !== "proposed") invalid("Research scope expansion proposal is unknown or already resolved.");
     const approved = update.kind === "approve_scope_expansion";
-    if (approved && (!update.binding || !/^scope-binding:[A-Za-z0-9:._%-]{1,180}$/.test(update.binding.id))) invalid("Research scope expansion binding is invalid.");
+    const candidate = current.scopeCandidates.find((entry) => entry.id === proposal.candidateId);
+    const binding = update.kind === "approve_scope_expansion" ? update.binding : undefined;
+    const bindingMatchesCandidate = Boolean(binding && candidate &&
+      /^scope-binding:[A-Za-z0-9:._%-]{1,180}$/.test(binding.id) &&
+      binding.tenantOrigin === candidate.tenantOrigin &&
+      binding.product === candidate.product && binding.entityKind === candidate.entityKind &&
+      binding.entityRef === candidate.entityRef && binding.candidateId === candidate.id &&
+      binding.authority === "approved" && binding.source === "research_discovery" &&
+      binding.approvedAt === update.at && binding.key === candidate.key && binding.name === candidate.name);
+    if (approved && !bindingMatchesCandidate) invalid("Research scope expansion binding is invalid.");
     const nextProposal: ResearchScopeExpansionProposalV1 = approved
-      ? { ...proposal, status: "approved", approvedBindingId: update.binding.id }
+      ? { ...proposal, status: "approved", approvedBindingId: binding!.id }
       : { ...proposal, status: "rejected" };
+    if (approved && proposal.expansionKind === "whole_scope") {
+      let revisedBrief: ResearchBriefV1;
+      try {
+        revisedBrief = approveResearchBriefWholeScopeExpansionV1({
+          brief: current.brief!,
+          binding: binding!,
+          existingBindings: current.scopeBindings,
+        });
+      } catch (error) {
+        invalid(error instanceof Error ? error.message : "Research whole-scope expansion is invalid.");
+      }
+      const scopeRevisions = current.scopeRevisions ?? [];
+      if (scopeRevisions.some((record) => record.proposalId === proposal.id)) {
+        invalid("Research scope expansion revision is already recorded.");
+      }
+      const graph = requireGraph(current);
+      const replacementGraph = update.replacementGraph;
+      if (!replacementGraph || replacementGraph.sessionId !== session.sessionId ||
+          replacementGraph.turnId !== current.id ||
+          replacementGraph.revision !== graph.revision + 1 ||
+          replacementGraph.basedOnBriefRevision !== revisedBrief!.revision ||
+          replacementGraph.status !== "proposed") {
+        invalid("Research whole-scope replacement graph is invalid.");
+      }
+      validateResearchGraphV1(replacementGraph);
+      const record: ResearchSessionScopeRevisionV1 = {
+        schema: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1,
+        id: `scope-revision:${proposal.id.slice("scope-expansion:".length)}`,
+        proposalId: proposal.id,
+        basedOnBriefRevision: current.brief!.revision,
+        basedOnGraphRevision: graph.revision,
+        expansionKind: "whole_scope",
+        approvedBinding: clone(binding!),
+        previousBrief: clone(current.brief!),
+        previousGraph: clone(graph),
+        state: "proposed",
+        revisedBriefRevision: revisedBrief!.revision,
+        proposedGraphRevision: replacementGraph.revision,
+        planDiff: diffResearchPlansV1({
+          fromBrief: current.brief!,
+          fromGraph: graph,
+          toBrief: revisedBrief!,
+          toGraph: replacementGraph,
+          scopeExpansionProposalIds: [],
+        }),
+      };
+      return withReleasedDurableWait(session, update, {
+        status: "waiting_plan_approval",
+        turns: replaceTurn(session, {
+          ...current,
+          brief: revisedBrief!,
+          graph: clone(replacementGraph),
+          scopeBindings: [...current.scopeBindings, clone(binding!)],
+          scopeExpansionProposals: current.scopeExpansionProposals.map((entry) => entry.id === proposal.id ? nextProposal : entry),
+          scopeRevisions: [...scopeRevisions, record],
+          revision: current.revision + 1,
+        }),
+      });
+    }
+    if (approved && update.replacementGraph !== undefined) {
+      invalid("Research exact-entity scope approval cannot replace the graph.");
+    }
     const nextTurn = {
       ...current,
       scopeExpansionProposals: current.scopeExpansionProposals.map((candidate) => candidate.id === proposal.id ? nextProposal : candidate),
-      ...(approved ? { scopeBindings: [...current.scopeBindings, clone(update.binding)] } : {}),
+      ...(approved ? { scopeBindings: [...current.scopeBindings, clone(binding!)] } : {}),
     };
     return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
   }

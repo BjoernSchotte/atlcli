@@ -500,6 +500,50 @@ export function reviseResearchBriefPlanV1(input: {
 }
 
 /**
+ * Commit an approved whole-project or whole-space discovery into the next
+ * brief revision. Exact-entity approvals deliberately do not use this path:
+ * they retain an entity binding without widening `ResearchScopeV1`.
+ */
+export function approveResearchBriefWholeScopeExpansionV1(input: {
+  brief: ResearchBriefV1;
+  binding: ResearchScopeBindingV1;
+  /** Includes earlier approved exact-entity bindings retained by the turn. */
+  existingBindings?: readonly ResearchScopeBindingV1[];
+}): ResearchBriefV1 {
+  const binding = structuredClone(input.binding);
+  const existingBindings = structuredClone(input.existingBindings ?? input.brief.scopeBindings);
+  const wholeScope = (binding.product === "jira" && binding.entityKind === "project") ||
+    (binding.product === "confluence" && binding.entityKind === "space");
+  const key = binding.key?.trim();
+  if (!wholeScope || !key || binding.tenantOrigin !== input.brief.scope.siteOrigin ||
+      binding.authority !== "approved" || binding.source !== "research_discovery" ||
+      existingBindings.some((current) => current.id === binding.id || current.entityRef === binding.entityRef)) {
+    throw new Error("Research whole-scope expansion binding is invalid.");
+  }
+  const jiraProjectKeys = binding.product === "jira"
+    ? [...input.brief.scope.jiraProjectKeys, key.toUpperCase()]
+    : [...input.brief.scope.jiraProjectKeys];
+  const confluenceSpaceKeys = binding.product === "confluence"
+    ? [...input.brief.scope.confluenceSpaceKeys, key]
+    : [...input.brief.scope.confluenceSpaceKeys];
+  if (new Set(jiraProjectKeys).size !== jiraProjectKeys.length ||
+      new Set(confluenceSpaceKeys).size !== confluenceSpaceKeys.length) {
+    throw new Error("Research whole-scope expansion is already present.");
+  }
+  return createResearchBriefV1({
+    ...input.brief,
+    revision: input.brief.revision + 1,
+    scope: {
+      ...input.brief.scope,
+      jiraProjectKeys,
+      confluenceSpaceKeys,
+    },
+    scopeBindings: [...existingBindings, binding],
+    sourceClasses: [...new Set([...input.brief.sourceClasses, binding.product])],
+  });
+}
+
+/**
  * Preserve host-authored, non-blocking assumptions as visible report limits.
  * They remain explicitly unconfirmed; a model draft cannot turn them into an
  * accepted user decision or a sourced factual claim.

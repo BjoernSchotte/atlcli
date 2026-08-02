@@ -23,6 +23,27 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: approveResearchBriefWholeScopeExpansionV1
+export declare function approveResearchBriefWholeScopeExpansionV1(input: {
+    brief: ResearchBriefV1;
+    binding: ResearchScopeBindingV1;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+}): ResearchBriefV1;
+
+// export: ApproveResearchScopeExpansionInputV1
+export interface ApproveResearchScopeExpansionInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    at: string;
+}
+
+// export: approveResearchScopeExpansionV1
+export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -1166,6 +1187,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
 
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
@@ -3291,6 +3315,24 @@ export interface ResearchSessionRetrievalContinuationV1 {
     consumedAt?: string;
 }
 
+// export: ResearchSessionScopeRevisionV1
+export interface ResearchSessionScopeRevisionV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1;
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    expansionKind: "whole_scope";
+    approvedBinding: ResearchScopeBindingV1;
+    previousBrief: ResearchBriefV1;
+    previousGraph: ResearchGraphV1;
+    state: "proposed" | "approved";
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionStatusV1
 export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
 
@@ -3373,6 +3415,7 @@ export interface ResearchSessionTurnV1 {
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
     planRevisions?: ResearchSessionPlanRevisionV1[];
+    scopeRevisions?: ResearchSessionScopeRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -3450,6 +3493,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "approve_scope_expansion";
     proposalId: string;
     binding: ResearchScopeBindingV1;
+    replacementGraph?: ResearchGraphV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_scope_expansion";
     proposalId: string;
@@ -3953,6 +3997,27 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: approveResearchBriefWholeScopeExpansionV1
+export declare function approveResearchBriefWholeScopeExpansionV1(input: {
+    brief: ResearchBriefV1;
+    binding: ResearchScopeBindingV1;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+}): ResearchBriefV1;
+
+// export: ApproveResearchScopeExpansionInputV1
+export interface ApproveResearchScopeExpansionInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    at: string;
+}
+
+// export: approveResearchScopeExpansionV1
+export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -5087,6 +5152,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
 
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
@@ -7212,6 +7280,24 @@ export interface ResearchSessionRetrievalContinuationV1 {
     consumedAt?: string;
 }
 
+// export: ResearchSessionScopeRevisionV1
+export interface ResearchSessionScopeRevisionV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1;
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    expansionKind: "whole_scope";
+    approvedBinding: ResearchScopeBindingV1;
+    previousBrief: ResearchBriefV1;
+    previousGraph: ResearchGraphV1;
+    state: "proposed" | "approved";
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionStatusV1
 export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
 
@@ -7294,6 +7380,7 @@ export interface ResearchSessionTurnV1 {
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
     planRevisions?: ResearchSessionPlanRevisionV1[];
+    scopeRevisions?: ResearchSessionScopeRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -7371,6 +7458,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "approve_scope_expansion";
     proposalId: string;
     binding: ResearchScopeBindingV1;
+    replacementGraph?: ResearchGraphV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_scope_expansion";
     proposalId: string;
@@ -7862,6 +7950,27 @@ export interface AppendResearchSessionTurnInputV1 {
 
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
+
+// export: approveResearchBriefWholeScopeExpansionV1
+export declare function approveResearchBriefWholeScopeExpansionV1(input: {
+    brief: ResearchBriefV1;
+    binding: ResearchScopeBindingV1;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+}): ResearchBriefV1;
+
+// export: ApproveResearchScopeExpansionInputV1
+export interface ApproveResearchScopeExpansionInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    at: string;
+}
+
+// export: approveResearchScopeExpansionV1
+export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -9007,6 +9116,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
 
+// export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
+
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
     "focused-researcher",
@@ -11131,6 +11243,24 @@ export interface ResearchSessionRetrievalContinuationV1 {
     consumedAt?: string;
 }
 
+// export: ResearchSessionScopeRevisionV1
+export interface ResearchSessionScopeRevisionV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1;
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    expansionKind: "whole_scope";
+    approvedBinding: ResearchScopeBindingV1;
+    previousBrief: ResearchBriefV1;
+    previousGraph: ResearchGraphV1;
+    state: "proposed" | "approved";
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionStatusV1
 export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
 
@@ -11213,6 +11343,7 @@ export interface ResearchSessionTurnV1 {
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
     planRevisions?: ResearchSessionPlanRevisionV1[];
+    scopeRevisions?: ResearchSessionScopeRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -11290,6 +11421,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "approve_scope_expansion";
     proposalId: string;
     binding: ResearchScopeBindingV1;
+    replacementGraph?: ResearchGraphV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_scope_expansion";
     proposalId: string;
@@ -11792,6 +11924,27 @@ export interface AppendResearchSessionTurnInputV1 {
 
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
+
+// export: approveResearchBriefWholeScopeExpansionV1
+export declare function approveResearchBriefWholeScopeExpansionV1(input: {
+    brief: ResearchBriefV1;
+    binding: ResearchScopeBindingV1;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+}): ResearchBriefV1;
+
+// export: ApproveResearchScopeExpansionInputV1
+export interface ApproveResearchScopeExpansionInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    at: string;
+}
+
+// export: approveResearchScopeExpansionV1
+export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -13125,6 +13278,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
 
 // export: RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY
 export declare const RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY: "atlcli_research_structured_output_repair";
@@ -15319,6 +15475,24 @@ export interface ResearchSessionRetrievalContinuationV1 {
     consumedAt?: string;
 }
 
+// export: ResearchSessionScopeRevisionV1
+export interface ResearchSessionScopeRevisionV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1;
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    expansionKind: "whole_scope";
+    approvedBinding: ResearchScopeBindingV1;
+    previousBrief: ResearchBriefV1;
+    previousGraph: ResearchGraphV1;
+    state: "proposed" | "approved";
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionStatusV1
 export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
 
@@ -15401,6 +15575,7 @@ export interface ResearchSessionTurnV1 {
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
     planRevisions?: ResearchSessionPlanRevisionV1[];
+    scopeRevisions?: ResearchSessionScopeRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -15478,6 +15653,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "approve_scope_expansion";
     proposalId: string;
     binding: ResearchScopeBindingV1;
+    replacementGraph?: ResearchGraphV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_scope_expansion";
     proposalId: string;
@@ -16054,6 +16230,27 @@ export interface AppendResearchSessionTurnInputV1 {
 
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
+
+// export: approveResearchBriefWholeScopeExpansionV1
+export declare function approveResearchBriefWholeScopeExpansionV1(input: {
+    brief: ResearchBriefV1;
+    binding: ResearchScopeBindingV1;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+}): ResearchBriefV1;
+
+// export: ApproveResearchScopeExpansionInputV1
+export interface ApproveResearchScopeExpansionInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    at: string;
+}
+
+// export: approveResearchScopeExpansionV1
+export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -17402,6 +17599,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
 
 // export: RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY
 export declare const RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY: "atlcli_research_structured_output_repair";
@@ -19607,6 +19807,24 @@ export interface ResearchSessionRetrievalContinuationV1 {
     consumedAt?: string;
 }
 
+// export: ResearchSessionScopeRevisionV1
+export interface ResearchSessionScopeRevisionV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1;
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    expansionKind: "whole_scope";
+    approvedBinding: ResearchScopeBindingV1;
+    previousBrief: ResearchBriefV1;
+    previousGraph: ResearchGraphV1;
+    state: "proposed" | "approved";
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionStatusV1
 export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
 
@@ -19689,6 +19907,7 @@ export interface ResearchSessionTurnV1 {
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
     planRevisions?: ResearchSessionPlanRevisionV1[];
+    scopeRevisions?: ResearchSessionScopeRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -19766,6 +19985,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "approve_scope_expansion";
     proposalId: string;
     binding: ResearchScopeBindingV1;
+    replacementGraph?: ResearchGraphV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_scope_expansion";
     proposalId: string;
@@ -21498,6 +21718,27 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: approveResearchBriefWholeScopeExpansionV1
+export declare function approveResearchBriefWholeScopeExpansionV1(input: {
+    brief: ResearchBriefV1;
+    binding: ResearchScopeBindingV1;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+}): ResearchBriefV1;
+
+// export: ApproveResearchScopeExpansionInputV1
+export interface ApproveResearchScopeExpansionInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    at: string;
+}
+
+// export: approveResearchScopeExpansionV1
+export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -22845,6 +23086,9 @@ export declare const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1: "atlcli.
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research-session-scope-revision/v1";
 
 // export: RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY
 export declare const RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY: "atlcli_research_structured_output_repair";
@@ -25050,6 +25294,24 @@ export interface ResearchSessionRetrievalContinuationV1 {
     consumedAt?: string;
 }
 
+// export: ResearchSessionScopeRevisionV1
+export interface ResearchSessionScopeRevisionV1 {
+    schema: typeof RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1;
+    id: string;
+    proposalId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    expansionKind: "whole_scope";
+    approvedBinding: ResearchScopeBindingV1;
+    previousBrief: ResearchBriefV1;
+    previousGraph: ResearchGraphV1;
+    state: "proposed" | "approved";
+    revisedBriefRevision: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionStatusV1
 export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
 
@@ -25132,6 +25394,7 @@ export interface ResearchSessionTurnV1 {
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
     planRevisions?: ResearchSessionPlanRevisionV1[];
+    scopeRevisions?: ResearchSessionScopeRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -25209,6 +25472,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "approve_scope_expansion";
     proposalId: string;
     binding: ResearchScopeBindingV1;
+    replacementGraph?: ResearchGraphV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_scope_expansion";
     proposalId: string;

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createResearchBriefV1 } from "./brief.js";
+import {
+  approveResearchBriefWholeScopeExpansionV1,
+  createResearchBriefV1,
+} from "./brief.js";
 import {
   RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
   acceptResearchGraphProposalV1,
@@ -16,6 +19,7 @@ import {
   type ResearchSessionV1,
 } from "./session.js";
 import { RESEARCH_PACKET_BODY_SCHEMA_V1, type ResearchTaskAttemptV1 } from "./workflow-contracts.js";
+import type { ResearchScopeCandidateV1 } from "./scope-discovery.js";
 
 const createdAt = "2026-08-01T09:00:00.000Z";
 
@@ -41,7 +45,7 @@ function update<T extends Omit<ResearchSessionUpdateV1, "expectedRevision" | "ex
   } as ResearchSessionUpdateV1);
 }
 
-function brief() {
+function brief(input: Partial<Parameters<typeof createResearchBriefV1>[0]> = {}) {
   return createResearchBriefV1({
     sessionId: "research-session:durable-test",
     turnId: "research-turn:one",
@@ -55,7 +59,25 @@ function brief() {
     timezone: "UTC",
     requestedPlanApproval: "required",
     requestedReconciliation: "off",
+    ...input,
   });
+}
+
+function scopeCandidate(input: Partial<ResearchScopeCandidateV1> = {}): ResearchScopeCandidateV1 {
+  return {
+    schema: "atlcli.research-scope-candidate/v1",
+    id: "research-scope-candidate:confluence-space-related",
+    tenantOrigin: "https://example.atlassian.net",
+    product: "confluence",
+    entityKind: "space",
+    entityRef: "research-scope-entity:confluence-space-related",
+    key: "RELATED",
+    name: "Related documentation",
+    status: "current",
+    accessible: true,
+    providerFreshnessAt: "2026-08-01T09:00:00.000Z",
+    ...input,
+  };
 }
 
 function admittedTask(current: ResearchSessionV1): ResearchTaskAttemptV1 {
@@ -78,10 +100,9 @@ function admittedTask(current: ResearchSessionV1): ResearchTaskAttemptV1 {
   };
 }
 
-function readyToRun(): ResearchSessionV1 {
+function readyToRun(acceptedBrief = brief()): ResearchSessionV1 {
   let current = session();
   current = update(current, { kind: "create_turn", turnId: "research-turn:one" }, "2026-08-01T09:00:01.000Z");
-  const acceptedBrief = brief();
   current = update(current, { kind: "record_brief", brief: acceptedBrief }, "2026-08-01T09:00:02.000Z");
   const graph = composeResearchGraphV1(acceptedBrief);
   current = update(current, { kind: "propose_graph", graph }, "2026-08-01T09:00:03.000Z");
@@ -538,7 +559,7 @@ describe("durable host-neutral research session reducer", () => {
       lease: { expiresAt: "2026-08-01T09:00:04.000Z" },
     });
 
-    let steering = readyToRun();
+    let steering = readyToRun(brief({ scopeCandidates: [scopeCandidate()] }));
     steering = update(steering, {
       kind: "request_steering",
       steeringId: "steering:focus-links",
@@ -567,6 +588,147 @@ describe("durable host-neutral research session reducer", () => {
     expect(steering).toMatchObject({
       status: "waiting_scope_approval",
       lease: { expiresAt: "2026-08-01T09:00:06.000Z" },
+    });
+  });
+
+  test("widens a discovered whole scope only through a replacement graph and renewed approval", () => {
+    const candidate = scopeCandidate({
+      id: "research-scope-candidate:jira-project-other",
+      product: "jira",
+      entityKind: "project",
+      entityRef: "research-scope-entity:jira-project-other",
+      key: "OTHER",
+      name: "Other delivery work",
+    });
+    let current = readyToRun(brief({
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      sourceClasses: ["jira"],
+      scopeCandidates: [candidate],
+    }));
+    const initialTurn = current.turns[0]!;
+    current = update(current, {
+      kind: "propose_scope_expansion",
+      proposal: createResearchScopeExpansionProposalV1({
+        id: "scope-expansion:other-project",
+        sessionId: current.sessionId,
+        turnId: initialTurn.id,
+        basedOnBriefRevision: initialTurn.brief!.revision,
+        basedOnGraphRevision: initialTurn.graph!.revision,
+        candidateId: candidate.id,
+        expansionKind: "whole_scope",
+        reason: "A cited link requires a project-level follow-up.",
+        provenanceRefs: ["source:related-project"],
+        status: "proposed",
+      }),
+    }, "2026-08-01T09:00:05.000Z");
+    const binding = {
+      schema: "atlcli.research-scope-binding/v1" as const,
+      id: "scope-binding:research-scope-candidate:jira-project-other",
+      tenantOrigin: candidate.tenantOrigin,
+      product: candidate.product,
+      entityKind: candidate.entityKind,
+      entityRef: candidate.entityRef,
+      key: candidate.key,
+      name: candidate.name,
+      source: "research_discovery" as const,
+      authority: "approved" as const,
+      candidateId: candidate.id,
+      approvedAt: "2026-08-01T09:00:06.000Z",
+    };
+    const revisedBrief = approveResearchBriefWholeScopeExpansionV1({
+      brief: initialTurn.brief!,
+      binding,
+    });
+    current = update(current, {
+      kind: "approve_scope_expansion",
+      proposalId: "scope-expansion:other-project",
+      binding,
+      replacementGraph: composeResearchGraphV1(revisedBrief, { graphRevision: 2 }),
+    }, "2026-08-01T09:00:06.000Z");
+
+    expect(current).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{
+        brief: { revision: 2, scope: { jiraProjectKeys: ["DEMO", "OTHER"] } },
+        graph: { revision: 2, status: "proposed" },
+        scopeRevisions: [{
+          id: "scope-revision:other-project",
+          state: "proposed",
+          basedOnGraphRevision: 1,
+          proposedGraphRevision: 2,
+          revisedBriefRevision: 2,
+          planDiff: {
+            requiresApproval: true,
+            scopeFingerprintChanged: true,
+            addedScopeBindingIds: ["scope-binding:research-scope-candidate:jira-project-other"],
+          },
+        }],
+      }],
+    });
+    current = update(current, { kind: "approve_graph", graphRevision: 2 }, "2026-08-01T09:00:07.000Z");
+    expect(current).toMatchObject({
+      status: "running",
+      turns: [{ graph: { revision: 2, status: "approved" }, scopeRevisions: [{
+        state: "approved",
+        approvedAt: "2026-08-01T09:00:07.000Z",
+      }] }],
+    });
+  });
+
+  test("retains an approved exact discovered entity without widening the brief scope", () => {
+    const candidate = scopeCandidate({
+      id: "research-scope-candidate:confluence-page-linked",
+      entityKind: "page",
+      entityRef: "research-scope-entity:confluence-page-linked",
+      key: undefined,
+      name: "Linked page",
+    });
+    let current = readyToRun(brief({ scopeCandidates: [candidate] }));
+    const initialTurn = current.turns[0]!;
+    current = update(current, {
+      kind: "propose_scope_expansion",
+      proposal: createResearchScopeExpansionProposalV1({
+        id: "scope-expansion:linked-page",
+        sessionId: current.sessionId,
+        turnId: initialTurn.id,
+        basedOnBriefRevision: initialTurn.brief!.revision,
+        basedOnGraphRevision: initialTurn.graph!.revision,
+        candidateId: candidate.id,
+        expansionKind: "exact_entity",
+        reason: "A retained link names one page outside the selected space.",
+        provenanceRefs: ["source:linked-page"],
+        status: "proposed",
+      }),
+    }, "2026-08-01T09:00:05.000Z");
+    current = update(current, {
+      kind: "approve_scope_expansion",
+      proposalId: "scope-expansion:linked-page",
+      binding: {
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:research-scope-candidate:confluence-page-linked",
+        tenantOrigin: candidate.tenantOrigin,
+        product: candidate.product,
+        entityKind: candidate.entityKind,
+        entityRef: candidate.entityRef,
+        name: candidate.name,
+        source: "research_discovery",
+        authority: "approved",
+        candidateId: candidate.id,
+        approvedAt: "2026-08-01T09:00:06.000Z",
+      },
+    }, "2026-08-01T09:00:06.000Z");
+
+    expect(current).toMatchObject({
+      status: "running",
+      turns: [{
+        brief: { revision: 1, scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["DOCS"] } },
+        scopeBindings: [{ entityKind: "page", authority: "approved" }],
+        scopeRevisions: [],
+      }],
     });
   });
 

@@ -1,4 +1,9 @@
-import { briefRequiresClarificationV1, type ResearchBriefV1 } from "./brief.js";
+import {
+  approveResearchBriefWholeScopeExpansionV1,
+  briefRequiresClarificationV1,
+  type ResearchBriefV1,
+} from "./brief.js";
+import type { ResearchScopeBindingV1 } from "./contracts.js";
 import {
   composeResearchGraphV1,
   stageResearchGraphForDurableSessionV1,
@@ -58,6 +63,22 @@ export interface ProposeResearchGraphForReadyBriefInputV1 {
   approveAutomatically: boolean;
   /** A control command has no live runner, so its approved plan must be reclaimable. */
   releaseApprovedLease?: boolean;
+  at: string;
+}
+
+/**
+ * The host-side atomic boundary for a user-approved discovered scope. A whole
+ * project or space always supplies the replacement graph in the same durable
+ * event as the approval; an exact page or issue deliberately does not widen
+ * the brief or replace its graph.
+ */
+export interface ApproveResearchScopeExpansionInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  proposalId: string;
+  binding: ResearchScopeBindingV1;
+  expectedRevision: number;
+  expectedLeaseEpoch: number;
   at: string;
 }
 
@@ -182,12 +203,15 @@ export async function proposeResearchGraphForReadyBriefV1(
     throw new Error("Research session does not have a ready brief to plan.");
   }
   const graphRevision = active.graph ? active.graph.revision + 1 : 1;
-  if (active.graph && !(active.planRevisions ?? []).some((revision) =>
-    revision.state === "revision_requested" &&
-    revision.basedOnGraphRevision === active.graph!.revision &&
-    revision.revisedBriefRevision === active.brief!.revision,
-  )) {
-    throw new Error("Research session does not have a durable plan revision request.");
+  if (active.graph) {
+    const planRevisionRequested = (active.planRevisions ?? []).some((revision) =>
+      revision.state === "revision_requested" &&
+      revision.basedOnGraphRevision === active.graph!.revision &&
+      revision.revisedBriefRevision === active.brief!.revision,
+    );
+    if (!planRevisionRequested) {
+      throw new Error("Research session does not have a durable plan revision request.");
+    }
   }
   const graph = composeResearchGraphV1(active.brief, {
     ...(input.packetOutputSchema ? { packetOutputSchema: input.packetOutputSchema } : {}),
@@ -217,6 +241,44 @@ export async function proposeResearchGraphForReadyBriefV1(
     kind: "release_lease",
     expectedRevision: proposed.revision,
     expectedLeaseEpoch: proposed.lease.epoch,
+    at: input.at,
+  })).session;
+}
+
+/**
+ * Materialize an approved discovery without leaving an execution-visible
+ * state between a widened scope and its replacement plan. The reducer repeats
+ * every check, including the candidate/binding identity, before it commits.
+ */
+export async function approveResearchScopeExpansionV1(
+  input: ApproveResearchScopeExpansionInputV1,
+): Promise<ResearchSessionV1> {
+  const current = await input.store.read(input.sessionId);
+  if (!current) throw new Error("Research session was not found.");
+  if (current.revision !== input.expectedRevision || current.lease.epoch !== input.expectedLeaseEpoch) {
+    throw new Error("Research session revision or lease epoch is stale.");
+  }
+  const active = activeTurn(current);
+  const graph = active?.graph;
+  const brief = active?.brief;
+  const proposal = active?.scopeExpansionProposals.find((candidate) => candidate.id === input.proposalId);
+  if (current.status !== "waiting_scope_approval" || !active || !graph || !brief || !proposal || proposal.status !== "proposed") {
+    throw new Error("Research scope expansion is not awaiting an approval.");
+  }
+  const replacementGraph = proposal.expansionKind === "whole_scope"
+    ? composeResearchGraphV1(approveResearchBriefWholeScopeExpansionV1({
+        brief,
+        binding: input.binding,
+        existingBindings: active.scopeBindings,
+      }), { graphRevision: graph.revision + 1 })
+    : undefined;
+  return (await input.store.commit(input.sessionId, {
+    kind: "approve_scope_expansion",
+    proposalId: input.proposalId,
+    binding: input.binding,
+    ...(replacementGraph ? { replacementGraph } : {}),
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
     at: input.at,
   })).session;
 }
