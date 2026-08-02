@@ -4071,6 +4071,11 @@ test("resumes a checkpointed packed session in a fresh dedicated worker without 
     if (!resumed.ok) {
       throw new Error(JSON.stringify({ resumed, events: await harnessEvents(page) }, null, 2));
     }
+    const node = await runNodeHostParityFixture();
+    expect(resumed.report).toEqual(node.report);
+    expect(new TextEncoder().encode(resumed.report.markdown)).toEqual(
+      new TextEncoder().encode(node.report.markdown),
+    );
     expect(resumed.report.title).toBe(HOST_PARITY_DRAFT.title);
     const completed = await readPackedDurableResearchSession(
       page,

@@ -3514,6 +3514,10 @@ Gate:
         continuation, and finish the remaining graph with the same structured
         report and byte-identical Markdown (2 focused host-parity tests,
         2026-08-02).
+  - [x] Packed MV3 interrupts after the same first retrieval wave, starts a
+        fresh dedicated worker through the public resume boundary, and compares
+        its complete report plus Markdown bytes to the canonical Node fixture
+        (32 packed-extension tests, 2026-08-02).
 
 ### T5 — Add the evidence store, claim ledger, outline, and report V2
 
