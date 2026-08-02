@@ -2604,6 +2604,13 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       ["research-task:r2:synthesizer:a1", 2],
     ]);
     expect(new Set(turn.tasks.map((task) => task.taskId)).size).toBe(turn.tasks.length);
+    const plan = await durableStore.workspace(graph.sessionId).then((workspace) =>
+      workspace.readFile("/workspace/plan.md"),
+    );
+    expect(plan).toContain("Graph revision: 2");
+    expect(plan).toContain("research-task:r2:coverage-moderation:a1");
+    expect(plan).toContain("host-generated graph projection");
+    expect(plan).not.toContain(sourcePacket.coverageLimits[0]!);
   });
 
   test("resumes an issued deep continuation with persisted packets and budget counters", async () => {

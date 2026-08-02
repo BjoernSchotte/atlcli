@@ -1,14 +1,18 @@
 import {
+  CompositeBackend,
   StateBackend,
   createDeepAgent,
+  createFilesystemMiddleware,
   createSubAgentMiddleware,
   registerHarnessProfile,
 } from "deepagents/browser";
 import { createResearchAgentRuntime } from "./agent-runtime-core.js";
 
 const browserRuntime = createResearchAgentRuntime({
+  CompositeBackend,
   StateBackend,
   createDeepAgent,
+  createFilesystemMiddleware,
   createSubAgentMiddleware,
   registerHarnessProfile,
 });

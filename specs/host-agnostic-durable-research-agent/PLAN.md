@@ -3889,7 +3889,7 @@ Gate:
 
 Shared:
 
-- [ ] Re-enable filesystem middleware against the injected composite backend.
+- [x] Re-enable filesystem middleware against the injected composite backend.
 - [ ] Re-enable summarization only after complete original messages are stored
       durably and can be searched from the session.
 - [ ] Treat `/workspace/plan.md` as a projection of the durable graph and
