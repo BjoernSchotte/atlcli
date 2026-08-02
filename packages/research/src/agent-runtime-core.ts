@@ -911,7 +911,10 @@ function topLevelJavaScriptCodeV1(code: string): string {
   return output;
 }
 
-function assertSupervisorWorkflowControlFlowV1(code: string): void {
+function assertSupervisorWorkflowControlFlowV1(
+  code: string,
+  options: { requireInitialProposal: boolean },
+): void {
   const lexicalCode = blankJavaScriptStringsAndCommentsV1(code);
   const topLevelCode = topLevelJavaScriptCodeV1(code);
   const graphProposal = /\bconst\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*JSON\.parse\s*\(\s*await\s+tools\.researchGraphPropose\s*\(/.exec(topLevelCode);
@@ -922,12 +925,16 @@ function assertSupervisorWorkflowControlFlowV1(code: string): void {
     firstAwait >= 0 &&
     graphProposal.index <= firstAwait;
 
-  if (!proposalBeforeAnyAwait || !finalDraft || !finalExpression) {
+  const continuationContainsProposal = !options.requireInitialProposal && graphProposal !== null;
+  if ((options.requireInitialProposal && !proposalBeforeAnyAwait) ||
+      continuationContainsProposal || !finalDraft || !finalExpression) {
     throw new ResearchContractError(
       "invalid-report",
-      "Supervisor workflow control flow is invalid. Start with a direct awaited " +
-        "tools.researchGraphPropose call, bind the synthesizer as top-level " +
-        "`const finalDraft = await task(...)`, and end the program with `finalDraft;`. " +
+      "Supervisor workflow control flow is invalid. " +
+        (options.requireInitialProposal
+          ? "Start with a direct awaited tools.researchGraphPropose call, "
+          : "A checkpoint-authorized continuation must not propose a graph again; ") +
+        "bind the synthesizer as top-level `const finalDraft = await task(...)`, and end the program with `finalDraft;`. " +
         "Do not wrap the workflow in an async IIFE or detach its promise.",
     );
   }
@@ -976,6 +983,9 @@ function quickJsFailureCode(result: unknown): string | undefined {
 
 export function createOneShotSupervisorEvalMiddleware(options: {
   canRetryAfterFailure?: () => boolean;
+  /** A host-issued, durable wave checkpoint permits exactly one continuation eval. */
+  canContinueAfterCheckpoint?: () => boolean;
+  consumeContinuationCheckpoint?: () => void;
   onDiagnostic?: (diagnostic: ResearchSupervisorEvalDiagnosticV1) => void;
   onWorkflowCode?: (attempt: number, code: string) => void | Promise<void>;
   onFatal?: (error: ResearchContractError) => void;
@@ -990,7 +1000,7 @@ export function createOneShotSupervisorEvalMiddleware(options: {
       // A completed one-shot workflow permanently revokes eval from later
       // supervisor model turns. The structured response mechanism remains
       // available so the parent can publish the synthesizer's typed object.
-      tools: successfulEvalCompleted
+      tools: successfulEvalCompleted && !options.canContinueAfterCheckpoint?.()
         ? request.tools.filter((candidate) => candidate.name !== "eval")
         : request.tools,
     }),
@@ -1005,7 +1015,9 @@ export function createOneShotSupervisorEvalMiddleware(options: {
       const codeHash = workflowCodeHashV1(code);
       const retryStillSideEffectFree = options.canRetryAfterFailure?.() ?? false;
       const repairAllowed = evalCalls === 2 && previousFailed && retryStillSideEffectFree;
-      if (evalCalls > 1 && !repairAllowed) {
+      const continuationAllowed = evalCalls > 1 && !previousFailed &&
+        (options.canContinueAfterCheckpoint?.() ?? false);
+      if (evalCalls > 1 && !repairAllowed && !continuationAllowed) {
         const rejectionCode = previousFailed
           ? "eval-retry-after-task-start"
           : "eval-retry-after-success";
@@ -1027,7 +1039,9 @@ export function createOneShotSupervisorEvalMiddleware(options: {
         throw error;
       }
       try {
-        assertSupervisorWorkflowControlFlowV1(code);
+        assertSupervisorWorkflowControlFlowV1(code, {
+          requireInitialProposal: !continuationAllowed,
+        });
       } catch (error) {
         previousFailed = true;
         successfulEvalCompleted = false;
@@ -1045,11 +1059,16 @@ export function createOneShotSupervisorEvalMiddleware(options: {
           name: request.toolCall.name,
         });
       }
+      if (continuationAllowed) options.consumeContinuationCheckpoint?.();
       await options.onWorkflowCode?.(evalCalls, code);
       options.onDiagnostic?.({
         attempt: evalCalls,
         status: "started",
-        reasonCode: repairAllowed ? "pre-dispatch-eval-repair" : "supervisor-eval",
+        reasonCode: repairAllowed
+          ? "pre-dispatch-eval-repair"
+          : continuationAllowed
+            ? "checkpoint-authorized-eval"
+            : "supervisor-eval",
         codeBytes,
         codeHash,
       });
@@ -1074,7 +1093,11 @@ export function createOneShotSupervisorEvalMiddleware(options: {
         options.onDiagnostic?.({
           attempt: evalCalls,
           status: "completed",
-          reasonCode: repairAllowed ? "pre-dispatch-eval-repaired" : "supervisor-eval-completed",
+          reasonCode: repairAllowed
+            ? "pre-dispatch-eval-repaired"
+            : continuationAllowed
+              ? "checkpoint-authorized-eval-completed"
+              : "supervisor-eval-completed",
           codeBytes,
           codeHash,
         });

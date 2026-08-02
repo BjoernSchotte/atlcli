@@ -32,6 +32,15 @@ const validWorkflowCode = `
   finalDraft;
 `;
 
+const continuationWorkflowCode = `
+  const finalDraft = await task({
+    description: "synthetic continuation",
+    subagentType: "synthesizer",
+    responseSchema: {}
+  });
+  finalDraft;
+`;
+
 async function observeOfferedTools(
   middleware: ReturnType<typeof createOneShotSupervisorEvalMiddleware>,
 ): Promise<string[]> {
@@ -86,6 +95,24 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     await completeEval(middleware, "Error: synthetic compile failure");
     expect(await observeOfferedTools(middleware)).toEqual([
       "eval",
+      "AtlcliResearchAgentDraftV1",
+    ]);
+  });
+
+  test("permits exactly one checkpoint-authorized continuation without a second graph proposal", async () => {
+    let tickets = 1;
+    const middleware = createOneShotSupervisorEvalMiddleware({
+      canContinueAfterCheckpoint: () => tickets > 0,
+      consumeContinuationCheckpoint: () => { tickets -= 1; },
+    });
+    await completeEval(middleware, JSON.stringify({ title: "Wave one" }));
+    expect(await observeOfferedTools(middleware)).toEqual([
+      "eval",
+      "AtlcliResearchAgentDraftV1",
+    ]);
+    await completeEval(middleware, JSON.stringify({ title: "Final" }), continuationWorkflowCode);
+    expect(tickets).toBe(0);
+    expect(await observeOfferedTools(middleware)).toEqual([
       "AtlcliResearchAgentDraftV1",
     ]);
   });
