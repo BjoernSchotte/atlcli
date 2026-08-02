@@ -3467,7 +3467,7 @@ Gate:
 - [ ] Unknown/stale question IDs, assumption IDs, session revisions, brief
       revisions, graph revisions, candidate IDs, binding IDs, and
       scope-proposal IDs fail without mutating the brief, scope, or plan.
-- [ ] A checkpoint/DB scan test finds no Anthropic key, Atlassian credential,
+- [x] A checkpoint/DB scan test finds no Anthropic key, Atlassian credential,
       cookie, raw provider cursor, or unsanitized error.
 
   - [x] Packed MV3: after a complete synthetic model/PTC/Atlassian run, the
@@ -3476,6 +3476,10 @@ Gate:
         result contains neither the entered Anthropic key nor the raw
         provider pagination URL; events remain key-free as well (31 packed
         tests, 2026-08-02).
+  - [x] Packed MV3: a provider failure carrying synthetic API-key, Bearer, and
+        Atlassian-session-cookie values returns only the classified generic
+        error. The response/event stream and every durable IndexedDB namespace
+        exclude each sentinel (32 packed tests, 2026-08-02).
 - [ ] CLI and packed extension each resume the deterministic scenario to the
       same final structured report and Markdown.
 

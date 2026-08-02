@@ -5,13 +5,15 @@ import {
 } from "@atlcli/research";
 
 describe("research error redaction", () => {
-  it("removes Anthropic-shaped keys and authorization headers", () => {
+  it("removes Anthropic-shaped keys and browser credential headers", () => {
     const secret = ["sk", "ant", "SENTINEL_VALUE"].join("-");
+    const cookie = ["atl", "session", "SENTINEL_VALUE"].join("_");
     const redacted = redactResearchSecrets(
-      `request failed x-api-key: ${secret} Authorization: Bearer ${secret}`
+      `request failed x-api-key: ${secret} Authorization: Bearer ${secret} Cookie: ${cookie}=value Set-Cookie: ${cookie}=value; Secure`
     );
 
     expect(redacted).not.toContain(secret);
+    expect(redacted).not.toContain(cookie);
     expect(redacted).toContain("[REDACTED]");
   });
 

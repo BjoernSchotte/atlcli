@@ -65,6 +65,9 @@ const ATLASSIAN_PAGE = `${SITE_ORIGIN}/wiki/spaces/KB/pages/1001/Packed-research
 const CHANNEL_NAME = "atlcli-packed-research-v1";
 const FAKE_KEY = "sk-ant-packed-extension-test-only";
 const RESEARCH_ANTHROPIC_SESSION_KEY = "research-anthropic-key-v1";
+const PACKED_REDACTION_API_KEY = "sk-ant-test-packed-redaction-only";
+const PACKED_REDACTION_COOKIE = "atl_session=packed-redaction-cookie";
+const PACKED_REDACTION_BEARER = "packed-redaction-bearer";
 const HOST_PARITY_EPOCH_MS = Date.parse("2026-08-01T12:00:00.000Z");
 const HOST_PARITY_QUESTION =
   "packed-host-parity: How does bounded synthetic Jira work relate to Confluence content?";
@@ -947,6 +950,7 @@ let packedResumeRun = false;
 let packedResumePauseInitialRun = false;
 let packedResumeSteeringRun = false;
 let packedResumeSteeringInitialRun = false;
+let packedRedactionRun = false;
 let packedResumeSupervisorEvals = 0;
 let supervisorWorkflowStarted = false;
 let jiraOnlySelectedClaimIds = [];
@@ -955,13 +959,15 @@ channel.postMessage({ kind: "worker-start", workerId });
 globalThis.addEventListener("message", (event) => {
   if (
     event.data?.kind === "research-worker:run" &&
-    typeof event.data?.runId === "string" &&
-    event.data.runId.includes("packed-resume")
+    typeof event.data?.runId === "string"
   ) {
-    packedResumeRun = true;
-    packedResumePauseInitialRun = event.data.runId === "packed-resume-pause-initial";
-    packedResumeSteeringRun = event.data.runId === "packed-resume-steering-fresh-worker";
-    packedResumeSteeringInitialRun = event.data.runId === "packed-resume-steering-initial";
+    packedRedactionRun = event.data.runId === "packed-redaction";
+    if (event.data.runId.includes("packed-resume")) {
+      packedResumeRun = true;
+      packedResumePauseInitialRun = event.data.runId === "packed-resume-pause-initial";
+      packedResumeSteeringRun = event.data.runId === "packed-resume-steering-fresh-worker";
+      packedResumeSteeringInitialRun = event.data.runId === "packed-resume-steering-initial";
+    }
   }
 });
 globalThis.addEventListener("error", (event) => {
@@ -1165,6 +1171,11 @@ globalThis.fetch = async (input, init) => {
       apiKeyPresent: request.headers.has("x-api-key"),
       toolNames,
     });
+    if (packedRedactionRun) {
+      throw new Error(
+        "x-api-key: ${PACKED_REDACTION_API_KEY}; Authorization: Bearer ${PACKED_REDACTION_BEARER}; Cookie: ${PACKED_REDACTION_COOKIE}",
+      );
+    }
     if (
       packedResumeRun &&
       toolNames.includes("eval") &&
@@ -4721,6 +4732,42 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
   expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(true);
   expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("redacts provider and browser credential text before durable browser persistence", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  try {
+    const result = await runPackedResearchInBackground(
+      page,
+      hostParityRequest(),
+      "packed-redaction",
+    );
+    expect(result).toEqual({
+      kind: "research:run-result",
+      runId: "packed-redaction",
+      ok: false,
+      code: "provider-error",
+      error: "The research provider failed.",
+    });
+
+    const observableText = JSON.stringify({ result, events: await harnessEvents(page) });
+    const persistedResearchDatabase = await readPackedResearchDatabaseText(page);
+    for (const secret of [
+      PACKED_REDACTION_API_KEY,
+      PACKED_REDACTION_COOKIE,
+      PACKED_REDACTION_BEARER,
+    ]) {
+      expect(observableText).not.toContain(secret);
+      expect(persistedResearchDatabase).not.toContain(secret);
+    }
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
 });
 
 test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders safe Markdown", async ({

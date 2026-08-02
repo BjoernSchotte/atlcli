@@ -7,6 +7,8 @@ const SECRET_PATTERNS = [
   /sk-ant-[A-Za-z0-9_-]+/gi,
   /(x-api-key\s*[:=]\s*)[^\s,;]+/gi,
   /(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,;]+/gi,
+  /(cookie\s*[:=]\s*)[^\s,;]+/gi,
+  /(set-cookie\s*[:=]\s*)[^\r\n]+/gi,
 ] as const;
 
 export function redactResearchSecrets(value: unknown): string {
