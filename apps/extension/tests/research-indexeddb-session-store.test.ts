@@ -12,6 +12,7 @@ import {
   createResearchOutlineV1,
   createResearchSessionV1,
   researchCheckpointConfigV1,
+  verifyResearchDataStoreConformanceV1,
   verifyResearchSessionStoreConformanceV1,
 } from "@atlcli/research";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "@atlcli/research/browser/agent";
@@ -92,6 +93,38 @@ describe("IndexedDB durable research session store", () => {
       clarificationIdentityFencing: "passed",
       scopeCandidateIdentityFencing: "passed",
       scopeProposalIdentityFencing: "passed",
+    });
+  });
+
+  test("passes the shared evidence, claim, and outline publication suite through separate IndexedDB data namespaces", async () => {
+    const factory = new IDBFactory();
+    let count = 0;
+    await expect(verifyResearchDataStoreConformanceV1({
+      async create({ sessionId }) {
+        const store = await IndexedDbResearchSessionStoreV1.open({
+          factory: factory as unknown as IDBFactory,
+          databaseName: `research-data-conformance-${count++}`,
+        });
+        stores.push(store);
+        const created = await store.create(createResearchSessionV1({
+          sessionId,
+          ownerId: "owner:indexeddb-data-conformance",
+          createdAt: "2026-08-02T16:00:00.000Z",
+          leaseExpiresAt: "2026-08-02T16:10:00.000Z",
+        }));
+        return {
+          evidence: await store.researchDataWorkspace(created.sessionId, "evidence"),
+          claims: await store.researchDataWorkspace(created.sessionId, "claims"),
+          outline: await store.researchDataWorkspace(created.sessionId, "outline"),
+        };
+      },
+    }, "research-session:indexeddb-data-conformance")).resolves.toEqual({
+      evidencePublicationAtomicity: "passed",
+      claimPublicationAtomicity: "passed",
+      outlinePublicationAtomicity: "passed",
+      spanAndBindingValidation: "passed",
+      evidenceDrivenInvalidation: "passed",
+      retentionDeletion: "passed",
     });
   });
 

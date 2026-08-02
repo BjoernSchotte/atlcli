@@ -3556,9 +3556,14 @@ Shared:
       leave an older claim current after a changed provider version was seen.
 - [x] Add evidence, chunk, claim, contradiction, freshness, and coverage
       contracts plus evidence-linked `OutlineV1`.
-- [ ] Add bounded evidence, claim, contradiction, coverage, and outline store
+- [x] Add bounded evidence, claim, contradiction, coverage, and outline store
       ports plus cross-host conformance, retention, deletion, quota, and
-      failure-injection tests before implementing physical adapters.
+      failure-injection tests. `verifyResearchDataStoreConformanceV1` runs the
+      exact compact-index interruption, span/binding, invalidation, and
+      deletion contract against memory, the real SQLite session workspace, and
+      separate IndexedDB evidence/claim/outline namespaces; the existing
+      IndexedDB adapter test independently proves namespace quota release
+      (2026-08-02).
 
 T5 evidence-linked-outline checkpoint (2026-08-01):
 `WorkspaceResearchOutlineStoreV1` persists immutable, directly superseding
@@ -3572,8 +3577,10 @@ removed source cannot leave a reportable outline current. Outline files retain
 only IDs and bounded structural metadata, never source text. Memory tests prove
 derived coverage, truncation limits, conflict fencing, source-loss fencing, and
 interrupted current-pointer recovery; SQLite/filesystem and IndexedDB reopen
-tests recover the same current outline. The general conformance, quota,
-retention/deletion, V2 packet, and planner activation work remains pending.
+tests recover the same current outline. The shared conformance covers
+compact-index failure injection and retention/deletion across hosts; a focused
+browser adapter test independently proves quota release. Later V2 report gates
+remain below.
 - [ ] Canonicalize entity identity independently of display URLs.
 - [ ] Hash projected content and record exact source version or `updatedAt`.
 - [ ] Store bounded source chunks once and reference them from checkpoints,
@@ -3709,8 +3716,12 @@ Legacy V2 reports without the new optional reconciliation field remain readable.
 
 Gate:
 
-- [ ] Evidence/claim/outline store conformance and failure-injection suites
-      pass for CLI filesystem/SQLite and IndexedDB adapters.
+- [x] Evidence/claim/outline store conformance and failure-injection suites
+      pass for memory, CLI filesystem/SQLite, and separate IndexedDB adapter
+      namespaces. A failed second evidence, claim, or outline index publication
+      exposes only the prior complete state after a fresh store is constructed;
+      removed evidence invalidates the linked factual claim and prevents its
+      outline from validating (2026-08-02).
 - [ ] Every factual claim in deterministic tests has valid supporting spans.
 - [ ] Unsupported, unknown, stale, truncated-negative, cross-scope, and
       cross-tenant claims are rejected.

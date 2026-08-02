@@ -38,6 +38,7 @@ export * from "./session-clarification-review.js";
 export * from "./session-scope-clarification-review.js";
 export * from "./session-store.js";
 export * from "./session-store-conformance.js";
+export * from "./data-store-conformance.js";
 export * from "./checkpoint-identity.js";
 export * from "./evidence-store.js";
 export * from "./claim-ledger.js";

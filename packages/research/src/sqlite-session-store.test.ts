@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createResearchSessionV1, type ResearchSessionUpdateV1, type ResearchSessionV1 } from "./session.js";
 import { researchCheckpointConfigV1 } from "./checkpoint-identity.js";
 import { verifyResearchSessionStoreConformanceV1 } from "./session-store-conformance.js";
+import { verifyResearchDataStoreConformanceV1 } from "./data-store-conformance.js";
 import { SqliteResearchSessionStoreV1 } from "./sqlite-session-store.js";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
 import {
@@ -20,9 +21,9 @@ import {
   createResearchOutlineV1,
 } from "./outline.js";
 
-function session(): ResearchSessionV1 {
+function session(id = "research-session:sqlite-test"): ResearchSessionV1 {
   return createResearchSessionV1({
-    sessionId: "research-session:sqlite-test",
+    sessionId: id,
     ownerId: "owner:sqlite",
     createdAt: "2026-08-01T13:00:00.000Z",
     leaseExpiresAt: "2026-08-01T13:10:00.000Z",
@@ -67,6 +68,33 @@ describe("SQLite durable research session store", () => {
       });
     } finally {
       for (const store of stores) store.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("passes the shared evidence, claim, and outline publication suite through its real session workspace", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-research-sqlite-data-conformance-"));
+    const store = new SqliteResearchSessionStoreV1({
+      databasePath: join(root, "catalog.sqlite"),
+      root: join(root, "session-data"),
+    });
+    try {
+      await expect(verifyResearchDataStoreConformanceV1({
+        async create({ sessionId }) {
+          const created = await store.create(session(sessionId));
+          const workspace = await store.workspace(created.sessionId);
+          return { evidence: workspace, claims: workspace, outline: workspace };
+        },
+      }, "research-session:sqlite-data-conformance")).resolves.toEqual({
+        evidencePublicationAtomicity: "passed",
+        claimPublicationAtomicity: "passed",
+        outlinePublicationAtomicity: "passed",
+        spanAndBindingValidation: "passed",
+        evidenceDrivenInvalidation: "passed",
+        retentionDeletion: "passed",
+      });
+    } finally {
+      store.close();
       await rm(root, { recursive: true, force: true });
     }
   });
