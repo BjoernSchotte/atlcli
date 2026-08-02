@@ -2409,7 +2409,7 @@ only from that persisted checkpoint; it cannot add scope, tools, roles, or budge
 \`atlcli research --resume <session-id>\` to let the existing supervisor continuation apply the graph diff.
 The sessions resume command makes an acknowledged undispatched pause runnable again,
 then releases its lease; it does not start provider/model work—use research --resume to dispatch.
---resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable budget. It resumes only an undispatched wait or one host-issued retrieval continuation; a pending steering request is applied only through that continuation.
+--resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable retrieval budget. Model-spend limits apply to each dispatched agent run. It resumes only an undispatched wait or one host-issued retrieval continuation; a pending steering request is applied only through that continuation.
 --session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
 Approving a durable plan persists its exact graph revision only; it starts no model research until durable task dispatch arrives.
 Rejecting a plan records the exact correction, materializes a new immutable brief and graph revision, and stops again for explicit approval.
