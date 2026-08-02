@@ -49,3 +49,4 @@ export * from "./indexeddb-session-store.js";
 export * from "./session-runtime.js";
 export * from "./session-dispatch-journal.js";
 export * from "./message-lineage.js";
+export * from "./turn-context.js";

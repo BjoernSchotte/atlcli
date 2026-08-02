@@ -3902,10 +3902,10 @@ Shared:
 - [x] Add an immutable message/event store plus a hierarchical summary DAG
       whose nodes retain lineage to original turns, graph revisions, packets,
       and artifacts.
-- [ ] Build turn context from current brief, current graph frontier, compact
-      session/closed-branch summaries, relevant claim/evidence references,
-      unresolved tasks, and a recent raw tail; never replay all source bodies
-      or child trajectories by default.
+- [x] Build turn context from current brief, current graph frontier, compact
+      session/closed-branch summaries, relevant packet/artifact references,
+      unresolved tasks, and a recent human-interaction tail; never replay all
+      source bodies or child trajectories by default (2026-08-02).
 - [x] Provide bounded `describe`, `search`, and `expand` operations over summary
       lineage so the supervisor or reconciler can recover exact prior state.
 - [ ] Mark model summaries as non-authoritative and regenerate them from durable

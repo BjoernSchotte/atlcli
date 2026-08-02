@@ -71,6 +71,10 @@ import {
   type ResearchMessageLineageEventV1,
 } from "./message-lineage.js";
 import {
+  buildResearchTurnContextV1,
+  renderResearchTurnContextV1,
+} from "./turn-context.js";
+import {
   normalizeResearchPacketModelBodyV2,
   normalizeResearchPacketReferenceModelBodyV2,
 } from "./packet-v2-normalizer.js";
@@ -3667,6 +3671,25 @@ async function runResearchAgentWithBindings(
         },
       })
     : undefined;
+  const durableTurnContext = isDynamic && durableLineage && input.brief && input.researchGraph
+    ? await buildResearchTurnContextV1({
+        brief: input.brief,
+        graph: input.researchGraph,
+        ...(durableTurn ? { turn: durableTurn } : {}),
+        lineage: durableLineage,
+      })
+    : undefined;
+  const dynamicSupervisorSystemPrompt = isDynamic
+    ? [
+        usesCheckpointedSupervisor
+          ? buildCheckpointedDynamicSupervisorPrompt(input.researchGraph!, {
+              ...(resumedContinuation ? { resumeContinuation: resumedContinuation } : {}),
+              ...(resumedSteering ? { steering: resumedSteering } : {}),
+            })
+          : buildDynamicSupervisorPrompt(input.researchGraph!),
+        ...(durableTurnContext ? [renderResearchTurnContextV1(durableTurnContext)] : []),
+      ].join("\n\n")
+    : undefined;
   let durableModelInputArchiveSequence = 0;
   const durableSummarizationMiddleware = isDynamic && durableLineage && durableLineageRunToken
     ? createResearchDurableSummarizationMiddleware(runtime, {
@@ -3723,14 +3746,8 @@ async function runResearchAgentWithBindings(
     ...(checkpointer ? { checkpointer } : {}),
     tools: [],
     subagents: [],
-    systemPrompt: isDynamic
-      ? usesCheckpointedSupervisor
-        ? buildCheckpointedDynamicSupervisorPrompt(input.researchGraph!, {
-            ...(resumedContinuation ? { resumeContinuation: resumedContinuation } : {}),
-            ...(resumedSteering ? { steering: resumedSteering } : {}),
-          })
-        : buildDynamicSupervisorPrompt(input.researchGraph!)
-      : buildLegacyResearchSystemPromptV1(input.request.limits.maxDetailItemsPerProduct),
+    systemPrompt: dynamicSupervisorSystemPrompt ??
+      buildLegacyResearchSystemPromptV1(input.request.limits.maxDetailItemsPerProduct),
     middleware: isDynamic
       ? [
           ...(durableSummarizationMiddleware

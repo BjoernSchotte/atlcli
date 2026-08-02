@@ -98,6 +98,8 @@ export interface ResearchMessageLineageStoreV1 {
     newestSummaryAt?: string;
   }>;
   latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
+  /** Host-only bounded tail for constructing a new turn context. */
+  recentEvents(input?: { limit?: number }): Promise<ResearchMessageLineageEventV1[]>;
   search(input: {
     query: string;
     limit?: number;
@@ -706,6 +708,21 @@ export class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLi
       await this.#hydrate();
       const latest = this.#index.summaries.at(-1);
       return latest ? clone(await this.#readSummary(latest.id)) : undefined;
+    });
+  }
+
+  async recentEvents(input: { limit?: number } = {}): Promise<ResearchMessageLineageEventV1[]> {
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      const limit = input.limit === undefined
+        ? 20
+        : positiveInteger(input.limit, "Message lineage recent-event limit", MAXIMUM_SEARCH_RESULTS);
+      const entries = this.#index.events.slice(-limit);
+      return Promise.all(entries.map(async (entry) => {
+        const event = await this.#readEvent(entry.id);
+        if (!event) invalid("Message lineage index references a missing event.");
+        return clone(event);
+      }));
     });
   }
 
