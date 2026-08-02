@@ -23,7 +23,12 @@ const INDEX_PATH = `${ROOT_PATH}/index.json`;
 const SCHEMA = "atlcli.research-langgraph-workspace-checkpoints/v1" as const;
 const MAXIMUM_OPERATIONS = 2_000;
 const MAXIMUM_PAYLOAD_BYTES = 64_000_000;
-const MAXIMUM_BLOB_BYTES = 4_000_000;
+// A durable DeepAgentsJS checkpoint includes the bounded task-tool schemas
+// for one active supervisor state. Deep runs safely omit raw source bodies,
+// but the serialized graph/runtime envelope can exceed four megabytes before
+// the continuation boundary. The 64 MB session payload cap remains the hard
+// aggregate host limit.
+const MAXIMUM_BLOB_BYTES = 8_000_000;
 const BLOB_CHUNK_BYTES = 500_000;
 
 interface PersistedBlobV1 {

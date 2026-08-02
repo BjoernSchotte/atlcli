@@ -14,6 +14,10 @@ import {
 } from "./agent-runtime-core.js";
 import { createResearchBriefV1 } from "./brief.js";
 import { acceptResearchGraphProposalV1, composeResearchGraphV1 } from "./graph.js";
+import {
+  researchSubagentTypeForNodeV1,
+  researchTaskIdForNodeV1,
+} from "./dynamic-subagents.js";
 import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
 import {
   RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
@@ -467,22 +471,20 @@ describe("ready frontier PTC", () => {
       requestedReconciliation: "off",
     });
     const graph = composeResearchGraphV1(brief);
+    const node = graph.nodes.find((candidate) =>
+      candidate.status === "ready" && candidate.roleId === "focused-researcher"
+    )!;
     const frontier = createResearchReadyFrontierPtcTool({
       activeGraph: () => graph,
       canRead: () => true,
       frontier: () => [{
-        taskId: "research-task:r1:jira-lookup:a1",
-        nodeId: "research-node:jira-lookup",
-        subagentType: "research-focused-researcher-jira-lookup",
-        outputSchema: "atlcli.research-packet-body/v1",
-        objective: "Acquire bounded Jira evidence.",
-        dependencyResults: [{
-          taskId: "research-task:prior:a1",
-          result: {
-            schema: "atlcli.research-dependency-packet/v1",
-            sourceIds: ["jira:DEMO-1"],
-          },
-        }],
+        taskId: researchTaskIdForNodeV1(graph, node),
+        nodeId: node.id,
+        roleId: "focused-researcher",
+        subagentType: researchSubagentTypeForNodeV1(node),
+        outputSchema: node.outputSchema,
+        objective: node.objective,
+        dependencyResults: [],
       }],
     });
 
@@ -491,8 +493,8 @@ describe("ready frontier PTC", () => {
       schema: "atlcli.research-ready-frontier/v1",
       graphRevision: graph.revision,
       tasks: [expect.objectContaining({
-        taskId: "research-task:r1:jira-lookup:a1",
-        dependencyResults: [expect.objectContaining({ taskId: "research-task:prior:a1" })],
+        taskId: researchTaskIdForNodeV1(graph, node),
+        dependencyResults: [],
       })],
     });
     await expect(createResearchReadyFrontierPtcTool({

@@ -479,7 +479,7 @@ function validateSession(session: ResearchSessionV1): void {
         waves.add(wave);
         wavesByGraphRevision.set(assessment.graphRevision, waves);
         timestamp(assessment.recordedAt, "Research session retrieval assessment timestamp");
-        const parsed = parseResearchRetrievalAssessmentV1(assessment.assessment);
+        parseResearchRetrievalAssessmentV1(assessment.assessment);
         const continuation = assessment.continuation;
         if (continuation !== undefined) {
           const expectedId = `research-continuation:${assessment.graphRevision}.${wave}`;
@@ -487,8 +487,7 @@ function validateSession(session: ResearchSessionV1): void {
               continuation.id !== expectedId ||
               (continuation.status !== "issued" && continuation.status !== "consumed") ||
               (continuation.status === "issued" && continuation.consumedAt !== undefined) ||
-              (continuation.status === "consumed" && continuation.consumedAt === undefined) ||
-              parsed.action === "stop") {
+              (continuation.status === "consumed" && continuation.consumedAt === undefined)) {
             invalid("Research session retrieval continuation is invalid.");
           }
           timestamp(continuation.issuedAt, "Research session retrieval continuation issuance timestamp");

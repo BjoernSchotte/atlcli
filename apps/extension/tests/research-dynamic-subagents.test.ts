@@ -1790,6 +1790,132 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(false);
   });
 
+  test("continues a durable deep run through one host checkpoint and exact ready frontiers", async () => {
+    const brief = graphBrief(
+      "Research the bounded Jira evidence before composing a report.",
+      ["jira"],
+      "deep",
+      "off",
+    );
+    const graph = composeResearchGraphV1(brief);
+    const researcher = graph.nodes.find((node) => node.kind === "search" && node.roleId)!;
+    const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer")!;
+    const draft = {
+      title: "Checkpointed deep research",
+      executiveSummary: "The durable continuation reached final synthesis.",
+      selectedClaimIds: [],
+      findings: [],
+      relationships: [],
+      limitations: ["Synthetic checkpoint proof without retrieved detail evidence."],
+    };
+    const emptyPacket = {
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion: "The first durable research frontier completed.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["Synthetic checkpoint proof has no retrieved detail evidence."],
+    };
+    const responseSchemas = {
+      "atlcli.research-packet-body/v1": RESEARCH_WORKER_PACKET_SCHEMA_V1,
+      "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+    };
+    const firstEval = `
+      ${graphProposalPrelude(graph, [researcher.id, synthesizer.id])}
+      const responseSchemas = ${JSON.stringify(responseSchemas)};
+      const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: acceptedGraph.graphRevision }));
+      await Promise.all(frontier.tasks.map((returnedTask) => task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: returnedTask.taskId,
+          objective: returnedTask.objective
+        }),
+        subagentType: returnedTask.subagentType,
+        responseSchema: responseSchemas[returnedTask.outputSchema]
+      })));
+      const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({ graphRevision: acceptedGraph.graphRevision }));
+      checkpoint;
+    `;
+    const secondEval = `
+      const continuation = JSON.parse(await tools.researchRetrievalContinue({
+        graphRevision: 1,
+        wave: 1,
+        continuationId: "research-continuation:1.1"
+      }));
+      const responseSchemas = ${JSON.stringify(responseSchemas)};
+      const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+      const finalTask = frontier.tasks[0];
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: finalTask.taskId,
+          objective: finalTask.objective,
+          dependencyResults: finalTask.dependencyResults
+        }),
+        subagentType: finalTask.subagentType,
+        responseSchema: responseSchemas[finalTask.outputSchema]
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code: firstEval } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket }])
+      .respondWithTools([{ name: "eval", args: { code: secondEval } }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:checkpointed-deep",
+        createdAt: "2026-08-02T11:00:00.000Z",
+        leaseExpiresAt: "2026-08-02T11:10:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-02T11:00:00.000Z",
+    });
+    const events: ResearchOneShotEventV1[] = [];
+    const report = await runResearchAgent({
+        model: dynamicModel,
+        request,
+        providers: {
+          jira: { async searchPage() { throw new Error("model skipped PTC"); }, async getIssue() { throw new Error("unused"); } },
+          wiki: { async searchPage() { throw new Error("unused"); }, async getPage() { throw new Error("unused"); } },
+        },
+        researchGraph: graph,
+        brief,
+        durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
+        runId: "checkpointed-deep-frontiers",
+        options: { onEvent: (event) => events.push(event) },
+    });
+
+    expect(report.title).toBe(draft.title);
+    expect(dynamicModel.callCount).toBe(5);
+    expect(events.filter((event) => event.kind === "retrieval")).toEqual([
+      expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),
+    ]);
+    expect(events.filter((event) => event.kind === "decision" &&
+      event.reasonCode === "checkpoint-authorized-eval-completed")).toHaveLength(1);
+    const session = await durableStore.read(graph.sessionId);
+    const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
+    expect(turn.retrievalAssessments).toEqual([
+      expect.objectContaining({
+        graphRevision: 1,
+        wave: 1,
+        continuation: expect.objectContaining({ status: "consumed" }),
+      }),
+    ]);
+    expect(turn.tasks.map((task) => task.taskId)).toEqual([
+      researchTaskIdForNodeV1(graph, researcher),
+      researchTaskIdForNodeV1(graph, synthesizer),
+    ]);
+  });
+
   test("lets one supervisor prune optional roles before any native task dispatch", async () => {
     const catalog = composeResearchGraphV1(graphBrief(
       request.question,

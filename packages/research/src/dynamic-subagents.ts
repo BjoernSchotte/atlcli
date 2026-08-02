@@ -627,6 +627,8 @@ export function compileDynamicResearchSubagents(
  * `ready`. It never exposes an arbitrary task ID to the supervisor.
  */
 export interface ResearchReadyFrontierControllerV1 {
+  /** Whether this middleware instance has already admitted an initial frontier. */
+  isConfigured(): boolean;
   configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
   appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
   /** Read the current durable ready set without reopening a prior task. */
@@ -1336,6 +1338,7 @@ export function createBoundedResearchSubagentMiddleware(
     return activeGraph;
   };
   const readyFrontierController: ResearchReadyFrontierControllerV1 = {
+    isConfigured: (): boolean => readyFrontierConfigured,
     configureInitialFrontier: (): readonly ResearchTaskAdmissionV1[] => {
       if (readyFrontierConfigured) {
         throw new ResearchDispatchError(

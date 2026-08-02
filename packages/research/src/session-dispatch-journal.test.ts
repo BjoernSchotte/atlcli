@@ -306,6 +306,44 @@ describe("durable research task dispatch journal", () => {
     ]);
   });
 
+  test("permits one finalization continuation after a terminal retrieval decision", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: [],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    expect(assessment).toMatchObject({ action: "stop", reason: "no_ranked_candidates" });
+
+    const issued = await journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    await expect(journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).resolves.toMatchObject({
+      id: issued.continuation!.id,
+      status: "consumed",
+      assessment: { action: "stop", reason: "no_ranked_candidates" },
+    });
+    const turn = (await store.read(sessionId))!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.retrievalAssessments?.[0]?.continuation).toMatchObject({
+      id: issued.continuation!.id,
+      status: "consumed",
+    });
+  });
+
   test("commits a host-validated graph revision with its durable revision history", async () => {
     const { store, sessionId, turnId, journal, catalog, graph } = await initializedJournal();
     const revised = reviseResearchGraphSelectionV1(catalog, graph, {
