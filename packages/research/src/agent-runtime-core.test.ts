@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, RemoveMessage, ToolMessage } from "@langchain/core/messages";
+import { REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import {
   buildCheckpointedDynamicSupervisorPrompt,
   buildLegacyResearchSystemPromptV1,
+  createResearchCheckpointTranscriptCompactionMiddleware,
   createOneShotSupervisorEvalMiddleware,
   createResearchGraphProposalPtcTool,
   createResearchGraphRevisionPtcTool,
@@ -68,6 +70,18 @@ const continuationWorkflowCode = `
   finalDraft;
 `;
 
+const continuationCheckpointWorkflowCode = `
+  const continuation = JSON.parse(await tools.researchRetrievalContinue({
+    graphRevision: 1,
+    wave: 1,
+    continuationId: "research-continuation:1.1"
+  }));
+  const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({
+    graphRevision: continuation.graphRevision
+  }));
+  checkpoint;
+`;
+
 const checkpointWorkflowCode = `
   const accepted = JSON.parse(await tools.researchGraphPropose({}));
   const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({
@@ -108,6 +122,16 @@ async function completeEval(
   );
 }
 
+async function invokeBeforeModel(
+  middleware: ReturnType<typeof createResearchCheckpointTranscriptCompactionMiddleware>,
+): Promise<unknown> {
+  const beforeModel = middleware.beforeModel;
+  if (typeof beforeModel !== "function") {
+    throw new Error("Synthetic middleware requires a callable beforeModel hook.");
+  }
+  return beforeModel({} as never, {} as never);
+}
+
 describe("one-shot supervisor eval capability lifecycle", () => {
   test("revokes eval after one successful workflow but preserves structured publication", async () => {
     const middleware = createOneShotSupervisorEvalMiddleware();
@@ -134,12 +158,17 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     ]);
   });
 
-  test("permits exactly one checkpoint-authorized continuation without a second graph proposal", async () => {
-    let tickets = 1;
+  test("permits each host-authorized continuation without a second graph proposal", async () => {
+    let leaseAvailable = true;
     let continuationEvalStarts = 0;
     const middleware = createOneShotSupervisorEvalMiddleware({
-      canContinueAfterCheckpoint: () => tickets > 0,
-      onContinuationEvalStarted: () => { continuationEvalStarts += 1; },
+      canContinueAfterCheckpoint: () => leaseAvailable,
+      onContinuationEvalStarted: () => {
+        continuationEvalStarts += 1;
+        // The real continuation PTC atomically consumes this lease before
+        // any frontier dispatch. This focused middleware test simulates it.
+        leaseAvailable = false;
+      },
     });
     await completeEval(middleware, JSON.stringify({
       schema: "atlcli.research-retrieval-checkpoint/v1",
@@ -153,12 +182,26 @@ describe("one-shot supervisor eval capability lifecycle", () => {
       "eval",
       "AtlcliResearchAgentDraftV1",
     ]);
-    await completeEval(middleware, JSON.stringify({ title: "Final" }), continuationWorkflowCode);
-    expect(tickets).toBe(1);
+    await completeEval(middleware, JSON.stringify({
+      schema: "atlcli.research-retrieval-checkpoint/v1",
+      graphRevision: 1,
+      wave: 2,
+      action: "continue",
+      reason: "unread_ranked_candidates",
+      continuationId: "research-continuation:1.2",
+    }), continuationCheckpointWorkflowCode);
     expect(continuationEvalStarts).toBe(1);
-    // The real continuation PTC, not the eval middleware, atomically consumes
-    // this ticket before it dispatches any later frontier.
-    tickets = 0;
+    expect(await observeOfferedTools(middleware)).toEqual([
+      "AtlcliResearchAgentDraftV1",
+    ]);
+    // A later host checkpoint, rather than the model, issues the next lease.
+    leaseAvailable = true;
+    expect(await observeOfferedTools(middleware)).toEqual([
+      "eval",
+      "AtlcliResearchAgentDraftV1",
+    ]);
+    await completeEval(middleware, JSON.stringify({ title: "Final" }), continuationWorkflowCode);
+    expect(continuationEvalStarts).toBe(2);
     expect(await observeOfferedTools(middleware)).toEqual([
       "AtlcliResearchAgentDraftV1",
     ]);
@@ -258,6 +301,37 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     );
     expect(evaluatorCalls).toBe(1);
     expect((rejectedRepair as ToolMessage).content).toContain("Do not derive repairFollowUpId");
+  });
+});
+
+describe("durable checkpoint transcript compaction", () => {
+  test("replaces a settled wave exactly once with body-free host continuation context", async () => {
+    let checkpoint: { id: string; content: string } | undefined = {
+      id: "research-continuation:1.1",
+      content: "Host-issued body-free checkpoint only.",
+    };
+    const middleware = createResearchCheckpointTranscriptCompactionMiddleware({
+      checkpoint: () => checkpoint,
+    });
+
+    const first = await invokeBeforeModel(middleware);
+    expect(first).toBeDefined();
+    const messages = (first as { messages: unknown[] }).messages;
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toBeInstanceOf(RemoveMessage);
+    expect((messages[0] as RemoveMessage).id).toBe(REMOVE_ALL_MESSAGES);
+    expect(messages[1]).toBeInstanceOf(HumanMessage);
+    expect((messages[1] as HumanMessage).text).toBe("Host-issued body-free checkpoint only.");
+    expect(await invokeBeforeModel(middleware)).toBeUndefined();
+
+    checkpoint = {
+      id: "research-continuation:2.2",
+      content: "Next body-free host checkpoint.",
+    };
+    const second = await invokeBeforeModel(middleware);
+    expect((second as { messages: HumanMessage[] }).messages[1]?.text).toBe(
+      "Next body-free host checkpoint.",
+    );
   });
 });
 

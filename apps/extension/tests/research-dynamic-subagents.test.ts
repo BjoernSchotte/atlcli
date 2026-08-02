@@ -2466,7 +2466,18 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         subagentType: analysisTask.subagentType,
         responseSchema: responseSchemas[analysisTask.outputSchema]
       });
-      const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: revised.graphRevision }));
+      const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({ graphRevision: revised.graphRevision }));
+      checkpoint;
+    `;
+    const thirdEval = `
+      const continuation = JSON.parse(await tools.researchRetrievalContinue({
+        graphRevision: 2,
+        wave: 2,
+        continuationId: "research-continuation:2.2"
+      }));
+      if (continuation.action !== "stop") throw new Error("Expected a terminal host checkpoint.");
+      const responseSchemas = ${JSON.stringify(responseSchemas)};
+      const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
       const finalTask = finalFrontier.tasks[0];
       const finalDraft = await task({
         description: JSON.stringify({
@@ -2485,6 +2496,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: sourcePacket }])
       .respondWithTools([{ name: "eval", args: { code: secondEval } }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: analysisPacket }])
+      .respondWithTools([{ name: "eval", args: { code: thirdEval } }])
       .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
     const durableStore = new InMemoryResearchSessionStoreV1();
@@ -2515,16 +2527,30 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       runId: "coverage-gap-replan",
       options: { onEvent: (event) => events.push(event) },
     });
-
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(6);
+    expect(dynamicModel.callCount).toBe(7);
     expect(events.filter((event) => event.kind === "retrieval")).toEqual([
       expect.objectContaining({ action: "replan", reason: "coverage_gap", unresolvedCoverageTargetCount: 1 }),
+      expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),
     ]);
     const session = await durableStore.read(graph.sessionId);
     const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
     expect(turn.graph?.revision).toBe(2);
     expect(turn.graphRevisions).toHaveLength(2);
+    expect(turn.retrievalAssessments).toEqual([
+      expect.objectContaining({
+        graphRevision: 1,
+        wave: 1,
+        assessment: expect.objectContaining({ action: "replan", reason: "coverage_gap" }),
+        continuation: expect.objectContaining({ status: "consumed" }),
+      }),
+      expect.objectContaining({
+        graphRevision: 2,
+        wave: 2,
+        assessment: expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),
+        continuation: expect.objectContaining({ status: "consumed" }),
+      }),
+    ]);
     expect(turn.graphRevisions?.at(-1)).toMatchObject({
       graph: expect.objectContaining({ revision: 2 }),
       gapIds: ["gap:synthetic-approved-coverage"],
@@ -2535,6 +2561,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       ["research-task:r2:coverage-moderation:a1", 2],
       ["research-task:r2:synthesizer:a1", 2],
     ]);
+    expect(new Set(turn.tasks.map((task) => task.taskId)).size).toBe(turn.tasks.length);
   });
 
   test("resumes an issued deep continuation with persisted packets and budget counters", async () => {

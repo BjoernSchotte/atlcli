@@ -3804,8 +3804,13 @@ Shared:
       prompt now receives the host-approved per-product detail budget; the
       dynamic path already receives that same host limit. Candidate ranking and
       iterative retrieval remain the following T6 work.
-- [ ] Implement a bounded plan/retrieve/assess-gaps loop with explicit stop
-      reasons.
+- [x] Implement a bounded plan/retrieve/assess-gaps loop with explicit stop
+      reasons. Each settled host-admitted frontier writes a revision-fenced,
+      body-free retrieval assessment; `continue`/`replan` issue one durable
+      lease for the next disposable supervisor evaluator, while `stop` permits
+      only remaining analysis/synthesis. A later coverage-moderator packet is
+      authoritative for its already-reviewed targets, so an old acquisition
+      gap cannot cause an unbounded replan loop (2026-08-02).
 - [ ] Let the central supervisor add, prune, reprioritize, or close graph nodes
       after each accepted wave. Every revision records the evidence/gap IDs
       that caused it.
@@ -3815,8 +3820,14 @@ Shared:
 - [ ] Calculate deterministic novelty, duplicate-work, coverage-at-budget,
       unresolved-contradiction, and marginal-evidence signals. Model confidence
       is advisory and cannot be the sole continue/stop condition.
-- [ ] Allow repeated bounded QuickJS calls, but make each call replayable and
-      disposable.
+- [x] Allow repeated bounded QuickJS calls, but make each call replayable and
+      disposable. The host compacts the completed supervisor/tool transcript
+      only at a persisted retrieval checkpoint into one body-free continuation
+      context; the durable journal, task ledger, workspace, and PTC leases
+      retain authority. Synthetic source → replan → moderation → stop →
+      synthesis proves fresh evaluator waves, global wave fencing, no duplicate
+      task IDs, and that spent supervisor history is not carried into the next
+      evaluator wave (2026-08-02).
 - [x] Persist body-free, host-bound rationale for each detail fetch (the
       question-relevance rank and source identity); reject mismatched
       provenance before evidence publication.

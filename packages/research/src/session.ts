@@ -995,7 +995,11 @@ function validateSession(session: ResearchSessionV1): void {
       if (!Array.isArray(candidate.retrievalAssessments) || candidate.retrievalAssessments.length > 64) {
         invalid("Research session retrieval assessments are invalid.");
       }
-      const wavesByGraphRevision = new Map<number, Set<number>>();
+      // Retrieval waves are a turn-wide durable sequence. A graph revision
+      // changes the admitted topology, not the identity of the next wave:
+      // revision 2 therefore continues at wave 2 rather than restarting at
+      // wave 1. This matches the graph reducer and one-time continuation IDs.
+      const retrievalWaves = new Set<number>();
       for (const assessment of candidate.retrievalAssessments) {
         if (assessment.schema !== RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 ||
             !Number.isSafeInteger(assessment.graphRevision) || assessment.graphRevision < 1) {
@@ -1005,10 +1009,10 @@ function validateSession(session: ResearchSessionV1): void {
         if (!Number.isSafeInteger(wave) || wave < 1) {
           invalid("Research session retrieval assessment is invalid or duplicated.");
         }
-        const waves = wavesByGraphRevision.get(assessment.graphRevision) ?? new Set<number>();
-        if (waves.has(wave)) invalid("Research session retrieval assessment is invalid or duplicated.");
-        waves.add(wave);
-        wavesByGraphRevision.set(assessment.graphRevision, waves);
+        if (retrievalWaves.has(wave)) {
+          invalid("Research session retrieval assessment is invalid or duplicated.");
+        }
+        retrievalWaves.add(wave);
         timestamp(assessment.recordedAt, "Research session retrieval assessment timestamp");
         parseResearchRetrievalAssessmentV1(assessment.assessment);
         const continuation = assessment.continuation;
@@ -1042,10 +1046,8 @@ function validateSession(session: ResearchSessionV1): void {
           }
         }
       }
-      for (const waves of wavesByGraphRevision.values()) {
-        if (Math.max(...waves) !== waves.size) {
-          invalid("Research session retrieval assessment waves are not contiguous.");
-        }
+      if (retrievalWaves.size > 0 && Math.max(...retrievalWaves) !== retrievalWaves.size) {
+        invalid("Research session retrieval assessment waves are not contiguous.");
       }
     }
   }
