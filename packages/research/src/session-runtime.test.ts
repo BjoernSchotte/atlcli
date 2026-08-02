@@ -15,6 +15,7 @@ import {
   proposeResearchGraphForReadyBriefV1,
   recoverExpiredResearchSessionsAtSafeBoundaryV1,
   projectResearchResumableSessionV1,
+  projectResearchRetainedSessionV1,
   recoverResearchSessionForResumeV1,
   resolveResearchSessionScopeClarificationV1,
   resolveResearchSessionClarificationsV1,
@@ -1203,6 +1204,53 @@ describe("durable research session execution gate", () => {
     expect(projectResearchResumableSessionV1(initialized, {
       tenantOrigin: "https://example.atlassian.net",
       at: "2026-08-01T15:00:02.001Z",
+    })).toBeUndefined();
+  });
+
+  test("projects only tenant-bound terminal sessions that may accept a new turn", async () => {
+    const acceptedBrief = brief("automatic");
+    const store = new InMemoryResearchSessionStoreV1();
+    const initialized = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: acceptedBrief,
+      graph: composeResearchGraphV1(acceptedBrief),
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const cancelled = await store.commit(initialized.sessionId, {
+      kind: "cancel",
+      expectedRevision: initialized.revision,
+      expectedLeaseEpoch: initialized.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    });
+
+    expect(projectResearchRetainedSessionV1(cancelled.session, {
+      tenantOrigin: "https://example.atlassian.net",
+    })).toEqual({
+      schema: "atlcli.research-retained-session/v1",
+      sessionId: initialized.sessionId,
+      revision: cancelled.session.revision,
+      turnId: "research-turn:runtime-test",
+      status: "cancelled",
+      updatedAt: "2026-08-01T15:00:02.000Z",
+      question: "Find the related Jira work item.",
+      scope: {
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["DOCS"],
+      },
+    });
+    expect(projectResearchRetainedSessionV1(cancelled.session, {
+      tenantOrigin: "https://other.atlassian.net",
+    })).toBeUndefined();
+    const requestedDeletion = await store.commit(initialized.sessionId, {
+      kind: "request_deletion",
+      expectedRevision: cancelled.session.revision,
+      expectedLeaseEpoch: cancelled.session.lease.epoch,
+      at: "2026-08-01T15:00:03.000Z",
+    });
+    expect(projectResearchRetainedSessionV1(requestedDeletion.session, {
+      tenantOrigin: "https://example.atlassian.net",
     })).toBeUndefined();
   });
 

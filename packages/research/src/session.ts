@@ -91,6 +91,8 @@ export const RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1 =
   "atlcli.research-session-scope-clarification/v1" as const;
 export const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1 =
   "atlcli.research-resumable-session/v1" as const;
+export const RESEARCH_RETAINED_SESSION_SCHEMA_V1 =
+  "atlcli.research-retained-session/v1" as const;
 
 export type ResearchSessionStatusV1 =
   | "idle"
@@ -411,6 +413,25 @@ export interface ResearchResumableSessionV1 {
     ResearchSessionStatusV1,
     "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running"
   >;
+  updatedAt: string;
+  question: string;
+  scope: {
+    jiraProjectKeys: string[];
+    confluenceSpaceKeys: string[];
+  };
+}
+
+/**
+ * A tenant-filtered, body-free projection for a terminal session which can
+ * accept a new user-authored turn. It deliberately does not expose the prior
+ * report, source bodies, prompts, or the tenant origin.
+ */
+export interface ResearchRetainedSessionV1 {
+  schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
+  sessionId: string;
+  revision: number;
+  turnId: string;
+  status: Extract<ResearchSessionStatusV1, "complete" | "cancelled" | "failed">;
   updatedAt: string;
   question: string;
   scope: {

@@ -27,6 +27,8 @@ import {
 import type { ResearchSessionStoreV1 } from "./session-store.js";
 import {
   RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
+  RESEARCH_RETAINED_SESSION_SCHEMA_V1,
+  type ResearchRetainedSessionV1,
   type ResearchSessionScopeClarificationV1,
   type ResearchResumableSessionV1,
   type ResearchSessionTurnV1,
@@ -191,6 +193,10 @@ function activeTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefin
     : undefined;
 }
 
+function terminalTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefined {
+  return activeTurn(session) ?? session.turns.at(-1);
+}
+
 function isUndispatchedApprovedTurn(turn: ResearchSessionTurnV1): boolean {
   return turn.tasks.length === 0 &&
     turn.acceptedPackets.length === 0 &&
@@ -262,6 +268,12 @@ function isResumableStatus(
   ].includes(status);
 }
 
+function isRetainedTerminalStatus(
+  status: ResearchSessionV1["status"],
+): status is ResearchRetainedSessionV1["status"] {
+  return ["complete", "cancelled", "failed"].includes(status);
+}
+
 /**
  * Projects the only durable states this initial recovery policy can resume.
  * The same projection gates the browser's list and its resume endpoint, so a
@@ -300,6 +312,36 @@ export function projectResearchResumableSessionV1(
   }
   return {
     schema: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
+    sessionId: session.sessionId,
+    revision: session.revision,
+    turnId: turn.id,
+    status: session.status,
+    updatedAt: session.updatedAt,
+    question: turn.brief.objective,
+    scope: {
+      jiraProjectKeys: [...turn.brief.scope.jiraProjectKeys],
+      confluenceSpaceKeys: [...turn.brief.scope.confluenceSpaceKeys],
+    },
+  };
+}
+
+/**
+ * Project one terminal session that the active tenant may extend with a new
+ * turn. The host must still re-read and fence this projection before it
+ * appends anything; this list is only a safe UI affordance.
+ */
+export function projectResearchRetainedSessionV1(
+  session: ResearchSessionV1,
+  input: { tenantOrigin: string },
+): ResearchRetainedSessionV1 | undefined {
+  if (!isRetainedTerminalStatus(session.status) ||
+      session.retention.state === "deletion_requested" || session.retention.state === "deleted") {
+    return undefined;
+  }
+  const turn = terminalTurn(session);
+  if (!turn?.brief || turn.brief.scope.siteOrigin !== input.tenantOrigin) return undefined;
+  return {
+    schema: RESEARCH_RETAINED_SESSION_SCHEMA_V1,
     sessionId: session.sessionId,
     revision: session.revision,
     turnId: turn.id,
