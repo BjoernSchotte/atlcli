@@ -3509,6 +3509,11 @@ Gate:
         exclude each sentinel (32 packed tests, 2026-08-02).
 - [ ] CLI and packed extension each resume the deterministic scenario to the
       same final structured report and Markdown.
+  - [x] The shared Node and browser runtimes resume one durable checkpoint
+        with two already-accepted Jira/Confluence branches, consume its sole
+        continuation, and finish the remaining graph with the same structured
+        report and byte-identical Markdown (2 focused host-parity tests,
+        2026-08-02).
 
 ### T5 — Add the evidence store, claim ledger, outline, and report V2
 
