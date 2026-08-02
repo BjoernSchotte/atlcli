@@ -429,7 +429,74 @@ describe("durable native DeepAgentsJS summarization", () => {
       nonAuthoritative: true,
       summary: "Synthetic operational summary.",
     });
-    expect(summary?.sourceEventIds).toHaveLength(49);
+    // Native DeepAgentsJS preserves the configured 12-message raw tail, so
+    // only the compacted prefix belongs to this immutable summary segment.
+    expect(summary?.sourceEventIds).toHaveLength(37);
+  });
+
+  test("keeps a 250-turn native summary lineage linear and retrievable after a fresh host", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const lineage = new WorkspaceResearchMessageLineageStoreV1(workspace);
+    const model = fakeModel();
+    for (let index = 0; index < 12; index += 1) {
+      model.respond(new AIMessage(`Synthetic summary ${index + 1}.`));
+    }
+    let batch = 0;
+    const middleware = createResearchDurableSummarizationMiddleware(
+      { createSummarizationMiddleware },
+      {
+        workspace,
+        model,
+        archiveMessages: (messages) => lineage.appendMessages({
+          batchId: `soak-model-input:${++batch}`,
+          createdAt: "2026-08-02T10:00:00.000Z",
+          messages,
+        }),
+        recordSummary: async ({ summary, sourceEventIds }) => {
+          const parent = await lineage.latestSummary();
+          await lineage.appendSummary({
+            kind: "turn",
+            createdAt: "2026-08-02T10:00:01.000Z",
+            author: "model",
+            summary,
+            sourceEventIds,
+            ...(parent ? { parentSummaryIds: [parent.id] } : {}),
+          });
+        },
+      },
+    );
+    const canonicalMessages: HumanMessage[] = [];
+    const state: Record<string, unknown> = {};
+    let largestVisibleMessageCount = 0;
+
+    for (let index = 0; index < 250; index += 1) {
+      canonicalMessages.push(new HumanMessage(
+        `Turn ${index + 1}: durable fact marker ORION-${String(index + 1).padStart(3, "0")}.`,
+      ));
+      const result = await middleware.wrapModelCall!(
+        {
+          messages: canonicalMessages,
+          state,
+          model,
+          systemMessage: undefined,
+          tools: [],
+        } as never,
+        async (request) => {
+          largestVisibleMessageCount = Math.max(largestVisibleMessageCount, request.messages.length);
+          return new AIMessage("Supervisor handler result.");
+        },
+      );
+      const update = (result as { update?: Record<string, unknown> }).update;
+      if (update) Object.assign(state, update);
+    }
+
+    expect(largestVisibleMessageCount).toBeLessThanOrEqual(48);
+    const recovered = new WorkspaceResearchMessageLineageStoreV1(workspace);
+    await expect(recovered.describe()).resolves.toMatchObject({ eventCount: 250 });
+    const latestSummary = await recovered.latestSummary();
+    expect(latestSummary?.nonAuthoritative).toBe(true);
+    expect((await recovered.search({ query: "ORION-001" })).matches).toHaveLength(1);
+    expect((await recovered.search({ query: "ORION-250" })).matches).toHaveLength(1);
   });
 });
 

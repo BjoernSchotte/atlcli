@@ -1606,6 +1606,14 @@ function textFromResearchSummaryValue(value: unknown): string | undefined {
   return undefined;
 }
 
+function serializedResearchMessageV1(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  if (typeof serialized !== "string") {
+    throw new Error("A native summarization message cannot be durably serialized.");
+  }
+  return serialized;
+}
+
 function nativeSummarizationTextV1(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const update = (result as { update?: unknown }).update;
@@ -1618,6 +1626,18 @@ function nativeSummarizationTextV1(result: unknown): string | undefined {
   if (!content) return undefined;
   const enclosedSummary = content.match(/<summary>\s*([\s\S]*?)\s*<\/summary>/i)?.[1]?.trim();
   return enclosedSummary || content.replaceAll(/\/conversation_history\/[^\s)]+/g, "[host-private history unavailable]");
+}
+
+function nativeSummarizationCutoffIndexV1(result: unknown): number | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const update = (result as { update?: unknown }).update;
+  if (!update || typeof update !== "object") return undefined;
+  const event = (update as { _summarizationEvent?: unknown })._summarizationEvent;
+  if (!event || typeof event !== "object") return undefined;
+  const cutoffIndex = (event as { cutoffIndex?: unknown }).cutoffIndex;
+  return typeof cutoffIndex === "number" && Number.isSafeInteger(cutoffIndex) && cutoffIndex > 0
+    ? cutoffIndex
+    : undefined;
 }
 
 function replaceNativeSummarizationMessageV1(result: unknown, summary: string): void {
@@ -1670,20 +1690,54 @@ export function createResearchDurableSummarizationMiddleware(
   if (!nativeWrapModelCall) {
     throw new Error("DeepAgentsJS did not expose native summarization model middleware.");
   }
+  let previousMessagePayloads: string[] = [];
+  let previousMessageEvents: ResearchMessageLineageEventV1[] = [];
+  let summarizedThrough = 0;
   return {
     ...native,
     async wrapModelCall(...args: Parameters<NonNullable<typeof nativeWrapModelCall>>) {
       const [request] = args;
       const messages = Array.isArray(request.messages) ? request.messages : [];
-      const archived = messages.length === 0 ? [] : await options.archiveMessages(messages);
+      const payloads = messages.map(serializedResearchMessageV1);
+      let commonPrefixLength = 0;
+      while (commonPrefixLength < payloads.length &&
+        commonPrefixLength < previousMessagePayloads.length &&
+        payloads[commonPrefixLength] === previousMessagePayloads[commonPrefixLength]) {
+        commonPrefixLength += 1;
+      }
+      if (commonPrefixLength === 0 && previousMessagePayloads.length > 0) {
+        // A host checkpoint replaced active state. Its replacement messages
+        // start a fresh raw-tail projection, while older originals remain in
+        // the immutable archive and are reachable through the summary DAG.
+        summarizedThrough = 0;
+      }
+      const appendedMessages = messages.slice(commonPrefixLength);
+      const appendedEvents = appendedMessages.length === 0
+        ? []
+        : await options.archiveMessages(appendedMessages);
+      if (appendedEvents.length !== appendedMessages.length) {
+        throw new Error("The durable message archive did not retain every new native message.");
+      }
+      previousMessagePayloads = payloads;
+      previousMessageEvents = [
+        ...previousMessageEvents.slice(0, commonPrefixLength),
+        ...appendedEvents,
+      ];
       const result = await nativeWrapModelCall(...args);
       const summary = nativeSummarizationTextV1(result);
-      if (summary && archived.length > 0) {
+      const cutoffIndex = nativeSummarizationCutoffIndexV1(result);
+      if (summary) {
+        if (cutoffIndex === undefined || cutoffIndex > previousMessageEvents.length) {
+          throw new Error("Native summarization did not return a retained message cutoff.");
+        }
+        const sourceEvents = previousMessageEvents.slice(summarizedThrough, cutoffIndex);
+        if (sourceEvents.length === 0) return result;
         replaceNativeSummarizationMessageV1(result, summary);
         await options.recordSummary({
           summary,
-          sourceEventIds: archived.map((event) => event.id),
+          sourceEventIds: sourceEvents.map((event) => event.id),
         });
+        summarizedThrough = cutoffIndex;
       }
       return result;
     },
