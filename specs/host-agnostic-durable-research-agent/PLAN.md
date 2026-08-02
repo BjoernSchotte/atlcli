@@ -3781,11 +3781,16 @@ Shared:
       run into `waiting_scope_approval` before any candidate content read;
       characterization tests cover both the one-eval and checkpointed deep
       `createDeepAgent` paths (2026-08-02).
-- [ ] Enforce `strict`, `ask`, and `exact-linked` deterministically. A
+- [x] Enforce `strict`, `ask`, and `exact-linked` deterministically. A
       preauthorized exact-linked read is current-tenant, exact-identity, capped,
-      visible, and cannot fan out into its whole parent scope. Every
-      whole-project/space expansion creates a new binding/envelope revision and
-      approval wait.
+      visible, and cannot fan out into its whole parent scope. The durable
+      reducer accepts only an `atlassian.reference.resolve` result with
+      `exact_link` identity and a valid issue key/page ID, creates one
+      host-derived exact binding, and exposes only its opaque ID to the
+      supervisor; the content broker proves it can read that entity without a
+      parent-space/project search. `strict` rejects it, `ask` pauses it, and
+      every whole-project/space proposal still creates a binding/envelope
+      revision and approval wait (2026-08-02).
 - [ ] Keep catalog budgets independent of content-search budgets and pass only
       the bounded top candidates to the supervisor/subagent. Expired,
       permission-lost, archived-disallowed, foreign-tenant, and superseded
