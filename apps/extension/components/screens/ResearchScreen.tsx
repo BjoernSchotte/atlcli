@@ -811,8 +811,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setReport(result);
       setProgress("");
     } catch (value) {
-      if (value instanceof ResearchContractError && value.code === "paused") {
-        setActionStatus(t("research.paused"));
+      if (value instanceof ResearchContractError &&
+        (value.code === "paused" || value.code === "scope-approval-required")) {
+        setActionStatus(t(value.code === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
         setProgress("");
       } else {
         setError(value instanceof Error ? value.message : t("research.error"));
@@ -862,8 +863,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setReport(result);
       setProgress("");
     } catch (value) {
-      if (value instanceof ResearchContractError && value.code === "paused") {
-        setActionStatus(t("research.paused"));
+      if (value instanceof ResearchContractError &&
+        (value.code === "paused" || value.code === "scope-approval-required")) {
+        setActionStatus(t(value.code === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
         setProgress("");
       } else {
         setError(value instanceof Error ? value.message : t("research.error"));

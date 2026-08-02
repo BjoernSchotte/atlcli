@@ -14,6 +14,7 @@ import type { ResearchWorkerResponseV1 } from "../utils/research/worker-protocol
 const EXPECTED_ERROR_CODES = [
   "invalid-request",
   "plan-approval-required",
+  "scope-approval-required",
   "clarification-required",
   "missing-key",
   "invalid-key",
@@ -215,6 +216,7 @@ describe("issue-138 V1 compatibility fixtures", () => {
     expect(EXPECTED_ERROR_CODES).toEqual([
       "invalid-request",
       "plan-approval-required",
+      "scope-approval-required",
       "clarification-required",
       "missing-key",
       "invalid-key",

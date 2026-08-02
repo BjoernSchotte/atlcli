@@ -25,6 +25,11 @@ import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import {
   createResearchScopeDiscoveryV1,
   type ResearchScopeCandidateV1,
+  type ResearchScopeDiscoveryDispositionDecisionV1,
+  type ResearchScopeDiscoveryDispositionReasonV1,
+  type ResearchScopeDiscoveryDispositionV1,
+  type ResearchScopeDiscoveryV1,
+  type ResearchScopeExpansionProposalV1,
 } from "./scope-discovery.js";
 import {
   RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
@@ -368,6 +373,7 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
     "4a. Exact disposition algorithm: do not infer a decision from defect.code. For each returned defect, copy defect.suggestedAction directly into one decision: accept becomes { decision: no_change, reasonCode: supported_by_evidence }; revise, downgrade, abstain, and add_follow_up retain that exact decision with reasonCode: material_defect. Do not replace a suggested action merely because its code seems similar. The only exception is reject_defect, only when the defect has an invalid reference, is already resolved, or is supported by accepted evidence; use the matching reject reasonCode. Omit repairFollowUpId by default: retaining an add_follow_up disposition preserves the gap without dispatching a repair. Include repairFollowUpId only when one chosen add_follow_up decision and one critic-proposed follow-up match exactly by ID and the stated reason-to-defect-code mapping. Never derive a repairFollowUpId from a generic error-code mapping.",
     "5. Parse the disposition result. If and only if it contains repairTask, dispatch that exact task once after reconciliation and before synthesis, using its returned objective, subagentType, dependencyTaskIds, and the analysis responseSchema. Never guess a repair task or dispatch a retained_without_execution follow-up. The host injects the authorized follow-up into that worker and injects only accepted disposition/repair packets into synthesis.",
     "5a. A returned repairTask also carries the host-selected outputSchema. Its dispatch must use responseSchema: responseSchemas[repairTask.outputSchema]; do not substitute a role default or leave the response schema undefined.",
+    "5b. When tools.researchScopeDiscoveries is available, call it after every selected catalog/reference-capable task has settled and before synthesis. If it returns discoveries, call tools.researchScopeDiscoveryDispositions exactly once with one decision per returned discovery. accept_metadata requires metadata_sufficient; reject requires not_material, out_of_scope, or insufficient_budget; a material proposal needs propose_exact_entity or propose_whole_scope with either exact_reference or coverage_gap plus one returned gap ID. If expansionMode is strict, never propose. A proposed scope stops the run for visible user approval; never retrieve candidate content or create a binding yourself.",
     "6. After every entry in tasks and any returned repairTask complete, dispatch synthesizerTask exactly once as the final task. Never include synthesizerTask in a generic wave loop and never call it again after that one explicit final dispatch. It must use the final synthesizer responseSchema and author the complete structured report draft. A synthesizer call before disposition acceptance is rejected. An authorized repair also blocks synthesis until its packet is accepted.",
     "7. Return the synthesizer's typed object as the eval result. After eval, copy that object unchanged into the required parent structured response. Do not re-research or rewrite its prose in the supervisor.",
     "8. If the first eval fails before any task starts, the host permits one code-repair eval. After any task starts, never call eval again; the host rejects it without repeating work.",
@@ -474,6 +480,7 @@ export function buildCheckpointedDynamicSupervisorPrompt(
     "Proposal input shape: { basedOnBriefRevision, basedOnGraphRevision, nodes: [{ nodeId, dependencies: [nodeId], reasonCodes: [reasonCode] }] }. Do not pass schema. Select each candidate at most once. Search/acquisition nodes have no dependencies; selected analysis nodes depend on selected acquisition nodes; reconciler depends on earlier selected nodes; synthesizer depends on every other selected node and is last.",
     "",
     "Every returned task is the sole authority to dispatch. Promise.all may contain only tasks from one returned frontier and no more than the host returned. Do not retry or redispatch a task ID. The host can reject stale frontiers, continuation replay, graph changes outside the checkpoint, unsupported response schemas, missing dependencies, duplicate work, or any expanded scope.",
+    "Related-scope protocol: when tools.researchScopeDiscoveries is available, call it only after every returned task with a catalog/reference capability has settled and before synthesis. If it returns discoveries, call tools.researchScopeDiscoveryDispositions exactly once with one closed-enum decision for every returned discovery. Use accept_metadata/metadata_sufficient when no additional content is needed; reject with not_material, out_of_scope, or insufficient_budget when it is not useful; propose_exact_entity or propose_whole_scope only when content is materially required, with coverage_gap plus one returned gap ID or exact_reference for a resolved exact reference. Respect expansionMode=strict by never proposing. A proposal stops this run for user approval; never attempt candidate content retrieval, a binding, or a new frontier after that result.",
     "Console APIs are unavailable. Return no raw source body, catalog graph, reasoning trace, or internal state from eval; return only the checkpoint receipt in the first eval and the typed synthesizer object in the second.",
   ].join("\n");
 }
@@ -869,6 +876,224 @@ export function createResearchRetrievalContinuationPtcTool(options: {
   }, {
     name: "research_retrieval_continue",
     description: "Consume one host-issued retrieval continuation before a later disposable supervisor eval. The returned action/reason are host-derived; no source content, graph topology, or dependency packets are exposed.",
+    schema,
+  });
+}
+
+export const RESEARCH_SCOPE_DISCOVERIES_SCHEMA_V1 =
+  "atlcli.research-scope-discoveries/v1" as const;
+
+/**
+ * Compact, tenant-bound metadata a central supervisor may inspect after the
+ * admitting acquisition frontier settled. It deliberately omits entity refs,
+ * tenant origins, PTC call IDs, timestamps, and every source/content body.
+ */
+export interface ResearchSupervisorScopeDiscoveryProjectionV1 {
+  discoveryId: string;
+  candidateId: string;
+  product: "jira" | "confluence";
+  entityKind: "project" | "space" | "issue" | "page";
+  key?: string;
+  name: string;
+  match?: ResearchScopeCandidateV1["match"];
+  capability: ResearchScopeDiscoveryV1["capability"];
+}
+
+export interface ResearchSupervisorScopeDiscoveriesProjectionV1 {
+  schema: typeof RESEARCH_SCOPE_DISCOVERIES_SCHEMA_V1;
+  graphRevision: number;
+  expansionMode: "strict" | "ask" | "exact-linked";
+  discoveries: ResearchSupervisorScopeDiscoveryProjectionV1[];
+}
+
+function projectResearchSupervisorScopeDiscoveriesV1(input: {
+  graphRevision: number;
+  expansionMode: "strict" | "ask" | "exact-linked";
+  discoveries: readonly ResearchScopeDiscoveryV1[];
+}): ResearchSupervisorScopeDiscoveriesProjectionV1 {
+  const unique = new Set<string>();
+  const discoveries = input.discoveries
+    .filter((discovery) => discovery.graphRevision === input.graphRevision)
+    .filter((discovery) => {
+      if (unique.has(discovery.id)) return false;
+      unique.add(discovery.id);
+      return true;
+    })
+    .slice(0, 16)
+    .map((discovery) => ({
+      discoveryId: discovery.id,
+      candidateId: discovery.candidate.id,
+      product: discovery.candidate.product,
+      entityKind: discovery.candidate.entityKind,
+      ...(discovery.candidate.key === undefined ? {} : { key: discovery.candidate.key }),
+      name: discovery.candidate.name,
+      ...(discovery.candidate.match === undefined ? {} : { match: discovery.candidate.match }),
+      capability: discovery.capability,
+    }));
+  return {
+    schema: RESEARCH_SCOPE_DISCOVERIES_SCHEMA_V1,
+    graphRevision: input.graphRevision,
+    expansionMode: input.expansionMode,
+    discoveries,
+  };
+}
+
+/**
+ * Exposes only host-observed scope metadata after all discovery-capable
+ * workers of the accepted frontier settled. The supervisor cannot enumerate
+ * a tenant catalog or turn this projection into a content read.
+ */
+export function createResearchScopeDiscoveriesPtcTool(options: {
+  activeGraph: () => ResearchGraphV1 | undefined;
+  canRead: () => boolean;
+  expansionMode: () => "strict" | "ask" | "exact-linked";
+  discoveries: () => readonly ResearchScopeDiscoveryV1[];
+}): DynamicStructuredTool {
+  const schema = z.object({
+    graphRevision: z.number().int().positive(),
+  }).strict();
+  return tool(async ({ graphRevision }) => {
+    const graph = options.activeGraph();
+    if (!graph || graph.revision !== graphRevision || !options.canRead()) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Related-scope discoveries are unavailable before their admitting frontier settles.",
+      );
+    }
+    return JSON.stringify(projectResearchSupervisorScopeDiscoveriesV1({
+      graphRevision,
+      expansionMode: options.expansionMode(),
+      discoveries: options.discoveries(),
+    }));
+  }, {
+    name: "research_scope_discoveries",
+    description: "Return the bounded body-free related-scope candidates discovered by the settled admitted frontier. It never exposes a tenant catalog, entity refs, source content, or authority.",
+    schema,
+  });
+}
+
+export const RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_SCHEMA_V1 =
+  "atlcli.research-scope-discovery-dispositions/v1" as const;
+
+export interface ResearchSupervisorScopeDiscoveryDispositionResultV1 {
+  schema: typeof RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_SCHEMA_V1;
+  graphRevision: number;
+  dispositionIds: string[];
+  status: "recorded" | "waiting_scope_approval";
+  proposal?: Pick<ResearchScopeExpansionProposalV1,
+    "id" | "candidateId" | "expansionKind" | "status">;
+}
+
+/**
+ * Persist a central-supervisor decision only through the durable reducer.
+ * The model provides opaque discovery IDs and closed decision/reason enums;
+ * all durable IDs, proposal text, provenance, and state transitions remain
+ * host-derived.
+ */
+export function createResearchScopeDiscoveryDispositionsPtcTool(options: {
+  activeGraph: () => ResearchGraphV1 | undefined;
+  canRecord: () => boolean;
+  discoveries: () => readonly ResearchScopeDiscoveryV1[];
+  disposition: (input: {
+    graphRevision: number;
+    decisions: Array<{
+      discoveryId: string;
+      decision: ResearchScopeDiscoveryDispositionDecisionV1;
+      reasonCode: ResearchScopeDiscoveryDispositionReasonV1;
+      coverageGapId?: string;
+    }>;
+  }) => Promise<{
+    dispositions: ResearchScopeDiscoveryDispositionV1[];
+    proposal?: ResearchScopeExpansionProposalV1;
+  }>;
+  onAccepted?: (result: ResearchSupervisorScopeDiscoveryDispositionResultV1) => void | Promise<void>;
+}): DynamicStructuredTool {
+  type ScopeDiscoveryDispositionInput = {
+    graphRevision: number;
+    decisions: Array<{
+      discoveryId: string;
+      decision: ResearchScopeDiscoveryDispositionDecisionV1;
+      reasonCode: ResearchScopeDiscoveryDispositionReasonV1;
+      coverageGapId?: string;
+    }>;
+  };
+  const schema = z.object({
+    graphRevision: z.number().int().positive(),
+    decisions: z.array(z.object({
+      discoveryId: z.string().regex(/^scope-discovery:[A-Za-z0-9._:-]{1,160}$/),
+      decision: z.enum([
+        "accept_metadata",
+        "reject",
+        "propose_exact_entity",
+        "propose_whole_scope",
+      ]),
+      reasonCode: z.enum([
+        "metadata_sufficient",
+        "not_material",
+        "out_of_scope",
+        "insufficient_budget",
+        "coverage_gap",
+        "exact_reference",
+      ]),
+      coverageGapId: z.string().regex(/^gap:[A-Za-z0-9._:-]{1,180}$/).optional(),
+    }).strict()).min(1).max(16),
+  }).strict();
+  return tool(async (rawInput) => {
+    const input = rawInput as ScopeDiscoveryDispositionInput;
+    const graph = options.activeGraph();
+    if (!graph || graph.revision !== input.graphRevision || !options.canRecord()) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Related-scope dispositions are unavailable outside the settled supervisor checkpoint.",
+      );
+    }
+    const discovered = new Set(options.discoveries().map((discovery) => discovery.id));
+    if (new Set(input.decisions.map((decision) => decision.discoveryId)).size !== input.decisions.length ||
+        input.decisions.some((decision) => !discovered.has(decision.discoveryId))) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Related-scope dispositions reference an unknown or duplicate discovery.",
+      );
+    }
+    const recorded = await options.disposition({
+      graphRevision: input.graphRevision,
+      decisions: input.decisions,
+    });
+    if (recorded.dispositions.length !== input.decisions.length ||
+        recorded.dispositions.some((disposition, index) => {
+          const decision = input.decisions[index];
+          return !decision || disposition.discoveryId !== decision.discoveryId ||
+            disposition.decision !== decision.decision ||
+            disposition.reasonCode !== decision.reasonCode ||
+            disposition.coverageGapId !== decision.coverageGapId;
+        }) ||
+        (recorded.proposal !== undefined && !recorded.dispositions.some((disposition) =>
+          disposition.proposedExpansionId === recorded.proposal!.id
+        ))) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The durable related-scope decision did not preserve the host-validated result.",
+      );
+    }
+    const result: ResearchSupervisorScopeDiscoveryDispositionResultV1 = {
+      schema: RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_SCHEMA_V1,
+      graphRevision: input.graphRevision,
+      dispositionIds: recorded.dispositions.map((disposition) => disposition.id),
+      status: recorded.proposal === undefined ? "recorded" : "waiting_scope_approval",
+      ...(recorded.proposal === undefined ? {} : {
+        proposal: {
+          id: recorded.proposal.id,
+          candidateId: recorded.proposal.candidateId,
+          expansionKind: recorded.proposal.expansionKind,
+          status: recorded.proposal.status,
+        },
+      }),
+    };
+    await options.onAccepted?.(result);
+    return JSON.stringify(result);
+  }, {
+    name: "research_scope_discovery_dispositions",
+    description: "Record the central supervisor's closed-enum disposition for bounded related-scope discoveries. A proposed content expansion enters user approval before any candidate content retrieval.",
     schema,
   });
 }
@@ -1738,6 +1963,18 @@ class ResearchPauseRequestedError extends Error {
   }
 }
 
+/**
+ * Internal control-flow signal: a central-supervisor disposition created a
+ * persisted user scope review. It must not be failed or mistaken for a user
+ * cancellation while the worker unwinds.
+ */
+class ResearchScopeApprovalRequestedError extends Error {
+  constructor() {
+    super("Research requires approval before expanding related scope.");
+    this.name = "ResearchScopeApprovalRequestedError";
+  }
+}
+
 async function runResearchAgentWithBindings(
   input: RunResearchAgentInput,
   runtime: ResearchAgentRuntimeBindings,
@@ -2134,6 +2371,27 @@ async function runResearchAgentWithBindings(
   const directDetailSourceIdsByNode = new Map<string, Set<string>>();
   const capabilityCallsByNode = new Map<string, number>();
   const scopeDiscoverySequenceByNode = new Map<string, number>();
+  const supervisorScopeDiscoveries = [
+    ...(durableTurn?.scopeDiscoveries ?? []),
+  ].filter((discovery) => discovery.graphRevision === input.researchGraph?.revision);
+  const decidedScopeDiscoveryIds = new Set(
+    (durableTurn?.scopeDiscoveryDispositions ?? []).map((disposition) => disposition.discoveryId),
+  );
+  let scopeApprovalRequested = false;
+  const pendingScopeDiscoveries = (): ResearchScopeDiscoveryV1[] =>
+    supervisorScopeDiscoveries.filter((discovery) => !decidedScopeDiscoveryIds.has(discovery.id));
+  const scopeDiscoveryFrontierSettled = (): boolean => {
+    const graph = acceptedGraph;
+    if (!graph) return false;
+    const discoveryNodes = graph.nodes.filter((node) =>
+      node.status !== "pruned" && node.grantedCapabilityIds.some((capability) =>
+        capability === "jira.project.search" ||
+        capability === "wiki.space.search" ||
+        capability === "atlassian.reference.resolve",
+      ),
+    );
+    return discoveryNodes.length > 0 && discoveryNodes.every((node) => node.status === "complete");
+  };
   const durableEvidenceSourceIdsByEvidenceId = new Map<string, string>();
   if (durableEvidence) {
     let cursor: string | undefined;
@@ -2451,6 +2709,7 @@ async function runResearchAgentWithBindings(
             graphRevision: node.taskGraphRevision ?? graph.revision,
             discoveries,
           });
+          supervisorScopeDiscoveries.push(...discoveries);
         },
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
@@ -2702,6 +2961,46 @@ async function runResearchAgentWithBindings(
               : "graph-proposal-rejected",
           ...(errorCode ? { errorCode } : {}),
         }),
+      })
+    : undefined;
+  const scopeDiscoveriesTool = isDynamic && durableDispatchJournal && input.brief
+    ? createResearchScopeDiscoveriesPtcTool({
+        activeGraph: () => acceptedGraph,
+        canRead: scopeDiscoveryFrontierSettled,
+        expansionMode: () => input.brief!.scopeDiscoveryPolicy.expansionMode,
+        discoveries: pendingScopeDiscoveries,
+      })
+    : undefined;
+  const scopeDiscoveryDispositionsTool = isDynamic && durableDispatchJournal && input.brief
+    ? createResearchScopeDiscoveryDispositionsPtcTool({
+        activeGraph: () => acceptedGraph,
+        canRecord: () => scopeDiscoveryFrontierSettled() && !scopeApprovalRequested,
+        discoveries: pendingScopeDiscoveries,
+        disposition: async (inputForDisposition) => {
+          const recorded = await durableDispatchJournal.dispositionScopeDiscoveries(inputForDisposition);
+          recorded.dispositions.forEach((disposition) => decidedScopeDiscoveryIds.add(
+            disposition.discoveryId,
+          ));
+          return recorded;
+        },
+        onAccepted: async (result) => {
+          result.dispositionIds.forEach((dispositionId) => emitEvent({
+            kind: "decision",
+            decisionId: `central-supervisor-${dispositionId}`,
+            status: "completed",
+            reasonCode: "related-scope-disposition-recorded",
+          }));
+          if (result.status === "waiting_scope_approval") {
+            scopeApprovalRequested = true;
+            emitEvent({
+              kind: "decision",
+              decisionId: "central-supervisor-scope-expansion",
+              status: "completed",
+              reasonCode: "related-scope-approval-required",
+            });
+            broker.cancel(new ResearchScopeApprovalRequestedError());
+          }
+        },
       })
     : undefined;
   const reconciliationDispositionTool = isDynamic
@@ -3096,6 +3395,8 @@ async function runResearchAgentWithBindings(
           createResearchSupervisorCodeInterpreterMiddleware({
             ptc: [
               graphProposalTool!,
+              ...(scopeDiscoveriesTool ? [scopeDiscoveriesTool] : []),
+              ...(scopeDiscoveryDispositionsTool ? [scopeDiscoveryDispositionsTool] : []),
               reconciliationDispositionTool!,
               ...(readyFrontierTool ? [readyFrontierTool] : []),
               ...(retrievalCheckpointTool ? [retrievalCheckpointTool] : []),
@@ -3177,6 +3478,12 @@ async function runResearchAgentWithBindings(
       throw new ResearchContractError(
         "invalid-report",
         "The central supervisor returned without an accepted research graph proposal.",
+      );
+    }
+    if (isDynamic && durableDispatchJournal && pendingScopeDiscoveries().length > 0) {
+      throw new ResearchContractError(
+        "invalid-report",
+        "The central supervisor returned without disposing every related-scope discovery.",
       );
     }
     emitEvent({
@@ -3400,6 +3707,12 @@ async function runResearchAgentWithBindings(
         throw new ResearchContractError(
           "paused",
           "Research paused at a durable retrieval checkpoint.",
+        );
+      }
+      if (broker.signal.reason instanceof ResearchScopeApprovalRequestedError) {
+        throw new ResearchContractError(
+          "scope-approval-required",
+          "Related scope requires approval before content retrieval can continue.",
         );
       }
       await durableDispatchJournal?.fail("Research execution was cancelled before report validation.");

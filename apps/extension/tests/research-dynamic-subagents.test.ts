@@ -1820,6 +1820,19 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         subagentType: ${JSON.stringify(researcherTask.subagentType)},
         responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
       });
+      const relatedScope = JSON.parse(await tools.researchScopeDiscoveries({
+        graphRevision: acceptedGraph.graphRevision
+      }));
+      if (relatedScope.discoveries.length > 0) {
+        await tools.researchScopeDiscoveryDispositions({
+          graphRevision: acceptedGraph.graphRevision,
+          decisions: relatedScope.discoveries.map((discovery) => ({
+            discoveryId: discovery.discoveryId,
+            decision: "accept_metadata",
+            reasonCode: "metadata_sufficient"
+          }))
+        });
+      }
       const finalDraft = await task({
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
@@ -1908,7 +1921,288 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       ]),
     })]);
     expect(turn.scopeBindings).toEqual([]);
+    expect(turn.scopeDiscoveryDispositions).toEqual([
+      expect.objectContaining({
+        decision: "accept_metadata",
+        reasonCode: "metadata_sufficient",
+        discoveryId: "scope-discovery:jira-research:1",
+      }),
+    ]);
     expect(turn.scopeExpansionProposals).toEqual([]);
+  });
+
+  test("pauses a dynamic run for user approval after a central whole-scope proposal", async () => {
+    const brief = graphBrief(
+      "Which related Jira project closes the documented coverage gap?",
+      ["jira"],
+      "analysis",
+      "off",
+    );
+    const graph = composeResearchGraphV1(brief);
+    const researcher = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+    const researcherTask = taskEnvelope(graph, researcher.id);
+    const code = `
+      ${graphProposalPrelude(graph)}
+      const worker = await task({
+        description: ${JSON.stringify(researcherTask.description)},
+        subagentType: ${JSON.stringify(researcherTask.subagentType)},
+        responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+      });
+      const relatedScope = JSON.parse(await tools.researchScopeDiscoveries({
+        graphRevision: acceptedGraph.graphRevision
+      }));
+      await tools.researchScopeDiscoveryDispositions({
+        graphRevision: acceptedGraph.graphRevision,
+        decisions: relatedScope.discoveries.map((discovery) => ({
+          discoveryId: discovery.discoveryId,
+          decision: "propose_whole_scope",
+          reasonCode: "coverage_gap",
+          coverageGapId: "gap:related-project"
+        }))
+      });
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, synthesizer))},
+          objective: ${JSON.stringify(synthesizer.objective)},
+          dependencyResults: [{ taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, researcher))}, result: worker }]
+        }),
+        subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizer))},
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code } }])
+      .respondWithTools([{ name: "eval", args: { code: "JSON.parse(await tools.jiraProjectSearch({ query: 'related' })); ({ observed: true });" } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: {
+        schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+        answeredQuestion: "Synthetic discovery exposes one material coverage gap.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [{
+          id: "gap:related-project",
+          summary: "The related project has not been reviewed.",
+          sourceIds: [],
+        }],
+        proposedFollowUps: [],
+        coverageLimits: ["Synthetic scope approval proof."],
+      } }]);
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:scope-approval",
+        createdAt: "2026-08-02T16:10:00.000Z",
+        leaseExpiresAt: "2026-08-02T16:20:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-02T16:10:00.000Z",
+    });
+    const scopeCatalog = new ResearchScopeCatalogBroker({
+      tenantOrigin: request.scope.siteOrigin,
+      providers: {
+        jira: { async listProjects() { return { candidates: [{
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-project",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "jira",
+          entityKind: "project",
+          entityRef: "research-scope-entity:related-project",
+          key: "RELATED",
+          name: "Related project",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: "2026-08-02T16:10:00.000Z",
+        }] }; } },
+        confluence: { async listSpaces() { return { candidates: [] }; } },
+        async resolveReference() { return undefined; },
+      },
+    });
+    const events: ResearchOneShotEventV1[] = [];
+    await expect(runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { throw new Error("content search must not run before approval"); }, async getIssue() { throw new Error("content get must not run before approval"); } },
+        wiki: { async searchPage() { throw new Error("content search must not run before approval"); }, async getPage() { throw new Error("content get must not run before approval"); } },
+      },
+      researchGraph: graph,
+      brief,
+      durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
+      scopeCatalog: { broker: scopeCatalog, tenantOrigin: request.scope.siteOrigin },
+      runId: "dynamic-scope-approval",
+      options: { onEvent: (event) => events.push(event) },
+    })).rejects.toMatchObject({ code: "scope-approval-required" });
+
+    const session = await durableStore.read(graph.sessionId);
+    const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
+    expect(session!.status).toBe("waiting_scope_approval");
+    expect(turn.scopeDiscoveryDispositions).toEqual([
+      expect.objectContaining({
+        decision: "propose_whole_scope",
+        reasonCode: "coverage_gap",
+        coverageGapId: "gap:related-project",
+      }),
+    ]);
+    expect(turn.scopeExpansionProposals).toEqual([
+      expect.objectContaining({
+        expansionKind: "whole_scope",
+        candidateId: "research-scope-candidate:related-project",
+      }),
+    ]);
+    expect(turn.scopeBindings).toEqual([]);
+    expect(turn.tasks).toHaveLength(1);
+    expect(turn.tasks[0]).toMatchObject({ taskId: researchTaskIdForNodeV1(graph, researcher), status: "complete" });
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "decision",
+      reasonCode: "related-scope-approval-required",
+    }));
+  });
+
+  test("stops a checkpointed deep run for scope approval before a second frontier", async () => {
+    const brief = graphBrief(
+      "Which related Jira project closes the documented coverage gap?",
+      ["jira"],
+      "deep",
+      "off",
+    );
+    const graph = composeResearchGraphV1(brief);
+    const researcher = graph.nodes.find((node) => node.kind === "search" && node.roleId)!;
+    const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+    const responseSchemas = {
+      "atlcli.research-packet-body/v1": RESEARCH_WORKER_PACKET_SCHEMA_V1,
+      "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+    };
+    const firstEval = `
+      ${graphProposalPrelude(graph, [researcher.id, synthesizer.id])}
+      const responseSchemas = ${JSON.stringify(responseSchemas)};
+      const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: acceptedGraph.graphRevision }));
+      await Promise.all(frontier.tasks.map((returnedTask) => task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: returnedTask.taskId,
+          objective: returnedTask.objective
+        }),
+        subagentType: returnedTask.subagentType,
+        responseSchema: responseSchemas[returnedTask.outputSchema]
+      })));
+      const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({ graphRevision: acceptedGraph.graphRevision }));
+      checkpoint;
+    `;
+    const secondEval = `
+      const continuation = JSON.parse(await tools.researchRetrievalContinue({
+        graphRevision: 1,
+        wave: 1,
+        continuationId: "research-continuation:1.1"
+      }));
+      const relatedScope = JSON.parse(await tools.researchScopeDiscoveries({
+        graphRevision: continuation.graphRevision
+      }));
+      await tools.researchScopeDiscoveryDispositions({
+        graphRevision: continuation.graphRevision,
+        decisions: relatedScope.discoveries.map((discovery) => ({
+          discoveryId: discovery.discoveryId,
+          decision: "propose_whole_scope",
+          reasonCode: "coverage_gap",
+          coverageGapId: "gap:related-project"
+        }))
+      });
+      const responseSchemas = ${JSON.stringify(responseSchemas)};
+      const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+      const finalTask = finalFrontier.tasks[0];
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: finalTask.taskId,
+          objective: finalTask.objective,
+          dependencyResults: finalTask.dependencyResults
+        }),
+        subagentType: finalTask.subagentType,
+        responseSchema: responseSchemas[finalTask.outputSchema]
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code: firstEval } }])
+      .respondWithTools([{ name: "eval", args: { code: "JSON.parse(await tools.jiraProjectSearch({ query: 'related' })); ({ observed: true });" } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: {
+        schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+        answeredQuestion: "The first frontier identified a material related-project gap.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [{
+          id: "gap:related-project",
+          summary: "The related project has not been reviewed.",
+          sourceIds: [],
+        }],
+        proposedFollowUps: [],
+        coverageLimits: ["Synthetic deep scope-approval proof."],
+      } }])
+      .respondWithTools([{ name: "eval", args: { code: secondEval } }]);
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:deep-scope-approval",
+        createdAt: "2026-08-02T16:20:00.000Z",
+        leaseExpiresAt: "2026-08-02T16:30:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-02T16:20:00.000Z",
+    });
+    const scopeCatalog = new ResearchScopeCatalogBroker({
+      tenantOrigin: request.scope.siteOrigin,
+      providers: {
+        jira: { async listProjects() { return { candidates: [{
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-project",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "jira",
+          entityKind: "project",
+          entityRef: "research-scope-entity:related-project",
+          key: "RELATED",
+          name: "Related project",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: "2026-08-02T16:20:00.000Z",
+        }] }; } },
+        confluence: { async listSpaces() { return { candidates: [] }; } },
+        async resolveReference() { return undefined; },
+      },
+    });
+    await expect(runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { throw new Error("content search must not run before approval"); }, async getIssue() { throw new Error("content get must not run before approval"); } },
+        wiki: { async searchPage() { throw new Error("content search must not run before approval"); }, async getPage() { throw new Error("content get must not run before approval"); } },
+      },
+      researchGraph: graph,
+      brief,
+      durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
+      scopeCatalog: { broker: scopeCatalog, tenantOrigin: request.scope.siteOrigin },
+      runId: "deep-scope-approval",
+    })).rejects.toMatchObject({ code: "scope-approval-required" });
+
+    const session = await durableStore.read(graph.sessionId);
+    const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
+    expect(session!.status).toBe("waiting_scope_approval");
+    expect(turn.scopeExpansionProposals).toEqual([
+      expect.objectContaining({ expansionKind: "whole_scope", status: "proposed" }),
+    ]);
+    expect(turn.tasks).toHaveLength(1);
+    expect(turn.tasks[0]?.taskId).toBe(researchTaskIdForNodeV1(graph, researcher));
+    expect(dynamicModel.callCount).toBe(4);
   });
 
   test("continues a durable deep run through source, analysis, and synthesis frontiers", async () => {

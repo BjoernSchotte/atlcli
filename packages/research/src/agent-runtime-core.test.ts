@@ -11,6 +11,8 @@ import {
   createResearchRetrievalContinuationPtcTool,
   createResearchRetrievalCheckpointPtcTool,
   createResearchReadyFrontierPtcTool,
+  createResearchScopeDiscoveriesPtcTool,
+  createResearchScopeDiscoveryDispositionsPtcTool,
   hostSearchCoverageLimitationsV1,
 } from "./agent-runtime-core.js";
 import { createResearchBriefV1 } from "./brief.js";
@@ -24,6 +26,11 @@ import {
   RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
   RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1,
 } from "./session.js";
+import {
+  createResearchScopeDiscoveryDispositionV1,
+  createResearchScopeDiscoveryV1,
+  createResearchScopeExpansionProposalV1,
+} from "./scope-discovery.js";
 
 const evalTool = tool(async () => "unused", {
   name: "eval",
@@ -503,6 +510,151 @@ describe("ready frontier PTC", () => {
       canRead: () => false,
       frontier: () => [],
     }).invoke({ graphRevision: graph.revision })).rejects.toThrow("not available");
+  });
+});
+
+describe("central related-scope disposition PTCs", () => {
+  test("projects bounded metadata and records only a host-validated supervisor decision", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:scope-disposition-tool",
+      turnId: "research-turn:scope-disposition-tool",
+      objective: "Which related Jira project is referenced by this bounded research?",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      asOf: "2026-08-02T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const discovery = createResearchScopeDiscoveryV1({
+      id: "scope-discovery:jira-research:related",
+      taskId: researchTaskIdForNodeV1(graph, node),
+      nodeId: node.id,
+      graphRevision: graph.revision,
+      capability: "atlassian.reference.resolve",
+      candidate: {
+        schema: "atlcli.research-scope-candidate/v1",
+        id: "research-scope-candidate:related-project",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "jira",
+        entityKind: "project",
+        entityRef: "research-scope-entity:related-project",
+        key: "RELATED",
+        name: "Related project",
+        status: "current",
+        accessible: true,
+        providerFreshnessAt: "2026-08-02T10:00:00.000Z",
+      },
+      reason: "An admitted research node resolved an exact current-tenant reference.",
+      provenanceRefs: [
+        `task:${researchTaskIdForNodeV1(graph, node)}`,
+        "ptc:atlassian.reference.resolve:1",
+        "capability:atlassian.reference.resolve",
+      ],
+      observedAt: "2026-08-02T10:00:00.000Z",
+    });
+    const discoveries = [discovery];
+    const read = createResearchScopeDiscoveriesPtcTool({
+      activeGraph: () => graph,
+      canRead: () => true,
+      expansionMode: () => "ask",
+      discoveries: () => discoveries,
+    });
+
+    const projection = JSON.parse(await read.invoke({ graphRevision: graph.revision }));
+    expect(projection).toEqual({
+      schema: "atlcli.research-scope-discoveries/v1",
+      graphRevision: graph.revision,
+      expansionMode: "ask",
+      discoveries: [{
+        discoveryId: discovery.id,
+        candidateId: discovery.candidate.id,
+        product: "jira",
+        entityKind: "project",
+        key: "RELATED",
+        name: "Related project",
+        capability: "atlassian.reference.resolve",
+      }],
+    });
+    expect(JSON.stringify(projection)).not.toContain("research-scope-entity");
+    expect(JSON.stringify(projection)).not.toContain("example.atlassian.net");
+    let recordedInput: unknown;
+    const dispositions = createResearchScopeDiscoveryDispositionsPtcTool({
+      activeGraph: () => graph,
+      canRecord: () => true,
+      discoveries: () => discoveries,
+      disposition: async (input) => {
+        recordedInput = input;
+        const proposal = createResearchScopeExpansionProposalV1({
+          id: "scope-expansion:r1-d1",
+          sessionId: graph.sessionId,
+          turnId: graph.turnId,
+          basedOnBriefRevision: graph.basedOnBriefRevision,
+          basedOnGraphRevision: graph.revision,
+          candidateId: discovery.candidate.id,
+          expansionKind: "whole_scope",
+          reason: "The central supervisor accepted an exact related reference.",
+          provenanceRefs: [discovery.id],
+          status: "proposed",
+        });
+        return {
+          dispositions: [createResearchScopeDiscoveryDispositionV1({
+            id: "scope-disposition:r1:1",
+            discoveryId: discovery.id,
+            candidateId: discovery.candidate.id,
+            decision: "propose_whole_scope",
+            reasonCode: "exact_reference",
+            proposedExpansionId: proposal.id,
+            recordedAt: "2026-08-02T10:00:01.000Z",
+          })],
+          proposal,
+        };
+      },
+    });
+
+    const recorded = JSON.parse(await dispositions.invoke({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: discovery.id,
+        decision: "propose_whole_scope",
+        reasonCode: "exact_reference",
+      }],
+    }));
+    expect(recordedInput).toEqual({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: discovery.id,
+        decision: "propose_whole_scope",
+        reasonCode: "exact_reference",
+      }],
+    });
+    expect(recorded).toEqual({
+      schema: "atlcli.research-scope-discovery-dispositions/v1",
+      graphRevision: graph.revision,
+      dispositionIds: ["scope-disposition:r1:1"],
+      status: "waiting_scope_approval",
+      proposal: {
+        id: "scope-expansion:r1-d1",
+        candidateId: discovery.candidate.id,
+        expansionKind: "whole_scope",
+        status: "proposed",
+      },
+    });
+    await expect(dispositions.invoke({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: "scope-discovery:unknown",
+        decision: "reject",
+        reasonCode: "not_material",
+      }],
+    })).rejects.toThrow("unknown or duplicate");
   });
 });
 

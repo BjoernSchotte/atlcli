@@ -533,6 +533,7 @@ export type ResearchOneShotEventV1 = Extract<
 export type ResearchErrorCode =
   | "invalid-request"
   | "plan-approval-required"
+  | "scope-approval-required"
   | "clarification-required"
   | "missing-key"
   | "invalid-key"

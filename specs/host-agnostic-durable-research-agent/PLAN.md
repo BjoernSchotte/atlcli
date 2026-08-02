@@ -3770,11 +3770,17 @@ Shared:
       capability, and PTC-call provenance while the admitting task runs.
       The reducer verifies the active task grant and records neither a binding
       nor an expansion proposal (2026-08-02).
-- [ ] Let the central supervisor accept or reject each related-scope candidate
+- [x] Let the central supervisor accept or reject each related-scope candidate
       and, when content is materially required, create a typed
       `ResearchScopeExpansionProposalV1` for either one exact entity or a whole
       project/space. Record the coverage gap or exact reference that motivated
-      it.
+      it. The host gives the supervisor only a bounded metadata projection at
+      a settled discovery frontier; the supervisor submits closed-enum
+      dispositions through QuickJS/PTC, while the reducer creates all durable
+      IDs, provenance, and proposal text atomically. A proposal releases the
+      run into `waiting_scope_approval` before any candidate content read;
+      characterization tests cover both the one-eval and checkpointed deep
+      `createDeepAgent` paths (2026-08-02).
 - [ ] Enforce `strict`, `ask`, and `exact-linked` deterministically. A
       preauthorized exact-linked read is current-tenant, exact-identity, capped,
       visible, and cannot fan out into its whole parent scope. Every
