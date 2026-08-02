@@ -475,6 +475,25 @@ export type ResearchEventV1 =
       status: "authorized" | "retained_without_execution" | "completed";
       reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
     }
+  | {
+      /**
+       * Host-derived, body-free assessment at a retrieval-wave boundary.
+       * Source identities, queries, URLs, and model reasoning are deliberately
+       * not part of this cross-host event contract.
+       */
+      kind: "retrieval";
+      seq: number;
+      at: string;
+      graphRevision: number;
+      action: "continue" | "replan" | "stop";
+      reason: string;
+      rankedCandidateCount: number;
+      detailReadCount: number;
+      newDetailSourceCount: number;
+      duplicateDetailReadCount: number;
+      unresolvedCoverageTargetCount: number;
+      unresolvedContradictionCount: number;
+    }
   | { kind: "steering"; seq: number; at: string; revision: number; status: string }
   | {
       kind: "budget";
@@ -504,6 +523,7 @@ export type ResearchOneShotEventV1 = Extract<
       | "reconciliation"
       | "reconciliation_disposition"
       | "repair_group"
+      | "retrieval"
       | "budget"
       | "artifact";
   }

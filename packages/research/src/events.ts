@@ -184,6 +184,23 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       ["accepted_follow_up", "wave_or_budget_exhausted", "packet_accepted"]
         .includes(String(event.reasonCode));
   }
+  if (event.kind === "retrieval") {
+    return hasOnlyKeys(event, [
+      "kind", "seq", "at", "graphRevision", "action", "reason",
+      "rankedCandidateCount", "detailReadCount", "newDetailSourceCount",
+      "duplicateDetailReadCount", "unresolvedCoverageTargetCount",
+      "unresolvedContradictionCount",
+    ]) &&
+      positiveInteger(event.graphRevision) &&
+      ["continue", "replan", "stop"].includes(String(event.action)) &&
+      boundedToken(event.reason) &&
+      nonNegativeInteger(event.rankedCandidateCount) &&
+      nonNegativeInteger(event.detailReadCount) &&
+      nonNegativeInteger(event.newDetailSourceCount) &&
+      nonNegativeInteger(event.duplicateDetailReadCount) &&
+      nonNegativeInteger(event.unresolvedCoverageTargetCount) &&
+      nonNegativeInteger(event.unresolvedContradictionCount);
+  }
   if (event.kind === "budget") {
     return hasOnlyKeys(event, ["kind", "seq", "at", "metric", "consumed", "maximum"]) &&
       ["capability_calls", "tokens", "bytes", "duration_ms", "cost_micros"]
@@ -289,6 +306,17 @@ export function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): str
       event.status,
       event.reasonCode,
       event.taskId ?? "",
+    ].filter(Boolean).join(" · ");
+    case "retrieval": return [
+      `retrieval · graph ${event.graphRevision}`,
+      event.action,
+      event.reason.replaceAll("_", " "),
+      `${event.rankedCandidateCount} ranked`,
+      `${event.detailReadCount} detail reads`,
+      `${event.newDetailSourceCount} new`,
+      event.duplicateDetailReadCount === 0 ? "" : `${event.duplicateDetailReadCount} duplicates`,
+      event.unresolvedCoverageTargetCount === 0 ? "" : `${event.unresolvedCoverageTargetCount} coverage gaps`,
+      event.unresolvedContradictionCount === 0 ? "" : `${event.unresolvedContradictionCount} contradictions`,
     ].filter(Boolean).join(" · ");
     case "budget": return `budget · ${event.metric} · ${event.consumed}/${event.maximum}`;
     case "artifact": return `artifact · ${event.path}`;

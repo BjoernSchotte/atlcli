@@ -1136,6 +1136,10 @@ async function runEstablishedResearchCliSession(
           input.dependencies.writeStderr(
             `[research] reconciliation=${event.taskId} status=${event.status}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.proposedFollowUpCount === undefined ? "" : ` follow_ups=${event.proposedFollowUpCount}`}\n`,
           );
+        } else if (event.kind === "retrieval") {
+          input.dependencies.writeStderr(
+            `[research] retrieval graph_revision=${event.graphRevision} action=${event.action} reason=${event.reason} ranked=${event.rankedCandidateCount} detail_reads=${event.detailReadCount} new_sources=${event.newDetailSourceCount} duplicates=${event.duplicateDetailReadCount} coverage_gaps=${event.unresolvedCoverageTargetCount} contradictions=${event.unresolvedContradictionCount}\n`,
+          );
         } else if (event.kind === "budget") {
           input.dependencies.writeStderr(
             `[research] budget=${event.metric} consumed=${event.consumed} maximum=${event.maximum}\n`,

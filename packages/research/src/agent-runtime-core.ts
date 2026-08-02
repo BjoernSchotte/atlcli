@@ -2097,9 +2097,34 @@ async function runResearchAgentWithBindings(
     broker.signal.throwIfAborted();
     const completedAtMs = now();
     const counts = broker.budget.counts();
-    const completion = broker.completionStatus(
-      isDynamic ? selectedSearchProductsV1(acceptedGraph) : undefined,
-    );
+    const selectedProducts = isDynamic ? selectedSearchProductsV1(acceptedGraph) : undefined;
+    const completion = broker.completionStatus(selectedProducts);
+    const assessedProducts = selectedProducts && selectedProducts.length > 0
+      ? selectedProducts
+      : isDynamic
+        ? []
+        : undefined;
+    if (assessedProducts === undefined || assessedProducts.length > 0) {
+      const assessment = broker.retrievalAssessment(assessedProducts);
+      emitEvent({
+        kind: "retrieval",
+        graphRevision: acceptedGraph?.revision ?? input.researchGraph?.revision ?? 1,
+        action: assessment.action,
+        reason: assessment.reason,
+        rankedCandidateCount: assessment.products.reduce(
+          (total, product) => total + product.rankedCandidateCount,
+          0,
+        ),
+        detailReadCount: assessment.products.reduce(
+          (total, product) => total + product.detailReadCount,
+          0,
+        ),
+        newDetailSourceCount: assessment.newDetailSourceCount,
+        duplicateDetailReadCount: assessment.duplicateDetailReadCount,
+        unresolvedCoverageTargetCount: assessment.unresolvedCoverageTargetCount,
+        unresolvedContradictionCount: assessment.unresolvedContradictionCount,
+      });
+    }
     emitProgress({
       phase: "rendering",
       message: "Validating evidence and rendering Markdown.",

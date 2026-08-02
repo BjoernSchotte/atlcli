@@ -1734,6 +1734,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "subagent", "task", "budget", "budget", "subagent",
       "decision",
       "decision",
+      "retrieval",
       "phase", "progress",
       "decision", "decision", "budget",
       "artifact",
@@ -1761,6 +1762,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       wave: 1,
       dependencyTaskIds: [],
       grantedCapabilityIds: [],
+    });
+    expect(traceEvents.find((event) => event.kind === "retrieval")).toMatchObject({
+      action: "stop",
+      reason: "no_ranked_candidates",
+      rankedCandidateCount: 0,
+      detailReadCount: 0,
     });
     expect(traceEvents.find(
       (event) => event.kind === "task" && event.status === "packet-accepted",

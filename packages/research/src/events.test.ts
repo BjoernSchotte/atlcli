@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { isResearchOneShotEventV1 } from "./events.js";
+import {
+  formatResearchOneShotEventV1,
+  isResearchOneShotEventV1,
+} from "./events.js";
 
 const capabilityEvent = (overrides: Record<string, unknown> = {}) => ({
   kind: "capability",
@@ -47,5 +50,28 @@ describe("research one-shot events", () => {
     expect(isResearchOneShotEventV1(capabilityEvent({
       inputKind: "graphql",
     }))).toBe(false);
+  });
+
+  it("admits and formats body-free deterministic retrieval assessments", () => {
+    const event = {
+      kind: "retrieval" as const,
+      seq: 4,
+      at: "2026-08-02T12:00:00.000Z",
+      graphRevision: 2,
+      action: "stop" as const,
+      reason: "detail_budget_exhausted",
+      rankedCandidateCount: 12,
+      detailReadCount: 8,
+      newDetailSourceCount: 8,
+      duplicateDetailReadCount: 0,
+      unresolvedCoverageTargetCount: 2,
+      unresolvedContradictionCount: 0,
+    };
+    expect(isResearchOneShotEventV1(event)).toBe(true);
+    expect(formatResearchOneShotEventV1(event)).toBe(
+      "retrieval · graph 2 · stop · detail budget exhausted · 12 ranked · 8 detail reads · 8 new · 2 coverage gaps",
+    );
+    expect(isResearchOneShotEventV1({ ...event, sourceId: "private:source" })).toBe(false);
+    expect(isResearchOneShotEventV1({ ...event, reason: "private source title" })).toBe(false);
   });
 });
