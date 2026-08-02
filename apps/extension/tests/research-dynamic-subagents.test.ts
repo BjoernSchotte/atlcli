@@ -1790,7 +1790,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(false);
   });
 
-  test("continues a durable deep run through one host checkpoint and exact ready frontiers", async () => {
+  test("continues a durable deep run through source, analysis, and synthesis frontiers", async () => {
     const brief = graphBrief(
       "Research the bounded Jira evidence before composing a report.",
       ["jira"],
@@ -1799,6 +1799,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     );
     const graph = composeResearchGraphV1(brief);
     const researcher = graph.nodes.find((node) => node.kind === "search" && node.roleId)!;
+    const coverageModerator = graph.nodes.find((node) => node.roleId === "coverage-moderator")!;
     const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer")!;
     const draft = {
       title: "Checkpointed deep research",
@@ -1823,7 +1824,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
     };
     const firstEval = `
-      ${graphProposalPrelude(graph, [researcher.id, synthesizer.id])}
+      ${graphProposalPrelude(graph, [researcher.id, coverageModerator.id, synthesizer.id])}
       const responseSchemas = ${JSON.stringify(responseSchemas)};
       const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: acceptedGraph.graphRevision }));
       await Promise.all(frontier.tasks.map((returnedTask) => task({
@@ -1846,7 +1847,19 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       }));
       const responseSchemas = ${JSON.stringify(responseSchemas)};
       const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
-      const finalTask = frontier.tasks[0];
+      const analysisTask = frontier.tasks[0];
+      await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: analysisTask.taskId,
+          objective: analysisTask.objective,
+          dependencyResults: analysisTask.dependencyResults
+        }),
+        subagentType: analysisTask.subagentType,
+        responseSchema: responseSchemas[analysisTask.outputSchema]
+      });
+      const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+      const finalTask = finalFrontier.tasks[0];
       const finalDraft = await task({
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
@@ -1863,6 +1876,10 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "eval", args: { code: firstEval } }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket }])
       .respondWithTools([{ name: "eval", args: { code: secondEval } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: {
+        ...emptyPacket,
+        answeredQuestion: "The host-admitted analysis frontier completed.",
+      } }])
       .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
     const durableStore = new InMemoryResearchSessionStoreV1();
@@ -1895,7 +1912,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(5);
+    expect(dynamicModel.callCount).toBe(6);
     expect(events.filter((event) => event.kind === "retrieval")).toEqual([
       expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),
     ]);
@@ -1912,8 +1929,19 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     ]);
     expect(turn.tasks.map((task) => task.taskId)).toEqual([
       researchTaskIdForNodeV1(graph, researcher),
+      researchTaskIdForNodeV1(graph, coverageModerator),
       researchTaskIdForNodeV1(graph, synthesizer),
     ]);
+    expect(turn.tasks.find((task) => task.taskId === researchTaskIdForNodeV1(
+      graph,
+      coverageModerator,
+    ))).toMatchObject({ status: "complete" });
+    expect(events.find((event) => event.kind === "task" &&
+      event.status === "planned" &&
+      event.taskId === researchTaskIdForNodeV1(graph, coverageModerator),
+    )).toMatchObject({
+      dependencyTaskIds: [researchTaskIdForNodeV1(graph, researcher)],
+    });
   });
 
   test("lets one supervisor prune optional roles before any native task dispatch", async () => {
