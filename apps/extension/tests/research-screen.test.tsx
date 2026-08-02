@@ -390,12 +390,14 @@ describe("portable Research screen", () => {
       "research-question",
       "Nutze Jira Projektkey DEMO und Confluence Spacekey KB: Wie hängen DEMO-1 und Seite 1001 zusammen?"
     );
+    await dom.setValue("research-max-cost-usd", "1.25");
     await dom.toggle("research-disclosure");
     await dom.click("research-run");
     await dom.flush();
 
     expect(stored).toBe(true);
     expect(preflightInputs[0]).toMatchObject({
+      limits: { maxModelCostMicros: 1_250_000 },
       scope: {
         siteOrigin: "https://example.atlassian.net",
         jiraProjectKeys: [],
@@ -410,6 +412,7 @@ describe("portable Research screen", () => {
       jiraProjectKeys: ["DEMO"],
       confluenceSpaceKeys: ["KB"],
     });
+    expect(dom.find("research-model-cost-summary").textContent).toContain("1.25");
     expect(observed[0]!.scopeSeeds).toEqual(expect.arrayContaining([
       expect.objectContaining({
         binding: expect.objectContaining({ source: "natural_language", key: "DEMO" }),
@@ -451,6 +454,46 @@ describe("portable Research screen", () => {
     )).toBe(false);
     expect(dom.html()).not.toContain("<script");
     expect((globalThis as Record<string, unknown>).chrome).toBeUndefined();
+  });
+
+  it("rejects an unsafe browser model-cost budget before scope or provider access", async () => {
+    let scopeCalls = 0;
+    let runCalls = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => {
+        scopeCalls += 1;
+        return {
+          schema: "atlcli.research-scope-preflight-outcome/v1",
+          kind: "ready",
+          request,
+          mentions: [],
+          resolutions: [],
+        };
+      },
+      run: async () => {
+        runCalls += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-question", "How are DEMO-1 and KB related?");
+    await dom.setValue("research-max-cost-usd", "25.01");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect({ scopeCalls, runCalls }).toEqual({ scopeCalls: 0, runCalls: 0 });
+    expect(dom.find("research-error").textContent)
+      .toContain("Enter a maximum model cost from $0.01 to $25.00.");
   });
 
   it("requests a cooperative durable pause without cancelling the active run", async () => {

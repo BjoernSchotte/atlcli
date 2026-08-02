@@ -61,6 +61,22 @@ import { cn } from "../ui/utils.js";
 
 export const RESEARCH_SCREEN_ID = "research";
 const MAX_RESEARCH_ACTIVITY_EVENTS = 500;
+const MICROS_PER_USD = 1_000_000;
+const MIN_RESEARCH_MODEL_COST_USD = 0.01;
+const MAX_RESEARCH_MODEL_COST_USD = 25;
+
+function modelCostMicrosFromUsdInput(value: string, invalidMessage: string): number {
+  const usd = Number(value);
+  const micros = Math.round(usd * MICROS_PER_USD);
+  if (
+    !Number.isFinite(usd)
+    || micros < MIN_RESEARCH_MODEL_COST_USD * MICROS_PER_USD
+    || micros > MAX_RESEARCH_MODEL_COST_USD * MICROS_PER_USD
+  ) {
+    throw new ResearchContractError("invalid-request", invalidMessage);
+  }
+  return micros;
+}
 
 function splitScopeValues(value: string): string[] {
   return [...new Set(
@@ -412,6 +428,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [includeCurrentContext, setIncludeCurrentContext] = useState(true);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [maxCostUsd, setMaxCostUsd] = useState(
+    String(DEFAULT_RESEARCH_LIMITS_V1.maxModelCostMicros / MICROS_PER_USD),
+  );
   const [effort, setEffort] = useState<ResearchRequestedEffortV1>(
     DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedEffort,
   );
@@ -674,6 +693,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         throw new ResearchContractError("invalid-request", t("research.disclosure"));
       }
       const initialRequest = retry?.request ?? (() => {
+        const maxModelCostMicros = modelCostMicrosFromUsdInput(
+          maxCostUsd,
+          t("research.maxCost.invalid"),
+        );
         const scope = inferResearchScope({
           siteOrigin: site.origin,
           question,
@@ -695,7 +718,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             },
           },
           scopeSeeds: scope.scopeSeeds,
-          limits: DEFAULT_RESEARCH_LIMITS_V1,
+          limits: {
+            ...DEFAULT_RESEARCH_LIMITS_V1,
+            maxModelCostMicros,
+          },
           wikiProvider: "rest",
         });
       })();
@@ -1422,8 +1448,24 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                 <option value="required">{t("research.reconciliation.required")}</option>
               </Select>
             </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="research-max-cost-usd">{t("research.maxCost")}</Label>
+              <Input
+                id="research-max-cost-usd"
+                data-testid="research-max-cost-usd"
+                type="number"
+                inputMode="decimal"
+                min={MIN_RESEARCH_MODEL_COST_USD}
+                max={MAX_RESEARCH_MODEL_COST_USD}
+                step="0.01"
+                value={maxCostUsd}
+                onChange={(event) => setMaxCostUsd(event.target.value)}
+                disabled={running}
+              />
+            </div>
           </div>
           <FieldHelp>{t("research.policy.help")}</FieldHelp>
+          <FieldHelp>{t("research.maxCost.help")}</FieldHelp>
           <FieldHelp>{t("research.keys.help")}</FieldHelp>
           {(site?.activeProjectKey || site?.activeSpaceKey) && (
             <CheckboxField
@@ -1449,6 +1491,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <Alert tone="muted">
             <AlertTitle>{t("research.limits")}</AlertTitle>
             <p className="m-0 mt-1">{t("research.limits.value")}</p>
+            <p className="m-0 mt-1" data-testid="research-model-cost-summary">
+              {t("research.maxCost.value", { cost: maxCostUsd || "—" })}
+            </p>
           </Alert>
           <CheckboxField
             checked={disclosed}
