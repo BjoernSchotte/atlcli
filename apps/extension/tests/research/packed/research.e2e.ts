@@ -26,10 +26,12 @@ import {
   InMemoryResearchSessionStoreV1,
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
   RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
   RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
   RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
   RESEARCH_REQUEST_SCHEMA_V1,
+  assessResearchRetrievalV1,
   createResearchSessionV1,
   createStandardResearchBriefV1,
   initializeResearchSessionTurnV1,
@@ -41,6 +43,7 @@ import {
   type ResearchScopePreflightOutcomeV1,
   type ResearchSessionUpdateV1,
   type ResearchSessionV1,
+  type ResearchTaskAttemptV1,
 } from "@atlcli/research";
 import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
 import {
@@ -1872,6 +1875,131 @@ function packedClarificationPlanningSession(): ResearchSessionV1 {
   }, "2026-08-01T15:00:03.000Z");
 }
 
+/** A synthetic durable checkpoint written before the first offscreen startup. */
+function packedExpiredRetrievalCheckpointSession(): ResearchSessionV1 {
+  const sessionId = "research-session:packed-startup-recovery";
+  const turnId = "research-turn:packed-startup-recovery";
+  const at = "2020-01-01T00:00:00.000Z";
+  const request = hostParityRequest();
+  const brief = createStandardResearchBriefV1(request.question, {
+    sessionId,
+    turnId,
+    scope: request.scope,
+    scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+    limits: request.limits,
+    asOf: at,
+    policy: HOST_PARITY_POLICY,
+  });
+  let session = createResearchSessionV1({
+    sessionId,
+    ownerId: "owner:packed-startup-recovery",
+    createdAt: at,
+    leaseExpiresAt: "2020-01-01T00:10:00.000Z",
+  });
+  session = updatePackedResearchSession(session, { kind: "create_turn", turnId }, "2020-01-01T00:00:01.000Z");
+  session = updatePackedResearchSession(session, { kind: "record_brief", brief }, "2020-01-01T00:00:02.000Z");
+  const catalog = stageResearchGraphForDurableSessionV1(composeResearchGraphV1(brief));
+  session = updatePackedResearchSession(session, {
+    kind: "propose_graph",
+    graph: catalog,
+    retainLeaseForImmediateApproval: true,
+  }, "2020-01-01T00:00:03.000Z");
+  session = updatePackedResearchSession(session, {
+    kind: "approve_graph",
+    graphRevision: catalog.revision,
+  }, "2020-01-01T00:00:04.000Z");
+  const selectedNodeIds = new Set(catalog.nodes
+    .filter((node) => node.kind !== "repair")
+    .map((node) => node.id));
+  session = updatePackedResearchSession(session, {
+    kind: "commit_graph_selection",
+    proposal: {
+      schema: "atlcli.research-graph-proposal/v1",
+      basedOnBriefRevision: catalog.basedOnBriefRevision,
+      basedOnGraphRevision: catalog.revision,
+      nodes: catalog.nodes.filter((node) => selectedNodeIds.has(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => selectedNodeIds.has(dependency)),
+        reasonCodes: [...node.reasonCodes],
+      })),
+    },
+  }, "2020-01-01T00:00:05.000Z");
+  const graph = session.turns[0]!.graph!;
+  const node = graph.nodes.find((candidate) => candidate.status === "ready")!;
+  const task: ResearchTaskAttemptV1 = {
+    schema: "atlcli.research-task-attempt/v1",
+    taskId: "task:packed-startup-recovery",
+    nodeId: node.id,
+    graphRevision: graph.revision,
+    attempt: 1,
+    executor: node.executor,
+    ...(node.roleId ? { roleId: node.roleId } : {}),
+    grantedCapabilityIds: [...node.grantedCapabilityIds],
+    typedIntentRefs: [...node.typedIntentRefs],
+    expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    budget: { ...node.budget },
+    status: "ready",
+    dispatchState: "not_started",
+    createdAt: graph.createdAt,
+  };
+  session = updatePackedResearchSession(session, {
+    kind: "admit_tasks",
+    graphRevision: graph.revision,
+    tasks: [task],
+  }, "2020-01-01T00:00:06.000Z");
+  session = updatePackedResearchSession(session, {
+    kind: "dispatch_started",
+    taskId: task.taskId,
+    graphRevision: graph.revision,
+  }, "2020-01-01T00:00:07.000Z");
+  const body = {
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    answeredQuestion: "Synthetic checkpoint evidence is complete.",
+    sourceIds: [],
+    findingCandidates: [],
+    relationshipCandidates: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: [],
+  };
+  session = updatePackedResearchSession(session, {
+    kind: "accept_packet",
+    taskId: task.taskId,
+    graphRevision: graph.revision,
+    body,
+    usage: { capabilityCalls: 0, inputTokens: 0, outputTokens: 0, resultBytes: 256, durationMs: 1, costMicros: 0 },
+    availableSourceIds: [],
+    maximumResultBytes: task.budget.maxResultBytes,
+    budgetState: {
+      schema: "atlcli.research-run-budget/v1",
+      ptcCalls: 1,
+      httpAttempts: 1,
+      responseBytes: 256,
+      pages: { jira: 1, confluence: 0 },
+      items: { jira: 1, confluence: 0 },
+      details: { jira: 1, confluence: 0 },
+    },
+  }, "2020-01-01T00:00:08.000Z");
+  return updatePackedResearchSession(session, {
+    kind: "record_retrieval_assessment",
+    graphRevision: graph.revision,
+    assessment: assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 1,
+      httpAttemptsRemaining: 1,
+    }),
+    issueContinuation: true,
+  }, "2020-01-01T00:00:09.000Z");
+}
+
 async function runNodeHostParityFixture(): Promise<{
   report: ResearchReport;
   events: ResearchOneShotEventV1[];
@@ -3019,6 +3147,61 @@ test("persists and resolves a packed scope choice before key storage or worker s
   expect(events.filter((event) => event.kind === "scope-catalog-fetch")).toHaveLength(4);
   expect(events.some((event) => event.kind === "worker-start")).toBe(false);
   expect(events.some((event) => event.kind === "fetch")).toBe(false);
+});
+
+test("recovers an expired retrieval checkpoint when the first offscreen document starts", async () => {
+  await installEventCapture(page);
+  const empty = await page.evaluate(async () => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:list-resumable-sessions",
+      windowId: window.id,
+    });
+  });
+  expect(empty).toMatchObject({
+    kind: "research:list-resumable-sessions-result",
+    ok: true,
+  });
+
+  const checkpoint = packedExpiredRetrievalCheckpointSession();
+  await writePackedDurableResearchSession(page, checkpoint);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  try {
+    const trigger = await runPackedResearchInBackground(
+      page,
+      hostParityRequest(),
+      "packed-startup-recovery-trigger",
+    );
+    if (!trigger.ok) {
+      throw new Error(JSON.stringify({ trigger, events: await harnessEvents(page) }, null, 2));
+    }
+    await expect.poll(async () => {
+      const durable = await readPackedDurableResearchSession(
+        page,
+        checkpoint.sessionId,
+        "artifact:report:research-turn:packed-startup-recovery",
+      );
+      return durable.session.state.status;
+    }, { timeout: 30_000 }).toBe("paused");
+    const recovered = await readPackedDurableResearchSession(
+      page,
+      checkpoint.sessionId,
+      "artifact:report:research-turn:packed-startup-recovery",
+    );
+    expect(recovered.session.state.turns[0]?.retrievalAssessments).toEqual([
+      expect.objectContaining({
+        continuation: expect.objectContaining({ status: "issued" }),
+      }),
+    ]);
+    expect(recovered.artifact).toBeUndefined();
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
 });
 
 test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {

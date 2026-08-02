@@ -3269,8 +3269,20 @@ Extension/browser:
 - [x] Initialize and hand off an accepted durable one-shot turn to the shared
       browser runtime, use its virtual workspace, and persist the canonical
       Markdown artifact before completion.
-- [ ] Recover expired leases at offscreen startup and on an explicit session
-      resume.
+- [x] Recover expired leases at offscreen startup and on an explicit session
+      resume. Startup recovery may release only an undispatched approved plan
+      or convert a fully settled retrieval checkpoint with exactly one issued,
+      unconsumed continuation into `paused`; it must leave in-flight or
+      outcome-unknown provider work untouched.
+
+T4 browser expiry-recovery checkpoint (2026-08-02): each offscreen-document
+startup opens the IndexedDB session store and invokes the shared fenced sweep.
+It first claims an expired safe boundary with a fresh epoch, then either
+releases the undispatched plan or records the same `request_pause` plus
+`acknowledge_pause` transition used by a cooperative pause. The latter preserves
+the one issued continuation for the existing explicit-resume path; it does not
+retry or infer a lost provider call. Core tests cover a safe checkpoint,
+an undispatched plan, a non-expired lease, and an interrupted task.
 - [ ] Persist plan-approval and steering waits before notifying the sidebar;
       sidebar closure or browser restart must not auto-approve a plan.
 

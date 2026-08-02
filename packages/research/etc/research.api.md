@@ -763,6 +763,17 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
+export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
+    store: ResearchSessionStoreV1;
+    ownerId: string;
+    leaseDurationMs: number;
+    at: string;
+}
+
+// export: recoverExpiredResearchSessionsAtSafeBoundaryV1
+export declare function recoverExpiredResearchSessionsAtSafeBoundaryV1(input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1): Promise<ResearchSessionV1[]>;
+
 // export: RecoverResearchSessionForResumeInputV1
 export interface RecoverResearchSessionForResumeInputV1 {
     store: ResearchSessionStoreV1;
@@ -5125,6 +5136,17 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
+export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
+    store: ResearchSessionStoreV1;
+    ownerId: string;
+    leaseDurationMs: number;
+    at: string;
+}
+
+// export: recoverExpiredResearchSessionsAtSafeBoundaryV1
+export declare function recoverExpiredResearchSessionsAtSafeBoundaryV1(input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1): Promise<ResearchSessionV1[]>;
+
 // export: RecoverResearchSessionForResumeInputV1
 export interface RecoverResearchSessionForResumeInputV1 {
     store: ResearchSessionStoreV1;
@@ -9484,6 +9506,17 @@ export interface ReconciliationBodyV1 {
     defects: ResearchReconciliationDefectV1[];
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
+
+// export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
+export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
+    store: ResearchSessionStoreV1;
+    ownerId: string;
+    leaseDurationMs: number;
+    at: string;
+}
+
+// export: recoverExpiredResearchSessionsAtSafeBoundaryV1
+export declare function recoverExpiredResearchSessionsAtSafeBoundaryV1(input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1): Promise<ResearchSessionV1[]>;
 
 // export: RecoverResearchSessionForResumeInputV1
 export interface RecoverResearchSessionForResumeInputV1 {
@@ -14026,6 +14059,17 @@ export interface ReconciliationBodyV1 {
     defects: ResearchReconciliationDefectV1[];
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
+
+// export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
+export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
+    store: ResearchSessionStoreV1;
+    ownerId: string;
+    leaseDurationMs: number;
+    at: string;
+}
+
+// export: recoverExpiredResearchSessionsAtSafeBoundaryV1
+export declare function recoverExpiredResearchSessionsAtSafeBoundaryV1(input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1): Promise<ResearchSessionV1[]>;
 
 // export: RecoverResearchSessionForResumeInputV1
 export interface RecoverResearchSessionForResumeInputV1 {
@@ -18744,6 +18788,17 @@ export interface ReconciliationBodyV1 {
     defects: ResearchReconciliationDefectV1[];
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
+
+// export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
+export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
+    store: ResearchSessionStoreV1;
+    ownerId: string;
+    leaseDurationMs: number;
+    at: string;
+}
+
+// export: recoverExpiredResearchSessionsAtSafeBoundaryV1
+export declare function recoverExpiredResearchSessionsAtSafeBoundaryV1(input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1): Promise<ResearchSessionV1[]>;
 
 // export: RecoverResearchSessionForResumeInputV1
 export interface RecoverResearchSessionForResumeInputV1 {
@@ -24691,6 +24746,17 @@ export interface ReconciliationBodyV1 {
     defects: ResearchReconciliationDefectV1[];
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
+
+// export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
+export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
+    store: ResearchSessionStoreV1;
+    ownerId: string;
+    leaseDurationMs: number;
+    at: string;
+}
+
+// export: recoverExpiredResearchSessionsAtSafeBoundaryV1
+export declare function recoverExpiredResearchSessionsAtSafeBoundaryV1(input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1): Promise<ResearchSessionV1[]>;
 
 // export: RecoverResearchSessionForResumeInputV1
 export interface RecoverResearchSessionForResumeInputV1 {

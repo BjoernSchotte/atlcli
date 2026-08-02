@@ -13,18 +13,25 @@ import {
   initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
   proposeResearchGraphForReadyBriefV1,
+  recoverExpiredResearchSessionsAtSafeBoundaryV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
   resolveResearchSessionScopeClarificationV1,
   resolveResearchSessionClarificationsV1,
 } from "./session-runtime.js";
+import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
+import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
 import {
   createResearchKeyScopeSeedV1,
   createResearchScopeExpansionProposalV1,
 } from "./scope-discovery.js";
-import { RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
+import {
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
+  type ResearchTaskAttemptV1,
+} from "./workflow-contracts.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
@@ -99,6 +106,113 @@ function session() {
     createdAt: "2026-08-01T15:00:00.000Z",
     leaseExpiresAt: "2026-08-01T15:10:00.000Z",
   });
+}
+
+async function selectedRuntimeGraph() {
+  const store = new InMemoryResearchSessionStoreV1();
+  const initialized = await initializeResearchSessionTurnV1({
+    store,
+    session: session(),
+    brief: brief("automatic"),
+    graph: composeResearchGraphV1(brief("automatic")),
+    approveAutomatically: true,
+    at: "2026-08-01T15:00:01.000Z",
+  });
+  const catalog = initialized.turns[0]!.graph!;
+  const selectedNodeIds = new Set(catalog.nodes
+    .filter((node) => node.kind !== "repair")
+    .map((node) => node.id));
+  const selected = (await store.commit(initialized.sessionId, {
+    kind: "commit_graph_selection",
+    proposal: {
+      schema: "atlcli.research-graph-proposal/v1",
+      basedOnBriefRevision: catalog.basedOnBriefRevision,
+      basedOnGraphRevision: catalog.revision,
+      nodes: catalog.nodes.filter((node) => selectedNodeIds.has(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => selectedNodeIds.has(dependency)),
+        reasonCodes: [...node.reasonCodes],
+      })),
+    },
+    expectedRevision: initialized.revision,
+    expectedLeaseEpoch: initialized.lease.epoch,
+    at: "2026-08-01T15:00:02.000Z",
+  })).session;
+  const graph = selected.turns[0]!.graph!;
+  const node = graph.nodes.find((candidate) => candidate.status === "ready")!;
+  const task: ResearchTaskAttemptV1 = {
+    schema: "atlcli.research-task-attempt/v1",
+    taskId: `task:runtime-${node.id.replace("research-node:", "")}`,
+    nodeId: node.id,
+    graphRevision: graph.revision,
+    attempt: 1,
+    executor: node.executor,
+    ...(node.roleId ? { roleId: node.roleId } : {}),
+    grantedCapabilityIds: [...node.grantedCapabilityIds],
+    typedIntentRefs: [...node.typedIntentRefs],
+    expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    budget: { ...node.budget },
+    status: "ready",
+    dispatchState: "not_started",
+    createdAt: graph.createdAt,
+  };
+  let tick = 2;
+  const journal = new ResearchSessionDispatchJournalV1({
+    store,
+    sessionId: selected.sessionId,
+    turnId: selected.activeTurnId!,
+    now: () => `2026-08-01T15:00:${String(++tick).padStart(2, "0")}.000Z`,
+  });
+  return { store, sessionId: selected.sessionId, graph, task, journal };
+}
+
+async function settledRuntimeRetrievalCheckpoint() {
+  const selected = await selectedRuntimeGraph();
+  await selected.journal.admitAndStart(selected.task);
+  await selected.journal.acceptPacket({
+    taskId: selected.task.taskId,
+    graphRevision: selected.graph.revision,
+    body: {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+      answeredQuestion: "The bounded retrieval wave completed.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    },
+    usage: { capabilityCalls: 0, inputTokens: 0, outputTokens: 0, resultBytes: 256, durationMs: 1, costMicros: 0 },
+    availableSourceIds: [],
+    maximumResultBytes: selected.task.budget.maxResultBytes,
+    budgetState: {
+      schema: "atlcli.research-run-budget/v1",
+      ptcCalls: 1,
+      httpAttempts: 1,
+      responseBytes: 256,
+      pages: { jira: 1, confluence: 0 },
+      items: { jira: 1, confluence: 0 },
+      details: { jira: 1, confluence: 0 },
+    },
+  });
+  await selected.journal.recordRetrievalAssessment({
+    graphRevision: selected.graph.revision,
+    assessment: assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 1,
+      httpAttemptsRemaining: 1,
+    }),
+    issueContinuation: true,
+  });
+  return selected;
 }
 
 describe("durable research session execution gate", () => {
@@ -798,6 +912,88 @@ describe("durable research session execution gate", () => {
     expect(resumed).toMatchObject({ status: "running", lease: { epoch: 2, ownerId: "owner:resumed" } });
     expect((await store.events(initialized.sessionId)).slice(-2).map((event) => event.kind))
       .toEqual(["recover", "resume"]);
+  });
+
+  test("converts an expired settled retrieval checkpoint into a paused, explicitly resumable session", async () => {
+    const { store, sessionId } = await settledRuntimeRetrievalCheckpoint();
+    const recovered = await recoverExpiredResearchSessionsAtSafeBoundaryV1({
+      store,
+      ownerId: "owner:browser-recovery",
+      leaseDurationMs: 60_000,
+      at: "2026-08-01T15:11:00.000Z",
+    });
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      sessionId,
+      status: "paused",
+      lease: { epoch: 2, expiresAt: "2026-08-01T15:11:00.001Z" },
+      turns: [expect.objectContaining({
+        retrievalAssessments: [expect.objectContaining({
+          continuation: expect.objectContaining({ status: "issued" }),
+        })],
+      })],
+    });
+    expect((await store.events(sessionId)).slice(-3).map((event) => event.kind))
+      .toEqual(["recover", "request_pause", "acknowledge_pause"]);
+
+    await expect(recoverResearchSessionForResumeV1({
+      store,
+      sessionId,
+      ownerId: "owner:resumed",
+      leaseExpiresAt: "2026-08-01T15:20:00.000Z",
+      at: "2026-08-01T15:11:01.000Z",
+    })).resolves.toMatchObject({ status: "running", lease: { epoch: 3, ownerId: "owner:resumed" } });
+  });
+
+  test("releases an expired undispatched plan without replaying or rewriting it", async () => {
+    const acceptedBrief = brief("automatic");
+    const store = new InMemoryResearchSessionStoreV1();
+    const initialized = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: acceptedBrief,
+      graph: composeResearchGraphV1(acceptedBrief),
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const recovered = await recoverExpiredResearchSessionsAtSafeBoundaryV1({
+      store,
+      ownerId: "owner:browser-recovery",
+      leaseDurationMs: 60_000,
+      at: "2026-08-01T15:11:00.000Z",
+    });
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      sessionId: initialized.sessionId,
+      status: "running",
+      lease: { epoch: 2, expiresAt: "2026-08-01T15:11:00.001Z" },
+      turns: [expect.objectContaining({ tasks: [], acceptedPackets: [] })],
+    });
+    expect(recovered[0]!.turns[0]!.graphSelectionCommittedAt).toBeUndefined();
+    expect((await store.events(initialized.sessionId)).slice(-2).map((event) => event.kind))
+      .toEqual(["recover", "release_lease"]);
+  });
+
+  test("leaves active leases and interrupted provider work untouched", async () => {
+    const active = await selectedRuntimeGraph();
+    await active.journal.admitAndStart(active.task);
+    const before = await active.store.read(active.sessionId);
+
+    await expect(recoverExpiredResearchSessionsAtSafeBoundaryV1({
+      store: active.store,
+      ownerId: "owner:browser-recovery",
+      leaseDurationMs: 60_000,
+      at: "2026-08-01T15:05:00.000Z",
+    })).resolves.toEqual([]);
+    await expect(recoverExpiredResearchSessionsAtSafeBoundaryV1({
+      store: active.store,
+      ownerId: "owner:browser-recovery",
+      leaseDurationMs: 60_000,
+      at: "2026-08-01T15:11:00.000Z",
+    })).resolves.toEqual([]);
+    expect(await active.store.read(active.sessionId)).toEqual(before);
   });
 
   test("projects only expired, tenant-bound durable resumes without source or provider data", async () => {

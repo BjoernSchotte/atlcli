@@ -28,6 +28,36 @@ import { ResearchAgentWorkerHost } from "../../utils/research/worker-host.js";
 import {
   normalizeAnthropicApiKey,
 } from "../../utils/research/credential.js";
+import {
+  IndexedDbResearchSessionStoreV1,
+  recoverExpiredResearchSessionsAtSafeBoundaryV1,
+} from "@atlcli/research/browser";
+
+const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
+
+/**
+ * MV3 can discard this document without an orderly worker shutdown. On every
+ * recreation, fence and release only pre-proven durable boundaries; never
+ * infer the outcome of a provider call that was in flight when the document
+ * disappeared. A later user-triggered resume owns actual continuation work.
+ */
+async function recoverResearchSessionsAfterOffscreenStart(): Promise<void> {
+  const store = await IndexedDbResearchSessionStoreV1.open();
+  try {
+    await recoverExpiredResearchSessionsAtSafeBoundaryV1({
+      store,
+      ownerId: "owner:browser-recovery",
+      leaseDurationMs: BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1,
+      at: new Date().toISOString(),
+    });
+  } finally {
+    store.close();
+  }
+}
+
+void recoverResearchSessionsAfterOffscreenStart().catch((error) =>
+  console.error("Durable research recovery after offscreen startup failed", error),
+);
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>

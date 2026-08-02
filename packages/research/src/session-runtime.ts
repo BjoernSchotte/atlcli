@@ -74,6 +74,22 @@ export interface RecoverResearchSessionForResumeInputV1 {
   at: string;
 }
 
+/**
+ * Conservative lost-run recovery for hosts whose worker/process may disappear
+ * between durable journal writes. It deliberately never retries a provider
+ * request: only an undispatched approved plan or a fully-settled retrieval
+ * checkpoint with one unconsumed continuation can be released.
+ */
+export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
+  store: ResearchSessionStoreV1;
+  /** A short-lived host owner used only to fence the atomic recovery writes. */
+  ownerId: string;
+  /** Duration of that temporary recovery lease. Must be positive. */
+  leaseDurationMs: number;
+  /** One host-observed instant for the complete sweep. */
+  at: string;
+}
+
 export interface ProposeResearchGraphForReadyBriefInputV1 {
   store: ResearchSessionStoreV1;
   sessionId: string;
@@ -173,6 +189,35 @@ function activeTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefin
   return session.activeTurnId
     ? session.turns.find((turn) => turn.id === session.activeTurnId)
     : undefined;
+}
+
+function isUndispatchedApprovedTurn(turn: ResearchSessionTurnV1): boolean {
+  return turn.tasks.length === 0 &&
+    turn.acceptedPackets.length === 0 &&
+    turn.graphSelectionCommittedAt === undefined &&
+    turn.graph?.approvalEnvelope.status === "approved" &&
+    turn.graph.status === "approved";
+}
+
+function isSettledIssuedRetrievalCheckpoint(turn: ResearchSessionTurnV1): boolean {
+  if (!turn.graph || turn.graph.approvalEnvelope.status !== "approved" ||
+      turn.graph.status !== "running" || turn.tasks.length === 0 ||
+      turn.acceptedPackets.length === 0 || !turn.budgetState) {
+    return false;
+  }
+  if (turn.tasks.some((task) =>
+    task.status === "ready" || task.status === "running" || task.status === "outcome_unknown",
+  )) {
+    return false;
+  }
+  const assessments = turn.retrievalAssessments ?? [];
+  const issued = assessments.filter((assessment) =>
+    assessment.graphRevision === turn.graph!.revision &&
+    assessment.continuation?.status === "issued",
+  );
+  return issued.length === 1 && !assessments.some((assessment) =>
+    assessment.continuation?.status === "consumed" || assessment.assessment.action === "stop",
+  );
 }
 
 function isResumableStatus(
@@ -691,4 +736,76 @@ export async function recoverResearchSessionForResumeV1(
     expectedLeaseEpoch: recovered.session.lease.epoch,
     at: input.at,
   })).session;
+}
+
+/**
+ * Sweep expired leases after a host/worker restart without pretending an
+ * interrupted provider call has a known outcome. An undispatched approved
+ * plan is simply released again. A settled retrieval checkpoint is converted
+ * to the same durable `paused` state as an acknowledged user pause, preserving
+ * its single issued continuation for an explicit later resume. All other
+ * sessions are intentionally left untouched for a later recovery policy.
+ */
+export async function recoverExpiredResearchSessionsAtSafeBoundaryV1(
+  input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1,
+): Promise<ResearchSessionV1[]> {
+  const recovered: ResearchSessionV1[] = [];
+  const atMillis = Date.parse(input.at);
+  if (!Number.isFinite(atMillis) || !Number.isSafeInteger(input.leaseDurationMs) ||
+      input.leaseDurationMs <= 0) {
+    throw new Error("Research expired-session recovery input is invalid.");
+  }
+  const temporaryLeaseExpiresAt = new Date(atMillis + input.leaseDurationMs).toISOString();
+  let cursor: string | undefined;
+  do {
+    const page = await input.store.list({ limit: 100, ...(cursor ? { cursor } : {}) });
+    for (const listed of page.sessions) {
+      // Read again immediately before the fenced write: list pages are only a
+      // discovery mechanism and can be stale while another host is active.
+      const current = await input.store.read(listed.sessionId);
+      if (!current || Date.parse(input.at) < Date.parse(current.lease.expiresAt)) continue;
+      const turn = activeTurn(current);
+      if (!turn) continue;
+      const undispatched = current.status === "running" && isUndispatchedApprovedTurn(turn);
+      const checkpoint = (current.status === "running" || current.status === "pause_requested") &&
+        isSettledIssuedRetrievalCheckpoint(turn);
+      if (!undispatched && !checkpoint) continue;
+
+      let next = (await input.store.commit(current.sessionId, {
+        kind: "recover",
+        ownerId: input.ownerId,
+        expiresAt: temporaryLeaseExpiresAt,
+        expectedRevision: current.revision,
+        expectedLeaseEpoch: current.lease.epoch,
+        at: input.at,
+      })).session;
+
+      if (undispatched) {
+        next = (await input.store.commit(next.sessionId, {
+          kind: "release_lease",
+          expectedRevision: next.revision,
+          expectedLeaseEpoch: next.lease.epoch,
+          at: input.at,
+        })).session;
+      } else {
+        if (next.status === "running") {
+          next = (await input.store.commit(next.sessionId, {
+            kind: "request_pause",
+            expectedRevision: next.revision,
+            expectedLeaseEpoch: next.lease.epoch,
+            at: input.at,
+          })).session;
+        }
+        next = (await input.store.commit(next.sessionId, {
+          kind: "acknowledge_pause",
+          expectedRevision: next.revision,
+          expectedLeaseEpoch: next.lease.epoch,
+          at: input.at,
+        })).session;
+      }
+      recovered.push(next);
+    }
+    cursor = page.nextCursor;
+  } while (cursor);
+  return recovered;
 }
