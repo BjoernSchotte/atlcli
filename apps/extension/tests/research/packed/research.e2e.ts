@@ -402,7 +402,8 @@ const finalDraft = await task({
       { taskId: "research-task:r1:wiki-research:a1", result: wiki },
       { taskId: "research-task:r1:cross-product-join:a1", result: joined },
       { taskId: "research-task:r1:outline-planning:a1", result: outline },
-      { taskId: "research-task:r1:reconciler:a1", result: critique }
+      { taskId: "research-task:r1:reconciler:a1", result: critique },
+      { taskId: acceptedDispositions.repairTask.taskId, result: repaired }
     ]
   }),
   subagentType: "synthesizer",
@@ -538,6 +539,94 @@ const finalDraft = await task({
   }),
   subagentType: "synthesizer",
   responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+});
+finalDraft;
+`.trim();
+
+/**
+ * First half of the cross-product graph. The fixture interrupts the dedicated
+ * worker only after the checkpoint has committed, then starts a fresh worker
+ * through the public browser resume boundary below.
+ */
+const PACKED_RESUME_INITIAL_WORKFLOW_CODE = `
+const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
+  basedOnBriefRevision: 1,
+  basedOnGraphRevision: 1,
+  nodes: [
+    { nodeId: "research-node:jira-research", dependencies: [], reasonCodes: ["independent_branch"] },
+    { nodeId: "research-node:wiki-research", dependencies: [], reasonCodes: ["independent_branch"] },
+    { nodeId: "research-node:cross-product-join", dependencies: ["research-node:jira-research", "research-node:wiki-research"], reasonCodes: ["cross_product_join"] },
+    { nodeId: "research-node:coverage-moderation", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join"], reasonCodes: ["coverage_gap"] },
+    { nodeId: "research-node:reconciler", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join", "research-node:coverage-moderation"], reasonCodes: ["coverage_gap"] },
+    { nodeId: "research-node:synthesizer", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join", "research-node:coverage-moderation", "research-node:reconciler"], reasonCodes: ["user_requested"] }
+  ]
+}));
+const responseSchemas = ${JSON.stringify({
+  "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
+  "atlcli.research-packet-reference-model/v2": RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
+  "atlcli.reconciliation-body/v1": RESEARCH_CRITIQUE_SCHEMA_V1,
+  "atlcli.research-agent-draft/v1": RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+})};
+const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: acceptedGraph.graphRevision }));
+await Promise.all(frontier.tasks.map((returnedTask) => task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: returnedTask.taskId,
+    objective: returnedTask.objective,
+    ...(returnedTask.dependencyResults.length > 0 ? { dependencyResults: returnedTask.dependencyResults } : {})
+  }),
+  subagentType: returnedTask.subagentType,
+  responseSchema: responseSchemas[returnedTask.outputSchema]
+})));
+const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({ graphRevision: acceptedGraph.graphRevision }));
+checkpoint;
+`.trim();
+
+/** The only program a fresh worker may use after the persisted checkpoint. */
+const PACKED_RESUME_CONTINUATION_WORKFLOW_CODE = `
+const continuation = JSON.parse(await tools.researchRetrievalContinue({
+  graphRevision: 1,
+  wave: 1,
+  continuationId: "research-continuation:1.1"
+}));
+const responseSchemas = ${JSON.stringify({
+  "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
+  "atlcli.research-packet-reference-model/v2": RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
+  "atlcli.reconciliation-body/v1": RESEARCH_CRITIQUE_SCHEMA_V1,
+  "atlcli.research-agent-draft/v1": RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+})};
+const joinFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+const joinTask = joinFrontier.tasks[0];
+await task({
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: joinTask.taskId, objective: joinTask.objective, dependencyResults: joinTask.dependencyResults }),
+  subagentType: joinTask.subagentType,
+  responseSchema: responseSchemas[joinTask.outputSchema]
+});
+const coverageFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+const coverageTask = coverageFrontier.tasks[0];
+await task({
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: coverageTask.taskId, objective: coverageTask.objective, dependencyResults: coverageTask.dependencyResults }),
+  subagentType: coverageTask.subagentType,
+  responseSchema: responseSchemas[coverageTask.outputSchema]
+});
+const critiqueFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+const critiqueTask = critiqueFrontier.tasks[0];
+await task({
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: critiqueTask.taskId, objective: critiqueTask.objective, dependencyResults: critiqueTask.dependencyResults }),
+  subagentType: critiqueTask.subagentType,
+  responseSchema: responseSchemas[critiqueTask.outputSchema]
+});
+await tools.researchReconciliationDispositions({
+  basedOnGraphRevision: continuation.graphRevision,
+  reconciliationTaskId: critiqueTask.taskId,
+  decisions: [{ defectId: "defect:host-parity-coverage", decision: "abstain", reasonCode: "material_defect" }]
+});
+const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+const finalTask = finalFrontier.tasks[0];
+const finalDraft = await task({
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: finalTask.taskId, objective: finalTask.objective, dependencyResults: finalTask.dependencyResults }),
+  subagentType: finalTask.subagentType,
+  responseSchema: responseSchemas[finalTask.outputSchema]
 });
 finalDraft;
 `.trim();
@@ -819,10 +908,21 @@ let modelCalls = 0;
 let packedJiraOnlyRun = false;
 let packedHostParityRun = false;
 let packedSentinelRun = false;
+let packedResumeRun = false;
+let packedResumeSupervisorEvals = 0;
 let supervisorWorkflowStarted = false;
 let jiraOnlySelectedClaimIds = [];
 let packedSelectedClaimIds = [];
 channel.postMessage({ kind: "worker-start", workerId });
+globalThis.addEventListener("message", (event) => {
+  if (
+    event.data?.kind === "research-worker:run" &&
+    typeof event.data?.runId === "string" &&
+    event.data.runId.includes("packed-resume")
+  ) {
+    packedResumeRun = true;
+  }
+});
 globalThis.addEventListener("error", (event) => {
   channel.postMessage({
     kind: "worker-error",
@@ -910,11 +1010,17 @@ function wikiResult(id, title) {
 
 function anthropicMessage(content, stopReason, call) {
   return json({
-    id: "msg_packed_" + call,
+    id: "msg_packed_" + workerId + "_" + call,
     type: "message",
     role: "assistant",
     model: "claude-sonnet-4-6",
-    content,
+    // Anthropic tool-use identifiers are unique per provider response. A
+    // restarted worker is a fresh provider client, so keeping this property
+    // in the packed fixture prevents LangGraph's tool-call bookkeeping from
+    // treating a legitimate continuation as a duplicate prior call.
+    content: content.map((block) => block?.type === "tool_use"
+      ? { ...block, id: block.id + "_" + workerId }
+      : block),
     stop_reason: stopReason,
     stop_sequence: null,
     ...(packedHostParityRun || packedSentinelRun ? {} : { usage: { input_tokens: 20, output_tokens: 10 } }),
@@ -974,6 +1080,13 @@ const critiqueForV2Packets = () => ({
     // earlier outline or contradiction packet explicitly projected them.
     references: [],
   })),
+  proposedFollowUps: critique.proposedFollowUps.map((followUp) => ({
+    ...followUp,
+    // V2 keeps source identities outside the critic's body-free projection.
+    // The host may still authorize an analysis-only repair from the accepted
+    // graph, but the critic may not manufacture source scope for it.
+    sourceIds: [],
+  })),
 });
 const nativeFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async (input, init) => {
@@ -1011,6 +1124,22 @@ globalThis.fetch = async (input, init) => {
       apiKeyPresent: request.headers.has("x-api-key"),
       toolNames,
     });
+    if (
+      packedResumeRun &&
+      toolNames.includes("eval") &&
+      serializedRequest.includes("You are the central supervisor")
+    ) {
+      packedResumeSupervisorEvals += 1;
+      if (
+        packedResumeSupervisorEvals > 1 &&
+        !serializedRequest.includes("RESUMED CONTINUATION")
+      ) {
+        // The durable checkpoint is already committed. Keep the disposable
+        // worker alive until the harness terminates it through research:cancel.
+        channel.postMessage({ kind: "packed-resume-checkpoint-reached", workerId });
+        await waitForRelease("packed-resume-never", request.signal);
+      }
+    }
 
     if (serializedMessages.includes("cancel-before-ptc") && modelCalls === 1) {
       await waitForRelease("never", request.signal);
@@ -1168,6 +1297,7 @@ globalThis.fetch = async (input, init) => {
       packedJiraOnlyRun = serializedRequest.includes("packed-jira-only");
       packedHostParityRun = serializedRequest.includes("packed-host-parity");
       packedSentinelRun = serializedRequest.includes("packed-sentinel");
+      packedResumeRun = packedResumeRun || serializedRequest.includes("packed-resume");
       if (packedSentinelRun) {
         channel.postMessage({
           kind: "packed-sentinel-workflow",
@@ -1176,13 +1306,23 @@ globalThis.fetch = async (input, init) => {
           hasUnrelatedWorkspaceData: ${JSON.stringify(PACKED_SENTINEL_WORKFLOW_CODE)}.includes(${JSON.stringify(UNRELATED_WORKSPACE_SENTINEL)}),
         });
       }
+      if (packedResumeRun && serializedRequest.includes("RESUMED CONTINUATION")) {
+        channel.postMessage({
+          kind: "packed-resume-continuation-eval",
+          workerId,
+        });
+      }
       return anthropicMessage(
         [{
           type: "tool_use",
           id: "toolu_packed_eval",
           name: "eval",
           input: {
-            code: packedHostParityRun
+            code: packedResumeRun
+              ? serializedRequest.includes("RESUMED CONTINUATION")
+                ? ${JSON.stringify(PACKED_RESUME_CONTINUATION_WORKFLOW_CODE)}
+                : ${JSON.stringify(PACKED_RESUME_INITIAL_WORKFLOW_CODE)}
+              : packedHostParityRun
               ? ${JSON.stringify(PACKED_HOST_PARITY_WORKFLOW_CODE)}
               : packedSentinelRun
                 ? ${JSON.stringify(PACKED_SENTINEL_WORKFLOW_CODE)}
@@ -1681,6 +1821,10 @@ type PackedRunResponse =
   | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReport }
   | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
 
+type PackedResumeResponse =
+  | { kind: "research:resume-result"; runId: string; ok: true; report: ResearchReport }
+  | { kind: "research:resume-result"; runId: string; ok: false; code: string; error: string };
+
 function withoutEventSequence(event: ResearchOneShotEventV1): Omit<ResearchOneShotEventV1, "seq"> {
   const { seq: _sequence, ...withoutSequence } = event;
   return withoutSequence;
@@ -1719,12 +1863,39 @@ async function runPackedResearchInBackground(
   }, { request, runId, policy: HOST_PARITY_POLICY }) as Promise<PackedRunResponse>;
 }
 
+async function resumePackedResearchInBackground(
+  page: Page,
+  sessionId: string,
+  runId: string,
+): Promise<PackedResumeResponse> {
+  return page.evaluate(async ({ sessionId, runId }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:resume",
+      runId,
+      sessionId,
+      windowId: window.id,
+    });
+  }, { sessionId, runId }) as Promise<PackedResumeResponse>;
+}
+
 async function readPackedDurableResearchSession(
   page: Page,
   sessionId: string,
   artifactId: string,
 ): Promise<{
-  session: { state: { status: string; turns: Array<{ id: string; tasks: unknown[]; acceptedPackets: unknown[] }> } };
+  session: {
+    state: {
+      status: string;
+      turns: Array<{
+        id: string;
+        tasks: Array<{ taskId: string }>;
+        acceptedPackets: unknown[];
+        budgetState?: { ptcCalls?: number };
+      }>;
+    };
+  };
   artifact: { metadata: { path: string; contentType: string }; contents: string } | undefined;
 }> {
   return page.evaluate(async ({ sessionId, artifactId }) => {
@@ -2030,6 +2201,97 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
   await page.evaluate(async (key) => {
     await chrome.storage.session.remove(key);
   }, RESEARCH_ANTHROPIC_SESSION_KEY);
+});
+
+test("resumes a checkpointed packed session in a fresh dedicated worker without replaying accepted tasks", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  const initialRunId = "packed-resume-initial";
+  const sessionId = `research-session:${initialRunId}`;
+  const initial = runPackedResearchInBackground(page, {
+    ...hostParityRequest(),
+    question: HOST_PARITY_QUESTION,
+  }, initialRunId);
+  try {
+    try {
+      await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+        event.kind === "packed-resume-checkpoint-reached"
+      ), { timeout: 30_000 }).toBe(true);
+    } catch (error) {
+      throw new Error(JSON.stringify({
+        cause: error instanceof Error ? error.message : String(error),
+        initial: await Promise.race([
+          initial,
+          new Promise((resolve) => setTimeout(() => resolve("still-pending"), 1_000)),
+        ]),
+        events: await harnessEvents(page),
+      }, null, 2));
+    }
+    const checkpointed = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${initialRunId}`,
+    );
+    expect(checkpointed.session.state.status).toBe("running");
+    expect(checkpointed.session.state.turns[0]?.tasks.map((task) => task.taskId)).toEqual([
+      "research-task:r1:jira-research:a1",
+      "research-task:r1:wiki-research:a1",
+    ]);
+    expect(checkpointed.session.state.turns[0]?.acceptedPackets).toHaveLength(2);
+    expect(checkpointed.session.state.turns[0]?.budgetState?.ptcCalls).toBe(0);
+
+    const cancelled = await page.evaluate(async (runId) =>
+      chrome.runtime.sendMessage({ kind: "research:cancel", runId }),
+    initialRunId);
+    expect(cancelled).toEqual({
+      kind: "research:cancel-result",
+      runId: initialRunId,
+      cancelled: true,
+    });
+    await expect(initial).resolves.toMatchObject({
+      kind: "research:run-result",
+      runId: initialRunId,
+      ok: false,
+      code: "cancelled",
+    });
+
+    const resumed = await resumePackedResearchInBackground(
+      page,
+      sessionId,
+      "packed-resume-fresh-worker",
+    );
+    if (!resumed.ok) {
+      throw new Error(JSON.stringify({ resumed, events: await harnessEvents(page) }, null, 2));
+    }
+    expect(resumed.report.title).toBe(HOST_PARITY_DRAFT.title);
+    const completed = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${initialRunId}`,
+    );
+    expect(completed.session.state.status).toBe("complete");
+    expect(completed.session.state.turns[0]?.tasks.map((task) => task.taskId)).toEqual([
+      "research-task:r1:jira-research:a1",
+      "research-task:r1:wiki-research:a1",
+      "research-task:r1:cross-product-join:a1",
+      "research-task:r1:coverage-moderation:a1",
+      "research-task:r1:reconciler:a1",
+      "research-task:r1:synthesizer:a1",
+    ]);
+    expect(completed.session.state.turns[0]?.acceptedPackets).toHaveLength(6);
+    expect(completed.artifact?.contents).toBe(resumed.report.markdown);
+    const events = await harnessEvents(page);
+    expect(events.filter((event) => event.kind === "worker-start")).toHaveLength(2);
+    expect(events.some((event) => event.kind === "packed-resume-continuation-eval")).toBe(true);
+    expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
 });
 
 test("keeps raw child trajectories and hidden supervisor state out of packed MV3 specialist inputs", async () => {
@@ -2733,7 +2995,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
 
   const diagnosticText = await page.getByTestId("research-report").innerText();
   expect(diagnosticText).toContain("claude-sonnet-4-6");
-  expect(diagnosticText).toContain("8 / 8");
+  expect(diagnosticText).toContain("10 / 8");
   expect(diagnosticText).toContain("2 / 2");
   expect(diagnosticText).toContain("rest");
 
@@ -2780,7 +3042,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     description: `Side-panel V8 heap while the dedicated agent worker is paused after PTC: used=${heap.usedSize}, total=${heap.totalSize}, backing=${heap.backingStorageSize}; dedicated-worker V8 heap is not attributed by this packed harness; QuickJS linear-memory cap=64000000.`,
   });
   console.info(
-    `[research-packed-metrics] sidePanelHeapUsed=${heap.usedSize} sidePanelHeapTotal=${heap.totalSize} backingStorage=${heap.backingStorageSize} workerHeap=unattributed quickJsCap=64000000 ptc=8 http=8`
+    `[research-packed-metrics] sidePanelHeapUsed=${heap.usedSize} sidePanelHeapTotal=${heap.totalSize} backingStorage=${heap.backingStorageSize} workerHeap=unattributed quickJsCap=64000000 ptc=10 http=8`
   );
 
   await page.reload();

@@ -1,7 +1,11 @@
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+  RESEARCH_REQUEST_SCHEMA_V1,
   type ResearchLimitsV1,
+  type ResearchOneShotPolicyV1,
   type ResearchProduct,
+  type ResearchRequestV1,
   type ResearchRequestedEffortV1,
   type ResearchRequestedPlanApprovalV1,
   type ResearchRequestedReconciliationV1,
@@ -96,6 +100,32 @@ export interface ResearchBriefV1 {
   limits: ResearchLimitsV1;
   clarificationQuestions: ResearchClarificationQuestionV1[];
   assumptions: ResearchBriefAssumptionV1[];
+}
+
+/**
+ * Recreate the immutable retrieval request from a durable brief.  A resume
+ * must not accept a new question, scope, limit, or provider selection from a
+ * host message; those choices are already fenced by the accepted brief.
+ */
+export function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1 {
+  return {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question: brief.objective,
+    scope: structuredClone(brief.scope),
+    limits: structuredClone(brief.limits),
+    wikiProvider: "rest",
+  };
+}
+
+/** Recreate the immutable execution policy from a durable brief. */
+export function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1 {
+  return {
+    schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+    requestedEffort: brief.requestedEffort,
+    requestedPlanApproval: brief.requestedPlanApproval,
+    scopeExpansionMode: brief.scopeDiscoveryPolicy.expansionMode,
+    requestedReconciliation: brief.requestedReconciliation,
+  };
 }
 
 export const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1 =

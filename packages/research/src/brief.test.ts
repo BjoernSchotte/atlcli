@@ -4,6 +4,8 @@ import {
   createResearchBriefV1,
   prepareResearchBriefPreflightV1,
   projectResearchProposedAssumptionLimitationsV1,
+  researchPolicyFromBriefV1,
+  researchRequestFromBriefV1,
   resolveResearchEffortV1,
   resolveResearchPlanApprovalV1,
 } from "./brief.js";
@@ -173,5 +175,44 @@ describe("host-owned research brief", () => {
     expect(projectResearchProposedAssumptionLimitationsV1(brief)).toEqual([
       "Proposed assumption (not user-confirmed): The report is intended for the delivery team.",
     ]);
+  });
+
+  test("reconstructs resume inputs only from the accepted durable brief", () => {
+    const brief = create({
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "required",
+      scopeDiscoveryPolicy: {
+        schema: "atlcli.research-scope-discovery-policy/v1",
+        catalogDiscovery: "on",
+        expansionMode: "exact-linked",
+        maxCatalogPagesPerCapability: 3,
+        maxCandidatesPerMention: 4,
+        maxCatalogResultBytes: 10_000,
+        maxExactLinkedEntities: 2,
+        maxScopeExpansionProposals: 2,
+      },
+    });
+    const request = researchRequestFromBriefV1(brief);
+    const policy = researchPolicyFromBriefV1(brief);
+
+    expect(request).toEqual({
+      schema: "atlcli.research-request/v1",
+      question: brief.objective,
+      scope: brief.scope,
+      limits: brief.limits,
+      wikiProvider: "rest",
+    });
+    expect(policy).toEqual({
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "exact-linked",
+      requestedReconciliation: "required",
+    });
+    request.scope.jiraProjectKeys.push("MUTATED");
+    request.limits.maxPtcCalls = 99;
+    expect(brief.scope.jiraProjectKeys).toEqual(["DEMO"]);
+    expect(brief.limits.maxPtcCalls).not.toBe(99);
   });
 });

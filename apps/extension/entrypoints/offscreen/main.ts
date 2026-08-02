@@ -158,6 +158,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
         },
       });
     },
+    resumeResearch: async (runId, sessionId, turnId, key) => {
+      const apiKey = normalizeAnthropicApiKey(key);
+      return researchHost.run({
+        runId,
+        sessionId,
+        turnId,
+        apiKey,
+        resume: true,
+        onProgress: (progress) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:progress",
+            runId,
+            progress,
+          }).catch(() => undefined);
+        },
+        onEvent: (event) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:event",
+            runId,
+            event,
+          }).catch(() => undefined);
+        },
+      });
+    },
     cancelResearch: async (runId) => researchHost.cancel(runId),
   })
 );

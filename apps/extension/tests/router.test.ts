@@ -249,6 +249,28 @@ describe("routeMessage (pure router)", () => {
     expect(observed).toEqual([policy]);
   });
 
+  it("routes a durable research resume with opaque identifiers only", async () => {
+    const observed: unknown[] = [];
+    expect(await routeMessage({
+      kind: "research:resume",
+      runId: "run-resume",
+      sessionId: "research-session:resume",
+      windowId: 7,
+    }, {
+      ...okDeps,
+      resumeResearch: async (runId, sessionId, windowId) => {
+        observed.push(runId, sessionId, windowId);
+        return researchReport;
+      },
+    })).toEqual({
+      kind: "research:resume-result",
+      runId: "run-resume",
+      ok: true,
+      report: researchReport,
+    });
+    expect(observed).toEqual(["run-resume", "research-session:resume", 7]);
+  });
+
   it("routes catalog-only research scope preflight without an Anthropic key", async () => {
     const request = {
       schema: "atlcli.research-request/v1",

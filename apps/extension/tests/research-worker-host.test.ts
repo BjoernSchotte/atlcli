@@ -122,4 +122,28 @@ describe("dedicated research worker host", () => {
     expect(worker.terminated).toBe(true);
     expect(host.cancel("run-cancel")).toBe(false);
   });
+
+  it("forwards a durable resume without caller-controlled request or policy", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const resultPromise = host.run({
+      runId: "run-resume",
+      sessionId: "research-session:resume",
+      turnId: "research-turn:resume",
+      apiKey: "synthetic-key",
+      resume: true,
+    });
+
+    expect(worker.posted).toEqual([{
+      kind: "research-worker:run",
+      runId: "run-resume",
+      sessionId: "research-session:resume",
+      turnId: "research-turn:resume",
+      apiKey: "synthetic-key",
+      resume: true,
+    }]);
+    worker.emit({ kind: "research-worker:complete", runId: "run-resume", report });
+    expect(await resultPromise).toBe(report);
+    expect(worker.terminated).toBe(true);
+  });
 });

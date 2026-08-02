@@ -42,6 +42,19 @@ describe("message guards", () => {
     expect(isExtRequest({ kind: "jobs:wake", jobIds: ["x".repeat(4_097)] })).toBe(false);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: [jobId], bytes: new Uint8Array([1]) })).toBe(false);
     expect(isExtRequest({
+      kind: "research:resume",
+      runId: "run-1",
+      sessionId: "research-session:run-1",
+      windowId: 7,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:resume",
+      runId: "run-1",
+      sessionId: "research-session:run-1",
+      windowId: 7,
+      request: { mustNotCross: true },
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:resolve-scope",
       windowId: 7,
       request: { schema: "atlcli.research-request/v1" },
@@ -441,6 +454,21 @@ describe("message guards", () => {
       kind: "offscreen:research-run",
       runId: "run-1",
       request: {},
+    })).toBe(false);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-resume",
+      runId: "run-1",
+      sessionId: "research-session:run-1",
+      turnId: "research-turn:run-1",
+      apiKey: "sk-ant-test-message",
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-resume",
+      runId: "run-1",
+      sessionId: "research-session:run-1",
+      turnId: "research-turn:run-1",
+      apiKey: "sk-ant-test-message",
+      policy: { mustNotCross: true },
     })).toBe(false);
     expect(isOffscreenRequest({
       kind: "offscreen:research-run",

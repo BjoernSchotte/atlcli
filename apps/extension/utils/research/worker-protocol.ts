@@ -7,15 +7,29 @@ import type {
   ResearchRequestV1,
 } from "./contracts.js";
 
-export type ResearchWorkerRequestV1 = {
-  kind: "research-worker:run";
-  runId: string;
-  sessionId: string;
-  turnId: string;
-  apiKey: string;
-  request: ResearchRequestV1;
-  policy?: ResearchOneShotPolicyV1;
-};
+export type ResearchWorkerRequestV1 =
+  | {
+      kind: "research-worker:run";
+      runId: string;
+      sessionId: string;
+      turnId: string;
+      apiKey: string;
+      request: ResearchRequestV1;
+      policy?: ResearchOneShotPolicyV1;
+      resume?: false;
+    }
+  | {
+      /**
+       * Resume has no caller-controlled request or policy. The dedicated
+       * worker reconstructs both from the accepted durable brief.
+       */
+      kind: "research-worker:run";
+      runId: string;
+      sessionId: string;
+      turnId: string;
+      apiKey: string;
+      resume: true;
+    };
 
 export type ResearchWorkerResponseV1 =
   | {

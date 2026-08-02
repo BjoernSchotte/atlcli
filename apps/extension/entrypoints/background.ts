@@ -37,7 +37,10 @@ import { profileFromTabUrl } from "../utils/profile.js";
 import {
   ResearchScopeCatalogBroker,
   createRestScopeCatalogProviders,
+  IndexedDbResearchSessionStoreV1,
   prepareResearchScopePreflightV1,
+  recoverResearchSessionForResumeV1,
+  researchRequestFromBriefV1,
   type ResearchScopePreflightOptionsV1,
 } from "@atlcli/research/browser";
 import { handleExtMessage } from "../utils/listeners.js";
@@ -486,6 +489,120 @@ export default defineBackground({
     }
   };
 
+  const resumeResearch = async (
+    runId: string,
+    sessionId: string,
+    windowId: number,
+  ) => {
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(sessionId);
+      const turn = stored?.activeTurnId
+        ? stored.turns.find((candidate) => candidate.id === stored.activeTurnId)
+        : undefined;
+      if (!stored || !turn?.brief || !turn.graph ||
+          !["waiting_authentication", "waiting_quota", "paused", "running"].includes(stored.status)) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Only a released durable research turn can be resumed by the browser.",
+        );
+      }
+      const issuedContinuations = turn.retrievalAssessments?.filter((assessment) =>
+        assessment.graphRevision === turn.graph!.revision &&
+        assessment.continuation?.status === "issued",
+      ) ?? [];
+      const undispatched = turn.tasks.length === 0 && turn.acceptedPackets.length === 0 &&
+        turn.graphSelectionCommittedAt === undefined;
+      const checkpointResumable = issuedContinuations.length === 1 &&
+        turn.tasks.length > 0 && turn.acceptedPackets.length > 0 &&
+        turn.budgetState !== undefined;
+      if (!undispatched && !checkpointResumable) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "This durable browser session has dispatch state without one safe issued retrieval continuation.",
+        );
+      }
+      if (turn.graph.approvalEnvelope.status !== "approved" ||
+          (undispatched ? turn.graph.status !== "approved" : turn.graph.status !== "running")) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The durable browser graph is not at a safe resume checkpoint.",
+        );
+      }
+      const request = researchRequestFromBriefV1(turn.brief);
+      const detection = await getCurrentEntity(windowId);
+      const profile = detection.url ? profileFromTabUrl(detection.url) : null;
+      if (!profile || new URL(profile.baseUrl).origin !== request.scope.siteOrigin) {
+        throw new ResearchContractError(
+          "access-denied",
+          "The active Atlassian tab no longer matches the research site.",
+        );
+      }
+      const credentials = await chrome.storage.session.get([
+        RESEARCH_ANTHROPIC_SESSION_KEY,
+      ]);
+      const now = new Date().toISOString();
+      let apiKey: string;
+      try {
+        apiKey = normalizeAnthropicApiKey(
+          credentials[RESEARCH_ANTHROPIC_SESSION_KEY],
+        );
+      } catch (error) {
+        // A browser restart clears the session-only credential. Once the old
+        // lease is released, record that durable wait rather than leaving the
+        // session looking actively runnable without its required input.
+        if (stored.status === "running" && Date.parse(now) >= Date.parse(stored.lease.expiresAt)) {
+          await store.commit(stored.sessionId, {
+            kind: "wait_authentication",
+            expectedRevision: stored.revision,
+            expectedLeaseEpoch: stored.lease.epoch,
+            at: now,
+          });
+        }
+        throw error;
+      }
+      const resumed = await recoverResearchSessionForResumeV1({
+        store,
+        sessionId: stored.sessionId,
+        ownerId: `owner:browser-${runId}`,
+        leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+        at: now,
+      });
+      const resumedTurn = resumed.activeTurnId
+        ? resumed.turns.find((candidate) => candidate.id === resumed.activeTurnId)
+        : undefined;
+      if (!resumedTurn?.brief || !resumedTurn.graph || resumedTurn.id !== turn.id) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Recovered browser session no longer has its accepted durable turn.",
+        );
+      }
+      offscreenActivity.begin();
+      try {
+        await ensureOffscreen();
+        const response = (await chrome.runtime.sendMessage({
+          kind: "offscreen:research-resume",
+          runId,
+          sessionId: resumed.sessionId,
+          turnId: resumedTurn.id,
+          apiKey,
+        })) as OffscreenResponse | undefined;
+        if (!response || response.kind !== "offscreen:research-resume-result" || response.runId !== runId) {
+          throw new ResearchContractError(
+            "provider-error",
+            "The research worker host returned no correlated resume result.",
+          );
+        }
+        if (!response.ok) throw new ResearchContractError(response.code, response.error);
+        return response.report;
+      } finally {
+        offscreenActivity.end();
+      }
+    } finally {
+      store.close();
+    }
+  };
+
   const resolveResearchScope = async (
     windowId: number,
     value: ResearchRequestV1,
@@ -549,6 +666,7 @@ export default defineBackground({
       prepareDocxRuntime,
       runJobsWake,
       runResearch,
+      resumeResearch,
       resolveResearchScope,
       cancelResearch,
     });

@@ -33,6 +33,8 @@ import {
   WorkspaceResearchOutlineStoreV1,
   createResearchSessionV1,
   createResearchKeyScopeSeedV1,
+  researchPolicyFromBriefV1,
+  researchRequestFromBriefV1,
   createRestResearchProviders,
   createRestScopeCatalogProviders,
   formatResearchOneShotEventV1,
@@ -1167,26 +1169,6 @@ async function runEstablishedResearchCliSession(
   }
 }
 
-function requestFromStoredResearchBrief(brief: ResearchBriefV1): ResearchRequestV1 {
-  return {
-    schema: RESEARCH_REQUEST_SCHEMA_V1,
-    question: brief.objective,
-    scope: structuredClone(brief.scope),
-    limits: structuredClone(brief.limits),
-    wikiProvider: "rest",
-  };
-}
-
-function policyFromStoredResearchBrief(brief: ResearchBriefV1): ResearchOneShotPolicyV1 {
-  return {
-    schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
-    requestedEffort: brief.requestedEffort,
-    requestedPlanApproval: brief.requestedPlanApproval,
-    scopeExpansionMode: brief.scopeDiscoveryPolicy.expansionMode,
-    requestedReconciliation: brief.requestedReconciliation,
-  };
-}
-
 async function startNewResearchCliSessionTurn(
   input: ResearchCliInput,
   opts: OutputOptions,
@@ -1213,12 +1195,12 @@ async function startNewResearchCliSessionTurn(
     }
     const turnId = dependencies.createDurableTurnId();
     const request = normalizeResearchRequestV1({
-      ...requestFromStoredResearchBrief(previousTurn.brief),
+      ...researchRequestFromBriefV1(previousTurn.brief),
       question: input.question,
     });
     const briefOutcome = dependencies.prepareBrief({
       request,
-      policy: policyFromStoredResearchBrief(previousTurn.brief),
+      policy: researchPolicyFromBriefV1(previousTurn.brief),
       asOf: new Date().toISOString(),
       timezone: previousTurn.brief.timezone,
       sessionId,
@@ -1313,13 +1295,23 @@ async function resumeAuthenticationWaitingResearchSession(
     const stored = await requireStoredResearchSession(opened.store, sessionId);
     const turn = activeSessionTurn(stored);
     if (!turn?.brief || !turn.graph || !["waiting_authentication", "waiting_quota", "paused", "running"].includes(stored.status)) {
-      throw new Error("Only a released, undispatched durable research turn can be resumed by this command.");
+      throw new Error("Only a released durable research turn can be resumed by this command.");
     }
-    if (turn.tasks.length > 0 || turn.acceptedPackets.length > 0 || turn.graphSelectionCommittedAt) {
-      throw new Error("This durable session already has dispatch state. Retry recovery is not available until the bounded task-retry policy is implemented.");
+    const issuedContinuations = turn.retrievalAssessments?.filter((assessment) =>
+      assessment.graphRevision === turn.graph!.revision &&
+      assessment.continuation?.status === "issued",
+    ) ?? [];
+    const undispatched = turn.tasks.length === 0 && turn.acceptedPackets.length === 0 &&
+      turn.graphSelectionCommittedAt === undefined;
+    const checkpointResumable = issuedContinuations.length === 1 &&
+      turn.tasks.length > 0 && turn.acceptedPackets.length > 0 &&
+      turn.budgetState !== undefined;
+    if (!undispatched && !checkpointResumable) {
+      throw new Error("This durable session has dispatch state without one safe issued retrieval continuation.");
     }
-    if (turn.graph.status !== "approved" || turn.graph.approvalEnvelope.status !== "approved") {
-      throw new Error("The durable research graph is not approved for authentication resume.");
+    if (turn.graph.approvalEnvelope.status !== "approved" ||
+        (undispatched ? turn.graph.status !== "approved" : turn.graph.status !== "running")) {
+      throw new Error("The durable research graph is not in the required approved checkpoint state for resume.");
     }
     if (new URL(profile.baseUrl).origin !== turn.brief.scope.siteOrigin) {
       throw new Error("The selected profile belongs to a different Atlassian tenant than the durable research session.");
@@ -1339,7 +1331,7 @@ async function resumeAuthenticationWaitingResearchSession(
       );
       throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
     }
-    const request = requestFromStoredResearchBrief(turn.brief);
+    const request = researchRequestFromBriefV1(turn.brief);
     const now = new Date().toISOString();
     const resumed = await recoverResearchSessionForResumeV1({
       store: opened.store,
@@ -1614,7 +1606,7 @@ Options:
   --scope-expansion <m>   strict|ask|exact-linked (default: ask)
   --reconciliation <m>    off|auto|required (default: auto)
   --plan-only             Persist and print the sanitized durable research plan; do not run research
-  --resume <session-id>   Resume a no-dispatch durable authentication wait
+  --resume <session-id>   Resume an undispatched wait or one issued durable retrieval continuation
   --session <session-id>  Add a question to a terminal session using its retained scope and policy
   --output <path>        Atomically write the generated Markdown
   --keep-session         Print the retained session workspace path
@@ -1633,7 +1625,7 @@ Durable session commands:
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
 --plan-only persists the brief and graph before any key, workspace, provider, or model access.
---resume preserves the accepted brief, graph, scope, and limits; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
+--resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable budget. It resumes only an undispatched wait or one host-issued retrieval continuation; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
 --session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
 Approving a durable plan persists its exact revision only; it starts no model research until durable task dispatch arrives.
 Session inspection views expose bounded durable metadata only. Source text is returned only by the separate

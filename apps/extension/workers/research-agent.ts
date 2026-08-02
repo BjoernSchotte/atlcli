@@ -10,17 +10,24 @@ import {
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   prepareResearchBriefPreflightV1,
+  researchPolicyFromBriefV1,
+  researchRequestFromBriefV1,
   IndexedDbResearchSessionStoreV1,
   createResearchSessionV1,
   initializeResearchSessionTurnV1,
+  type ResearchBriefV1,
   type ResearchOneShotEventV1,
+  type ResearchOneShotPolicyV1,
   type ResearchProgressV1,
+  type ResearchRequestV1,
+  type ResearchSessionV1,
 } from "@atlcli/research/browser";
 import { runResearchAgent } from "@atlcli/research/browser/agent";
 import {
   assertResearchGraphExecutableV1,
   composeResearchGraphV1,
   createStandardResearchBriefV1,
+  type ResearchGraphV1,
 } from "@atlcli/research/graph";
 import type {
   ResearchWorkerRequestV1,
@@ -47,45 +54,74 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   const sessionId = message.sessionId;
   const turnId = message.turnId;
   const apiKey = message.apiKey;
+  const resume = message.resume === true;
   void (async () => {
     try {
-      const request = normalizeResearchRequestV1(message.request);
-      const policy = normalizeResearchOneShotPolicyV1(message.policy);
-      const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
-        sessionId,
-        turnId,
-        scope: request.scope,
-        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
-        limits: request.limits,
-        asOf: new Date().toISOString(),
-        policy,
-      }));
-      if (briefOutcome.kind === "clarification_required") {
-        throw new ResearchContractError(
-          "clarification-required",
-          "Research brief requires clarification before graph composition.",
-        );
-      }
-      const researchGraph = composeResearchGraphV1(briefOutcome.brief, {
-        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
-      });
-      assertResearchGraphExecutableV1(researchGraph);
       const store = await IndexedDbResearchSessionStoreV1.open();
       try {
-        const now = new Date().toISOString();
-        const durableSession = await initializeResearchSessionTurnV1({
-          store,
-          session: createResearchSessionV1({
+        let request: ResearchRequestV1;
+        let policy: ResearchOneShotPolicyV1;
+        let brief: ResearchBriefV1;
+        let researchGraph: ResearchGraphV1;
+        let durableSession: ResearchSessionV1;
+        if (resume) {
+          const persisted = await store.read(sessionId);
+          const turn = persisted?.turns.find((candidate) => candidate.id === turnId);
+          if (!persisted || persisted.status !== "running" ||
+              persisted.activeTurnId !== turnId ||
+              persisted.lease.ownerId !== `owner:browser-${runId}` ||
+              !turn?.brief || !turn.graph) {
+            throw new ResearchContractError(
+              "invalid-request",
+              "The browser resume does not own a runnable durable research turn.",
+            );
+          }
+          request = researchRequestFromBriefV1(turn.brief);
+          policy = researchPolicyFromBriefV1(turn.brief);
+          brief = turn.brief;
+          researchGraph = turn.graph;
+          durableSession = persisted;
+        } else {
+          if (!("request" in message)) {
+            throw new ResearchContractError("invalid-request", "A new research worker run requires a request.");
+          }
+          request = normalizeResearchRequestV1(message.request);
+          policy = normalizeResearchOneShotPolicyV1(message.policy);
+          const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
             sessionId,
-            ownerId: `owner:browser-${runId}`,
-            createdAt: now,
-            leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
-          }),
-          brief: briefOutcome.brief,
-          graph: researchGraph,
-          approveAutomatically: true,
-          at: now,
-        });
+            turnId,
+            scope: request.scope,
+            scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+            limits: request.limits,
+            asOf: new Date().toISOString(),
+            policy,
+          }));
+          if (briefOutcome.kind === "clarification_required") {
+            throw new ResearchContractError(
+              "clarification-required",
+              "Research brief requires clarification before graph composition.",
+            );
+          }
+          brief = briefOutcome.brief;
+          researchGraph = composeResearchGraphV1(brief, {
+            packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+          });
+          assertResearchGraphExecutableV1(researchGraph);
+          const now = new Date().toISOString();
+          durableSession = await initializeResearchSessionTurnV1({
+            store,
+            session: createResearchSessionV1({
+              sessionId,
+              ownerId: `owner:browser-${runId}`,
+              createdAt: now,
+              leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+            }),
+            brief,
+            graph: researchGraph,
+            approveAutomatically: true,
+            at: now,
+          });
+        }
         if (durableSession.status !== "running") {
           throw new ResearchContractError(
             "plan-approval-required",
@@ -120,7 +156,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           scopeCatalog,
           runId,
           researchGraph,
-          brief: briefOutcome.brief,
+          brief,
           workspace,
           durableSession: {
             store,

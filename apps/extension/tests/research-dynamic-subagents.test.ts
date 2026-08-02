@@ -17,8 +17,10 @@ import {
 } from "@atlcli/research/graph";
 import {
   ResearchCapabilityBroker,
+  ResearchRunBudget,
   InMemoryResearchSessionStoreV1,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+  RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
@@ -2120,6 +2122,166 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       ["research-task:r2:coverage-moderation:a1", 2],
       ["research-task:r2:synthesizer:a1", 2],
     ]);
+  });
+
+  test("resumes an issued deep continuation with persisted packets and budget counters", async () => {
+    const brief = graphBrief(
+      "Resume a bounded Jira research wave without replaying the completed acquisition.",
+      ["jira"],
+      "deep",
+      "off",
+    );
+    const graph = composeResearchGraphV1(brief);
+    const researcher = graph.nodes.find((node) => node.kind === "search" && node.roleId)!;
+    const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer")!;
+    const store = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:resume-continuation",
+        createdAt: "2026-08-02T13:00:00.000Z",
+        leaseExpiresAt: "2026-08-02T13:10:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-02T13:00:00.000Z",
+    });
+    const journal = new ResearchSessionDispatchJournalV1({
+      store,
+      sessionId: graph.sessionId,
+      turnId: graph.turnId,
+      now: () => "2026-08-02T13:00:01.000Z",
+    });
+    const selectedGraph = await journal.commitGraphSelection({
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(graph, [researcher.id, synthesizer.id]),
+    });
+    const selectedResearcher = selectedGraph.nodes.find((node) => node.id === researcher.id)!;
+    const taskId = researchTaskIdForNodeV1(selectedGraph, selectedResearcher);
+    const attempt = {
+      schema: RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
+      taskId,
+      nodeId: selectedResearcher.id,
+      graphRevision: selectedGraph.revision,
+      attempt: 1,
+      executor: "subagent" as const,
+      roleId: selectedResearcher.roleId!,
+      grantedCapabilityIds: [...selectedResearcher.grantedCapabilityIds],
+      typedIntentRefs: [...selectedResearcher.typedIntentRefs],
+      expectedOutputSchema: selectedResearcher.outputSchema,
+      budget: structuredClone(selectedResearcher.budget),
+      status: "ready" as const,
+      dispatchState: "not_started" as const,
+      createdAt: selectedGraph.createdAt,
+    };
+    await journal.admitAndStart(attempt);
+    const initialPacket = {
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion: "Persisted first-wave Jira result",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["Synthetic resume proof has no source detail."],
+    };
+    const persistedBudget = new ResearchRunBudget(request.limits);
+    persistedBudget.beginPtc({ tool: "synthetic-first-wave" });
+    await journal.acceptPacket({
+      taskId,
+      graphRevision: selectedGraph.revision,
+      body: initialPacket,
+      usage: {
+        capabilityCalls: 1,
+        inputTokens: 10,
+        outputTokens: 10,
+        resultBytes: new TextEncoder().encode(JSON.stringify(initialPacket)).byteLength,
+        durationMs: 1,
+        costMicros: 0,
+      },
+      availableSourceIds: [],
+      maximumResultBytes: selectedResearcher.budget.maxResultBytes,
+      budgetState: persistedBudget.state(),
+    });
+    const assessment = new ResearchCapabilityBroker(request, {
+      jira: { async searchPage() { return { items: [] }; }, async getIssue() { throw new Error("unused"); } },
+      wiki: { async searchPage() { return { items: [] }; }, async getPage() { throw new Error("unused"); } },
+    }).retrievalAssessment(["jira"]);
+    await journal.recordRetrievalAssessment({
+      graphRevision: selectedGraph.revision,
+      assessment,
+      issueContinuation: true,
+      budgetState: persistedBudget.state(),
+    });
+    const resumedGraph = (await store.read(graph.sessionId))!.turns.find((turn) =>
+      turn.id === graph.turnId,
+    )!.graph!;
+    const draft = {
+      title: "Resumed durable report",
+      executiveSummary: "The stored retrieval packet was reused without replaying acquisition.",
+      selectedClaimIds: [],
+      findings: [],
+      relationships: [],
+      limitations: ["Synthetic durable-resume proof contains no external source detail."],
+    };
+    const continuationProgram = `
+      const continuation = JSON.parse(await tools.researchRetrievalContinue({
+        graphRevision: ${resumedGraph.revision},
+        wave: 1,
+        continuationId: "research-continuation:${resumedGraph.revision}.1"
+      }));
+      if (continuation.action !== "stop") throw new Error("Expected terminal synthetic checkpoint.");
+      const responseSchemas = ${JSON.stringify({
+        "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+      })};
+      const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+      const finalTask = frontier.tasks[0];
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: finalTask.taskId,
+          objective: finalTask.objective,
+          dependencyResults: finalTask.dependencyResults
+        }),
+        subagentType: finalTask.subagentType,
+        responseSchema: responseSchemas[finalTask.outputSchema]
+      });
+      finalDraft;
+    `;
+    const resumedModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code: continuationProgram } }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
+    let resumedNow = Date.parse("2026-08-02T13:00:02.000Z");
+    const report = await runResearchAgent({
+      model: resumedModel,
+      request,
+      providers: {
+        jira: { async searchPage() { throw new Error("completed acquisition was replayed"); }, async getIssue() { throw new Error("unused"); } },
+        wiki: { async searchPage() { throw new Error("unused"); }, async getPage() { throw new Error("unused"); } },
+      },
+      budget: new ResearchRunBudget(request.limits),
+      researchGraph: resumedGraph,
+      brief,
+      durableSession: { store, sessionId: graph.sessionId, turnId: graph.turnId },
+      runId: "resumed-durable-continuation",
+      now: () => ++resumedNow,
+    });
+
+    expect(report.title).toBe(draft.title);
+    expect(report.run.counts.ptcCalls).toBe(1);
+    expect(resumedModel.callCount).toBe(3);
+    const resumedTurn = (await store.read(graph.sessionId))!.turns.find((turn) =>
+      turn.id === graph.turnId,
+    )!;
+    expect(resumedTurn.tasks.map((candidate) => candidate.taskId)).toEqual([
+      taskId,
+      researchTaskIdForNodeV1(resumedGraph, resumedGraph.nodes.find((node) => node.id === synthesizer.id)!),
+    ]);
+    expect(resumedTurn.retrievalAssessments?.[0]?.continuation).toMatchObject({ status: "consumed" });
+    expect(resumedTurn.budgetState).toMatchObject({ ptcCalls: 1 });
   });
 
   test("lets one supervisor prune optional roles before any native task dispatch", async () => {

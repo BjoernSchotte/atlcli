@@ -50,6 +50,12 @@ export interface OffscreenListenerDeps {
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
   ) => Promise<ResearchReport>;
+  resumeResearch?: (
+    runId: string,
+    sessionId: string,
+    turnId: string,
+    apiKey: string,
+  ) => Promise<ResearchReport>;
   cancelResearch?: (runId: string) => Promise<boolean>;
 }
 
@@ -94,6 +100,15 @@ export function handleExtMessage(
         case "research:run":
           sendResponse({
             kind: "research:run-result",
+            runId: message.runId,
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:resume":
+          sendResponse({
+            kind: "research:resume-result",
             runId: message.runId,
             ok: false,
             code: "provider-error",
@@ -213,6 +228,32 @@ export function handleOffscreenMessage(
           const classified = classifyResearchError(error);
           sendResponse({
             kind: "offscreen:research-run-result",
+            runId: message.runId,
+            ok: false,
+            code: classified.code,
+            error: classified.message,
+          });
+        });
+      break;
+    case "offscreen:research-resume":
+      (deps.resumeResearch
+        ? deps.resumeResearch(
+          message.runId,
+          message.sessionId,
+          message.turnId,
+          message.apiKey,
+        )
+        : Promise.reject(new Error("Research worker resume is not configured.")))
+        .then((report) => sendResponse({
+          kind: "offscreen:research-resume-result",
+          runId: message.runId,
+          ok: true,
+          report,
+        }))
+        .catch((error) => {
+          const classified = classifyResearchError(error);
+          sendResponse({
+            kind: "offscreen:research-resume-result",
             runId: message.runId,
             ok: false,
             code: classified.code,

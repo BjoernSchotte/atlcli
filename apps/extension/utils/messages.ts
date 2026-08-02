@@ -109,6 +109,13 @@ export type ExtRequest =
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
     }
+  | {
+      /** Resume one host-validated durable turn without accepting new scope or policy. */
+      kind: "research:resume";
+      runId: string;
+      sessionId: string;
+      windowId: number;
+    }
   | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
@@ -134,6 +141,14 @@ export type ExtResponse =
   | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReport }
   | {
       kind: "research:run-result";
+      runId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | { kind: "research:resume-result"; runId: string; ok: true; report: ResearchReport }
+  | {
+      kind: "research:resume-result";
       runId: string;
       ok: false;
       code: ResearchErrorCode;
@@ -181,6 +196,13 @@ export type OffscreenRequest =
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
     }
+  | {
+      kind: "offscreen:research-resume";
+      runId: string;
+      sessionId: string;
+      turnId: string;
+      apiKey: string;
+    }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
@@ -200,6 +222,19 @@ export type OffscreenResponse =
     }
   | {
       kind: "offscreen:research-run-result";
+      runId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "offscreen:research-resume-result";
+      runId: string;
+      ok: true;
+      report: ResearchReport;
+    }
+  | {
+      kind: "offscreen:research-resume-result";
       runId: string;
       ok: false;
       code: ResearchErrorCode;
@@ -235,6 +270,7 @@ export interface ResponseMap {
   "jobs:wake": Extract<ExtResponse, { kind: "jobs:wake-result" }>;
   "research:resolve-scope": Extract<ExtResponse, { kind: "research:resolve-scope-result" }>;
   "research:run": Extract<ExtResponse, { kind: "research:run-result" }>;
+  "research:resume": Extract<ExtResponse, { kind: "research:resume-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
@@ -269,6 +305,13 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       typeof run.request === "object" &&
       run.request !== null &&
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));
+  }
+  if (kind === "research:resume") {
+    const resume = value as { runId?: unknown; sessionId?: unknown; windowId?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "windowId"]) &&
+      isResearchRunId(resume.runId) &&
+      isResearchSessionId(resume.sessionId) &&
+      isWindowId(resume.windowId);
   }
   if (kind === "research:resolve-scope") {
     const preflight = value as { windowId?: unknown; request?: unknown; options?: unknown };
@@ -387,6 +430,14 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       typeof run.request === "object" &&
       run.request !== null &&
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));
+  }
+  if (candidate.kind === "offscreen:research-resume") {
+    const resume = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey"]) &&
+      isResearchRunId(resume.runId) &&
+      isResearchSessionId(resume.sessionId) &&
+      isResearchTurnId(resume.turnId) &&
+      isResearchApiKey(resume.apiKey);
   }
   if (candidate.kind === "offscreen:research-cancel") {
     const cancel = value as { runId?: unknown };

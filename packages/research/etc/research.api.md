@@ -575,6 +575,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchRetrievalAssessmentV1
 export declare function parseResearchRetrievalAssessmentV1(value: unknown): ResearchRetrievalAssessmentV1;
 
+// export: parseResearchRunBudgetStateV1
+export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -2283,6 +2286,9 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: researchPolicyFromBriefV1
+export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -2524,6 +2530,9 @@ export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_AP
 // export: ResearchRequestedReconciliationV1
 export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
 
+// export: researchRequestFromBriefV1
+export declare function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1;
+
 // export: ResearchRequestV1
 export interface ResearchRequestV1 {
     schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
@@ -2596,6 +2605,8 @@ export interface ResearchRetrievalProductAssessmentV1 {
 export declare class ResearchRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
+    restore(state: ResearchRunBudgetStateV1): void;
+    state(): ResearchRunBudgetStateV1;
     beginPtc(input: unknown): void;
     completePtc(output: unknown): void;
     guardTransport(event: TransportBudgetEvent): void;
@@ -2607,6 +2618,17 @@ export declare class ResearchRunBudget {
     beginDetail(product: ResearchProduct): void;
     snapshot(): ResearchBudgetSnapshotV1;
     counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunBudgetStateV1
+export interface ResearchRunBudgetStateV1 {
+    schema: "atlcli.research-run-budget/v1";
+    ptcCalls: number;
+    httpAttempts: number;
+    responseBytes: number;
+    pages: Record<ResearchProduct, number>;
+    items: Record<ResearchProduct, number>;
+    details: Record<ResearchProduct, number>;
 }
 
 // export: ResearchRunCountsV1
@@ -3012,6 +3034,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         usage: ResearchTaskUsageV1;
         availableSourceIds: string[];
         maximumResultBytes: number;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchAcceptedPacketV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -3031,6 +3054,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         graphRevision: number;
         assessment: ResearchRetrievalAssessmentV1;
         issueContinuation?: boolean;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -3203,6 +3227,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    budgetState?: ResearchRunBudgetStateV1;
     reconciliationCommittedAt?: string;
     graphRevisions?: ResearchSessionGraphRevisionV1[];
     retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
@@ -3300,6 +3325,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "quarantine_packet";
     taskId: string;
@@ -3318,6 +3344,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graphRevision: number;
     assessment: unknown;
     issueContinuation?: boolean;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "consume_retrieval_continuation";
     graphRevision: number;
@@ -4294,6 +4321,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchRetrievalAssessmentV1
 export declare function parseResearchRetrievalAssessmentV1(value: unknown): ResearchRetrievalAssessmentV1;
 
+// export: parseResearchRunBudgetStateV1
+export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -6002,6 +6032,9 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: researchPolicyFromBriefV1
+export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -6243,6 +6276,9 @@ export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_AP
 // export: ResearchRequestedReconciliationV1
 export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
 
+// export: researchRequestFromBriefV1
+export declare function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1;
+
 // export: ResearchRequestV1
 export interface ResearchRequestV1 {
     schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
@@ -6315,6 +6351,8 @@ export interface ResearchRetrievalProductAssessmentV1 {
 export declare class ResearchRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
+    restore(state: ResearchRunBudgetStateV1): void;
+    state(): ResearchRunBudgetStateV1;
     beginPtc(input: unknown): void;
     completePtc(output: unknown): void;
     guardTransport(event: TransportBudgetEvent): void;
@@ -6326,6 +6364,17 @@ export declare class ResearchRunBudget {
     beginDetail(product: ResearchProduct): void;
     snapshot(): ResearchBudgetSnapshotV1;
     counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunBudgetStateV1
+export interface ResearchRunBudgetStateV1 {
+    schema: "atlcli.research-run-budget/v1";
+    ptcCalls: number;
+    httpAttempts: number;
+    responseBytes: number;
+    pages: Record<ResearchProduct, number>;
+    items: Record<ResearchProduct, number>;
+    details: Record<ResearchProduct, number>;
 }
 
 // export: ResearchRunCountsV1
@@ -6731,6 +6780,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         usage: ResearchTaskUsageV1;
         availableSourceIds: string[];
         maximumResultBytes: number;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchAcceptedPacketV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -6750,6 +6800,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         graphRevision: number;
         assessment: ResearchRetrievalAssessmentV1;
         issueContinuation?: boolean;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -6922,6 +6973,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    budgetState?: ResearchRunBudgetStateV1;
     reconciliationCommittedAt?: string;
     graphRevisions?: ResearchSessionGraphRevisionV1[];
     retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
@@ -7019,6 +7071,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "quarantine_packet";
     taskId: string;
@@ -7037,6 +7090,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graphRevision: number;
     assessment: unknown;
     issueContinuation?: boolean;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "consume_retrieval_continuation";
     graphRevision: number;
@@ -8011,6 +8065,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchRetrievalAssessmentV1
 export declare function parseResearchRetrievalAssessmentV1(value: unknown): ResearchRetrievalAssessmentV1;
 
+// export: parseResearchRunBudgetStateV1
+export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -9719,6 +9776,9 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: researchPolicyFromBriefV1
+export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -9960,6 +10020,9 @@ export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_AP
 // export: ResearchRequestedReconciliationV1
 export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
 
+// export: researchRequestFromBriefV1
+export declare function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1;
+
 // export: ResearchRequestV1
 export interface ResearchRequestV1 {
     schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
@@ -10032,6 +10095,8 @@ export interface ResearchRetrievalProductAssessmentV1 {
 export declare class ResearchRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
+    restore(state: ResearchRunBudgetStateV1): void;
+    state(): ResearchRunBudgetStateV1;
     beginPtc(input: unknown): void;
     completePtc(output: unknown): void;
     guardTransport(event: TransportBudgetEvent): void;
@@ -10043,6 +10108,17 @@ export declare class ResearchRunBudget {
     beginDetail(product: ResearchProduct): void;
     snapshot(): ResearchBudgetSnapshotV1;
     counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunBudgetStateV1
+export interface ResearchRunBudgetStateV1 {
+    schema: "atlcli.research-run-budget/v1";
+    ptcCalls: number;
+    httpAttempts: number;
+    responseBytes: number;
+    pages: Record<ResearchProduct, number>;
+    items: Record<ResearchProduct, number>;
+    details: Record<ResearchProduct, number>;
 }
 
 // export: ResearchRunCountsV1
@@ -10448,6 +10524,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         usage: ResearchTaskUsageV1;
         availableSourceIds: string[];
         maximumResultBytes: number;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchAcceptedPacketV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -10467,6 +10544,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         graphRevision: number;
         assessment: ResearchRetrievalAssessmentV1;
         issueContinuation?: boolean;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -10639,6 +10717,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    budgetState?: ResearchRunBudgetStateV1;
     reconciliationCommittedAt?: string;
     graphRevisions?: ResearchSessionGraphRevisionV1[];
     retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
@@ -10736,6 +10815,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "quarantine_packet";
     taskId: string;
@@ -10754,6 +10834,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graphRevision: number;
     assessment: unknown;
     issueContinuation?: boolean;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "consume_retrieval_continuation";
     graphRevision: number;
@@ -11277,6 +11358,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
     capabilityCallsForNode?: (nodeId: string) => number;
+    budgetState?: () => ResearchRunBudgetStateV1;
     onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
     onRejectedStructuredResult?: (input: {
         taskId: string;
@@ -11902,6 +11984,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 
 // export: parseResearchRetrievalAssessmentV1
 export declare function parseResearchRetrievalAssessmentV1(value: unknown): ResearchRetrievalAssessmentV1;
+
+// export: parseResearchRunBudgetStateV1
+export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
@@ -13657,6 +13742,9 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: researchPolicyFromBriefV1
+export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -13937,6 +14025,9 @@ export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_AP
 // export: ResearchRequestedReconciliationV1
 export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
 
+// export: researchRequestFromBriefV1
+export declare function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1;
+
 // export: ResearchRequestV1
 export interface ResearchRequestV1 {
     schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
@@ -14009,6 +14100,8 @@ export interface ResearchRetrievalProductAssessmentV1 {
 export declare class ResearchRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
+    restore(state: ResearchRunBudgetStateV1): void;
+    state(): ResearchRunBudgetStateV1;
     beginPtc(input: unknown): void;
     completePtc(output: unknown): void;
     guardTransport(event: TransportBudgetEvent): void;
@@ -14020,6 +14113,17 @@ export declare class ResearchRunBudget {
     beginDetail(product: ResearchProduct): void;
     snapshot(): ResearchBudgetSnapshotV1;
     counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunBudgetStateV1
+export interface ResearchRunBudgetStateV1 {
+    schema: "atlcli.research-run-budget/v1";
+    ptcCalls: number;
+    httpAttempts: number;
+    responseBytes: number;
+    pages: Record<ResearchProduct, number>;
+    items: Record<ResearchProduct, number>;
+    details: Record<ResearchProduct, number>;
 }
 
 // export: ResearchRunCountsV1
@@ -14433,6 +14537,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         usage: ResearchTaskUsageV1;
         availableSourceIds: string[];
         maximumResultBytes: number;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchAcceptedPacketV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -14452,6 +14557,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         graphRevision: number;
         assessment: ResearchRetrievalAssessmentV1;
         issueContinuation?: boolean;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -14624,6 +14730,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    budgetState?: ResearchRunBudgetStateV1;
     reconciliationCommittedAt?: string;
     graphRevisions?: ResearchSessionGraphRevisionV1[];
     retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
@@ -14721,6 +14828,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "quarantine_packet";
     taskId: string;
@@ -14739,6 +14847,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graphRevision: number;
     assessment: unknown;
     issueContinuation?: boolean;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "consume_retrieval_continuation";
     graphRevision: number;
@@ -15336,6 +15445,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
     capabilityCallsForNode?: (nodeId: string) => number;
+    budgetState?: () => ResearchRunBudgetStateV1;
     onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
     onRejectedStructuredResult?: (input: {
         taskId: string;
@@ -15977,6 +16087,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchRetrievalAssessmentV1
 export declare function parseResearchRetrievalAssessmentV1(value: unknown): ResearchRetrievalAssessmentV1;
 
+// export: parseResearchRunBudgetStateV1
+export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -17731,6 +17844,9 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: researchPolicyFromBriefV1
+export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -18011,6 +18127,9 @@ export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_AP
 // export: ResearchRequestedReconciliationV1
 export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
 
+// export: researchRequestFromBriefV1
+export declare function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1;
+
 // export: ResearchRequestV1
 export interface ResearchRequestV1 {
     schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
@@ -18083,6 +18202,8 @@ export interface ResearchRetrievalProductAssessmentV1 {
 export declare class ResearchRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
+    restore(state: ResearchRunBudgetStateV1): void;
+    state(): ResearchRunBudgetStateV1;
     beginPtc(input: unknown): void;
     completePtc(output: unknown): void;
     guardTransport(event: TransportBudgetEvent): void;
@@ -18094,6 +18215,17 @@ export declare class ResearchRunBudget {
     beginDetail(product: ResearchProduct): void;
     snapshot(): ResearchBudgetSnapshotV1;
     counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunBudgetStateV1
+export interface ResearchRunBudgetStateV1 {
+    schema: "atlcli.research-run-budget/v1";
+    ptcCalls: number;
+    httpAttempts: number;
+    responseBytes: number;
+    pages: Record<ResearchProduct, number>;
+    items: Record<ResearchProduct, number>;
+    details: Record<ResearchProduct, number>;
 }
 
 // export: ResearchRunCountsV1
@@ -18507,6 +18639,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         usage: ResearchTaskUsageV1;
         availableSourceIds: string[];
         maximumResultBytes: number;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchAcceptedPacketV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -18526,6 +18659,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         graphRevision: number;
         assessment: ResearchRetrievalAssessmentV1;
         issueContinuation?: boolean;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -18709,6 +18843,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    budgetState?: ResearchRunBudgetStateV1;
     reconciliationCommittedAt?: string;
     graphRevisions?: ResearchSessionGraphRevisionV1[];
     retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
@@ -18806,6 +18941,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "quarantine_packet";
     taskId: string;
@@ -18824,6 +18960,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graphRevision: number;
     assessment: unknown;
     issueContinuation?: boolean;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "consume_retrieval_continuation";
     graphRevision: number;
@@ -20524,6 +20661,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
     capabilityCallsForNode?: (nodeId: string) => number;
+    budgetState?: () => ResearchRunBudgetStateV1;
     onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
     onRejectedStructuredResult?: (input: {
         taskId: string;
@@ -21164,6 +21302,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 
 // export: parseResearchRetrievalAssessmentV1
 export declare function parseResearchRetrievalAssessmentV1(value: unknown): ResearchRetrievalAssessmentV1;
+
+// export: parseResearchRunBudgetStateV1
+export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
@@ -22919,6 +23060,9 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: researchPolicyFromBriefV1
+export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -23199,6 +23343,9 @@ export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_AP
 // export: ResearchRequestedReconciliationV1
 export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
 
+// export: researchRequestFromBriefV1
+export declare function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1;
+
 // export: ResearchRequestV1
 export interface ResearchRequestV1 {
     schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
@@ -23271,6 +23418,8 @@ export interface ResearchRetrievalProductAssessmentV1 {
 export declare class ResearchRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
+    restore(state: ResearchRunBudgetStateV1): void;
+    state(): ResearchRunBudgetStateV1;
     beginPtc(input: unknown): void;
     completePtc(output: unknown): void;
     guardTransport(event: TransportBudgetEvent): void;
@@ -23282,6 +23431,17 @@ export declare class ResearchRunBudget {
     beginDetail(product: ResearchProduct): void;
     snapshot(): ResearchBudgetSnapshotV1;
     counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunBudgetStateV1
+export interface ResearchRunBudgetStateV1 {
+    schema: "atlcli.research-run-budget/v1";
+    ptcCalls: number;
+    httpAttempts: number;
+    responseBytes: number;
+    pages: Record<ResearchProduct, number>;
+    items: Record<ResearchProduct, number>;
+    details: Record<ResearchProduct, number>;
 }
 
 // export: ResearchRunCountsV1
@@ -23695,6 +23855,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         usage: ResearchTaskUsageV1;
         availableSourceIds: string[];
         maximumResultBytes: number;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchAcceptedPacketV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -23714,6 +23875,7 @@ export declare class ResearchSessionDispatchJournalV1 {
         graphRevision: number;
         assessment: ResearchRetrievalAssessmentV1;
         issueContinuation?: boolean;
+        budgetState?: ResearchRunBudgetStateV1;
     }): Promise<ResearchSessionRetrievalAssessmentV1 & {
         graph: ResearchGraphV1;
     }>;
@@ -23897,6 +24059,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    budgetState?: ResearchRunBudgetStateV1;
     reconciliationCommittedAt?: string;
     graphRevisions?: ResearchSessionGraphRevisionV1[];
     retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
@@ -23994,6 +24157,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "quarantine_packet";
     taskId: string;
@@ -24012,6 +24176,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     graphRevision: number;
     assessment: unknown;
     issueContinuation?: boolean;
+    budgetState?: ResearchRunBudgetStateV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "consume_retrieval_continuation";
     graphRevision: number;

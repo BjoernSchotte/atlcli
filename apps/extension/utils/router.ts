@@ -60,6 +60,11 @@ export interface RouterDeps {
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
   ) => Promise<ResearchReport>;
+  resumeResearch?: (
+    runId: string,
+    sessionId: string,
+    windowId: number,
+  ) => Promise<ResearchReport>;
   resolveResearchScope?: (
     windowId: number,
     request: ResearchRequestV1,
@@ -174,6 +179,30 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:run-result",
+          runId: msg.runId,
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:resume": {
+      if (!deps.resumeResearch) {
+        return {
+          kind: "research:resume-result",
+          runId: msg.runId,
+          ok: false,
+          code: "provider-error",
+          error: "Research resume is not configured.",
+        };
+      }
+      try {
+        const report = await deps.resumeResearch(msg.runId, msg.sessionId, msg.windowId);
+        return { kind: "research:resume-result", runId: msg.runId, ok: true, report };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:resume-result",
           runId: msg.runId,
           ok: false,
           code: classified.code,

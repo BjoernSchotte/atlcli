@@ -37,8 +37,9 @@ export class ResearchAgentWorkerHost {
     sessionId: string;
     turnId: string;
     apiKey: string;
-    request: ResearchRequestV1;
+    request?: ResearchRequestV1;
     policy?: ResearchOneShotPolicyV1;
+    resume?: true;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
   }): Promise<ResearchReport> {
@@ -69,6 +70,24 @@ export class ResearchAgentWorkerHost {
         const classified = classifyResearchError(event.error ?? event.message);
         reject(new ResearchContractError(classified.code, classified.message));
       };
+      if (input.resume) {
+        worker.postMessage({
+          kind: "research-worker:run",
+          runId: input.runId,
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          apiKey: input.apiKey,
+          resume: true,
+        });
+        return;
+      }
+      if (!input.request) {
+        reject(new ResearchContractError(
+          "invalid-request",
+          "A new research worker run requires a request.",
+        ));
+        return;
+      }
       worker.postMessage({
         kind: "research-worker:run",
         runId: input.runId,

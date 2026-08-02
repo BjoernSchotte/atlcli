@@ -270,6 +270,42 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     }]);
   });
 
+  it("passes only opaque IDs and the transient key to the offscreen resume host", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    const report = { schema: "atlcli.research-report/v1" } as ResearchReportV1;
+    const received: unknown[] = [];
+    expect(handleOffscreenMessage(
+      {
+        kind: "offscreen:research-resume",
+        runId: "run-resume",
+        sessionId: "research-session:resume",
+        turnId: "research-turn:resume",
+        apiKey: "sk-ant-test-listener",
+      },
+      cap.sendResponse,
+      {
+        ...okOffscreenDeps,
+        resumeResearch: async (runId, sessionId, turnId, apiKey) => {
+          received.push(runId, sessionId, turnId, apiKey);
+          return report;
+        },
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(received).toEqual([
+      "run-resume",
+      "research-session:resume",
+      "research-turn:resume",
+      "sk-ant-test-listener",
+    ]);
+    expect(cap.values).toEqual([{
+      kind: "offscreen:research-resume-result",
+      runId: "run-resume",
+      ok: true,
+      report,
+    }]);
+  });
+
   it("keeps an offscreen queue wake failure distinct from an empty queue", async () => {
     const cap = captureResponse<OffscreenResponse>();
     expect(handleOffscreenMessage(
