@@ -3374,6 +3374,10 @@ Gate:
 - [ ] Two concurrent approvals or steering requests against the same graph
       revision produce one accepted revision and one explicit stale-revision
       result.
+
+  - [x] Packed MV3: two concurrent approvals of the same persisted initial
+        plan produce exactly one approved graph revision; the other request is
+        fenced as `invalid-request`, with no key write, worker, or retrieval.
 - [ ] Required plan approval performs zero detail, subagent, or model research
       calls before the exact revision is approved.
 - [ ] A pending scope expansion performs zero content calls against the

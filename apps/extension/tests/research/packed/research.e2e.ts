@@ -2770,6 +2770,69 @@ test("persists and approves an initial packed plan before key storage or retriev
   expect(events.some((event) => event.kind === "worker-start")).toBe(false);
 });
 
+test("fences concurrent packed plan approvals to one durable graph revision", async () => {
+  await installEventCapture(page);
+  const prepared = await page.evaluate(async ({ request, policy }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:prepare-plan-review",
+      windowId: window.id,
+      request,
+      policy,
+    });
+  }, {
+    request: hostParityRequest(),
+    policy: {
+      ...HOST_PARITY_POLICY,
+      requestedPlanApproval: "required" as const,
+    },
+  }) as {
+    kind: string;
+    ok: boolean;
+    review?: {
+      sessionId: string;
+      revision: number;
+      turn: { id: string; briefRevision: number; graphRevision: number };
+    };
+  };
+  if (!prepared.ok || !prepared.review) throw new Error(JSON.stringify(prepared));
+
+  const outcomes = await page.evaluate(async (review) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    const approve = () => chrome.runtime.sendMessage({
+      kind: "research:approve-plan-review",
+      windowId: window.id,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+    });
+    return Promise.all([approve(), approve()]);
+  }, prepared.review) as Array<{ ok: boolean; code?: string }>;
+  expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
+  expect(outcomes.filter((outcome) => !outcome.ok)).toEqual([
+    expect.objectContaining({ code: "invalid-request" }),
+  ]);
+
+  const durable = await readPackedDurableResearchSession(
+    page,
+    prepared.review.sessionId,
+    `artifact:report:${prepared.review.turn.id}`,
+  );
+  expect(durable.session.state).toMatchObject({
+    status: "running",
+    revision: prepared.review.revision + 1,
+    turns: [{ graph: { revision: prepared.review.turn.graphRevision, status: "approved" } }],
+  });
+  expect(durable.artifact).toBeUndefined();
+  expect((await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY)))
+    .not.toHaveProperty(RESEARCH_ANTHROPIC_SESSION_KEY);
+  const events = await harnessEvents(page);
+  expect(events.some((event) => event.kind === "fetch" || event.kind === "worker-start")).toBe(false);
+});
+
 test("persists a packed plan correction and requires an explicit replacement approval", async () => {
   await installEventCapture(page);
   const request = hostParityRequest();
