@@ -499,7 +499,7 @@ function rendererPolicy(value: unknown, path: string): void {
   keys(candidate, path, [
     "allowedRendererIds", "allowIslands", "maxIslandBytes", "maxChartRows",
     "maxChartSeries", "maxChartPoints", "maxChartSvgNodes", "maxChartSvgBytes",
-    "maxChartRenderMs", "maxChartIslandMountMs",
+    "maxChartRenderMs", "maxChartIslandMountMs", "maxChartAcquisitionMs", "maxChartAggregateBytes",
   ]);
   stringValues(candidate.allowedRendererIds, `${path}.allowedRendererIds`);
   boolean(candidate.allowIslands, `${path}.allowIslands`);
@@ -511,12 +511,18 @@ function rendererPolicy(value: unknown, path: string): void {
   optional(candidate, "maxChartSvgBytes", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
   optional(candidate, "maxChartRenderMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
   optional(candidate, "maxChartIslandMountMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartAcquisitionMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartAggregateBytes", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
 }
 
 function chartRenderPolicy(value: unknown, path: string): void {
   const candidate = object(value, path);
-  keys(candidate, path, ["strict", "normalization", "static", "island"]);
+  keys(candidate, path, ["strict", "acquisition", "normalization", "static", "island"]);
   boolean(candidate.strict, `${path}.strict`);
+  const acquisition = object(candidate.acquisition, `${path}.acquisition`);
+  keys(acquisition, `${path}.acquisition`, ["maxDurationMs", "maxAggregateBytes"]);
+  safeInteger(acquisition.maxDurationMs, `${path}.acquisition.maxDurationMs`, 1);
+  safeInteger(acquisition.maxAggregateBytes, `${path}.acquisition.maxAggregateBytes`, 1);
   const normalization = object(candidate.normalization, `${path}.normalization`);
   keys(normalization, `${path}.normalization`, ["maxRows", "maxSeries", "maxPoints", "maxBytes"]);
   safeInteger(normalization.maxRows, `${path}.normalization.maxRows`, 1);

@@ -69,12 +69,16 @@ world-class semantic/visual gate is still open; — intentionally static.
   off output. A project-bounded mount deadline tears down an over-budget host
   and visibly restores the complete static representation.
 - A frozen project-derived chart policy is part of the immutable publication
-  bundle. It independently bounds normalized rows/points/bytes, TanStack scene
-  nodes/SVG bytes/render time, and optional-island rows/series/points/payload.
+  bundle. It independently bounds acquisition duration and aggregate chart
+  payload bytes, normalized rows/points/bytes, TanStack scene nodes/SVG
+  bytes/render time, and optional-island rows/series/points/payload.
+  Acquisition uses cooperative cancellation plus a raced hard deadline, so a
+  non-cooperative adapter cannot hold the refresh indefinitely and no timed-
+  out candidate becomes active.
   Strict overrun rejects publication; explicit partial mode shows a diagnostic
-  and the complete table without mounting an unbounded visual. Acquisition
-  deadline/aggregate-memory accounting and an island runtime watchdog remain
-  open and therefore keep the overall resource-budget PLAN gate unchecked.
+  and the complete table without mounting an unbounded visual. The CLI/provider
+  cancellation proof and the browser island-overrun proof cover both runtime
+  fallback paths.
 
 ## Evidence
 

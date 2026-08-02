@@ -83,11 +83,19 @@ export interface PublicationRendererPolicyV1 {
   maxChartSvgBytes?: number;
   maxChartRenderMs?: number;
   maxChartIslandMountMs?: number;
+  /** Wall-clock budget for source acquisition plus chart normalization. */
+  maxChartAcquisitionMs?: number;
+  /** Aggregate encoded ChartRenderModel payload admitted in one refresh. */
+  maxChartAggregateBytes?: number;
 }
 
 /** Safe, public build-time chart policy derived from the private project. */
 export interface PublicationChartRenderPolicyV1 {
   strict: boolean;
+  acquisition: {
+    maxDurationMs: number;
+    maxAggregateBytes: number;
+  };
   normalization: {
     maxRows: number;
     maxSeries: number;

@@ -124,6 +124,12 @@ export declare const DEFAULT_CHART_P0_DIAGNOSTIC_CODES_V1: readonly [
     "renderer-fallback"
 ];
 
+// export: DEFAULT_PUBLICATION_CHART_ACQUISITION_MS_V1
+export declare const DEFAULT_PUBLICATION_CHART_ACQUISITION_MS_V1: number;
+
+// export: DEFAULT_PUBLICATION_CHART_AGGREGATE_BYTES_V1
+export declare const DEFAULT_PUBLICATION_CHART_AGGREGATE_BYTES_V1: number;
+
 // export: DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1
 export declare const DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 250;
 
@@ -151,6 +157,12 @@ export declare function digestPublicationPageV1(page: PublicationPageV1): Promis
 
 // export: digestPublicationRefreshPlanV1
 export declare function digestPublicationRefreshPlanV1(plan: PublicationRefreshPlanV1): Promise<string>;
+
+// export: MAX_PUBLICATION_CHART_ACQUISITION_MS_V1
+export declare const MAX_PUBLICATION_CHART_ACQUISITION_MS_V1: number;
+
+// export: MAX_PUBLICATION_CHART_AGGREGATE_BYTES_V1
+export declare const MAX_PUBLICATION_CHART_AGGREGATE_BYTES_V1: number;
 
 // export: MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1
 export declare const MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 1000;
@@ -424,6 +436,13 @@ export interface PublicationChangeV1 {
     nextRoute?: string;
 }
 
+// export: PublicationChartAcquisitionDeadlineErrorV1
+export declare class PublicationChartAcquisitionDeadlineErrorV1 extends Error {
+    readonly maxDurationMs: number;
+    readonly code: "chart-acquisition-timeout";
+    constructor(maxDurationMs: number);
+}
+
 // export: PublicationChartDiagnosticPolicyErrorV1
 export declare class PublicationChartDiagnosticPolicyErrorV1 extends Error {
     constructor(message: string);
@@ -432,6 +451,10 @@ export declare class PublicationChartDiagnosticPolicyErrorV1 extends Error {
 // export: PublicationChartRenderPolicyV1
 export interface PublicationChartRenderPolicyV1 {
     strict: boolean;
+    acquisition: {
+        maxDurationMs: number;
+        maxAggregateBytes: number;
+    };
     normalization: {
         maxRows: number;
         maxSeries: number;
@@ -858,6 +881,8 @@ export interface PublicationRendererPolicyV1 {
     maxChartSvgBytes?: number;
     maxChartRenderMs?: number;
     maxChartIslandMountMs?: number;
+    maxChartAcquisitionMs?: number;
+    maxChartAggregateBytes?: number;
 }
 
 // export: PublicationRendererRegistryErrorV1
@@ -1173,6 +1198,12 @@ export type ResolvedPublicationLinkV1 = {
 
 // export: runPublicationBuildV1
 export declare function runPublicationBuildV1(builder: PublicationBuilderV1, requestValue: unknown): Promise<PublicationBuildResultV1>;
+
+// export: runWithPublicationChartAcquisitionDeadlineV1
+export declare function runWithPublicationChartAcquisitionDeadlineV1<T>(operation: (signal: AbortSignal) => Promise<T>, options: {
+    maxDurationMs: number;
+    signal?: AbortSignal;
+}): Promise<T>;
 
 // export: STATIC_PUBLICATION_MANIFEST_SCHEMA_V1
 export declare const STATIC_PUBLICATION_MANIFEST_SCHEMA_V1: "atlcli.static-publication-manifest/1";

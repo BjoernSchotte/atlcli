@@ -41,6 +41,7 @@ import {
   parsePublicationBundleV1,
   parsePublicationProjectV1,
   parseStaticPublicationManifestV1,
+  runWithPublicationChartAcquisitionDeadlineV1,
   type PublicationBundleV1,
   type PublicationLinkReferenceV1,
   type PublicationPageV1,
@@ -407,12 +408,21 @@ async function graphAndPlan(state: PublishProjectStateV1, profile: Profile, sign
 }> {
   const client = new ConfluenceClient(profile);
   const source = sourceRequest(state.project, profile);
-  const graph = await resolveConfluencePageGraphV1(source, {
-    exporter: "web",
-    port: confluenceSourceResolverPortFromClientV1(client),
-    signal,
-  });
-  const { pages, snapshot, assetRequests } = await snapshotAndPages(state.project, graph);
+  const acquisitionPolicy = createPublicationChartRenderPolicyV1(state.project).acquisition;
+  const { pages, snapshot, assetRequests } = await runWithPublicationChartAcquisitionDeadlineV1(
+    async (acquisitionSignal) => {
+      const graph = await resolveConfluencePageGraphV1(source, {
+        exporter: "web",
+        port: confluenceSourceResolverPortFromClientV1(client),
+        signal: acquisitionSignal,
+      });
+      acquisitionSignal.throwIfAborted();
+      const acquired = await snapshotAndPages(state.project, graph);
+      acquisitionSignal.throwIfAborted();
+      return acquired;
+    },
+    { maxDurationMs: acquisitionPolicy.maxDurationMs, signal },
+  );
   const previous = await readActiveBundle(state.workspaceDirectory);
   const previousPages = previous === undefined ? undefined : {
     ...previous.bundle.sourceSnapshot,

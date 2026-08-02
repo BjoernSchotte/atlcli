@@ -465,7 +465,7 @@ only and must be safe to include in a public site manifest.
 - [x] Make strict mode fail the page/build for configured P0 errors; make
       lenient mode publish a visibly marked partial result and report all
       diagnostics.
-- [ ] Enforce resource/time/memory budgets separately for acquisition,
+- [x] Enforce resource/time/memory budgets separately for acquisition,
       normalization, static rendering, and islands.
   - [x] Thread a frozen, project-derived chart policy through the immutable
         publication bundle. Enforce normalization row/point/byte admission,
@@ -478,9 +478,15 @@ only and must be safe to include in a public site manifest.
         static SVG, exposes a visible status, and retains the exact-value table;
         the real browser matrix proves the teardown path with a bounded
         66-row/12-series chart.
-  - [ ] Add acquisition deadlines and aggregate memory accounting so the
-        acquisition phase has runtime containment rather than relying on
-        structural page/table limits alone.
+  - [x] Add acquisition deadlines and aggregate memory accounting. The frozen
+        project policy now bounds source acquisition plus normalization with
+        `maxChartAcquisitionMs` and independently caps the aggregate encoded
+        chart-model payload with `maxChartAggregateBytes`. A raced deadline
+        rejects even a non-cooperative adapter while aborting cooperative work;
+        the real CLI/provider path proves a 1ms deadline exits with
+        `chart-acquisition-timeout` before writing or activating a candidate.
+        Strict aggregate overruns make refresh incomplete; explicit partial
+        mode retains diagnostics without silently dropping data.
 - [x] Sanitize text/attributes and URLs using existing shared gates. The only
       chart `set:html` seam accepts validated, escaped output from the pinned
       TanStack adapter; raw provider HTML and macro parameters cannot reach it.
@@ -628,16 +634,18 @@ listed in the capability registry.
 
 - [x] Add security/property tests, bounded diagnostics, and privacy
       scans.
-- [ ] Add independent acquisition/render resource budgets and cache invalidation
+- [x] Add independent acquisition/render resource budgets and cache invalidation
       for selected source-table changes.
   - [x] Selected source-table content digests invalidate the cache, and the
         immutable bundle now carries independent normalization, static-render,
         and island structural limits plus the static render deadline.
-  - [ ] Complete acquisition deadline/aggregate-memory containment, then
-        exercise its cancellation path end to end.
+  - [x] Complete acquisition deadline/aggregate-memory containment and exercise
+        its cancellation path through the normal `wiki publish plan` command
+        against the mayflower provider profile. The timed-out run leaves no
+        plan, bundle, or active pointer in its isolated workspace.
   - [x] Complete island runtime containment and exercise its teardown/static-
-        fallback path end to end; acquisition deadline/aggregate-memory proof
-        remains the only open sub-gate above.
+        fallback path end to end. Together with the acquisition proof above,
+        every resource phase now has a structural and runtime gate.
 
 ### T10 — End-to-end proof and documentation
 
