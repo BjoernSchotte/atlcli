@@ -148,6 +148,56 @@ describe("research-owned native task dispatch interception", () => {
     expect(calls).toEqual(["wave-1", "wave-2"]);
   });
 
+  test("hydrates a host-accepted dependency before a restarted later wave", async () => {
+    const restored = { taskId: "wave-1", answer: "host-projected" };
+    const calls: string[] = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [
+        admission("wave-1", [], { objective: "Research wave-1" }),
+        admission("wave-2", [], {
+          objective: "Research wave-2",
+          dependsOnTaskIds: ["wave-1"],
+        }),
+      ],
+      maxTasks: 2,
+      maxConcurrency: 1,
+      async invokeUpstream(_input, config) {
+        const taskId = String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]);
+        calls.push(taskId);
+        return { taskId, answer: "new-result" };
+      },
+    });
+
+    adapter.restoreCompleted([{ taskId: "wave-1", result: restored }]);
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "wave-1",
+        objective: "Research wave-1",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).rejects.toMatchObject({ code: "task-already-dispatched" });
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "wave-2",
+        objective: "Research wave-2",
+        dependencyResults: [{ taskId: "wave-1", result: restored }],
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).resolves.toEqual({ taskId: "wave-2", answer: "new-result" });
+
+    expect(calls).toEqual(["wave-2"]);
+    expect(adapter.snapshot()).toMatchObject({
+      dispatchedTasks: 2,
+      taskStatuses: { "wave-1": "completed", "wave-2": "completed" },
+    });
+    expect(() => adapter.replaceAdmissions([admission("replacement")]))
+      .toThrow("immutable after dispatch observation");
+  });
+
   test("does not append a later wave while a prior task is still active", async () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {

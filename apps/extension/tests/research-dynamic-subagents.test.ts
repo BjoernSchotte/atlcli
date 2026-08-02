@@ -28,6 +28,7 @@ import {
   encodeResearchTaskDescriptionV1,
   initializeResearchSessionTurnV1,
   projectResearchReconciliationInputV1,
+  ResearchSessionDispatchJournalV1,
   researchCheckpointConfigV1,
   type ResearchAcceptedPacketV1,
   type ResearchOneShotEventV1,
@@ -3096,6 +3097,176 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         { taskId: researchTaskIdForNodeV1(activeGraph, revisedWiki), result: wikiResult },
       ]).description,
       subagent_type: researchSubagentTypeForNodeV1(join),
+    });
+  });
+
+  test("rehydrates durable accepted dependencies into a fresh middleware after a graph revision", async () => {
+    const brief = graphBrief(
+      request.question,
+      ["jira", "confluence"],
+      "analysis",
+      "off",
+    );
+    const catalog = composeResearchGraphV1(brief);
+    const selectedNodeIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:synthesizer",
+    ];
+    const store = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store,
+      session: createResearchSessionV1({
+        sessionId: brief.sessionId,
+        ownerId: "owner:hydration",
+        createdAt: "2026-08-02T08:00:00.000Z",
+        leaseExpiresAt: "2026-08-02T08:10:00.000Z",
+      }),
+      brief,
+      graph: catalog,
+      approveAutomatically: true,
+      at: "2026-08-02T08:00:00.000Z",
+    });
+    const journal = new ResearchSessionDispatchJournalV1({
+      store,
+      sessionId: brief.sessionId,
+      turnId: brief.turnId,
+      now: () => "2026-08-02T08:00:00.000Z",
+    });
+    let activeGraph = await journal.commitGraphSelection({
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog, selectedNodeIds),
+    });
+    const initialDispatches: string[] = [];
+    const initialUpstream = tool(async (input: { subagent_type: string }) => {
+      initialDispatches.push(input.subagent_type);
+      return {
+        schema: "atlcli.research-packet-body/v1",
+        answeredQuestion: "Bounded durable first-wave result.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      };
+    }, {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const createMiddleware = (
+      upstream: typeof initialUpstream,
+      hydratedAcceptedTasks?: NonNullable<Parameters<typeof createBoundedResearchSubagentMiddleware>[4]>["hydratedAcceptedTasks"],
+    ) => createBoundedResearchSubagentMiddleware(
+      model,
+      catalog,
+      compileDynamicResearchSubagents(catalog, {
+        model,
+        broker,
+        question: request.question,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [upstream] })) as never,
+      },
+      {
+        activeGraph: () => activeGraph,
+        admissionMode: "ready_frontier",
+        durableDispatchJournal: journal,
+        ...(hydratedAcceptedTasks ? { hydratedAcceptedTasks } : {}),
+        onGraphUpdated: (graph) => { activeGraph = graph; },
+      },
+    );
+
+    const initialMiddleware = createMiddleware(initialUpstream);
+    const initialTaskTool = initialMiddleware.tools![0]!;
+    const jira = activeGraph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const wiki = activeGraph.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    const jiraResult = await initialTaskTool.invoke({
+      description: taskEnvelope(activeGraph, jira.id).description,
+      subagent_type: researchSubagentTypeForNodeV1(jira),
+    });
+    const wikiResult = await initialTaskTool.invoke({
+      description: taskEnvelope(activeGraph, wiki.id).description,
+      subagent_type: researchSubagentTypeForNodeV1(wiki),
+    });
+    expect(initialDispatches).toEqual([
+      researchSubagentTypeForNodeV1(jira),
+      researchSubagentTypeForNodeV1(wiki),
+    ]);
+
+    activeGraph = await journal.applyGraphRevision({
+      graph: reviseResearchGraphSelectionV1(catalog, activeGraph, {
+        schema: "atlcli.research-graph-revision-proposal/v1",
+        basedOnBriefRevision: activeGraph.basedOnBriefRevision,
+        basedOnGraphRevision: activeGraph.revision,
+        nodes: catalog.nodes.filter((node) => selectedNodeIds.includes(node.id)).map((node) => ({
+          nodeId: node.id,
+          dependencies: node.dependencies.filter((dependency) => selectedNodeIds.includes(dependency)),
+          reasonCodes: node.reasonCodes,
+          priority: node.priority,
+        })),
+        prune: [],
+      }),
+      evidenceIds: [],
+      gapIds: [],
+      reason: "coverage_gap",
+    });
+    const resumedTurn = (await store.read(brief.sessionId))!.turns.find((turn) =>
+      turn.id === brief.turnId,
+    )!;
+    const hydratedAcceptedTasks = resumedTurn.acceptedPackets.map((packet) => ({
+      attempt: resumedTurn.tasks.find((attempt) => attempt.taskId === packet.taskId)!,
+      packet,
+    }));
+    const resumedDispatches: string[] = [];
+    const resumedUpstream = tool(async (input: { subagent_type: string }) => {
+      resumedDispatches.push(input.subagent_type);
+      return {
+        schema: "atlcli.research-packet-body/v1",
+        answeredQuestion: "Bounded resumed join result.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      };
+    }, {
+      name: "task",
+      description: "Synthetic resumed upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const resumedMiddleware = createMiddleware(resumedUpstream, hydratedAcceptedTasks);
+    const resumedTaskTool = resumedMiddleware.tools![0]!;
+    const resumedJira = activeGraph.nodes.find((node) => node.id === jira.id)!;
+    const resumedWiki = activeGraph.nodes.find((node) => node.id === wiki.id)!;
+    const join = activeGraph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+
+    await expect(resumedTaskTool.invoke({
+      description: taskEnvelope(activeGraph, resumedJira.id).description,
+      subagent_type: researchSubagentTypeForNodeV1(resumedJira),
+    })).rejects.toMatchObject({ code: "task-already-dispatched" });
+    const resumedJoinResult = await resumedTaskTool.invoke({
+      description: taskEnvelope(activeGraph, join.id, [
+        { taskId: researchTaskIdForNodeV1(activeGraph, resumedJira), result: jiraResult },
+        { taskId: researchTaskIdForNodeV1(activeGraph, resumedWiki), result: wikiResult },
+      ]).description,
+      subagent_type: researchSubagentTypeForNodeV1(join),
+    });
+    expect(resumedJoinResult).toMatchObject({ schema: "atlcli.research-dependency-packet/v1" });
+
+    expect(resumedDispatches).toEqual([researchSubagentTypeForNodeV1(join)]);
+    expect(activeGraph.nodes.find((node) => node.id === join.id)).toMatchObject({
+      status: "complete",
+      taskGraphRevision: activeGraph.revision,
     });
   });
 

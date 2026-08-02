@@ -56,6 +56,7 @@ import {
   createResearchDispatchInterceptionAdapter,
   type ResearchDispatchDiagnosticV1,
   type ResearchTaskAdmissionV1,
+  type ResearchTaskDependencyResultV1,
 } from "./dispatch-adapter.js";
 
 /** @deprecated Use RESEARCH_PACKET_BODY_JSON_SCHEMA_V1. */
@@ -495,6 +496,21 @@ export interface DynamicResearchSubagentOptions {
   now?: () => number;
 }
 
+/**
+ * One terminal task outcome read back from the durable host session before a
+ * disposable supervisor/runtime instance resumes a later graph frontier.
+ *
+ * The packet and attempt are already authoritative host records. V1 and
+ * reconciliation dependency projections are re-derived from the packet body;
+ * V2 deliberately requires a separate host projection because its canonical
+ * packet contains IDs rather than downstream prompt material.
+ */
+export interface ResearchAcceptedTaskHydrationV1 {
+  attempt: ResearchTaskAttemptV1;
+  packet: ResearchAcceptedPacketV1;
+  dependencyResult?: unknown;
+}
+
 export interface ResearchSubagentRuntimeBindings {
   createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
 }
@@ -651,6 +667,11 @@ export function createBoundedResearchSubagentMiddleware(
     activeGraph?: () => ResearchGraphV1 | undefined;
     /** Optional durable owner. It commits lifecycle transitions before publication. */
     durableDispatchJournal?: ResearchSessionDispatchJournalV1;
+    /**
+     * Completed dependencies reloaded from the authoritative durable session
+     * before a restarted local middleware instance admits a later frontier.
+     */
+    hydratedAcceptedTasks?: readonly ResearchAcceptedTaskHydrationV1[];
     /** Keep host runtime state synchronized with durable node transitions. */
     onGraphUpdated?: (graph: ResearchGraphV1) => void;
     /**
@@ -729,7 +750,10 @@ export function createBoundedResearchSubagentMiddleware(
     schema: RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
     taskId: researchTaskIdForNodeV1(executionGraph, node),
     nodeId: node.id,
-    graphRevision: executionGraph.revision,
+    // A completed node retains the graph revision on which it was admitted
+    // across later host-approved graph revisions. A newly admitted node has
+    // no taskGraphRevision until its first durable dispatch start.
+    graphRevision: node.taskGraphRevision ?? executionGraph.revision,
     attempt: 1,
     executor: "subagent",
     roleId: node.roleId,
@@ -894,6 +918,91 @@ export function createBoundedResearchSubagentMiddleware(
     });
   };
   const admissions = admissionsForGraph(graph);
+  const recoveredDependencies = (() => {
+    const hydrated = options.hydratedAcceptedTasks ?? [];
+    if (hydrated.length === 0) return undefined;
+    const activeGraph = options.activeGraph?.();
+    if (!activeGraph) {
+      throw new ResearchDispatchError(
+        "graph-proposal-required",
+        "Durable dependency hydration requires the current accepted research graph.",
+      );
+    }
+    const availableAdmissions = admissionsForGraph(activeGraph);
+    const admissionByTaskId = new Map(
+      availableAdmissions.map((admission) => [admission.taskId, admission]),
+    );
+    const nodeByTaskId = new Map(activeGraph.nodes
+      .filter((node): node is ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 } =>
+        node.executor === "subagent" && Boolean(node.roleId)
+      )
+      .map((node) => [researchTaskIdForNodeV1(activeGraph, node), node]));
+    const taskIds = new Set<string>();
+    const results: ResearchTaskDependencyResultV1[] = hydrated.map((entry) => {
+      const { attempt, packet } = entry;
+      const admission = admissionByTaskId.get(attempt.taskId);
+      const node = nodeByTaskId.get(attempt.taskId);
+      if (!admission || !node || taskIds.has(attempt.taskId) ||
+          node.status !== "complete" || node.packetRef !== packet.packetRef ||
+          attempt.status !== "complete" || attempt.dispatchState !== "result_committed" ||
+          attempt.acceptedPacketRef !== packet.packetRef ||
+          attempt.graphRevision !== (node.taskGraphRevision ?? activeGraph.revision) ||
+          packet.schema !== "atlcli.accepted-research-packet/v1" ||
+          packet.taskId !== attempt.taskId || packet.graphRevision !== attempt.graphRevision ||
+          packet.attempt !== attempt.attempt || packet.executor !== attempt.executor ||
+          packet.roleId !== attempt.roleId ||
+          packet.expectedOutputSchema !== attempt.expectedOutputSchema ||
+          JSON.stringify(packet.grantedCapabilityIds) !== JSON.stringify(attempt.grantedCapabilityIds) ||
+          JSON.stringify(packet.typedIntentRefs) !== JSON.stringify(attempt.typedIntentRefs) ||
+          admission.taskId !== attempt.taskId ||
+          admission.subagentType !== researchSubagentTypeForNodeV1(node) ||
+          admission.maxResultBytes !== node.budget.maxResultBytes ||
+          admission.maxDurationMs !== node.budget.maxDurationMs ||
+          attempt.expectedOutputSchema !== node.outputSchema ||
+          JSON.stringify(attempt.grantedCapabilityIds) !== JSON.stringify(node.grantedCapabilityIds) ||
+          JSON.stringify(attempt.typedIntentRefs) !== JSON.stringify(node.typedIntentRefs)) {
+        throw new ResearchDispatchError(
+          "graph-proposal-required",
+          "Durable dependency hydration does not match the accepted graph task envelope.",
+        );
+      }
+      taskIds.add(attempt.taskId);
+      const isV2 = packet.expectedOutputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2 ||
+        packet.expectedOutputSchema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2;
+      if (isV2) {
+        if (entry.dependencyResult === undefined) {
+          throw new ResearchDispatchError(
+            "structured-output-invalid",
+            "A hydrated V2 packet requires its host-projected dependency result.",
+          );
+        }
+        v2DependencyResults.set(attempt.taskId, structuredClone(entry.dependencyResult));
+      } else if (entry.dependencyResult !== undefined) {
+        throw new ResearchDispatchError(
+          "structured-output-invalid",
+          "Only V2 packets may supply a separate hydrated dependency projection.",
+        );
+      }
+      const dependencyResult = projectDependencyResult(attempt.taskId, packet.body);
+      if (dependencyResult === undefined) {
+        throw new ResearchDispatchError(
+          "structured-output-invalid",
+          "A hydrated packet has no permitted downstream dependency projection.",
+        );
+      }
+      return { taskId: attempt.taskId, result: dependencyResult };
+    });
+    const ready = readyAdmissionsForGraph(activeGraph);
+    const admittedIds = new Set([
+      ...results.map((result) => result.taskId),
+      ...ready.map((admission) => admission.taskId),
+    ]);
+    return {
+      results,
+      admissions: availableAdmissions.filter((admission) => admittedIds.has(admission.taskId)),
+      admittedTaskIds: admittedIds,
+    };
+  })();
   const roleForDiagnostic = (diagnostic: ResearchDispatchDiagnosticV1): ResearchGraphRoleV1 | undefined =>
     diagnostic.taskId ? nodeForTaskId(diagnostic.taskId)?.roleId : undefined;
   const emitDispatchDiagnostic = (diagnostic: ResearchDispatchDiagnosticV1): void => {
@@ -938,7 +1047,7 @@ export function createBoundedResearchSubagentMiddleware(
   };
   const durableDispatchJournal = options.durableDispatchJournal;
   const adapter = createResearchDispatchInterceptionAdapter({
-    admissions: options.activeGraph ? [] : admissions,
+    admissions: recoveredDependencies?.admissions ?? (options.activeGraph ? [] : admissions),
     maxTasks: executableNodes.length,
     maxConcurrency: Math.min(MAX_CONCURRENT_SUBAGENT_TASKS, graph.maxParallelNodes),
     projectDependencyResult: (taskId, result) => projectDependencyResult(taskId, result),
@@ -1196,9 +1305,24 @@ export function createBoundedResearchSubagentMiddleware(
     onDiagnostic: emitDispatchDiagnostic,
   });
 
+  if (recoveredDependencies) {
+    adapter.restoreCompleted(recoveredDependencies.results);
+    const activeGraph = options.activeGraph?.();
+    if (!activeGraph) {
+      throw new ResearchDispatchError(
+        "graph-proposal-required",
+        "Durable dependency hydration lost its accepted research graph.",
+      );
+    }
+    const recoveredTaskIds = new Set(recoveredDependencies.results.map((result) => result.taskId));
+    recoveredDependencies.admissions
+      .filter((admission) => !recoveredTaskIds.has(admission.taskId))
+      .forEach((admission) => ensureLocalAdmission(admission, activeGraph));
+  }
+
   const admissionMode = options.admissionMode ?? "whole_graph";
-  const admittedFrontierTaskIds = new Set<string>();
-  let readyFrontierConfigured = false;
+  const admittedFrontierTaskIds = new Set<string>(recoveredDependencies?.admittedTaskIds ?? []);
+  let readyFrontierConfigured = recoveredDependencies !== undefined;
   const requireActiveGraph = (): ResearchGraphV1 => {
     const activeGraph = options.activeGraph ? options.activeGraph() : graph;
     if (!activeGraph) {
@@ -1254,7 +1378,8 @@ export function createBoundedResearchSubagentMiddleware(
   };
   options.onReadyFrontierController?.(readyFrontierController);
 
-  let activeAdmissionsConfigured = options.activeGraph === undefined && admissionMode === "whole_graph";
+  let activeAdmissionsConfigured = recoveredDependencies !== undefined ||
+    (options.activeGraph === undefined && admissionMode === "whole_graph");
   const ensureActiveAdmissions = (): void => {
     if (activeAdmissionsConfigured) return;
     if (admissionMode === "ready_frontier") {

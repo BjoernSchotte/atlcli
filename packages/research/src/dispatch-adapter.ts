@@ -219,6 +219,13 @@ export interface ResearchDispatchInterceptionAdapter {
   assertCapability(taskId: string, capabilityId: string): void;
   replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
   /**
+   * Restore host-validated terminal dependency projections before a resumed
+   * worker may admit a later frontier. This accepts projections only for
+   * already admitted tasks and never invokes a provider or emits a new task
+   * lifecycle event.
+   */
+  restoreCompleted(results: readonly ResearchTaskDependencyResultV1[]): void;
+  /**
    * Add one future wave at a host-owned checkpoint. Existing admissions and
    * every observed task status stay immutable.
    */
@@ -364,6 +371,44 @@ export function createResearchDispatchInterceptionAdapter(options: {
       ...admissions.values(),
       ...nextAdmissions,
     ]);
+  };
+
+  const restoreCompleted = (
+    results: readonly ResearchTaskDependencyResultV1[],
+  ): void => {
+    if (observedStatus || dispatchedTasks > 0 || activeInvocations > 0 || pendingAdmissions > 0) {
+      throw new ResearchDispatchError(
+        "admissions-locked",
+        "Research dependency hydration must precede local dispatch observation.",
+      );
+    }
+    if (results.length === 0) return;
+    if (results.length > options.maxTasks) {
+      throw new ResearchDispatchError(
+        "task-budget-exceeded",
+        "Research dependency hydration exceeds the admitted task budget.",
+      );
+    }
+    const restoredTaskIds = new Set<string>();
+    for (const result of results) {
+      if (!result || typeof result.taskId !== "string" || !result.taskId ||
+          !admissions.has(result.taskId) || restoredTaskIds.has(result.taskId)) {
+        throw new ResearchDispatchError(
+          "unknown-task",
+          "Research dependency hydration is not an admitted unique task.",
+        );
+      }
+      restoredTaskIds.add(result.taskId);
+    }
+    for (const result of results) {
+      completedResults.set(result.taskId, structuredClone(result.result));
+      taskStatuses.set(result.taskId, "completed");
+    }
+    dispatchedTasks += results.length;
+    // A recovered result is a durable terminal observation. Replacing the
+    // admission set afterwards could silently remove a dependency while its
+    // projection remains reachable.
+    observedStatus = true;
   };
 
   const reject = (
@@ -633,6 +678,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
     assertCapability,
     replaceAdmissions,
     appendAdmissions,
+    restoreCompleted,
     snapshot: () => ({
       dispatchedTasks,
       activeInvocations,
