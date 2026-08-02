@@ -19,6 +19,7 @@ import type {
   ResearchTaskAttemptV1,
   ResearchTaskUsageV1,
 } from "./workflow-contracts.js";
+import type { ResearchRunBudgetStateV1 } from "./budget.js";
 
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-request", message);
@@ -201,6 +202,7 @@ export class ResearchSessionDispatchJournalV1 {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
   }): Promise<ResearchAcceptedPacketV1 & { graph: ResearchGraphV1 }> {
     return this.#enqueue(async () => {
       const session = await this.#read();
@@ -214,6 +216,7 @@ export class ResearchSessionDispatchJournalV1 {
         usage: input.usage,
         availableSourceIds: [...input.availableSourceIds],
         maximumResultBytes: input.maximumResultBytes,
+        ...(input.budgetState ? { budgetState: input.budgetState } : {}),
       }, (next) => {
         const nextTurn = activeTurn(next, this.#turnId);
         const packet = nextTurn.acceptedPackets.find((candidate) =>
@@ -290,6 +293,8 @@ export class ResearchSessionDispatchJournalV1 {
     assessment: ResearchRetrievalAssessmentV1;
     /** Only the host may request a later disposable supervisor evaluation. */
     issueContinuation?: boolean;
+    /** Counter projection coupled to the checkpoint that permits resume. */
+    budgetState?: ResearchRunBudgetStateV1;
   }): Promise<ResearchSessionRetrievalAssessmentV1 & { graph: ResearchGraphV1 }> {
     return this.#enqueue(async () => {
       const session = await this.#read();
@@ -304,6 +309,7 @@ export class ResearchSessionDispatchJournalV1 {
         graphRevision: input.graphRevision,
         assessment: input.assessment,
         ...(input.issueContinuation === true ? { issueContinuation: true } : {}),
+        ...(input.budgetState ? { budgetState: input.budgetState } : {}),
       }, (next) => {
         const nextTurn = activeTurn(next, this.#turnId);
         const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>

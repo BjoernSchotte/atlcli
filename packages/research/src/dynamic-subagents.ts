@@ -50,6 +50,7 @@ import {
   reduceResearchAcceptedPacketV1,
 } from "./task-ledger.js";
 import type { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
+import type { ResearchRunBudgetStateV1 } from "./budget.js";
 import {
   DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY,
   ResearchDispatchError,
@@ -659,6 +660,8 @@ export function createBoundedResearchSubagentMiddleware(
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
     capabilityCallsForNode?: (nodeId: string) => number;
+    /** Current host counter projection committed atomically with accepted packets. */
+    budgetState?: () => ResearchRunBudgetStateV1;
     onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
     onRejectedStructuredResult?: (input: {
       taskId: string;
@@ -1276,6 +1279,7 @@ export function createBoundedResearchSubagentMiddleware(
           usage: observed,
           availableSourceIds: [...packetInput.availableSourceIds],
           maximumResultBytes: node.budget.maxResultBytes,
+          ...(options.budgetState ? { budgetState: options.budgetState() } : {}),
         })
         .then((durable) => {
           if (durable.packetRef !== preview.packet.packetRef ||

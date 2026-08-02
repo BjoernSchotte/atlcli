@@ -2218,6 +2218,7 @@ async function runResearchAgentWithBindings(
         onDiagnostic: emitSubagentDiagnostic,
         availableSourceIdsForNode,
         capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
+        budgetState: () => broker.budget.state(),
         activeGraph: () => acceptedGraph,
         onGraphUpdated: (graph) => {
           acceptedGraph = graph;
@@ -2662,12 +2663,13 @@ async function runResearchAgentWithBindings(
           [],
           { unresolvedCoverageTargetIds: unresolvedCoverageTargetIds() },
         ),
-        record: async ({ graphRevision, assessment, issueContinuation }) => {
-          const recorded = await durableDispatchJournal!.recordRetrievalAssessment({
-            graphRevision,
-            assessment,
-            issueContinuation,
-          });
+          record: async ({ graphRevision, assessment, issueContinuation }) => {
+            const recorded = await durableDispatchJournal!.recordRetrievalAssessment({
+              graphRevision,
+              assessment,
+              issueContinuation,
+              budgetState: broker.budget.state(),
+            });
           acceptedGraph = recorded.graph;
           retrievalAssessmentRecorded = true;
           emitRetrievalAssessment(assessment, graphRevision);
@@ -2874,6 +2876,7 @@ async function runResearchAgentWithBindings(
         const recorded = await durableDispatchJournal.recordRetrievalAssessment({
           graphRevision: acceptedGraph.revision,
           assessment,
+          budgetState: broker.budget.state(),
         });
         if (recorded.graphRevision !== acceptedGraph.revision ||
             recorded.assessment.action !== assessment.action ||

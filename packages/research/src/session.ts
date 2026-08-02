@@ -32,6 +32,10 @@ import {
   type ResearchTaskAttemptV1,
   type ResearchTaskUsageV1,
 } from "./workflow-contracts.js";
+import {
+  parseResearchRunBudgetStateV1,
+  type ResearchRunBudgetStateV1,
+} from "./budget.js";
 
 /**
  * The durable, host-neutral state envelope. It intentionally stores only
@@ -203,6 +207,8 @@ export interface ResearchSessionTurnV1 {
   tasks: ResearchTaskAttemptV1[];
   acceptedPackets: ResearchAcceptedPacketV1[];
   reconciliationDispositions: ResearchReconciliationDispositionV1[];
+  /** Latest body-free counter projection, used to fence a resumed provider budget. */
+  budgetState?: ResearchRunBudgetStateV1;
   reconciliationCommittedAt?: string;
   /** Undefined is a legacy turn that predates durable dynamic graph revisions. */
   graphRevisions?: ResearchSessionGraphRevisionV1[];
@@ -293,6 +299,7 @@ export type ResearchSessionUpdateV1 =
       usage: ResearchTaskUsageV1;
       availableSourceIds: string[];
       maximumResultBytes: number;
+      budgetState?: ResearchRunBudgetStateV1;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "quarantine_packet"; taskId: string; graphRevision: number; reason: string })
   | (ResearchSessionFencedUpdateV1 & {
@@ -310,6 +317,7 @@ export type ResearchSessionUpdateV1 =
       graphRevision: number;
       assessment: unknown;
       issueContinuation?: boolean;
+      budgetState?: ResearchRunBudgetStateV1;
     })
   | (ResearchSessionFencedUpdateV1 & {
       kind: "consume_retrieval_continuation";
@@ -441,6 +449,7 @@ function validateSession(session: ResearchSessionV1): void {
   if (session.turns.length > 64 || new Set(session.turns.map((candidate) => candidate.id)).size !== session.turns.length) invalid("Research session turns are invalid.");
   if (session.activeTurnId && !session.turns.some((candidate) => candidate.id === session.activeTurnId)) invalid("Research session active turn is invalid.");
   for (const candidate of session.turns) {
+    if (candidate.budgetState !== undefined) parseResearchRunBudgetStateV1(candidate.budgetState);
     if (candidate.graphRevisions !== undefined) {
       if (!Array.isArray(candidate.graphRevisions) || candidate.graphRevisions.length > 16) {
         invalid("Research session graph revisions are invalid.");
@@ -789,7 +798,18 @@ export function reduceResearchSessionV1(
     }
     const nextTasks = [...current.tasks];
     nextTasks[taskIndex] = nextTask;
-    const nextTurn = { ...current, graph: nextGraph, tasks: nextTasks, acceptedPackets };
+    const acceptedBudgetState = update.kind === "accept_packet"
+      ? update.budgetState
+      : undefined;
+    const nextTurn = {
+      ...current,
+      graph: nextGraph,
+      tasks: nextTasks,
+      acceptedPackets,
+      ...(acceptedBudgetState === undefined ? {} : {
+        budgetState: parseResearchRunBudgetStateV1(acceptedBudgetState),
+      }),
+    };
     return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
   }
 
@@ -932,6 +952,9 @@ export function reduceResearchSessionV1(
         ...current,
         graph: nextGraph,
         retrievalAssessments: [...retrievalAssessments, record],
+        ...(update.budgetState === undefined ? {} : {
+          budgetState: parseResearchRunBudgetStateV1(update.budgetState),
+        }),
       }),
     });
   }

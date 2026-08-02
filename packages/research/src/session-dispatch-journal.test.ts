@@ -146,6 +146,15 @@ describe("durable research task dispatch journal", () => {
       },
       availableSourceIds: [],
       maximumResultBytes: attempt.budget.maxResultBytes,
+      budgetState: {
+        schema: "atlcli.research-run-budget/v1",
+        ptcCalls: 2,
+        httpAttempts: 2,
+        responseBytes: 256,
+        pages: { jira: 1, confluence: 0 },
+        items: { jira: 1, confluence: 0 },
+        details: { jira: 1, confluence: 0 },
+      },
     });
 
     const stored = await store.read(sessionId);
@@ -153,6 +162,11 @@ describe("durable research task dispatch journal", () => {
     expect(packet).toMatchObject({ taskId: attempt.taskId, packetRef: `packet:${attempt.taskId}:1` });
     expect(packet.graph.nodes.find((candidate) => candidate.id === node.id)?.status).toBe("complete");
     expect(turn.tasks).toMatchObject([{ taskId: attempt.taskId, status: "complete", dispatchState: "result_committed" }]);
+    expect(turn.budgetState).toMatchObject({
+      schema: "atlcli.research-run-budget/v1",
+      ptcCalls: 2,
+      details: { jira: 1, confluence: 0 },
+    });
     expect(turn.acceptedPackets).toMatchObject([{ packetRef: packet.packetRef }]);
     expect(turn.graph?.nodes.find((candidate) => candidate.id === node.id)).toMatchObject({
       status: "complete",
