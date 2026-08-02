@@ -1,5 +1,6 @@
 import { ResearchContractError, type ResearchScopeBindingV1 } from "./contracts.js";
 import {
+  reviseResearchBriefPlanV1,
   resolveResearchBriefClarificationsV1,
   type ResearchBriefAssumptionDecisionV1,
   type ResearchBriefClarificationResponseV1,
@@ -7,8 +8,10 @@ import {
 } from "./brief.js";
 import {
   acceptResearchGraphProposalV1,
+  diffResearchPlansV1,
   reduceResearchGraphV1,
   validateResearchGraphV1,
+  type ResearchPlanDiffV1,
   type ResearchGraphNodeV1,
   type ResearchGraphProposalV1,
   type ResearchGraphV1,
@@ -56,6 +59,8 @@ export const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 =
   "atlcli.research-session-retrieval-continuation/v1" as const;
 export const RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1 =
   "atlcli.research-session-graph-revision/v1" as const;
+export const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1 =
+  "atlcli.research-session-plan-revision/v1" as const;
 export const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1 =
   "atlcli.research-resumable-session/v1" as const;
 
@@ -188,6 +193,29 @@ export interface ResearchSessionGraphRevisionV1 {
   recordedAt: string;
 }
 
+/**
+ * Durable history for one rejected plan and its user-requested replacement.
+ * It holds only bounded user control text and immutable version references;
+ * source material and model reasoning never enter this record.
+ */
+export interface ResearchSessionPlanRevisionV1 {
+  schema: typeof RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1;
+  id: string;
+  basedOnBriefRevision: number;
+  basedOnGraphRevision: number;
+  rejectionReason: string;
+  requestedAt: string;
+  /** Immutable inputs from the rejected review boundary; no source bodies. */
+  rejectedBrief: ResearchBriefV1;
+  rejectedGraph: ResearchGraphV1;
+  state: "rejected" | "revision_requested" | "proposed" | "approved";
+  instruction?: string;
+  revisedBriefRevision?: number;
+  proposedGraphRevision?: number;
+  planDiff?: ResearchPlanDiffV1;
+  approvedAt?: string;
+}
+
 export interface ResearchSessionTurnV1 {
   id: string;
   revision: number;
@@ -210,6 +238,8 @@ export interface ResearchSessionTurnV1 {
   scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
   clarifications: ResearchSessionClarificationV1[];
   assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+  /** Undefined denotes a pre-plan-revision legacy turn. */
+  planRevisions?: ResearchSessionPlanRevisionV1[];
   steering: ResearchSessionSteeringV1[];
   tasks: ResearchTaskAttemptV1[];
   acceptedPackets: ResearchAcceptedPacketV1[];
@@ -321,6 +351,12 @@ export type ResearchSessionUpdateV1 =
       assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "reject_plan"; graphRevision: number; reason: string })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Materialize a user-controlled correction after the exact graph was rejected. */
+      kind: "request_plan_revision";
+      graphRevision: number;
+      instruction: string;
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "propose_scope_expansion"; proposal: ResearchScopeExpansionProposalV1 })
   | (ResearchSessionFencedUpdateV1 & { kind: "approve_scope_expansion"; proposalId: string; binding: ResearchScopeBindingV1 })
   | (ResearchSessionFencedUpdateV1 & { kind: "reject_scope_expansion"; proposalId: string })
@@ -501,6 +537,51 @@ function validateSession(session: ResearchSessionV1): void {
   if (session.activeTurnId && !session.turns.some((candidate) => candidate.id === session.activeTurnId)) invalid("Research session active turn is invalid.");
   for (const candidate of session.turns) {
     if (candidate.budgetState !== undefined) parseResearchRunBudgetStateV1(candidate.budgetState);
+    if (candidate.planRevisions !== undefined) {
+      if (!Array.isArray(candidate.planRevisions) || candidate.planRevisions.length > 16 ||
+          new Set(candidate.planRevisions.map((revision) => revision.id)).size !== candidate.planRevisions.length) {
+        invalid("Research session plan revisions are invalid.");
+      }
+      let previousGraphRevision = 0;
+      for (const revision of candidate.planRevisions) {
+        const proposedGraphRevision = revision.proposedGraphRevision;
+        if (revision.schema !== RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1 ||
+            !/^plan-revision:[A-Za-z0-9._-]{1,120}$/.test(revision.id) ||
+            !Number.isSafeInteger(revision.basedOnBriefRevision) || revision.basedOnBriefRevision < 1 ||
+            !Number.isSafeInteger(revision.basedOnGraphRevision) || revision.basedOnGraphRevision < 1 ||
+            revision.basedOnGraphRevision <= previousGraphRevision ||
+            !revision.rejectionReason.trim() || revision.rejectionReason.length > 1_000 ||
+            revision.rejectedBrief.sessionId !== session.sessionId || revision.rejectedBrief.turnId !== candidate.id ||
+            revision.rejectedBrief.revision !== revision.basedOnBriefRevision ||
+            revision.rejectedGraph.sessionId !== session.sessionId || revision.rejectedGraph.turnId !== candidate.id ||
+            revision.rejectedGraph.revision !== revision.basedOnGraphRevision ||
+            revision.rejectedGraph.basedOnBriefRevision !== revision.basedOnBriefRevision ||
+            !["rejected", "revision_requested", "proposed", "approved"].includes(revision.state)) {
+          invalid("Research session plan revision is invalid.");
+        }
+        validateResearchGraphV1(revision.rejectedGraph);
+        timestamp(revision.requestedAt, "Research session plan revision timestamp");
+        if (revision.instruction !== undefined && (!revision.instruction.trim() || revision.instruction.length > 2_000)) {
+          invalid("Research session plan revision instruction is invalid.");
+        }
+        const materialized = revision.state === "revision_requested" || revision.state === "proposed" || revision.state === "approved";
+        if (materialized !== (revision.instruction !== undefined && revision.revisedBriefRevision !== undefined) ||
+            (revision.revisedBriefRevision !== undefined && revision.revisedBriefRevision <= revision.basedOnBriefRevision) ||
+            ((revision.state === "proposed" || revision.state === "approved") &&
+              (!Number.isSafeInteger(proposedGraphRevision) || (proposedGraphRevision ?? -1) <= revision.basedOnGraphRevision)) ||
+            ((revision.state === "proposed" || revision.state === "approved") !== (revision.planDiff !== undefined)) ||
+            (revision.planDiff !== undefined &&
+              (revision.planDiff.schema !== "atlcli.research-plan-diff/v1" ||
+                revision.planDiff.fromRevision !== revision.basedOnGraphRevision ||
+                revision.planDiff.toRevision !== (proposedGraphRevision ?? -1))) ||
+            (revision.state === "approved" && revision.approvedAt === undefined) ||
+            (revision.state !== "approved" && revision.approvedAt !== undefined)) {
+          invalid("Research session plan revision transition is invalid.");
+        }
+        if (revision.approvedAt !== undefined) timestamp(revision.approvedAt, "Research session plan revision approval timestamp");
+        previousGraphRevision = revision.basedOnGraphRevision;
+      }
+    }
     if (candidate.graphRevisions !== undefined) {
       if (!Array.isArray(candidate.graphRevisions) || candidate.graphRevisions.length > 16) {
         invalid("Research session graph revisions are invalid.");
@@ -621,7 +702,7 @@ export function reduceResearchSessionV1(
       id: update.turnId,
       revision: 1,
       createdAt: update.at,
-      scopeCandidates: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
+      scopeCandidates: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], planRevisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
     };
     return withNext(session, update, { status: "planning", activeTurnId: update.turnId, turns: [...session.turns, nextTurn] });
   }
@@ -749,12 +830,39 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "propose_graph" || update.kind === "revise_graph") {
-    const current = ensureActive(session, update.kind === "propose_graph" ? ["planning"] : ["waiting_plan_revision", "planning"]);
+    const current = ensureActive(session, ["planning"]);
     validateResearchGraphV1(update.graph);
     if (!current.brief || update.graph.sessionId !== session.sessionId || update.graph.turnId !== current.id || update.graph.basedOnBriefRevision !== current.brief.revision || update.graph.status !== "proposed") invalid("Research graph proposal does not match the active brief.");
     if (update.kind === "propose_graph" && current.graph) invalid("Research graph proposal already exists.");
-    if (update.kind === "revise_graph" && (!current.graph || update.graph.revision <= current.graph.revision)) invalid("Research graph revision is invalid.");
-    const nextTurn = { ...current, graph: clone(update.graph), revision: current.revision + 1 };
+    const revisionRecord = (current.planRevisions ?? []).at(-1);
+    if (update.kind === "revise_graph" &&
+        (!current.graph || update.graph.revision !== current.graph.revision + 1 ||
+          !revisionRecord || revisionRecord.state !== "revision_requested" ||
+          revisionRecord.basedOnGraphRevision !== current.graph.revision ||
+          revisionRecord.revisedBriefRevision !== current.brief.revision)) {
+      invalid("Research graph revision is invalid.");
+    }
+    const nextTurn = {
+      ...current,
+      graph: clone(update.graph),
+      ...(update.kind === "revise_graph" ? {
+        planRevisions: (current.planRevisions ?? []).map((record) => record.id === revisionRecord!.id ? {
+          ...record,
+          state: "proposed" as const,
+          proposedGraphRevision: update.graph.revision,
+          planDiff: diffResearchPlansV1({
+            fromBrief: record.rejectedBrief,
+            fromGraph: record.rejectedGraph,
+            toBrief: current.brief!,
+            toGraph: update.graph,
+            scopeExpansionProposalIds: current.scopeExpansionProposals
+              .filter((proposal) => proposal.status === "proposed")
+              .map((proposal) => proposal.id),
+          }),
+        } : record),
+      } : {}),
+      revision: current.revision + 1,
+    };
     const patch: Parameters<typeof withNext>[2] = {
       status: "waiting_plan_approval",
       turns: replaceTurn(session, nextTurn),
@@ -816,7 +924,17 @@ export function reduceResearchSessionV1(
   if (update.kind === "approve_graph") {
     const current = ensureActive(session, ["waiting_plan_approval"]);
     const graph = requireGraph(current, update.graphRevision);
-    const nextTurn = { ...current, graph: reduceResearchGraphV1(graph, { kind: "approve", expectedRevision: graph.revision, approvedAt: update.at }) };
+    const nextTurn = {
+      ...current,
+      graph: reduceResearchGraphV1(graph, { kind: "approve", expectedRevision: graph.revision, approvedAt: update.at }),
+      ...(current.planRevisions?.some((record) => record.state === "proposed" && record.proposedGraphRevision === graph.revision) ? {
+        planRevisions: current.planRevisions.map((record) =>
+          record.state === "proposed" && record.proposedGraphRevision === graph.revision
+            ? { ...record, state: "approved" as const, approvedAt: update.at }
+            : record,
+        ),
+      } : {}),
+    };
     return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
   }
 
@@ -844,9 +962,68 @@ export function reduceResearchSessionV1(
 
   if (update.kind === "reject_plan") {
     const current = ensureActive(session, ["waiting_plan_approval"]);
-    requireGraph(current, update.graphRevision);
+    const graph = requireGraph(current, update.graphRevision);
     if (!update.reason.trim() || update.reason.length > 1_000) invalid("Research plan rejection reason is invalid.");
-    return withReleasedDurableWait(session, update, { status: "waiting_plan_revision" });
+    const planRevisions = current.planRevisions ?? [];
+    if (planRevisions.some((record) => record.basedOnGraphRevision === graph.revision)) {
+      invalid("Research plan rejection is already recorded for this graph revision.");
+    }
+    const record: ResearchSessionPlanRevisionV1 = {
+      schema: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1,
+      id: `plan-revision:${graph.revision}`,
+      basedOnBriefRevision: current.brief?.revision ?? graph.basedOnBriefRevision,
+      basedOnGraphRevision: graph.revision,
+      rejectionReason: update.reason.trim(),
+      requestedAt: update.at,
+      rejectedBrief: clone(current.brief!),
+      rejectedGraph: clone(graph),
+      state: "rejected",
+    };
+    return withReleasedDurableWait(session, update, {
+      status: "waiting_plan_revision",
+      turns: replaceTurn(session, {
+        ...current,
+        planRevisions: [...planRevisions, record],
+        revision: current.revision + 1,
+      }),
+    });
+  }
+
+  if (update.kind === "request_plan_revision") {
+    const current = ensureActive(session, ["waiting_plan_revision"]);
+    const graph = requireGraph(current, update.graphRevision);
+    const instruction = update.instruction.trim();
+    const revisionRecord = (current.planRevisions ?? []).find((record) =>
+      record.basedOnGraphRevision === graph.revision && record.state === "rejected",
+    );
+    if (!current.brief || !revisionRecord || !instruction || instruction.length > 2_000) {
+      invalid("Research plan revision request is invalid.");
+    }
+    let revisedBrief: ResearchBriefV1;
+    try {
+      revisedBrief = reviseResearchBriefPlanV1({
+        brief: current.brief,
+        basedOnGraphRevision: graph.revision,
+        instruction,
+        requestedAt: update.at,
+      });
+    } catch (error) {
+      invalid(error instanceof Error ? error.message : "Research plan revision request is invalid.");
+    }
+    return withNext(session, update, {
+      status: "planning",
+      turns: replaceTurn(session, {
+        ...current,
+        brief: revisedBrief!,
+        planRevisions: (current.planRevisions ?? []).map((record) => record.id === revisionRecord.id ? {
+          ...record,
+          state: "revision_requested" as const,
+          instruction,
+          revisedBriefRevision: revisedBrief!.revision,
+        } : record),
+        revision: current.revision + 1,
+      }),
+    });
   }
 
   if (update.kind === "propose_scope_expansion") {

@@ -149,6 +149,61 @@ describe("durable research session execution gate", () => {
     expect((await store.events(result.sessionId)).map((event) => event.kind)).toEqual(["create_turn", "record_brief", "propose_graph"]);
   });
 
+  test("rebuilds a rejected plan from its committed correction and never auto-approves it", async () => {
+    const requiredBrief = brief("required");
+    const store = new InMemoryResearchSessionStoreV1();
+    const initial = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: requiredBrief,
+      graph: composeResearchGraphV1(requiredBrief),
+      approveAutomatically: false,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const firstGraph = initial.turns[0]!.graph!;
+    const rejected = (await store.commit(initial.sessionId, {
+      kind: "reject_plan",
+      graphRevision: firstGraph.revision,
+      reason: "Separate direct evidence from inferred relationships.",
+      expectedRevision: initial.revision,
+      expectedLeaseEpoch: initial.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    })).session;
+    const requested = (await store.commit(rejected.sessionId, {
+      kind: "request_plan_revision",
+      graphRevision: firstGraph.revision,
+      instruction: "Separate direct evidence from inferred relationships.",
+      expectedRevision: rejected.revision,
+      expectedLeaseEpoch: rejected.lease.epoch,
+      at: "2026-08-01T15:00:03.000Z",
+    })).session;
+    const rebuilt = await proposeResearchGraphForReadyBriefV1({
+      store,
+      sessionId: requested.sessionId,
+      expectedRevision: requested.revision,
+      expectedLeaseEpoch: requested.lease.epoch,
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:04.000Z",
+    });
+
+    expect(rebuilt).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{
+        brief: { revision: 2, planRevisionInstructions: [{ basedOnGraphRevision: 1 }] },
+        graph: { revision: 2, basedOnBriefRevision: 2, status: "proposed" },
+        planRevisions: [{ state: "proposed", proposedGraphRevision: 2 }],
+      }],
+    });
+    expect((await store.events(rebuilt.sessionId)).map((event) => event.kind)).toEqual([
+      "create_turn",
+      "record_brief",
+      "propose_graph",
+      "reject_plan",
+      "request_plan_revision",
+      "revise_graph",
+    ]);
+  });
+
   test("appends an approved follow-up turn without replacing terminal turn history", async () => {
     const firstBrief = brief("automatic");
     const store = new InMemoryResearchSessionStoreV1();

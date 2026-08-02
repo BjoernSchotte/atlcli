@@ -224,6 +224,49 @@ export interface ResearchGraphCompositionOptionsV1 {
   packetOutputSchema?: typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | typeof RESEARCH_PACKET_BODY_SCHEMA_V2;
 }
 
+export const RESEARCH_PLAN_DIFF_SCHEMA_V1 = "atlcli.research-plan-diff/v1" as const;
+
+/**
+ * A body-free comparison between two durable graph/brief versions. Hosts use
+ * this before asking for a second plan approval; it deliberately exposes no
+ * source text, task prompts, or model reasoning.
+ */
+export interface ResearchPlanDiffV1 {
+  schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+  fromRevision: number;
+  toRevision: number;
+  addedNodeIds: string[];
+  removedNodeIds: string[];
+  reprioritizedNodeIds: string[];
+  changedDependencies: string[];
+  changedCoverageTargets: string[];
+  addedRoleIds: ResearchSubagentRoleIdV1[];
+  removedRoleIds: ResearchSubagentRoleIdV1[];
+  addedCapabilityIds: ResearchGraphCapabilityV1[];
+  removedCapabilityIds: ResearchGraphCapabilityV1[];
+  addedScopeBindingIds: string[];
+  removedScopeBindingIds: string[];
+  scopeExpansionProposalIds: string[];
+  briefRevisionChanged: boolean;
+  coverageTargetFingerprintChanged: boolean;
+  scopeFingerprintChanged: boolean;
+  scopeBindingFingerprintChanged: boolean;
+  scopeDiscoveryPolicyChanged: boolean;
+  effortChange?: {
+    from: ResearchResolvedEffortV1;
+    to: ResearchResolvedEffortV1;
+  };
+  budgetDelta: ResearchNodeBudgetV1;
+  parallelismDelta: number;
+  researchWaveLimitDelta: number;
+  reconciliationWaveLimitDelta: number;
+  depthDelta: number;
+  reconciliationPolicyChanged: boolean;
+  exceededApprovalEnvelopeFields: string[];
+  /** Every plan revision is deliberately brought back to a user approval boundary. */
+  requiresApproval: boolean;
+}
+
 const DEFAULT_NODE_BUDGET: ResearchNodeBudgetV1 = {
   maxCapabilityCalls: 8,
   maxInputTokens: 20_000,
@@ -268,6 +311,141 @@ function fingerprint(value: unknown): string {
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+}
+
+function stableAdded<T extends string>(from: readonly T[], to: readonly T[]): T[] {
+  const before = new Set(from);
+  return [...new Set(to)].filter((value) => !before.has(value)).sort();
+}
+
+function stableRemoved<T extends string>(from: readonly T[], to: readonly T[]): T[] {
+  return stableAdded(to, from);
+}
+
+function budgetDelta(
+  from: ResearchNodeBudgetV1,
+  to: ResearchNodeBudgetV1,
+): ResearchNodeBudgetV1 {
+  return {
+    maxCapabilityCalls: to.maxCapabilityCalls - from.maxCapabilityCalls,
+    maxInputTokens: to.maxInputTokens - from.maxInputTokens,
+    maxOutputTokens: to.maxOutputTokens - from.maxOutputTokens,
+    maxResultBytes: to.maxResultBytes - from.maxResultBytes,
+    maxDurationMs: to.maxDurationMs - from.maxDurationMs,
+    maxCostMicros: to.maxCostMicros - from.maxCostMicros,
+  };
+}
+
+function hasPositiveBudgetDelta(delta: ResearchNodeBudgetV1): boolean {
+  return Object.values(delta).some((value) => value > 0);
+}
+
+/**
+ * Compare durable plans only after both graphs passed their graph validation.
+ * This routine is pure so the CLI, browser, and a future TUI render the same
+ * consent surface for a user-requested correction.
+ */
+export function diffResearchPlansV1(input: {
+  fromBrief: ResearchBriefV1;
+  fromGraph: ResearchGraphV1;
+  toBrief: ResearchBriefV1;
+  toGraph: ResearchGraphV1;
+  scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1 {
+  validateResearchGraphV1(input.fromGraph);
+  validateResearchGraphV1(input.toGraph);
+  if (input.fromBrief.sessionId !== input.toBrief.sessionId ||
+      input.fromBrief.turnId !== input.toBrief.turnId ||
+      input.fromGraph.sessionId !== input.toGraph.sessionId ||
+      input.fromGraph.turnId !== input.toGraph.turnId ||
+      input.fromGraph.sessionId !== input.fromBrief.sessionId ||
+      input.fromGraph.turnId !== input.fromBrief.turnId ||
+      input.toGraph.sessionId !== input.toBrief.sessionId ||
+      input.toGraph.turnId !== input.toBrief.turnId) {
+    invalid("Research plan diff requires one durable session turn.");
+  }
+  const fromNodes = new Map(input.fromGraph.nodes.map((node) => [node.id, node]));
+  const toNodes = new Map(input.toGraph.nodes.map((node) => [node.id, node]));
+  const commonNodeIds = [...fromNodes.keys()].filter((id) => toNodes.has(id));
+  const changedDependencies = commonNodeIds.filter((id) =>
+    fingerprint(fromNodes.get(id)!.dependencies) !== fingerprint(toNodes.get(id)!.dependencies),
+  ).sort();
+  const reprioritizedNodeIds = commonNodeIds.filter((id) =>
+    fromNodes.get(id)!.priority !== toNodes.get(id)!.priority,
+  ).sort();
+  const fromCoverage = new Map(input.fromBrief.coverageTargets.map((target) => [target.id, target]));
+  const toCoverage = new Map(input.toBrief.coverageTargets.map((target) => [target.id, target]));
+  const changedCoverageTargets = [...new Set([...fromCoverage.keys(), ...toCoverage.keys()])]
+    .filter((id) => fingerprint(fromCoverage.get(id)) !== fingerprint(toCoverage.get(id)))
+    .sort();
+  const fromRoles = input.fromGraph.roleDecisions
+    .filter((decision) => decision.decision === "selected")
+    .map((decision) => decision.roleId);
+  const toRoles = input.toGraph.roleDecisions
+    .filter((decision) => decision.decision === "selected")
+    .map((decision) => decision.roleId);
+  const fromCapabilities = input.fromGraph.nodes.flatMap((node) => node.grantedCapabilityIds);
+  const toCapabilities = input.toGraph.nodes.flatMap((node) => node.grantedCapabilityIds);
+  const fromBindings = input.fromBrief.scopeBindings.map((binding) => binding.id);
+  const toBindings = input.toBrief.scopeBindings.map((binding) => binding.id);
+  const budget = budgetDelta(input.fromGraph.totalBudget, input.toGraph.totalBudget);
+  const scopeFingerprintChanged = input.fromGraph.approvalEnvelope.scopeFingerprint !== input.toGraph.approvalEnvelope.scopeFingerprint;
+  const scopeBindingFingerprintChanged = input.fromGraph.approvalEnvelope.scopeBindingFingerprint !== input.toGraph.approvalEnvelope.scopeBindingFingerprint;
+  const coverageTargetFingerprintChanged = input.fromGraph.approvalEnvelope.coverageTargetFingerprint !== input.toGraph.approvalEnvelope.coverageTargetFingerprint;
+  const scopeDiscoveryPolicyChanged = fingerprint(input.fromGraph.approvalEnvelope.scopeDiscoveryPolicy) !==
+    fingerprint(input.toGraph.approvalEnvelope.scopeDiscoveryPolicy);
+  const reconciliationPolicyChanged = fingerprint(input.fromGraph.reconciliationPolicy) !==
+    fingerprint(input.toGraph.reconciliationPolicy);
+  const parallelismDelta = input.toGraph.maxParallelNodes - input.fromGraph.maxParallelNodes;
+  const researchWaveLimitDelta = input.toGraph.maxResearchWaves - input.fromGraph.maxResearchWaves;
+  const reconciliationWaveLimitDelta = input.toGraph.maxReconciliationWaves - input.fromGraph.maxReconciliationWaves;
+  const depthDelta = input.toGraph.approvalEnvelope.maxDepth - input.fromGraph.approvalEnvelope.maxDepth;
+  const addedCapabilityIds = stableAdded(fromCapabilities, toCapabilities) as ResearchGraphCapabilityV1[];
+  const removedCapabilityIds = stableRemoved(fromCapabilities, toCapabilities) as ResearchGraphCapabilityV1[];
+  const exceededApprovalEnvelopeFields = [
+    ...(scopeFingerprintChanged ? ["scope"] : []),
+    ...(scopeBindingFingerprintChanged ? ["scope_bindings"] : []),
+    ...(scopeDiscoveryPolicyChanged ? ["scope_discovery_policy"] : []),
+    ...(addedCapabilityIds.length > 0 ? ["capabilities"] : []),
+    ...(hasPositiveBudgetDelta(budget) ? ["budget"] : []),
+    ...(parallelismDelta > 0 ? ["parallelism"] : []),
+    ...(researchWaveLimitDelta > 0 ? ["research_waves"] : []),
+    ...(reconciliationWaveLimitDelta > 0 ? ["reconciliation_waves"] : []),
+    ...(depthDelta > 0 ? ["depth"] : []),
+  ];
+  return {
+    schema: RESEARCH_PLAN_DIFF_SCHEMA_V1,
+    fromRevision: input.fromGraph.revision,
+    toRevision: input.toGraph.revision,
+    addedNodeIds: stableAdded([...fromNodes.keys()], [...toNodes.keys()]),
+    removedNodeIds: stableRemoved([...fromNodes.keys()], [...toNodes.keys()]),
+    reprioritizedNodeIds,
+    changedDependencies,
+    changedCoverageTargets,
+    addedRoleIds: stableAdded(fromRoles, toRoles) as ResearchSubagentRoleIdV1[],
+    removedRoleIds: stableRemoved(fromRoles, toRoles) as ResearchSubagentRoleIdV1[],
+    addedCapabilityIds,
+    removedCapabilityIds,
+    addedScopeBindingIds: stableAdded(fromBindings, toBindings),
+    removedScopeBindingIds: stableRemoved(fromBindings, toBindings),
+    scopeExpansionProposalIds: [...new Set(input.scopeExpansionProposalIds ?? [])].sort(),
+    briefRevisionChanged: input.fromBrief.revision !== input.toBrief.revision,
+    coverageTargetFingerprintChanged,
+    scopeFingerprintChanged,
+    scopeBindingFingerprintChanged,
+    scopeDiscoveryPolicyChanged,
+    ...(input.fromGraph.resolvedEffort !== input.toGraph.resolvedEffort ? {
+      effortChange: { from: input.fromGraph.resolvedEffort, to: input.toGraph.resolvedEffort },
+    } : {}),
+    budgetDelta: budget,
+    parallelismDelta,
+    researchWaveLimitDelta,
+    reconciliationWaveLimitDelta,
+    depthDelta,
+    reconciliationPolicyChanged,
+    exceededApprovalEnvelopeFields,
+    requiresApproval: true,
+  };
 }
 
 function nodeBudget(

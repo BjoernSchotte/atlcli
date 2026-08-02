@@ -123,6 +123,7 @@ export interface CreateResearchBriefInputV1 {
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
     clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions?: readonly ResearchBriefPlanRevisionInstructionV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -259,6 +260,15 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: diffResearchPlansV1
+export declare function diffResearchPlansV1(input: {
+    fromBrief: ResearchBriefV1;
+    fromGraph: ResearchGraphV1;
+    toBrief: ResearchBriefV1;
+    toGraph: ResearchGraphV1;
+    scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
@@ -954,6 +964,9 @@ export declare const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2: "atlcli.research
 // export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
 
+// export: RESEARCH_PLAN_DIFF_SCHEMA_V1
+export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -1142,6 +1155,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
+// export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
+
 // export: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-session-retrieval-assessment/v1";
 
@@ -1277,6 +1293,14 @@ export interface ResearchBriefClarificationResponseV1 {
     response: string;
 }
 
+// export: ResearchBriefPlanRevisionInstructionV1
+export interface ResearchBriefPlanRevisionInstructionV1 {
+    id: string;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}
+
 // export: ResearchBriefPreflightOutcomeV1
 export type ResearchBriefPreflightOutcomeV1 = {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -1318,6 +1342,7 @@ export interface ResearchBriefV1 {
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
     clarificationResponses: ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -2337,6 +2362,42 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: ResearchPlanDiffV1
+export interface ResearchPlanDiffV1 {
+    schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+    fromRevision: number;
+    toRevision: number;
+    addedNodeIds: string[];
+    removedNodeIds: string[];
+    reprioritizedNodeIds: string[];
+    changedDependencies: string[];
+    changedCoverageTargets: string[];
+    addedRoleIds: ResearchSubagentRoleIdV1[];
+    removedRoleIds: ResearchSubagentRoleIdV1[];
+    addedCapabilityIds: ResearchGraphCapabilityV1[];
+    removedCapabilityIds: ResearchGraphCapabilityV1[];
+    addedScopeBindingIds: string[];
+    removedScopeBindingIds: string[];
+    scopeExpansionProposalIds: string[];
+    briefRevisionChanged: boolean;
+    coverageTargetFingerprintChanged: boolean;
+    scopeFingerprintChanged: boolean;
+    scopeBindingFingerprintChanged: boolean;
+    scopeDiscoveryPolicyChanged: boolean;
+    effortChange?: {
+        from: ResearchResolvedEffortV1;
+        to: ResearchResolvedEffortV1;
+    };
+    budgetDelta: ResearchNodeBudgetV1;
+    parallelismDelta: number;
+    researchWaveLimitDelta: number;
+    reconciliationWaveLimitDelta: number;
+    depthDelta: number;
+    reconciliationPolicyChanged: boolean;
+    exceededApprovalEnvelopeFields: string[];
+    requiresApproval: boolean;
+}
+
 // export: researchPolicyFromBriefV1
 export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
 
@@ -3178,6 +3239,24 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
+// export: ResearchSessionPlanRevisionV1
+export interface ResearchSessionPlanRevisionV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1;
+    id: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    rejectionReason: string;
+    requestedAt: string;
+    rejectedBrief: ResearchBriefV1;
+    rejectedGraph: ResearchGraphV1;
+    state: "rejected" | "revision_requested" | "proposed" | "approved";
+    instruction?: string;
+    revisedBriefRevision?: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionRepairAuthorizationV1
 export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
@@ -3293,6 +3372,7 @@ export interface ResearchSessionTurnV1 {
     scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    planRevisions?: ResearchSessionPlanRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -3359,6 +3439,10 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_plan_revision";
+    graphRevision: number;
+    instruction: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_scope_expansion";
     proposal: ResearchScopeExpansionProposalV1;
@@ -3713,6 +3797,14 @@ export interface RestScopeCatalogProviderOptions {
     allowProfileAuth?: boolean;
     now?: () => string;
 }
+
+// export: reviseResearchBriefPlanV1
+export declare function reviseResearchBriefPlanV1(input: {
+    brief: ResearchBriefV1;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}): ResearchBriefV1;
 
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
@@ -3961,6 +4053,7 @@ export interface CreateResearchBriefInputV1 {
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
     clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions?: readonly ResearchBriefPlanRevisionInstructionV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -4088,6 +4181,15 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: diffResearchPlansV1
+export declare function diffResearchPlansV1(input: {
+    fromBrief: ResearchBriefV1;
+    fromGraph: ResearchGraphV1;
+    toBrief: ResearchBriefV1;
+    toGraph: ResearchGraphV1;
+    scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
@@ -4783,6 +4885,9 @@ export declare const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2: "atlcli.research
 // export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
 
+// export: RESEARCH_PLAN_DIFF_SCHEMA_V1
+export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -4971,6 +5076,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
+// export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
+
 // export: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-session-retrieval-assessment/v1";
 
@@ -5106,6 +5214,14 @@ export interface ResearchBriefClarificationResponseV1 {
     response: string;
 }
 
+// export: ResearchBriefPlanRevisionInstructionV1
+export interface ResearchBriefPlanRevisionInstructionV1 {
+    id: string;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}
+
 // export: ResearchBriefPreflightOutcomeV1
 export type ResearchBriefPreflightOutcomeV1 = {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -5147,6 +5263,7 @@ export interface ResearchBriefV1 {
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
     clarificationResponses: ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -6166,6 +6283,42 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: ResearchPlanDiffV1
+export interface ResearchPlanDiffV1 {
+    schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+    fromRevision: number;
+    toRevision: number;
+    addedNodeIds: string[];
+    removedNodeIds: string[];
+    reprioritizedNodeIds: string[];
+    changedDependencies: string[];
+    changedCoverageTargets: string[];
+    addedRoleIds: ResearchSubagentRoleIdV1[];
+    removedRoleIds: ResearchSubagentRoleIdV1[];
+    addedCapabilityIds: ResearchGraphCapabilityV1[];
+    removedCapabilityIds: ResearchGraphCapabilityV1[];
+    addedScopeBindingIds: string[];
+    removedScopeBindingIds: string[];
+    scopeExpansionProposalIds: string[];
+    briefRevisionChanged: boolean;
+    coverageTargetFingerprintChanged: boolean;
+    scopeFingerprintChanged: boolean;
+    scopeBindingFingerprintChanged: boolean;
+    scopeDiscoveryPolicyChanged: boolean;
+    effortChange?: {
+        from: ResearchResolvedEffortV1;
+        to: ResearchResolvedEffortV1;
+    };
+    budgetDelta: ResearchNodeBudgetV1;
+    parallelismDelta: number;
+    researchWaveLimitDelta: number;
+    reconciliationWaveLimitDelta: number;
+    depthDelta: number;
+    reconciliationPolicyChanged: boolean;
+    exceededApprovalEnvelopeFields: string[];
+    requiresApproval: boolean;
+}
+
 // export: researchPolicyFromBriefV1
 export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
 
@@ -7007,6 +7160,24 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
+// export: ResearchSessionPlanRevisionV1
+export interface ResearchSessionPlanRevisionV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1;
+    id: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    rejectionReason: string;
+    requestedAt: string;
+    rejectedBrief: ResearchBriefV1;
+    rejectedGraph: ResearchGraphV1;
+    state: "rejected" | "revision_requested" | "proposed" | "approved";
+    instruction?: string;
+    revisedBriefRevision?: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionRepairAuthorizationV1
 export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
@@ -7122,6 +7293,7 @@ export interface ResearchSessionTurnV1 {
     scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    planRevisions?: ResearchSessionPlanRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -7188,6 +7360,10 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_plan_revision";
+    graphRevision: number;
+    instruction: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_scope_expansion";
     proposal: ResearchScopeExpansionProposalV1;
@@ -7532,6 +7708,14 @@ export declare function resolveResearchPlanApprovalV1(input: {
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
+// export: reviseResearchBriefPlanV1
+export declare function reviseResearchBriefPlanV1(input: {
+    brief: ResearchBriefV1;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}): ResearchBriefV1;
+
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
@@ -7779,6 +7963,7 @@ export interface CreateResearchBriefInputV1 {
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
     clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions?: readonly ResearchBriefPlanRevisionInstructionV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -7915,6 +8100,15 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: diffResearchPlansV1
+export declare function diffResearchPlansV1(input: {
+    fromBrief: ResearchBriefV1;
+    fromGraph: ResearchGraphV1;
+    toBrief: ResearchBriefV1;
+    toGraph: ResearchGraphV1;
+    scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
@@ -8610,6 +8804,9 @@ export declare const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2: "atlcli.research
 // export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
 
+// export: RESEARCH_PLAN_DIFF_SCHEMA_V1
+export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -8798,6 +8995,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
+// export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
+
 // export: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-session-retrieval-assessment/v1";
 
@@ -8933,6 +9133,14 @@ export interface ResearchBriefClarificationResponseV1 {
     response: string;
 }
 
+// export: ResearchBriefPlanRevisionInstructionV1
+export interface ResearchBriefPlanRevisionInstructionV1 {
+    id: string;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}
+
 // export: ResearchBriefPreflightOutcomeV1
 export type ResearchBriefPreflightOutcomeV1 = {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -8974,6 +9182,7 @@ export interface ResearchBriefV1 {
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
     clarificationResponses: ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -9993,6 +10202,42 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: ResearchPlanDiffV1
+export interface ResearchPlanDiffV1 {
+    schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+    fromRevision: number;
+    toRevision: number;
+    addedNodeIds: string[];
+    removedNodeIds: string[];
+    reprioritizedNodeIds: string[];
+    changedDependencies: string[];
+    changedCoverageTargets: string[];
+    addedRoleIds: ResearchSubagentRoleIdV1[];
+    removedRoleIds: ResearchSubagentRoleIdV1[];
+    addedCapabilityIds: ResearchGraphCapabilityV1[];
+    removedCapabilityIds: ResearchGraphCapabilityV1[];
+    addedScopeBindingIds: string[];
+    removedScopeBindingIds: string[];
+    scopeExpansionProposalIds: string[];
+    briefRevisionChanged: boolean;
+    coverageTargetFingerprintChanged: boolean;
+    scopeFingerprintChanged: boolean;
+    scopeBindingFingerprintChanged: boolean;
+    scopeDiscoveryPolicyChanged: boolean;
+    effortChange?: {
+        from: ResearchResolvedEffortV1;
+        to: ResearchResolvedEffortV1;
+    };
+    budgetDelta: ResearchNodeBudgetV1;
+    parallelismDelta: number;
+    researchWaveLimitDelta: number;
+    reconciliationWaveLimitDelta: number;
+    depthDelta: number;
+    reconciliationPolicyChanged: boolean;
+    exceededApprovalEnvelopeFields: string[];
+    requiresApproval: boolean;
+}
+
 // export: researchPolicyFromBriefV1
 export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
 
@@ -10834,6 +11079,24 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
+// export: ResearchSessionPlanRevisionV1
+export interface ResearchSessionPlanRevisionV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1;
+    id: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    rejectionReason: string;
+    requestedAt: string;
+    rejectedBrief: ResearchBriefV1;
+    rejectedGraph: ResearchGraphV1;
+    state: "rejected" | "revision_requested" | "proposed" | "approved";
+    instruction?: string;
+    revisedBriefRevision?: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionRepairAuthorizationV1
 export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
@@ -10949,6 +11212,7 @@ export interface ResearchSessionTurnV1 {
     scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    planRevisions?: ResearchSessionPlanRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -11015,6 +11279,10 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_plan_revision";
+    graphRevision: number;
+    instruction: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_scope_expansion";
     proposal: ResearchScopeExpansionProposalV1;
@@ -11369,6 +11637,14 @@ export interface RestScopeCatalogProviderOptions {
     allowProfileAuth?: boolean;
     now?: () => string;
 }
+
+// export: reviseResearchBriefPlanV1
+export declare function reviseResearchBriefPlanV1(input: {
+    brief: ResearchBriefV1;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}): ResearchBriefV1;
 
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
@@ -11705,6 +11981,7 @@ export interface CreateResearchBriefInputV1 {
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
     clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions?: readonly ResearchBriefPlanRevisionInstructionV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -11879,6 +12156,15 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: diffResearchPlansV1
+export declare function diffResearchPlansV1(input: {
+    fromBrief: ResearchBriefV1;
+    fromGraph: ResearchGraphV1;
+    toBrief: ResearchBriefV1;
+    toGraph: ResearchGraphV1;
+    scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1;
 
 // export: DynamicResearchSubagentOptions
 export interface DynamicResearchSubagentOptions {
@@ -12630,6 +12916,9 @@ export declare const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2: "atlcli.research
 // export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
 
+// export: RESEARCH_PLAN_DIFF_SCHEMA_V1
+export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -12825,6 +13114,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
+// export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
+
 // export: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-session-retrieval-assessment/v1";
 
@@ -12982,6 +13274,14 @@ export interface ResearchBriefClarificationResponseV1 {
     response: string;
 }
 
+// export: ResearchBriefPlanRevisionInstructionV1
+export interface ResearchBriefPlanRevisionInstructionV1 {
+    id: string;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}
+
 // export: ResearchBriefPreflightOutcomeV1
 export type ResearchBriefPreflightOutcomeV1 = {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -13023,6 +13323,7 @@ export interface ResearchBriefV1 {
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
     clarificationResponses: ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -14040,6 +14341,42 @@ export interface ResearchPlanApprovalRequiredV1 {
     scopeExpansionMode: ResearchOneShotPolicyV1["scopeExpansionMode"];
     reconciliationMode: ResearchRequestedReconciliationV1;
     rerunGuidance: string[];
+}
+
+// export: ResearchPlanDiffV1
+export interface ResearchPlanDiffV1 {
+    schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+    fromRevision: number;
+    toRevision: number;
+    addedNodeIds: string[];
+    removedNodeIds: string[];
+    reprioritizedNodeIds: string[];
+    changedDependencies: string[];
+    changedCoverageTargets: string[];
+    addedRoleIds: ResearchSubagentRoleIdV1[];
+    removedRoleIds: ResearchSubagentRoleIdV1[];
+    addedCapabilityIds: ResearchGraphCapabilityV1[];
+    removedCapabilityIds: ResearchGraphCapabilityV1[];
+    addedScopeBindingIds: string[];
+    removedScopeBindingIds: string[];
+    scopeExpansionProposalIds: string[];
+    briefRevisionChanged: boolean;
+    coverageTargetFingerprintChanged: boolean;
+    scopeFingerprintChanged: boolean;
+    scopeBindingFingerprintChanged: boolean;
+    scopeDiscoveryPolicyChanged: boolean;
+    effortChange?: {
+        from: ResearchResolvedEffortV1;
+        to: ResearchResolvedEffortV1;
+    };
+    budgetDelta: ResearchNodeBudgetV1;
+    parallelismDelta: number;
+    researchWaveLimitDelta: number;
+    reconciliationWaveLimitDelta: number;
+    depthDelta: number;
+    reconciliationPolicyChanged: boolean;
+    exceededApprovalEnvelopeFields: string[];
+    requiresApproval: boolean;
 }
 
 // export: researchPolicyFromBriefV1
@@ -14930,6 +15267,24 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
+// export: ResearchSessionPlanRevisionV1
+export interface ResearchSessionPlanRevisionV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1;
+    id: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    rejectionReason: string;
+    requestedAt: string;
+    rejectedBrief: ResearchBriefV1;
+    rejectedGraph: ResearchGraphV1;
+    state: "rejected" | "revision_requested" | "proposed" | "approved";
+    instruction?: string;
+    revisedBriefRevision?: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionRepairAuthorizationV1
 export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
@@ -15045,6 +15400,7 @@ export interface ResearchSessionTurnV1 {
     scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    planRevisions?: ResearchSessionPlanRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -15111,6 +15467,10 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_plan_revision";
+    graphRevision: number;
+    instruction: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_scope_expansion";
     proposal: ResearchScopeExpansionProposalV1;
@@ -15510,6 +15870,14 @@ export interface RestScopeCatalogProviderOptions {
     now?: () => string;
 }
 
+// export: reviseResearchBriefPlanV1
+export declare function reviseResearchBriefPlanV1(input: {
+    brief: ResearchBriefV1;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}): ResearchBriefV1;
+
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
@@ -15875,6 +16243,7 @@ export interface CreateResearchBriefInputV1 {
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
     clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions?: readonly ResearchBriefPlanRevisionInstructionV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -16049,6 +16418,15 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: diffResearchPlansV1
+export declare function diffResearchPlansV1(input: {
+    fromBrief: ResearchBriefV1;
+    fromGraph: ResearchGraphV1;
+    toBrief: ResearchBriefV1;
+    toGraph: ResearchGraphV1;
+    scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1;
 
 // export: DynamicResearchSubagentOptions
 export interface DynamicResearchSubagentOptions {
@@ -16815,6 +17193,9 @@ export declare const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2: "atlcli.research
 // export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
 
+// export: RESEARCH_PLAN_DIFF_SCHEMA_V1
+export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -17010,6 +17391,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
+// export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
+
 // export: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-session-retrieval-assessment/v1";
 
@@ -17167,6 +17551,14 @@ export interface ResearchBriefClarificationResponseV1 {
     response: string;
 }
 
+// export: ResearchBriefPlanRevisionInstructionV1
+export interface ResearchBriefPlanRevisionInstructionV1 {
+    id: string;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}
+
 // export: ResearchBriefPreflightOutcomeV1
 export type ResearchBriefPreflightOutcomeV1 = {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -17208,6 +17600,7 @@ export interface ResearchBriefV1 {
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
     clarificationResponses: ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -18225,6 +18618,42 @@ export interface ResearchPlanApprovalRequiredV1 {
     scopeExpansionMode: ResearchOneShotPolicyV1["scopeExpansionMode"];
     reconciliationMode: ResearchRequestedReconciliationV1;
     rerunGuidance: string[];
+}
+
+// export: ResearchPlanDiffV1
+export interface ResearchPlanDiffV1 {
+    schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+    fromRevision: number;
+    toRevision: number;
+    addedNodeIds: string[];
+    removedNodeIds: string[];
+    reprioritizedNodeIds: string[];
+    changedDependencies: string[];
+    changedCoverageTargets: string[];
+    addedRoleIds: ResearchSubagentRoleIdV1[];
+    removedRoleIds: ResearchSubagentRoleIdV1[];
+    addedCapabilityIds: ResearchGraphCapabilityV1[];
+    removedCapabilityIds: ResearchGraphCapabilityV1[];
+    addedScopeBindingIds: string[];
+    removedScopeBindingIds: string[];
+    scopeExpansionProposalIds: string[];
+    briefRevisionChanged: boolean;
+    coverageTargetFingerprintChanged: boolean;
+    scopeFingerprintChanged: boolean;
+    scopeBindingFingerprintChanged: boolean;
+    scopeDiscoveryPolicyChanged: boolean;
+    effortChange?: {
+        from: ResearchResolvedEffortV1;
+        to: ResearchResolvedEffortV1;
+    };
+    budgetDelta: ResearchNodeBudgetV1;
+    parallelismDelta: number;
+    researchWaveLimitDelta: number;
+    reconciliationWaveLimitDelta: number;
+    depthDelta: number;
+    reconciliationPolicyChanged: boolean;
+    exceededApprovalEnvelopeFields: string[];
+    requiresApproval: boolean;
 }
 
 // export: researchPolicyFromBriefV1
@@ -19126,6 +19555,24 @@ export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
     deleteThread(threadId: string): Promise<void>;
 }
 
+// export: ResearchSessionPlanRevisionV1
+export interface ResearchSessionPlanRevisionV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1;
+    id: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    rejectionReason: string;
+    requestedAt: string;
+    rejectedBrief: ResearchBriefV1;
+    rejectedGraph: ResearchGraphV1;
+    state: "rejected" | "revision_requested" | "proposed" | "approved";
+    instruction?: string;
+    revisedBriefRevision?: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionRepairAuthorizationV1
 export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
@@ -19241,6 +19688,7 @@ export interface ResearchSessionTurnV1 {
     scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    planRevisions?: ResearchSessionPlanRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -19307,6 +19755,10 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_plan_revision";
+    graphRevision: number;
+    instruction: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_scope_expansion";
     proposal: ResearchScopeExpansionProposalV1;
@@ -19690,6 +20142,14 @@ export interface RestScopeCatalogProviderOptions {
     allowProfileAuth?: boolean;
     now?: () => string;
 }
+
+// export: reviseResearchBriefPlanV1
+export declare function reviseResearchBriefPlanV1(input: {
+    brief: ResearchBriefV1;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}): ResearchBriefV1;
 
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
@@ -20670,6 +21130,15 @@ export declare function composeStandardResearchGraphV1(question: string, options
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: diffResearchPlansV1
+export declare function diffResearchPlansV1(input: {
+    fromBrief: ResearchBriefV1;
+    fromGraph: ResearchGraphV1;
+    toBrief: ResearchBriefV1;
+    toGraph: ResearchGraphV1;
+    scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1;
+
 // export: parseResearchGraphProposalV1
 export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
 
@@ -20739,6 +21208,9 @@ export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 // export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
 
+// export: RESEARCH_PLAN_DIFF_SCHEMA_V1
+export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
+
 // export: RESEARCH_T3_GRAPH_ROLES
 export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
 
@@ -20774,6 +21246,7 @@ export interface ResearchBriefV1 {
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
     clarificationResponses: ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -20954,6 +21427,42 @@ export interface ResearchPlanApprovalRequiredV1 {
     scopeExpansionMode: ResearchOneShotPolicyV1["scopeExpansionMode"];
     reconciliationMode: ResearchRequestedReconciliationV1;
     rerunGuidance: string[];
+}
+
+// export: ResearchPlanDiffV1
+export interface ResearchPlanDiffV1 {
+    schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+    fromRevision: number;
+    toRevision: number;
+    addedNodeIds: string[];
+    removedNodeIds: string[];
+    reprioritizedNodeIds: string[];
+    changedDependencies: string[];
+    changedCoverageTargets: string[];
+    addedRoleIds: ResearchSubagentRoleIdV1[];
+    removedRoleIds: ResearchSubagentRoleIdV1[];
+    addedCapabilityIds: ResearchGraphCapabilityV1[];
+    removedCapabilityIds: ResearchGraphCapabilityV1[];
+    addedScopeBindingIds: string[];
+    removedScopeBindingIds: string[];
+    scopeExpansionProposalIds: string[];
+    briefRevisionChanged: boolean;
+    coverageTargetFingerprintChanged: boolean;
+    scopeFingerprintChanged: boolean;
+    scopeBindingFingerprintChanged: boolean;
+    scopeDiscoveryPolicyChanged: boolean;
+    effortChange?: {
+        from: ResearchResolvedEffortV1;
+        to: ResearchResolvedEffortV1;
+    };
+    budgetDelta: ResearchNodeBudgetV1;
+    parallelismDelta: number;
+    researchWaveLimitDelta: number;
+    reconciliationWaveLimitDelta: number;
+    depthDelta: number;
+    reconciliationPolicyChanged: boolean;
+    exceededApprovalEnvelopeFields: string[];
+    requiresApproval: boolean;
 }
 
 // export: ResearchReconciliationModeV1
@@ -21177,6 +21686,7 @@ export interface CreateResearchBriefInputV1 {
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
     clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions?: readonly ResearchBriefPlanRevisionInstructionV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -21351,6 +21861,15 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: diffResearchPlansV1
+export declare function diffResearchPlansV1(input: {
+    fromBrief: ResearchBriefV1;
+    fromGraph: ResearchGraphV1;
+    toBrief: ResearchBriefV1;
+    toGraph: ResearchGraphV1;
+    scopeExpansionProposalIds?: readonly string[];
+}): ResearchPlanDiffV1;
 
 // export: DynamicResearchSubagentOptions
 export interface DynamicResearchSubagentOptions {
@@ -22117,6 +22636,9 @@ export declare const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2: "atlcli.research
 // export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
 
+// export: RESEARCH_PLAN_DIFF_SCHEMA_V1
+export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -22312,6 +22834,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
+// export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
+
 // export: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-session-retrieval-assessment/v1";
 
@@ -22469,6 +22994,14 @@ export interface ResearchBriefClarificationResponseV1 {
     response: string;
 }
 
+// export: ResearchBriefPlanRevisionInstructionV1
+export interface ResearchBriefPlanRevisionInstructionV1 {
+    id: string;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}
+
 // export: ResearchBriefPreflightOutcomeV1
 export type ResearchBriefPreflightOutcomeV1 = {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -22510,6 +23043,7 @@ export interface ResearchBriefV1 {
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
     clarificationResponses: ResearchBriefClarificationResponseV1[];
+    planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -23529,6 +24063,42 @@ export interface ResearchPlanApprovalRequiredV1 {
     rerunGuidance: string[];
 }
 
+// export: ResearchPlanDiffV1
+export interface ResearchPlanDiffV1 {
+    schema: typeof RESEARCH_PLAN_DIFF_SCHEMA_V1;
+    fromRevision: number;
+    toRevision: number;
+    addedNodeIds: string[];
+    removedNodeIds: string[];
+    reprioritizedNodeIds: string[];
+    changedDependencies: string[];
+    changedCoverageTargets: string[];
+    addedRoleIds: ResearchSubagentRoleIdV1[];
+    removedRoleIds: ResearchSubagentRoleIdV1[];
+    addedCapabilityIds: ResearchGraphCapabilityV1[];
+    removedCapabilityIds: ResearchGraphCapabilityV1[];
+    addedScopeBindingIds: string[];
+    removedScopeBindingIds: string[];
+    scopeExpansionProposalIds: string[];
+    briefRevisionChanged: boolean;
+    coverageTargetFingerprintChanged: boolean;
+    scopeFingerprintChanged: boolean;
+    scopeBindingFingerprintChanged: boolean;
+    scopeDiscoveryPolicyChanged: boolean;
+    effortChange?: {
+        from: ResearchResolvedEffortV1;
+        to: ResearchResolvedEffortV1;
+    };
+    budgetDelta: ResearchNodeBudgetV1;
+    parallelismDelta: number;
+    researchWaveLimitDelta: number;
+    reconciliationWaveLimitDelta: number;
+    depthDelta: number;
+    reconciliationPolicyChanged: boolean;
+    exceededApprovalEnvelopeFields: string[];
+    requiresApproval: boolean;
+}
+
 // export: researchPolicyFromBriefV1
 export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): ResearchOneShotPolicyV1;
 
@@ -24428,6 +24998,24 @@ export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
     deleteThread(threadId: string): Promise<void>;
 }
 
+// export: ResearchSessionPlanRevisionV1
+export interface ResearchSessionPlanRevisionV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1;
+    id: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    rejectionReason: string;
+    requestedAt: string;
+    rejectedBrief: ResearchBriefV1;
+    rejectedGraph: ResearchGraphV1;
+    state: "rejected" | "revision_requested" | "proposed" | "approved";
+    instruction?: string;
+    revisedBriefRevision?: number;
+    proposedGraphRevision?: number;
+    planDiff?: ResearchPlanDiffV1;
+    approvedAt?: string;
+}
+
 // export: ResearchSessionRepairAuthorizationV1
 export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
@@ -24543,6 +25131,7 @@ export interface ResearchSessionTurnV1 {
     scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
     clarifications: ResearchSessionClarificationV1[];
     assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    planRevisions?: ResearchSessionPlanRevisionV1[];
     steering: ResearchSessionSteeringV1[];
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
@@ -24609,6 +25198,10 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_plan_revision";
+    graphRevision: number;
+    instruction: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_scope_expansion";
     proposal: ResearchScopeExpansionProposalV1;
@@ -24992,6 +25585,14 @@ export interface RestScopeCatalogProviderOptions {
     allowProfileAuth?: boolean;
     now?: () => string;
 }
+
+// export: reviseResearchBriefPlanV1
+export declare function reviseResearchBriefPlanV1(input: {
+    brief: ResearchBriefV1;
+    basedOnGraphRevision: number;
+    instruction: string;
+    requestedAt: string;
+}): ResearchBriefV1;
 
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;

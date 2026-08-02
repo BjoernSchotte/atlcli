@@ -68,6 +68,7 @@ import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
   composeResearchGraphV1,
   createStandardResearchBriefV1,
+  diffResearchPlansV1,
   projectSelectedResearchRolesV1,
   researchPlanApprovalRequiredV1,
   type ResearchGraphV1,
@@ -583,6 +584,16 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
           .map((assumption) => assumption.id),
       },
       graph: projectSessionGraph(turn.graph),
+      planRevisions: (turn.planRevisions ?? []).map((revision) => ({
+        id: revision.id,
+        basedOnBriefRevision: revision.basedOnBriefRevision,
+        basedOnGraphRevision: revision.basedOnGraphRevision,
+        revisedBriefRevision: revision.revisedBriefRevision,
+        proposedGraphRevision: revision.proposedGraphRevision,
+        state: revision.state,
+        hasInstruction: revision.instruction !== undefined,
+        ...(revision.planDiff ? { planDiff: revision.planDiff } : {}),
+      })),
       scope: {
         candidateCount: turn.scopeCandidates.length,
         bindingCount: turn.scopeBindings.length,
@@ -604,10 +615,13 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
 }
 
 function projectResearchSessionPlanV1(session: ResearchSessionV1): Record<string, unknown> {
+  const turn = activeSessionTurn(session);
+  const latestPlanRevision = turn?.planRevisions?.at(-1);
   return {
     ...projectResearchSessionV1(session),
     kind: "plan",
     planMutable: session.status === "waiting_plan_approval",
+    ...(latestPlanRevision?.planDiff ? { planDiff: latestPlanRevision.planDiff } : {}),
   };
 }
 
@@ -790,7 +804,7 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "clarify" && command !== "approve" && command !== "reject-plan" && command !== "cancel" && command !== "delete") {
+  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "clarify" && command !== "approve" && command !== "reject-plan" && command !== "revise-plan" && command !== "cancel" && command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
   const sessionId = requireSessionId(sessionArg);
@@ -950,43 +964,145 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command === "approve" || command === "reject-plan") {
-    if (args.length !== 2) throw new Error(`Usage: atlcli research sessions ${command} <session-id> --revision <session-revision>${command === "reject-plan" ? " --reason <reason>" : ""}.`);
-    assertSessionFlags(flags, command === "approve" ? ["revision"] : ["revision", "reason"]);
+  if (command === "revise-plan") {
+    if (args.length !== 2) {
+      throw new Error("Usage: atlcli research sessions revise-plan <session-id> --revision <session-revision> --graph-revision <graph-revision> [--instruction <correction>].");
+    }
+    assertSessionFlags(flags, ["revision", "graph-revision", "instruction"]);
     const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
-    const reason = command === "reject-plan" ? singleSessionFlag(flags, "reason", true) : undefined;
+    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
+    const instruction = singleSessionFlag(flags, "instruction");
+    const opened = await dependencies.openSessionStore();
+    try {
+      let current = await requireStoredResearchSession(opened.store, sessionId);
+      if (current.revision !== revision) throw new Error("Research session revision is stale; inspect the current plan and retry with its exact revision.");
+      const currentTurn = activeSessionTurn(current);
+      const currentGraph = currentTurn?.graph;
+      if (!currentTurn?.brief || !currentGraph || currentGraph.revision !== graphRevision) {
+        throw new Error("Research graph revision is stale; inspect the current plan and retry with its exact graph revision.");
+      }
+      if (current.status === "waiting_plan_revision") {
+        if (!instruction) throw new Error("--instruction is required while a rejected plan is waiting for a revision.");
+        current = (await opened.store.commit(sessionId, {
+          kind: "request_plan_revision",
+          graphRevision,
+          instruction,
+          expectedRevision: current.revision,
+          expectedLeaseEpoch: current.lease.epoch,
+          at: new Date().toISOString(),
+        })).session;
+      } else if (current.status === "planning") {
+        if (instruction) throw new Error("A plan revision is already being composed; retry without --instruction to recover the durable boundary.");
+        const pending = activeSessionTurn(current)?.planRevisions?.at(-1);
+        if (pending?.state !== "revision_requested" || pending.basedOnGraphRevision !== graphRevision) {
+          throw new Error("Research session is not waiting for a durable plan revision.");
+        }
+      } else {
+        throw new Error("Research session is not waiting for a plan revision.");
+      }
+      const planned = await proposeResearchGraphForReadyBriefV1({
+        store: opened.store,
+        sessionId,
+        expectedRevision: current.revision,
+        expectedLeaseEpoch: current.lease.epoch,
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+        approveAutomatically: false,
+        at: new Date().toISOString(),
+      });
+      const revisedTurn = activeSessionTurn(planned);
+      const revisionRecord = revisedTurn?.planRevisions?.at(-1);
+      if (!revisedTurn?.brief || !revisedTurn.graph || !revisionRecord?.planDiff) {
+        throw new Error("Research plan revision did not produce a durable review diff.");
+      }
+      // Recalculate from the immutable snapshots as a defensive check that a
+      // store implementation did not substitute the persisted review surface.
+      const planDiff = diffResearchPlansV1({
+        fromBrief: revisionRecord.rejectedBrief,
+        fromGraph: revisionRecord.rejectedGraph,
+        toBrief: revisedTurn.brief,
+        toGraph: revisedTurn.graph,
+      });
+      if (JSON.stringify(planDiff) !== JSON.stringify(revisionRecord.planDiff)) {
+        throw new Error("Research plan revision diff does not match its durable plan snapshots.");
+      }
+      dependencies.writeStderr(`[research] session=${sessionId} action=revise-plan revision=${planned.revision} graph_revision=${revisedTurn.graph.revision} status=${planned.status}\n`);
+      dependencies.emitOutput(projectResearchSessionPlanV1(planned), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "approve" || command === "reject-plan") {
+    if (args.length !== 2) throw new Error(`Usage: atlcli research sessions ${command} <session-id> --revision <session-revision> --graph-revision <graph-revision>${command === "reject-plan" ? " --instruction <correction>" : ""}.`);
+    assertSessionFlags(flags, command === "approve" ? ["revision", "graph-revision"] : ["revision", "graph-revision", "instruction"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
+    const instruction = command === "reject-plan" ? singleSessionFlag(flags, "instruction", true) : undefined;
     const opened = await dependencies.openSessionStore();
     try {
       const session = await requireStoredResearchSession(opened.store, sessionId);
       if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current plan and retry with its exact revision.");
-      const graph = activeSessionTurn(session)?.graph;
-      if (!graph) throw new Error("Research session has no active graph to decide.");
-      let committed = await opened.store.commit(sessionId, command === "approve"
+      const turn = activeSessionTurn(session);
+      const graph = turn?.graph;
+      if (!turn?.brief || !graph || graph.revision !== graphRevision) throw new Error("Research graph revision is stale; inspect the current plan and retry with its exact graph revision.");
+      let committedSession = (await opened.store.commit(sessionId, command === "approve"
         ? {
             kind: "approve_graph",
-            graphRevision: graph.revision,
+            graphRevision,
             expectedRevision: session.revision,
             expectedLeaseEpoch: session.lease.epoch,
             at: new Date().toISOString(),
           }
         : {
             kind: "reject_plan",
-            graphRevision: graph.revision,
-            reason: reason!,
+            graphRevision,
+            reason: instruction!,
             expectedRevision: session.revision,
             expectedLeaseEpoch: session.lease.epoch,
             at: new Date().toISOString(),
-          });
+          })).session;
       if (command === "approve") {
-        committed = await opened.store.commit(sessionId, {
+        committedSession = (await opened.store.commit(sessionId, {
           kind: "release_lease",
-          expectedRevision: committed.session.revision,
-          expectedLeaseEpoch: committed.session.lease.epoch,
+          expectedRevision: committedSession.revision,
+          expectedLeaseEpoch: committedSession.lease.epoch,
+          at: new Date().toISOString(),
+        })).session;
+      } else {
+        const requested = await opened.store.commit(sessionId, {
+          kind: "request_plan_revision",
+          graphRevision,
+          instruction: instruction!,
+          expectedRevision: committedSession.revision,
+          expectedLeaseEpoch: committedSession.lease.epoch,
           at: new Date().toISOString(),
         });
+        committedSession = await proposeResearchGraphForReadyBriefV1({
+          store: opened.store,
+          sessionId,
+          expectedRevision: requested.session.revision,
+          expectedLeaseEpoch: requested.session.lease.epoch,
+          packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+          approveAutomatically: false,
+          at: new Date().toISOString(),
+        });
+        const revisedTurn = activeSessionTurn(committedSession);
+        const revisionRecord = revisedTurn?.planRevisions?.at(-1);
+        if (!revisedTurn?.brief || !revisedTurn.graph || !revisionRecord?.planDiff) {
+          throw new Error("Research plan rejection did not produce a durable review diff.");
+        }
+        const planDiff = diffResearchPlansV1({
+          fromBrief: revisionRecord.rejectedBrief,
+          fromGraph: revisionRecord.rejectedGraph,
+          toBrief: revisedTurn.brief,
+          toGraph: revisedTurn.graph,
+        });
+        if (JSON.stringify(planDiff) !== JSON.stringify(revisionRecord.planDiff)) {
+          throw new Error("Research plan revision diff does not match its durable plan snapshots.");
+        }
       }
-      dependencies.writeStderr(`[research] session=${sessionId} action=${command} revision=${committed.session.revision} status=${committed.session.status}\n`);
-      dependencies.emitOutput(projectResearchSessionPlanV1(committed.session), opts);
+      dependencies.writeStderr(`[research] session=${sessionId} action=${command} revision=${committedSession.revision} status=${committedSession.status}\n`);
+      dependencies.emitOutput(projectResearchSessionPlanV1(committedSession), opts);
     } finally {
       opened.close();
     }
@@ -1727,7 +1843,7 @@ export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
 atlcli research --session <session-id> <question>
-atlcli research sessions <list|show|evidence|plan|approve|reject-plan|cancel|delete>
+atlcli research sessions <list|show|evidence|plan|clarify|approve|reject-plan|revise-plan|cancel|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -1759,8 +1875,11 @@ Durable session commands:
   sessions plan <session-id>
   sessions clarify <session-id> --revision <session-revision> --brief-revision <brief-revision>
       [--answer <question-id>=<response>] [--assumption <assumption-id>=accepted|rejected]
-  sessions approve <session-id> --revision <session-revision>
-  sessions reject-plan <session-id> --revision <session-revision> --reason <reason>
+  sessions approve <session-id> --revision <session-revision> --graph-revision <graph-revision>
+  sessions reject-plan <session-id> --revision <session-revision> --graph-revision <graph-revision>
+      --instruction <correction>
+  sessions revise-plan <session-id> --revision <session-revision> --graph-revision <graph-revision>
+      [--instruction <correction>]
   sessions cancel <session-id> --revision <session-revision>
   sessions delete <session-id> --revision <session-revision>
 
@@ -1768,7 +1887,8 @@ ANTHROPIC_API_KEY must be supplied through the process environment.
 --plan-only persists the brief and graph before any key, workspace, provider, or model access.
 --resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable budget. It resumes only an undispatched wait or one host-issued retrieval continuation; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
 --session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
-Approving a durable plan persists its exact revision only; it starts no model research until durable task dispatch arrives.
+Approving a durable plan persists its exact graph revision only; it starts no model research until durable task dispatch arrives.
+Rejecting a plan records the exact correction, materializes a new immutable brief and graph revision, and stops again for explicit approval.
 Session inspection views expose bounded durable metadata only. Source text is returned only by the separate
 \`sessions evidence <session-id> --id <evidence-id> --include-text\` command.
 `;

@@ -6,6 +6,7 @@ import {
   projectResearchProposedAssumptionLimitationsV1,
   researchPolicyFromBriefV1,
   researchRequestFromBriefV1,
+  reviseResearchBriefPlanV1,
   resolveResearchBriefClarificationsV1,
   resolveResearchEffortV1,
   resolveResearchPlanApprovalV1,
@@ -185,6 +186,44 @@ describe("host-owned research brief", () => {
       answers: [],
       assumptionDecisions: [{ assumptionId: "assumption:include-archived", decision: "rejected" }],
     })).toThrow("incomplete");
+  });
+
+  test("materializes a plan correction as visible context without widening the accepted brief", () => {
+    const original = create({
+      revision: 4,
+      requestedPlanApproval: "automatic",
+      limits: {
+        ...create().limits,
+        maxPtcCalls: 12,
+      },
+    });
+    const revised = reviseResearchBriefPlanV1({
+      brief: original,
+      basedOnGraphRevision: 3,
+      instruction: "Prioritize exact references and separate unsupported links.",
+      requestedAt: "2026-08-02T10:00:00.000Z",
+    });
+
+    expect(revised).toMatchObject({
+      revision: 5,
+      scope: original.scope,
+      limits: original.limits,
+      requestedPlanApproval: "automatic",
+      planRevisionInstructions: [{
+        id: "plan-revision:3.5",
+        basedOnGraphRevision: 3,
+        instruction: "Prioritize exact references and separate unsupported links.",
+      }],
+    });
+    expect(researchRequestFromBriefV1(revised).question).toContain(
+      "Prioritize exact references and separate unsupported links.",
+    );
+    expect(() => reviseResearchBriefPlanV1({
+      brief: original,
+      basedOnGraphRevision: 0,
+      instruction: "no",
+      requestedAt: "2026-08-02T10:00:00.000Z",
+    })).toThrow("invalid");
   });
 
   test("rejects silently accepted new assumptions and invalid time context", () => {

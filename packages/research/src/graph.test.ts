@@ -5,6 +5,7 @@ import {
   acceptResearchGraphProposalV1,
   composeResearchGraphV1,
   composeStandardResearchGraphV1,
+  diffResearchPlansV1,
   projectSelectedResearchRolesV1,
   researchPlanApprovalRequiredV1,
   reduceResearchGraphV1,
@@ -14,7 +15,7 @@ import {
   type ResearchGraphV1,
 } from "./graph.js";
 import { researchTaskIdForNodeV1 } from "./dynamic-subagents.js";
-import { createResearchBriefV1 } from "./brief.js";
+import { createResearchBriefV1, reviseResearchBriefPlanV1 } from "./brief.js";
 import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 import {
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
@@ -700,5 +701,36 @@ describe("dynamic research graph composition", () => {
       nodeId: "research-node:jira-research",
       packetRef: "packet:late",
     })).toThrow("running");
+  });
+
+  test("projects a body-free user-plan revision diff and flags a renewed approval", () => {
+    const initialBrief = brief("Map Jira work to Confluence documentation", ["jira", "confluence"], "auto", "analysis", "required");
+    const initialGraph = composeResearchGraphV1(initialBrief);
+    const revisedBrief = reviseResearchBriefPlanV1({
+      brief: initialBrief,
+      basedOnGraphRevision: initialGraph.revision,
+      instruction: "Separate direct links from inferred relationships.",
+      requestedAt: "2026-08-02T10:00:00.000Z",
+    });
+    const revisedGraph = composeResearchGraphV1(revisedBrief, { graphRevision: 2 });
+    const diff = diffResearchPlansV1({
+      fromBrief: initialBrief,
+      fromGraph: initialGraph,
+      toBrief: revisedBrief,
+      toGraph: revisedGraph,
+    });
+
+    expect(diff).toMatchObject({
+      schema: "atlcli.research-plan-diff/v1",
+      fromRevision: 1,
+      toRevision: 2,
+      briefRevisionChanged: true,
+      scopeFingerprintChanged: false,
+      scopeBindingFingerprintChanged: false,
+      addedCapabilityIds: [],
+      exceededApprovalEnvelopeFields: [],
+      requiresApproval: true,
+    });
+    expect(JSON.stringify(diff)).not.toContain("Separate direct links");
   });
 });

@@ -164,8 +164,10 @@ export async function initializeResearchSessionClarificationWaitV1(
 
 /**
  * Compose and persist a graph only from an already committed, clarification-
- * free brief. A crash between the preceding answer commit and this call leaves
+ * free brief. A crash between the preceding brief commit and this call leaves
  * a durable `planning` state that a later control command can safely advance.
+ * When a rejected plan has materialized a newer brief, it emits the next graph
+ * revision and deliberately returns to an explicit approval boundary.
  */
 export async function proposeResearchGraphForReadyBriefV1(
   input: ProposeResearchGraphForReadyBriefInputV1,
@@ -176,22 +178,33 @@ export async function proposeResearchGraphForReadyBriefV1(
     throw new Error("Research session revision or lease epoch is stale.");
   }
   const active = activeTurn(current);
-  if (current.status !== "planning" || !active?.brief || active.graph || briefRequiresClarificationV1(active.brief)) {
+  if (current.status !== "planning" || !active?.brief || briefRequiresClarificationV1(active.brief)) {
     throw new Error("Research session does not have a ready brief to plan.");
+  }
+  const graphRevision = active.graph ? active.graph.revision + 1 : 1;
+  if (active.graph && !(active.planRevisions ?? []).some((revision) =>
+    revision.state === "revision_requested" &&
+    revision.basedOnGraphRevision === active.graph!.revision &&
+    revision.revisedBriefRevision === active.brief!.revision,
+  )) {
+    throw new Error("Research session does not have a durable plan revision request.");
   }
   const graph = composeResearchGraphV1(active.brief, {
     ...(input.packetOutputSchema ? { packetOutputSchema: input.packetOutputSchema } : {}),
+    graphRevision,
   });
   const staged = stageResearchGraphForDurableSessionV1(graph);
   let proposed = (await input.store.commit(input.sessionId, {
-    kind: "propose_graph",
+    kind: active.graph ? "revise_graph" : "propose_graph",
     graph: staged,
-    ...(input.approveAutomatically ? { retainLeaseForImmediateApproval: true as const } : {}),
+    ...(!active.graph && input.approveAutomatically ? { retainLeaseForImmediateApproval: true as const } : {}),
     expectedRevision: current.revision,
     expectedLeaseEpoch: current.lease.epoch,
     at: input.at,
   })).session;
-  if (!input.approveAutomatically) return proposed;
+  // A user rejected the predecessor; even an otherwise automatic policy must
+  // not auto-approve the replacement plan.
+  if (!input.approveAutomatically || active.graph) return proposed;
   proposed = (await input.store.commit(input.sessionId, {
     kind: "approve_graph",
     graphRevision: staged.revision,

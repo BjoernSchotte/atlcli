@@ -570,6 +570,66 @@ describe("durable host-neutral research session reducer", () => {
     });
   });
 
+  test("requires a rejected graph and durable correction before staging the next plan revision", () => {
+    let current = session();
+    current = update(current, { kind: "create_turn", turnId: "research-turn:one" }, "2026-08-01T10:00:01.000Z");
+    const originalBrief = brief();
+    current = update(current, { kind: "record_brief", brief: originalBrief }, "2026-08-01T10:00:02.000Z");
+    const firstGraph = composeResearchGraphV1(originalBrief);
+    current = update(current, { kind: "propose_graph", graph: firstGraph }, "2026-08-01T10:00:03.000Z");
+    current = update(current, {
+      kind: "reject_plan",
+      graphRevision: firstGraph.revision,
+      reason: "Show exact links separately from inferred relationships.",
+    }, "2026-08-01T10:00:04.000Z");
+
+    expect(current).toMatchObject({
+      status: "waiting_plan_revision",
+      turns: [{
+        planRevisions: [{
+          basedOnBriefRevision: 1,
+          basedOnGraphRevision: 1,
+          state: "rejected",
+          rejectionReason: "Show exact links separately from inferred relationships.",
+        }],
+      }],
+    });
+    const invalidRevision = composeResearchGraphV1(originalBrief, { graphRevision: 2 });
+    expect(() => update(current, { kind: "revise_graph", graph: invalidRevision }, "2026-08-01T10:00:05.000Z"))
+      .toThrow("cannot transition");
+
+    current = update(current, {
+      kind: "request_plan_revision",
+      graphRevision: 1,
+      instruction: "Show exact links separately from inferred relationships.",
+    }, "2026-08-01T10:00:06.000Z");
+    const revisedBrief = current.turns[0]!.brief!;
+    expect(current).toMatchObject({
+      status: "planning",
+      turns: [{
+        brief: { revision: 2, planRevisionInstructions: [{ basedOnGraphRevision: 1 }] },
+        planRevisions: [{ state: "revision_requested", revisedBriefRevision: 2 }],
+      }],
+    });
+    expect(revisedBrief.scope).toEqual(originalBrief.scope);
+    expect(revisedBrief.limits).toEqual(originalBrief.limits);
+
+    const revisedGraph = composeResearchGraphV1(revisedBrief, { graphRevision: 2 });
+    current = update(current, { kind: "revise_graph", graph: revisedGraph }, "2026-08-01T10:00:07.000Z");
+    expect(current).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{
+        graph: { revision: 2, basedOnBriefRevision: 2, status: "proposed" },
+        planRevisions: [{ state: "proposed", proposedGraphRevision: 2 }],
+      }],
+    });
+    current = update(current, { kind: "approve_graph", graphRevision: 2 }, "2026-08-01T10:00:08.000Z");
+    expect(current).toMatchObject({
+      status: "running",
+      turns: [{ planRevisions: [{ state: "approved", approvedAt: "2026-08-01T10:00:08.000Z" }] }],
+    });
+  });
+
   test("releases durable authentication and quota waits before a fresh owner recovers it", () => {
     let current = readyToRun();
     current = update(current, { kind: "wait_authentication" }, "2026-08-01T09:00:05.000Z");

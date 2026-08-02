@@ -3211,6 +3211,12 @@ unknown-outcome retry/abstain remains a separate gate below.
         CAS fence, then composes and persists the graph only from that committed
         ready brief. The command is model/provider/workspace-free and releases
         its automatic approval lease so a later `--resume` can claim it.
+  - [x] Add revision-fenced `reject-plan` and `revise-plan`. A rejection and
+        its user correction are persisted as immutable brief/graph versions;
+        the replacement always returns to explicit plan approval. The shared,
+        body-free plan diff is journaled and projected after restart, while
+        scope, budgets, and capabilities remain unchanged unless a separately
+        approved control path changes them.
 - [ ] Show the sanitized brief, graph, selected roles, dependencies, budgets,
       approval envelope including optional role/capability grants,
       scope bindings/provenance/expansion policy, pending scope proposals,

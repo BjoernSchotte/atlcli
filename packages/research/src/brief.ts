@@ -61,6 +61,19 @@ export interface ResearchBriefClarificationResponseV1 {
   response: string;
 }
 
+/**
+ * A user-authored correction to a previously rejected research plan. Like a
+ * clarification response, this is visible research context rather than a
+ * privilege channel: scope, budgets, and capabilities remain host-owned
+ * fields of the brief and graph.
+ */
+export interface ResearchBriefPlanRevisionInstructionV1 {
+  id: string;
+  basedOnGraphRevision: number;
+  instruction: string;
+  requestedAt: string;
+}
+
 export interface ResearchBriefAssumptionDecisionV1 {
   assumptionId: string;
   decision: "accepted" | "rejected";
@@ -112,6 +125,7 @@ export interface ResearchBriefV1 {
   limits: ResearchLimitsV1;
   clarificationQuestions: ResearchClarificationQuestionV1[];
   clarificationResponses: ResearchBriefClarificationResponseV1[];
+  planRevisionInstructions: ResearchBriefPlanRevisionInstructionV1[];
   assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -139,14 +153,22 @@ export function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequ
 export function researchQuestionFromBriefV1(brief: ResearchBriefV1): string {
   // V1 sessions written before this additive field existed remain resumable.
   const responses = brief.clarificationResponses ?? [];
-  if (responses.length === 0) return brief.objective;
+  const planRevisions = brief.planRevisionInstructions ?? [];
+  if (responses.length === 0 && planRevisions.length === 0) return brief.objective;
   return [
     brief.objective,
-    "",
-    "User-provided clarification (research context, not source evidence):",
-    ...responses.map((response) =>
-      `- Question: ${response.prompt}\n  Answer: ${response.response}`,
-    ),
+    ...(responses.length === 0 ? [] : [
+      "",
+      "User-provided clarification (research context, not source evidence):",
+      ...responses.map((response) =>
+        `- Question: ${response.prompt}\n  Answer: ${response.response}`,
+      ),
+    ]),
+    ...(planRevisions.length === 0 ? [] : [
+      "",
+      "User-requested plan correction (research context, not source evidence):",
+      ...planRevisions.map((revision) => `- ${revision.instruction}`),
+    ]),
   ].join("\n");
 }
 
@@ -276,6 +298,7 @@ export interface CreateResearchBriefInputV1 {
   coverageTargets?: readonly ResearchCoverageTargetV1[];
   clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
   clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
+  planRevisionInstructions?: readonly ResearchBriefPlanRevisionInstructionV1[];
   assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -333,6 +356,19 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
       throw new Error("Research brief clarification response is invalid.");
     }
   }
+  const planRevisionInstructions = structuredClone(input.planRevisionInstructions ?? []);
+  if (planRevisionInstructions.length > 8 ||
+      new Set(planRevisionInstructions.map((revisionInstruction) => revisionInstruction.id)).size !== planRevisionInstructions.length) {
+    throw new Error("Research brief plan revision instructions are invalid.");
+  }
+  for (const revisionInstruction of planRevisionInstructions) {
+    if (!/^plan-revision:[A-Za-z0-9._-]{1,120}$/.test(revisionInstruction.id) ||
+        !Number.isSafeInteger(revisionInstruction.basedOnGraphRevision) || revisionInstruction.basedOnGraphRevision < 1 ||
+        !revisionInstruction.instruction.trim() || revisionInstruction.instruction.length > 2_000) {
+      throw new Error("Research brief plan revision instruction is invalid.");
+    }
+    validTimestamp(revisionInstruction.requestedAt, "Research brief plan revision timestamp");
+  }
   return {
     schema: RESEARCH_BRIEF_SCHEMA_V1,
     sessionId: input.sessionId,
@@ -364,6 +400,10 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
       questionId: response.questionId,
       prompt: response.prompt.trim(),
       response: response.response.trim(),
+    })),
+    planRevisionInstructions: planRevisionInstructions.map((revisionInstruction) => ({
+      ...revisionInstruction,
+      instruction: revisionInstruction.instruction.trim(),
     })),
     assumptions: [...assumptions],
   };
@@ -422,6 +462,40 @@ export function resolveResearchBriefClarificationsV1(input: {
       const decision = decisionByAssumptionId.get(assumption.id);
       return decision ? { ...assumption, status: decision.decision } : assumption;
     }),
+  });
+}
+
+/**
+ * Materialize a user-requested plan correction as the next immutable brief
+ * revision. The correction can guide later dynamic workflow selection, but it
+ * cannot change the previously accepted scope, limits, or approval policy.
+ */
+export function reviseResearchBriefPlanV1(input: {
+  brief: ResearchBriefV1;
+  basedOnGraphRevision: number;
+  instruction: string;
+  requestedAt: string;
+}): ResearchBriefV1 {
+  const instruction = input.instruction.trim();
+  if (!Number.isSafeInteger(input.basedOnGraphRevision) || input.basedOnGraphRevision < 1 ||
+      !instruction || instruction.length > 2_000) {
+    throw new Error("Research plan revision instruction is invalid.");
+  }
+  validTimestamp(input.requestedAt, "Research plan revision timestamp");
+  const nextRevision = input.brief.revision + 1;
+  const revisionInstruction: ResearchBriefPlanRevisionInstructionV1 = {
+    id: `plan-revision:${input.basedOnGraphRevision}.${nextRevision}`,
+    basedOnGraphRevision: input.basedOnGraphRevision,
+    instruction,
+    requestedAt: input.requestedAt,
+  };
+  return createResearchBriefV1({
+    ...input.brief,
+    revision: nextRevision,
+    planRevisionInstructions: [
+      ...(input.brief.planRevisionInstructions ?? []),
+      revisionInstruction,
+    ],
   });
 }
 

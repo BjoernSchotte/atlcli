@@ -734,7 +734,7 @@ describe("research CLI one-shot contract", () => {
     approve.stdout.length = 0;
     await handleResearch(
       ["sessions", "approve", "research-session:cli-plan"],
-      { revision: String(created.sessionRevision) },
+      { revision: String(created.sessionRevision), "graph-revision": String(created.graph.revision) },
       { json: true },
       approve.dependencies,
     );
@@ -748,7 +748,7 @@ describe("research CLI one-shot contract", () => {
     expect(approve.stderr.join("")).toContain("action=approve");
     await expect(handleResearch(
       ["sessions", "approve", "research-session:cli-plan"],
-      { revision: String(created.sessionRevision) },
+      { revision: String(created.sessionRevision), "graph-revision": String(created.graph.revision) },
       { json: true },
       approve.dependencies,
     )).rejects.toThrow("revision is stale");
@@ -759,16 +759,75 @@ describe("research CLI one-shot contract", () => {
     reject.stdout.length = 0;
     await handleResearch(
       ["sessions", "reject-plan", "research-session:cli-plan"],
-      { revision: String(proposed.sessionRevision), reason: "Need a narrower scope." },
+      {
+        revision: String(proposed.sessionRevision),
+        "graph-revision": String(proposed.graph.revision),
+        instruction: "Separate direct evidence from inferred relationships.",
+      },
       { json: true },
       reject.dependencies,
     );
     expect(JSON.parse(reject.stdout.join(""))).toMatchObject({
-      status: "waiting_plan_revision",
-      revision: proposed.sessionRevision + 1,
-      planMutable: false,
+      status: "waiting_plan_approval",
+      revision: proposed.sessionRevision + 3,
+      planMutable: true,
+      planDiff: {
+        fromRevision: proposed.graph.revision,
+        toRevision: proposed.graph.revision + 1,
+        briefRevisionChanged: true,
+        requiresApproval: true,
+      },
+      turn: { graph: { revision: proposed.graph.revision + 1, status: "proposed" } },
     });
     expect(reject.stderr.join("")).toContain("action=reject-plan");
+  });
+
+  test("recovers a persisted rejected-plan correction without accepting a stale graph revision", async () => {
+    const harness = cliHarness();
+    await handleResearch(["Find", "related", "content"], { "plan-only": true, effort: "deep" }, { json: true }, harness.dependencies);
+    const proposed = JSON.parse(harness.stdout.join(""));
+    const session = await harness.durableStore.read("research-session:cli-plan");
+    const graph = session?.turns.at(-1)?.graph;
+    if (!session || !graph) throw new Error("Expected a durable proposed graph.");
+    const rejected = (await harness.durableStore.commit(session.sessionId, {
+      kind: "reject_plan",
+      graphRevision: graph.revision,
+      reason: "Make relationship confidence explicit.",
+      expectedRevision: session.revision,
+      expectedLeaseEpoch: session.lease.epoch,
+      at: "2026-08-02T10:00:00.000Z",
+    })).session;
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "revise-plan", rejected.sessionId],
+      {
+        revision: String(rejected.revision),
+        "graph-revision": String(graph.revision),
+        instruction: "Make relationship confidence explicit.",
+      },
+      { json: true },
+      harness.dependencies,
+    );
+    const revised = JSON.parse(harness.stdout.join(""));
+    expect(revised).toMatchObject({
+      status: "waiting_plan_approval",
+      planDiff: { fromRevision: 1, toRevision: 2, requiresApproval: true },
+      turn: {
+        graph: { revision: 2, status: "proposed" },
+        planRevisions: [{ state: "proposed", hasInstruction: true }],
+      },
+    });
+    await expect(handleResearch(
+      ["sessions", "revise-plan", rejected.sessionId],
+      {
+        revision: String(rejected.revision),
+        "graph-revision": String(graph.revision),
+        instruction: "Make relationship confidence explicit.",
+      },
+      { json: true },
+      harness.dependencies,
+    )).rejects.toThrow("revision is stale");
+    expect(harness.runInputs).toHaveLength(0);
   });
 
   test("reclaims an approved but undispatched plan after the approval command releases its lease", async () => {
@@ -778,7 +837,7 @@ describe("research CLI one-shot contract", () => {
     harness.stdout.length = 0;
     await handleResearch(
       ["sessions", "approve", "research-session:cli-plan"],
-      { revision: String(proposed.sessionRevision) },
+      { revision: String(proposed.sessionRevision), "graph-revision": String(proposed.graph.revision) },
       { json: true },
       harness.dependencies,
     );
