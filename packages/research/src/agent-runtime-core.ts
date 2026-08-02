@@ -69,6 +69,7 @@ import {
   RESEARCH_COMPOSITION_REASONS_V1,
   acceptResearchGraphProposalV1,
   assertResearchGraphExecutableV1,
+  reduceResearchGraphV1,
   type ResearchGraphRoleV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
@@ -1695,6 +1696,9 @@ async function runResearchAgentWithBindings(
         onGraphUpdated: (graph) => {
           acceptedGraph = graph;
         },
+        admissionMode: input.researchGraph!.nodes.every((node) => node.executor === "subagent")
+          ? "ready_frontier"
+          : "whole_graph",
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
         ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
@@ -1740,6 +1744,25 @@ async function runResearchAgentWithBindings(
             }
           : undefined,
         onAcceptedPacket: (packet) => {
+          if (!durableDispatchJournal && acceptedGraph &&
+              acceptedGraph.nodes.every((node) => node.executor === "subagent")) {
+            const node = acceptedGraph.nodes.find((candidate) =>
+              researchTaskIdForNodeV1(acceptedGraph!, candidate) === packet.taskId,
+            );
+            if (node?.status === "ready") {
+              const running = reduceResearchGraphV1(acceptedGraph, {
+                kind: "start_node",
+                expectedRevision: acceptedGraph.revision,
+                nodeId: node.id,
+              });
+              acceptedGraph = reduceResearchGraphV1(running, {
+                kind: "complete_node",
+                expectedRevision: running.revision,
+                nodeId: node.id,
+                packetRef: packet.packetRef,
+              });
+            }
+          }
           acceptedPacketsByTaskId.set(packet.taskId, packet);
           if (repairAuthorization?.taskId === packet.taskId) {
             acceptedRepairPacket = packet;

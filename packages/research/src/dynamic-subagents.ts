@@ -613,6 +613,8 @@ export function compileDynamicResearchSubagents(
 export interface ResearchReadyFrontierControllerV1 {
   configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
   appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
+  /** Admit the caller's node only if it belongs to the current ready frontier. */
+  ensureTaskFrontier(taskId: string): void;
 }
 
 export type ResearchTaskAdmissionModeV1 = "whole_graph" | "ready_frontier";
@@ -1210,6 +1212,11 @@ export function createBoundedResearchSubagentMiddleware(
       next.forEach((admission) => admittedFrontierTaskIds.add(admission.taskId));
       return next;
     },
+    ensureTaskFrontier: (taskId: string): void => {
+      if (!readyFrontierConfigured) readyFrontierController.configureInitialFrontier();
+      if (admittedFrontierTaskIds.has(taskId)) return;
+      readyFrontierController.appendNextFrontier();
+    },
   };
   options.onReadyFrontierController?.(readyFrontierController);
 
@@ -1225,9 +1232,13 @@ export function createBoundedResearchSubagentMiddleware(
   };
 
   const boundedTask = tool(async (input, config) => {
-    ensureActiveAdmissions();
     const node = nodeBySubagentType.get(input.subagent_type);
     if (!node) throw new Error(`Research task subagent is not admitted: ${input.subagent_type}`);
+    if (admissionMode === "ready_frontier") {
+      readyFrontierController.ensureTaskFrontier(researchTaskIdForNodeV1(graph, node));
+    } else {
+      ensureActiveAdmissions();
+    }
     if (node.kind === "repair") {
       const authorization = options.repairAuthorization?.();
       if (!authorization || authorization.taskId !== researchTaskIdForNodeV1(graph, node) ||

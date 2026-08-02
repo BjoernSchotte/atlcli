@@ -2160,7 +2160,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
             { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
             { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] },
             { taskId: ${JSON.stringify(taskId(join))}, result: joined },
-            { taskId: ${JSON.stringify(taskId(reconciler))}, result: critique }
+            { taskId: ${JSON.stringify(taskId(reconciler))}, result: critique },
+            { taskId: acceptedDispositions.repairTask.taskId, result: repaired }
           ]
         }),
         subagentType: ${JSON.stringify(subagentType(synthesizer))},
