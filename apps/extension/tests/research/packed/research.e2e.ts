@@ -2105,6 +2105,10 @@ type PackedPauseResponse =
       error: string;
     };
 
+type PackedSessionDeletionResponse =
+  | { kind: "research:delete-session-result"; ok: true; deleted: boolean }
+  | { kind: "research:delete-session-result"; ok: false; code: string; error: string };
+
 function withoutEventSequence(event: ResearchOneShotEventV1): Omit<ResearchOneShotEventV1, "seq"> {
   const { seq: _sequence, ...withoutSequence } = event;
   return withoutSequence;
@@ -2160,6 +2164,23 @@ async function resumePackedResearchInBackground(
   }, { sessionId, runId }) as Promise<PackedResumeResponse>;
 }
 
+async function deletePackedResearchSession(
+  page: Page,
+  sessionId: string,
+  revision: number,
+): Promise<PackedSessionDeletionResponse> {
+  return page.evaluate(async ({ sessionId, revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:delete-session",
+      windowId: window.id,
+      sessionId,
+      revision,
+    });
+  }, { sessionId, revision }) as Promise<PackedSessionDeletionResponse>;
+}
+
 async function readPackedDurableResearchSession(
   page: Page,
   sessionId: string,
@@ -2167,6 +2188,7 @@ async function readPackedDurableResearchSession(
 ): Promise<{
   session: {
     state: {
+      revision: number;
       status: string;
       scopeClarification?: {
         state?: string;
@@ -2213,6 +2235,96 @@ async function readPackedDurableResearchSession(
       open.close();
     }
   }, { sessionId, artifactId });
+}
+
+async function countPackedResearchSessionRows(
+  page: Page,
+  sessionId: string,
+): Promise<Record<string, number>> {
+  return page.evaluate(async (sessionId) => {
+    const open = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("atlcli-research-sessions");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const names = [
+        "sessions",
+        "events",
+        "sourceRefs",
+        "artifacts",
+        "workspace",
+        "evidenceWorkspace",
+        "claimsWorkspace",
+        "outlineWorkspace",
+      ];
+      const transaction = open.transaction(names, "readonly");
+      const count = (request: IDBRequest<number>): Promise<number> => new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const sessions = await new Promise<number>((resolve, reject) => {
+        const request = transaction.objectStore("sessions").get(sessionId);
+        request.onsuccess = () => resolve(request.result === undefined ? 0 : 1);
+        request.onerror = () => reject(request.error);
+      });
+      const entries = await Promise.all(names.slice(1).map(async (name) => [
+        name,
+        await count(transaction.objectStore(name).index("bySession").count(sessionId)),
+      ] as const));
+      return { sessions, ...Object.fromEntries(entries) };
+    } finally {
+      open.close();
+    }
+  }, sessionId);
+}
+
+/** Populate every IndexedDB namespace that terminal deletion owns. */
+async function seedPackedResearchSessionOwnedRows(
+  page: Page,
+  sessionId: string,
+): Promise<void> {
+  await page.evaluate(async (sessionId) => {
+    const open = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("atlcli-research-sessions");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const workspaceNames = [
+        "workspace",
+        "evidenceWorkspace",
+        "claimsWorkspace",
+        "outlineWorkspace",
+      ];
+      await new Promise<void>((resolve, reject) => {
+        const transaction = open.transaction(["sourceRefs", ...workspaceNames], "readwrite");
+        transaction.objectStore("sourceRefs").put({
+          sessionId,
+          id: "source:deletion-proof",
+          ref: {
+            schema: "atlcli.research-opaque-source-ref/v1",
+            id: "source:deletion-proof",
+            product: "jira",
+            sourceRef: "synthetic:deletion-proof",
+            capturedAt: "2026-08-02T00:00:00.000Z",
+          },
+        });
+        for (const name of workspaceNames) {
+          transaction.objectStore(name).put({
+            sessionId,
+            path: "/deletion-proof.txt",
+            contents: "synthetic deletion proof",
+          });
+        }
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error ?? new Error("Owned-row seed aborted."));
+      });
+    } finally {
+      open.close();
+    }
+  }, sessionId);
 }
 
 async function findPackedDurableResearchSessionByObjective(
@@ -3405,6 +3517,76 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
   await page.evaluate(async (key) => {
     await chrome.storage.session.remove(key);
   }, RESEARCH_ANTHROPIC_SESSION_KEY);
+});
+
+test("erases a terminal packed session and all owned durable data idempotently", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  const runId = "packed-terminal-delete";
+  const sessionId = `research-session:${runId}`;
+  try {
+    const completed = await runPackedResearchInBackground(
+      page,
+      hostParityRequest(),
+      runId,
+    );
+    if (!completed.ok) {
+      throw new Error(JSON.stringify({ completed, events: await harnessEvents(page) }, null, 2));
+    }
+    const durable = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${runId}`,
+    );
+    expect(durable.session.state.status).toBe("complete");
+    expect(durable.artifact?.contents).toBe(completed.report.markdown);
+    await seedPackedResearchSessionOwnedRows(page, sessionId);
+    const before = await countPackedResearchSessionRows(page, sessionId);
+    expect(before.sessions).toBe(1);
+    expect(before.events).toBeGreaterThan(0);
+    expect(before.sourceRefs).toBeGreaterThan(0);
+    expect(before.artifacts).toBe(1);
+    expect(before.workspace).toBeGreaterThan(0);
+    expect(before.evidenceWorkspace).toBeGreaterThan(0);
+    expect(before.claimsWorkspace).toBeGreaterThan(0);
+    expect(before.outlineWorkspace).toBeGreaterThan(0);
+
+    await expect(deletePackedResearchSession(
+      page,
+      sessionId,
+      durable.session.state.revision,
+    )).resolves.toEqual({
+      kind: "research:delete-session-result",
+      ok: true,
+      deleted: true,
+    });
+    expect(await countPackedResearchSessionRows(page, sessionId)).toEqual({
+      sessions: 0,
+      events: 0,
+      sourceRefs: 0,
+      artifacts: 0,
+      workspace: 0,
+      evidenceWorkspace: 0,
+      claimsWorkspace: 0,
+      outlineWorkspace: 0,
+    });
+    await expect(deletePackedResearchSession(
+      page,
+      sessionId,
+      durable.session.state.revision,
+    )).resolves.toEqual({
+      kind: "research:delete-session-result",
+      ok: true,
+      deleted: false,
+    });
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
 });
 
 test("resumes a checkpointed packed session in a fresh dedicated worker without replaying accepted tasks", async () => {

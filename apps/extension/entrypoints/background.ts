@@ -26,6 +26,7 @@ import {
   type ResearchPlanReviewActionRequest,
   type ResearchPlanRevisionActionRequest,
   type ResearchScopeReviewActionRequest,
+  type ResearchSessionDeletionActionRequest,
   isExportJobsChanged,
 } from "../utils/messages.js";
 import type {
@@ -696,6 +697,69 @@ export default defineBackground({
         })
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
         .slice(0, 20);
+    } finally {
+      store.close();
+    }
+  };
+
+  /**
+   * Erase a terminal session only from the Atlassian tenant that originally
+   * created it. The message contains opaque ids and a revision fence; neither
+   * report content nor credentials cross this boundary.
+   */
+  const deleteResearchSession = async (
+    windowId: number,
+    action: ResearchSessionDeletionActionRequest,
+  ): Promise<boolean> => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    if ([...activeResearchRuns.values()].some((active) => active.sessionId === action.sessionId)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "An active research run cannot be deleted.",
+      );
+    }
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(action.sessionId);
+      // A previous successful deletion has already removed the entire record.
+      // Treat that as the idempotent terminal result without exposing whether a
+      // session was ever present in another tenant.
+      if (!stored) return false;
+      const storedTenantOrigin =
+        stored.turns.find((turn) => turn.brief)?.brief?.scope.siteOrigin ??
+        stored.scopeClarification?.request.scope.siteOrigin;
+      if (!storedTenantOrigin || storedTenantOrigin !== tenantOrigin) {
+        throw new ResearchContractError(
+          "access-denied",
+          "The durable research session does not belong to the active Atlassian site.",
+        );
+      }
+      if (stored.revision !== action.revision) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The research session revision is stale. Refresh the sidebar before deleting it.",
+        );
+      }
+      const at = new Date().toISOString();
+      const deletionRequested = (await store.commit(stored.sessionId, {
+        kind: "request_deletion",
+        expectedRevision: stored.revision,
+        expectedLeaseEpoch: stored.lease.epoch,
+        at,
+      })).session;
+      const deleted = (await store.commit(deletionRequested.sessionId, {
+        kind: "delete",
+        expectedRevision: deletionRequested.revision,
+        expectedLeaseEpoch: deletionRequested.lease.epoch,
+        at,
+      })).session;
+      if (!await store.eraseDeleted(deleted.sessionId)) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research session deletion did not erase its owned data.",
+        );
+      }
+      return true;
     } finally {
       store.close();
     }
@@ -1633,6 +1697,7 @@ export default defineBackground({
       runResearch,
       resumeResearch,
       listResumableResearchSessions,
+      deleteResearchSession,
       listResearchScopeReviews,
       listResearchScopePlanReviews,
       prepareResearchPlanReview,

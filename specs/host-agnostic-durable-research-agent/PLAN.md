@@ -3362,8 +3362,16 @@ an undispatched plan, a non-expired lease, and an interrupted task.
         one fresh worker may consume the issued continuation and publish the
         terminal artifact; the competing request receives `invalid-request`,
         never a provider error.
-- [ ] Add complete idempotent session deletion, including retained V1 source
-      bodies and artifacts.
+- [x] Add complete idempotent session deletion, including retained V1 source
+      bodies and artifacts. The browser host now accepts only an opaque,
+      revision-fenced session ID from the active tenant, refuses active or
+      cross-tenant sessions, and commits `request_deletion` → `delete` before
+      atomically erasing session, events, source references, artifacts, and all
+      virtual-workspace namespaces. A packed MV3 proof seeds every owned
+      IndexedDB namespace with synthetic rows, verifies full removal, and
+      verifies the repeated request returns the idempotent `deleted: false`
+      result (2026-08-02). The user-facing historical-session controls remain
+      the separate T8 UI task.
 
 Gate:
 

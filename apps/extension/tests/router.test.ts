@@ -301,6 +301,30 @@ describe("routeMessage (pure router)", () => {
     expect(observed).toEqual(["run-resume", "research-session:resume", 7]);
   });
 
+  it("routes a revision-fenced durable session deletion without report content", async () => {
+    const observed: unknown[] = [];
+    expect(await routeMessage({
+      kind: "research:delete-session",
+      windowId: 7,
+      sessionId: "research-session:terminal",
+      revision: 12,
+    }, {
+      ...okDeps,
+      deleteResearchSession: async (windowId, action) => {
+        observed.push(windowId, action);
+        return true;
+      },
+    })).toEqual({
+      kind: "research:delete-session-result",
+      ok: true,
+      deleted: true,
+    });
+    expect(observed).toEqual([
+      7,
+      { sessionId: "research-session:terminal", revision: 12 },
+    ]);
+  });
+
   it("lists only host-projected resumable research sessions", async () => {
     const sessions = [{
       schema: "atlcli.research-resumable-session/v1" as const,

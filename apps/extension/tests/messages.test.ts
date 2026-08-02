@@ -76,6 +76,25 @@ describe("message guards", () => {
       sessionId: "must-not-cross",
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:delete-session",
+      windowId: 7,
+      sessionId: "research-session:terminal",
+      revision: 12,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:delete-session",
+      windowId: 7,
+      sessionId: "research-session:terminal",
+      revision: 0,
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:delete-session",
+      windowId: 7,
+      sessionId: "research-session:terminal",
+      revision: 12,
+      report: "must-not-cross",
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:list-scope-reviews",
       windowId: 7,
     })).toBe(true);

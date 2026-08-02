@@ -21,6 +21,7 @@ import type {
   ResearchScopeClarificationReviewActionRequest,
   ResearchScopePlanReviewActionRequest,
   ResearchScopeReviewActionRequest,
+  ResearchSessionDeletionActionRequest,
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
@@ -83,6 +84,10 @@ export interface RouterDeps {
   listResumableResearchSessions?: (
     windowId: number,
   ) => Promise<ResearchResumableSessionV1[]>;
+  deleteResearchSession?: (
+    windowId: number,
+    action: ResearchSessionDeletionActionRequest,
+  ) => Promise<boolean>;
   listResearchScopeReviews?: (
     windowId: number,
   ) => Promise<ResearchSessionScopeReviewV1[]>;
@@ -312,6 +317,31 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:list-resumable-sessions-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:delete-session": {
+      if (!deps.deleteResearchSession) {
+        return {
+          kind: "research:delete-session-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research session deletion is not configured.",
+        };
+      }
+      try {
+        const deleted = await deps.deleteResearchSession(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+        });
+        return { kind: "research:delete-session-result", ok: true, deleted };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:delete-session-result",
           ok: false,
           code: classified.code,
           error: classified.message,
