@@ -3386,8 +3386,11 @@ an undispatched plan, a non-expired lease, and an interrupted task.
 
 Gate:
 
-- [ ] The same store conformance suite passes for memory, SQLite/filesystem, and
-      IndexedDB adapters.
+- [x] The same store conformance suite passes for memory, SQLite/filesystem, and
+      IndexedDB adapters. `verifyResearchSessionStoreConformanceV1` exercises
+      aggregate session/event publication, stale CAS rejection, and injected
+      pre-journal failure atomicity unchanged in all three adapters (17 focused
+      tests, 2026-08-02).
 - [ ] Forced-restart tests recover from every named checkpoint boundary.
 - [ ] Two concurrent attempts cannot both mutate the same session revision.
 - [x] Two concurrent approvals or steering requests against the same graph
