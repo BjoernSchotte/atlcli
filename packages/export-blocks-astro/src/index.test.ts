@@ -19,7 +19,11 @@ test("is a Starlight-free Astro render-kit package with an isolated chart runtim
     "d3-scale": "4.0.2",
   });
   expect(manifest.exports).toMatchObject({
-    "./fixtures": { default: "./dist/fixtures.js" },
+    "./fixtures": {
+      development: "./src/fixtures.ts",
+      types: "./dist/fixtures.d.ts",
+      default: "./dist/fixtures.js",
+    },
     "./components/Caption.astro": "./dist/components/Caption.astro",
   });
   const source = await readFile(resolve(packageRoot, "src/index.ts"), "utf8");

@@ -23,6 +23,7 @@
       "default": "./dist/index.js"
     },
     "./fixtures": {
+      "development": "./src/fixtures.ts",
       "types": "./dist/fixtures.d.ts",
       "default": "./dist/fixtures.js"
     },
