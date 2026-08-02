@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { fakeModel } from "@langchain/core/testing";
+import { createDeepAgent } from "deepagents/node";
 import {
   ResearchSessionMemoryCheckpointerV1,
 } from "./langgraph-checkpointer.js";
@@ -81,6 +84,41 @@ describe("research LangGraph checkpointer adapter", () => {
       pendingWrites: [["task:durable", "durable_write", { revision: 2 }]],
     });
     expect(await workspace.list("/.atlcli/langgraph-checkpoints/v1")).not.toHaveLength(0);
+  });
+
+  test("restores one native DeepAgent conversation in a fresh host for the same session thread", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const threadId = researchThreadIdForSessionV1(sessionId);
+    const firstModel = fakeModel().respond(new AIMessage("First durable answer."));
+    const firstHost = createDeepAgent({
+      name: "research-thread-proof",
+      model: firstModel,
+      checkpointer: new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace),
+      tools: [],
+    });
+    await firstHost.invoke(
+      { messages: [new HumanMessage("First durable user turn.")] },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const resumedModel = fakeModel().respond(new AIMessage("Second durable answer."));
+    const resumedHost = createDeepAgent({
+      name: "research-thread-proof",
+      model: resumedModel,
+      checkpointer: new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace),
+      tools: [],
+    });
+    await resumedHost.invoke(
+      { messages: [new HumanMessage("Second durable user turn.")] },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const resumedInput = resumedModel.calls[0]?.messages ?? [];
+    expect(resumedInput.map((message) => message.text)).toEqual([
+      "First durable user turn.",
+      "First durable answer.",
+      "Second durable user turn.",
+    ]);
   });
 
   test("fails closed when a workspace checkpoint index belongs to another session", async () => {
