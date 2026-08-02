@@ -3,6 +3,7 @@ import type { ResearchGraphProposalV1, ResearchGraphV1 } from "./graph.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
 import type { ResearchRetrievalAssessmentV1 } from "./retrieval-assessment.js";
 import type {
+  ResearchSessionRetrievalContinuationV1,
   ResearchSessionRetrievalAssessmentV1,
   ResearchSessionRepairAuthorizationV1,
   ResearchSessionTurnV1,
@@ -263,6 +264,8 @@ export class ResearchSessionDispatchJournalV1 {
   recordRetrievalAssessment(input: {
     graphRevision: number;
     assessment: ResearchRetrievalAssessmentV1;
+    /** Only the host may request a later disposable supervisor evaluation. */
+    issueContinuation?: boolean;
   }): Promise<ResearchSessionRetrievalAssessmentV1 & { graph: ResearchGraphV1 }> {
     return this.#enqueue(async () => {
       const session = await this.#read();
@@ -276,6 +279,7 @@ export class ResearchSessionDispatchJournalV1 {
         kind: "record_retrieval_assessment",
         graphRevision: input.graphRevision,
         assessment: input.assessment,
+        ...(input.issueContinuation === true ? { issueContinuation: true } : {}),
       }, (next) => {
         const nextTurn = activeTurn(next, this.#turnId);
         const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>
@@ -285,6 +289,37 @@ export class ResearchSessionDispatchJournalV1 {
           invalid("Research durable dispatch did not retain its retrieval assessment.");
         }
         return { ...record, graph: nextTurn.graph };
+      });
+    });
+  }
+
+  /**
+   * Atomically acquire the exact continuation issued for a settled retrieval
+   * wave. A restarted host reads the same state and cannot acquire it twice.
+   */
+  consumeRetrievalContinuation(input: {
+    graphRevision: number;
+    wave: number;
+    continuationId: string;
+  }): Promise<ResearchSessionRetrievalContinuationV1 & { graph: ResearchGraphV1 }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      return this.#commit(session, {
+        kind: "consume_retrieval_continuation",
+        graphRevision: input.graphRevision,
+        wave: input.wave,
+        continuationId: input.continuationId,
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>
+          candidate.graphRevision === input.graphRevision && candidate.wave === input.wave,
+        );
+        if (!record?.continuation || !nextTurn.graph) {
+          invalid("Research durable dispatch did not retain its retrieval continuation.");
+        }
+        return { ...record.continuation, graph: nextTurn.graph };
       });
     });
   }

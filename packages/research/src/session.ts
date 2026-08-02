@@ -41,6 +41,8 @@ export const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1 =
   "atlcli.research-session-checkpoint/v1" as const;
 export const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 =
   "atlcli.research-session-retrieval-assessment/v1" as const;
+export const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 =
+  "atlcli.research-session-retrieval-continuation/v1" as const;
 
 export type ResearchSessionStatusV1 =
   | "idle"
@@ -120,10 +122,22 @@ export interface ResearchSessionRepairAuthorizationV1 {
   authorizedAt: string;
 }
 
+/** A one-time host lease for the next disposable supervisor evaluation. */
+export interface ResearchSessionRetrievalContinuationV1 {
+  schema: typeof RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1;
+  /** Deterministic from graph revision and wave; it carries no provider/model data. */
+  id: string;
+  status: "issued" | "consumed";
+  issuedAt: string;
+  consumedAt?: string;
+}
+
 /**
  * A durable, body-free record of the host's retrieval decision after a graph
  * state has settled. It is deliberately insufficient to recreate source
- * content, search terms, or model reasoning.
+ * content, search terms, or model reasoning. A continuation is issued only
+ * when the host elects to execute a later wave rather than render a one-shot
+ * result; consuming it is revision-fenced and exactly once.
  */
 export interface ResearchSessionRetrievalAssessmentV1 {
   schema: typeof RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
@@ -135,6 +149,7 @@ export interface ResearchSessionRetrievalAssessmentV1 {
    */
   wave?: number;
   assessment: ResearchRetrievalAssessmentV1;
+  continuation?: ResearchSessionRetrievalContinuationV1;
   recordedAt: string;
 }
 
@@ -260,6 +275,13 @@ export type ResearchSessionUpdateV1 =
       kind: "record_retrieval_assessment";
       graphRevision: number;
       assessment: unknown;
+      issueContinuation?: boolean;
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      kind: "consume_retrieval_continuation";
+      graphRevision: number;
+      wave: number;
+      continuationId: string;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "record_checkpoint"; checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision"> })
   | (ResearchSessionFencedUpdateV1 & { kind: "resume" })
@@ -392,7 +414,26 @@ function validateSession(session: ResearchSessionV1): void {
       waves.add(wave);
       wavesByGraphRevision.set(assessment.graphRevision, waves);
       timestamp(assessment.recordedAt, "Research session retrieval assessment timestamp");
-      parseResearchRetrievalAssessmentV1(assessment.assessment);
+      const parsed = parseResearchRetrievalAssessmentV1(assessment.assessment);
+      const continuation = assessment.continuation;
+      if (continuation !== undefined) {
+        const expectedId = `research-continuation:${assessment.graphRevision}.${wave}`;
+        if (continuation.schema !== RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 ||
+            continuation.id !== expectedId ||
+            (continuation.status !== "issued" && continuation.status !== "consumed") ||
+            (continuation.status === "issued" && continuation.consumedAt !== undefined) ||
+            (continuation.status === "consumed" && continuation.consumedAt === undefined) ||
+            parsed.action === "stop") {
+          invalid("Research session retrieval continuation is invalid.");
+        }
+        timestamp(continuation.issuedAt, "Research session retrieval continuation issuance timestamp");
+        if (continuation.consumedAt !== undefined) {
+          timestamp(continuation.consumedAt, "Research session retrieval continuation consumption timestamp");
+          if (Date.parse(continuation.consumedAt) < Date.parse(continuation.issuedAt)) {
+            invalid("Research session retrieval continuation consumption precedes issuance.");
+          }
+        }
+      }
     }
     for (const waves of wavesByGraphRevision.values()) {
       if (Math.max(...waves) !== waves.size) {
@@ -755,11 +796,23 @@ export function reduceResearchSessionV1(
       expectedRevision: graph.revision,
       wave,
     });
+    const assessment = parseResearchRetrievalAssessmentV1(update.assessment);
+    if (update.issueContinuation === true && assessment.action === "stop") {
+      invalid("Research terminal retrieval assessment cannot issue a continuation.");
+    }
     const record: ResearchSessionRetrievalAssessmentV1 = {
       schema: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
       graphRevision: graph.revision,
       wave,
-      assessment: parseResearchRetrievalAssessmentV1(update.assessment),
+      assessment,
+      ...(update.issueContinuation === true ? {
+        continuation: {
+          schema: RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1,
+          id: `research-continuation:${graph.revision}.${wave}`,
+          status: "issued" as const,
+          issuedAt: update.at,
+        },
+      } : {}),
       recordedAt: update.at,
     };
     return withNext(session, update, {
@@ -768,6 +821,43 @@ export function reduceResearchSessionV1(
         ...current,
         graph: nextGraph,
         retrievalAssessments: [...retrievalAssessments, record],
+      }),
+    });
+  }
+
+  if (update.kind === "consume_retrieval_continuation") {
+    const current = ensureActive(session, ["running"]);
+    const graph = requireGraph(current, update.graphRevision);
+    if (!Number.isSafeInteger(update.wave) || update.wave < 1 ||
+        !/^research-continuation:[1-9][0-9]*\.[1-9][0-9]*$/.test(update.continuationId)) {
+      invalid("Research retrieval continuation identity is invalid.");
+    }
+    const retrievalAssessments = (current.retrievalAssessments ?? []).map((candidate) =>
+      candidate.wave === undefined ? { ...candidate, wave: 1 } : candidate,
+    );
+    const index = retrievalAssessments.findIndex((candidate) =>
+      candidate.graphRevision === graph.revision && candidate.wave === update.wave,
+    );
+    const record = retrievalAssessments[index];
+    if (!record?.continuation || record.continuation.id !== update.continuationId ||
+        record.continuation.status !== "issued") {
+      invalid("Research retrieval continuation is unavailable or already consumed.");
+    }
+    const nextRecord: ResearchSessionRetrievalAssessmentV1 = {
+      ...record,
+      continuation: {
+        ...record.continuation,
+        status: "consumed",
+        consumedAt: update.at,
+      },
+    };
+    return withNext(session, update, {
+      status: "running",
+      turns: replaceTurn(session, {
+        ...current,
+        retrievalAssessments: retrievalAssessments.map((candidate, candidateIndex) =>
+          candidateIndex === index ? nextRecord : candidate,
+        ),
       }),
     });
   }

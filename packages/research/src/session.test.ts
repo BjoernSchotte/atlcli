@@ -193,6 +193,74 @@ describe("durable host-neutral research session reducer", () => {
     }, "2026-08-01T09:00:07.000Z")).toThrow("terminal decision");
   });
 
+  test("issues one revision-fenced continuation only for a non-terminal retrieval assessment", () => {
+    let current = readyToRun();
+    const graphRevision = current.turns[0]!.graph!.revision;
+    const continueAssessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1"],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    const stopAssessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: [],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 0,
+      httpAttemptsRemaining: 0,
+    });
+
+    current = update(current, {
+      kind: "record_retrieval_assessment",
+      graphRevision,
+      assessment: continueAssessment,
+      issueContinuation: true,
+    }, "2026-08-01T09:00:05.000Z");
+    const issued = current.turns[0]!.retrievalAssessments![0]!.continuation!;
+    expect(issued).toMatchObject({
+      id: `research-continuation:${graphRevision}.1`,
+      status: "issued",
+    });
+
+    current = update(current, {
+      kind: "consume_retrieval_continuation",
+      graphRevision,
+      wave: 1,
+      continuationId: issued.id,
+    }, "2026-08-01T09:00:06.000Z");
+    expect(current.turns[0]!.retrievalAssessments![0]!.continuation).toMatchObject({
+      status: "consumed",
+      consumedAt: "2026-08-01T09:00:06.000Z",
+    });
+    expect(() => update(current, {
+      kind: "consume_retrieval_continuation",
+      graphRevision,
+      wave: 1,
+      continuationId: issued.id,
+    }, "2026-08-01T09:00:07.000Z")).toThrow("already consumed");
+
+    const terminal = readyToRun();
+    expect(() => update(terminal, {
+      kind: "record_retrieval_assessment",
+      graphRevision: terminal.turns[0]!.graph!.revision,
+      assessment: stopAssessment,
+      issueContinuation: true,
+    }, "2026-08-01T09:00:05.000Z")).toThrow("terminal retrieval assessment");
+  });
+
   test("accepts a packet atomically with its task and graph node", () => {
     let current = readyToRun();
     const task = admittedTask(current);

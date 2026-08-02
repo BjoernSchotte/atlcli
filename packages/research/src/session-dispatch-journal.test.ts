@@ -242,6 +242,65 @@ describe("durable research task dispatch journal", () => {
     expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_retrieval_assessment");
   });
 
+  test("issues and atomically consumes one durable continuation for a non-terminal wave", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    expect(assessment).toMatchObject({ action: "continue", reason: "unread_ranked_candidates" });
+
+    const issued = await journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    expect(issued.continuation).toMatchObject({
+      id: `research-continuation:${graph.revision}.1`,
+      status: "issued",
+    });
+
+    const resumedJournal = new ResearchSessionDispatchJournalV1({
+      store,
+      sessionId,
+      turnId,
+      now: () => "2026-08-01T16:01:00.000Z",
+    });
+    await expect(resumedJournal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).resolves.toMatchObject({
+      id: issued.continuation!.id,
+      status: "consumed",
+      graph: { researchWavesCompleted: 1 },
+    });
+    await expect(journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).rejects.toThrow("already consumed");
+
+    const turn = (await store.read(sessionId))!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.retrievalAssessments?.[0]?.continuation).toMatchObject({
+      id: issued.continuation!.id,
+      status: "consumed",
+    });
+    expect((await store.events(sessionId)).slice(-2).map((event) => event.kind)).toEqual([
+      "record_retrieval_assessment",
+      "consume_retrieval_continuation",
+    ]);
+  });
+
   test("commits every reconciliation disposition and the optional repair activation in one CAS event", async () => {
     const { store, sessionId, turnId, journal, catalog, graph } = await initializedJournal();
     const reconciliationNode = graph.nodes.find((node) => node.roleId === "reconciler")!;
