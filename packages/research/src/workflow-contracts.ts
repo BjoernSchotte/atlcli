@@ -1149,6 +1149,12 @@ export function validateResearchReconciliationBodyNamespaceV1(
 export function projectResearchReconciliationInputV1(input: {
   briefRevision: number;
   graphRevision: number;
+  /**
+   * Graph revisions that host-admitted dependency tasks may carry. A later
+   * in-envelope graph revision retains completed task attempts at their
+   * original revision instead of relabeling their packets.
+   */
+  acceptedPacketGraphRevisions?: readonly number[];
   coverageTargetIds: readonly string[];
   nodeIds: readonly string[];
   acceptedPackets: readonly ResearchAcceptedPacketV1[];
@@ -1165,10 +1171,18 @@ export function projectResearchReconciliationInputV1(input: {
       output.push(id);
     }
   }
+  const acceptedPacketGraphRevisions = new Set(
+    input.acceptedPacketGraphRevisions ?? [input.graphRevision],
+  );
+  if ([...acceptedPacketGraphRevisions].some((revision) =>
+    !Number.isSafeInteger(revision) || revision < 1 || revision > input.graphRevision
+  )) {
+    invalid("Research reconciliation accepted packet graph revisions are invalid.");
+  }
   const seenTaskIds = new Set<string>();
   const packetBodies = input.acceptedPackets.map((packet) => {
     if (packet.schema !== RESEARCH_ACCEPTED_PACKET_SCHEMA_V1 ||
-        packet.graphRevision !== input.graphRevision) {
+        !acceptedPacketGraphRevisions.has(packet.graphRevision)) {
       invalid("Research reconciliation input contains a stale or invalid accepted packet.");
     }
     if (seenTaskIds.has(packet.taskId)) {

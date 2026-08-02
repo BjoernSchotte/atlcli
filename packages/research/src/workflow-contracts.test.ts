@@ -411,6 +411,32 @@ describe("T3 workflow contracts", () => {
     })).toThrow("cannot mix V1 and V2");
   });
 
+  test("admits a retained dependency packet only at its host-recorded graph revision", () => {
+    const retained = {
+      ...acceptedPacket("task:retained", "packet:retained:1", packet()),
+      graphRevision: 2,
+    };
+    expect(projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      acceptedPacketGraphRevisions: [2, 3],
+      coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:retained"],
+      acceptedPackets: [retained],
+    })).toMatchObject({
+      graphRevision: 3,
+      acceptedPacketRefs: ["packet:retained:1"],
+    });
+    expect(() => projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      acceptedPacketGraphRevisions: [3],
+      coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:retained"],
+      acceptedPackets: [retained],
+    })).toThrow("stale or invalid accepted packet");
+  });
+
   test("rejects duplicate candidate IDs and malformed reconciliation projections", () => {
     const first = acceptedPacket("task:first", "packet:first:1", packet());
     const second = acceptedPacket("task:second", "packet:second:1", {

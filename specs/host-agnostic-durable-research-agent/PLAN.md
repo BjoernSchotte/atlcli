@@ -3302,7 +3302,7 @@ an undispatched plan, a non-expired lease, and an interrupted task.
         rejects active, foreign, stale, or unsafe sessions, and exposes no
         steering text through its body-free resume projection. Packed MV3
         proof covers concurrent stale fencing, no worker start, and no public
-        instruction disclosure (29/29, 2026-08-02).
+        instruction disclosure (30/30, 2026-08-02).
 - [ ] Persist required clarification questions and responses by brief revision
       plus explicit assumption accept/reject decisions by assumption ID.
       Regenerate the graph only after the response transition commits.
@@ -3411,6 +3411,12 @@ Gate:
       unapproved role/capability, or raising scope, effort, budget, depth,
       parallelism, wave, or reconciliation limits enters a new approval wait
       with zero new dispatches.
+
+  - [x] Packed MV3: a paused V2 checkpoint accepts one revision-fenced user
+        steering request, starts a fresh worker, and completes through exactly
+        one host-validated in-envelope graph revision. The original approved
+        graph catalog remains durable while retained accepted packets preserve
+        their original node revision (30/30, 2026-08-02).
 - [ ] Forced restart between dispatch and packet acceptance reuses or
       quarantines a committed/late result, marks an unobservable provider
       outcome `outcome_unknown`, and never accepts two packets for one logical

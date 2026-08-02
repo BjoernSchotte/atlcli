@@ -241,10 +241,13 @@ export interface ResearchSessionGraphRevisionV1 {
  */
 export type ResearchGraphRevisionReasonV1 =
   | ResearchRetrievalAssessmentReasonV1
+  /** Immutable baseline captured when the first dynamic revision is persisted. */
+  | "initial_graph"
   | "user_steering";
 
 const RESEARCH_GRAPH_REVISION_REASONS_V1: readonly ResearchGraphRevisionReasonV1[] = [
   ...RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1,
+  "initial_graph",
   "user_steering",
 ];
 
@@ -299,6 +302,11 @@ export interface ResearchSessionTurnV1 {
   createdAt: string;
   brief?: ResearchBriefV1;
   graph?: ResearchGraphV1;
+  /**
+   * Immutable, host-composed graph catalog from which this turn's executable
+   * subset was selected. A resumed supervisor may revise only within it.
+   */
+  approvedGraphCatalog?: ResearchGraphV1;
   /**
    * The supervisor's selected executable subset was committed under the
    * already approved graph envelope. The session revision, rather than the
@@ -780,6 +788,21 @@ function validateSession(session: ResearchSessionV1): void {
   }
   for (const candidate of session.turns) {
     if (candidate.budgetState !== undefined) parseResearchRunBudgetStateV1(candidate.budgetState);
+    if (candidate.approvedGraphCatalog !== undefined) {
+      const catalog = candidate.approvedGraphCatalog;
+      if (!candidate.graphSelectionCommittedAt ||
+          catalog.sessionId !== session.sessionId ||
+          catalog.turnId !== candidate.id ||
+          catalog.status !== "approved" ||
+          catalog.approvalEnvelope.status !== "approved" ||
+          (candidate.graph !== undefined &&
+            (catalog.basedOnBriefRevision !== candidate.graph.basedOnBriefRevision ||
+              candidate.graph.nodes.some((node) =>
+                !catalog.nodes.some((catalogNode) => catalogNode.id === node.id))))) {
+        invalid("Research session approved graph catalog is invalid.");
+      }
+      validateResearchGraphV1(catalog);
+    }
     if (candidate.planRevisions !== undefined) {
       if (!Array.isArray(candidate.planRevisions) || candidate.planRevisions.length > 16 ||
           new Set(candidate.planRevisions.map((revision) => revision.id)).size !== candidate.planRevisions.length) {
@@ -1354,7 +1377,7 @@ export function reduceResearchSessionV1(
       invalid("Research steering revision exceeds the approved graph envelope.");
     }
     const previousHistory = current.graphRevisions ?? [];
-    const history = previousHistory.some((record) => record.graph.revision === previous.revision)
+    const history: ResearchSessionGraphRevisionV1[] = previousHistory.some((record) => record.graph.revision === previous.revision)
       ? previousHistory
       : [
           ...previousHistory,
@@ -1363,7 +1386,7 @@ export function reduceResearchSessionV1(
             graph: clone(previous),
             evidenceIds: [],
             gapIds: [],
-            reason: update.reason,
+            reason: "initial_graph",
             recordedAt: previous.createdAt,
           },
         ];
@@ -1441,6 +1464,7 @@ export function reduceResearchSessionV1(
     const nextTurn = {
       ...current,
       graph: selected,
+      approvedGraphCatalog: clone(graph),
       graphSelectionCommittedAt: update.at,
       ...(latentRepairNode ? { latentRepairNode: clone(latentRepairNode) } : {}),
       revision: current.revision + 1,

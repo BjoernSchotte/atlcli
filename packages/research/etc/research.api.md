@@ -698,6 +698,7 @@ export declare function projectResearchProposedAssumptionLimitationsV1(brief: Re
 export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
+    acceptedPacketGraphRevisions?: readonly number[];
     coverageTargetIds: readonly string[];
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
@@ -2192,7 +2193,7 @@ export interface ResearchGraphRevisionPruneV1 {
 }
 
 // export: ResearchGraphRevisionReasonV1
-export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "initial_graph" | "user_steering";
 
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
@@ -3775,6 +3776,7 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    approvedGraphCatalog?: ResearchGraphV1;
     graphSelectionCommittedAt?: string;
     latentRepairNode?: ResearchGraphNodeV1;
     repairAuthorization?: ResearchSessionRepairAuthorizationV1;
@@ -5086,6 +5088,7 @@ export declare function projectResearchProposedAssumptionLimitationsV1(brief: Re
 export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
+    acceptedPacketGraphRevisions?: readonly number[];
     coverageTargetIds: readonly string[];
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
@@ -6580,7 +6583,7 @@ export interface ResearchGraphRevisionPruneV1 {
 }
 
 // export: ResearchGraphRevisionReasonV1
-export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "initial_graph" | "user_steering";
 
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
@@ -8163,6 +8166,7 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    approvedGraphCatalog?: ResearchGraphV1;
     graphSelectionCommittedAt?: string;
     latentRepairNode?: ResearchGraphNodeV1;
     repairAuthorization?: ResearchSessionRepairAuthorizationV1;
@@ -9472,6 +9476,7 @@ export declare function projectResearchProposedAssumptionLimitationsV1(brief: Re
 export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
+    acceptedPacketGraphRevisions?: readonly number[];
     coverageTargetIds: readonly string[];
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
@@ -10966,7 +10971,7 @@ export interface ResearchGraphRevisionPruneV1 {
 }
 
 // export: ResearchGraphRevisionReasonV1
-export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "initial_graph" | "user_steering";
 
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
@@ -12549,6 +12554,7 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    approvedGraphCatalog?: ResearchGraphV1;
     graphSelectionCommittedAt?: string;
     latentRepairNode?: ResearchGraphNodeV1;
     repairAuthorization?: ResearchSessionRepairAuthorizationV1;
@@ -14034,6 +14040,7 @@ export declare function projectResearchProposedAssumptionLimitationsV1(brief: Re
 export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
+    acceptedPacketGraphRevisions?: readonly number[];
     coverageTargetIds: readonly string[];
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
@@ -15574,7 +15581,7 @@ export interface ResearchGraphRevisionPruneV1 {
 }
 
 // export: ResearchGraphRevisionReasonV1
-export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "initial_graph" | "user_steering";
 
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
@@ -17204,6 +17211,7 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    approvedGraphCatalog?: ResearchGraphV1;
     graphSelectionCommittedAt?: string;
     latentRepairNode?: ResearchGraphNodeV1;
     repairAuthorization?: ResearchSessionRepairAuthorizationV1;
@@ -18778,6 +18786,7 @@ export declare function projectResearchProposedAssumptionLimitationsV1(brief: Re
 export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
+    acceptedPacketGraphRevisions?: readonly number[];
     coverageTargetIds: readonly string[];
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
@@ -20318,7 +20327,7 @@ export interface ResearchGraphRevisionPruneV1 {
 }
 
 // export: ResearchGraphRevisionReasonV1
-export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "initial_graph" | "user_steering";
 
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
@@ -21959,6 +21968,7 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    approvedGraphCatalog?: ResearchGraphV1;
     graphSelectionCommittedAt?: string;
     latentRepairNode?: ResearchGraphNodeV1;
     repairAuthorization?: ResearchSessionRepairAuthorizationV1;
@@ -24756,6 +24766,7 @@ export declare function projectResearchProposedAssumptionLimitationsV1(brief: Re
 export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
+    acceptedPacketGraphRevisions?: readonly number[];
     coverageTargetIds: readonly string[];
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
@@ -26296,7 +26307,7 @@ export interface ResearchGraphRevisionPruneV1 {
 }
 
 // export: ResearchGraphRevisionReasonV1
-export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "user_steering";
+export type ResearchGraphRevisionReasonV1 = ResearchRetrievalAssessmentReasonV1 | "initial_graph" | "user_steering";
 
 // export: ResearchGraphRoleDecisionV1
 export interface ResearchGraphRoleDecisionV1 {
@@ -27937,6 +27948,7 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    approvedGraphCatalog?: ResearchGraphV1;
     graphSelectionCommittedAt?: string;
     latentRepairNode?: ResearchGraphNodeV1;
     repairAuthorization?: ResearchSessionRepairAuthorizationV1;

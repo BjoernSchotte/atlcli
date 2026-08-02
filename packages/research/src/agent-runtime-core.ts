@@ -1062,7 +1062,6 @@ export function createResearchReconciliationDispositionPtcTool(
       const graph = options.activeGraph();
       if (!graph || graph.sessionId !== catalogGraph.sessionId ||
           graph.turnId !== catalogGraph.turnId ||
-          graph.revision !== catalogGraph.revision ||
           input.basedOnGraphRevision !== graph.revision) {
         throw new ResearchContractError(
           "invalid-request",
@@ -1754,6 +1753,7 @@ async function runResearchAgentWithBindings(
   const now = input.now ?? Date.now;
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();
+  const isDynamic = input.researchGraph !== undefined;
   const durableDispatchJournal = input.durableSession
     ? new ResearchSessionDispatchJournalV1({
         store: input.durableSession.store,
@@ -2016,6 +2016,17 @@ async function runResearchAgentWithBindings(
         return turn;
       })()
     : undefined;
+  // The active graph is intentionally reduced to the supervisor-selected
+  // subset after its first proposal. Keep the original, host-composed catalog
+  // beside it so a fresh worker can validate a later in-envelope revision
+  // without reconstructing a graph from model state or source data.
+  const approvedGraphCatalog = durableTurn?.approvedGraphCatalog ?? input.researchGraph;
+  if (isDynamic && !approvedGraphCatalog) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Dynamic research requires its original approved graph catalog.",
+    );
+  }
   const issuedContinuations = durableTurn?.retrievalAssessments?.filter((assessment) =>
     assessment.graphRevision === input.researchGraph?.revision &&
     assessment.continuation?.status === "issued",
@@ -2382,7 +2393,6 @@ async function runResearchAgentWithBindings(
         now,
       })
     : [];
-  const isDynamic = input.researchGraph !== undefined;
   let fatalWorkflowError: unknown;
   const reconciliationInputContext = (): ReturnType<typeof projectResearchReconciliationInputV1> => {
     const graph = acceptedGraph;
@@ -2423,6 +2433,16 @@ async function runResearchAgentWithBindings(
     return projectResearchReconciliationInputV1({
       briefRevision: graph.basedOnBriefRevision,
       graphRevision: graph.revision,
+      acceptedPacketGraphRevisions: reconciliationNode.dependencies.map((nodeId) => {
+        const dependencyNode = graph.nodes.find((node) => node.id === nodeId);
+        if (!dependencyNode) {
+          throw new ResearchContractError(
+            "invalid-report",
+            `Reconciliation dependency is absent from the accepted graph: ${nodeId}.`,
+          );
+        }
+        return dependencyNode.taskGraphRevision ?? graph.revision;
+      }),
       coverageTargetIds: reconciliationNode.completion.requiredCoverageTargetIds,
       nodeIds: graph.nodes.map((node) => node.id),
       acceptedPackets,
@@ -2621,7 +2641,7 @@ async function runResearchAgentWithBindings(
       })
     : undefined;
   const reconciliationDispositionTool = isDynamic
-    ? createResearchReconciliationDispositionPtcTool(input.researchGraph!, {
+    ? createResearchReconciliationDispositionPtcTool(approvedGraphCatalog!, {
         activeGraph: () => acceptedGraph,
         reconciliationPacket: (taskId) => acceptedPacketsByTaskId.get(taskId),
         isKnownTarget: (defect) =>
@@ -2630,7 +2650,7 @@ async function runResearchAgentWithBindings(
           isResearchReconciliationReferenceKnownV1(reference, reconciliationInputContext()),
         canRecord: () => !synthesizerTaskStarted && reconciliationDispositions === undefined,
         authorizeRepair: ({ graph, reconciliationTaskId, defect, followUp }) => {
-          const repairNode = input.researchGraph!.nodes.find((node) => node.kind === "repair");
+          const repairNode = approvedGraphCatalog!.nodes.find((node) => node.kind === "repair");
           if (!repairNode || !repairNode.roleId || repairAuthorization ||
               researchWavesConsumed >= graph.maxResearchWaves) return undefined;
           const reconciliationNode = graph.nodes.find((node) =>
@@ -2655,7 +2675,7 @@ async function runResearchAgentWithBindings(
             );
           }
           const policyMinimum = graph.reconciliationPolicy.minimumRemainingBudget;
-          const ceiling = input.researchGraph!.approvalEnvelope.totalBudgetCeiling;
+          const ceiling = approvedGraphCatalog!.approvalEnvelope.totalBudgetCeiling;
           const elapsedMs = Math.max(0, now() - startedAtMs);
           const brokerBudget = broker.budget.snapshot();
           const repairProducts = [
@@ -2683,7 +2703,7 @@ async function runResearchAgentWithBindings(
           researchWavesConsumed += 1;
           return {
             schema: "atlcli.accepted-repair-task/v1",
-            taskId: researchTaskIdForNodeV1(input.researchGraph!, repairNode),
+            taskId: researchTaskIdForNodeV1(graph, repairNode),
             nodeId: repairNode.id,
             roleId: "contradiction-verifier",
             subagentType: researchSubagentTypeForNodeV1(repairNode),
@@ -2930,7 +2950,7 @@ async function runResearchAgentWithBindings(
     ),
   )].sort();
   const graphRevisionTool = usesCheckpointedSupervisor
-    ? createResearchGraphRevisionPtcTool(input.researchGraph!, {
+    ? createResearchGraphRevisionPtcTool(approvedGraphCatalog!, {
         activeGraph: () => acceptedGraph,
         canRevise: () => retrievalContinuation?.action === "replan" || resumedSteering !== undefined,
         evidenceIds: checkpointEvidenceIds,

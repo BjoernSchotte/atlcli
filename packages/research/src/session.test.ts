@@ -430,7 +430,10 @@ describe("durable host-neutral research session reducer", () => {
 
     expect(current.turns[0]!.graph).toMatchObject({ revision: active.revision + 1 });
     expect(current.turns[0]!.graphRevisions).toEqual([
-      expect.objectContaining({ graph: expect.objectContaining({ revision: active.revision }) }),
+      expect.objectContaining({
+        graph: expect.objectContaining({ revision: active.revision }),
+        reason: "initial_graph",
+      }),
       expect.objectContaining({
         graph: expect.objectContaining({ revision: active.revision + 1 }),
         evidenceIds: ["evidence:wave-one"],
@@ -472,6 +475,7 @@ describe("durable host-neutral research session reducer", () => {
 
   test("commits the exact supervisor graph selection before task admission", () => {
     let current = readyToRun();
+    const catalog = structuredClone(current.turns[0]!.graph!);
     current = update(current, {
       kind: "commit_graph_selection",
       proposal: fullGraphProposal(current),
@@ -479,6 +483,11 @@ describe("durable host-neutral research session reducer", () => {
 
     const turn = current.turns[0]!;
     expect(turn.graphSelectionCommittedAt).toBe("2026-08-01T09:00:04.500Z");
+    expect(turn.approvedGraphCatalog).toMatchObject({
+      revision: 1,
+      status: "approved",
+    });
+    expect(turn.approvedGraphCatalog).toEqual(catalog);
     expect(turn.graph?.nodes.every((node) => node.kind !== "repair")).toBe(true);
     expect(turn.graph?.nodes.some((node) => node.status === "ready")).toBe(true);
     expect(() => update(current, {

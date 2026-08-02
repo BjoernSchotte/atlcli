@@ -643,6 +643,29 @@ const finalDraft = await task({
 finalDraft;
 `.trim();
 
+/** The fresh-worker continuation for one persisted in-envelope steering request. */
+const PACKED_RESUME_STEERING_WORKFLOW_CODE = PACKED_RESUME_CONTINUATION_WORKFLOW_CODE
+  .replaceAll("continuation.graphRevision", "currentGraphRevision")
+  .replace(
+    "const responseSchemas =",
+    `const inputGraphRevision = continuation.graphRevision;
+const revised = JSON.parse(await tools.researchGraphRevise({
+  basedOnBriefRevision: 1,
+  basedOnGraphRevision: inputGraphRevision,
+  nodes: [
+    { nodeId: "research-node:jira-research", dependencies: [], reasonCodes: ["independent_branch"], priority: 100 },
+    { nodeId: "research-node:wiki-research", dependencies: [], reasonCodes: ["independent_branch"], priority: 100 },
+    { nodeId: "research-node:cross-product-join", dependencies: ["research-node:jira-research", "research-node:wiki-research"], reasonCodes: ["cross_product_join"], priority: 80 },
+    { nodeId: "research-node:coverage-moderation", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join"], reasonCodes: ["coverage_gap"], priority: 60 },
+    { nodeId: "research-node:reconciler", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join", "research-node:coverage-moderation"], reasonCodes: ["coverage_gap"], priority: 40 },
+    { nodeId: "research-node:synthesizer", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join", "research-node:coverage-moderation", "research-node:reconciler"], reasonCodes: ["user_requested"], priority: 10 }
+  ],
+  prune: []
+}));
+const currentGraphRevision = revised.graphRevision;
+const responseSchemas =`,
+  );
+
 const PACKED_SENTINEL_WORKFLOW_CODE = `
 const hiddenSupervisorContext = ${JSON.stringify(HIDDEN_SUPERVISOR_CONTEXT_SENTINEL)};
 ${PACKED_HOST_PARITY_WORKFLOW_CODE}
@@ -922,6 +945,8 @@ let packedHostParityRun = false;
 let packedSentinelRun = false;
 let packedResumeRun = false;
 let packedResumePauseInitialRun = false;
+let packedResumeSteeringRun = false;
+let packedResumeSteeringInitialRun = false;
 let packedResumeSupervisorEvals = 0;
 let supervisorWorkflowStarted = false;
 let jiraOnlySelectedClaimIds = [];
@@ -935,6 +960,8 @@ globalThis.addEventListener("message", (event) => {
   ) {
     packedResumeRun = true;
     packedResumePauseInitialRun = event.data.runId === "packed-resume-pause-initial";
+    packedResumeSteeringRun = event.data.runId === "packed-resume-steering-fresh-worker";
+    packedResumeSteeringInitialRun = event.data.runId === "packed-resume-steering-initial";
   }
 });
 globalThis.addEventListener("error", (event) => {
@@ -1159,11 +1186,14 @@ globalThis.fetch = async (input, init) => {
       await waitForRelease("never", request.signal);
     }
     if (
-      packedResumePauseInitialRun &&
+      (packedResumePauseInitialRun || packedResumeSteeringInitialRun) &&
       modelCalls === 1
     ) {
-      channel.postMessage({ kind: "packed-resume-pause-ready", workerId });
-      await waitForRelease("packed-resume-pause-first-model", request.signal);
+      const marker = packedResumeSteeringInitialRun
+        ? "packed-resume-steering-first-model"
+        : "packed-resume-pause-first-model";
+      channel.postMessage({ kind: "packed-resume-pause-ready", workerId, marker });
+      await waitForRelease(marker, request.signal);
     }
     if (
       serializedRequest.includes("hold-after-ptc") &&
@@ -1341,7 +1371,9 @@ globalThis.fetch = async (input, init) => {
           input: {
             code: packedResumeRun
               ? serializedRequest.includes("RESUMED CONTINUATION")
-                ? ${JSON.stringify(PACKED_RESUME_CONTINUATION_WORKFLOW_CODE)}
+                ? packedResumeSteeringRun
+                  ? ${JSON.stringify(PACKED_RESUME_STEERING_WORKFLOW_CODE)}
+                  : ${JSON.stringify(PACKED_RESUME_CONTINUATION_WORKFLOW_CODE)}
                 : ${JSON.stringify(PACKED_RESUME_INITIAL_WORKFLOW_CODE)}
               : packedHostParityRun
               ? ${JSON.stringify(PACKED_HOST_PARITY_WORKFLOW_CODE)}
@@ -2253,6 +2285,11 @@ async function readPackedDurableResearchSession(
           status?: string;
           nodes?: Array<{ outputSchema?: string }>;
         };
+        graphRevisions?: Array<{
+          reason?: string;
+          steeringId?: string;
+          graph?: { revision?: number };
+        }>;
         scopeExpansionProposals?: Array<{ id?: string; status?: string }>;
         scopeRevisions?: Array<{ state?: string; proposedGraphRevision?: number }>;
       }>;
@@ -3481,6 +3518,108 @@ test("fences concurrent packed steering without exposing it to the resume catalo
     }),
   ]);
   expect((await harnessEvents(page)).some((event) => event.kind === "worker-start")).toBe(false);
+});
+
+test("resumes a packed steering checkpoint through one in-envelope graph revision", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  const initialRunId = "packed-resume-steering-initial";
+  const sessionId = `research-session:${initialRunId}`;
+  const initial = runPackedResearchInBackground(page, {
+    ...hostParityRequest(),
+    question: HOST_PARITY_QUESTION,
+  }, initialRunId);
+  try {
+    await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+      event.kind === "packed-resume-pause-ready"
+    ), { timeout: 30_000 }).toBe(true);
+    const pause = await page.evaluate(async (runId) =>
+      chrome.runtime.sendMessage({ kind: "research:pause-session", runId }),
+    initialRunId) as PackedPauseResponse;
+    expect(pause).toEqual({
+      kind: "research:pause-session-result",
+      runId: initialRunId,
+      ok: true,
+      status: "pause_requested",
+    });
+    await page.evaluate((channelName) => {
+      const channel = (globalThis as unknown as {
+        __packedResearchChannel: BroadcastChannel;
+      }).__packedResearchChannel;
+      if (channel.name !== channelName) throw new Error("Packed channel mismatch.");
+      channel.postMessage({ kind: "release", marker: "packed-resume-steering-first-model" });
+    }, CHANNEL_NAME);
+    await expect(initial).resolves.toMatchObject({
+      kind: "research:run-result",
+      runId: initialRunId,
+      ok: false,
+      code: "paused",
+    });
+    const checkpoint = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${initialRunId}`,
+    );
+    expect(checkpoint.session.state.status).toBe("paused");
+    expect(checkpoint.session.state.turns[0]?.acceptedPackets).toHaveLength(2);
+    expect(checkpoint.session.state.turns[0]?.graph?.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ outputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 }),
+      ]),
+    );
+
+    const steered = await steerPackedResearchSession(
+      page,
+      sessionId,
+      checkpoint.session.state.revision,
+    );
+    if (!steered.ok) throw new Error(JSON.stringify(steered));
+
+    const resumed = await resumePackedResearchInBackground(
+      page,
+      sessionId,
+      "packed-resume-steering-fresh-worker",
+    );
+    if (!resumed.ok) {
+      throw new Error(JSON.stringify({ resumed, events: await harnessEvents(page) }, null, 2));
+    }
+    expect(resumed.report.title).toBe(HOST_PARITY_DRAFT.title);
+
+    const durable = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${initialRunId}`,
+    );
+    expect(durable.session.state.status).toBe("complete");
+    expect(durable.session.state.turns[0]?.graph).toMatchObject({
+      revision: checkpoint.session.state.turns[0]!.graph!.revision! + 1,
+    });
+    expect(durable.session.state.turns[0]?.steering).toEqual([
+      expect.objectContaining({
+        state: "applied",
+        appliedGraphRevision: checkpoint.session.state.turns[0]!.graph!.revision! + 1,
+      }),
+    ]);
+    expect(durable.session.state.turns[0]?.graphRevisions).toContainEqual(
+      expect.objectContaining({
+        reason: "user_steering",
+        graph: expect.objectContaining({
+          revision: checkpoint.session.state.turns[0]!.graph!.revision! + 1,
+        }),
+      }),
+    );
+    expect(durable.artifact?.contents).toBe(resumed.report.markdown);
+    const events = await harnessEvents(page);
+    expect(events.filter((event) => event.kind === "worker-start")).toHaveLength(2);
+    expect(events.some((event) => event.kind === "packed-resume-continuation-eval")).toBe(true);
+    expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
 });
 
 test("fences concurrent packed resumes so only one fresh worker owns a checkpoint", async () => {
