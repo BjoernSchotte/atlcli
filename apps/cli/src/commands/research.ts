@@ -929,6 +929,7 @@ export async function handleResearchSessions(
       command !== "continue-scope-clarification" && command !== "clarify" &&
       command !== "approve" && command !== "reject-plan" && command !== "revise-plan" &&
       command !== "approve-scope" && command !== "reject-scope" && command !== "cancel" &&
+      command !== "pause" && command !== "resume" &&
       command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
@@ -979,6 +980,91 @@ export async function handleResearchSessions(
         evidence: projectResearchEvidenceMetadataV1(record),
         ...(chunks === undefined ? {} : { sourceText: chunks.map((chunk) => chunk.text).join("") }),
       }, opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "pause") {
+    if (args.length !== 2) throw new Error("Usage: atlcli research sessions pause <session-id> --revision <session-revision>.");
+    assertSessionFlags(flags, ["revision"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) {
+        throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+      }
+      let paused = (await opened.store.commit(sessionId, {
+        kind: "request_pause",
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      const turn = activeSessionTurn(paused);
+      const hasUnsettledDispatch = turn?.tasks.some((task) =>
+        task.status === "ready" || task.status === "running" || task.status === "outcome_unknown",
+      ) ?? false;
+      const canAcknowledgeLocally = !hasUnsettledDispatch &&
+        (turn?.tasks.length ?? 0) === 0 &&
+        (turn?.acceptedPackets.length ?? 0) === 0 &&
+        turn?.graphSelectionCommittedAt === undefined;
+      // A control-only CLI process has reached a durable scheduler boundary
+      // only before every kind of dispatch. In that case it may acknowledge
+      // its own pause; otherwise the retained runner must observe the request
+      // and checkpoint it without this command guessing a result.
+      if (canAcknowledgeLocally) {
+        paused = (await opened.store.commit(sessionId, {
+          kind: "acknowledge_pause",
+          expectedRevision: paused.revision,
+          expectedLeaseEpoch: paused.lease.epoch,
+          at: new Date().toISOString(),
+        })).session;
+      }
+      dependencies.writeStderr(`[research] session=${sessionId} action=pause revision=${paused.revision} status=${paused.status}${canAcknowledgeLocally ? " checkpoint=acknowledged" : " checkpoint=pending"}\n`);
+      dependencies.emitOutput(projectResearchSessionV1(paused), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "resume") {
+    if (args.length !== 2) throw new Error("Usage: atlcli research sessions resume <session-id> --revision <session-revision>.");
+    assertSessionFlags(flags, ["revision"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) {
+        throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+      }
+      const turn = activeSessionTurn(session);
+      if (session.status !== "paused" || !turn?.brief || turn.tasks.length > 0 ||
+          turn.acceptedPackets.length > 0 || turn.graphSelectionCommittedAt !== undefined) {
+        throw new Error("Only an acknowledged paused research session can be resumed by this control command.");
+      }
+      const at = new Date().toISOString();
+      const resumed = await recoverResearchSessionForResumeV1({
+        store: opened.store,
+        sessionId,
+        ownerId: `owner:cli-resume-control-${process.pid}`,
+        leaseExpiresAt: new Date(Date.parse(at) + turn.brief.limits.maxRunMs).toISOString(),
+        at,
+      });
+      if (resumed.status !== "running") {
+        throw new Error("Research session resume did not reach its runnable state.");
+      }
+      // This control action deliberately does not construct a workspace,
+      // provider, or model. Release the freshly claimed lease so the public
+      // `atlcli research --resume <id>` execution path can reclaim it.
+      const released = (await opened.store.commit(sessionId, {
+        kind: "release_lease",
+        expectedRevision: resumed.revision,
+        expectedLeaseEpoch: resumed.lease.epoch,
+        at,
+      })).session;
+      dependencies.writeStderr(`[research] session=${sessionId} action=resume revision=${released.revision} status=${released.status} dispatch=deferred\n`);
+      dependencies.emitOutput(projectResearchSessionV1(released), opts);
     } finally {
       opened.close();
     }
@@ -2198,7 +2284,7 @@ export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
 atlcli research --session <session-id> <question>
-atlcli research sessions <list|show|evidence|plan|scope-clarification|choose-scope|continue-scope-clarification|clarify|approve|reject-plan|revise-plan|approve-scope|reject-scope|cancel|delete>
+atlcli research sessions <list|show|evidence|plan|scope-clarification|choose-scope|continue-scope-clarification|clarify|approve|reject-plan|revise-plan|approve-scope|reject-scope|pause|resume|cancel|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -2243,6 +2329,8 @@ Durable session commands:
       --graph-revision <graph-revision> --proposal <scope-expansion-id>
   sessions reject-scope <session-id> --revision <session-revision> --brief-revision <brief-revision>
       --graph-revision <graph-revision> --proposal <scope-expansion-id>
+  sessions pause <session-id> --revision <session-revision>
+  sessions resume <session-id> --revision <session-revision>
   sessions cancel <session-id> --revision <session-revision>
   sessions delete <session-id> --revision <session-revision>
 
@@ -2252,6 +2340,9 @@ An ambiguous natural-language project or space is stored as a tenant-bound, cata
 scope-clarification wait before key, workspace, provider, or model access. Inspect it with
 the sessions scope-clarification command, then choose its exact revision-fenced candidate; the CLI
 freshly rechecks only that candidate against the retained request before it can create a brief.
+The sessions pause command records a cooperative pause request and acknowledges it only at a durable
+no-in-flight-task checkpoint. The sessions resume command makes an acknowledged pause runnable again,
+then releases its lease; it does not start provider/model work—use research --resume to dispatch.
 --resume preserves the accepted brief, graph, scope, limits, accepted packets, and durable budget. It resumes only an undispatched wait or one host-issued retrieval continuation; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
 --session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
 Approving a durable plan persists its exact graph revision only; it starts no model research until durable task dispatch arrives.

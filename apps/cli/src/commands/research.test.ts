@@ -1078,6 +1078,64 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).toContain("recovery=claimed lease_epoch=2");
   });
 
+  test("pauses and resumes only an undispatched CLI session without constructing agent work", async () => {
+    const harness = cliHarness();
+    let keyReads = 0;
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "sk-ant-must-not-be-read";
+    };
+    await handleResearch(
+      ["Find", "related", "content"],
+      { "plan-only": true },
+      { json: true },
+      harness.dependencies,
+    );
+    const planned = JSON.parse(harness.stdout.join(""));
+    expect(planned).toMatchObject({ status: "running", sessionRevision: 6 });
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "pause", planned.sessionId],
+      { revision: String(planned.sessionRevision) },
+      { json: true },
+      harness.dependencies,
+    );
+    const paused = JSON.parse(harness.stdout.join(""));
+    expect(paused).toMatchObject({ status: "paused", revision: 8 });
+    expect(Date.parse(paused.lease.expiresAt)).toBeLessThanOrEqual(Date.parse(paused.updatedAt) + 1);
+    expect(harness.stderr.join("")).toContain("action=pause revision=8 status=paused checkpoint=acknowledged");
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "resume", planned.sessionId],
+      { revision: String(paused.revision) },
+      { json: true },
+      harness.dependencies,
+    );
+    const resumed = JSON.parse(harness.stdout.join(""));
+    expect(resumed).toMatchObject({ status: "running", revision: 11, lease: { epoch: 2 } });
+    expect(Date.parse(resumed.lease.expiresAt)).toBeLessThanOrEqual(Date.parse(resumed.updatedAt) + 1);
+    expect(harness.stderr.join("")).toContain("action=resume revision=11 status=running dispatch=deferred");
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+
+    const events = await harness.durableStore.events(planned.sessionId);
+    expect(events.map((event) => event.kind)).toEqual([
+      "create_turn",
+      "record_brief",
+      "propose_graph",
+      "approve_graph",
+      "release_lease",
+      "request_pause",
+      "acknowledge_pause",
+      "recover",
+      "resume",
+      "release_lease",
+    ]);
+  });
+
   test("deletes only the exact terminal session revision and erases its owned durable state", async () => {
     const harness = cliHarness();
     const terminal = await seedFailedSession(harness);

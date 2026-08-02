@@ -3241,6 +3241,11 @@ unknown-outcome retry/abstain remains a separate gate below.
         project/space approval invokes the shared atomic replacement-graph
         transition and stops for the new explicit plan approval; an exact
         page/issue approval remains an entity binding and cannot widen scope.
+  - [x] Add revision-fenced `pause`, `resume`, and `cancel`. A CLI control
+        process acknowledges a pause only before every dispatch; resume claims
+        the released pause, returns it to runnable state, and releases it for
+        the established `--resume` execution path without constructing a
+        workspace, provider, or model (57 CLI/session tests, 2026-08-02).
 - [x] Show the sanitized brief, graph, selected roles, dependencies, budgets,
       approval envelope including optional role/capability grants,
       scope bindings/provenance/expansion policy, pending scope proposals,
