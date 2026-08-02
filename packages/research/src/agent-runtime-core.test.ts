@@ -399,10 +399,10 @@ describe("durable native DeepAgentsJS summarization", () => {
     expect(String(activeSummary)).toContain("host-private conversation history");
   });
 
-  test("bounds a 250-turn native summary run without a parallel transcript archive", async () => {
+  test("bounds a 1,000-turn native summary run without a parallel transcript archive", async () => {
     const workspace = createMemoryResearchWorkspace();
     const model = fakeModel();
-    for (let index = 0; index < 12; index += 1) {
+    for (let index = 0; index < 48; index += 1) {
       model.respond(new AIMessage(`Synthetic summary ${index + 1}.`));
     }
     const middleware = createResearchDurableSummarizationMiddleware(
@@ -415,10 +415,12 @@ describe("durable native DeepAgentsJS summarization", () => {
     const canonicalMessages: HumanMessage[] = [];
     const state: Record<string, unknown> = {};
     let largestVisibleMessageCount = 0;
+    let largestVisibleAsciiBytes = 0;
+    const factPadding = "x".repeat(800);
 
-    for (let index = 0; index < 250; index += 1) {
+    for (let index = 0; index < 1_000; index += 1) {
       canonicalMessages.push(new HumanMessage(
-        `Turn ${index + 1}: durable fact marker ORION-${String(index + 1).padStart(3, "0")}.`,
+        `Turn ${index + 1}: durable fact marker ORION-${String(index + 1).padStart(4, "0")}. ${factPadding}`,
       ));
       const result = await middleware.wrapModelCall!(
         {
@@ -430,6 +432,13 @@ describe("durable native DeepAgentsJS summarization", () => {
         } as never,
         async (request) => {
           largestVisibleMessageCount = Math.max(largestVisibleMessageCount, request.messages.length);
+          // These generated messages are ASCII-only, so UTF-8 bytes are a
+          // conservative upper bound for their token count. At most 48 kB is
+          // 60% of the default 80k model-input allowance.
+          largestVisibleAsciiBytes = Math.max(
+            largestVisibleAsciiBytes,
+            new TextEncoder().encode(request.messages.map((message) => String(message.content)).join("\n")).byteLength,
+          );
           return new AIMessage("Supervisor handler result.");
         },
       );
@@ -438,7 +447,8 @@ describe("durable native DeepAgentsJS summarization", () => {
     }
 
     expect(largestVisibleMessageCount).toBeLessThanOrEqual(48);
-    expect(model.callCount).toBeGreaterThan(1);
+    expect(largestVisibleAsciiBytes).toBeLessThanOrEqual(48_000);
+    expect(model.callCount).toBeGreaterThan(12);
     expect(await workspace.list("/.atlcli/deepagents-summarization/v1")).not.toHaveLength(0);
   });
 });
