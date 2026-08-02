@@ -3400,9 +3400,19 @@ and packed-MV3 tests prove the common contract with synthetic data only.
 
 Extension/browser:
 
-- [ ] Implement the IndexedDB evidence/claim/outline stores. Persist evidence
+- [x] Implement the IndexedDB evidence/claim/outline stores. Persist evidence
       chunks separately from event/checkpoint rows so quota and retention can
       release them independently.
+T5 IndexedDB private-data checkpoint (2026-08-02): the browser session store
+now upgrades its versioned database with three session-owned physical stores
+for evidence, claims, and outline data. The shared runtime accesses them only
+through an optional host-neutral data-workspace capability; CLI/SQLite retains
+the same portable workspace contract. Per-namespace byte caps are independent
+of the LangGraph/checkpoint workspace, and a deletion releases the relevant
+quota without exposing a retained evidence path through that workspace.
+Fake-indexeddb close/reopen, cross-namespace isolation, quota-release, focused
+evidence tests, TypeScript checks, and the packed MV3 suite passed.
+
 - [ ] Display stale/unknown freshness and exact coverage in the formatted
       report.
 - [ ] Display which reconciliation defects changed, downgraded, or abstained

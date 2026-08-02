@@ -296,8 +296,18 @@ export interface FinalizeResearchReportV2Input {
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: hasResearchSessionDataWorkspaceStoreV1
+export declare function hasResearchSessionDataWorkspaceStoreV1(store: ResearchSessionStoreV1): store is ResearchSessionStoreV1 & ResearchSessionDataWorkspaceStoreV1;
+
+// export: IndexedDbResearchDataWorkspaceLimitsV1
+export interface IndexedDbResearchDataWorkspaceLimitsV1 {
+    evidence?: number;
+    claims?: number;
+    outline?: number;
+}
+
 // export: IndexedDbResearchSessionStoreV1
-export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, ResearchSessionDataWorkspaceStoreV1 {
     #private;
     private constructor();
     static open(options?: {
@@ -305,6 +315,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
         factory?: IDBFactory;
         blockedUpgradeTimeoutMs?: number;
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
+        dataWorkspaceLimits?: IndexedDbResearchDataWorkspaceLimitsV1;
     }): Promise<IndexedDbResearchSessionStoreV1>;
     close(): void;
     create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
@@ -326,6 +337,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
     packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
     workspace(sessionId: string): Promise<ResearchWorkspace>;
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
     replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
     opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
     writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
@@ -446,6 +458,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -1036,7 +1057,7 @@ export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
 export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
-export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -2761,6 +2782,14 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDataNamespaceV1
+export type ResearchSessionDataNamespaceV1 = "evidence" | "claims" | "outline";
+
+// export: ResearchSessionDataWorkspaceStoreV1
+export interface ResearchSessionDataWorkspaceStoreV1 {
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
+}
+
 // export: ResearchSessionDispatchJournalV1
 export declare class ResearchSessionDispatchJournalV1 {
     #private;
@@ -3254,6 +3283,9 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: researchWorkspacePathMatchesPrefix
+export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
@@ -3709,8 +3741,18 @@ export interface FinalizeResearchReportV2Input {
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: hasResearchSessionDataWorkspaceStoreV1
+export declare function hasResearchSessionDataWorkspaceStoreV1(store: ResearchSessionStoreV1): store is ResearchSessionStoreV1 & ResearchSessionDataWorkspaceStoreV1;
+
+// export: IndexedDbResearchDataWorkspaceLimitsV1
+export interface IndexedDbResearchDataWorkspaceLimitsV1 {
+    evidence?: number;
+    claims?: number;
+    outline?: number;
+}
+
 // export: IndexedDbResearchSessionStoreV1
-export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, ResearchSessionDataWorkspaceStoreV1 {
     #private;
     private constructor();
     static open(options?: {
@@ -3718,6 +3760,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
         factory?: IDBFactory;
         blockedUpgradeTimeoutMs?: number;
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
+        dataWorkspaceLimits?: IndexedDbResearchDataWorkspaceLimitsV1;
     }): Promise<IndexedDbResearchSessionStoreV1>;
     close(): void;
     create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
@@ -3739,6 +3782,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
     packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
     workspace(sessionId: string): Promise<ResearchWorkspace>;
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
     replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
     opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
     writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
@@ -3859,6 +3903,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -4449,7 +4502,7 @@ export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
 export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
-export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -6174,6 +6227,14 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDataNamespaceV1
+export type ResearchSessionDataNamespaceV1 = "evidence" | "claims" | "outline";
+
+// export: ResearchSessionDataWorkspaceStoreV1
+export interface ResearchSessionDataWorkspaceStoreV1 {
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
+}
+
 // export: ResearchSessionDispatchJournalV1
 export declare class ResearchSessionDispatchJournalV1 {
     #private;
@@ -6667,6 +6728,9 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: researchWorkspacePathMatchesPrefix
+export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
@@ -7120,8 +7184,18 @@ export interface FinalizeResearchReportV2Input {
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: hasResearchSessionDataWorkspaceStoreV1
+export declare function hasResearchSessionDataWorkspaceStoreV1(store: ResearchSessionStoreV1): store is ResearchSessionStoreV1 & ResearchSessionDataWorkspaceStoreV1;
+
+// export: IndexedDbResearchDataWorkspaceLimitsV1
+export interface IndexedDbResearchDataWorkspaceLimitsV1 {
+    evidence?: number;
+    claims?: number;
+    outline?: number;
+}
+
 // export: IndexedDbResearchSessionStoreV1
-export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, ResearchSessionDataWorkspaceStoreV1 {
     #private;
     private constructor();
     static open(options?: {
@@ -7129,6 +7203,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
         factory?: IDBFactory;
         blockedUpgradeTimeoutMs?: number;
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
+        dataWorkspaceLimits?: IndexedDbResearchDataWorkspaceLimitsV1;
     }): Promise<IndexedDbResearchSessionStoreV1>;
     close(): void;
     create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
@@ -7150,6 +7225,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
     packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
     workspace(sessionId: string): Promise<ResearchWorkspace>;
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
     replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
     opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
     writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
@@ -7270,6 +7346,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -7860,7 +7945,7 @@ export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
 export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
-export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -9585,6 +9670,14 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDataNamespaceV1
+export type ResearchSessionDataNamespaceV1 = "evidence" | "claims" | "outline";
+
+// export: ResearchSessionDataWorkspaceStoreV1
+export interface ResearchSessionDataWorkspaceStoreV1 {
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
+}
+
 // export: ResearchSessionDispatchJournalV1
 export declare class ResearchSessionDispatchJournalV1 {
     #private;
@@ -10078,6 +10171,9 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: researchWorkspacePathMatchesPrefix
+export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
@@ -10702,8 +10798,18 @@ export interface FinalizeResearchReportV2Input {
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: hasResearchSessionDataWorkspaceStoreV1
+export declare function hasResearchSessionDataWorkspaceStoreV1(store: ResearchSessionStoreV1): store is ResearchSessionStoreV1 & ResearchSessionDataWorkspaceStoreV1;
+
+// export: IndexedDbResearchDataWorkspaceLimitsV1
+export interface IndexedDbResearchDataWorkspaceLimitsV1 {
+    evidence?: number;
+    claims?: number;
+    outline?: number;
+}
+
 // export: IndexedDbResearchSessionStoreV1
-export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, ResearchSessionDataWorkspaceStoreV1 {
     #private;
     private constructor();
     static open(options?: {
@@ -10711,6 +10817,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
         factory?: IDBFactory;
         blockedUpgradeTimeoutMs?: number;
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
+        dataWorkspaceLimits?: IndexedDbResearchDataWorkspaceLimitsV1;
     }): Promise<IndexedDbResearchSessionStoreV1>;
     close(): void;
     create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
@@ -10732,6 +10839,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
     packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
     workspace(sessionId: string): Promise<ResearchWorkspace>;
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
     replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
     opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
     writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
@@ -10852,6 +10960,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -11466,7 +11583,7 @@ export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
 export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
-export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -13244,6 +13361,14 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDataNamespaceV1
+export type ResearchSessionDataNamespaceV1 = "evidence" | "claims" | "outline";
+
+// export: ResearchSessionDataWorkspaceStoreV1
+export interface ResearchSessionDataWorkspaceStoreV1 {
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
+}
+
 // export: ResearchSessionDispatchJournalV1
 export declare class ResearchSessionDispatchJournalV1 {
     #private;
@@ -13775,6 +13900,9 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: researchWorkspacePathMatchesPrefix
+export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
@@ -14447,8 +14575,18 @@ export interface FinalizeResearchReportV2Input {
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: hasResearchSessionDataWorkspaceStoreV1
+export declare function hasResearchSessionDataWorkspaceStoreV1(store: ResearchSessionStoreV1): store is ResearchSessionStoreV1 & ResearchSessionDataWorkspaceStoreV1;
+
+// export: IndexedDbResearchDataWorkspaceLimitsV1
+export interface IndexedDbResearchDataWorkspaceLimitsV1 {
+    evidence?: number;
+    claims?: number;
+    outline?: number;
+}
+
 // export: IndexedDbResearchSessionStoreV1
-export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, ResearchSessionDataWorkspaceStoreV1 {
     #private;
     private constructor();
     static open(options?: {
@@ -14456,6 +14594,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
         factory?: IDBFactory;
         blockedUpgradeTimeoutMs?: number;
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
+        dataWorkspaceLimits?: IndexedDbResearchDataWorkspaceLimitsV1;
     }): Promise<IndexedDbResearchSessionStoreV1>;
     close(): void;
     create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
@@ -14477,6 +14616,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
     packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
     workspace(sessionId: string): Promise<ResearchWorkspace>;
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
     replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
     opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
     writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
@@ -14597,6 +14737,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -15211,7 +15360,7 @@ export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
 export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
-export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -16989,6 +17138,14 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDataNamespaceV1
+export type ResearchSessionDataNamespaceV1 = "evidence" | "claims" | "outline";
+
+// export: ResearchSessionDataWorkspaceStoreV1
+export interface ResearchSessionDataWorkspaceStoreV1 {
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
+}
+
 // export: ResearchSessionDispatchJournalV1
 export declare class ResearchSessionDispatchJournalV1 {
     #private;
@@ -17516,6 +17673,9 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: researchWorkspacePathMatchesPrefix
+export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
@@ -19219,8 +19379,18 @@ export interface FinalizeResearchReportV2Input {
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: hasResearchSessionDataWorkspaceStoreV1
+export declare function hasResearchSessionDataWorkspaceStoreV1(store: ResearchSessionStoreV1): store is ResearchSessionStoreV1 & ResearchSessionDataWorkspaceStoreV1;
+
+// export: IndexedDbResearchDataWorkspaceLimitsV1
+export interface IndexedDbResearchDataWorkspaceLimitsV1 {
+    evidence?: number;
+    claims?: number;
+    outline?: number;
+}
+
 // export: IndexedDbResearchSessionStoreV1
-export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, ResearchSessionDataWorkspaceStoreV1 {
     #private;
     private constructor();
     static open(options?: {
@@ -19228,6 +19398,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
         factory?: IDBFactory;
         blockedUpgradeTimeoutMs?: number;
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
+        dataWorkspaceLimits?: IndexedDbResearchDataWorkspaceLimitsV1;
     }): Promise<IndexedDbResearchSessionStoreV1>;
     close(): void;
     create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
@@ -19249,6 +19420,7 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
     packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
     workspace(sessionId: string): Promise<ResearchWorkspace>;
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
     replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
     opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
     writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
@@ -19369,6 +19541,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
+
+// export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
+export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -19983,7 +20164,7 @@ export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
 export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
-export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -21761,6 +21942,14 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDataNamespaceV1
+export type ResearchSessionDataNamespaceV1 = "evidence" | "claims" | "outline";
+
+// export: ResearchSessionDataWorkspaceStoreV1
+export interface ResearchSessionDataWorkspaceStoreV1 {
+    researchDataWorkspace(sessionId: string, namespace: ResearchSessionDataNamespaceV1): Promise<ResearchWorkspace>;
+}
+
 // export: ResearchSessionDispatchJournalV1
 export declare class ResearchSessionDispatchJournalV1 {
     #private;
@@ -22288,6 +22477,9 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: researchWorkspacePathMatchesPrefix
+export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {

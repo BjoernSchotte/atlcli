@@ -96,6 +96,28 @@ export interface ResearchSessionStoreV1 {
   eraseDeleted(sessionId: string): Promise<boolean>;
 }
 
+/**
+ * Optional host capability for private research data that benefits from
+ * retention and quota boundaries independent of the agent checkpoint
+ * workspace. The durable session store remains the owner of every namespace;
+ * the agent core only consumes this portable workspace contract.
+ */
+export type ResearchSessionDataNamespaceV1 = "evidence" | "claims" | "outline";
+
+export interface ResearchSessionDataWorkspaceStoreV1 {
+  researchDataWorkspace(
+    sessionId: string,
+    namespace: ResearchSessionDataNamespaceV1,
+  ): Promise<ResearchWorkspace>;
+}
+
+export function hasResearchSessionDataWorkspaceStoreV1(
+  store: ResearchSessionStoreV1,
+): store is ResearchSessionStoreV1 & ResearchSessionDataWorkspaceStoreV1 {
+  return typeof (store as Partial<ResearchSessionDataWorkspaceStoreV1>)
+    .researchDataWorkspace === "function";
+}
+
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-request", message);
 }

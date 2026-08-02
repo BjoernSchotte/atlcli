@@ -1,6 +1,7 @@
 import { ResearchContractError } from "./contracts.js";
 import {
   normalizeResearchWorkspacePath,
+  researchWorkspacePathMatchesPrefix,
   type ResearchWorkspace,
 } from "./workspace.js";
 import {
@@ -13,6 +14,8 @@ import {
   type ResearchSessionEventV1,
   type ResearchSessionStoreFailureInjectionV1,
   type ResearchSessionStoreV1,
+  type ResearchSessionDataNamespaceV1,
+  type ResearchSessionDataWorkspaceStoreV1,
 } from "./session-store.js";
 import {
   reduceResearchSessionV1,
@@ -24,7 +27,7 @@ import type { ResearchGraphV1 } from "./graph.js";
 import type { ResearchAcceptedPacketV1, ResearchTaskAttemptV1 } from "./workflow-contracts.js";
 
 export const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
-export const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+export const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
 export const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10_000;
 
 const SESSIONS = "sessions";
@@ -32,10 +35,22 @@ const EVENTS = "events";
 const SOURCE_REFS = "sourceRefs";
 const ARTIFACTS = "artifacts";
 const WORKSPACE = "workspace";
+const EVIDENCE_WORKSPACE = "evidenceWorkspace";
+const CLAIMS_WORKSPACE = "claimsWorkspace";
+const OUTLINE_WORKSPACE = "outlineWorkspace";
 const MAXIMUM_SESSIONS_V1 = 128;
 const MAXIMUM_EVENTS_PER_SESSION_V1 = 2_000;
 const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 64;
 const MAXIMUM_SOURCE_REFS_PER_SESSION_V1 = 4_096;
+export const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1 = 48 * 1024 * 1024;
+export const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1 = 8 * 1024 * 1024;
+export const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1 = 8 * 1024 * 1024;
+
+export interface IndexedDbResearchDataWorkspaceLimitsV1 {
+  evidence?: number;
+  claims?: number;
+  outline?: number;
+}
 
 interface StoredSession { sessionId: string; state: ResearchSessionV1 }
 interface StoredEvent { sessionId: string; sessionRevision: number; event: ResearchSessionEventV1 }
@@ -94,6 +109,12 @@ function transaction<T>(
   });
 }
 
+function ensureWorkspaceStore(db: IDBDatabase, name: string): void {
+  if (db.objectStoreNames.contains(name)) return;
+  const store = db.createObjectStore(name, { keyPath: ["sessionId", "path"] });
+  store.createIndex("bySession", "sessionId", { unique: false });
+}
+
 function ensureSchema(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains(SESSIONS)) db.createObjectStore(SESSIONS, { keyPath: "sessionId" });
   if (!db.objectStoreNames.contains(EVENTS)) {
@@ -108,10 +129,10 @@ function ensureSchema(db: IDBDatabase): void {
     const store = db.createObjectStore(ARTIFACTS, { keyPath: ["sessionId", "id"] });
     store.createIndex("bySession", "sessionId", { unique: false });
   }
-  if (!db.objectStoreNames.contains(WORKSPACE)) {
-    const store = db.createObjectStore(WORKSPACE, { keyPath: ["sessionId", "path"] });
-    store.createIndex("bySession", "sessionId", { unique: false });
-  }
+  ensureWorkspaceStore(db, WORKSPACE);
+  ensureWorkspaceStore(db, EVIDENCE_WORKSPACE);
+  ensureWorkspaceStore(db, CLAIMS_WORKSPACE);
+  ensureWorkspaceStore(db, OUTLINE_WORKSPACE);
 }
 
 function factoryFor(factory?: IDBFactory): IDBFactory {
@@ -192,14 +213,35 @@ function deleteIndexRows(index: IDBIndex, sessionId: string): void {
   };
 }
 
+function dataWorkspaceLimit(
+  configured: number | undefined,
+  fallback: number,
+): number {
+  const result = configured ?? fallback;
+  if (!Number.isSafeInteger(result) || result < 1 || result > 512 * 1024 * 1024) {
+    invalid("Research data workspace byte limit is invalid.");
+  }
+  return result;
+}
+
 /** IndexedDB implementation for the MV3 service worker, offscreen, and UI hosts. */
-export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, ResearchSessionDataWorkspaceStoreV1 {
   readonly #db: IDBDatabase;
   readonly #failureInjection?: ResearchSessionStoreFailureInjectionV1;
+  readonly #dataWorkspaceLimits: Required<IndexedDbResearchDataWorkspaceLimitsV1>;
 
-  private constructor(db: IDBDatabase, failureInjection?: ResearchSessionStoreFailureInjectionV1) {
+  private constructor(
+    db: IDBDatabase,
+    failureInjection?: ResearchSessionStoreFailureInjectionV1,
+    dataWorkspaceLimits: IndexedDbResearchDataWorkspaceLimitsV1 = {},
+  ) {
     this.#db = db;
     this.#failureInjection = failureInjection;
+    this.#dataWorkspaceLimits = {
+      evidence: dataWorkspaceLimit(dataWorkspaceLimits.evidence, MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1),
+      claims: dataWorkspaceLimit(dataWorkspaceLimits.claims, MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1),
+      outline: dataWorkspaceLimit(dataWorkspaceLimits.outline, MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1),
+    };
   }
 
   static async open(options: {
@@ -207,13 +249,14 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     factory?: IDBFactory;
     blockedUpgradeTimeoutMs?: number;
     failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    dataWorkspaceLimits?: IndexedDbResearchDataWorkspaceLimitsV1;
   } = {}): Promise<IndexedDbResearchSessionStoreV1> {
     const db = await openDatabase({
       factory: options.factory,
       databaseName: options.databaseName ?? RESEARCH_SESSION_INDEXED_DB_NAME_V1,
       blockedUpgradeTimeoutMs: options.blockedUpgradeTimeoutMs ?? RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS,
     });
-    return new IndexedDbResearchSessionStoreV1(db, options.failureInjection);
+    return new IndexedDbResearchSessionStoreV1(db, options.failureInjection, options.dataWorkspaceLimits);
   }
 
   close(): void { this.#db.close(); }
@@ -317,37 +360,78 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     return clone((await this.#required(sessionId)).turns.flatMap((turn) => turn.acceptedPackets).find((packet) => packet.packetRef === packetRef));
   }
 
-  async workspace(sessionId: string): Promise<ResearchWorkspace> {
+  async #workspaceForStore(
+    sessionId: string,
+    storeName: string,
+    maximumBytes?: number,
+  ): Promise<ResearchWorkspace> {
     await this.#required(sessionId);
     return {
       readFile: async (path) => {
         const normalized = normalizeResearchWorkspacePath(path);
-        const row = await request(this.#db.transaction(WORKSPACE, "readonly").objectStore(WORKSPACE).get([sessionId, normalized]) as IDBRequest<StoredWorkspaceFile | undefined>);
+        const row = await request(this.#db.transaction(storeName, "readonly").objectStore(storeName).get([sessionId, normalized]) as IDBRequest<StoredWorkspaceFile | undefined>);
         return row?.contents;
       },
       writeFile: async (path, contents) => {
         const normalized = normalizeResearchWorkspacePath(path);
         if (contents.length > 2_000_000) throw new ResearchContractError("limit-exceeded", "Workspace file is too large.");
         await this.#required(sessionId);
-        await transaction(this.#db, [WORKSPACE], "readwrite", (stores, finish) => {
-          const put = stores[WORKSPACE]!.put({ sessionId, path: normalized, contents } satisfies StoredWorkspaceFile);
-          put.onsuccess = () => finish(undefined);
+        await transaction(this.#db, [storeName], "readwrite", (stores, finish, fail) => {
+          const store = stores[storeName]!;
+          const rows = store.index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>;
+          rows.onsuccess = () => {
+            try {
+              if (maximumBytes !== undefined) {
+                const existing = rows.result.find((row) => row.path === normalized);
+                const retainedBytes = rows.result.reduce(
+                  (total, row) => total + new TextEncoder().encode(row.contents).byteLength,
+                  0,
+                ) - (existing ? new TextEncoder().encode(existing.contents).byteLength : 0);
+                const nextBytes = retainedBytes + new TextEncoder().encode(contents).byteLength;
+                if (nextBytes > maximumBytes) {
+                  throw new ResearchContractError("limit-exceeded", "Research data namespace quota is exhausted.");
+                }
+              }
+              const put = store.put({ sessionId, path: normalized, contents } satisfies StoredWorkspaceFile);
+              put.onsuccess = () => finish(undefined);
+              put.onerror = () => fail(put.error ?? new Error("Research workspace write failed."));
+            } catch (error) { fail(error); }
+          };
+          rows.onerror = () => fail(rows.error ?? new Error("Research workspace quota read failed."));
         });
       },
       remove: async (path) => {
         const normalized = normalizeResearchWorkspacePath(path);
-        const rows = await request(this.#db.transaction(WORKSPACE, "readonly").objectStore(WORKSPACE).index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>);
-        await transaction(this.#db, [WORKSPACE], "readwrite", (stores, finish) => {
-          for (const row of rows) if (row.path === normalized || row.path.startsWith(`${normalized}/`)) stores[WORKSPACE]!.delete([sessionId, row.path]);
+        const rows = await request(this.#db.transaction(storeName, "readonly").objectStore(storeName).index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>);
+        await transaction(this.#db, [storeName], "readwrite", (stores, finish) => {
+          for (const row of rows) if (researchWorkspacePathMatchesPrefix(row.path, normalized)) stores[storeName]!.delete([sessionId, row.path]);
           finish(undefined);
         });
       },
       list: async (prefix = "/") => {
         const normalized = normalizeResearchWorkspacePath(prefix);
-        const rows = await request(this.#db.transaction(WORKSPACE, "readonly").objectStore(WORKSPACE).index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>);
-        return rows.map((row) => row.path).filter((path) => path === normalized || path.startsWith(`${normalized}/`)).sort();
+        const rows = await request(this.#db.transaction(storeName, "readonly").objectStore(storeName).index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>);
+        return rows.map((row) => row.path).filter((path) => researchWorkspacePathMatchesPrefix(path, normalized)).sort();
       },
     };
+  }
+
+  async workspace(sessionId: string): Promise<ResearchWorkspace> {
+    return this.#workspaceForStore(sessionId, WORKSPACE);
+  }
+
+  async researchDataWorkspace(
+    sessionId: string,
+    namespace: ResearchSessionDataNamespaceV1,
+  ): Promise<ResearchWorkspace> {
+    switch (namespace) {
+      case "evidence":
+        return this.#workspaceForStore(sessionId, EVIDENCE_WORKSPACE, this.#dataWorkspaceLimits.evidence);
+      case "claims":
+        return this.#workspaceForStore(sessionId, CLAIMS_WORKSPACE, this.#dataWorkspaceLimits.claims);
+      case "outline":
+        return this.#workspaceForStore(sessionId, OUTLINE_WORKSPACE, this.#dataWorkspaceLimits.outline);
+    }
   }
 
   async replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void> {
@@ -408,9 +492,18 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     if (!session) return false;
     if (session.status !== "deleted" || session.retention.state !== "deleted") invalid("Only a deleted research session can be erased.");
     this.#fail("before_delete", sessionId);
-    await transaction(this.#db, [SESSIONS, EVENTS, SOURCE_REFS, ARTIFACTS, WORKSPACE], "readwrite", (stores, finish) => {
+    const sessionStores = [
+      EVENTS,
+      SOURCE_REFS,
+      ARTIFACTS,
+      WORKSPACE,
+      EVIDENCE_WORKSPACE,
+      CLAIMS_WORKSPACE,
+      OUTLINE_WORKSPACE,
+    ];
+    await transaction(this.#db, [SESSIONS, ...sessionStores], "readwrite", (stores, finish) => {
       stores[SESSIONS]!.delete(sessionId);
-      for (const name of [EVENTS, SOURCE_REFS, ARTIFACTS, WORKSPACE]) deleteIndexRows(stores[name]!.index("bySession"), sessionId);
+      for (const name of sessionStores) deleteIndexRows(stores[name]!.index("bySession"), sessionId);
       finish(undefined);
     });
     return true;

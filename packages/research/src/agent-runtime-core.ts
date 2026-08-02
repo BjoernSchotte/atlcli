@@ -41,6 +41,7 @@ import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
 import {
   RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+  hasResearchSessionDataWorkspaceStoreV1,
   type ResearchSessionStoreV1,
 } from "./session-store.js";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
@@ -1218,6 +1219,14 @@ async function runResearchAgentWithBindings(
   const workspace = input.durableSession
     ? await input.durableSession.store.workspace(input.durableSession.sessionId)
     : input.workspace ?? createMemoryResearchWorkspace();
+  const durableDataWorkspaces = input.durableSession &&
+    hasResearchSessionDataWorkspaceStoreV1(input.durableSession.store)
+    ? await Promise.all([
+        input.durableSession.store.researchDataWorkspace(input.durableSession.sessionId, "evidence"),
+        input.durableSession.store.researchDataWorkspace(input.durableSession.sessionId, "claims"),
+        input.durableSession.store.researchDataWorkspace(input.durableSession.sessionId, "outline"),
+      ])
+    : undefined;
   // DeepAgentsJS persists LangGraph state by configurable thread ID. A retry
   // attempt has a new run ID, but it must remain in the durable conversation's
   // session thread. Its checkpoints live in the host-neutral session
@@ -1381,14 +1390,14 @@ async function runResearchAgentWithBindings(
     JSON.stringify({ runId, request: input.request }, null, 2),
   );
   const durableEvidence = input.durableSession && input.brief?.scopeBindings.length
-    ? new WorkspaceResearchEvidenceStoreV1(workspace)
+    ? new WorkspaceResearchEvidenceStoreV1(durableDataWorkspaces?.[0] ?? workspace)
     : undefined;
   const durableClaims = durableEvidence
-    ? new WorkspaceResearchClaimLedgerV1(workspace, durableEvidence)
+    ? new WorkspaceResearchClaimLedgerV1(durableDataWorkspaces?.[1] ?? workspace, durableEvidence)
     : undefined;
   const durableOutline = durableEvidence && durableClaims && input.brief
     ? new WorkspaceResearchOutlineStoreV1({
-        workspace,
+        workspace: durableDataWorkspaces?.[2] ?? workspace,
         evidenceStore: durableEvidence,
         claimLedger: durableClaims,
         coverageTargets: input.brief.coverageTargets,

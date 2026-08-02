@@ -24,6 +24,7 @@ describe("research workspace paths", () => {
       await workspace.writeFile("/artifacts/report.md", "# Report\n");
       expect(await workspace.readFile("/artifacts/report.md")).toBe("# Report\n");
       expect(await workspace.list("/artifacts")).toEqual(["/artifacts/report.md"]);
+      expect(await workspace.list()).toEqual(["/artifacts/report.md"]);
       await workspace.remove("/artifacts");
       expect(await workspace.readFile("/artifacts/report.md")).toBeUndefined();
     }

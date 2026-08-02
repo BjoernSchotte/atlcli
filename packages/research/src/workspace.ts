@@ -27,6 +27,11 @@ export function normalizeResearchWorkspacePath(value: string): string {
   return `/${normalized.join("/")}`;
 }
 
+/** Return whether a normalized virtual path is the requested path or one of its descendants. */
+export function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean {
+  return prefix === "/" || path === prefix || path.startsWith(`${prefix}/`);
+}
+
 /** Small deterministic browser/test backend; hosts may replace it with IndexedDB. */
 export function createMemoryResearchWorkspace(): ResearchWorkspace {
   const files = new Map<string, string>();
@@ -44,12 +49,12 @@ export function createMemoryResearchWorkspace(): ResearchWorkspace {
     async remove(path) {
       const normalized = normalizeResearchWorkspacePath(path);
       for (const key of files.keys()) {
-        if (key === normalized || key.startsWith(`${normalized}/`)) files.delete(key);
+        if (researchWorkspacePathMatchesPrefix(key, normalized)) files.delete(key);
       }
     },
     async list(prefix = "/") {
       const normalized = normalizeResearchWorkspacePath(prefix);
-      return [...files.keys()].filter((key) => key === normalized || key.startsWith(`${normalized}/`)).sort();
+      return [...files.keys()].filter((key) => researchWorkspacePathMatchesPrefix(key, normalized)).sort();
     },
   };
 }

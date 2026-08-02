@@ -22,7 +22,54 @@ afterEach(() => {
   for (const store of stores.splice(0)) store.close();
 });
 
+async function createVersionOneResearchDatabase(
+  factory: IDBFactory,
+  databaseName: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const open = factory.open(databaseName, 1);
+    open.onupgradeneeded = () => {
+      open.result.createObjectStore("sessions", { keyPath: "sessionId" });
+      for (const name of ["events", "sourceRefs", "artifacts", "workspace"]) {
+        const store = open.result.createObjectStore(name, { keyPath: ["sessionId", name === "events" ? "sessionRevision" : name === "workspace" ? "path" : "id"] });
+        store.createIndex("bySession", "sessionId", { unique: false });
+      }
+    };
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => { open.result.close(); resolve(); };
+  });
+}
+
 describe("IndexedDB durable research session store", () => {
+  test("upgrades a version-one browser database without replacing its session stores", async () => {
+    const factory = new IDBFactory();
+    const databaseName = "research-session-v1-upgrade";
+    await createVersionOneResearchDatabase(factory as unknown as IDBFactory, databaseName);
+
+    const migrated = await IndexedDbResearchSessionStoreV1.open({
+      factory: factory as unknown as IDBFactory,
+      databaseName,
+    });
+    stores.push(migrated);
+    expect(migrated).toBeInstanceOf(IndexedDbResearchSessionStoreV1);
+    const inspected = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = factory.open(databaseName);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => resolve(open.result);
+    });
+    expect([...inspected.objectStoreNames]).toEqual([
+      "artifacts",
+      "claimsWorkspace",
+      "events",
+      "evidenceWorkspace",
+      "outlineWorkspace",
+      "sessions",
+      "sourceRefs",
+      "workspace",
+    ]);
+    inspected.close();
+  });
+
   test("passes the same aggregate-CAS and failure-injection suite as the memory and SQLite adapters", async () => {
     const factory = new IDBFactory();
     let count = 0;
@@ -171,14 +218,15 @@ describe("IndexedDB durable research session store", () => {
       }],
       capturedAt: "2026-08-01T14:00:01.000Z",
     });
-    await new WorkspaceResearchEvidenceStoreV1(await first.workspace(created.sessionId))
+    await new WorkspaceResearchEvidenceStoreV1(await first.researchDataWorkspace(created.sessionId, "evidence"))
       .put(evidence.record, evidence.chunks);
+    expect(await (await first.workspace(created.sessionId)).list("/.atlcli/evidence")).toEqual([]);
     first.close();
     stores.splice(stores.indexOf(first), 1);
 
     const reopened = await IndexedDbResearchSessionStoreV1.open({ factory: factory as unknown as IDBFactory, databaseName });
     stores.push(reopened);
-    const recovered = new WorkspaceResearchEvidenceStoreV1(await reopened.workspace(created.sessionId));
+    const recovered = new WorkspaceResearchEvidenceStoreV1(await reopened.researchDataWorkspace(created.sessionId, "evidence"));
     await expect(recovered.get(evidence.record.id)).resolves.toMatchObject({
       id: evidence.record.id,
       identity: { canonicalId: "https://example.atlassian.net|jira|issue|ATLCLI-42" },
@@ -200,7 +248,9 @@ describe("IndexedDB durable research session store", () => {
       leaseExpiresAt: "2026-08-01T14:10:00.000Z",
     }));
     const workspace = await first.workspace(created.sessionId);
-    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const evidence = new WorkspaceResearchEvidenceStoreV1(await first.researchDataWorkspace(created.sessionId, "evidence"));
+    const claimsWorkspace = await first.researchDataWorkspace(created.sessionId, "claims");
+    const outlineWorkspace = await first.researchDataWorkspace(created.sessionId, "outline");
     const retained = await createResearchEvidenceRecordV1({
       source: {
         id: "jira:ATLCLI-42",
@@ -248,7 +298,7 @@ describe("IndexedDB durable research session store", () => {
       }],
       createdAt: "2026-08-01T14:00:02.000Z",
     });
-    await new WorkspaceResearchClaimLedgerV1(workspace, evidence).put(claim);
+    await new WorkspaceResearchClaimLedgerV1(claimsWorkspace, evidence).put(claim);
     const outline = await createResearchOutlineV1({
       revision: 1,
       basedOnBriefRevision: 1,
@@ -275,9 +325,9 @@ describe("IndexedDB durable research session store", () => {
       }],
     });
     await new WorkspaceResearchOutlineStoreV1({
-      workspace,
+      workspace: outlineWorkspace,
       evidenceStore: evidence,
-      claimLedger: new WorkspaceResearchClaimLedgerV1(workspace, evidence),
+      claimLedger: new WorkspaceResearchClaimLedgerV1(claimsWorkspace, evidence),
       coverageTargets: [{
         id: "coverage:primary",
         question: "What does the retained issue establish?",
@@ -291,10 +341,9 @@ describe("IndexedDB durable research session store", () => {
 
     const reopened = await IndexedDbResearchSessionStoreV1.open({ factory: factory as unknown as IDBFactory, databaseName });
     stores.push(reopened);
-    const reopenedWorkspace = await reopened.workspace(created.sessionId);
-    const reopenedEvidence = new WorkspaceResearchEvidenceStoreV1(reopenedWorkspace);
+    const reopenedEvidence = new WorkspaceResearchEvidenceStoreV1(await reopened.researchDataWorkspace(created.sessionId, "evidence"));
     const recovered = new WorkspaceResearchClaimLedgerV1(
-      reopenedWorkspace,
+      await reopened.researchDataWorkspace(created.sessionId, "claims"),
       reopenedEvidence,
     );
     await expect(recovered.get(claim.id)).resolves.toMatchObject({
@@ -303,7 +352,7 @@ describe("IndexedDB durable research session store", () => {
       evidenceIds: [retained.record.id],
     });
     await expect(new WorkspaceResearchOutlineStoreV1({
-      workspace: reopenedWorkspace,
+      workspace: await reopened.researchDataWorkspace(created.sessionId, "outline"),
       evidenceStore: reopenedEvidence,
       claimLedger: recovered,
       coverageTargets: [{
@@ -317,5 +366,40 @@ describe("IndexedDB durable research session store", () => {
       revision: 1,
       sections: [{ claimIds: [claim.id], evidenceIds: [retained.record.id] }],
     });
+  });
+
+  test("keeps browser research data namespaces independent from checkpoints and releases their quotas after deletion", async () => {
+    const factory = new IDBFactory();
+    const store = await IndexedDbResearchSessionStoreV1.open({
+      factory: factory as unknown as IDBFactory,
+      databaseName: "research-session-data-namespace-quota",
+      dataWorkspaceLimits: { evidence: 80, claims: 40, outline: 40 },
+    });
+    stores.push(store);
+    const created = await store.create(createResearchSessionV1({
+      sessionId: "research-session:indexeddb-data-namespace",
+      ownerId: "owner:indexeddb-data-namespace",
+      createdAt: "2026-08-01T14:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T14:10:00.000Z",
+    }));
+    const checkpointWorkspace = await store.workspace(created.sessionId);
+    const evidenceWorkspace = await store.researchDataWorkspace(created.sessionId, "evidence");
+    const claimsWorkspace = await store.researchDataWorkspace(created.sessionId, "claims");
+    const outlineWorkspace = await store.researchDataWorkspace(created.sessionId, "outline");
+
+    await checkpointWorkspace.writeFile("/session/checkpoint.json", "checkpoint state");
+    await evidenceWorkspace.writeFile("/.atlcli/evidence/v1/chunks/one.json", "e".repeat(60));
+    await expect(evidenceWorkspace.writeFile("/.atlcli/evidence/v1/chunks/two.json", "e".repeat(21)))
+      .rejects.toThrow("quota is exhausted");
+    await evidenceWorkspace.remove("/.atlcli/evidence/v1/chunks/one.json");
+    await evidenceWorkspace.writeFile("/.atlcli/evidence/v1/chunks/two.json", "e".repeat(21));
+    await claimsWorkspace.writeFile("/.atlcli/claims/v1/index.json", "c".repeat(40));
+    await outlineWorkspace.writeFile("/.atlcli/outline/v1/index.json", "o".repeat(40));
+
+    expect(await checkpointWorkspace.list()).toEqual(["/session/checkpoint.json"]);
+    expect(await checkpointWorkspace.readFile("/.atlcli/evidence/v1/chunks/two.json")).toBeUndefined();
+    expect(await evidenceWorkspace.list()).toEqual(["/.atlcli/evidence/v1/chunks/two.json"]);
+    expect(await claimsWorkspace.list()).toEqual(["/.atlcli/claims/v1/index.json"]);
+    expect(await outlineWorkspace.list()).toEqual(["/.atlcli/outline/v1/index.json"]);
   });
 });
