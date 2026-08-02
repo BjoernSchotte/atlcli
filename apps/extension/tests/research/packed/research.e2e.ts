@@ -1908,7 +1908,10 @@ function packedClarificationPlanningSession(): ResearchSessionV1 {
 }
 
 /** A synthetic durable checkpoint used to exercise host lifecycle boundaries. */
-function packedExpiredRetrievalCheckpointSession(identity = "packed-startup-recovery"): ResearchSessionV1 {
+function packedExpiredRetrievalCheckpointSession(
+  identity = "packed-startup-recovery",
+  options: { settled?: boolean } = {},
+): ResearchSessionV1 {
   const sessionId = `research-session:${identity}`;
   const turnId = `research-turn:${identity}`;
   const at = "2020-01-01T00:00:00.000Z";
@@ -1984,6 +1987,7 @@ function packedExpiredRetrievalCheckpointSession(identity = "packed-startup-reco
     taskId: task.taskId,
     graphRevision: graph.revision,
   }, "2020-01-01T00:00:07.000Z");
+  if (options.settled === false) return session;
   const body = {
     schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
     answeredQuestion: "Synthetic checkpoint evidence is complete.",
@@ -3452,6 +3456,77 @@ test("recovers an expired retrieval checkpoint when the first offscreen document
         continuation: expect.objectContaining({ status: "issued" }),
       }),
     ]);
+    expect(recovered.artifact).toBeUndefined();
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
+});
+
+test("records an expired in-flight provider call as an abstained outcome on first offscreen startup", async () => {
+  await installEventCapture(page);
+  const empty = await page.evaluate(async () => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:list-resumable-sessions",
+      windowId: window.id,
+    });
+  });
+  expect(empty).toMatchObject({
+    kind: "research:list-resumable-sessions-result",
+    ok: true,
+  });
+  const interrupted = packedExpiredRetrievalCheckpointSession(
+    "packed-startup-interrupted",
+    { settled: false },
+  );
+  await writePackedDurableResearchSession(page, interrupted);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  try {
+    const trigger = await runPackedResearchInBackground(
+      page,
+      hostParityRequest(),
+      "packed-startup-interrupted-trigger",
+    );
+    if (!trigger.ok) {
+      throw new Error(JSON.stringify({ trigger, events: await harnessEvents(page) }, null, 2));
+    }
+    await expect.poll(async () => {
+      const durable = await readPackedDurableResearchSession(
+        page,
+        interrupted.sessionId,
+        "artifact:report:research-turn:packed-startup-interrupted",
+      );
+      return durable.session.state.status;
+    }, { timeout: 30_000 }).toBe("failed");
+    const recovered = await readPackedDurableResearchSession(
+      page,
+      interrupted.sessionId,
+      "artifact:report:research-turn:packed-startup-interrupted",
+    );
+    const originalTask = interrupted.turns[0]!.tasks[0]!;
+    expect(recovered.session.state).toMatchObject({
+      status: "failed",
+      activeTurnId: undefined,
+      turns: [expect.objectContaining({
+        failureReason: "Research provider outcome was unobservable after host recovery; no automatic retry was attempted.",
+        tasks: [expect.objectContaining({
+          taskId: originalTask.taskId,
+          status: "failed",
+          dispatchState: "outcome_unknown",
+        })],
+        acceptedPackets: [],
+        graph: expect.objectContaining({
+          nodes: expect.arrayContaining([
+            expect.objectContaining({ id: originalTask.nodeId, status: "failed", stopReason: "session failed" }),
+          ]),
+        }),
+      })],
+    });
     expect(recovered.artifact).toBeUndefined();
   } finally {
     await page.evaluate(async (key) => {

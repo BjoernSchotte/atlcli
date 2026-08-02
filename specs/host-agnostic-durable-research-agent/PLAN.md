@@ -3424,6 +3424,12 @@ Gate:
       quarantines a committed/late result, marks an unobservable provider
       outcome `outcome_unknown`, and never accepts two packets for one logical
       node completion.
+
+  - [x] Packed MV3: offscreen startup recovers an expired `dispatch_started`
+        task through the explicit abstain policy. It records
+        `outcome_unknown`, closes the task and graph node together, terminally
+        fails the session without a report or accepted packet, and performs no
+        automatic provider retry (31 packed tests, 2026-08-02).
 - [ ] Failure injection at every result-publication sub-boundary proves that a
       task cannot be terminal while its authoritative graph node remains
       running, and that recovery accepts exactly one packet/outbox event.

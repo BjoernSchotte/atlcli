@@ -2035,7 +2035,39 @@ export function reduceResearchSessionV1(
   if (update.kind === "fail") {
     const current = ensureActive(session, ["planning", "waiting_clarification", "waiting_plan_approval", "waiting_plan_revision", "waiting_scope_approval", "waiting_steering", "pause_requested", "paused", "running", "waiting_authentication", "waiting_quota"]);
     if (!update.reason.trim() || update.reason.length > 1_000) invalid("Research session failure reason is invalid.");
-    return withNext(session, update, { status: "failed", activeTurnId: undefined, turns: replaceTurn(session, { ...current, failureReason: update.reason.trim() }) });
+    // A terminal session must not leave an admitted provider attempt or its
+    // authoritative graph node looking runnable. Preserve the dispatch state
+    // (in particular `outcome_unknown`) for auditability, but close every
+    // active attempt and node together before releasing the session owner.
+    const nextTasks = current.tasks.map((task) =>
+      task.status === "running" || task.status === "outcome_unknown"
+        ? reduceResearchTaskAttemptV1(task, { kind: "failed", at: update.at })
+        : task,
+    );
+    let nextGraph = current.graph;
+    if (nextGraph) {
+      for (const task of nextTasks.filter((candidate) => candidate.status === "failed")) {
+        const node = nextGraph.nodes.find((candidate) => candidate.id === task.nodeId);
+        if (node?.status === "running") {
+          nextGraph = reduceResearchGraphV1(nextGraph, {
+            kind: "fail_node",
+            expectedRevision: nextGraph.revision,
+            nodeId: task.nodeId,
+            stopReason: "session failed",
+          });
+        }
+      }
+    }
+    return withNext(session, update, {
+      status: "failed",
+      activeTurnId: undefined,
+      turns: replaceTurn(session, {
+        ...current,
+        tasks: nextTasks,
+        ...(nextGraph ? { graph: nextGraph } : {}),
+        failureReason: update.reason.trim(),
+      }),
+    });
   }
 
   if (update.kind === "retain") {

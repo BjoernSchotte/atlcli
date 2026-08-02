@@ -745,8 +745,11 @@ export async function recoverResearchSessionForResumeV1(
  * interrupted provider call has a known outcome. An undispatched approved
  * plan is simply released again. A settled retrieval checkpoint is converted
  * to the same durable `paused` state as an acknowledged user pause, preserving
- * its single issued continuation for an explicit later resume. All other
- * sessions are intentionally left untouched for a later recovery policy.
+ * its single issued continuation for an explicit later resume. An expired
+ * in-flight provider request takes the explicit conservative `abstain`
+ * policy: the host records `outcome_unknown` before terminally failing the
+ * session. It never retries or accepts a late result, while already accepted
+ * packets remain durable for audit and a later user-started turn.
  */
 export async function recoverExpiredResearchSessionsAtSafeBoundaryV1(
   input: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1,
@@ -771,7 +774,9 @@ export async function recoverExpiredResearchSessionsAtSafeBoundaryV1(
       const undispatched = current.status === "running" && isUndispatchedApprovedTurn(turn);
       const checkpoint = (current.status === "running" || current.status === "pause_requested") &&
         isSettledIssuedRetrievalCheckpoint(turn);
-      if (!undispatched && !checkpoint) continue;
+      const interrupted = (current.status === "running" || current.status === "pause_requested") &&
+        turn.tasks.some((task) => task.status === "running" || task.status === "outcome_unknown");
+      if (!undispatched && !checkpoint && !interrupted) continue;
 
       let next = (await input.store.commit(current.sessionId, {
         kind: "recover",
@@ -782,7 +787,29 @@ export async function recoverExpiredResearchSessionsAtSafeBoundaryV1(
         at: input.at,
       })).session;
 
-      if (undispatched) {
+      if (interrupted) {
+        // Do not infer whether the provider received or completed this call.
+        // Recording the transition before terminal abstention is the durable
+        // boundary that prevents a fresh host from publishing a second packet.
+        for (const task of next.turns.find((candidate) => candidate.id === next.activeTurnId)?.tasks ?? []) {
+          if (task.status !== "running") continue;
+          next = (await input.store.commit(next.sessionId, {
+            kind: "outcome_unknown",
+            taskId: task.taskId,
+            graphRevision: task.graphRevision,
+            expectedRevision: next.revision,
+            expectedLeaseEpoch: next.lease.epoch,
+            at: input.at,
+          })).session;
+        }
+        next = (await input.store.commit(next.sessionId, {
+          kind: "fail",
+          reason: "Research provider outcome was unobservable after host recovery; no automatic retry was attempted.",
+          expectedRevision: next.revision,
+          expectedLeaseEpoch: next.lease.epoch,
+          at: input.at,
+        })).session;
+      } else if (undispatched) {
         next = (await input.store.commit(next.sessionId, {
           kind: "release_lease",
           expectedRevision: next.revision,

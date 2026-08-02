@@ -1030,7 +1030,7 @@ describe("durable research session execution gate", () => {
       .toEqual(["recover", "release_lease"]);
   });
 
-  test("leaves active leases and interrupted provider work untouched", async () => {
+  test("leaves active leases untouched but records an expired in-flight provider outcome as abstained", async () => {
     const active = await selectedRuntimeGraph();
     await active.journal.admitAndStart(active.task);
     const before = await active.store.read(active.sessionId);
@@ -1041,13 +1041,39 @@ describe("durable research session execution gate", () => {
       leaseDurationMs: 60_000,
       at: "2026-08-01T15:05:00.000Z",
     })).resolves.toEqual([]);
-    await expect(recoverExpiredResearchSessionsAtSafeBoundaryV1({
+    expect(await active.store.read(active.sessionId)).toEqual(before);
+
+    const recovered = await recoverExpiredResearchSessionsAtSafeBoundaryV1({
       store: active.store,
       ownerId: "owner:browser-recovery",
       leaseDurationMs: 60_000,
       at: "2026-08-01T15:11:00.000Z",
-    })).resolves.toEqual([]);
-    expect(await active.store.read(active.sessionId)).toEqual(before);
+    });
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      status: "failed",
+      activeTurnId: undefined,
+      turns: [expect.objectContaining({
+        failureReason: "Research provider outcome was unobservable after host recovery; no automatic retry was attempted.",
+        tasks: [expect.objectContaining({ status: "failed", dispatchState: "outcome_unknown" })],
+        graph: expect.objectContaining({
+          nodes: expect.arrayContaining([
+            expect.objectContaining({ id: active.task.nodeId, status: "failed", stopReason: "session failed" }),
+          ]),
+        }),
+      })],
+    });
+    expect((await active.store.events(active.sessionId)).slice(-3).map((event) => event.kind))
+      .toEqual(["recover", "outcome_unknown", "fail"]);
+    await expect(active.journal.acceptPacket({
+      taskId: active.task.taskId,
+      graphRevision: active.graph.revision,
+      body: {},
+      usage: { capabilityCalls: 0, inputTokens: 0, outputTokens: 0, resultBytes: 0, durationMs: 0, costMicros: 0 },
+      availableSourceIds: [],
+      maximumResultBytes: active.task.budget.maxResultBytes,
+    })).rejects.toThrow("does not own the active session turn");
+    expect((await active.store.read(active.sessionId))?.turns[0]?.acceptedPackets).toEqual([]);
   });
 
   test("projects only expired, tenant-bound durable resumes without source or provider data", async () => {
