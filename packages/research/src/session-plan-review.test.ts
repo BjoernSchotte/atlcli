@@ -64,6 +64,14 @@ describe("projectResearchSessionPlanReviewV1", () => {
         graphRevision: 1,
         resolvedEffort: "deep",
         scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        budget: {
+          maxPtcCalls: 32,
+          maxHttpCalls: 64,
+          maxTotalModelInputTokens: 160_000,
+          maxTotalModelOutputTokens: 64_000,
+          maxModelCostMicros: 2_000_000,
+          maxRunMs: 120_000,
+        },
       },
     });
     const serialized = JSON.stringify(review);

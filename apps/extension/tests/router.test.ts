@@ -21,6 +21,14 @@ const preparation = {
 const researchReport = {
   schema: "atlcli.research-report/v1",
 } as ResearchReportV1;
+const planReviewBudget = {
+  maxPtcCalls: 32,
+  maxHttpCalls: 64,
+  maxTotalModelInputTokens: 160_000,
+  maxTotalModelOutputTokens: 64_000,
+  maxModelCostMicros: 2_000_000,
+  maxRunMs: 120_000,
+};
 
 const okDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
@@ -526,6 +534,7 @@ describe("routeMessage (pure router)", () => {
         scopeExpansionMode: "ask" as const,
         reconciliationMode: "required" as const,
         scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        budget: planReviewBudget,
       },
     };
     const request = {
@@ -726,6 +735,7 @@ describe("routeMessage (pure router)", () => {
               scopeExpansionMode: "ask" as const,
               reconciliationMode: "auto" as const,
               scope: review.turn.scope,
+              budget: planReviewBudget,
             },
           },
         };

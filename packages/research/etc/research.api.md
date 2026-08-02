@@ -3799,6 +3799,14 @@ export interface ResearchSessionPlanReviewV1 {
             jiraProjectKeys: string[];
             confluenceSpaceKeys: string[];
         };
+        budget: {
+            maxPtcCalls: number;
+            maxHttpCalls: number;
+            maxTotalModelInputTokens: number;
+            maxTotalModelOutputTokens: number;
+            maxModelCostMicros: number;
+            maxRunMs: number;
+        };
     };
 }
 
@@ -8611,6 +8619,14 @@ export interface ResearchSessionPlanReviewV1 {
             jiraProjectKeys: string[];
             confluenceSpaceKeys: string[];
         };
+        budget: {
+            maxPtcCalls: number;
+            maxHttpCalls: number;
+            maxTotalModelInputTokens: number;
+            maxTotalModelOutputTokens: number;
+            maxModelCostMicros: number;
+            maxRunMs: number;
+        };
     };
 }
 
@@ -13420,6 +13436,14 @@ export interface ResearchSessionPlanReviewV1 {
         scope: {
             jiraProjectKeys: string[];
             confluenceSpaceKeys: string[];
+        };
+        budget: {
+            maxPtcCalls: number;
+            maxHttpCalls: number;
+            maxTotalModelInputTokens: number;
+            maxTotalModelOutputTokens: number;
+            maxModelCostMicros: number;
+            maxRunMs: number;
         };
     };
 }
@@ -18531,6 +18555,14 @@ export interface ResearchSessionPlanReviewV1 {
         scope: {
             jiraProjectKeys: string[];
             confluenceSpaceKeys: string[];
+        };
+        budget: {
+            maxPtcCalls: number;
+            maxHttpCalls: number;
+            maxTotalModelInputTokens: number;
+            maxTotalModelOutputTokens: number;
+            maxModelCostMicros: number;
+            maxRunMs: number;
         };
     };
 }
@@ -23742,6 +23774,14 @@ export interface ResearchSessionPlanReviewV1 {
         scope: {
             jiraProjectKeys: string[];
             confluenceSpaceKeys: string[];
+        };
+        budget: {
+            maxPtcCalls: number;
+            maxHttpCalls: number;
+            maxTotalModelInputTokens: number;
+            maxTotalModelOutputTokens: number;
+            maxModelCostMicros: number;
+            maxRunMs: number;
         };
     };
 }
@@ -30180,6 +30220,14 @@ export interface ResearchSessionPlanReviewV1 {
         scope: {
             jiraProjectKeys: string[];
             confluenceSpaceKeys: string[];
+        };
+        budget: {
+            maxPtcCalls: number;
+            maxHttpCalls: number;
+            maxTotalModelInputTokens: number;
+            maxTotalModelOutputTokens: number;
+            maxModelCostMicros: number;
+            maxRunMs: number;
         };
     };
 }

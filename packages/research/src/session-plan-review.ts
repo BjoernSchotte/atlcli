@@ -28,6 +28,19 @@ export interface ResearchSessionPlanReviewV1 {
       jiraProjectKeys: string[];
       confluenceSpaceKeys: string[];
     };
+    /**
+     * Body-free limits that the user can inspect before approving a durable
+     * plan. The host derives these from the persisted brief; no caller may
+     * widen them by editing a review projection.
+     */
+    budget: {
+      maxPtcCalls: number;
+      maxHttpCalls: number;
+      maxTotalModelInputTokens: number;
+      maxTotalModelOutputTokens: number;
+      maxModelCostMicros: number;
+      maxRunMs: number;
+    };
   };
 }
 
@@ -69,6 +82,14 @@ export function projectResearchSessionPlanReviewV1(
       scope: {
         jiraProjectKeys: [...turn.brief.scope.jiraProjectKeys],
         confluenceSpaceKeys: [...turn.brief.scope.confluenceSpaceKeys],
+      },
+      budget: {
+        maxPtcCalls: turn.brief.limits.maxPtcCalls,
+        maxHttpCalls: turn.brief.limits.maxHttpCalls,
+        maxTotalModelInputTokens: turn.brief.limits.maxTotalModelInputTokens,
+        maxTotalModelOutputTokens: turn.brief.limits.maxTotalModelOutputTokens,
+        maxModelCostMicros: turn.brief.limits.maxModelCostMicros,
+        maxRunMs: turn.brief.limits.maxRunMs,
       },
     },
   };

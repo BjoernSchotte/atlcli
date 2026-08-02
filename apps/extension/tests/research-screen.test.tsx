@@ -997,6 +997,14 @@ describe("portable Research screen", () => {
         scopeExpansionMode: "ask",
         reconciliationMode: "required",
         scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        budget: {
+          maxPtcCalls: 32,
+          maxHttpCalls: 32,
+          maxTotalModelInputTokens: 80_000,
+          maxTotalModelOutputTokens: 32_000,
+          maxModelCostMicros: 2_000_000,
+          maxRunMs: 120_000,
+        },
       },
     };
     const prepared: Array<{ request: ResearchRequestV1; policy: unknown }> = [];
@@ -1071,6 +1079,8 @@ describe("portable Research screen", () => {
     expect(prepared).toHaveLength(1);
     expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
     expect(dom.find("research-plan-reviews").textContent).toContain("reconciler");
+    expect(dom.find("research-plan-review-budget-0").textContent)
+      .toContain("$2.00");
     expect(dom.find("research-plan-reviews").textContent).toContain("does not store a key");
     await dom.click("research-plan-review-approve-0");
     await dom.flush();
@@ -1102,6 +1112,14 @@ describe("portable Research screen", () => {
         scopeExpansionMode: "ask",
         reconciliationMode: "required",
         scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        budget: {
+          maxPtcCalls: 32,
+          maxHttpCalls: 32,
+          maxTotalModelInputTokens: 80_000,
+          maxTotalModelOutputTokens: 32_000,
+          maxModelCostMicros: 2_000_000,
+          maxRunMs: 120_000,
+        },
       },
     };
     const replacement: ResearchSessionPlanReviewV1 = {

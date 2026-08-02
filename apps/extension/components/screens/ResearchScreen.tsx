@@ -1888,6 +1888,17 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                       confluence: review.turn.scope.confluenceSpaceKeys.join(", ") || "—",
                     })}
                   </p>
+                  <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-budget-${index}`}>
+                    {t("research.planReview.budget", {
+                      ptc: String(review.turn.budget.maxPtcCalls),
+                      http: String(review.turn.budget.maxHttpCalls),
+                      tokens: String(
+                        review.turn.budget.maxTotalModelInputTokens + review.turn.budget.maxTotalModelOutputTokens,
+                      ),
+                      cost: `$${(review.turn.budget.maxModelCostMicros / MICROS_PER_USD).toFixed(2)}`,
+                      minutes: String(Math.ceil(review.turn.budget.maxRunMs / 60_000)),
+                    })}
+                  </p>
                   <p className="mb-0 mt-1 text-muted-foreground">
                     {t("research.planReview.noRetrieval")}
                   </p>
