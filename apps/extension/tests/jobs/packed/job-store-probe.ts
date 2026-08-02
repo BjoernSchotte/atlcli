@@ -547,6 +547,7 @@ const probe = {
     svgParts: number;
     pngParts: number;
     titlesInDocument: number;
+    presentTitles: string[];
     complete?: boolean;
     noteCodes: string[];
   }> {
@@ -570,6 +571,7 @@ const probe = {
       svgParts: media.filter((path) => path.endsWith(".svg")).length,
       pngParts: media.filter((path) => path.endsWith(".png")).length,
       titlesInDocument: titles.filter((title) => documentXml.includes(title)).length,
+      presentTitles: titles.filter((title) => documentXml.includes(title)),
       ...(report ? { complete: report.complete } : {}),
       noteCodes: report
         ? [...new Set(report.notes.map((note) => note.code))].sort()

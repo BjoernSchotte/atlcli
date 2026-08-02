@@ -636,7 +636,9 @@ function packedChartStorage(): string {
           : "<table><tbody><tr><th>Label</th><th>Value</th></tr>" +
             "<tr><td>A</td><td>10</td></tr><tr><td>B</td><td>20</td></tr></tbody></table>";
     return `<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">${kind}</ac:parameter>` +
-      `<ac:parameter ac:name="title">${title}</ac:parameter><ac:rich-text-body>${body}</ac:rich-text-body>` +
+      `<ac:parameter ac:name="title">${title}</ac:parameter>` +
+      `<ac:parameter ac:name="dataOrientation">vertical</ac:parameter>` +
+      `<ac:rich-text-body>${body}</ac:rich-text-body>` +
       `</ac:structured-macro>${index === PACKED_CHART_KINDS.length - 1 ? "" : '<ac:structured-macro ac:name="scroll-pagebreak"/>'}`;
   }).join("");
 }
@@ -1808,6 +1810,7 @@ test("packed MV3 jobs render all chart shapes as DOCX SVG+PNG and PDF vector pag
           svgParts: number;
           pngParts: number;
           titlesInDocument: number;
+          presentTitles: string[];
           complete?: boolean;
           noteCodes: string[];
         }>;
@@ -1842,6 +1845,9 @@ test("packed MV3 jobs render all chart shapes as DOCX SVG+PNG and PDF vector pag
     titles: PACKED_CHART_KINDS.map((kind) => `Packed chart ${kind}`),
   });
 
+  expect(evidence.docx.presentTitles).toEqual(
+    PACKED_CHART_KINDS.map((kind) => `Packed chart ${kind}`),
+  );
   expect(evidence.docx).toMatchObject({
     svgParts: 12,
     pngParts: 12,

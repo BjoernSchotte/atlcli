@@ -126,6 +126,9 @@ world-class semantic/visual gate is still open; — intentionally static.
   `apps/extension/tests/jobs/packed/job-recovery.e2e.ts` and
   `job-store-probe.ts`; this retains and inspects a 12-shape DOCX (12 SVG + 12
   PNG parts) and a complete multi-page PDF from the productive queued jobs.
+  The provider fixture declares its row-oriented tables as
+  `dataOrientation=vertical`, and the probe asserts every expected chart title
+  rather than accepting only aggregate media counts.
 - Mayflower provider-live proof page (non-private fixture, generated output
   excluded from Git):
   `http://127.0.0.1:4391/publish/atlcli-chart-provider-live-20260801-195515/`
