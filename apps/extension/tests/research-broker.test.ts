@@ -354,6 +354,120 @@ describe("bounded research capability broker", () => {
     ]);
   });
 
+  it("admits an approved exact issue and page through search-rank-get without widening to their parent scopes", async () => {
+    const exactRequest = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Compare the approved exact Jira issue and Confluence page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeSeeds: [
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:exact:jira:ATLCLI-42",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "jira",
+            entityKind: "issue",
+            entityRef: "research-scope-entity:jira-issue-atlcli-42",
+            key: "ATLCLI-42",
+            name: "Exact Jira issue",
+            source: "exact_link",
+            authority: "approved",
+          },
+          precedence: 400,
+        },
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:exact:confluence:1001",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "page",
+            entityRef: "research-scope-entity:confluence-page-1001",
+            key: "1001",
+            name: "Exact Confluence page",
+            source: "exact_link",
+            authority: "approved",
+          },
+          precedence: 400,
+        },
+      ],
+      limits: { maxDetailItemsPerProduct: 1 },
+      wikiProvider: "rest",
+    });
+    const providers = fakeProviders();
+    let jiraSearches = 0;
+    let wikiSearches = 0;
+    providers.jira.searchPage = async () => {
+      jiraSearches += 1;
+      throw new Error("exact scope must not issue a Jira project search");
+    };
+    providers.wiki.searchPage = async () => {
+      wikiSearches += 1;
+      throw new Error("exact scope must not issue a Confluence space search");
+    };
+    providers.jira.getIssue = async ({ issueKey }) => ({
+      issueKey,
+      projectKey: "UNSCOPED",
+      title: "Exact Jira issue",
+      content: { text: "Exact issue evidence.", linkTargets: [], truncated: false, inputBytes: 21 },
+    });
+    providers.wiki.getPage = async ({ contentId }) => ({
+      contentId,
+      spaceKey: "UNSCOPED",
+      title: "Exact Confluence page",
+      content: { text: "Exact page evidence.", linkTargets: [], truncated: false, inputBytes: 20 },
+    });
+    const evidence = new WorkspaceResearchEvidenceStoreV1(createMemoryResearchWorkspace());
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(exactRequest, providers, {
+      createEntityId: () => `exact-entity-${++entityId}`,
+      evidence: {
+        store: evidence,
+        scopeBindings: exactRequest.scopeSeeds!.map((seed) => seed.binding),
+        capturedAt: () => "2026-08-02T20:00:00.000Z",
+      },
+    });
+
+    const jira = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    const wiki = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    expect(jira.items[0]).toMatchObject({ issueKey: "ATLCLI-42" });
+    expect(wiki.items[0]).toMatchObject({ contentId: "1001" });
+    expect(jira.items[0]).not.toHaveProperty("projectKey");
+    expect(wiki.items[0]).not.toHaveProperty("spaceKey");
+    expect(jira.page).toEqual({ complete: true, termination: "index-exhausted" });
+    expect(wiki.page).toEqual({ complete: true, termination: "index-exhausted" });
+    expect(jiraSearches).toBe(0);
+    expect(wikiSearches).toBe(0);
+
+    await admitRankedCandidates(broker, "jira", jira.items);
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: jira.items[0]!.entityRef,
+    });
+    await broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: wiki.items[0]!.entityRef,
+    });
+
+    expect(await evidence.list()).toMatchObject({
+      records: [
+        { authority: { bindingId: "scope-binding:exact:jira:ATLCLI-42", authorityClass: "exact_entity" } },
+        { authority: { bindingId: "scope-binding:exact:confluence:1001", authorityClass: "exact_entity" } },
+      ],
+    });
+  });
+
   it("invalidates claims that depend on a superseded provider detail version", async () => {
     const workspace = createMemoryResearchWorkspace();
     const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);

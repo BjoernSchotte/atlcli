@@ -3755,6 +3755,12 @@ Shared:
         capability. The REST adapter verifies that the returned Issue/Page is
         the requested identity before emitting a candidate; it neither binds
         the entity nor widens to its parent project/space (2026-08-02).
+  - [x] After a user-approved exact-link preflight, retain the validated issue
+        key or page ID only in host scope provenance and issue a fresh opaque
+        run-local detail candidate through the normal search → rank → get
+        sequence. With no whole project/space binding, the broker makes no
+        JQL/CQL search, accepts only the exact returned identity, and retains
+        evidence under `exact_entity` authority (2026-08-02).
 - [ ] Let dynamically selected PTC/subagent nodes invoke the catalog/reference
       capabilities during research and return bounded related-scope
       candidates with evidence/reference provenance. They may not return an

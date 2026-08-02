@@ -122,6 +122,78 @@ describe("research scope preflight", () => {
     }]);
   });
 
+  test("recognizes current-tenant Jira issue and Confluence page links as exact entity mentions", () => {
+    const issue = `${origin}/browse/ATLCLI-42`;
+    const page = `${origin}/wiki/spaces/DOCS/pages/1001/Architecture`;
+    const mentions = proposeResearchScopeMentionsV1({
+      question: `Compare ${issue} with ${page}.`,
+      expectedTenantOrigin: origin,
+    });
+
+    expect(mentions).toMatchObject([
+      { productHint: "jira", entityKindHint: "issue", source: "exact_link", exactReference: issue },
+      { productHint: "confluence", entityKindHint: "page", source: "exact_link", exactReference: page },
+    ]);
+  });
+
+  test("keeps approved exact links as entity-only bindings without widening to a project or space", async () => {
+    const issue = `${origin}/browse/ATLCLI-42`;
+    const page = `${origin}/wiki/spaces/DOCS/pages/1001/Architecture`;
+    const calls: ResearchScopeCatalogCapabilityId[] = [];
+    const outcome = await prepareResearchScopePreflightV1({
+      request: request({
+        question: `Compare ${issue} with ${page}.`,
+        scope: { siteOrigin: origin, jiraProjectKeys: [], confluenceSpaceKeys: [] },
+        scopeSeeds: [],
+      }),
+      catalog: catalog(async (capability, value) => {
+        calls.push(capability);
+        const reference = (value as { reference: string }).reference;
+        return {
+          schema: "atlcli.ptc/atlassian.reference.resolve.output/v1",
+          candidate: reference === issue
+            ? {
+                schema: "atlcli.research-scope-candidate/v1",
+                id: "research-scope-candidate:jira-issue-atlcli-42",
+                tenantOrigin: origin,
+                product: "jira",
+                entityKind: "issue",
+                entityRef: "research-scope-entity:jira-issue-atlcli-42",
+                key: "ATLCLI-42",
+                name: "Exact Jira issue",
+                canonicalUrl: issue,
+                match: "exact_link",
+                accessible: true,
+                providerFreshnessAt: "2026-08-02T00:00:00.000Z",
+              }
+            : {
+                schema: "atlcli.research-scope-candidate/v1",
+                id: "research-scope-candidate:confluence-page-1001",
+                tenantOrigin: origin,
+                product: "confluence",
+                entityKind: "page",
+                entityRef: "research-scope-entity:confluence-page-1001",
+                key: "1001",
+                name: "Exact Confluence page",
+                canonicalUrl: page,
+                match: "exact_link",
+                accessible: true,
+                providerFreshnessAt: "2026-08-02T00:00:00.000Z",
+              },
+          unavailable: false,
+        };
+      }),
+    });
+
+    expect(calls).toEqual(["atlassian.reference.resolve", "atlassian.reference.resolve"]);
+    if (outcome.kind !== "ready") throw new Error("expected exact-link scope to be ready");
+    expect(outcome.request.scope).toMatchObject({ jiraProjectKeys: [], confluenceSpaceKeys: [] });
+    expect(outcome.request.scopeSeeds).toEqual(expect.arrayContaining([
+      expect.objectContaining({ binding: expect.objectContaining({ entityKind: "issue", key: "ATLCLI-42", authority: "approved" }) }),
+      expect.objectContaining({ binding: expect.objectContaining({ entityKind: "page", key: "1001", authority: "approved" }) }),
+    ]));
+  });
+
   test("resolves natural names and replaces lower-precedence profile defaults", async () => {
     const capabilities: string[] = [];
     const outcome = await prepareResearchScopePreflightV1({

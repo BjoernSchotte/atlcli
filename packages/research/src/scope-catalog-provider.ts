@@ -175,6 +175,7 @@ function pageCandidate(
     product: "confluence",
     entityKind: "page",
     entityRef: entityRef("confluence", "page", page.id),
+    key: page.id,
     name: page.title,
     accessible: true,
     providerFreshnessAt: freshnessAt,

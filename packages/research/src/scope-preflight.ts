@@ -3,6 +3,7 @@ import {
   normalizeResearchRequestV1,
   type ResearchRequestV1,
   type ResearchScopeBindingV1,
+  type ResearchScopeEntityKindV1,
   type ResearchScopeSeedV1,
 } from "./contracts.js";
 import {
@@ -53,14 +54,14 @@ interface MentionMatch {
   start: number;
   end: number;
   productHint: "jira" | "confluence";
-  entityKindHint: "project" | "space";
+  entityKindHint: ResearchScopeEntityKindV1;
   exactReference?: string;
 }
 
 function collectNamedMatches(
   question: string,
   productHint: MentionMatch["productHint"],
-  entityKindHint: MentionMatch["entityKindHint"],
+  entityKindHint: Extract<MentionMatch["entityKindHint"], "project" | "space">,
   noun: string,
   productPrefix: string,
 ): MentionMatch[] {
@@ -101,7 +102,23 @@ function collectExactReferenceMatches(question: string, expectedTenantOrigin: st
     try {
       const reference = new URL(text);
       if (reference.origin !== expectedTenantOrigin) continue;
-      if (/\/wiki\/(?:spaces|display)\//i.test(reference.pathname)) {
+      if (/^\/browse\/[A-Za-z][A-Za-z0-9_]*-\d+(?:\/|$)/i.test(reference.pathname)) {
+        matches.push({
+          start: match.index,
+          end: match.index + text.length,
+          productHint: "jira",
+          entityKindHint: "issue",
+          exactReference: text,
+        });
+      } else if (/^\/wiki\/(?:(?:spaces|display)\/[^/]+\/pages|pages)\/\d+(?:\/|$)/i.test(reference.pathname)) {
+        matches.push({
+          start: match.index,
+          end: match.index + text.length,
+          productHint: "confluence",
+          entityKindHint: "page",
+          exactReference: text,
+        });
+      } else if (/\/wiki\/(?:spaces|display)\//i.test(reference.pathname)) {
         matches.push({
           start: match.index,
           end: match.index + text.length,

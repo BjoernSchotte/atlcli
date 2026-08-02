@@ -169,11 +169,38 @@ function normalizedOrigin(value: unknown, label: string): string {
   return url.origin;
 }
 
-function sourceIdentity(source: ResearchSourceReferenceV1, scope: ResearchScopeV1): ResearchEvidenceIdentityV1 {
+function hasExactEntityBinding(
+  source: ResearchSourceReferenceV1,
+  scope: ResearchScopeV1,
+  bindings: readonly ResearchScopeBindingV1[],
+): boolean {
+  return bindings.some((binding) => {
+    if (
+      binding.tenantOrigin !== scope.siteOrigin ||
+      (binding.authority !== "approved" && binding.authority !== "locked")
+    ) {
+      return false;
+    }
+    if (source.product === "jira") {
+      return binding.product === "jira" &&
+        binding.entityKind === "issue" &&
+        binding.key?.toLocaleUpperCase("en-US") === source.issueKey?.toLocaleUpperCase("en-US");
+    }
+    return binding.product === "confluence" &&
+      binding.entityKind === "page" &&
+      binding.key === source.contentId;
+  });
+}
+
+function sourceIdentity(
+  source: ResearchSourceReferenceV1,
+  scope: ResearchScopeV1,
+  bindings: readonly ResearchScopeBindingV1[],
+): ResearchEvidenceIdentityV1 {
   if (source.product === "jira") {
     const issueKey = boundedText(source.issueKey, "Jira source issue key", 32);
     const projectKey = boundedText(source.projectKey, "Jira source project key", 32);
-    if (!scope.jiraProjectKeys.includes(projectKey)) {
+    if (!scope.jiraProjectKeys.includes(projectKey) && !hasExactEntityBinding(source, scope, bindings)) {
       throw new ResearchContractError("access-denied", "Jira evidence source is outside the approved research scope.");
     }
     return {
@@ -186,7 +213,7 @@ function sourceIdentity(source: ResearchSourceReferenceV1, scope: ResearchScopeV
   }
   const contentId = boundedText(source.contentId, "Confluence source content ID", 128);
   const spaceKey = boundedText(source.spaceKey, "Confluence source space key", 255);
-  if (!scope.confluenceSpaceKeys.includes(spaceKey)) {
+  if (!scope.confluenceSpaceKeys.includes(spaceKey) && !hasExactEntityBinding(source, scope, bindings)) {
     throw new ResearchContractError("access-denied", "Confluence evidence source is outside the approved research scope.");
   }
   return {
@@ -203,6 +230,15 @@ function authorityFor(
   scope: ResearchScopeV1,
   bindings: readonly ResearchScopeBindingV1[],
 ): ResearchEvidenceAuthorityV1 {
+  const exact = bindings.find((binding) => {
+    if (binding.tenantOrigin !== scope.siteOrigin || (binding.authority !== "approved" && binding.authority !== "locked")) return false;
+    if (source.product === "jira") {
+      return binding.product === "jira" && binding.entityKind === "issue" &&
+        binding.key?.toLocaleUpperCase("en-US") === source.issueKey?.toLocaleUpperCase("en-US");
+    }
+    return binding.product === "confluence" && binding.entityKind === "page" && binding.key === source.contentId;
+  });
+  if (exact) return { bindingId: exact.id, authorityClass: "exact_entity" };
   const matching = bindings.find((binding) => {
     if (binding.tenantOrigin !== scope.siteOrigin || (binding.authority !== "approved" && binding.authority !== "locked")) return false;
     if (source.product === "jira") {
@@ -290,7 +326,7 @@ function validateRecord(value: ResearchEvidenceRecordV1): ResearchEvidenceRecord
       (identity.product === "confluence" && identity.entityKind !== "page")) invalid("Evidence canonical identity is invalid.");
   validateSource(value.source, { tenantOrigin, product: identity.product, entityKind: identity.entityKind, entityId, canonicalId });
   if (!value.authority || typeof value.authority !== "object" ||
-      value.authority.authorityClass !== "whole_scope" ||
+      (value.authority.authorityClass !== "whole_scope" && value.authority.authorityClass !== "exact_entity") ||
       !/^scope-binding:[A-Za-z0-9._:%-]{1,240}$/.test(value.authority.bindingId)) invalid("Evidence authority is invalid.");
   const retrieval = validateRetrieval(value.retrieval, value.source.id);
   if (!value.version || typeof value.version !== "object" || typeof value.version.truncated !== "boolean") invalid("Evidence version is invalid.");
@@ -314,7 +350,7 @@ function validateRecord(value: ResearchEvidenceRecordV1): ResearchEvidenceRecord
     id,
     identity: { tenantOrigin, product: identity.product, entityKind: identity.entityKind, entityId, canonicalId },
     source: clone(value.source),
-    authority: { bindingId: value.authority.bindingId, authorityClass: "whole_scope" },
+    authority: { bindingId: value.authority.bindingId, authorityClass: value.authority.authorityClass },
     ...(retrieval ? { retrieval } : {}),
     version,
     contentChars,
@@ -409,7 +445,7 @@ export async function createResearchEvidenceRecordV1(input: {
   retrieval?: ResearchEvidenceRetrievalV1;
 }): Promise<{ record: ResearchEvidenceRecordV1; chunks: ResearchEvidenceChunkV1[] }> {
   const scope = normalizeResearchScopeV1(input.scope);
-  const identity = sourceIdentity(input.source, scope);
+  const identity = sourceIdentity(input.source, scope, input.scopeBindings);
   validateSource(input.source, identity);
   const authority = authorityFor(input.source, scope, input.scopeBindings);
   const retrieval = validateRetrieval(input.retrieval, input.source.id);

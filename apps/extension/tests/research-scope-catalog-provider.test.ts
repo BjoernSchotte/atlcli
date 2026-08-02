@@ -264,6 +264,7 @@ describe("REST scope catalog providers", () => {
       product: "confluence",
       entityKind: "page",
       entityRef: "research-scope-entity:confluence-page-1001",
+      key: "1001",
       name: "Exact linked implementation page",
       canonicalUrl: `${tenantOrigin}/wiki/spaces/DOCSY/pages/1001/Exact-linked-implementation-page`,
       match: "exact_link",

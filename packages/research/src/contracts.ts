@@ -980,14 +980,16 @@ export function normalizeResearchScopeSeedsV1(
     if (product !== "jira" && product !== "confluence") {
       throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} has an invalid product.`);
     }
-    if (
-      (entityKind !== "project" && entityKind !== "space") ||
-      (product === "jira" && entityKind !== "project") ||
-      (product === "confluence" && entityKind !== "space")
-    ) {
+    const wholeScope =
+      (product === "jira" && entityKind === "project") ||
+      (product === "confluence" && entityKind === "space");
+    const exactEntity =
+      (product === "jira" && entityKind === "issue") ||
+      (product === "confluence" && entityKind === "page");
+    if (!wholeScope && !exactEntity) {
       throw new ResearchContractError(
         "invalid-request",
-        "One-shot scope seeds must bind whole Jira projects or Confluence spaces.",
+        "One-shot scope seeds must bind a Jira project or issue, or a Confluence space or page.",
       );
     }
     if (binding.tenantOrigin !== scope.siteOrigin) {
@@ -1009,6 +1011,22 @@ export function normalizeResearchScopeSeedsV1(
     }
     const rawKey = boundedScopeSeedString(binding.key, `Scope seed ${index + 1} key`, 255);
     const key = product === "jira" ? rawKey.toUpperCase() : rawKey;
+    if (entityKind === "issue" && !/^[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}$/.test(key)) {
+      throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} issue key is invalid.`);
+    }
+    if (entityKind === "page" && !/^[1-9][0-9]{0,127}$/.test(key)) {
+      throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} page ID is invalid.`);
+    }
+    const entityRef = boundedScopeSeedString(
+      binding.entityRef,
+      `Scope seed ${index + 1} entity reference`,
+    );
+    if (exactEntity && !/^research-scope-entity:[A-Za-z0-9._-]{1,200}$/.test(entityRef)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        `Scope seed ${index + 1} exact entity reference is invalid.`,
+      );
+    }
     return {
       binding: {
         schema: RESEARCH_SCOPE_BINDING_SCHEMA_V1,
@@ -1016,7 +1034,7 @@ export function normalizeResearchScopeSeedsV1(
         tenantOrigin: scope.siteOrigin,
         product,
         entityKind,
-        entityRef: boundedScopeSeedString(binding.entityRef, `Scope seed ${index + 1} entity reference`),
+        entityRef,
         key,
         name: boundedScopeSeedString(binding.name, `Scope seed ${index + 1} name`, 255),
         source,

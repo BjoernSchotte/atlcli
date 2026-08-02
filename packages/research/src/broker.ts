@@ -117,11 +117,19 @@ interface BrokerOptions {
     scopeBindings: readonly ResearchScopeBindingV1[];
     capturedAt?: () => string;
   };
+  /** Host-owned bindings for a durable turn; never exposed to QuickJS. */
+  scopeBindings?: readonly ResearchScopeBindingV1[];
 }
 
 interface RankedDetailAdmissionV1 {
   product: ResearchProduct;
   retrieval: ResearchEvidenceRetrievalV1;
+}
+
+interface ExactEntityBindingV1 {
+  binding: ResearchScopeBindingV1;
+  product: ResearchProduct;
+  entityId: string;
 }
 
 class ConcurrencyGate {
@@ -190,6 +198,32 @@ function publicSource(
   };
 }
 
+function exactEntityBinding(
+  binding: ResearchScopeBindingV1,
+  tenantOrigin: string,
+): ExactEntityBindingV1 | undefined {
+  if (binding.entityKind !== "issue" && binding.entityKind !== "page") return undefined;
+  if (
+    binding.tenantOrigin !== tenantOrigin ||
+    (binding.authority !== "approved" && binding.authority !== "locked") ||
+    !/^research-scope-entity:[A-Za-z0-9._-]{1,200}$/.test(binding.entityRef) ||
+    typeof binding.key !== "string"
+  ) {
+    throw new ResearchContractError("invalid-request", "Approved exact research scope binding is invalid.");
+  }
+  if (binding.entityKind === "issue") {
+    const issueKey = binding.key.toLocaleUpperCase("en-US");
+    if (binding.product !== "jira" || !/^[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}$/.test(issueKey)) {
+      throw new ResearchContractError("invalid-request", "Approved exact Jira scope binding is invalid.");
+    }
+    return { binding: { ...binding, key: issueKey }, product: "jira", entityId: issueKey };
+  }
+  if (binding.product !== "confluence" || !/^[1-9][0-9]{0,127}$/.test(binding.key)) {
+    throw new ResearchContractError("invalid-request", "Approved exact Confluence scope binding is invalid.");
+  }
+  return { binding: { ...binding }, product: "confluence", entityId: binding.key };
+}
+
 export class ResearchCapabilityBroker {
   readonly budget: ResearchRunBudget;
   readonly #request: ResearchRequestV1;
@@ -200,6 +234,9 @@ export class ResearchCapabilityBroker {
   readonly #sources = new Map<string, ResearchSourceReferenceV1>();
   readonly #detailEvidence = new Map<string, ResearchDetailEvidenceV1>();
   readonly #rankedEntityRefs = new Map<string, RankedDetailAdmissionV1>();
+  readonly #scopeBindings: readonly ResearchScopeBindingV1[];
+  readonly #exactEntityBindings = new Map<string, ExactEntityBindingV1>();
+  readonly #exactSearchEmitted = new Set<ResearchProduct>();
   readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
   readonly #searchAttempts: Record<ResearchProduct, number> = {
     jira: 0,
@@ -234,6 +271,17 @@ export class ResearchCapabilityBroker {
       createId: options.createEntityId,
     });
     this.#evidence = options.evidence;
+    this.#scopeBindings = options.scopeBindings ?? options.evidence?.scopeBindings ??
+      request.scopeSeeds?.map((seed) => seed.binding) ?? [];
+    for (const binding of this.#scopeBindings) {
+      const exact = exactEntityBinding(binding, request.scope.siteOrigin);
+      if (!exact) continue;
+      const key = `${exact.product}:${exact.entityId}`;
+      if (this.#exactEntityBindings.has(key)) {
+        throw new ResearchContractError("invalid-request", "Approved exact research scope binding is duplicated.");
+      }
+      this.#exactEntityBindings.set(key, exact);
+    }
     this.#gate = new ConcurrencyGate(request.limits.maxConcurrentCalls);
   }
 
@@ -325,7 +373,7 @@ export class ResearchCapabilityBroker {
         source,
         content,
         scope: this.#request.scope,
-        scopeBindings: this.#evidence.scopeBindings,
+        scopeBindings: this.#scopeBindings,
         capturedAt: this.#evidence.capturedAt?.() ?? new Date().toISOString(),
         retrieval,
       });
@@ -439,6 +487,20 @@ export class ResearchCapabilityBroker {
   ): Promise<ResearchSearchOutputV1> {
     this.#searchAttempts.jira += 1;
     this.budget.beginSearchPage("jira");
+    const exact = providerCursor ? [] : this.#exactJiraSummaries();
+    if (this.#request.scope.jiraProjectKeys.length === 0) {
+      const remaining = this.budget.remainingItems("jira");
+      const items = exact.slice(0, remaining);
+      this.budget.addItems("jira", items.length);
+      return this.#searchOutput(
+        "jira.issue.search",
+        query,
+        pageSize,
+        items,
+        undefined,
+        exact.length > items.length ? "item-limit" : undefined,
+      );
+    }
     const page = await this.#providers.jira.searchPage({
       jql: buildResearchJql(this.#request.scope, query),
       pageSize,
@@ -451,14 +513,16 @@ export class ResearchCapabilityBroker {
         item.issueKey.startsWith(`${item.projectKey}-`)
     );
     const remaining = this.budget.remainingItems("jira");
-    const accepted = scoped.slice(0, remaining);
+    const accepted = [...exact, ...scoped
+      .filter((item) => !exact.some((candidate) => candidate.issueKey === item.issueKey))
+      .map((item) => this.#jiraSummary(item))]
+      .slice(0, remaining);
     this.budget.addItems("jira", accepted.length);
-    const items = accepted.map((item) => this.#jiraSummary(item));
     return this.#searchOutput(
       "jira.issue.search",
       query,
       pageSize,
-      items,
+      accepted,
       page.nextProviderCursor,
       remaining <= accepted.length ? "item-limit" : undefined
     );
@@ -488,6 +552,20 @@ export class ResearchCapabilityBroker {
     }
     this.#searchAttempts.confluence += 1;
     this.budget.beginSearchPage("confluence");
+    const exact = providerCursor ? [] : this.#exactWikiSummaries();
+    if (this.#request.scope.confluenceSpaceKeys.length === 0) {
+      const remaining = this.budget.remainingItems("confluence");
+      const items = exact.slice(0, remaining);
+      this.budget.addItems("confluence", items.length);
+      return this.#searchOutput(
+        "wiki.search",
+        query,
+        pageSize,
+        items,
+        undefined,
+        exact.length > items.length ? "item-limit" : undefined,
+      );
+    }
     const page = await this.#providers.wiki.searchPage({
       cql: buildResearchCql(this.#request.scope, query),
       pageSize,
@@ -498,14 +576,16 @@ export class ResearchCapabilityBroker {
       this.#request.scope.confluenceSpaceKeys.includes(item.spaceKey)
     );
     const remaining = this.budget.remainingItems("confluence");
-    const accepted = scoped.slice(0, remaining);
+    const accepted = [...exact, ...scoped
+      .filter((item) => !exact.some((candidate) => candidate.contentId === item.contentId))
+      .map((item) => this.#wikiSummary(item))]
+      .slice(0, remaining);
     this.budget.addItems("confluence", accepted.length);
-    const items = accepted.map((item) => this.#wikiSummary(item));
     return this.#searchOutput(
       "wiki.search",
       query,
       pageSize,
-      items,
+      accepted,
       page.nextProviderCursor,
       remaining <= accepted.length ? "item-limit" : undefined
     );
@@ -613,6 +693,50 @@ export class ResearchCapabilityBroker {
     return source;
   }
 
+  #exactJiraSummaries(): ResearchEntitySummaryV1[] {
+    if (this.#exactSearchEmitted.has("jira")) return [];
+    this.#exactSearchEmitted.add("jira");
+    return [...this.#exactEntityBindings.values()]
+      .filter((entry) => entry.product === "jira")
+      .sort((left, right) => left.entityId.localeCompare(right.entityId))
+      .map((entry) => {
+        const source: ResearchSourceReferenceV1 = {
+          id: `jira:${entry.entityId}`,
+          product: "jira",
+          title: cleanOptionalText(entry.binding.name, 2_000) ?? entry.entityId,
+          url: `${this.#request.scope.siteOrigin}/browse/${encodeURIComponent(entry.entityId)}`,
+          issueKey: entry.entityId,
+        };
+        this.#sources.set(source.id, source);
+        return {
+          ...publicSource(source),
+          entityRef: this.#entityVault.issue({ kind: "jira", entityId: entry.entityId }),
+        };
+      });
+  }
+
+  #exactWikiSummaries(): ResearchEntitySummaryV1[] {
+    if (this.#exactSearchEmitted.has("confluence")) return [];
+    this.#exactSearchEmitted.add("confluence");
+    return [...this.#exactEntityBindings.values()]
+      .filter((entry) => entry.product === "confluence")
+      .sort((left, right) => left.entityId.localeCompare(right.entityId))
+      .map((entry) => {
+        const source: ResearchSourceReferenceV1 = {
+          id: `wiki:${entry.entityId}`,
+          product: "confluence",
+          title: cleanOptionalText(entry.binding.name, 2_000) ?? entry.entityId,
+          url: `${this.#request.scope.siteOrigin}/wiki/pages/${encodeURIComponent(entry.entityId)}`,
+          contentId: entry.entityId,
+        };
+        this.#sources.set(source.id, source);
+        return {
+          ...publicSource(source),
+          entityRef: this.#entityVault.issue({ kind: "wiki", entityId: entry.entityId }),
+        };
+      });
+  }
+
   #rankCandidates(input: unknown): ResearchCandidateRankOutputV1 {
     const decoded = decodeResearchCandidateRankInputV1(
       input,
@@ -674,11 +798,11 @@ export class ResearchCapabilityBroker {
       issueKey: entity.entityId,
       signal: this.signal,
     });
-    if (
-      detail.issueKey !== entity.entityId ||
-      detail.projectKey !== entity.projectKey ||
-      !this.#request.scope.jiraProjectKeys.includes(detail.projectKey)
-    ) {
+    const exact = this.#exactEntityBindings.get(`jira:${entity.entityId}`);
+    const wholeScope = entity.projectKey !== undefined &&
+      detail.projectKey === entity.projectKey &&
+      this.#request.scope.jiraProjectKeys.includes(detail.projectKey);
+    if (detail.issueKey !== entity.entityId || (!wholeScope && !exact)) {
       throw new ResearchContractError("access-denied", "Jira detail is outside the run scope.");
     }
     const source = this.#jiraSource(detail);
@@ -709,11 +833,11 @@ export class ResearchCapabilityBroker {
       contentId: entity.entityId,
       signal: this.signal,
     });
-    if (
-      detail.contentId !== entity.entityId ||
-      detail.spaceKey !== entity.spaceKey ||
-      !this.#request.scope.confluenceSpaceKeys.includes(detail.spaceKey)
-    ) {
+    const exact = this.#exactEntityBindings.get(`confluence:${entity.entityId}`);
+    const wholeScope = entity.spaceKey !== undefined &&
+      detail.spaceKey === entity.spaceKey &&
+      this.#request.scope.confluenceSpaceKeys.includes(detail.spaceKey);
+    if (detail.contentId !== entity.entityId || (!wholeScope && !exact)) {
       throw new ResearchContractError(
         "access-denied",
         "Confluence detail is outside the run scope."
