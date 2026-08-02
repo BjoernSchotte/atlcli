@@ -28,6 +28,7 @@ import {
   RESEARCH_SCOPE_EXPANSION_MODES_V1,
   ResearchScopeCatalogBroker,
   ResearchRunBudget,
+  approveResearchScopeExpansionV1,
   WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchEvidenceStoreV1,
   WorkspaceResearchOutlineStoreV1,
@@ -51,6 +52,7 @@ import {
   type ResearchReport,
   type ResearchScopePreflightOutcomeV1,
   type ResearchScopeSeedV1,
+  type ResearchScopeBindingV1,
   type ResearchSessionTurnV1,
   type ResearchSessionStoreV1,
   type ResearchSessionV1,
@@ -534,6 +536,35 @@ function activeSessionTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | 
   return session.turns.find((turn) => turn.id === session.activeTurnId) ?? session.turns.at(-1);
 }
 
+function scopeApprovalBindingV1(input: {
+  turn: ResearchSessionTurnV1;
+  proposalId: string;
+  approvedAt: string;
+}): ResearchScopeBindingV1 {
+  const proposal = input.turn.scopeExpansionProposals.find((candidate) => candidate.id === input.proposalId);
+  if (!proposal || proposal.status !== "proposed") {
+    throw new Error("Research scope expansion proposal is stale, unknown, or already resolved.");
+  }
+  const candidate = input.turn.scopeCandidates.find((entry) => entry.id === proposal.candidateId);
+  if (!candidate) {
+    throw new Error("Research scope expansion candidate is no longer available.");
+  }
+  return {
+    schema: "atlcli.research-scope-binding/v1",
+    id: `scope-binding:${candidate.id}`,
+    tenantOrigin: candidate.tenantOrigin,
+    product: candidate.product,
+    entityKind: candidate.entityKind,
+    entityRef: candidate.entityRef,
+    ...(candidate.key ? { key: candidate.key } : {}),
+    name: candidate.name,
+    source: "research_discovery",
+    authority: "approved",
+    candidateId: candidate.id,
+    approvedAt: input.approvedAt,
+  };
+}
+
 function projectSessionGraph(graph: ResearchGraphV1 | undefined): Record<string, unknown> | undefined {
   if (!graph) return undefined;
   return {
@@ -594,13 +625,39 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
         hasInstruction: revision.instruction !== undefined,
         ...(revision.planDiff ? { planDiff: revision.planDiff } : {}),
       })),
+      scopeRevisions: (turn.scopeRevisions ?? []).map((revision) => ({
+        id: revision.id,
+        proposalId: revision.proposalId,
+        basedOnBriefRevision: revision.basedOnBriefRevision,
+        basedOnGraphRevision: revision.basedOnGraphRevision,
+        revisedBriefRevision: revision.revisedBriefRevision,
+        proposedGraphRevision: revision.proposedGraphRevision,
+        state: revision.state,
+        ...(revision.planDiff ? { planDiff: revision.planDiff } : {}),
+      })),
       scope: {
-        candidateCount: turn.scopeCandidates.length,
-        bindingCount: turn.scopeBindings.length,
-        resolutionCount: turn.scopeResolutions.length,
-        pendingExpansionProposalIds: turn.scopeExpansionProposals
-          .filter((proposal) => proposal.status === "proposed")
-          .map((proposal) => proposal.id),
+        candidates: turn.scopeCandidates.map((candidate) => ({
+          id: candidate.id,
+          product: candidate.product,
+          entityKind: candidate.entityKind,
+          ...(candidate.key ? { key: candidate.key } : {}),
+          name: candidate.name,
+          ...(candidate.canonicalUrl ? { canonicalUrl: candidate.canonicalUrl } : {}),
+          ...(candidate.status ? { status: candidate.status } : {}),
+          ...(candidate.match ? { match: candidate.match } : {}),
+        })),
+        bindings: turn.scopeBindings,
+        resolutions: turn.scopeResolutions,
+        expansionProposals: turn.scopeExpansionProposals.map((proposal) => ({
+          id: proposal.id,
+          candidateId: proposal.candidateId,
+          expansionKind: proposal.expansionKind,
+          basedOnBriefRevision: proposal.basedOnBriefRevision,
+          basedOnGraphRevision: proposal.basedOnGraphRevision,
+          reason: proposal.reason,
+          status: proposal.status,
+          ...(proposal.approvedBindingId ? { approvedBindingId: proposal.approvedBindingId } : {}),
+        })),
       },
       work: {
         taskCount: turn.tasks.length,
@@ -617,11 +674,13 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
 function projectResearchSessionPlanV1(session: ResearchSessionV1): Record<string, unknown> {
   const turn = activeSessionTurn(session);
   const latestPlanRevision = turn?.planRevisions?.at(-1);
+  const latestScopeRevision = turn?.scopeRevisions?.at(-1);
+  const planDiff = latestScopeRevision?.planDiff ?? latestPlanRevision?.planDiff;
   return {
     ...projectResearchSessionV1(session),
     kind: "plan",
     planMutable: session.status === "waiting_plan_approval",
-    ...(latestPlanRevision?.planDiff ? { planDiff: latestPlanRevision.planDiff } : {}),
+    ...(planDiff ? { planDiff } : {}),
   };
 }
 
@@ -804,7 +863,7 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "clarify" && command !== "approve" && command !== "reject-plan" && command !== "revise-plan" && command !== "cancel" && command !== "delete") {
+  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "clarify" && command !== "approve" && command !== "reject-plan" && command !== "revise-plan" && command !== "approve-scope" && command !== "reject-scope" && command !== "cancel" && command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
   const sessionId = requireSessionId(sessionArg);
@@ -1027,6 +1086,53 @@ export async function handleResearchSessions(
       }
       dependencies.writeStderr(`[research] session=${sessionId} action=revise-plan revision=${planned.revision} graph_revision=${revisedTurn.graph.revision} status=${planned.status}\n`);
       dependencies.emitOutput(projectResearchSessionPlanV1(planned), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "approve-scope" || command === "reject-scope") {
+    if (args.length !== 2) {
+      throw new Error(`Usage: atlcli research sessions ${command} <session-id> --revision <session-revision> --brief-revision <brief-revision> --graph-revision <graph-revision> --proposal <scope-expansion-id>.`);
+    }
+    assertSessionFlags(flags, ["revision", "brief-revision", "graph-revision", "proposal"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const briefRevision = expectedSessionRevision(singleSessionFlag(flags, "brief-revision", true));
+    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
+    const proposalId = singleSessionFlag(flags, "proposal", true)!;
+    if (!/^scope-expansion:[A-Za-z0-9._-]{1,120}$/.test(proposalId)) {
+      throw new Error("--proposal requires a valid scope expansion ID.");
+    }
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) {
+        throw new Error("Research session revision is stale; inspect the current scope proposal and retry with its exact revision.");
+      }
+      const turn = activeSessionTurn(session);
+      if (!turn?.brief || !turn.graph || turn.brief.revision !== briefRevision || turn.graph.revision !== graphRevision) {
+        throw new Error("Research brief or graph revision is stale; inspect the current scope proposal and retry with its exact revisions.");
+      }
+      const at = new Date().toISOString();
+      const committed = command === "approve-scope"
+        ? await approveResearchScopeExpansionV1({
+            store: opened.store,
+            sessionId,
+            proposalId,
+            binding: scopeApprovalBindingV1({ turn, proposalId, approvedAt: at }),
+            expectedRevision: session.revision,
+            expectedLeaseEpoch: session.lease.epoch,
+            at,
+          })
+        : (await opened.store.commit(sessionId, {
+            kind: "reject_scope_expansion",
+            proposalId,
+            expectedRevision: session.revision,
+            expectedLeaseEpoch: session.lease.epoch,
+            at,
+          })).session;
+      dependencies.writeStderr(`[research] session=${sessionId} action=${command} revision=${committed.revision} status=${committed.status}\n`);
+      dependencies.emitOutput(projectResearchSessionPlanV1(committed), opts);
     } finally {
       opened.close();
     }
@@ -1843,7 +1949,7 @@ export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
 atlcli research --session <session-id> <question>
-atlcli research sessions <list|show|evidence|plan|clarify|approve|reject-plan|revise-plan|cancel|delete>
+atlcli research sessions <list|show|evidence|plan|clarify|approve|reject-plan|revise-plan|approve-scope|reject-scope|cancel|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -1880,6 +1986,10 @@ Durable session commands:
       --instruction <correction>
   sessions revise-plan <session-id> --revision <session-revision> --graph-revision <graph-revision>
       [--instruction <correction>]
+  sessions approve-scope <session-id> --revision <session-revision> --brief-revision <brief-revision>
+      --graph-revision <graph-revision> --proposal <scope-expansion-id>
+  sessions reject-scope <session-id> --revision <session-revision> --brief-revision <brief-revision>
+      --graph-revision <graph-revision> --proposal <scope-expansion-id>
   sessions cancel <session-id> --revision <session-revision>
   sessions delete <session-id> --revision <session-revision>
 

@@ -266,11 +266,11 @@ export async function approveResearchScopeExpansionV1(
     throw new Error("Research scope expansion is not awaiting an approval.");
   }
   const replacementGraph = proposal.expansionKind === "whole_scope"
-    ? composeResearchGraphV1(approveResearchBriefWholeScopeExpansionV1({
+    ? stageResearchGraphForDurableSessionV1(composeResearchGraphV1(approveResearchBriefWholeScopeExpansionV1({
         brief,
         binding: input.binding,
         existingBindings: active.scopeBindings,
-      }), { graphRevision: graph.revision + 1 })
+      }), { graphRevision: graph.revision + 1 }))
     : undefined;
   return (await input.store.commit(input.sessionId, {
     kind: "approve_scope_expansion",

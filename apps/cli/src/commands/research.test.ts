@@ -16,6 +16,8 @@ import {
   createResearchClaimV1,
   createResearchEvidenceRecordV1,
   createResearchOutlineFromClaimsV1,
+  createResearchBriefV1,
+  createResearchScopeExpansionProposalV1,
   createResearchSessionV1,
   createMemoryResearchWorkspace,
   initializeResearchSessionTurnV1,
@@ -452,6 +454,93 @@ async function seedFailedSession(harness: CliHarness): Promise<ResearchSessionV1
   })).session;
 }
 
+async function seedScopeExpansionSession(
+  harness: CliHarness,
+  expansionKind: "whole_scope" | "exact_entity",
+): Promise<ResearchSessionV1> {
+  const sessionId = expansionKind === "whole_scope"
+    ? "research-session:scope-whole"
+    : "research-session:scope-exact";
+  const turnId = expansionKind === "whole_scope"
+    ? "research-turn:scope-whole"
+    : "research-turn:scope-exact";
+  const candidate = expansionKind === "whole_scope"
+    ? {
+        schema: "atlcli.research-scope-candidate/v1" as const,
+        id: "research-scope-candidate:confluence-space-related",
+        tenantOrigin: "https://tenant-a.atlassian.net",
+        product: "confluence" as const,
+        entityKind: "space" as const,
+        entityRef: "research-scope-entity:confluence-space-related",
+        key: "RELATED",
+        name: "Related documentation",
+        status: "current" as const,
+        accessible: true as const,
+        providerFreshnessAt: "2026-08-02T12:00:00.000Z",
+      }
+    : {
+        schema: "atlcli.research-scope-candidate/v1" as const,
+        id: "research-scope-candidate:confluence-page-linked",
+        tenantOrigin: "https://tenant-a.atlassian.net",
+        product: "confluence" as const,
+        entityKind: "page" as const,
+        entityRef: "research-scope-entity:confluence-page-linked",
+        name: "Linked page",
+        status: "current" as const,
+        accessible: true as const,
+        providerFreshnessAt: "2026-08-02T12:00:00.000Z",
+      };
+  const brief = createResearchBriefV1({
+    sessionId,
+    turnId,
+    objective: "Assess the retained related scope.",
+    scope: {
+      siteOrigin: "https://tenant-a.atlassian.net",
+      jiraProjectKeys: ["ATLCLI"],
+      confluenceSpaceKeys: ["DOCSY"],
+    },
+    scopeCandidates: [candidate],
+    asOf: "2026-08-02T12:00:00.000Z",
+    timezone: "UTC",
+    requestedPlanApproval: "automatic",
+    requestedReconciliation: "off",
+  });
+  const initialized = await initializeResearchSessionTurnV1({
+    store: harness.durableStore,
+    session: createResearchSessionV1({
+      sessionId,
+      ownerId: "owner:prior-cli",
+      createdAt: "2026-08-02T12:00:00.000Z",
+      leaseExpiresAt: "2026-08-02T12:05:00.000Z",
+    }),
+    brief,
+    graph: composeResearchGraphV1(brief),
+    approveAutomatically: true,
+    at: "2026-08-02T12:00:01.000Z",
+  });
+  const turn = initialized.turns[0]!;
+  return (await harness.durableStore.commit(sessionId, {
+    kind: "propose_scope_expansion",
+    proposal: createResearchScopeExpansionProposalV1({
+      id: expansionKind === "whole_scope" ? "scope-expansion:related-space" : "scope-expansion:linked-page",
+      sessionId,
+      turnId,
+      basedOnBriefRevision: turn.brief!.revision,
+      basedOnGraphRevision: turn.graph!.revision,
+      candidateId: candidate.id,
+      expansionKind,
+      reason: expansionKind === "whole_scope"
+        ? "A retained relationship needs a bounded related-space follow-up."
+        : "A retained relationship needs one linked page.",
+      provenanceRefs: [expansionKind === "whole_scope" ? "source:related-space" : "source:linked-page"],
+      status: "proposed",
+    }),
+    expectedRevision: initialized.revision,
+    expectedLeaseEpoch: initialized.lease.epoch,
+    at: "2026-08-02T12:00:02.000Z",
+  })).session;
+}
+
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -780,6 +869,111 @@ describe("research CLI one-shot contract", () => {
       turn: { graph: { revision: proposed.graph.revision + 1, status: "proposed" } },
     });
     expect(reject.stderr.join("")).toContain("action=reject-plan");
+  });
+
+  test("atomically approves a discovered whole scope or rejects an exact entity through revision-fenced CLI controls", async () => {
+    const approve = cliHarness();
+    const awaitingWholeScope = await seedScopeExpansionSession(approve, "whole_scope");
+    const wholeTurn = awaitingWholeScope.turns[0]!;
+    await handleResearch(
+      ["sessions", "approve-scope", awaitingWholeScope.sessionId],
+      {
+        revision: String(awaitingWholeScope.revision),
+        "brief-revision": String(wholeTurn.brief!.revision),
+        "graph-revision": String(wholeTurn.graph!.revision),
+        proposal: "scope-expansion:related-space",
+      },
+      { json: true },
+      approve.dependencies,
+    );
+    const approved = JSON.parse(approve.stdout.join(""));
+    expect(approved).toMatchObject({
+      status: "waiting_plan_approval",
+      planMutable: true,
+      planDiff: {
+        fromRevision: 1,
+        toRevision: 2,
+        scopeFingerprintChanged: true,
+        requiresApproval: true,
+      },
+      turn: {
+        brief: { revision: 2, scope: { confluenceSpaceKeys: ["DOCSY", "RELATED"] } },
+        graph: { revision: 2, status: "proposed" },
+        scopeRevisions: [{ state: "proposed", proposedGraphRevision: 2 }],
+        scope: {
+          expansionProposals: [{ id: "scope-expansion:related-space", status: "approved" }],
+        },
+      },
+    });
+    expect(approve.runInputs).toHaveLength(0);
+    expect(approve.stderr.join("")).toContain("action=approve-scope");
+    await expect(handleResearch(
+      ["sessions", "approve-scope", awaitingWholeScope.sessionId],
+      {
+        revision: String(awaitingWholeScope.revision),
+        "brief-revision": String(wholeTurn.brief!.revision),
+        "graph-revision": String(wholeTurn.graph!.revision),
+        proposal: "scope-expansion:related-space",
+      },
+      { json: true },
+      approve.dependencies,
+    )).rejects.toThrow("revision is stale");
+
+    const approveExact = cliHarness();
+    const awaitingExactApproval = await seedScopeExpansionSession(approveExact, "exact_entity");
+    const exactApprovalTurn = awaitingExactApproval.turns[0]!;
+    await handleResearch(
+      ["sessions", "approve-scope", awaitingExactApproval.sessionId],
+      {
+        revision: String(awaitingExactApproval.revision),
+        "brief-revision": String(exactApprovalTurn.brief!.revision),
+        "graph-revision": String(exactApprovalTurn.graph!.revision),
+        proposal: "scope-expansion:linked-page",
+      },
+      { json: true },
+      approveExact.dependencies,
+    );
+    expect(JSON.parse(approveExact.stdout.join(""))).toMatchObject({
+      status: "running",
+      turn: {
+        brief: { revision: 1, scope: { confluenceSpaceKeys: ["DOCSY"] } },
+        graph: { revision: 1, status: "approved" },
+        scopeRevisions: [],
+        scope: {
+          bindings: [{ entityKind: "page", authority: "approved" }],
+          expansionProposals: [{ id: "scope-expansion:linked-page", status: "approved" }],
+        },
+      },
+    });
+    expect(approveExact.runInputs).toHaveLength(0);
+
+    const reject = cliHarness();
+    const awaitingExactEntity = await seedScopeExpansionSession(reject, "exact_entity");
+    const exactTurn = awaitingExactEntity.turns[0]!;
+    await handleResearch(
+      ["sessions", "reject-scope", awaitingExactEntity.sessionId],
+      {
+        revision: String(awaitingExactEntity.revision),
+        "brief-revision": String(exactTurn.brief!.revision),
+        "graph-revision": String(exactTurn.graph!.revision),
+        proposal: "scope-expansion:linked-page",
+      },
+      { json: true },
+      reject.dependencies,
+    );
+    expect(JSON.parse(reject.stdout.join(""))).toMatchObject({
+      status: "running",
+      turn: {
+        brief: { revision: 1, scope: { confluenceSpaceKeys: ["DOCSY"] } },
+        graph: { revision: 1, status: "approved" },
+        scopeRevisions: [],
+        scope: {
+          expansionProposals: [{ id: "scope-expansion:linked-page", status: "rejected" }],
+        },
+      },
+    });
+    expect(reject.runInputs).toHaveLength(0);
+    expect(reject.stderr.join("")).toContain("action=reject-scope");
   });
 
   test("recovers a persisted rejected-plan correction without accepting a stale graph revision", async () => {

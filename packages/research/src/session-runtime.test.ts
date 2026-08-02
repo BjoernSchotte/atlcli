@@ -221,7 +221,7 @@ describe("durable research session execution gate", () => {
       providerFreshnessAt: "2026-08-01T15:00:00.000Z",
     };
     const initialBrief = createResearchBriefV1({
-      ...brief("required"),
+      ...brief("automatic"),
       scopeCandidates: [candidate],
     });
     const store = new InMemoryResearchSessionStoreV1();

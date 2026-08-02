@@ -1724,10 +1724,10 @@ Required behavior:
   --answer "<question-id>=<value>" --assumption "<assumption-id>=accept|reject"
   --scope "<mention-id>=<candidate-id>"` with repeatable
   answer/assumption/scope flags,
-  `research sessions approve <id> --session-revision <s> --graph-revision <g>`,
-  `research sessions approve-scope <id> --session-revision <s>
+  `research sessions approve <id> --revision <s> --graph-revision <g>`,
+  `research sessions approve-scope <id> --revision <s>
   --brief-revision <b> --graph-revision <g> --proposal <p>`,
-  `research sessions reject-scope <id> --session-revision <s>
+  `research sessions reject-scope <id> --revision <s>
   --brief-revision <b> --graph-revision <g> --proposal <p>`,
   `research sessions reject-plan <id> --session-revision <s>
   --graph-revision <g> "<instruction>"`,
@@ -3222,6 +3222,11 @@ unknown-outcome retry/abstain remains a separate gate below.
         body-free plan diff is journaled and projected after restart, while
         scope, budgets, and capabilities remain unchanged unless a separately
         approved control path changes them.
+  - [x] Add revision-fenced `approve-scope` and `reject-scope`. The CLI derives
+        an approved binding only from the persisted candidate identity. A whole
+        project/space approval invokes the shared atomic replacement-graph
+        transition and stops for the new explicit plan approval; an exact
+        page/issue approval remains an entity binding and cannot widen scope.
 - [ ] Show the sanitized brief, graph, selected roles, dependencies, budgets,
       approval envelope including optional role/capability grants,
       scope bindings/provenance/expansion policy, pending scope proposals,
