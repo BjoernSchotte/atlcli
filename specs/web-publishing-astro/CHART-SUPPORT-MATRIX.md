@@ -99,6 +99,16 @@ world-class semantic/visual gate is still open; — intentionally static.
   `packages/web-publish/src/chart-budgets.test.ts`,
   `packages/web-publish/src/node.test.ts`, and
   `packages/export-charts-tanstack/src/index.test.ts`
+- Complete P0 option-family, duplicate/unknown parameter, strict/partial, and
+  deterministic diagnostic tests: `packages/confluence/src/chart-macro.test.ts`
+  and `packages/web-publish/src/chart-diagnostics.test.ts`. Unknown parameter
+  values are never copied into diagnostics.
+- Selected-table refresh and identity-chain tests:
+  `packages/web-publish/src/refresh.test.ts` and `digests.test.ts`. They prove
+  that only the affected page is invalidated and that its ChartModel, page,
+  and bundle identities all change. Provider page IDs/versions remain in the
+  private publication package while the source-neutral chart node contains
+  only non-reversible dependency digests.
 - DOCX/PDF all-shape and sparse-series projection tests:
   `packages/docx/src/serialize.test.ts` and
   `packages/pdf/src/serialize.test.ts`

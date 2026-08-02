@@ -25,6 +25,45 @@ function parameter(params: readonly MacroParameter[], name: string): string | un
   return params.find((item) => item.name.toLowerCase() === target)?.text?.trim() || undefined;
 }
 
+const KNOWN_CHART_PARAMETERS_V1 = new Set([
+  "type", "title", "subtitle", "xlabel", "ylabel",
+  "forgive", "language", "country", "dateformat", "timeseries", "timeperiod",
+  "dataorientation", "tables", "columns", "width", "height", "datadisplay",
+  "stacked", "3d", "showshapes", "opacity", "legend", "orientation",
+  "piesectionlabel", "piesectionexplode", "bgcolor", "bordercolor", "colors",
+  "domainaxislowerbound", "domainaxislower", "domainaxisupperbound", "domainaxisupper",
+  "domainaxistickunit", "domainaxislabelangle", "rangeaxislowerbound", "rangeaxislower",
+  "rangeaxisupperbound", "rangeaxisupper", "rangeaxistickunit", "rangeaxislabelangle",
+  "labelangle", "categorylabelposition", "datetickmarkposition", "datetickposition",
+  "attachment", "attachmentversion", "attachmentcomment", "thumbnail", "imageformat",
+]);
+
+function chartParameterDiagnostics(params: readonly MacroParameter[]): ChartDiagnosticV1[] {
+  const diagnostics: ChartDiagnosticV1[] = [];
+  const seen = new Set<string>();
+  for (const item of params) {
+    const normalized = item.name.trim().toLowerCase();
+    const safeName = /^[a-z0-9][a-z0-9_-]{0,63}$/u.test(normalized) ? normalized : "unknown";
+    if (seen.has(normalized)) {
+      diagnostics.push({
+        code: "invalid-option",
+        message: `Chart parameter ${safeName} is duplicated; the first value is used.`,
+        parameter: safeName,
+      });
+      continue;
+    }
+    seen.add(normalized);
+    if (!KNOWN_CHART_PARAMETERS_V1.has(normalized)) {
+      diagnostics.push({
+        code: "invalid-option",
+        message: `Unsupported Chart macro parameter ${safeName} was ignored.`,
+        parameter: safeName,
+      });
+    }
+  }
+  return diagnostics;
+}
+
 function boolParameter(params: readonly MacroParameter[], name: string): boolean | undefined {
   const value = parameter(params, name)?.toLowerCase();
   if (value === undefined) return undefined;
@@ -708,11 +747,11 @@ export function normalizeChartMacro(
   body: readonly ExportBlock[],
   source: ChartSourceKindV1,
 ): ChartMacroNormalizationResult {
-  const diagnostics: ChartDiagnosticV1[] = [];
+  const diagnostics: ChartDiagnosticV1[] = chartParameterDiagnostics(params);
   const kind = chartKind(parameter(params, "type"));
   if (kind === undefined) {
     return {
-      diagnostics: [{
+      diagnostics: [...diagnostics, {
         code: "unsupported-kind",
         message: `Unsupported Confluence Chart macro type: ${parameter(params, "type") ?? "(empty)"}.`,
         parameter: "type",

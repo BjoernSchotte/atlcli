@@ -361,7 +361,7 @@ only and must be safe to include in a public site manifest.
 - [x] Treat the Chart macro's `attachment` options as generated-output cache
       policy rather than an external data reference; preserve their safe typed
       metadata without fetching bytes.
-- [ ] Preserve source IDs/versions in non-public provenance without leaking
+- [x] Preserve source IDs/versions in non-public provenance without leaking
       account, tenant, or credential material.
 
 ### 5.2 Data Center/Server Storage adapter
@@ -559,7 +559,7 @@ listed in the capability registry.
       committing page content.
 - [x] If a DC provider is available, run the same matrix against DC; otherwise
       mark the DC live gate explicitly unexecuted and retain fixture evidence.
-- [ ] Verify a refresh with changed selected-table data invalidates only the
+- [x] Verify a refresh with changed selected-table data invalidates only the
       affected page and produces a new model/bundle digest.
 
 ## 11. Implementation tasks
@@ -673,7 +673,7 @@ The follow-up PR is complete only when all gates are checked:
       page-level chart sidecar remains.
 - [x] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
       static Astro output, accessible data fallback, and DOCX/PDF projections.
-- [ ] P0 parameter families and strict/lenient diagnostics are tested; every
+- [x] P0 parameter families and strict/lenient diagnostics are tested; every
       unsupported option is visible and deterministic.
 - [x] Existing non-chart DOCX/PDF and Astro pages pass regression tests. This
       includes the pre-refactor full DOCX golden, the PDF multi-page engine

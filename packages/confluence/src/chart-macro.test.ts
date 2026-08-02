@@ -160,6 +160,41 @@ describe("Confluence Chart macro normalization", () => {
     expect(strict.notes.some((note) => note.message.includes("strict"))).toBeTrue();
   });
 
+  test("reports every unsupported or ambiguous P0 parameter family deterministically", () => {
+    const parameters = [
+      ["forgive", "sometimes"], ["timeSeries", "sometimes"],
+      ["width", "wide"], ["height", "tall"],
+      ["stacked", "sometimes"], ["3d", "sometimes"], ["showShapes", "sometimes"],
+      ["thumbnail", "sometimes"], ["legend", "side"], ["legend", "top"],
+      ["orientation", "diagonal"], ["dataDisplay", "sometimes"],
+      ["timePeriod", "fortnight"], ["attachmentVersion", "overwrite"],
+      ["imageFormat", "gif"], ["opacity", "200"],
+      ["domainAxisLowerBound", "low"], ["domainAxisTickUnit", "zero"],
+      ["domainAxisLabelAngle", "slanted"], ["categoryLabelPosition", "sideways"],
+      ["dateTickPosition", "center"], ["bgColor", "url(evil)"],
+      ["borderColor", "not-a-color"], ["colors", "red,not-a-color"],
+      ["pieSectionExplode", "Missing"], ["mysteryMode", "private-value-not-echoed"],
+    ].map(([name, value]) => `<ac:parameter ac:name="${name}">${value}</ac:parameter>`).join("");
+    const first = storageToBlocks(storageChart("pie", parameters));
+    const second = storageToBlocks(storageChart("pie", parameters));
+    expect(first).toEqual(second);
+    const block = first.blocks[0];
+    expect(block?.type).toBe("chart");
+    if (block?.type !== "chart") throw new Error("expected lenient chart projection");
+    const diagnosed = new Set((block.diagnostics ?? []).map((diagnostic) => diagnostic.parameter?.toLowerCase()));
+    for (const parameter of [
+      "forgive", "timeseries", "width", "height", "stacked", "3d", "showshapes",
+      "thumbnail", "legend", "orientation", "datadisplay", "timeperiod",
+      "attachmentversion", "imageformat", "opacity", "domainaxislowerbound",
+      "domainaxistickunit", "domainaxislabelangle", "categorylabelposition",
+      "datetickposition", "bgcolor", "bordercolor", "colors",
+      "piesectionexplode", "mysterymode",
+    ]) expect(diagnosed.has(parameter), parameter).toBe(true);
+    expect(block.diagnostics?.some((diagnostic) => diagnostic.message.includes("duplicated; the first value is used"))).toBe(true);
+    expect(block.diagnostics?.some((diagnostic) => diagnostic.message.includes("Unsupported Chart macro parameter mysterymode was ignored"))).toBe(true);
+    expect(JSON.stringify(block.diagnostics)).not.toContain("private-value-not-echoed");
+  });
+
   test("uses the documented pie and horizontal-content defaults with grouped numbers", () => {
     const result = storageToBlocks(`<ac:structured-macro ac:name="chart"><ac:rich-text-body><table><tbody>
       <tr><th>Metric</th><th>2025</th><th>2026</th></tr>
