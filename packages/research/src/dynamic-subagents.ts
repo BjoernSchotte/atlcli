@@ -742,6 +742,43 @@ export interface ResearchReadyFrontierControllerV1 {
 
 export type ResearchTaskAdmissionModeV1 = "whole_graph" | "ready_frontier";
 
+function jsonStructuredCandidate(value: unknown): unknown | undefined {
+  if (typeof value !== "string") return value === undefined ? undefined : value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * DeepAgents' provider strategy can retain the successful structured tool
+ * call in a subagent trajectory and then append a natural-language completion
+ * message. Prefer the latest tool arguments before considering message text:
+ * the latter is not the typed response contract and must not shadow it.
+ */
+export function extractResearchStructuredCandidateV1(result: unknown): unknown {
+  if (typeof result === "string") return JSON.parse(result);
+  if (!result || typeof result !== "object" || !("update" in result)) return result;
+  const update = result.update;
+  if (!update || typeof update !== "object" || !("messages" in update) || !Array.isArray(update.messages)) return result;
+  const messages = update.messages as unknown[];
+  for (const message of [...messages].reverse()) {
+    if (!message || typeof message !== "object" || !("tool_calls" in message) || !Array.isArray(message.tool_calls)) continue;
+    for (const call of [...message.tool_calls].reverse()) {
+      if (!call || typeof call !== "object" || !("args" in call)) continue;
+      const candidate = jsonStructuredCandidate(call.args);
+      if (candidate !== undefined) return candidate;
+    }
+  }
+  for (const message of [...messages].reverse()) {
+    if (!message || typeof message !== "object" || !("content" in message)) continue;
+    const candidate = jsonStructuredCandidate(message.content);
+    if (candidate !== undefined) return candidate;
+  }
+  return result;
+}
+
 /**
  * Wrap DeepAgentsJS' public declarative subagent middleware with the
  * research-run admission contract. The upstream task tool still owns dynamic
@@ -899,15 +936,6 @@ export function createBoundedResearchSubagentMiddleware(
     dispatchPort.admit(taskAttemptForNode(node, activeGraph));
   };
 
-  const structuredCandidate = (result: unknown): unknown => {
-    if (typeof result === "string") return JSON.parse(result);
-    if (!result || typeof result !== "object" || !("update" in result)) return result;
-    const update = result.update;
-    if (!update || typeof update !== "object" || !("messages" in update) || !Array.isArray(update.messages)) return result;
-    const message = update.messages.at(-1);
-    if (!message || typeof message !== "object" || !("content" in message)) return result;
-    return typeof message.content === "string" ? JSON.parse(message.content) : message.content;
-  };
   /**
    * `coverageLimits` is optional explanatory metadata. A model occasionally
    * emits an empty string instead of omitting that optional entry. Dropping
@@ -928,7 +956,7 @@ export function createBoundedResearchSubagentMiddleware(
   };
   const v2DependencyResults = new Map<string, unknown>();
   const projectDependencyResult = (taskId: string, result: unknown): unknown | undefined => {
-    const candidate = structuredCandidate(result);
+    const candidate = extractResearchStructuredCandidateV1(result);
     if (!candidate || typeof candidate !== "object") return undefined;
     const schema = (candidate as { schema?: unknown }).schema;
     if (schema === RESEARCH_PACKET_BODY_SCHEMA_V1) {
@@ -1205,7 +1233,7 @@ export function createBoundedResearchSubagentMiddleware(
       const validateResult = async (result: unknown): Promise<unknown> => {
         let candidate: unknown;
         try {
-          const rawCandidate = structuredCandidate(result);
+          const rawCandidate = extractResearchStructuredCandidateV1(result);
           candidate = normalizeBlankCoverageLimits(rawCandidate);
           if (role === "synthesizer") parseResearchDynamicAgentDraftV1(candidate);
           else if (role === "reconciler") {
@@ -1275,7 +1303,7 @@ export function createBoundedResearchSubagentMiddleware(
       }
     },
     projectResult: async (value, { taskId }) => {
-      const candidate = structuredCandidate(value);
+      const candidate = extractResearchStructuredCandidateV1(value);
       const node = nodeForTaskId(taskId);
       if (!node) throw new Error(`Research task result has no graph node: ${taskId}`);
       if (node.outputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V2 &&

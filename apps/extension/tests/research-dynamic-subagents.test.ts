@@ -59,6 +59,7 @@ import {
   compileDynamicResearchSubagents,
   createBoundedResearchSubagentMiddleware,
   createResearchNodePtcToolsV1,
+  extractResearchStructuredCandidateV1,
   providerCompatibleResearchSchema,
   researchPtcToolNamesForNodeV1,
   researchSubagentTypeForNodeV1,
@@ -95,6 +96,27 @@ const broker = new ResearchCapabilityBroker(request, {
 const model = {
   invoke: async () => undefined,
 } as unknown as BaseChatModel;
+
+test("uses provider structured tool arguments ahead of a trailing natural-language completion", () => {
+  const packet = {
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    claimCandidates: [],
+    contradictionCandidates: [],
+    outlineProposals: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: [],
+  };
+  expect(extractResearchStructuredCandidateV1({
+    update: {
+      messages: [
+        { content: "Tool output is retained in the trajectory." },
+        { tool_calls: [{ name: "ResearchPacketModelBodyV2", args: packet }] },
+        { content: "Returning the requested structured result." },
+      ],
+    },
+  })).toEqual(packet);
+});
 
 function crossProductGraph() {
   return composeResearchGraphV1(graphBrief(request.question, ["jira", "confluence"], "deep"));
