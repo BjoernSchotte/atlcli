@@ -3458,6 +3458,9 @@ Gate:
         packet projection plus a disconnected diagnostic stream and retains
         exactly one completed task, graph node, packet, and journal event (44
         dynamic-subagent tests, 2026-08-02).
+  - [x] A fresh middleware hydrates that same durable packet after the local
+        projection failure and rejects a repeat task before any second upstream
+        provider call (44 dynamic-subagent tests, 2026-08-02).
 - [ ] Failure injection at every result-publication sub-boundary proves that a
       task cannot be terminal while its authoritative graph node remains
       running, and that recovery accepts exactly one packet/outbox event.

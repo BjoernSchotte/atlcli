@@ -3863,6 +3863,61 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const events = await store.events(brief.sessionId);
     expect(events.filter((event) => event.kind === "accept_packet")).toHaveLength(1);
     expect(events.some((event) => event.kind === "outcome_unknown")).toBe(false);
+
+    // A fresh host must reconstruct the admitted packet from the durable
+    // journal rather than replaying the provider task after the first host
+    // stopped its local projection.
+    const hydratedAcceptedTasks = turn.acceptedPackets.map((packet) => ({
+      attempt: turn.tasks.find((task) => task.taskId === packet.taskId)!,
+      packet,
+    }));
+    const resumedDispatches: string[] = [];
+    const resumedUpstream = tool(async (input: { subagent_type: string }) => {
+      resumedDispatches.push(input.subagent_type);
+      return {
+        schema: "atlcli.research-packet-body/v1",
+        answeredQuestion: "A duplicate provider response must never be used.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      };
+    }, {
+      name: "task",
+      description: "Synthetic resumed upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const resumedMiddleware = createBoundedResearchSubagentMiddleware(
+      model,
+      catalog,
+      compileDynamicResearchSubagents(catalog, {
+        model,
+        broker,
+        question: brief.objective,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [resumedUpstream] })) as never,
+      },
+      {
+        activeGraph: () => activeGraph,
+        durableDispatchJournal: journal,
+        hydratedAcceptedTasks,
+        onGraphUpdated: (next) => { activeGraph = next; },
+      },
+    );
+    await expect(resumedMiddleware.tools![0]!.invoke({
+      description: taskEnvelope(activeGraph, node.id).description,
+      subagent_type: researchSubagentTypeForNodeV1(node),
+    })).rejects.toMatchObject({ code: "task-already-dispatched" });
+    expect(resumedDispatches).toEqual([]);
   });
 
   test("runs independent native task calls concurrently before critique and synthesis", async () => {
