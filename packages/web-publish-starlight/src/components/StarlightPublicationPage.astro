@@ -62,4 +62,5 @@ const { page, navigation, sidebar, context, copy, seoHead, editLink } = Astro.pr
     context={context}
     search={{ sourceId: page.sourceId, title: page.title, labels: page.labels, locale: context.locale }}
   />
+  <slot name="after-content" />
 </StarlightPage>

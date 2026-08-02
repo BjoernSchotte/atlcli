@@ -1,8 +1,8 @@
 # Chart macro parity — a real `ExportBlock` surface for Astro publishing
 
-- Status: **Implementation in progress — the typed surface, all-shapes
-  TanStack Astro/DOCX/PDF projection, and CLI/browser/MV3 host paths are
-  proven; interaction and hardening work remain open**
+- Status: **Implemented and proven — the typed surface, all-shapes TanStack
+  Astro/DOCX/PDF projection, bounded interaction, and CLI/browser/MV3 host
+  paths pass the acceptance gates below**
 - Parent plan: [`PLAN.md`](./PLAN.md)
 - Scope: Confluence Cloud ADF and Data Center/Server Storage Chart macros
 - First consumer: `@atlcli/export-blocks-astro` and the Starlight adapter
@@ -86,9 +86,9 @@ now consume the same pinned TanStack scene/SVG adapter as the publishing
 surface. The document proof covers signed horizontal stacks, stepped paths,
 pie labels, locale-aware time-series labels, and Gantt progress/dependency
 edges. The production Astro proof covers the corresponding all-shapes visual,
-responsive and accessibility baseline; the full optional interaction and host
-matrix remain open. The maintained evidence matrix is in
-[`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
+responsive and accessibility baseline, JavaScript-off behavior, and the
+complete bounded `bar`/`xyBar` interaction matrix. The maintained evidence
+matrix is in [`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
 
 ### Proven milestone evidence (2026-08-02)
 
@@ -135,13 +135,16 @@ matrix remain open. The maintained evidence matrix is in
   warning callout fit above the unchanged TanStack visual/table without
   clipping or collisions.
 - The production Astro 7.1.6 consumer renders the same twelve models through
-  the shared TanStack server-SVG adapter. Desktop and 390px browser inspection
-  confirms all shapes, one semantic table per chart, UTF-8 labels, strict CSP,
-  focusable contained mobile visuals, hostile-label inertness, no document
-  overflow, and no production browser warnings/errors. A fresh JavaScript-off
-  run retains 15 static SVGs and 15 semantic tables with zero hydrated islands;
-  the JavaScript-on reduced-motion run hydrates only the two allowlisted
-  islands and retains visible keyboard focus.
+  the shared TanStack server-SVG adapter. The clean Starlight gallery combines
+  those twelve static models with two explicit bounded interaction examples.
+  Desktop and 390px browser inspection confirms all twelve shapes, fourteen
+  aligned semantic tables, UTF-8 labels, strict CSP, focusable contained mobile
+  visuals, no document overflow, and no production browser warnings/errors.
+  A fresh JavaScript-off run retains all fourteen static SVGs and tables with
+  zero hydrated islands; the JavaScript-on reduced-motion run hydrates only the
+  two allowlisted islands and retains visible keyboard focus. Hostile-label
+  inertness remains separately proven by the synthetic security fixture, which
+  is deliberately absent from the clean gallery.
 - The production ordinary-browser conformance bundle runs the same twelve
   models through both public browser document entry points. Its DOCX artifact
   contains 12 standalone TanStack SVG parts plus 12 PNG compatibility parts;
@@ -174,10 +177,11 @@ matrix remain open. The maintained evidence matrix is in
 - Contract tests dispatch all twelve Cloud ADF and DC Storage spellings and
   retain aligned tables; the shared tenant-free corpus supplies the separate
   visual all-shapes proof.
-- Browser checks prove all twelve static shapes plus the local XY-bar island,
-  static table after hydration, 390px containment, and CSP-safe bundled output.
-  JavaScript-off fallback is proven for the XY-bar path; the full interaction
-  and explicit JavaScript-disabled all-shapes matrix remain open.
+- Browser checks prove all twelve static shapes plus the bounded categorical-
+  and XY-bar islands, static tables after hydration, pointer and keyboard
+  tooltips, pin/Escape, resize behavior, reduced motion, 390px containment, and
+  CSP-safe bundled output. The clean Starlight gallery explicitly proves the
+  complete all-shapes matrix with JavaScript disabled and no external requests.
 
 ## 2. Why a shared block is required
 
@@ -548,12 +552,13 @@ listed in the capability registry.
 - [x] Complete in-app-browser checks for the all-shapes static matrix on
       desktop/mobile, accessibility tree, keyboard focus, reduced motion, CSP,
       and JavaScript disabled. The production Astro 7.1.6 build proves all
-      twelve static shapes, responsive desktop/390px containment, fifteen
-      aligned semantic tables (including thirteen visually hidden but
-      screen-reader-accessible tables), strict CSP, hostile-label inertness,
-      UTF-8 labels, visible focus, no document overflow, and zero browser
-      errors. The complete optional island interaction matrix remains the
-      separate open gate in section 7.2.
+      twelve static shapes, responsive desktop/390px containment, fourteen
+      aligned semantic tables, strict CSP, UTF-8 labels, visible focus, no
+      document overflow, and zero browser errors. With JavaScript disabled all
+      fourteen SVG/table pairs remain; with JavaScript enabled exactly the two
+      allowlisted islands hydrate. The separate synthetic fixture proves
+      hostile-label inertness without exposing test payloads in the clean
+      review surface.
 - [x] Run the mayflower Cloud profile against the persistent, non-private
       provider fixture page and record the provider-valid XY-bar result without
       committing page content.
@@ -659,8 +664,8 @@ listed in the capability registry.
 - [x] Run the packed consumers, all-shapes ordinary-browser and packed-MV3
       document checks, Cloud DOCX/PDF export, and Cloud Astro publish
       verification. DC live E2E remains explicitly unavailable and is covered
-      by the source/contract fixtures; the optional client-interaction matrix
-      remains a separate acceptance gate above.
+      by the source/contract fixtures; the bounded client-interaction and
+      JavaScript-off all-shapes matrices are proven above.
 - [x] Publish a support matrix that distinguishes source support, static output,
       interactive enhancement, and document projection.
 - [x] Update user-facing docs and keep generated output out of Git.

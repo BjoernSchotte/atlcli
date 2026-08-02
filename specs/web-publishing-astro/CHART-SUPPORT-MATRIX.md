@@ -43,8 +43,10 @@ world-class semantic/visual gate is still open; — intentionally static.
   shapes from the same TanStack scene. The production Astro proof covers
   desktop and 390px containment, a labelled focusable mobile scroll region,
   strict CSP, hostile labels, its accessibility tree, reduced motion, and the
-  complete JavaScript-disabled all-shapes fallback. The optional island
-  interaction matrix remains open.
+  complete JavaScript-disabled all-shapes fallback. The bounded categorical-
+  and XY-bar island matrix is also proven for pointer/keyboard tooltips,
+  pin/Escape, resize behavior, reduced motion, resource fallback, and retained
+  static data.
 - Cloud/DC normalization uses explicit locale, decimal/grouping and UTC date
   rules, with deterministic `en-US` fallback. Selected source tables contribute
   content digests to an ID-free per-page `macro-data` dependency, so cache
@@ -95,6 +97,9 @@ world-class semantic/visual gate is still open; — intentionally static.
 - Production interactive, mobile, reduced-motion, JavaScript-off, and runtime-
   budget browser matrix:
   `packages/web-publish-starlight/tests/visual-matrix.e2e.ts`
+- Clean Starlight all-shapes review surface (twelve rich static shapes plus two
+  explicit bounded interaction examples, with no synthetic security payloads):
+  `packages/web-publish-starlight/fixtures/starlight/src/pages/charts.astro`
 - Publication-policy, immutable-bundle, and render-budget tests:
   `packages/web-publish/src/chart-budgets.test.ts`,
   `packages/web-publish/src/node.test.ts`, and

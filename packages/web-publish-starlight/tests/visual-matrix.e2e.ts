@@ -179,6 +179,66 @@ test("TanStack chart islands provide responsive legends, pointer and keyboard to
   await staticContext.close();
 });
 
+test("the clean Starlight gallery proves every static shape and both bounded islands with and without JavaScript", async ({ browser }) => {
+  const expectedKinds = [
+    "pie", "bar", "line", "area", "xyArea", "xyBar", "xyLine", "xyStep",
+    "xyStepArea", "scatter", "timeSeries", "gantt",
+  ].sort();
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  const browserErrors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") browserErrors.push(message.text()); });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  await page.goto("/starlight/charts/", { waitUntil: "networkidle" });
+  await expect(page.getByRole("heading", { level: 1, name: "Chart gallery" })).toBeVisible();
+  const charts = page.locator('figure[data-atlcli-block="chart"]');
+  await expect(charts).toHaveCount(14);
+  await expect(charts.locator("svg")).toHaveCount(14);
+  await expect(page.locator("table[data-atlcli-chart-data]")).toHaveCount(14);
+  const kinds = await charts.evaluateAll((figures) => [...new Set(figures.map((figure) => figure.getAttribute("data-atlcli-chart-kind")))].sort());
+  expect(kinds).toEqual(expectedKinds);
+  await expect(page.locator('[data-atlcli-chart-island="hydrated"]')).toHaveCount(2);
+  await expect(page.locator('[data-atlcli-chart-island="static"]')).toHaveCount(12);
+  await expect(page.locator('[data-atlcli-chart-capability="tanstack-v0.3/bar"]')).toHaveCount(2);
+  await expect(page.getByText("Interactive chart enhancement is unavailable", { exact: false })).toHaveCount(0);
+  expect(await page.locator("body").innerText()).not.toContain("onerror=alert");
+  expect(await page.evaluate(assertNoHorizontalOverflow())).toMatchObject({ scrollWidth: 1440, width: 1440 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileLayout = await page.evaluate(assertNoHorizontalOverflow());
+  expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.width);
+  await expect(page.locator('[data-atlcli-chart-island="hydrated"]')).toHaveCount(2);
+  expect(browserErrors).toEqual([]);
+  await context.close();
+
+  const staticContext = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  const externalRequests: string[] = [];
+  await staticContext.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== `http://127.0.0.1:${process.env.ATLCLI_WEB_PUBLISH_VISUAL_PORT ?? "4387"}`) {
+      externalRequests.push(url.href);
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+  const staticPage = await staticContext.newPage();
+  const response = await staticPage.goto("/starlight/charts/", { waitUntil: "networkidle" });
+  expect(response?.headers()["content-security-policy"]).toContain("default-src 'self'");
+  await expect(staticPage.locator('figure[data-atlcli-block="chart"]')).toHaveCount(14);
+  await expect(staticPage.locator('figure[data-atlcli-block="chart"] svg')).toHaveCount(14);
+  await expect(staticPage.locator("table[data-atlcli-chart-data]")).toHaveCount(14);
+  await expect(staticPage.locator("[data-atlcli-chart-runtime]")).toHaveCount(0);
+  await expect(staticPage.locator('[data-atlcli-chart-island="hydrated"]')).toHaveCount(0);
+  const staticKinds = await staticPage.locator('figure[data-atlcli-block="chart"]').evaluateAll((figures) =>
+    [...new Set(figures.map((figure) => figure.getAttribute("data-atlcli-chart-kind")))].sort()
+  );
+  expect(staticKinds).toEqual(expectedKinds);
+  const staticLayout = await staticPage.evaluate(assertNoHorizontalOverflow());
+  expect(staticLayout.scrollWidth).toBeLessThanOrEqual(staticLayout.width);
+  expect(externalRequests).toEqual([]);
+  await staticContext.close();
+});
+
 test("an island runtime-budget overrun tears down TanStack and exposes the complete static chart", async ({ page }) => {
   await page.goto("/plain/charts-budget/", { waitUntil: "networkidle" });
   const island = page.locator('[data-atlcli-chart-island="static"]');
