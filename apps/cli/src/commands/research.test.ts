@@ -7,6 +7,8 @@ import {
   RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
   RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
   ResearchContractError,
+  ResearchSessionDispatchJournalV1,
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
   InMemoryResearchSessionStoreV1,
   WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchEvidenceStoreV1,
@@ -18,6 +20,7 @@ import {
   createMemoryResearchWorkspace,
   initializeResearchSessionTurnV1,
   prepareResearchBriefPreflightV1,
+  assessResearchRetrievalV1,
   type ResearchReportV1,
   type ResearchSessionV1,
 } from "@atlcli/research";
@@ -263,6 +266,166 @@ async function seedAuthenticationWaitingSession(harness: CliHarness): Promise<{
     at: "2026-08-01T12:00:02.000Z",
   });
   return { sessionId, turnId };
+}
+
+function jsonBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+/**
+ * Build the exact restart boundary the real runtime accepts: a completed
+ * retrieval wave, one host-issued continuation, and no ambient worker state.
+ */
+async function seedIssuedContinuationSession(harness: CliHarness): Promise<{
+  sessionId: string;
+  turnId: string;
+  continuationId: string;
+}> {
+  const sessionId = "research-session:continuation-test";
+  const turnId = "research-turn:continuation-test";
+  const request = buildResearchRequest({
+    question: "Continue the stored Jira and Confluence relationship research.",
+    projectKeys: ["ATLCLI"],
+    spaceKeys: ["DOCSY"],
+    maxRunMinutes: 5,
+    keepSession: false,
+    planOnly: false,
+    policy: {
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "off",
+    },
+  }, profile);
+  const briefOutcome = harness.dependencies.prepareBrief({
+    request,
+    policy: {
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "off",
+    },
+    asOf: "2026-08-01T12:00:00.000Z",
+    sessionId,
+    turnId,
+  });
+  if (briefOutcome.kind !== "ready") throw new Error("Expected a continuation test brief.");
+  const initialized = await initializeResearchSessionTurnV1({
+    store: harness.durableStore,
+    session: createResearchSessionV1({
+      sessionId,
+      ownerId: "owner:prior-cli",
+      createdAt: "2026-08-01T12:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T12:05:00.000Z",
+    }),
+    brief: briefOutcome.brief,
+    graph: composeResearchGraphV1(briefOutcome.brief),
+    approveAutomatically: true,
+    at: "2026-08-01T12:00:01.000Z",
+  });
+  const catalog = initialized.turns.find((turn) => turn.id === turnId)?.graph;
+  if (!catalog) throw new Error("Expected a durable continuation graph.");
+  let sequence = 0;
+  const journal = new ResearchSessionDispatchJournalV1({
+    store: harness.durableStore,
+    sessionId,
+    turnId,
+    now: () => `2026-08-01T12:00:${String(2 + ++sequence).padStart(2, "0")}.000Z`,
+  });
+  const graph = await journal.commitGraphSelection({
+    schema: "atlcli.research-graph-proposal/v1",
+    basedOnBriefRevision: catalog.basedOnBriefRevision,
+    basedOnGraphRevision: catalog.revision,
+    nodes: catalog.nodes
+      .filter((node) => node.kind !== "repair")
+      .map((node) => ({
+        nodeId: node.id,
+        dependencies: [...node.dependencies],
+        reasonCodes: [...node.reasonCodes],
+      })),
+  });
+  const node = graph.nodes.find((candidate) => candidate.status === "ready");
+  if (!node) throw new Error("Expected a ready continuation node.");
+  const taskId = `task:continuation-${node.id.replace("research-node:", "")}`;
+  await journal.admitAndStart({
+    schema: "atlcli.research-task-attempt/v1",
+    taskId,
+    nodeId: node.id,
+    graphRevision: graph.revision,
+    attempt: 1,
+    executor: node.executor,
+    ...(node.roleId ? { roleId: node.roleId } : {}),
+    grantedCapabilityIds: [...node.grantedCapabilityIds],
+    typedIntentRefs: [...node.typedIntentRefs],
+    expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    budget: { ...node.budget },
+    status: "ready",
+    dispatchState: "not_started",
+    createdAt: graph.createdAt,
+  });
+  const body = {
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    answeredQuestion: "The first retrieval wave completed.",
+    sourceIds: [],
+    findingCandidates: [],
+    relationshipCandidates: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: ["The next retrieval wave remains pending."],
+  };
+  await journal.acceptPacket({
+    taskId,
+    graphRevision: graph.revision,
+    body,
+    usage: {
+      capabilityCalls: 0,
+      inputTokens: 1,
+      outputTokens: 1,
+      resultBytes: jsonBytes(body),
+      durationMs: 1,
+      costMicros: 0,
+    },
+    availableSourceIds: [],
+    maximumResultBytes: node.budget.maxResultBytes,
+    budgetState: {
+      schema: "atlcli.research-run-budget/v1",
+      ptcCalls: 1,
+      httpAttempts: 1,
+      responseBytes: 128,
+      pages: { jira: 1, confluence: 0 },
+      items: { jira: 1, confluence: 0 },
+      details: { jira: 1, confluence: 0 },
+    },
+  });
+  const issued = await journal.recordRetrievalAssessment({
+    graphRevision: graph.revision,
+    assessment: assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    }),
+    issueContinuation: true,
+  });
+  if (!issued.continuation) throw new Error("Expected one issued retrieval continuation.");
+  const beforeWait = await harness.durableStore.read(sessionId);
+  if (!beforeWait) throw new Error("Expected a continuation session before authentication wait.");
+  await harness.durableStore.commit(sessionId, {
+    kind: "wait_authentication",
+    expectedRevision: beforeWait.revision,
+    expectedLeaseEpoch: beforeWait.lease.epoch,
+    at: "2026-08-01T12:01:00.000Z",
+  });
+  return { sessionId, turnId, continuationId: issued.continuation.id };
 }
 
 async function seedFailedSession(harness: CliHarness): Promise<ResearchSessionV1> {
@@ -921,6 +1084,50 @@ describe("research CLI one-shot contract", () => {
       lease: { epoch: 2 },
     });
     expect(harness.stderr.join("")).toContain(`session=${sessionId} status=running recovery=claimed lease_epoch=2`);
+  });
+
+  test("reclaims and consumes exactly one issued retrieval continuation after an interrupted host", async () => {
+    const harness = cliHarness();
+    const { sessionId, turnId, continuationId } = await seedIssuedContinuationSession(harness);
+    const originalRunAgent = harness.dependencies.runAgent;
+    harness.dependencies.runAgent = async (input) => {
+      const beforeConsume = await input.durableSession.store.read(input.sessionId);
+      const beforeTurn = beforeConsume?.turns.find((turn) => turn.id === input.durableSession.turnId);
+      const issued = beforeTurn?.retrievalAssessments?.find((assessment) =>
+        assessment.continuation?.id === continuationId,
+      );
+      expect(issued?.continuation).toMatchObject({ status: "issued" });
+      const journal = new ResearchSessionDispatchJournalV1({
+        store: input.durableSession.store,
+        sessionId: input.durableSession.sessionId,
+        turnId: input.durableSession.turnId,
+      });
+      await journal.consumeRetrievalContinuation({
+        graphRevision: issued!.graphRevision,
+        wave: issued!.wave!,
+        continuationId,
+      });
+      return originalRunAgent(input);
+    };
+
+    await handleResearch([], { resume: sessionId }, { json: false }, harness.dependencies);
+
+    expect(harness.runInputs).toHaveLength(1);
+    expect(harness.runInputs[0]).toMatchObject({
+      durableSession: { sessionId, turnId },
+      request: {
+        question: "Continue the stored Jira and Confluence relationship research.",
+        scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] },
+      },
+    });
+    const persisted = await harness.durableStore.read(sessionId);
+    const turn = persisted?.turns.find((candidate) => candidate.id === turnId);
+    expect(turn?.retrievalAssessments?.find((assessment) =>
+      assessment.continuation?.id === continuationId,
+    )?.continuation).toMatchObject({ status: "consumed" });
+    expect((await harness.durableStore.events(sessionId)).filter((event) =>
+      event.kind === "consume_retrieval_continuation",
+    )).toHaveLength(1);
   });
 
   test("leaves a durable authentication wait untouched when the resumed host lacks a key", async () => {

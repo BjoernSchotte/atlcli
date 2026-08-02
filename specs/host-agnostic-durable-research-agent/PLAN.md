@@ -3158,8 +3158,19 @@ CLI:
 - [x] Create and hand off an accepted durable one-shot turn plus its retained
       virtual workspace to the shared CLI runtime, and persist the canonical
       Markdown artifact before completion.
-- [ ] Add `--session <id>` for a new turn and `--resume <id>` for interrupted
+- [x] Add `--session <id>` for a new turn and `--resume <id>` for interrupted
       execution.
+
+T4 CLI new-turn/recovery checkpoint (2026-08-02): `--session` appends one
+accepted question only to a terminal retained session, reuses its exact tenant,
+scope, policy, limits, and workspace, and cannot accept new scope or policy
+flags. `--resume` recovers only a released, approved undispatched turn or a
+single host-issued retrieval continuation; it reclaims a new lease and cannot
+reinterpret prior provider work. The CLI corridor now proves the second case
+through the interrupt boundary: the resumed host receives the persisted brief,
+graph, packet/budget checkpoint, and one continuation; the continuation is
+atomically consumed exactly once before the report is finalized. General
+unknown-outcome retry/abstain remains a separate gate below.
 - [x] Add non-interactive `research sessions list` and `show` operations with
       bounded, body-free output.
 - [x] Add non-interactive `research sessions delete` with complete owned-data
