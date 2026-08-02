@@ -174,6 +174,14 @@ export interface ResearchLimitsV1 {
   maxTotalResponseBytes: number;
   maxInterpreterMemoryBytes: number;
   maxInterpreterMs: number;
+  /** Total model invocations across the central supervisor and every subagent. */
+  maxModelCalls: number;
+  /** Conservative run-wide input-token ceiling, including tool schemas and results. */
+  maxTotalModelInputTokens: number;
+  /** Conservative run-wide output-token ceiling. */
+  maxTotalModelOutputTokens: number;
+  /** Conservative USD micro-dollar ceiling using the model's documented worst-case rates. */
+  maxModelCostMicros: number;
   maxModelInputTokens: number;
   maxModelOutputTokens: number;
   maxReportChars: number;
@@ -194,6 +202,10 @@ export const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1> = {
   maxTotalResponseBytes: 8_000_000,
   maxInterpreterMemoryBytes: 64_000_000,
   maxInterpreterMs: 10_000,
+  maxModelCalls: 16,
+  maxTotalModelInputTokens: 80_000,
+  maxTotalModelOutputTokens: 64_000,
+  maxModelCostMicros: 2_000_000,
   maxModelInputTokens: 80_000,
   maxModelOutputTokens: 8_000,
   maxReportChars: 24_000,
@@ -735,6 +747,10 @@ const LIMIT_BOUNDS: {
   maxTotalResponseBytes: [100_000, 50_000_000],
   maxInterpreterMemoryBytes: [8_000_000, 256_000_000],
   maxInterpreterMs: [500, 60_000],
+  maxModelCalls: [1, 64],
+  maxTotalModelInputTokens: [1_000, 1_000_000],
+  maxTotalModelOutputTokens: [1_000, 128_000],
+  maxModelCostMicros: [10_000, 100_000_000],
   maxModelInputTokens: [1_000, 200_000],
   maxModelOutputTokens: [1_000, 32_000],
   maxReportChars: [1_000, 100_000],

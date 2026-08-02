@@ -84,6 +84,17 @@ const HOST_PARITY_POLICY = {
   requestedReconciliation: "auto",
 } as const;
 
+// This harness intercepts every Anthropic request locally, so its deliberately
+// wide limits exercise complete multi-wave recovery without pretending that
+// the synthetic calls are billable. Production defaults retain the $2
+// fail-closed ceiling, which is unit-covered independently.
+const NON_BILLABLE_PACKED_MODEL_LIMITS = {
+  maxModelCalls: 64,
+  maxTotalModelInputTokens: 1_000_000,
+  maxTotalModelOutputTokens: 128_000,
+  maxModelCostMicros: 100_000_000,
+} as const;
+
 const HOST_PARITY_PACKET = {
   schema: "atlcli.research-packet-body/v1",
   answeredQuestion: "Synthetic host-parity packet contains no source evidence.",
@@ -1804,7 +1815,7 @@ function hostParityRequest(): ResearchRequestV1 {
         authority: "locked",
       }),
     ],
-    limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
+    limits: { ...DEFAULT_RESEARCH_LIMITS_V1, ...NON_BILLABLE_PACKED_MODEL_LIMITS },
     wikiProvider: "rest",
   };
 }
@@ -2227,6 +2238,20 @@ function withoutEventSequence(event: ResearchOneShotEventV1): Omit<ResearchOneSh
 
 function isConcurrentCompletion(event: ResearchOneShotEventV1): boolean {
   return event.kind === "subagent" && event.status === "completed";
+}
+
+/**
+ * The Node parity fixture injects a non-provider fake model, while the packed
+ * host exercises the real ChatAnthropic adapter behind an intercepted fetch.
+ * Provider-spend telemetry is intentionally host-specific; workflow events
+ * and retrieval-budget telemetry remain part of the parity assertion.
+ */
+function isProviderSpendTelemetry(event: ResearchOneShotEventV1): boolean {
+  return event.kind === "budget" && (
+    event.metric === "cost_micros" ||
+    event.maximum === NON_BILLABLE_PACKED_MODEL_LIMITS.maxTotalModelInputTokens +
+      NON_BILLABLE_PACKED_MODEL_LIMITS.maxTotalModelOutputTokens
+  );
 }
 
 function canonicalConcurrentCompletions(
@@ -3963,8 +3988,12 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
    * Every other event remains ordered, and the complete terminal vocabulary
    * stays identical.
    */
-  expect(packedEvents.filter((event) => !isConcurrentCompletion(event)).map(withoutEventSequence))
-    .toEqual(node.events.filter((event) => !isConcurrentCompletion(event)).map(withoutEventSequence));
+  expect(packedEvents
+    .filter((event) => !isConcurrentCompletion(event) && !isProviderSpendTelemetry(event))
+    .map(withoutEventSequence))
+    .toEqual(node.events
+      .filter((event) => !isConcurrentCompletion(event) && !isProviderSpendTelemetry(event))
+      .map(withoutEventSequence));
   expect(canonicalConcurrentCompletions(packedEvents))
     .toEqual(canonicalConcurrentCompletions(node.events));
   expect(events.find((event) => event.messageKind === "research-worker:complete")?.report)

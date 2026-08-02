@@ -1283,6 +1283,16 @@ describe("research CLI one-shot contract", () => {
     expect(() => parseResearchCliInput(["question"], { "max-run-minutes": "11" })).toThrow("between 1 and 10");
   });
 
+  test("sets a conservative provider cost ceiling before model work starts", () => {
+    const input = parseResearchCliInput(["Find related content"], { "max-cost-usd": "0.50" });
+    expect(input.maxCostUsd).toBe(0.5);
+    expect(buildResearchRequest(input, profile).limits.maxModelCostMicros).toBe(500_000);
+    expect(() => parseResearchCliInput(["question"], { "max-cost-usd": "0" }))
+      .toThrow("greater than 0 and at most 25");
+    expect(() => parseResearchCliInput(["question"], { "max-cost-usd": "26" }))
+      .toThrow("greater than 0 and at most 25");
+  });
+
   test("uses profile defaults only when explicit keys are absent", () => {
     const input = parseResearchCliInput(["Find related content"], {});
     const request = buildResearchRequest(input, profile);

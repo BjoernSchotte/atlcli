@@ -21,7 +21,7 @@ import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
 } from "./broker.js";
-import type { ResearchRunBudget } from "./budget.js";
+import { ResearchModelRunBudget, type ResearchRunBudget } from "./budget.js";
 import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import {
   createResearchScopeDiscoveryV1,
@@ -95,6 +95,7 @@ import type {
 import {
   RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
+  RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
   compileDynamicResearchSubagents,
   createBoundedResearchSubagentMiddleware,
@@ -2094,13 +2095,41 @@ function createAnthropicSubagentModels(
     // PTC calls and return host-validated evidence candidates. Low effort
     // avoids spending the bounded per-node wall-clock budget on hidden
     // deliberation after all source reads have already completed.
-    "focused-researcher": createAnthropicModel(apiKey, 3_000, "low"),
-    "document-distiller": createAnthropicModel(apiKey, 2_400),
-    "contradiction-verifier": createAnthropicModel(apiKey, 2_000, "low"),
-    "coverage-moderator": createAnthropicModel(apiKey, 2_000, "low"),
-    reconciler: createAnthropicModel(apiKey, 2_400, "low"),
-    synthesizer: createAnthropicModel(apiKey, 4_096, "low"),
+    "focused-researcher": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["focused-researcher"], "low"),
+    "document-distiller": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["document-distiller"]),
+    "contradiction-verifier": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["contradiction-verifier"], "low"),
+    "coverage-moderator": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["coverage-moderator"], "low"),
+    "outline-planner": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["outline-planner"]),
+    reconciler: createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1.reconciler, "low"),
+    synthesizer: createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1.synthesizer, "low"),
   };
+}
+
+function createResearchModelBudgetMiddleware(
+  budget: ResearchModelRunBudget,
+  options: {
+    name: string;
+    maxOutputTokens: number;
+    onSnapshot: (snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>) => void;
+  },
+): AgentMiddleware {
+  return createMiddleware({
+    name: options.name,
+    wrapModelCall: async (request, handler) => {
+      const reservation = budget.reserve(request, options.maxOutputTokens);
+      options.onSnapshot(budget.snapshot());
+      try {
+        const response = await handler(request);
+        options.onSnapshot(budget.settle(reservation, response));
+        return response;
+      } catch (error) {
+        // Retain an unsuccessful reservation: the provider may have received
+        // the request, and a subsequent retry must not create unbounded cost.
+        options.onSnapshot(budget.snapshot());
+        throw error;
+      }
+    },
+  });
 }
 
 function collectUsage(messages: unknown): ResearchRunUsageV1 | undefined {
@@ -2586,6 +2615,28 @@ async function runResearchAgentWithBindings(
   const modelsByRole = input.model
     ? undefined
     : createAnthropicSubagentModels(input.apiKey ?? "");
+  const modelRunBudget = input.model ? undefined : new ResearchModelRunBudget(input.request.limits);
+  const emitModelBudget = (snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>): void => {
+    emitEvent({
+      kind: "budget",
+      metric: "tokens",
+      consumed: snapshot.inputTokens + snapshot.outputTokens,
+      maximum: input.request.limits.maxTotalModelInputTokens + input.request.limits.maxTotalModelOutputTokens,
+    });
+    emitEvent({
+      kind: "budget",
+      metric: "cost_micros",
+      consumed: snapshot.costMicros,
+      maximum: input.request.limits.maxModelCostMicros,
+    });
+  };
+  const supervisorModelBudgetMiddleware = modelRunBudget
+    ? createResearchModelBudgetMiddleware(modelRunBudget, {
+        name: "ResearchSupervisorModelBudgetMiddleware",
+        maxOutputTokens: input.request.limits.maxModelOutputTokens,
+        onSnapshot: emitModelBudget,
+      })
+    : undefined;
   const directDetailSourceIdsByNode = new Map<string, Set<string>>();
   const capabilityCallsByNode = new Map<string, number>();
   const scopeDiscoverySequenceByNode = new Map<string, number>();
@@ -2867,6 +2918,13 @@ async function runResearchAgentWithBindings(
         maxSearchPagesPerProduct: input.request.limits.maxSearchPagesPerProduct,
         maxDetailItemsPerProduct: input.request.limits.maxDetailItemsPerProduct,
         maxPacketChars: Math.min(24_000, input.request.limits.maxReportChars),
+        ...(modelRunBudget ? {
+          createModelBudgetMiddleware: (node) => createResearchModelBudgetMiddleware(modelRunBudget, {
+            name: `ResearchModelBudgetMiddleware:${node.id}`,
+            maxOutputTokens: RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1[node.roleId],
+            onSnapshot: emitModelBudget,
+          }),
+        } : {}),
         onPtcDiagnostic: emitPtcDiagnostic,
         onNodePtcDiagnostic: (nodeId, diagnostic) => {
           if (diagnostic.outcome === "started") {
@@ -3660,6 +3718,7 @@ async function runResearchAgentWithBindings(
           ...(durableSummarizationMiddleware
             ? [durableSummarizationMiddleware, createMiddleware({ name: "patchToolCallsMiddleware" })]
             : disabledHostMiddleware),
+          ...(supervisorModelBudgetMiddleware ? [supervisorModelBudgetMiddleware] : []),
           runtime.createFilesystemMiddleware({
             backend: deepAgentBackend,
             tools: ["read_file", "ls", "glob", "grep", "write_file", "edit_file"],
@@ -3746,6 +3805,7 @@ async function runResearchAgentWithBindings(
         ]
       : [
           ...disabledMiddleware,
+          ...(supervisorModelBudgetMiddleware ? [supervisorModelBudgetMiddleware] : []),
           createCodeInterpreterMiddleware({
             ptc: tools,
             subagents: false,

@@ -26,6 +26,26 @@ export interface ResearchRunBudgetStateV1 {
   details: Record<ResearchProduct, number>;
 }
 
+export interface ResearchModelBudgetSnapshotV1 {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costMicros: number;
+}
+
+interface ResearchModelBudgetReservationV1 {
+  id: number;
+  inputTokens: number;
+  outputTokens: number;
+  costMicros: number;
+}
+
+// Use the documented Sonnet long-context rates rounded upward: $6/MTok input
+// and $22.50/MTok output. A local client-side tool has no separate provider
+// fee; its schema/result bytes are nevertheless accounted as model input.
+const CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN = 6;
+const CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN = 23;
+
 const RESEARCH_RUN_BUDGET_SCHEMA_V1 = "atlcli.research-run-budget/v1" as const;
 
 function nonNegativeInteger(value: unknown, label: string): number {
@@ -98,6 +118,168 @@ function encodedJsonBytes(value: unknown, label: string): number {
     throw new ResearchContractError("invalid-request", `${label} is not JSON-safe.`);
   }
   return new TextEncoder().encode(encoded).byteLength;
+}
+
+function modelInputBytes(value: unknown, seen = new Set<object>()): number {
+  if (value === null || value === undefined) return 4;
+  if (typeof value === "string") return new TextEncoder().encode(value).byteLength;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value).length;
+  }
+  if (typeof value === "function" || typeof value === "symbol") return 0;
+  if (Array.isArray(value)) return value.reduce((total, item) => total + modelInputBytes(item, seen), 2);
+  if (typeof value !== "object") return 0;
+  if (seen.has(value)) return 0;
+  seen.add(value);
+  return Object.entries(value as Record<string, unknown>).reduce(
+    (total, [key, item]) => total + new TextEncoder().encode(key).byteLength + modelInputBytes(item, seen),
+    2,
+  );
+}
+
+const MODEL_TOOL_SCHEMA_RESERVE_BYTES = 8_192;
+const MODEL_RESPONSE_FORMAT_RESERVE_BYTES = 8_192;
+
+/**
+ * Project LangChain's internal request object onto the data that is actually
+ * serialized to a provider. Walking its complete object graph also walks Zod
+ * implementation metadata and middleware closures; those are not tokens and
+ * would make a fail-closed budget reject ordinary short calls.
+ */
+function providerRequestInputBytes(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return modelInputBytes(value);
+  const request = value as {
+    systemMessage?: unknown;
+    messages?: unknown;
+    tools?: unknown;
+    responseFormat?: unknown;
+  };
+  const systemMessage = request.systemMessage;
+  const messages = Array.isArray(request.messages)
+    ? request.messages.map((message) => {
+      if (!message || typeof message !== "object") return message;
+      const record = message as Record<string, unknown>;
+      // These are the LangChain fields which become Anthropic message blocks.
+      return {
+        content: record.content,
+        name: record.name,
+        tool_call_id: record.tool_call_id,
+        tool_calls: record.tool_calls,
+        additional_kwargs: record.additional_kwargs,
+      };
+    })
+    : request.messages;
+  const tools = Array.isArray(request.tools)
+    ? request.tools.map((tool) => {
+      if (!tool || typeof tool !== "object") return undefined;
+      const record = tool as Record<string, unknown>;
+      // Tool schema serialization is provider-specific. Reserve a deliberately
+      // high fixed amount instead of counting the non-serialized Zod graph.
+      return { name: record.name, description: record.description };
+    })
+    : [];
+  return modelInputBytes({ systemMessage, messages, tools }) +
+    tools.length * MODEL_TOOL_SCHEMA_RESERVE_BYTES +
+    (request.responseFormat === undefined ? 0 : MODEL_RESPONSE_FORMAT_RESERVE_BYTES);
+}
+
+function observedModelUsage(value: unknown): { inputTokens: number; outputTokens: number } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as {
+    usage_metadata?: Record<string, unknown>;
+    response_metadata?: { usage?: Record<string, unknown> };
+  };
+  const usage = record.response_metadata?.usage ?? record.usage_metadata;
+  if (!usage) return undefined;
+  const token = (key: string): number => Number.isSafeInteger(usage[key]) && (usage[key] as number) >= 0
+    ? usage[key] as number
+    : 0;
+  const inputTokens = token("input_tokens") + token("cache_creation_input_tokens") + token("cache_read_input_tokens");
+  const outputTokens = token("output_tokens");
+  return inputTokens > 0 || outputTokens > 0 ? { inputTokens, outputTokens } : undefined;
+}
+
+/**
+ * A process-local, fail-closed model budget. It reserves a conservative
+ * request maximum before each model invocation, so concurrent subagents
+ * cannot exceed a run ceiling merely by starting together. On a provider
+ * error the reservation intentionally remains consumed: retry loops must not
+ * turn an uncertain billable call into unbounded spend.
+ */
+export class ResearchModelRunBudget {
+  readonly #limits: ResearchLimitsV1;
+  #calls = 0;
+  #inputTokens = 0;
+  #outputTokens = 0;
+  #costMicros = 0;
+  #nextReservationId = 1;
+  readonly #reservations = new Map<number, ResearchModelBudgetReservationV1>();
+
+  constructor(limits: ResearchLimitsV1) {
+    this.#limits = limits;
+  }
+
+  snapshot(): ResearchModelBudgetSnapshotV1 {
+    return {
+      calls: this.#calls,
+      inputTokens: this.#inputTokens,
+      outputTokens: this.#outputTokens,
+      costMicros: this.#costMicros,
+    };
+  }
+
+  reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1 {
+    if (!Number.isSafeInteger(maximumOutputTokens) || maximumOutputTokens < 1) {
+      throw new ResearchContractError("invalid-request", "Research model output reservation is invalid.");
+    }
+    // Four bytes per token is a useful prose estimate but too optimistic for
+    // tool JSON. Three bytes plus fixed provider/tool overhead is deliberate.
+    const inputTokens = Math.ceil(providerRequestInputBytes(request) / 3) + 1_024;
+    const outputTokens = maximumOutputTokens;
+    const costMicros = inputTokens * CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN +
+      outputTokens * CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN;
+    if (
+      this.#calls + 1 > this.#limits.maxModelCalls ||
+      this.#inputTokens + inputTokens > this.#limits.maxTotalModelInputTokens ||
+      this.#outputTokens + outputTokens > this.#limits.maxTotalModelOutputTokens ||
+      this.#costMicros + costMicros > this.#limits.maxModelCostMicros
+    ) {
+      throw new ResearchContractError("limit-exceeded", "The model run budget was exhausted before another provider call.");
+    }
+    const reservation: ResearchModelBudgetReservationV1 = {
+      id: this.#nextReservationId++,
+      inputTokens,
+      outputTokens,
+      costMicros,
+    };
+    this.#calls += 1;
+    this.#inputTokens += inputTokens;
+    this.#outputTokens += outputTokens;
+    this.#costMicros += costMicros;
+    this.#reservations.set(reservation.id, reservation);
+    return reservation;
+  }
+
+  settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1 {
+    const active = this.#reservations.get(reservation.id);
+    if (!active) throw new ResearchContractError("invalid-request", "Research model budget reservation is unknown.");
+    this.#reservations.delete(reservation.id);
+    const usage = observedModelUsage(response);
+    if (!usage) return this.snapshot();
+    const actualCostMicros = usage.inputTokens * CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN +
+      usage.outputTokens * CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN;
+    this.#inputTokens += usage.inputTokens - active.inputTokens;
+    this.#outputTokens += usage.outputTokens - active.outputTokens;
+    this.#costMicros += actualCostMicros - active.costMicros;
+    if (
+      this.#inputTokens > this.#limits.maxTotalModelInputTokens ||
+      this.#outputTokens > this.#limits.maxTotalModelOutputTokens ||
+      this.#costMicros > this.#limits.maxModelCostMicros
+    ) {
+      throw new ResearchContractError("limit-exceeded", "The model run budget was exhausted by the provider response.");
+    }
+    return this.snapshot();
+  }
 }
 
 /**

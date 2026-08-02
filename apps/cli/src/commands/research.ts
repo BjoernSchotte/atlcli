@@ -94,6 +94,8 @@ export interface ResearchCliInput {
   timezone?: string;
   outputPath?: string;
   maxRunMinutes: number;
+  /** Conservative provider-cost ceiling for a new durable session, in USD. */
+  maxCostUsd?: number;
   keepSession: boolean;
   planOnly: boolean;
   /** Resume is deliberately limited to a no-dispatch authentication wait in T4. */
@@ -105,6 +107,7 @@ export interface ResearchCliInput {
 
 const DEFAULT_MAX_RUN_MINUTES = 10;
 const MAX_MAX_RUN_MINUTES = 10;
+const MAX_MODEL_COST_USD = 25;
 const T2_RESEARCH_FLAGS = new Set([
   "profile",
   "project",
@@ -114,6 +117,7 @@ const T2_RESEARCH_FLAGS = new Set([
   "as-of",
   "timezone",
   "max-run-minutes",
+  "max-cost-usd",
   "output",
   "effort",
   "plan-approval",
@@ -137,6 +141,7 @@ const T2_VALUE_FLAGS = [
   "as-of",
   "timezone",
   "max-run-minutes",
+  "max-cost-usd",
   "output",
   "effort",
   "plan-approval",
@@ -362,6 +367,11 @@ export function parseResearchCliInput(
   if (!Number.isSafeInteger(maxRunMinutes) || maxRunMinutes < 1 || maxRunMinutes > MAX_MAX_RUN_MINUTES) {
     throw new Error(`--max-run-minutes must be an integer between 1 and ${MAX_MAX_RUN_MINUTES}.`);
   }
+  const maxCostUsdFlag = getFlag(flags, "max-cost-usd");
+  const maxCostUsd = maxCostUsdFlag === undefined ? undefined : Number(maxCostUsdFlag);
+  if (maxCostUsd !== undefined && (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0 || maxCostUsd > MAX_MODEL_COST_USD)) {
+    throw new Error(`--max-cost-usd must be a number greater than 0 and at most ${MAX_MODEL_COST_USD}.`);
+  }
   const requestedPlanApproval = getFlag(flags, "plan-approval") ??
     DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedPlanApproval;
   if (requestedPlanApproval !== "default" && requestedPlanApproval !== "automatic") {
@@ -402,6 +412,7 @@ export function parseResearchCliInput(
     ...(timezone ? { timezone } : {}),
     ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
     maxRunMinutes,
+    ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
     keepSession: hasFlag(flags, "keep-session"),
     planOnly: hasFlag(flags, "plan-only"),
     policy,
@@ -1612,6 +1623,9 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
       // subagent runs. Its provider budget must accommodate that program;
       // 4,096 tokens can terminate mid-tool-input for a valid six-node graph.
       maxModelOutputTokens: 8_000,
+      ...(input.maxCostUsd === undefined
+        ? {}
+        : { maxModelCostMicros: Math.floor(input.maxCostUsd * 1_000_000) }),
       // The CLI controls only the complete workflow deadline. Individual
       // QuickJS/PTC operations retain their tighter contract limits.
       maxRunMs: input.maxRunMinutes * 60_000,
@@ -2343,6 +2357,7 @@ Options:
   --as-of <date/time>    Add a fixed date or timezone-qualified timestamp
   --timezone <name>      Add an explicit timezone to the question
   --max-run-minutes <n>  Complete workflow deadline, 1-10 (default: 10)
+  --max-cost-usd <n>     Conservative Claude provider ceiling for a new run, $0 < n <= $25 (default: $2)
   --effort <mode>         auto|lookup|analysis|deep (default: auto)
   --plan-approval <mode>  automatic; omitted deep plans stop for review
   --scope-expansion <m>   strict|ask|exact-linked (default: ask)

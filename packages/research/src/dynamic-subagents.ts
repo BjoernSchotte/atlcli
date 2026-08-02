@@ -1,5 +1,5 @@
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
-import { createMiddleware } from "langchain";
+import { createMiddleware, type AgentMiddleware } from "langchain";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
 import type { SubAgent } from "deepagents/browser";
@@ -68,6 +68,18 @@ export const RESEARCH_WORKER_PACKET_SCHEMA_V1 = RESEARCH_PACKET_BODY_JSON_SCHEMA
 export const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1 = RESEARCH_PACKET_BODY_JSON_SCHEMA_V1;
 /** @deprecated Use RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1. */
 export const RESEARCH_CRITIQUE_SCHEMA_V1 = RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1;
+
+export const RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1: Readonly<
+  Record<ResearchGraphRoleV1, number>
+> = {
+  "focused-researcher": 3_000,
+  "document-distiller": 2_400,
+  "contradiction-verifier": 2_000,
+  "coverage-moderator": 2_000,
+  "outline-planner": 2_400,
+  reconciler: 2_400,
+  synthesizer: 4_096,
+};
 
 const RESEARCH_DEPENDENCY_PACKET_SCHEMA_V1 =
   "atlcli.research-dependency-packet/v1" as const;
@@ -571,6 +583,8 @@ export interface DynamicResearchSubagentOptions {
   maxDetailItemsPerProduct: number;
   maxPacketChars: number;
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+  /** Shared run-level provider budget; each subagent receives an isolated middleware instance. */
+  createModelBudgetMiddleware?: (node: ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 }) => AgentMiddleware;
   onNodePtcDiagnostic?: (nodeId: string, diagnostic: ResearchPtcDiagnosticV1) => void;
   onNodePtcResult?: (
     nodeId: string,
@@ -684,8 +698,10 @@ export function compileDynamicResearchSubagents(
         rolePrompt(node, options.question, acquisitionBudget),
       ].join("\n"),
       tools: [],
-      middleware: ptc.length > 0
-        ? [
+      middleware: [
+        ...(options.createModelBudgetMiddleware ? [options.createModelBudgetMiddleware(node)] : []),
+        ...(ptc.length > 0
+          ? [
             createMiddleware({
               name: "ResearchStructuredOutputRepairNoPtcMiddleware",
               wrapModelCall: async (request, handler) => {
@@ -720,7 +736,8 @@ export function compileDynamicResearchSubagents(
               captureConsole: false,
             }),
           ]
-        : [],
+          : []),
+      ],
     } satisfies SubAgent;
   });
 }
