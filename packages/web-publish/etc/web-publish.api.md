@@ -124,6 +124,9 @@ export declare const DEFAULT_CHART_P0_DIAGNOSTIC_CODES_V1: readonly [
     "renderer-fallback"
 ];
 
+// export: DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1
+export declare const DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 250;
+
 // export: DEFAULT_PUBLICATION_CHART_STATIC_BUDGET_V1
 export declare const DEFAULT_PUBLICATION_CHART_STATIC_BUDGET_V1: Readonly<{
     maxSvgNodes: 100000;
@@ -148,6 +151,9 @@ export declare function digestPublicationPageV1(page: PublicationPageV1): Promis
 
 // export: digestPublicationRefreshPlanV1
 export declare function digestPublicationRefreshPlanV1(plan: PublicationRefreshPlanV1): Promise<string>;
+
+// export: MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1
+export declare const MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 1000;
 
 // export: negotiatePublicationExperienceV1
 export declare function negotiatePublicationExperienceV1(selection: PublicationExperienceSelectionV1, descriptorValue: unknown, tokenValidator: PublicationDesignTokenValidatorV1): PublicationExperienceNegotiationV1;
@@ -443,6 +449,7 @@ export interface PublicationChartRenderPolicyV1 {
         maxSeries: number;
         maxPoints: number;
         maxBytes: number;
+        maxMountMs: number;
     };
 }
 
@@ -850,6 +857,7 @@ export interface PublicationRendererPolicyV1 {
     maxChartSvgNodes?: number;
     maxChartSvgBytes?: number;
     maxChartRenderMs?: number;
+    maxChartIslandMountMs?: number;
 }
 
 // export: PublicationRendererRegistryErrorV1

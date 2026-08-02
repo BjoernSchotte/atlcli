@@ -18,6 +18,9 @@ export const DEFAULT_PUBLICATION_CHART_STATIC_BUDGET_V1 = Object.freeze({
   maxRenderMs: 2_000,
 });
 
+export const DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 250;
+export const MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 1_000;
+
 function boundedProjectLimit(value: number | undefined, fallback: number, hardMaximum: number): number {
   return Math.max(1, Math.min(hardMaximum, value ?? fallback));
 }
@@ -48,6 +51,11 @@ export function createPublicationChartRenderPolicyV1(
       maxSeries: maxIslandSeries,
       maxPoints: boundedProjectLimit(project.renderers.maxChartPoints, Math.min(800, product), Math.min(CHART_LIMITS_V1.maxPoints, product)),
       maxBytes: boundedProjectLimit(project.renderers.maxIslandBytes, 64 * 1024, 64 * 1024),
+      maxMountMs: boundedProjectLimit(
+        project.renderers.maxChartIslandMountMs,
+        DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1,
+        MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1,
+      ),
     }),
   });
 }

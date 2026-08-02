@@ -163,7 +163,7 @@ test("a deliberately small plain-Astro experience uses the same contract without
 
   await rm(resolve(plainExperienceFixture, ".astro"), { recursive: true, force: true });
   const output = await run(["bun", "run", "build"], plainExperienceFixture);
-  expect(output).toContain("1 page(s) built");
+  expect(output).toContain("3 page(s) built");
   const html = await readFile(resolve(plainExperienceFixture, "dist/index.html"), "utf8");
   expect(html).toContain('data-atlcli-experience="fixture.plain-astro"');
   expect(html).toContain('data-atlcli-document');

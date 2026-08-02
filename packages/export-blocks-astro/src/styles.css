@@ -43,6 +43,7 @@
 [data-atlcli-chart-runtime] { min-height: 20rem; width: 100%; outline-offset: 0.2rem; }
 [data-atlcli-chart-runtime]:focus-visible { outline: 0.2rem solid currentColor; border-radius: 0.25rem; }
 [data-atlcli-chart-fallback-status] { border-inline-start: 0.2rem solid var(--atlcli-content-border); padding-inline-start: 0.75rem; color: var(--atlcli-content-muted); }
+[data-atlcli-chart-runtime-status] { border-inline-start: 0.2rem solid #d97706; padding: 0.5rem 0.75rem; color: var(--atlcli-content-muted); background: color-mix(in srgb, #d97706 10%, transparent); }
 [data-atlcli-chart-fallback="static-hidden"] [data-atlcli-chart-data] { margin-block-start: 0.75rem; }
 [data-atlcli-block="chart"] [data-atlcli-chart-data] { width: 100%; margin-block: 0.75rem; }
 [data-atlcli-block="chart"] [data-atlcli-chart-heading] { margin-block-end: 0.5rem; }

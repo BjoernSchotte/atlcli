@@ -70,6 +70,7 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain('role="img"');
   expect(html).toContain('data-atlcli-chart-island="enabled"');
   expect(html).toContain('data-atlcli-chart-island="static"');
+  expect(html).toContain('data-atlcli-chart-max-mount-ms="250"');
   expect(html).toContain('data-atlcli-chart-renderer="tanstack-v0.3"');
   expect(html).toContain('data-atlcli-chart-capability="tanstack-v0.3/bar"');
   expect(html).toContain('data-atlcli-chart-diagnostics="true"');

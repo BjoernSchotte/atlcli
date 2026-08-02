@@ -16,7 +16,7 @@ const project = {
   routes: { prefix: "/", generatedStyle: "stable-pretty", collisions: "stable-source-suffix", tombstones: "retain", customRoutes: [] },
   macros: { mode: "static-only", unknown: "visible-fallback", maxRows: 1, maxNodes: 3, maxBytes: 400 },
   assets: { selfContained: true, external: "same-origin-only", allowedOrigins: [], activeContent: "block", maxAssetBytes: 1, maxTotalBytes: 1, maxImagePixels: 1, maxSvgNodes: 1 },
-  renderers: { allowedRendererIds: [], allowIslands: false, maxIslandBytes: 128_000, maxChartRows: 90, maxChartSeries: 20, maxChartPoints: 900, maxChartSvgNodes: 50_000, maxChartSvgBytes: 1_000_000, maxChartRenderMs: 1_000 },
+  renderers: { allowedRendererIds: [], allowIslands: false, maxIslandBytes: 128_000, maxChartRows: 90, maxChartSeries: 20, maxChartPoints: 900, maxChartSvgNodes: 50_000, maxChartSvgBytes: 1_000_000, maxChartRenderMs: 1_000, maxChartIslandMountMs: 120 },
   experience: { id: "atlcli.starlight", requiredCapabilities: [], designTokens: {}, componentOverrides: {} },
   search: { provider: "pagefind", enabled: true, languages: ["en"], filters: [], metadata: [], ranking: { title: 1, headings: 1, labels: 1, body: 1 }, ui: "page", shortcut: "none" },
   seo: { sitemap: true, robots: "noindex", canonical: true, structuredData: [], socialCards: "metadata-only", feed: "disabled" },
@@ -44,8 +44,12 @@ test("freezes independent normalization, static, and island chart limits", () =>
     strict: true,
     normalization: { maxRows: 1, maxPoints: 3, maxBytes: 400 },
     static: { maxSvgNodes: 50_000, maxSvgBytes: 1_000_000, maxRenderMs: 1_000 },
-    island: { enabled: false, maxRows: 90, maxSeries: 20, maxPoints: 900, maxBytes: 65_536 },
+    island: { enabled: false, maxRows: 90, maxSeries: 20, maxPoints: 900, maxBytes: 65_536, maxMountMs: 120 },
   });
+  expect(createPublicationChartRenderPolicyV1({
+    ...project,
+    renderers: { ...project.renderers, maxChartIslandMountMs: Number.MAX_SAFE_INTEGER },
+  }).island.maxMountMs).toBe(1_000);
 });
 
 test("strict admission reports safe budget issues and makes the refresh incomplete", async () => {

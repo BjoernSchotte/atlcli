@@ -59,6 +59,14 @@ compatibility. No chart definition, callback, URL, credential, or raw macro
 parameter is serialized to the page. JavaScript failure or disablement leaves
 the all-static TanStack representation and table visible.
 
+The promoted profile uses TanStack's responsive DOM host, categorical legend,
+grouped pointer/keyboard focus, portal-capable exact-value tooltip, Enter/Space
+pinning, Escape dismissal, and reduced-motion-aware transitions. The host uses
+`ResizeObserver` where available and a bounded window-resize fallback
+otherwise. Project policy caps rows, series, points, payload bytes, and mount
+time. A mount error or deadline overrun destroys the client host, announces a
+visible status, and restores the complete server-rendered SVG and table.
+
 TanStack Charts `0.3.1` is an explicit, pinned pre-alpha dependency. The
 interactive adapter is replaceable behind `ChartRendererAdapterV1`; its
 production use is limited to the tested bounded bar-chart profile until a later

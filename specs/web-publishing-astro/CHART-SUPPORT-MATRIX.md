@@ -63,7 +63,11 @@ world-class semantic/visual gate is still open; — intentionally static.
 - The interactive adapter is intentionally closed and bounded: it accepts
   only categorical `bar` and provider-valid `xyBar` data, with explicit row,
   series, point, and payload limits. All other shapes remain JavaScript-off
-  complete.
+  complete. The production Astro 7.1.6 matrix proves responsive TanStack
+  legends, grouped pointer/keyboard tooltips, pin/Escape, native and fallback
+  resize handling, reduced motion, retained exact-value tables, and JavaScript-
+  off output. A project-bounded mount deadline tears down an over-budget host
+  and visibly restores the complete static representation.
 - A frozen project-derived chart policy is part of the immutable publication
   bundle. It independently bounds normalized rows/points/bytes, TanStack scene
   nodes/SVG bytes/render time, and optional-island rows/series/points/payload.
@@ -84,6 +88,9 @@ world-class semantic/visual gate is still open; — intentionally static.
   `packages/export-blocks/src/charts.test.ts` and `schema.test.ts`
 - Plain Astro all-shape static consumer test:
   `packages/export-blocks-astro/src/astro-renderer.test.ts`
+- Production interactive, mobile, reduced-motion, JavaScript-off, and runtime-
+  budget browser matrix:
+  `packages/web-publish-starlight/tests/visual-matrix.e2e.ts`
 - Publication-policy, immutable-bundle, and render-budget tests:
   `packages/web-publish/src/chart-budgets.test.ts`,
   `packages/web-publish/src/node.test.ts`, and

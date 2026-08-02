@@ -31,7 +31,7 @@ export interface AstroChartRenderPolicyV1 {
   strict: boolean;
   normalization: { maxRows: number; maxSeries: number; maxPoints: number; maxBytes: number };
   static: { maxSvgNodes: number; maxSvgBytes: number; maxRenderMs: number };
-  island: { enabled: boolean; maxRows: number; maxSeries: number; maxPoints: number; maxBytes: number };
+  island: { enabled: boolean; maxRows: number; maxSeries: number; maxPoints: number; maxBytes: number; maxMountMs: number };
 }
 
 /**

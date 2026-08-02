@@ -48,6 +48,7 @@ export interface AstroChartRenderPolicyV1 {
         maxSeries: number;
         maxPoints: number;
         maxBytes: number;
+        maxMountMs: number;
     };
 }
 

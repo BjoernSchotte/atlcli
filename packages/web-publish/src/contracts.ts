@@ -82,6 +82,7 @@ export interface PublicationRendererPolicyV1 {
   maxChartSvgNodes?: number;
   maxChartSvgBytes?: number;
   maxChartRenderMs?: number;
+  maxChartIslandMountMs?: number;
 }
 
 /** Safe, public build-time chart policy derived from the private project. */
@@ -104,6 +105,7 @@ export interface PublicationChartRenderPolicyV1 {
     maxSeries: number;
     maxPoints: number;
     maxBytes: number;
+    maxMountMs: number;
   };
 }
 

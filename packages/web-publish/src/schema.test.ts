@@ -72,6 +72,7 @@ const project = {
     maxIslandBytes: 250_000,
     maxChartRows: 5_000,
     maxChartSeries: 100,
+    maxChartIslandMountMs: 250,
   },
   experience: {
     id: "atlcli.starlight",
@@ -185,7 +186,7 @@ const bundle = {
     strict: true,
     normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
     static: { maxSvgNodes: 50_000, maxSvgBytes: 1_000_000, maxRenderMs: 1_000 },
-    island: { enabled: true, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536 },
+    island: { enabled: true, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536, maxMountMs: 250 },
   },
   complete: true,
   rootIds: ["100"],
@@ -405,6 +406,10 @@ describe("web publication runtime schemas v1", () => {
     })).toThrow("expected a finite number");
     expect(() => parsePublicationProjectV1(new (class Project {})()))
       .toThrow("expected a plain object");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      renderers: { ...project.renderers, maxChartIslandMountMs: 0 },
+    })).toThrow("$.renderers.maxChartIslandMountMs");
     const accessor = { ...project } as Record<string, unknown>;
     Object.defineProperty(accessor, "hidden", { get: () => "evaluated", enumerable: true });
     expect(() => parsePublicationProjectV1(accessor))

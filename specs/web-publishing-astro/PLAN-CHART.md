@@ -433,10 +433,13 @@ only and must be safe to include in a public site manifest.
       payload bytes.
 - [x] Fall back to the static visual/table for unsupported kinds, excessive
       data, CSP restrictions, or adapter errors.
-- [ ] Complete the interaction matrix for tooltips, legends, resize behavior,
-      keyboard access, and reduced motion. The provider-live proof demonstrates
-      deterministic hydration and no Confluence data fetch; the static table
-      remains present after island hydration.
+- [x] Complete the interaction matrix for tooltips, legends, resize behavior,
+      keyboard access, and reduced motion. The production Astro 7.1.6 matrix
+      proves TanStack grouped pointer/keyboard tooltips, pin/Escape behavior,
+      responsive legends, native `ResizeObserver` plus window-resize fallback,
+      reduced-motion animation policy, 390px containment, retained exact-value
+      tables, and complete JavaScript-off static SVG output for both promoted
+      `bar` and `xyBar` capabilities.
 
 ## 8. DOCX/PDF compatibility
 
@@ -470,9 +473,14 @@ only and must be safe to include in a public site manifest.
         row/series/point/payload limits. Strict mode rejects admission/render
         overruns; explicit partial mode renders a visible warning and complete
         data table instead of an unbounded visual.
-  - [ ] Add acquisition deadlines/aggregate memory accounting and an island
-        runtime watchdog so each of the four phases has both structural and
-        runtime containment rather than relying on structural limits alone.
+  - [x] Enforce a project-bounded island mount deadline. A mount overrun or
+        adapter failure destroys the TanStack host, restores the complete
+        static SVG, exposes a visible status, and retains the exact-value table;
+        the real browser matrix proves the teardown path with a bounded
+        66-row/12-series chart.
+  - [ ] Add acquisition deadlines and aggregate memory accounting so the
+        acquisition phase has runtime containment rather than relying on
+        structural page/table limits alone.
 - [x] Sanitize text/attributes and URLs using existing shared gates. The only
       chart `set:html` seam accepts validated, escaped output from the pinned
       TanStack adapter; raw provider HTML and macro parameters cannot reach it.
@@ -604,6 +612,9 @@ listed in the capability registry.
 - [x] Integrate the closed, version-pinned `tanstack-v0.3/bar` capabilities for
       bounded categorical and XY-bar data, with source-neutral validation.
 - [x] Ensure static fallback remains complete for every unsupported case.
+- [x] Prove grouped pointer/keyboard tooltips, pin/Escape, legends, responsive
+      resize with and without `ResizeObserver`, reduced motion, and JavaScript-
+      off output in the production Astro 7.1.6 browser matrix.
 
 ### T8 — DOCX/PDF projections
 
@@ -622,8 +633,11 @@ listed in the capability registry.
   - [x] Selected source-table content digests invalidate the cache, and the
         immutable bundle now carries independent normalization, static-render,
         and island structural limits plus the static render deadline.
-  - [ ] Complete acquisition deadline/aggregate-memory and island-runtime
-        containment, then exercise their cancellation/fallback paths end to end.
+  - [ ] Complete acquisition deadline/aggregate-memory containment, then
+        exercise its cancellation path end to end.
+  - [x] Complete island runtime containment and exercise its teardown/static-
+        fallback path end to end; acquisition deadline/aggregate-memory proof
+        remains the only open sub-gate above.
 
 ### T10 — End-to-end proof and documentation
 
@@ -660,9 +674,11 @@ The follow-up PR is complete only when all gates are checked:
 - [x] Expose 3D as a semantic hint and intentionally flatten it in all static
       renderers; the normalizer emits an `invalid-option` approximation
       diagnostic.
-- [ ] Which XY/time-series renderer, if any, is promoted to an interactive
-      adapter after the bounded TanStack bar proof? (Recommendation: do not
-      expand until a11y and bundle budgets are measured.)
+- [x] Do not promote another XY/time-series interactive capability in V1.
+      The measured, version-pinned client contract remains deliberately limited
+      to categorical `bar` and provider-valid `xyBar`; every other shape keeps
+      its complete TanStack static SVG and exact-value table. Future adapters
+      require a separate capability ID and the same a11y/bundle/runtime gates.
 - [x] A missing generated-chart attachment never fails a build: it is an output
       cache hint, not the source data. Missing/invalid body-table data follows
       the normal strict/lenient chart diagnostic policy.

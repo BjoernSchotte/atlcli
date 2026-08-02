@@ -65,7 +65,7 @@ const bundle = {
     strict: true,
     normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
     static: { maxSvgNodes: 50_000, maxSvgBytes: 1_000_000, maxRenderMs: 1_000 },
-    island: { enabled: false, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536 },
+    island: { enabled: false, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536, maxMountMs: 250 },
   },
   complete: true,
   rootIds: ["source"],

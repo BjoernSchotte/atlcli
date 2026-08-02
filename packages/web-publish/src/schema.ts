@@ -499,7 +499,7 @@ function rendererPolicy(value: unknown, path: string): void {
   keys(candidate, path, [
     "allowedRendererIds", "allowIslands", "maxIslandBytes", "maxChartRows",
     "maxChartSeries", "maxChartPoints", "maxChartSvgNodes", "maxChartSvgBytes",
-    "maxChartRenderMs",
+    "maxChartRenderMs", "maxChartIslandMountMs",
   ]);
   stringValues(candidate.allowedRendererIds, `${path}.allowedRendererIds`);
   boolean(candidate.allowIslands, `${path}.allowIslands`);
@@ -510,6 +510,7 @@ function rendererPolicy(value: unknown, path: string): void {
   optional(candidate, "maxChartSvgNodes", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
   optional(candidate, "maxChartSvgBytes", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
   optional(candidate, "maxChartRenderMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartIslandMountMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
 }
 
 function chartRenderPolicy(value: unknown, path: string): void {
@@ -528,12 +529,13 @@ function chartRenderPolicy(value: unknown, path: string): void {
   safeInteger(staticPolicy.maxSvgBytes, `${path}.static.maxSvgBytes`, 1);
   safeInteger(staticPolicy.maxRenderMs, `${path}.static.maxRenderMs`, 1);
   const island = object(candidate.island, `${path}.island`);
-  keys(island, `${path}.island`, ["enabled", "maxRows", "maxSeries", "maxPoints", "maxBytes"]);
+  keys(island, `${path}.island`, ["enabled", "maxRows", "maxSeries", "maxPoints", "maxBytes", "maxMountMs"]);
   boolean(island.enabled, `${path}.island.enabled`);
   safeInteger(island.maxRows, `${path}.island.maxRows`, 1);
   safeInteger(island.maxSeries, `${path}.island.maxSeries`, 1);
   safeInteger(island.maxPoints, `${path}.island.maxPoints`, 1);
   safeInteger(island.maxBytes, `${path}.island.maxBytes`, 1);
+  safeInteger(island.maxMountMs, `${path}.island.maxMountMs`, 1);
 }
 
 function experienceSelection(value: unknown, path: string): void {
