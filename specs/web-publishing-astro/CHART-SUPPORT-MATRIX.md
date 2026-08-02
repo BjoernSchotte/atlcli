@@ -139,9 +139,12 @@ world-class semantic/visual gate is still open; — intentionally static.
   `http://127.0.0.1:4391/publish/atlcli-chart-provider-live-20260801-195515/`
 
 The live provider page proves one pinned `tanstack-v0.3/bar` XY-bar island and
-its provider normalization. The tenant-free corpus separately proves all
-twelve Astro and DOCX/PDF projections, including JavaScript-disabled Astro
-output. A live DC
+its provider normalization. A fresh full-DOCSY refresh/build includes that
+source-version-5 page among 99 pages; the Astro verifier checked 259 files,
+13,297 links, and 910 anchors, and in-app-browser inspection confirmed the
+complete navigation plus the hydrated provider chart without console errors or
+overflow. The tenant-free corpus separately proves all twelve Astro and
+DOCX/PDF projections, including JavaScript-disabled Astro output. A live DC
 tenant is not available in this workspace; DC coverage is therefore fixture-
 and contract-proven rather than falsely reported as a provider E2E. A
 multi-macro Cloud fixture was also attempted and produced provider-side

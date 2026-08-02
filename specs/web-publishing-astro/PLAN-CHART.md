@@ -169,11 +169,15 @@ matrix is in [`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
   rasterized page inspection visibly shows the bars and the table. The chart
   visual reserves a title/legend header band and plot-edge padding so neither
   document target clips the last mark or overlays the legend on the title.
-- The Astro publication refresh/build/verification completed for one page;
-  the verified output inventory covered 35 files and 26 links. The generated
-  page contains `data-atlcli-chart-capability="tanstack-v0.3/bar"` and the
-  browser hydrated it to `data-atlcli-chart-island="hydrated"` with a
-  TanStack runtime chart. Generated output remains outside Git.
+- A fresh full-space mayflower refresh acquired 99 DOCSY pages, including the
+  provider fixture at source version 5, into an immutable local bundle. The
+  Astro 7.1.6 build verifier checked 259 output files, 13,297 links, and 910
+  anchors. In-app-browser inspection confirmed all 99 navigation entries,
+  active Pagefind search, and no document overflow on the space root. The live
+  chart route contains one `xyBar` ExportBlock with its exact-value table and
+  `data-atlcli-chart-capability="tanstack-v0.3/bar"`; it hydrates to one
+  TanStack runtime with no browser logs. Generated output and private source
+  data remain outside Git.
 - Contract tests dispatch all twelve Cloud ADF and DC Storage spellings and
   retain aligned tables; the shared tenant-free corpus supplies the separate
   visual all-shapes proof.
