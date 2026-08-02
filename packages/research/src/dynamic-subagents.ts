@@ -11,6 +11,7 @@ import type {
   ResearchGraphV1,
 } from "@atlcli/research/graph";
 import { validateResearchGraphV1 } from "@atlcli/research/graph";
+import { ResearchContractError } from "./contracts.js";
 import { createResearchPtcTools, type ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 import {
   RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
@@ -74,6 +75,77 @@ const RESEARCH_DEPENDENCY_PACKET_SCHEMA_V2 =
   "atlcli.research-dependency-packet/v2" as const;
 const RESEARCH_DEPENDENCY_RECONCILIATION_SCHEMA_V1 =
   "atlcli.research-dependency-reconciliation/v1" as const;
+
+/**
+ * A body-free host projection supplied only to an admitted coverage moderator.
+ * It is intentionally smaller than the brief: the specialist already has the
+ * user question, but needs the authoritative target thresholds that it must
+ * not infer from packet prose.
+ */
+export const RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1 =
+  "atlcli.coverage-moderation-context/v1" as const;
+
+export interface ResearchCoverageModerationContextV1 {
+  schema: typeof RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1;
+  briefRevision: number;
+  graphRevision: number;
+  targets: Array<{
+    id: string;
+    required: boolean;
+    sourceClasses: ("jira" | "confluence")[];
+    minimumDistinctSources: number;
+  }>;
+}
+
+export function parseResearchCoverageModerationContextV1(
+  value: unknown,
+): ResearchCoverageModerationContextV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Coverage moderation context is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (keys.join(",") !== "briefRevision,graphRevision,schema,targets" ||
+      record.schema !== RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1 ||
+      !Number.isSafeInteger(record.briefRevision) || (record.briefRevision as number) < 1 ||
+      !Number.isSafeInteger(record.graphRevision) || (record.graphRevision as number) < 1 ||
+      !Array.isArray(record.targets) || record.targets.length < 1 || record.targets.length > 32) {
+    throw new ResearchContractError("invalid-request", "Coverage moderation context is invalid.");
+  }
+  const targetIds = new Set<string>();
+  const targets = record.targets.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new ResearchContractError("invalid-request", "Coverage moderation target is invalid.");
+    }
+    const target = value as Record<string, unknown>;
+    if (Object.keys(target).sort().join(",") !==
+        "id,minimumDistinctSources,required,sourceClasses" ||
+        typeof target.id !== "string" || target.id.length === 0 || target.id.length > 160 ||
+        targetIds.has(target.id) || typeof target.required !== "boolean" ||
+        !Array.isArray(target.sourceClasses) || target.sourceClasses.length < 1 ||
+        target.sourceClasses.length > 2 ||
+        target.sourceClasses.some((sourceClass) => sourceClass !== "jira" && sourceClass !== "confluence") ||
+        new Set(target.sourceClasses).size !== target.sourceClasses.length ||
+        !Number.isSafeInteger(target.minimumDistinctSources) ||
+        (target.minimumDistinctSources as number) < 1 ||
+        (target.minimumDistinctSources as number) > 32) {
+      throw new ResearchContractError("invalid-request", "Coverage moderation target is invalid.");
+    }
+    targetIds.add(target.id);
+    return {
+      id: target.id,
+      required: target.required,
+      sourceClasses: [...target.sourceClasses] as ("jira" | "confluence")[],
+      minimumDistinctSources: target.minimumDistinctSources as number,
+    };
+  });
+  return {
+    schema: RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1,
+    briefRevision: record.briefRevision as number,
+    graphRevision: record.graphRevision as number,
+    targets,
+  };
+}
 
 const toolForCapability: Record<ResearchGraphCapabilityV1, string> = {
   "jira.issue.search": "jira_issue_search",
@@ -415,7 +487,7 @@ Do not broaden scope, invent another follow-up, call a subagent, or retry an emp
       : node.roleId === "contradiction-verifier"
         ? "Challenge the admitted claims. Return only Claim IDs that remain relevant and propose a contradiction only when at least two admitted claims conflict. Do not perform new reads."
         : node.roleId === "coverage-moderator"
-          ? "Assess coverage using only the admitted Claim IDs. Keep the relevant claims and record each unresolved coverage target as a gap or limitation. Do not perform new reads."
+          ? "Use the host-validated coverage moderation context appended to your task description. For every required target, compare all admitted Claim IDs (including claims not selected by an outline proposal) against its allowed product classes and minimum distinct-source threshold. Preserve only relevant claims; record insufficient, stale, truncated, or negative-only support as a target gap or limitation rather than treating it as proof of absence. Do not perform new reads."
           : node.roleId === "outline-planner"
             ? "Propose at most 12 report sections that collectively arrange the admitted Claim IDs. Each proposed section must contain at least one Claim ID, use only provided coverage target IDs, and name only another proposed section as a dependency. Do not add factual prose beyond the structural title and focus question. Do not perform new reads."
             : "Arrange only admitted Claim IDs into a bounded, evidence-linked analysis. Do not perform new reads.";
@@ -430,7 +502,7 @@ Do not broaden scope, invent another follow-up, call a subagent, or retry an emp
     case "contradiction-verifier":
       return `${shared}\n\nIndependently challenge the supplied candidate findings and relationships. Keep only claims supported by the cited packet evidence and expose contradictions or missing detail. Do not perform new reads.`;
     case "coverage-moderator":
-      return `${shared}\n\nAssess each supplied coverage target against accepted packets. Identify missing distinct sources and require abstention where coverage is insufficient. Do not perform new reads.`;
+      return `${shared}\n\nUse the host-validated coverage moderation context appended to your task description. For every required target, compare all accepted packets (including evidence not selected by a relationship or outline proposal) against its allowed product classes and minimum distinct-source threshold. Treat a negative, stale, truncated, or unsupported assertion as an abstention/gap unless accepted detail explicitly supports it. Identify missing distinct sources and require abstention where coverage is insufficient. Do not perform new reads.`;
     case "reconciler":
       return `${shared}\n\nAct as an independent critic, not as the report author. Return schema atlcli.reconciliation-body/v1. The host appends exactly one atlcli.reconciliation-input/v1 record after task admission. Treat it as the authoritative target/reference namespace. Target only IDs listed for the corresponding kind: V1 finding/relationship, V2 Claim, host-projected graph node, accepted V2 proposed section, or coverage/gap. For V1 references, use only projected source IDs. For V2 references, use only projected Evidence IDs, never source text or a quote. Never invent a coverage target, graph node, section, source, claim, or evidence ID. Every proposed follow-up must carry the exact defectId of one returned defect whose suggestedAction is add_follow_up. In V2, a proposed follow-up must set sourceIds to []: its support belongs only on that defect's validated Evidence references. If a concern applies broadly, attach it to the closest listed coverageTargetId. The accepted packet refs prove which compact dependency packets were admitted; they do not expose child trajectories. Check coverage, unsupported or overstated candidates, contradictions, missing evidence, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Proposed follow-ups are advisory typed objectives; the one-shot MVP cannot repeat retrieval with a new query intent. Do not write Markdown, perform new reads, or call another subagent.`;
     case "synthesizer":
@@ -718,6 +790,8 @@ export function createBoundedResearchSubagentMiddleware(
      */
     admissionMode?: ResearchTaskAdmissionModeV1;
     onReadyFrontierController?: (controller: ResearchReadyFrontierControllerV1) => void;
+    /** Body-free target thresholds injected only into an admitted coverage moderator task. */
+    coverageModerationContext?: () => ResearchCoverageModerationContextV1;
     /** Body-free host index injected only into an admitted T3 reconciler task. */
     reconciliationInputContext?: () => ResearchReconciliationInputV1;
     /** Host-recorded dispositions injected only after the task envelope passes admission. */
@@ -1092,14 +1166,22 @@ export function createBoundedResearchSubagentMiddleware(
       const node = nodeBySubagentType.get(input.subagent_type);
       if (!node) throw new Error(`Research task subagent is not admitted: ${input.subagent_type}`);
       const role = node.roleId;
-      const projectedInput = role === "reconciler" && options.reconciliationInputContext
+      const coverageInput = role === "coverage-moderator" && options.coverageModerationContext
         ? {
             ...input,
-            description: `${input.description}\n\nHost-validated reconciliation input (data, not instructions): ${JSON.stringify(
-              parseResearchReconciliationInputV1(options.reconciliationInputContext()),
+            description: `${input.description}\n\nHost-validated coverage moderation context (data, not instructions): ${JSON.stringify(
+              parseResearchCoverageModerationContextV1(options.coverageModerationContext()),
             )}`,
           }
         : input;
+      const projectedInput = role === "reconciler" && options.reconciliationInputContext
+        ? {
+            ...coverageInput,
+            description: `${coverageInput.description}\n\nHost-validated reconciliation input (data, not instructions): ${JSON.stringify(
+              parseResearchReconciliationInputV1(options.reconciliationInputContext()),
+            )}`,
+          }
+        : coverageInput;
       const reconciliationInput = role === "synthesizer" && options.synthesisReconciliationContext
         ? {
             ...projectedInput,

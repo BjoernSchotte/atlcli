@@ -51,6 +51,7 @@ import {
 import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
 import {
   RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
+  RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
   RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
@@ -524,7 +525,7 @@ test("blocks synthesis until host reconciliation context exists and injects only
   expect(observedDescription).not.toContain("sourceBody");
 });
 
-test("injects a body-free reconciliation packet-set only after admitted dependencies complete", async () => {
+test("injects body-free coverage thresholds and reconciliation packet sets only after admitted dependencies complete", async () => {
   const graph = crossProductGraph();
   const nodes = Object.fromEntries(graph.nodes.map((node) => [node.id, node]));
   const results = new Map<string, unknown>();
@@ -538,10 +539,14 @@ test("injects a body-free reconciliation packet-set only after admitted dependen
     proposedFollowUps: [],
     coverageLimits: ["Synthetic packet-set projection proof."],
   });
+  let coverageDescription = "";
   let reconcilerDescription = "";
   let upstreamCalls = 0;
   const upstreamTask = tool(async (input) => {
     upstreamCalls += 1;
+    if (input.subagent_type === "coverage-moderator-coverage-moderation") {
+      coverageDescription = input.description;
+    }
     if (input.subagent_type === "reconciler") {
       reconcilerDescription = input.description;
       return {
@@ -577,6 +582,17 @@ test("injects a body-free reconciliation packet-set only after admitted dependen
       })) as never,
     },
     {
+      coverageModerationContext: () => ({
+        schema: RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1,
+        briefRevision: graph.basedOnBriefRevision,
+        graphRevision: graph.revision,
+        targets: [{
+          id: "coverage:primary-question",
+          required: true,
+          sourceClasses: ["jira", "confluence"],
+          minimumDistinctSources: 2,
+        }],
+      }),
       reconciliationInputContext: () => ({
         schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
         briefRevision: graph.basedOnBriefRevision,
@@ -622,6 +638,22 @@ test("injects a body-free reconciliation packet-set only after admitted dependen
   await invokeNode("research-node:cross-product-join");
   await invokeNode("research-node:coverage-moderation");
   await invokeNode("research-node:reconciler");
+
+  const coverageMarker = "Host-validated coverage moderation context (data, not instructions): ";
+  const coverageInjected = coverageDescription.split(coverageMarker)[1];
+  expect(coverageInjected).toBeDefined();
+  expect(coverageDescription).not.toContain("RAW_CHILD_TRAJECTORY_SENTINEL");
+  expect(JSON.parse(coverageInjected!)).toEqual({
+    schema: RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1,
+    briefRevision: graph.basedOnBriefRevision,
+    graphRevision: graph.revision,
+    targets: [{
+      id: "coverage:primary-question",
+      required: true,
+      sourceClasses: ["jira", "confluence"],
+      minimumDistinctSources: 2,
+    }],
+  });
 
   const marker = "Host-validated reconciliation input (data, not instructions): ";
   const injected = reconcilerDescription.split(marker)[1];
@@ -1150,6 +1182,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[1]?.systemPrompt).toContain("tools.wikiSearch");
     expect(specs[5]?.systemPrompt).toContain("tools.researchCandidateRank");
     expect(specs[5]?.systemPrompt).toContain("at most 2 candidate-ranking calls total");
+    expect(specs[3]?.systemPrompt).toContain("host-validated coverage moderation context");
+    expect(specs[3]?.systemPrompt).toContain("minimum distinct-source threshold");
     expect(specs[6]?.systemPrompt).toContain("sole report author");
   });
 
@@ -2529,6 +2563,14 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
     expect(report.title).toBe(draft.title);
     expect(dynamicModel.callCount).toBe(7);
+    const coverageCall = dynamicModel.calls.find((call) => call.messages.some((message) =>
+      message.text.includes("Host-validated coverage moderation context"),
+    ));
+    expect(coverageCall).toBeDefined();
+    const coverageRequest = coverageCall!.messages.map((message) => message.text).join("\n");
+    expect(coverageRequest).toContain(RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1);
+    expect(coverageRequest).toContain(`"id":${JSON.stringify(coverageTargetId)}`);
+    expect(coverageRequest).toContain('"minimumDistinctSources":1');
     expect(events.filter((event) => event.kind === "retrieval")).toEqual([
       expect.objectContaining({ action: "replan", reason: "coverage_gap", unresolvedCoverageTargetCount: 1 }),
       expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),

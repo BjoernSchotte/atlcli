@@ -93,6 +93,7 @@ import type {
   ResearchSessionRetrievalContinuationV1,
 } from "./session.js";
 import {
+  RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
   compileDynamicResearchSubagents,
@@ -1878,7 +1879,9 @@ interface ResearchCheckpointTranscriptCompactionV1 {
  * `beforeModel` state update—not a tool-level graph jump—so the ordinary
  * DeepAgents tool-to-model transition remains intact. The durable journal,
  * workspace and PTCs retain authority; the replacement context contains no
- * source body, entity reference or model-authored reasoning.
+ * source body, tool result, or model-authored reasoning. It deliberately
+ * retains the original user objective as untrusted request context, because
+ * a fresh worker still needs to know which bounded research task it continues.
  */
 export function createResearchCheckpointTranscriptCompactionMiddleware(options: {
   checkpoint: () => ResearchCheckpointTranscriptCompactionV1 | undefined;
@@ -2818,6 +2821,28 @@ async function runResearchAgentWithBindings(
       acceptedPackets,
     });
   };
+  const coverageModerationContext = input.brief
+    ? () => {
+        const graph = acceptedGraph;
+        if (!graph) {
+          throw new ResearchContractError(
+            "invalid-report",
+            "Coverage moderation requires one accepted research graph.",
+          );
+        }
+        return {
+          schema: RESEARCH_COVERAGE_MODERATION_CONTEXT_SCHEMA_V1,
+          briefRevision: input.brief!.revision,
+          graphRevision: graph.revision,
+          targets: input.brief!.coverageTargets.map((target) => ({
+            id: target.id,
+            required: target.required,
+            sourceClasses: [...target.sourceClasses].sort(),
+            minimumDistinctSources: target.minimumDistinctSources,
+          })).sort((left, right) => left.id.localeCompare(right.id)),
+        };
+      }
+    : undefined;
   const boundedSubagentMiddleware = isDynamic
       ? createBoundedResearchSubagentMiddleware(model, input.researchGraph!, dynamicSubagents, runtime, {
         structuredOutputStrategy: input.model ? "tool" : "provider",
@@ -2844,6 +2869,7 @@ async function runResearchAgentWithBindings(
         ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
         ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
         ...(hydratedAcceptedTasks.length > 0 ? { hydratedAcceptedTasks } : {}),
+        ...(coverageModerationContext ? { coverageModerationContext } : {}),
         reconciliationInputContext,
         synthesisReconciliationContext: () => {
           const graph = acceptedGraph;
