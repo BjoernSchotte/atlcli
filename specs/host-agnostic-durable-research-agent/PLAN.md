@@ -3452,6 +3452,11 @@ Gate:
         No partial task, graph, packet, or event leaks; a fresh journal then
         accepts exactly one packet and one journal event (17 focused tests,
         2026-08-02).
+  - [x] A disconnected post-commit graph, packet, or diagnostic observer cannot
+        reclassify a durable packet as an uncommitted provider outcome. The
+        focused dynamic-middleware test injects all three failures and retains
+        exactly one completed task, graph node, packet, and journal event (44
+        dynamic-subagent tests, 2026-08-02).
 - [ ] Failure injection at every result-publication sub-boundary proves that a
       task cannot be terminal while its authoritative graph node remains
       running, and that recovery accepts exactly one packet/outbox event.

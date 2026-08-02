@@ -1267,10 +1267,6 @@ export function createBoundedResearchSubagentMiddleware(
         ...packetInput,
         maximumResultBytes: node.budget.maxResultBytes,
       });
-      const acceptLocally = (): void | Promise<void> => {
-        const packet = dispatchPort.accept(packetInput);
-        return options.onAcceptedPacket?.(packet);
-      };
       return durableDispatchJournal
         .acceptPacket({
           taskId,
@@ -1286,8 +1282,12 @@ export function createBoundedResearchSubagentMiddleware(
               durable.graphRevision !== preview.packet.graphRevision) {
             throw new Error("Durable research packet diverged from the local validated envelope.");
           }
-          options.onGraphUpdated?.(durable.graph);
-          return acceptLocally();
+          return notifyPostCommitResearchObserverV1(() => {
+            options.onGraphUpdated?.(durable.graph);
+          }).then(() => {
+            const packet = dispatchPort.accept(packetInput);
+            return notifyPostCommitResearchObserverV1(() => options.onAcceptedPacket?.(packet));
+          });
         });
     },
     onUncommittedOutcome: async ({ taskId, reason, error }) => {
@@ -1469,6 +1469,23 @@ export interface ResearchSubagentDiagnosticV1 {
   durationMs?: number;
   errorCode?: string;
   errorMessage?: string;
+}
+
+/**
+ * A packet is authoritative as soon as the durable dispatch journal accepts
+ * it. Host observers update only in-process projections or streams, so their
+ * failure must never turn that committed result into `outcome_unknown`.
+ */
+async function notifyPostCommitResearchObserverV1(
+  callback: () => void | Promise<void>,
+): Promise<void> {
+  try {
+    await callback();
+  } catch {
+    // A restarted host rehydrates the accepted task and graph from the
+    // journal. Do not retain or rethrow observer errors (which may contain
+    // provider/user text) into durable research state.
+  }
 }
 
 function descriptionForRole(role: ResearchGraphRoleV1): string {

@@ -330,7 +330,15 @@ export function createResearchDispatchInterceptionAdapter(options: {
         taskStatuses.set(diagnostic.taskId, diagnostic.status);
       }
     }
-    options.onDiagnostic?.(diagnostic);
+    // Diagnostics are an observer-only stream. In particular, a consumer
+    // disconnecting after a durable packet commit must not make the adapter
+    // report that packet as an uncommitted provider outcome.
+    try {
+      options.onDiagnostic?.(diagnostic);
+    } catch {
+      // The authoritative dispatch state was updated above; recovery reads it
+      // from the durable session rather than relying on this best-effort event.
+    }
   };
 
   const replaceAdmissions = (

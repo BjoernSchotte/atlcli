@@ -3764,6 +3764,102 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
   });
 
+  test("keeps a durable packet terminal when post-commit observers throw", async () => {
+    const brief = graphBrief(
+      "Retrieve one bounded Jira item.",
+      ["jira"],
+      "analysis",
+      "off",
+    );
+    const catalog = composeResearchGraphV1(brief);
+    const store = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store,
+      session: createResearchSessionV1({
+        sessionId: brief.sessionId,
+        ownerId: "owner:post-commit-observer",
+        createdAt: "2026-08-02T08:00:00.000Z",
+        leaseExpiresAt: "2026-08-02T08:10:00.000Z",
+      }),
+      brief,
+      graph: catalog,
+      approveAutomatically: true,
+      at: "2026-08-02T08:00:00.000Z",
+    });
+    const journal = new ResearchSessionDispatchJournalV1({
+      store,
+      sessionId: brief.sessionId,
+      turnId: brief.turnId,
+      now: () => "2026-08-02T08:00:00.000Z",
+    });
+    let activeGraph = await journal.commitGraphSelection({
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog),
+    });
+    const node = activeGraph.nodes.find((candidate) => candidate.roleId === "focused-researcher")!;
+    const upstream = tool(async () => ({
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion: "One durable answer.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    }), {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      catalog,
+      compileDynamicResearchSubagents(catalog, {
+        model,
+        broker,
+        question: brief.objective,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [upstream] })) as never,
+      },
+      {
+        activeGraph: () => activeGraph,
+        durableDispatchJournal: journal,
+        onGraphUpdated: () => { throw new Error("synthetic graph observer disconnected"); },
+        onAcceptedPacket: () => { throw new Error("synthetic packet observer disconnected"); },
+        onDiagnostic: () => { throw new Error("synthetic diagnostic observer disconnected"); },
+      },
+    );
+
+    await expect(middleware.tools![0]!.invoke({
+      description: taskEnvelope(activeGraph, node.id).description,
+      subagent_type: researchSubagentTypeForNodeV1(node),
+    })).resolves.toMatchObject({ schema: "atlcli.research-dependency-packet/v1" });
+
+    const turn = (await store.read(brief.sessionId))!.turns.find((candidate) =>
+      candidate.id === brief.turnId,
+    )!;
+    const taskId = researchTaskIdForNodeV1(activeGraph, node);
+    expect(turn.tasks.find((task) => task.taskId === taskId)).toMatchObject({
+      status: "complete",
+      dispatchState: "result_committed",
+    });
+    expect(turn.acceptedPackets).toHaveLength(1);
+    expect(turn.graph?.nodes.find((candidate) => candidate.id === node.id)).toMatchObject({
+      status: "complete",
+      packetRef: turn.acceptedPackets[0]!.packetRef,
+    });
+    const events = await store.events(brief.sessionId);
+    expect(events.filter((event) => event.kind === "accept_packet")).toHaveLength(1);
+    expect(events.some((event) => event.kind === "outcome_unknown")).toBe(false);
+  });
+
   test("runs independent native task calls concurrently before critique and synthesis", async () => {
     const events: string[] = [];
     let active = 0;
