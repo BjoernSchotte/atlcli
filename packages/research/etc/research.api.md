@@ -3729,6 +3729,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
+    clarificationIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -8126,6 +8127,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
+    clarificationIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -12521,6 +12523,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
+    clarificationIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -17185,6 +17188,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
+    clarificationIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -21949,6 +21953,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
+    clarificationIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -27936,6 +27941,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
+    clarificationIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1

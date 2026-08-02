@@ -1,7 +1,10 @@
 import { createResearchBriefV1 } from "./brief.js";
 import { composeResearchGraphV1, type ResearchGraphProposalV1, type ResearchGraphV1 } from "./graph.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
-import { initializeResearchSessionTurnV1 } from "./session-runtime.js";
+import {
+  initializeResearchSessionClarificationWaitV1,
+  initializeResearchSessionTurnV1,
+} from "./session-runtime.js";
 import {
   createResearchSessionV1,
   type ResearchSessionUpdateV1,
@@ -26,6 +29,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
   concurrentCas: "passed";
   failureAtomicity: "passed";
   packetPublicationAtomicity: "passed";
+  clarificationIdentityFencing: "passed";
 }
 
 function assert(value: unknown, message: string): asserts value {
@@ -169,6 +173,43 @@ async function preparePacketPublicationV1(input: {
   };
 }
 
+async function prepareClarificationIdentityFenceV1(input: {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+}): Promise<ResearchSessionV1> {
+  const at = "2026-08-01T11:00:00.000Z";
+  const brief = createResearchBriefV1({
+    sessionId: input.sessionId,
+    turnId: "research-turn:conformance-controls",
+    objective: "Prove synthetic clarification identity fencing.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["DOCS"],
+    },
+    asOf: at,
+    timezone: "UTC",
+    requestedPlanApproval: "required",
+    clarificationQuestions: [{
+      id: "clarification:time-window",
+      prompt: "Which bounded time window should this synthetic run use?",
+      required: true,
+    }],
+    assumptions: [{
+      id: "assumption:include-archived",
+      text: "Include archived synthetic items.",
+      requiresUserDecision: true,
+      status: "proposed",
+    }],
+  });
+  return initializeResearchSessionClarificationWaitV1({
+    store: input.store,
+    session: session(input.sessionId),
+    brief,
+    at,
+  });
+}
+
 /**
  * Run the portable T4 contract checks. Physical adapters call this exact
  * function with their test-only failure injector instead of duplicating an
@@ -299,11 +340,74 @@ export async function verifyResearchSessionStoreConformanceV1(
     );
   }
 
+  const clarificationSessionId = `${prefix}-clarification-identities`;
+  const clarification = await prepareClarificationIdentityFenceV1({
+    store,
+    sessionId: clarificationSessionId,
+  });
+  const beforeClarification = await store.read(clarificationSessionId);
+  const beforeClarificationEvents = await store.events(clarificationSessionId);
+  assert(beforeClarification, "clarification identity fence did not initialize a session");
+  const attempts: Array<ResearchSessionUpdateV1> = [
+    {
+      kind: "record_clarification",
+      briefRevision: 1,
+      questionId: "clarification:unknown",
+      response: "Synthetic response.",
+      expectedRevision: clarification.revision,
+      expectedLeaseEpoch: clarification.lease.epoch,
+      at: "2026-08-01T11:00:01.000Z",
+    },
+    {
+      kind: "record_assumption_decision",
+      briefRevision: 1,
+      assumptionId: "assumption:unknown",
+      decision: "rejected",
+      expectedRevision: clarification.revision,
+      expectedLeaseEpoch: clarification.lease.epoch,
+      at: "2026-08-01T11:00:01.000Z",
+    },
+    {
+      kind: "record_clarification",
+      briefRevision: 2,
+      questionId: "clarification:time-window",
+      response: "Synthetic response.",
+      expectedRevision: clarification.revision,
+      expectedLeaseEpoch: clarification.lease.epoch,
+      at: "2026-08-01T11:00:01.000Z",
+    },
+    {
+      kind: "record_clarification",
+      briefRevision: 1,
+      questionId: "clarification:time-window",
+      response: "Synthetic response.",
+      expectedRevision: clarification.revision + 1,
+      expectedLeaseEpoch: clarification.lease.epoch,
+      at: "2026-08-01T11:00:01.000Z",
+    },
+  ];
+  for (const update of attempts) {
+    let rejected = false;
+    try {
+      await store.commit(clarificationSessionId, update);
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, `clarification control ${update.kind} accepted an unknown or stale identity`);
+    const after = await store.read(clarificationSessionId);
+    assert(
+      JSON.stringify(after) === JSON.stringify(beforeClarification) &&
+        JSON.stringify(await store.events(clarificationSessionId)) === JSON.stringify(beforeClarificationEvents),
+      `clarification control ${update.kind} mutated durable state after rejection`,
+    );
+  }
+
   return {
     aggregateCommit: "passed",
     staleCas: "passed",
     concurrentCas: "passed",
     failureAtomicity: "passed",
     packetPublicationAtomicity: "passed",
+    clarificationIdentityFencing: "passed",
   };
 }

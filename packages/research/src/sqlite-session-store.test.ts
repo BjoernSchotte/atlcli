@@ -61,6 +61,7 @@ describe("SQLite durable research session store", () => {
         concurrentCas: "passed",
         failureAtomicity: "passed",
         packetPublicationAtomicity: "passed",
+        clarificationIdentityFencing: "passed",
       });
     } finally {
       for (const store of stores) store.close();

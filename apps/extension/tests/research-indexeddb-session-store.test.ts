@@ -89,6 +89,7 @@ describe("IndexedDB durable research session store", () => {
       concurrentCas: "passed",
       failureAtomicity: "passed",
       packetPublicationAtomicity: "passed",
+      clarificationIdentityFencing: "passed",
     });
   });
 

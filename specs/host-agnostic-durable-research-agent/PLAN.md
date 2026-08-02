@@ -3472,6 +3472,11 @@ Gate:
 - [ ] Unknown/stale question IDs, assumption IDs, session revisions, brief
       revisions, graph revisions, candidate IDs, binding IDs, and
       scope-proposal IDs fail without mutating the brief, scope, or plan.
+
+  - [x] The shared all-store conformance suite rejects unknown clarification
+        and assumption IDs plus stale brief and session revisions without a
+        session or journal change in memory, SQLite/filesystem, and IndexedDB
+        (2026-08-02).
 - [x] A checkpoint/DB scan test finds no Anthropic key, Atlassian credential,
       cookie, raw provider cursor, or unsanitized error.
 
