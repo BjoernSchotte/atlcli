@@ -320,10 +320,16 @@ function V2FormattedReport({ report }: { report: Extract<ResearchReport, { schem
             {section.claimIds.map((claimId) => {
               const claim = claims.get(claimId);
               return claim ? (
-                <li key={claim.id}>
-                  <strong>{claim.statement}</strong>
-                  <SourceLinks sourceIds={claim.sourceIds} report={report} />
-                </li>
+              <li key={claim.id}>
+                <strong>{claim.statement}</strong>
+                <span
+                  className="ml-2 rounded bg-muted px-1 py-0.5 text-xs text-muted-foreground"
+                  data-testid={`research-claim-freshness-${claim.id}`}
+                >
+                  {t("research.claim.freshness.current")}
+                </span>
+                <SourceLinks sourceIds={claim.sourceIds} report={report} />
+              </li>
               ) : null;
             })}
           </ol>
@@ -334,7 +340,13 @@ function V2FormattedReport({ report }: { report: Extract<ResearchReport, { schem
           <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.coverage")}</h3>
           <ul className="m-0 pl-5">
             {report.coverage.map((entry) => (
-              <li key={entry.targetId}><code>{entry.targetId}</code>: {entry.status}</li>
+              <li key={entry.targetId}>
+                <code>{entry.targetId}</code>: {entry.status}; {entry.distinctSourceCount} {t(
+                  entry.distinctSourceCount === 1
+                    ? "research.coverage.distinctSource"
+                    : "research.coverage.distinctSources",
+                )}
+              </li>
             ))}
           </ul>
         </section>

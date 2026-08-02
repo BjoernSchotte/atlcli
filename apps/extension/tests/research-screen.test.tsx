@@ -470,6 +470,8 @@ describe("portable Research screen", () => {
     const formatted = dom.find("research-formatted-report");
     expect(formatted.textContent).toContain("The validated Jira issue establishes the implementation fact.");
     expect(formatted.textContent).toContain("Evidence coverage");
+    expect(formatted.textContent).toContain("1 distinct retained source");
+    expect(dom.find("research-claim-freshness-claim:validated").textContent).toBe("Current evidence");
     expect(formatted.textContent).toContain("None reported.");
     expect(dom.html()).toContain("https://example.atlassian.net/browse/DEMO-1");
 
