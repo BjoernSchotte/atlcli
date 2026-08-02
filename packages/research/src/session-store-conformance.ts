@@ -5,6 +5,7 @@ import {
 } from "./contracts.js";
 import { composeResearchGraphV1, type ResearchGraphProposalV1, type ResearchGraphV1 } from "./graph.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
+import { createResearchScopeExpansionProposalV1 } from "./scope-discovery.js";
 import {
   initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionScopeClarificationWaitV1,
@@ -36,6 +37,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
   packetPublicationAtomicity: "passed";
   clarificationIdentityFencing: "passed";
   scopeCandidateIdentityFencing: "passed";
+  scopeProposalIdentityFencing: "passed";
 }
 
 function assert(value: unknown, message: string): asserts value {
@@ -259,6 +261,92 @@ async function prepareScopeCandidateIdentityFenceV1(input: {
     candidateChoices: [candidate],
     at,
   });
+}
+
+async function prepareScopeProposalIdentityFenceV1(input: {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+}): Promise<ResearchSessionV1> {
+  const at = "2026-08-01T11:00:00.000Z";
+  const candidate = {
+    schema: "atlcli.research-scope-candidate/v1" as const,
+    id: "research-scope-candidate:linked-page",
+    tenantOrigin: "https://example.atlassian.net",
+    product: "confluence" as const,
+    entityKind: "page" as const,
+    entityRef: "research-scope-entity:linked-page",
+    name: "Synthetic linked page",
+    status: "current" as const,
+    accessible: true as const,
+    providerFreshnessAt: at,
+  };
+  const brief = createResearchBriefV1({
+    sessionId: input.sessionId,
+    turnId: "research-turn:conformance-scope-proposal",
+    objective: "Prove synthetic scope proposal identity fencing.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["DOCS"],
+    },
+    scopeCandidates: [candidate],
+    asOf: at,
+    timezone: "UTC",
+    requestedPlanApproval: "automatic",
+    requestedReconciliation: "off",
+  });
+  const initialized = await initializeResearchSessionTurnV1({
+    store: input.store,
+    session: session(input.sessionId),
+    brief,
+    graph: composeResearchGraphV1(brief),
+    approveAutomatically: true,
+    at,
+  });
+  const graph = initialized.turns.find((turn) => turn.id === brief.turnId)?.graph;
+  assert(graph, "scope proposal identity fence has no approved graph");
+  const proposal = {
+    id: "scope-expansion:linked-page",
+    sessionId: input.sessionId,
+    turnId: brief.turnId,
+    basedOnBriefRevision: brief.revision,
+    basedOnGraphRevision: graph.revision,
+    candidateId: candidate.id,
+    expansionKind: "exact_entity" as const,
+    reason: "A synthetic retained link names this one page.",
+    provenanceRefs: ["source:synthetic-linked-page"],
+    status: "proposed" as const,
+  };
+  const beforeStaleGraphProposal = await input.store.read(input.sessionId);
+  const beforeStaleGraphProposalEvents = await input.store.events(input.sessionId);
+  let staleGraphRejected = false;
+  try {
+    await input.store.commit(input.sessionId, {
+      kind: "propose_scope_expansion",
+      proposal: createResearchScopeExpansionProposalV1({
+        ...proposal,
+        basedOnGraphRevision: graph.revision + 1,
+      }),
+      expectedRevision: initialized.revision,
+      expectedLeaseEpoch: initialized.lease.epoch,
+      at: "2026-08-01T11:00:01.000Z",
+    });
+  } catch {
+    staleGraphRejected = true;
+  }
+  assert(staleGraphRejected, "scope proposal control accepted a stale graph revision");
+  assert(
+    JSON.stringify(await input.store.read(input.sessionId)) === JSON.stringify(beforeStaleGraphProposal) &&
+      JSON.stringify(await input.store.events(input.sessionId)) === JSON.stringify(beforeStaleGraphProposalEvents),
+    "stale scope proposal graph revision mutated durable state",
+  );
+  return (await input.store.commit(input.sessionId, {
+    kind: "propose_scope_expansion",
+    proposal: createResearchScopeExpansionProposalV1(proposal),
+    expectedRevision: initialized.revision,
+    expectedLeaseEpoch: initialized.lease.epoch,
+    at: "2026-08-01T11:00:01.000Z",
+  })).session;
 }
 
 /**
@@ -514,6 +602,66 @@ export async function verifyResearchSessionStoreConformanceV1(
     );
   }
 
+  const scopeProposalSessionId = `${prefix}-scope-proposal-identities`;
+  const scopeProposal = await prepareScopeProposalIdentityFenceV1({
+    store,
+    sessionId: scopeProposalSessionId,
+  });
+  const beforeScopeProposal = await store.read(scopeProposalSessionId);
+  const beforeScopeProposalEvents = await store.events(scopeProposalSessionId);
+  assert(beforeScopeProposal, "scope proposal identity fence did not initialize a session");
+  const scopeProposalAttempts: Array<ResearchSessionUpdateV1> = [
+    {
+      kind: "reject_scope_expansion",
+      proposalId: "scope-expansion:unknown",
+      expectedRevision: scopeProposal.revision,
+      expectedLeaseEpoch: scopeProposal.lease.epoch,
+      at: "2026-08-01T11:00:02.000Z",
+    },
+    {
+      kind: "approve_scope_expansion",
+      proposalId: "scope-expansion:linked-page",
+      binding: {
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:unknown-candidate",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "research-scope-entity:linked-page",
+        name: "Synthetic linked page",
+        source: "research_discovery",
+        authority: "approved",
+        candidateId: "research-scope-candidate:unknown",
+        approvedAt: "2026-08-01T11:00:02.000Z",
+      },
+      expectedRevision: scopeProposal.revision,
+      expectedLeaseEpoch: scopeProposal.lease.epoch,
+      at: "2026-08-01T11:00:02.000Z",
+    },
+    {
+      kind: "reject_scope_expansion",
+      proposalId: "scope-expansion:linked-page",
+      expectedRevision: scopeProposal.revision + 1,
+      expectedLeaseEpoch: scopeProposal.lease.epoch,
+      at: "2026-08-01T11:00:02.000Z",
+    },
+  ];
+  for (const update of scopeProposalAttempts) {
+    let rejected = false;
+    try {
+      await store.commit(scopeProposalSessionId, update);
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, "scope proposal control accepted an unknown or stale identity");
+    const after = await store.read(scopeProposalSessionId);
+    assert(
+      JSON.stringify(after) === JSON.stringify(beforeScopeProposal) &&
+        JSON.stringify(await store.events(scopeProposalSessionId)) === JSON.stringify(beforeScopeProposalEvents),
+      "scope proposal control mutated durable state after rejection",
+    );
+  }
+
   return {
     aggregateCommit: "passed",
     staleCas: "passed",
@@ -522,5 +670,6 @@ export async function verifyResearchSessionStoreConformanceV1(
     packetPublicationAtomicity: "passed",
     clarificationIdentityFencing: "passed",
     scopeCandidateIdentityFencing: "passed",
+    scopeProposalIdentityFencing: "passed",
   };
 }

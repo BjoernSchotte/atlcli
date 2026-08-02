@@ -3481,6 +3481,10 @@ Gate:
         stale session revision without changing the pre-brief scope
         clarification, request, candidate set, or journal in all three stores
         (2026-08-02).
+  - [x] The same suite rejects unknown scope-expansion proposals, a binding
+        for the wrong candidate, and stale graph/proposal revisions without
+        changing the selected brief, graph, scope proposal, or journal in all
+        three stores (2026-08-02).
 - [x] A checkpoint/DB scan test finds no Anthropic key, Atlassian credential,
       cookie, raw provider cursor, or unsanitized error.
 

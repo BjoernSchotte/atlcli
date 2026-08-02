@@ -91,6 +91,7 @@ describe("IndexedDB durable research session store", () => {
       packetPublicationAtomicity: "passed",
       clarificationIdentityFencing: "passed",
       scopeCandidateIdentityFencing: "passed",
+      scopeProposalIdentityFencing: "passed",
     });
   });
 

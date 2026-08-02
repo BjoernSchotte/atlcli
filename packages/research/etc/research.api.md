@@ -3731,6 +3731,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     packetPublicationAtomicity: "passed";
     clarificationIdentityFencing: "passed";
     scopeCandidateIdentityFencing: "passed";
+    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -8130,6 +8131,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     packetPublicationAtomicity: "passed";
     clarificationIdentityFencing: "passed";
     scopeCandidateIdentityFencing: "passed";
+    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -12527,6 +12529,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     packetPublicationAtomicity: "passed";
     clarificationIdentityFencing: "passed";
     scopeCandidateIdentityFencing: "passed";
+    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -17193,6 +17196,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     packetPublicationAtomicity: "passed";
     clarificationIdentityFencing: "passed";
     scopeCandidateIdentityFencing: "passed";
+    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -21959,6 +21963,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     packetPublicationAtomicity: "passed";
     clarificationIdentityFencing: "passed";
     scopeCandidateIdentityFencing: "passed";
+    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -27948,6 +27953,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
     packetPublicationAtomicity: "passed";
     clarificationIdentityFencing: "passed";
     scopeCandidateIdentityFencing: "passed";
+    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
