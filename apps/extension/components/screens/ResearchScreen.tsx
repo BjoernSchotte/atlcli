@@ -442,7 +442,11 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [scopeReviews, setScopeReviews] = useState<
     ResearchSessionScopeReviewV1[]
   >([]);
+  const [scopePlanReviews, setScopePlanReviews] = useState<
+    ResearchSessionScopeReviewV1[]
+  >([]);
   const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
+  const [scopePlanReviewActionId, setScopePlanReviewActionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -471,6 +475,24 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       // explicit resume request instead of presenting it during mount.
       .catch(() => {
         if (active) setResumableSessions([]);
+      });
+    return () => { active = false; };
+  }, [port, site]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.listScopePlanReviews || !site) {
+      setScopePlanReviews([]);
+      return () => { active = false; };
+    }
+    void port.listScopePlanReviews()
+      .then((reviews) => {
+        if (active) setScopePlanReviews(reviews);
+      })
+      // Like scope review, this is advisory discovery. Approval remains fully
+      // revision-fenced by the extension background before any session changes.
+      .catch(() => {
+        if (active) setScopePlanReviews([]);
       });
     return () => { active = false; };
   }, [port, site]);
@@ -515,6 +537,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setScopeReviews(await port.listScopeReviews());
     } catch {
       setScopeReviews([]);
+    }
+  }
+
+  async function refreshScopePlanReviews(): Promise<void> {
+    if (!port?.listScopePlanReviews || !site) {
+      setScopePlanReviews([]);
+      return;
+    }
+    try {
+      setScopePlanReviews(await port.listScopePlanReviews());
+    } catch {
+      setScopePlanReviews([]);
     }
   }
 
@@ -638,6 +672,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setRunning(false);
       void refreshResumableSessions();
       void refreshScopeReviews();
+      void refreshScopePlanReviews();
     }
   }
 
@@ -678,6 +713,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setRunning(false);
       void refreshResumableSessions();
       void refreshScopeReviews();
+      void refreshScopePlanReviews();
     }
   }
 
@@ -711,11 +747,41 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           : "research.scopeReview.rejected",
       ));
       await refreshScopeReviews();
+      await refreshScopePlanReviews();
       void refreshResumableSessions();
     } catch (value) {
       setError(value instanceof Error ? value.message : t("research.error"));
     } finally {
       setScopeReviewActionId(null);
+    }
+  }
+
+  async function approveScopePlanReview(
+    review: ResearchSessionScopeReviewV1,
+  ): Promise<void> {
+    if (!port?.approveScopePlanReview) return;
+    const actionId = review.sessionId;
+    setError(null);
+    setActionStatus("");
+    setScopePlanReviewActionId(actionId);
+    try {
+      const updated = await port.approveScopePlanReview({
+        sessionId: review.sessionId,
+        revision: review.revision,
+        briefRevision: review.turn.briefRevision,
+        graphRevision: review.turn.graphRevision,
+      });
+      setScopePlanReviews((current) => current.map((candidate) =>
+        candidate.sessionId === updated.sessionId ? updated : candidate,
+      ));
+      setActionStatus(t("research.scopePlanReview.approved"));
+      await refreshScopePlanReviews();
+      void refreshScopeReviews();
+      void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setScopePlanReviewActionId(null);
     }
   }
 
@@ -1063,6 +1129,74 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   </div>
                 );
               }))}
+          </CardContent>
+        </Card>
+      )}
+
+      {scopePlanReviews.length > 0 && (
+        <Card data-testid="research-scope-plan-reviews">
+          <CardHeader>
+            <CardTitle>{t("research.scopePlanReview.title")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {scopePlanReviews.flatMap((review, reviewIndex) => {
+              const scopeRevision = review.turn.scopeRevisions.find((revision) =>
+                revision.state === "proposed" &&
+                revision.proposedGraphRevision === review.turn.graphRevision,
+              );
+              if (!scopeRevision) return [];
+              const deciding = scopePlanReviewActionId === review.sessionId;
+              return [(
+                <div
+                  key={review.sessionId}
+                  className="rounded-md border p-2 text-xs"
+                  data-testid={`research-scope-plan-review-${reviewIndex}`}
+                >
+                  <p className="m-0 font-medium">
+                    {t("research.scopePlanReview.value", {
+                      brief: String(review.turn.briefRevision),
+                      graph: String(review.turn.graphRevision),
+                    })}
+                  </p>
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.scopePlanReview.scope", {
+                      scopes: review.turn.bindings
+                        .filter((binding) => binding.authority === "approved")
+                        .map((binding) => binding.key ?? binding.name)
+                        .join(", ") || "—",
+                    })}
+                  </p>
+                  {scopeRevision.planDiff?.addedRoleIds.length ? (
+                    <p className="mb-0 mt-1 text-muted-foreground">
+                      {t("research.scopePlanReview.roles", {
+                        roles: scopeRevision.planDiff.addedRoleIds.join(", "),
+                      })}
+                    </p>
+                  ) : null}
+                  {scopeRevision.planDiff?.addedCapabilityIds.length ? (
+                    <p className="mb-0 mt-1 text-muted-foreground">
+                      {t("research.scopePlanReview.capabilities", {
+                        capabilities: scopeRevision.planDiff.addedCapabilityIds.join(", "),
+                      })}
+                    </p>
+                  ) : null}
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.scopePlanReview.noRetrieval")}
+                  </p>
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    disabled={running || scopePlanReviewActionId !== null}
+                    data-testid={`research-scope-plan-review-approve-${reviewIndex}`}
+                    onClick={() => void approveScopePlanReview(review)}
+                  >
+                    {deciding
+                      ? t("research.scopePlanReview.deciding")
+                      : t("research.scopePlanReview.approve")}
+                  </Button>
+                </div>
+              )];
+            })}
           </CardContent>
         </Card>
       )}

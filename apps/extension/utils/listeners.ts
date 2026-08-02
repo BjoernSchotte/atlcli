@@ -131,6 +131,14 @@ export function handleExtMessage(
             error: toMessage(err),
           });
           break;
+        case "research:list-scope-plan-reviews":
+          sendResponse({
+            kind: "research:list-scope-plan-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:approve-scope-review":
           sendResponse({
             kind: "research:approve-scope-review-result",
@@ -142,6 +150,14 @@ export function handleExtMessage(
         case "research:reject-scope-review":
           sendResponse({
             kind: "research:reject-scope-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:approve-scope-plan-review":
+          sendResponse({
+            kind: "research:approve-scope-plan-review-result",
             ok: false,
             code: "provider-error",
             error: toMessage(err),

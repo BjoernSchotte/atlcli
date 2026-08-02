@@ -68,6 +68,27 @@ describe("message guards", () => {
       windowId: 7,
     })).toBe(true);
     expect(isExtRequest({
+      kind: "research:list-scope-plan-reviews",
+      windowId: 7,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:approve-scope-plan-review",
+      windowId: 7,
+      sessionId: "research-session:scope-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:approve-scope-plan-review",
+      windowId: 7,
+      sessionId: "research-session:scope-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      proposalId: "must-not-cross",
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:approve-scope-review",
       windowId: 7,
       sessionId: "research-session:scope-review",

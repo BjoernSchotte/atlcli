@@ -18,6 +18,7 @@ import {
   type EntityDetection,
   type OffscreenResponse,
   type PdfCompileHints,
+  type ResearchScopePlanReviewActionRequest,
   type ResearchScopeReviewActionRequest,
   isExportJobsChanged,
 } from "../utils/messages.js";
@@ -748,6 +749,79 @@ export default defineBackground({
     }
   };
 
+  const listResearchScopePlanReviews = async (windowId: number) => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const page = await store.list({ limit: 100 });
+      return page.sessions
+        .flatMap((session) => {
+          const review = projectResearchSessionScopeReviewV1(session, tenantOrigin);
+          return review?.status === "waiting_plan_approval" &&
+              review.turn.scopeRevisions.some((revision) => revision.state === "proposed")
+            ? [review]
+            : [];
+        })
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    } finally {
+      store.close();
+    }
+  };
+
+  const approveResearchScopePlanReview = async (input: {
+    windowId: number;
+    action: ResearchScopePlanReviewActionRequest;
+  }) => {
+    const tenantOrigin = await activeResearchTenantOrigin(input.windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(input.action.sessionId);
+      if (!stored) {
+        throw new ResearchContractError("invalid-request", "The durable research session no longer exists.");
+      }
+      const review = projectResearchSessionScopeReviewV1(stored, tenantOrigin);
+      if (!review) {
+        throw new ResearchContractError(
+          "access-denied",
+          "The durable research session does not belong to the active Atlassian site.",
+        );
+      }
+      const matchingScopeRevision = review.turn.scopeRevisions.some((revision) =>
+        revision.state === "proposed" &&
+        revision.proposedGraphRevision === input.action.graphRevision,
+      );
+      if (
+        review.status !== "waiting_plan_approval" ||
+        review.revision !== input.action.revision ||
+        review.turn.briefRevision !== input.action.briefRevision ||
+        review.turn.graphRevision !== input.action.graphRevision ||
+        !matchingScopeRevision
+      ) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The scope replacement plan is stale. Refresh the sidebar before approving it.",
+        );
+      }
+      const committed = (await store.commit(stored.sessionId, {
+        kind: "approve_graph",
+        graphRevision: input.action.graphRevision,
+        expectedRevision: input.action.revision,
+        expectedLeaseEpoch: stored.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      const next = projectResearchSessionScopeReviewV1(committed, tenantOrigin);
+      if (!next) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The durable scope-plan decision could not be projected for the active site.",
+        );
+      }
+      return next;
+    } finally {
+      store.close();
+    }
+  };
+
   const resolveResearchScope = async (
     windowId: number,
     value: ResearchRequestV1,
@@ -814,6 +888,7 @@ export default defineBackground({
       resumeResearch,
       listResumableResearchSessions,
       listResearchScopeReviews,
+      listResearchScopePlanReviews,
       approveResearchScopeReview: (windowId, action) => scopeReviewForActiveTenant({
         windowId,
         action,
@@ -823,6 +898,10 @@ export default defineBackground({
         windowId,
         action,
         approve: false,
+      }),
+      approveResearchScopePlanReview: (windowId, action) => approveResearchScopePlanReview({
+        windowId,
+        action,
       }),
       resolveResearchScope,
       cancelResearch,

@@ -646,6 +646,94 @@ describe("portable Research screen", () => {
     expect(dom.html()).not.toContain("candidateId");
   });
 
+  it("approves a durable replacement plan without starting retrieval", async () => {
+    const review: ResearchSessionScopeReviewV1 = {
+      schema: "atlcli.research-session-scope-review/v1",
+      sessionId: "research-session:scope-plan-review",
+      revision: 13,
+      status: "waiting_plan_approval",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:scope-plan-review",
+        briefRevision: 4,
+        graphRevision: 5,
+        candidates: [],
+        bindings: [{
+          id: "scope-binding:related-space",
+          product: "confluence",
+          entityKind: "space",
+          key: "RELATED",
+          name: "Related documentation",
+          source: "research_discovery",
+          authority: "approved",
+        }],
+        expansionProposals: [],
+        scopeRevisions: [{
+          id: "scope-revision:related-space",
+          proposalId: "scope-expansion:related-space",
+          basedOnBriefRevision: 3,
+          basedOnGraphRevision: 4,
+          revisedBriefRevision: 4,
+          proposedGraphRevision: 5,
+          state: "proposed",
+        }],
+      },
+    };
+    const approvals: Array<{
+      sessionId: string;
+      revision: number;
+      briefRevision: number;
+      graphRevision: number;
+    }> = [];
+    let listings = 0;
+    let runs = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      listScopePlanReviews: async () => (++listings === 1 ? [review] : []),
+      approveScopePlanReview: async (input) => {
+        approvals.push(input);
+        return { ...review, revision: 14, status: "running" };
+      },
+      run: async () => {
+        runs += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    expect(dom.find("research-scope-plan-reviews").textContent)
+      .toContain("RELATED");
+    expect(dom.find("research-scope-plan-review-0").textContent)
+      .toContain("does not start retrieval");
+    await dom.click("research-scope-plan-review-approve-0");
+    await dom.flush();
+
+    expect(approvals).toEqual([{
+      sessionId: "research-session:scope-plan-review",
+      revision: 13,
+      briefRevision: 4,
+      graphRevision: 5,
+    }]);
+    expect(runs).toBe(0);
+    expect(dom.html()).toContain("Replacement plan approved.");
+  });
+
   it("shows the shared deep-plan stop before storing a key or calling the host", async () => {
     let keyWrites = 0;
     let runs = 0;

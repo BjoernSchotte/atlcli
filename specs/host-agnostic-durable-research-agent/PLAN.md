@@ -3275,6 +3275,11 @@ Extension/browser:
         atomically commits approve/reject, and never starts retrieval as a
         side effect. Whole-scope approval remains at the renewed plan-review
         boundary rather than silently resuming.
+  - [x] Add tenant-bound replacement-plan review for an approved whole scope.
+        The sidebar can list and approve only the persisted session/brief/graph
+        revision; the background verifies a proposed scope revision, marks the
+        graph approved atomically, and merely makes the session resumable. The
+        packed MV3 proof confirms that neither approval path starts retrieval.
 - [ ] Persist plan rejection, correction requests, pause requests,
       checkpoint acknowledgements, and resume transitions. A rejected plan
       never executes, and closing the sidebar while pause is pending never

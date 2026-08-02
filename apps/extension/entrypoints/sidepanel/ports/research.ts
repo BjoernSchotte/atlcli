@@ -156,6 +156,40 @@ export function chromeResearchPort(): ResearchPort {
       return response.reviews;
     },
 
+    async listScopePlanReviews() {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:list-scope-plan-reviews",
+        windowId: window.id,
+      }) as
+        | {
+            kind: "research:list-scope-plan-reviews-result";
+            ok: true;
+            reviews: ResearchSessionScopeReviewV1[];
+          }
+        | {
+            kind: "research:list-scope-plan-reviews-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:list-scope-plan-reviews-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research scope-plan-review host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.reviews;
+    },
+
     async approveScopeReview(input) {
       const window = await chrome.windows.getCurrent();
       if (window.id === undefined) {
@@ -220,6 +254,41 @@ export function chromeResearchPort(): ResearchPort {
         throw new ResearchContractError(
           "provider-error",
           "The research scope-rejection host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.review;
+    },
+
+    async approveScopePlanReview(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:approve-scope-plan-review",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:approve-scope-plan-review-result";
+            ok: true;
+            review: ResearchSessionScopeReviewV1;
+          }
+        | {
+            kind: "research:approve-scope-plan-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:approve-scope-plan-review-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research scope-plan-approval host returned no result.",
         );
       }
       if (!response.ok) throw new ResearchContractError(response.code, response.error);

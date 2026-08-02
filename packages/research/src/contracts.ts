@@ -610,6 +610,16 @@ export interface ResearchPort {
     graphRevision: number;
     proposalId: string;
   }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+  /** Optional review/approval boundary for a replacement scope-expansion plan. */
+  listScopePlanReviews?(): Promise<
+    import("./session-scope-review.js").ResearchSessionScopeReviewV1[]
+  >;
+  approveScopePlanReview?(input: {
+    sessionId: string;
+    revision: number;
+    briefRevision: number;
+    graphRevision: number;
+  }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }

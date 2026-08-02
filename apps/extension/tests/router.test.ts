@@ -366,6 +366,64 @@ describe("routeMessage (pure router)", () => {
     expect(JSON.stringify(request)).not.toContain("tenantOrigin");
   });
 
+  it("approves a replacement scope plan with revisions only", async () => {
+    const review: ResearchSessionScopeReviewV1 = {
+      schema: "atlcli.research-session-scope-review/v1",
+      sessionId: "research-session:scope-plan-review",
+      revision: 13,
+      status: "waiting_plan_approval",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:scope-plan-review",
+        briefRevision: 4,
+        graphRevision: 5,
+        candidates: [],
+        bindings: [],
+        expansionProposals: [],
+        scopeRevisions: [{
+          id: "scope-revision:related-space",
+          proposalId: "scope-expansion:related-space",
+          basedOnBriefRevision: 3,
+          basedOnGraphRevision: 4,
+          revisedBriefRevision: 4,
+          proposedGraphRevision: 5,
+          state: "proposed",
+        }],
+      },
+    };
+    const request = {
+      kind: "research:approve-scope-plan-review" as const,
+      windowId: 7,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+    };
+    let observed: unknown;
+    expect(await routeMessage(request, {
+      ...okDeps,
+      approveResearchScopePlanReview: async (windowId, action) => {
+        observed = { windowId, action };
+        return review;
+      },
+    })).toEqual({
+      kind: "research:approve-scope-plan-review-result",
+      ok: true,
+      review,
+    });
+    expect(observed).toEqual({
+      windowId: 7,
+      action: {
+        sessionId: review.sessionId,
+        revision: 13,
+        briefRevision: 4,
+        graphRevision: 5,
+      },
+    });
+    expect(JSON.stringify(request)).not.toContain("proposalId");
+    expect(JSON.stringify(request)).not.toContain("tenantOrigin");
+  });
+
   it("routes catalog-only research scope preflight without an Anthropic key", async () => {
     const request = {
       schema: "atlcli.research-request/v1",

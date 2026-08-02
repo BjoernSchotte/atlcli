@@ -13,6 +13,7 @@ import type {
   ExtRequest,
   ExtResponse,
   PdfCompileHints,
+  ResearchScopePlanReviewActionRequest,
   ResearchScopeReviewActionRequest,
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
@@ -77,6 +78,13 @@ export interface RouterDeps {
   approveResearchScopeReview?: (
     windowId: number,
     action: ResearchScopeReviewActionRequest,
+  ) => Promise<ResearchSessionScopeReviewV1>;
+  listResearchScopePlanReviews?: (
+    windowId: number,
+  ) => Promise<ResearchSessionScopeReviewV1[]>;
+  approveResearchScopePlanReview?: (
+    windowId: number,
+    action: ResearchScopePlanReviewActionRequest,
   ) => Promise<ResearchSessionScopeReviewV1>;
   rejectResearchScopeReview?: (
     windowId: number,
@@ -271,6 +279,28 @@ export async function routeMessage(
         };
       }
     }
+    case "research:list-scope-plan-reviews": {
+      if (!deps.listResearchScopePlanReviews) {
+        return {
+          kind: "research:list-scope-plan-reviews-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope-plan review is not configured.",
+        };
+      }
+      try {
+        const reviews = await deps.listResearchScopePlanReviews(msg.windowId);
+        return { kind: "research:list-scope-plan-reviews-result", ok: true, reviews };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:list-scope-plan-reviews-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
     case "research:approve-scope-review": {
       if (!deps.approveResearchScopeReview) {
         return {
@@ -321,6 +351,33 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:reject-scope-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:approve-scope-plan-review": {
+      if (!deps.approveResearchScopePlanReview) {
+        return {
+          kind: "research:approve-scope-plan-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope-plan approval is not configured.",
+        };
+      }
+      try {
+        const review = await deps.approveResearchScopePlanReview(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          briefRevision: msg.briefRevision,
+          graphRevision: msg.graphRevision,
+        });
+        return { kind: "research:approve-scope-plan-review-result", ok: true, review };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:approve-scope-plan-review-result",
           ok: false,
           code: classified.code,
           error: classified.message,

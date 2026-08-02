@@ -93,6 +93,14 @@ export interface ResearchScopeReviewActionRequest {
   proposalId: string;
 }
 
+/** A proposal-free revision fence for the replacement plan of a whole scope. */
+export interface ResearchScopePlanReviewActionRequest {
+  sessionId: string;
+  revision: number;
+  briefRevision: number;
+  graphRevision: number;
+}
+
 /** Bounded timing/result projection for cross-realm DOCX runtime preparation. */
 export interface DocxRuntimePreparationMessage {
   totalMs: number;
@@ -136,6 +144,8 @@ export type ExtRequest =
   | { kind: "research:list-scope-reviews"; windowId: number }
   | ({ kind: "research:approve-scope-review"; windowId: number } & ResearchScopeReviewActionRequest)
   | ({ kind: "research:reject-scope-review"; windowId: number } & ResearchScopeReviewActionRequest)
+  | { kind: "research:list-scope-plan-reviews"; windowId: number }
+  | ({ kind: "research:approve-scope-plan-review"; windowId: number } & ResearchScopePlanReviewActionRequest)
   | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
@@ -214,6 +224,28 @@ export type ExtResponse =
     }
   | {
       kind: "research:reject-scope-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:list-scope-plan-reviews-result";
+      ok: true;
+      reviews: ResearchSessionScopeReviewV1[];
+    }
+  | {
+      kind: "research:list-scope-plan-reviews-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:approve-scope-plan-review-result";
+      ok: true;
+      review: ResearchSessionScopeReviewV1;
+    }
+  | {
+      kind: "research:approve-scope-plan-review-result";
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -339,6 +371,8 @@ export interface ResponseMap {
   "research:list-scope-reviews": Extract<ExtResponse, { kind: "research:list-scope-reviews-result" }>;
   "research:approve-scope-review": Extract<ExtResponse, { kind: "research:approve-scope-review-result" }>;
   "research:reject-scope-review": Extract<ExtResponse, { kind: "research:reject-scope-review-result" }>;
+  "research:list-scope-plan-reviews": Extract<ExtResponse, { kind: "research:list-scope-plan-reviews-result" }>;
+  "research:approve-scope-plan-review": Extract<ExtResponse, { kind: "research:approve-scope-plan-review-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
@@ -404,6 +438,25 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       isResearchRevision(action.briefRevision) &&
       isResearchRevision(action.graphRevision) &&
       isResearchScopeProposalId(action.proposalId);
+  }
+  if (kind === "research:list-scope-plan-reviews") {
+    return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:approve-scope-plan-review") {
+    const action = value as Partial<ResearchScopePlanReviewActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, [
+      "kind",
+      "windowId",
+      "sessionId",
+      "revision",
+      "briefRevision",
+      "graphRevision",
+    ]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      isResearchRevision(action.briefRevision) &&
+      isResearchRevision(action.graphRevision);
   }
   if (kind === "research:resolve-scope") {
     const preflight = value as { windowId?: unknown; request?: unknown; options?: unknown };

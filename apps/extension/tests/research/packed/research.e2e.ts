@@ -2329,21 +2329,84 @@ test("reviews a durable scope proposal in packed MV3 without allowing caller-own
     review: { revision: pending.revision + 1, status: "waiting_plan_approval" },
   });
 
+  const planReviews = await page.evaluate(async () => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:list-scope-plan-reviews",
+      windowId: window.id,
+    });
+  }) as {
+    kind: string;
+    ok: boolean;
+    reviews?: Array<{
+      sessionId: string;
+      revision: number;
+      status: string;
+      turn: {
+        briefRevision: number;
+        graphRevision: number;
+        scopeRevisions: Array<{
+          state: string;
+          proposedGraphRevision?: number;
+        }>;
+      };
+    }>;
+  };
+  expect(planReviews).toMatchObject({
+    kind: "research:list-scope-plan-reviews-result",
+    ok: true,
+    reviews: [{
+      sessionId: pending.sessionId,
+      revision: pending.revision + 1,
+      status: "waiting_plan_approval",
+      turn: {
+        briefRevision: 2,
+        graphRevision: 2,
+        scopeRevisions: [{ state: "proposed", proposedGraphRevision: 2 }],
+      },
+    }],
+  });
+  expect(JSON.stringify(planReviews)).not.toContain("tenantOrigin");
+  expect(JSON.stringify(planReviews)).not.toContain("entityRef");
+
+  const planApproved = await page.evaluate(async ({ sessionId, revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:approve-scope-plan-review",
+      windowId: window.id,
+      sessionId,
+      revision,
+      briefRevision: 2,
+      graphRevision: 2,
+    });
+  }, { sessionId: pending.sessionId, revision: pending.revision + 1 }) as {
+    kind: string;
+    ok: boolean;
+    review?: { revision: number; status: string };
+  };
+  expect(planApproved).toMatchObject({
+    kind: "research:approve-scope-plan-review-result",
+    ok: true,
+    review: { revision: pending.revision + 2, status: "running" },
+  });
+
   const durable = await readPackedDurableResearchSession(
     page,
     pending.sessionId,
     "artifact:report:research-turn:packed-scope-review",
   );
   expect(durable.session.state).toMatchObject({
-    status: "waiting_plan_approval",
+    status: "running",
     turns: [{
       brief: { scope: { confluenceSpaceKeys: ["KB", "RELATED"] } },
-      graph: { revision: 2, basedOnBriefRevision: 2, status: "proposed" },
+      graph: { revision: 2, basedOnBriefRevision: 2, status: "approved" },
       scopeExpansionProposals: [{
         id: "scope-expansion:packed-related-space",
         status: "approved",
       }],
-      scopeRevisions: [{ state: "proposed", proposedGraphRevision: 2 }],
+      scopeRevisions: [{ state: "approved", proposedGraphRevision: 2 }],
     }],
   });
   expect(durable.session.state.turns[0]?.graph?.nodes?.some((node) =>
@@ -2352,6 +2415,24 @@ test("reviews a durable scope proposal in packed MV3 without allowing caller-own
   expect(durable.artifact).toBeUndefined();
   const events = await harnessEvents(page);
   expect(events.some((event) => event.kind === "fetch")).toBe(false);
+
+  const stalePlanApproval = await page.evaluate(async ({ sessionId, revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:approve-scope-plan-review",
+      windowId: window.id,
+      sessionId,
+      revision,
+      briefRevision: 2,
+      graphRevision: 2,
+    });
+  }, { sessionId: pending.sessionId, revision: pending.revision + 1 });
+  expect(stalePlanApproval).toMatchObject({
+    kind: "research:approve-scope-plan-review-result",
+    ok: false,
+    code: "invalid-request",
+  });
 
   const stale = await page.evaluate(async ({ sessionId, revision }) => {
     const window = await chrome.windows.getCurrent();
