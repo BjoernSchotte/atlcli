@@ -3028,6 +3028,14 @@ test("persists and approves an initial packed plan before key storage or retriev
         briefRevision: number;
         graphRevision: number;
         selectedRoleIds: string[];
+        budget: {
+          maxPtcCalls: number;
+          maxHttpCalls: number;
+          maxTotalModelInputTokens: number;
+          maxTotalModelOutputTokens: number;
+          maxModelCostMicros: number;
+          maxRunMs: number;
+        };
       };
     };
   };
@@ -3037,7 +3045,18 @@ test("persists and approves an initial packed plan before key storage or retriev
     ok: true,
     review: {
       status: "waiting_plan_approval",
-      turn: { briefRevision: 1, graphRevision: 1 },
+      turn: {
+        briefRevision: 1,
+        graphRevision: 1,
+        budget: {
+          maxPtcCalls: 32,
+          maxHttpCalls: 64,
+          maxTotalModelInputTokens: 1_000_000,
+          maxTotalModelOutputTokens: 128_000,
+          maxModelCostMicros: 100_000_000,
+          maxRunMs: 120_000,
+        },
+      },
     },
   });
   expect(prepared.review?.turn.selectedRoleIds).toContain("reconciler");
