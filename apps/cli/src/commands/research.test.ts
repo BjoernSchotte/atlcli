@@ -110,12 +110,12 @@ function cliHarness(options: {
       mentions: [],
       resolutions: [],
     }),
-    prepareBrief: ({ request, policy, asOf, timezone, sessionId, turnId }) =>
+    prepareBrief: ({ request, policy, asOf, timezone, sessionId, turnId, scopeBindings }) =>
       prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
         ...(sessionId ? { sessionId } : {}),
         ...(turnId ? { turnId } : {}),
         scope: request.scope,
-        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+        scopeBindings: scopeBindings ?? request.scopeSeeds?.map((seed) => seed.binding),
         limits: request.limits,
         asOf,
         timezone,
@@ -1220,6 +1220,12 @@ describe("research CLI one-shot contract", () => {
         question: "What changed in the approved scope?",
         scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] },
       },
+      brief: {
+        scopeBindings: [
+          { key: "ATLCLI", source: "cli_flag", authority: "locked" },
+          { key: "DOCSY", source: "cli_flag", authority: "locked" },
+        ],
+      },
       durableSession: { sessionId: terminal.sessionId },
     });
     const persisted = await harness.durableStore.read(terminal.sessionId);
@@ -1229,6 +1235,10 @@ describe("research CLI one-shot contract", () => {
     expect(persisted?.turns[1]?.brief).toMatchObject({
       objective: "What changed in the approved scope?",
       scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] },
+      scopeBindings: [
+        { key: "ATLCLI", source: "cli_flag", authority: "locked" },
+        { key: "DOCSY", source: "cli_flag", authority: "locked" },
+      ],
     });
     expect(harness.stderr.join("")).toContain(`session=${terminal.sessionId}`);
     expect(harness.stderr.join("")).toContain("new_turn=true");

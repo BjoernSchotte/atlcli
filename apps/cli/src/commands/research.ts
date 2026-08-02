@@ -194,6 +194,8 @@ export interface ResearchCliDependencies {
     timezone?: string;
     sessionId?: string;
     turnId?: string;
+    /** A follow-up turn inherits only persisted, host-approved bindings. */
+    scopeBindings?: readonly ResearchScopeBindingV1[];
   }): ResearchBriefPreflightOutcomeV1;
   readApiKey(): string | undefined;
   createWorkspace(): Promise<ResearchCliWorkspace>;
@@ -1677,7 +1679,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.turnId ? { turnId: input.turnId } : {}),
       scope: input.request.scope,
-      scopeBindings: input.request.scopeSeeds?.map((seed) => seed.binding),
+      scopeBindings: input.scopeBindings ?? input.request.scopeSeeds?.map((seed) => seed.binding),
       limits: input.request.limits,
       asOf: input.asOf,
       timezone: input.timezone,
@@ -1899,6 +1901,7 @@ async function startNewResearchCliSessionTurn(
       timezone: previousTurn.brief.timezone,
       sessionId,
       turnId,
+      scopeBindings: previousTurn.scopeBindings,
     });
     if (briefOutcome.kind === "clarification_required") {
       dependencies.writeStderr(
