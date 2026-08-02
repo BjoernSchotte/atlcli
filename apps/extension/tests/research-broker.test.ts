@@ -242,6 +242,34 @@ describe("bounded research capability broker", () => {
     expect(broker.budget.canReadAnotherDetail("confluence")).toBe(true);
   });
 
+  it("assesses only host-observed ranked retrieval state before another wave", async () => {
+    const broker = new ResearchCapabilityBroker(
+      request({ maxSearchPagesPerProduct: 1, maxDetailItemsPerProduct: 1 }),
+      fakeProviders(),
+      { createEntityId: () => "assessment-entity" },
+    );
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "jira", page.items);
+    expect(broker.retrievalAssessment(["jira"])).toMatchObject({
+      action: "continue",
+      reason: "unread_ranked_candidates",
+      products: [{ product: "jira", unreadRankedCandidateCount: 1 }],
+    });
+
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+    });
+    expect(broker.retrievalAssessment(["jira"])).toMatchObject({
+      action: "stop",
+      reason: "search_budget_exhausted",
+      newDetailSourceCount: 1,
+    });
+  });
+
   it("persists approved, tenant-bound evidence before publishing a detail body to the broker ledger", async () => {
     const workspace = createMemoryResearchWorkspace();
     const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);

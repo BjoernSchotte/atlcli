@@ -22,6 +22,7 @@ export * from "./content-projection.js";
 export * from "./cursor-vault.js";
 export * from "./entity-vault.js";
 export * from "./candidate-ranking.js";
+export * from "./retrieval-assessment.js";
 export * from "./broker.js";
 export * from "./report.js";
 export * from "./report-v2.js";

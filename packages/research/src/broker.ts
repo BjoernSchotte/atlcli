@@ -31,6 +31,10 @@ import {
 } from "./evidence-store.js";
 import type { ResearchClaimLedgerV1 } from "./claim-ledger.js";
 import {
+  assessResearchRetrievalV1,
+  type ResearchRetrievalAssessmentV1,
+} from "./retrieval-assessment.js";
+import {
   buildResearchCql,
   buildResearchJql,
   parseResearchQueryFingerprint,
@@ -115,6 +119,11 @@ interface BrokerOptions {
   };
 }
 
+interface RankedDetailAdmissionV1 {
+  product: ResearchProduct;
+  retrieval: ResearchEvidenceRetrievalV1;
+}
+
 class ConcurrencyGate {
   readonly #limit: number;
   #active = 0;
@@ -190,7 +199,12 @@ export class ResearchCapabilityBroker {
   readonly #gate: ConcurrencyGate;
   readonly #sources = new Map<string, ResearchSourceReferenceV1>();
   readonly #detailEvidence = new Map<string, ResearchDetailEvidenceV1>();
-  readonly #rankedEntityRefs = new Map<string, ResearchEvidenceRetrievalV1>();
+  readonly #rankedEntityRefs = new Map<string, RankedDetailAdmissionV1>();
+  readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
+  readonly #searchAttempts: Record<ResearchProduct, number> = {
+    jira: 0,
+    confluence: 0,
+  };
   readonly #evidence?: NonNullable<BrokerOptions["evidence"]>;
   readonly #controller = new AbortController();
   readonly #searchCompletion: Record<
@@ -234,6 +248,7 @@ export class ResearchCapabilityBroker {
     this.#sources.clear();
     this.#detailEvidence.clear();
     this.#rankedEntityRefs.clear();
+    this.#successfulDetailReads.length = 0;
   }
 
   sourceLedger(): ResearchSourceReferenceV1[] {
@@ -250,6 +265,42 @@ export class ResearchCapabilityBroker {
       ...(entry.retrieval ? { retrieval: { ...entry.retrieval } } : {}),
       ...(entry.evidenceId === undefined ? {} : { evidenceId: entry.evidenceId }),
     }));
+  }
+
+  /**
+   * Host-only signal for the next retrieval wave. It contains no source body,
+   * title, query, URL, or opaque entity ref, so callers can persist or stream
+   * the decision without turning it into an additional data-access surface.
+   */
+  retrievalAssessment(
+    products: readonly ResearchProduct[] = ["jira", "confluence"],
+    priorAcceptedSourceIds: readonly string[] = [],
+  ): ResearchRetrievalAssessmentV1 {
+    const selectedProducts = [...new Set(products)];
+    if (selectedProducts.length === 0 || selectedProducts.some((product) =>
+      product !== "jira" && product !== "confluence",
+    )) {
+      throw new ResearchContractError("invalid-request", "Retrieval assessment products are invalid.");
+    }
+    const snapshot = this.budget.snapshot();
+    return assessResearchRetrievalV1({
+      products: selectedProducts.map((product) => ({
+        product,
+        rankedSourceIds: [...this.#rankedEntityRefs.values()]
+          .filter((entry) => entry.product === product)
+          .map((entry) => entry.retrieval.sourceId),
+        detailedSourceIds: this.#successfulDetailReads
+          .filter((entry) => entry.product === product)
+          .map((entry) => entry.sourceId),
+        searchAttempted: this.#searchAttempts[product] > 0,
+        searchComplete: this.#searchCompletion[product].complete,
+        canSearchMore: this.budget.canSearchAnotherPage(product),
+        canReadMoreDetails: this.budget.canReadAnotherDetail(product),
+      })),
+      priorAcceptedSourceIds: [...priorAcceptedSourceIds],
+      ptcCallsRemaining: snapshot.ptcRemaining,
+      httpAttemptsRemaining: snapshot.httpAttemptsRemaining,
+    });
   }
 
   async #recordDetailEvidence(
@@ -295,6 +346,7 @@ export class ResearchCapabilityBroker {
       retrieval: { ...retrieval },
       ...(evidenceId === undefined ? {} : { evidenceId }),
     });
+    this.#successfulDetailReads.push({ product: source.product, sourceId: source.id });
   }
 
   /**
@@ -374,6 +426,7 @@ export class ResearchCapabilityBroker {
     pageSize: number,
     providerCursor?: string
   ): Promise<ResearchSearchOutputV1> {
+    this.#searchAttempts.jira += 1;
     this.budget.beginSearchPage("jira");
     const page = await this.#providers.jira.searchPage({
       jql: buildResearchJql(this.#request.scope, query),
@@ -422,6 +475,7 @@ export class ResearchCapabilityBroker {
       query = decoded.query;
       pageSize = decoded.pageSize ?? this.#request.limits.pageSize;
     }
+    this.#searchAttempts.confluence += 1;
     this.budget.beginSearchPage("confluence");
     const page = await this.#providers.wiki.searchPage({
       cql: buildResearchCql(this.#request.scope, query),
@@ -579,9 +633,12 @@ export class ResearchCapabilityBroker {
     });
     for (const candidate of ranked) {
       this.#rankedEntityRefs.set(candidate.entityRef, {
-        sourceId: candidate.sourceId,
-        reason: "question_relevance_rank",
-        rank: candidate.rank,
+        product: decoded.product,
+        retrieval: {
+          sourceId: candidate.sourceId,
+          reason: "question_relevance_rank",
+          rank: candidate.rank,
+        },
       });
     }
     return {
@@ -594,8 +651,8 @@ export class ResearchCapabilityBroker {
   async #getJira(input: unknown): Promise<ResearchGetOutputV1> {
     const decoded = decodeResearchGetInputV1("jira.issue.get", input);
     const entity = this.#entityVault.resolve("jira", decoded.entityRef);
-    const retrieval = this.#rankedEntityRefs.get(decoded.entityRef);
-    if (!retrieval) {
+    const admission = this.#rankedEntityRefs.get(decoded.entityRef);
+    if (!admission || admission.product !== "jira") {
       throw new ResearchContractError(
         "invalid-request",
         "Jira detail requires a candidate reference admitted by research.candidate.rank.",
@@ -614,10 +671,10 @@ export class ResearchCapabilityBroker {
       throw new ResearchContractError("access-denied", "Jira detail is outside the run scope.");
     }
     const source = this.#jiraSource(detail);
-    if (retrieval.sourceId !== source.id) {
+    if (admission.retrieval.sourceId !== source.id) {
       throw new ResearchContractError("provider-error", "Jira ranked candidate does not match its detail source.");
     }
-    await this.#recordDetailEvidence(source, detail.content, retrieval);
+    await this.#recordDetailEvidence(source, detail.content, admission.retrieval);
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].output,
       source: publicSource(source),
@@ -629,8 +686,8 @@ export class ResearchCapabilityBroker {
   async #getWiki(input: unknown): Promise<ResearchGetOutputV1> {
     const decoded = decodeResearchGetInputV1("wiki.page.get", input);
     const entity = this.#entityVault.resolve("wiki", decoded.entityRef);
-    const retrieval = this.#rankedEntityRefs.get(decoded.entityRef);
-    if (!retrieval) {
+    const admission = this.#rankedEntityRefs.get(decoded.entityRef);
+    if (!admission || admission.product !== "confluence") {
       throw new ResearchContractError(
         "invalid-request",
         "Confluence detail requires a candidate reference admitted by research.candidate.rank.",
@@ -652,10 +709,10 @@ export class ResearchCapabilityBroker {
       );
     }
     const source = this.#wikiSource(detail);
-    if (retrieval.sourceId !== source.id) {
+    if (admission.retrieval.sourceId !== source.id) {
       throw new ResearchContractError("provider-error", "Confluence ranked candidate does not match its detail source.");
     }
-    await this.#recordDetailEvidence(source, detail.content, retrieval);
+    await this.#recordDetailEvidence(source, detail.content, admission.retrieval);
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].output,
       source: publicSource(source),
