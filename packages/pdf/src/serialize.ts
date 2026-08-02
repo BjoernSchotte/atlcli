@@ -1741,11 +1741,16 @@ function serializeBlock(
       ));
       const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
       const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
+      const subtitleSize = readPdfDesignCapability<string>(
+        writer.catalogDesign,
+        "typography.roles.adfSmallText.size",
+      );
       const subtitle = block.chart.subtitle
-        ? `#par[#text(size: 9pt, style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(block.chart.subtitle)}]]\n`
+        ? `#par[#text(size: ${subtitleSize}, style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(block.chart.subtitle)}]]\n`
         : "";
+      const warningPalette = writer.catalogDesign.semanticPalettes.callouts.warning;
       const diagnostics = block.diagnostics?.length
-        ? `#block(width: 100%, inset: 7pt, fill: rgb("#FFF7D6"), stroke: rgb("#CF9F02"), radius: 3pt)[#text(weight: "bold", fill: rgb("#7F5F01"))[${literalText(`Chart data note: ${block.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`)}]]\n`
+        ? `#block(width: 100%, inset: (x: ${designLength(writer.catalogDesign, "calloutInsetX")}, y: ${designLength(writer.catalogDesign, "calloutInsetY")}), fill: rgb(${typstString(warningPalette.background)}), stroke: rgb(${typstString(warningPalette.foreground)}), radius: ${designLength(writer.catalogDesign, "calloutRadius")})[#text(weight: "bold", fill: rgb(${typstString(warningPalette.foreground)}))[${literalText(`Chart data note: ${block.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`)}]]\n`
         : "";
       const visual = block.visualAssetPath
         ? `#image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") })\n`

@@ -66,7 +66,8 @@ it("serializes a chart ExportBlock as an SVG visual plus deterministic data tabl
   expect(bundle.main).toContain('#text("FY 2026 plan")');
   expect(bundle.main).toContain('style: "italic"');
   expect(bundle.main).toContain('#text("Chart data note: One malformed row was skipped.")');
-  expect(bundle.main).toContain('fill: rgb("#FFF7D6")');
+  expect(bundle.main).toContain('fill: rgb("#FFFAE6")');
+  expect(bundle.main).toContain('stroke: rgb("#974F0C")');
   expect(bundle.main).toContain('#text("Jan")');
   expect(bundle.main).toContain('#text("20")');
   expect(bundle.main).toContain("#table(columns: 2");
@@ -80,6 +81,22 @@ it("serializes a chart ExportBlock as an SVG visual plus deterministic data tabl
   expect(chartSvg).toContain('role="img"');
   expect(bundle.main).toContain('[#text("Revenue")]');
   expect(bundle.main).not.toContain(', #text("Revenue")');
+
+  const themedManifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+  themedManifest.design!.typography.roles.adfSmallText!.size = "8.25pt";
+  themedManifest.design!.tokens.layout.calloutInsetX = "13pt";
+  themedManifest.design!.tokens.layout.calloutInsetY = "10pt";
+  themedManifest.design!.tokens.layout.calloutRadius = "5pt";
+  themedManifest.design!.semanticPalettes.callouts.warning = {
+    background: "#EAF7F0",
+    foreground: "#14532D",
+  };
+  const themed = serializePdfDocument(prepared, { metadata, templateManifest: themedManifest });
+  expect(themed.main).toContain('size: 8.25pt');
+  expect(themed.main).toContain('inset: (x: 13pt, y: 10pt)');
+  expect(themed.main).toContain('fill: rgb("#EAF7F0")');
+  expect(themed.main).toContain('stroke: rgb("#14532D")');
+  expect(themed.main).toContain('radius: 5pt');
 });
 
 it("keeps a captioned chart visual and semantic table in one figure", async () => {
