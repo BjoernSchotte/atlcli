@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createResearchBriefV1 } from "./brief.js";
-import { composeResearchGraphV1, type ResearchGraphProposalV1 } from "./graph.js";
+import {
+  RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+  composeResearchGraphV1,
+  reviseResearchGraphSelectionV1,
+  type ResearchGraphProposalV1,
+} from "./graph.js";
 import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
 import { initializeResearchSessionTurnV1 } from "./session-runtime.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
@@ -299,6 +304,39 @@ describe("durable research task dispatch journal", () => {
       "record_retrieval_assessment",
       "consume_retrieval_continuation",
     ]);
+  });
+
+  test("commits a host-validated graph revision with its durable revision history", async () => {
+    const { store, sessionId, turnId, journal, catalog, graph } = await initializedJournal();
+    const revised = reviseResearchGraphSelectionV1(catalog, graph, {
+      schema: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+      basedOnBriefRevision: graph.basedOnBriefRevision,
+      basedOnGraphRevision: graph.revision,
+      nodes: graph.nodes.map((node) => ({
+        nodeId: node.id,
+        dependencies: [...node.dependencies],
+        reasonCodes: [...node.reasonCodes],
+        priority: node.roleId === "synthesizer" ? node.priority - 1 : node.priority,
+      })),
+      prune: [],
+    });
+
+    await expect(journal.applyGraphRevision({
+      graph: revised,
+      evidenceIds: ["evidence:wave-one"],
+      gapIds: ["gap:coverage-one"],
+      reason: "coverage_gap",
+    })).resolves.toMatchObject({ revision: graph.revision + 1 });
+    const turn = (await store.read(sessionId))!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.graphRevisions).toEqual([
+      expect.objectContaining({ graph: expect.objectContaining({ revision: graph.revision }) }),
+      expect.objectContaining({
+        graph: expect.objectContaining({ revision: graph.revision + 1 }),
+        evidenceIds: ["evidence:wave-one"],
+        gapIds: ["gap:coverage-one"],
+      }),
+    ]);
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("apply_graph_revision");
   });
 
   test("commits every reconciliation disposition and the optional repair activation in one CAS event", async () => {

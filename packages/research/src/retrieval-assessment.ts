@@ -22,13 +22,13 @@ export type ResearchRetrievalAssessmentReasonV1 =
   | "no_ranked_candidates"
   | "ranked_candidates_exhausted";
 
-const RETRIEVAL_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[] = [
+export const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[] = [
   "continue",
   "replan",
   "stop",
 ];
 
-const RETRIEVAL_REASONS_V1: readonly ResearchRetrievalAssessmentReasonV1[] = [
+export const RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1: readonly ResearchRetrievalAssessmentReasonV1[] = [
   "unread_ranked_candidates",
   "search_not_terminal",
   "coverage_gap",
@@ -131,8 +131,8 @@ export function parseResearchRetrievalAssessmentV1(
     "unresolvedContradictionCount",
   ]) ||
       record.schema !== RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1 ||
-      !RETRIEVAL_ACTIONS_V1.includes(record.action as ResearchRetrievalAssessmentActionV1) ||
-      !RETRIEVAL_REASONS_V1.includes(record.reason as ResearchRetrievalAssessmentReasonV1) ||
+      !RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1.includes(record.action as ResearchRetrievalAssessmentActionV1) ||
+      !RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1.includes(record.reason as ResearchRetrievalAssessmentReasonV1) ||
       !Array.isArray(record.products) || record.products.length < 1 || record.products.length > 2) {
     invalid("Retrieval assessment is invalid.");
   }

@@ -18,7 +18,9 @@ import {
   reduceResearchTaskAttemptV1,
 } from "./task-ledger.js";
 import {
+  RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1,
   parseResearchRetrievalAssessmentV1,
+  type ResearchRetrievalAssessmentReasonV1,
   type ResearchRetrievalAssessmentV1,
 } from "./retrieval-assessment.js";
 import {
@@ -43,6 +45,8 @@ export const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 =
   "atlcli.research-session-retrieval-assessment/v1" as const;
 export const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 =
   "atlcli.research-session-retrieval-continuation/v1" as const;
+export const RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1 =
+  "atlcli.research-session-graph-revision/v1" as const;
 
 export type ResearchSessionStatusV1 =
   | "idle"
@@ -153,6 +157,20 @@ export interface ResearchSessionRetrievalAssessmentV1 {
   recordedAt: string;
 }
 
+/**
+ * A bounded, body-free graph snapshot for inspection and deterministic
+ * recovery. Evidence/gap identifiers explain the host-triggered revision;
+ * neither source bodies nor model rationale are retained here.
+ */
+export interface ResearchSessionGraphRevisionV1 {
+  schema: typeof RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1;
+  graph: ResearchGraphV1;
+  evidenceIds: string[];
+  gapIds: string[];
+  reason: ResearchRetrievalAssessmentReasonV1;
+  recordedAt: string;
+}
+
 export interface ResearchSessionTurnV1 {
   id: string;
   revision: number;
@@ -180,6 +198,8 @@ export interface ResearchSessionTurnV1 {
   acceptedPackets: ResearchAcceptedPacketV1[];
   reconciliationDispositions: ResearchReconciliationDispositionV1[];
   reconciliationCommittedAt?: string;
+  /** Undefined is a legacy turn that predates durable dynamic graph revisions. */
+  graphRevisions?: ResearchSessionGraphRevisionV1[];
   /** Undefined is a pre-assessment legacy turn; new turns always initialize it. */
   retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
   checkpoints: ResearchSessionCheckpointV1[];
@@ -226,6 +246,14 @@ export type ResearchSessionUpdateV1 =
       proposal: ResearchGraphProposalV1;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "revise_graph"; graph: ResearchGraphV1 })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Apply a host-validated incremental graph revision while the turn is running. */
+      kind: "apply_graph_revision";
+      graph: ResearchGraphV1;
+      evidenceIds: string[];
+      gapIds: string[];
+      reason: ResearchRetrievalAssessmentReasonV1;
+    })
   | (ResearchSessionFencedUpdateV1 & {
       kind: "record_clarification";
       briefRevision: number;
@@ -313,6 +341,18 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+function validateBodyFreeReferenceIds(
+  value: unknown,
+  label: string,
+): asserts value is string[] {
+  if (!Array.isArray(value) || value.length > 64 ||
+      value.some((entry) => typeof entry !== "string" ||
+        !/^(?:evidence|claim|gap|coverage|contradiction):[A-Za-z0-9._:-]{1,180}$/.test(entry)) ||
+      new Set(value).size !== value.length) {
+    invalid(`${label} is invalid.`);
+  }
+}
+
 function turn(session: ResearchSessionV1): ResearchSessionTurnV1 {
   if (!session.activeTurnId) invalid("Research session does not have an active turn.");
   const found = session.turns.find((candidate) => candidate.id === session.activeTurnId);
@@ -395,49 +435,69 @@ function validateSession(session: ResearchSessionV1): void {
   if (session.turns.length > 64 || new Set(session.turns.map((candidate) => candidate.id)).size !== session.turns.length) invalid("Research session turns are invalid.");
   if (session.activeTurnId && !session.turns.some((candidate) => candidate.id === session.activeTurnId)) invalid("Research session active turn is invalid.");
   for (const candidate of session.turns) {
-    if (candidate.retrievalAssessments === undefined) continue;
-    if (!Array.isArray(candidate.retrievalAssessments) || candidate.retrievalAssessments.length > 64) {
-      invalid("Research session retrieval assessments are invalid.");
-    }
-    const wavesByGraphRevision = new Map<number, Set<number>>();
-    for (const assessment of candidate.retrievalAssessments) {
-      if (assessment.schema !== RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 ||
-          !Number.isSafeInteger(assessment.graphRevision) || assessment.graphRevision < 1) {
-        invalid("Research session retrieval assessment is invalid or duplicated.");
+    if (candidate.graphRevisions !== undefined) {
+      if (!Array.isArray(candidate.graphRevisions) || candidate.graphRevisions.length > 16) {
+        invalid("Research session graph revisions are invalid.");
       }
-      const wave = assessment.wave ?? 1;
-      if (!Number.isSafeInteger(wave) || wave < 1) {
-        invalid("Research session retrieval assessment is invalid or duplicated.");
-      }
-      const waves = wavesByGraphRevision.get(assessment.graphRevision) ?? new Set<number>();
-      if (waves.has(wave)) invalid("Research session retrieval assessment is invalid or duplicated.");
-      waves.add(wave);
-      wavesByGraphRevision.set(assessment.graphRevision, waves);
-      timestamp(assessment.recordedAt, "Research session retrieval assessment timestamp");
-      const parsed = parseResearchRetrievalAssessmentV1(assessment.assessment);
-      const continuation = assessment.continuation;
-      if (continuation !== undefined) {
-        const expectedId = `research-continuation:${assessment.graphRevision}.${wave}`;
-        if (continuation.schema !== RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 ||
-            continuation.id !== expectedId ||
-            (continuation.status !== "issued" && continuation.status !== "consumed") ||
-            (continuation.status === "issued" && continuation.consumedAt !== undefined) ||
-            (continuation.status === "consumed" && continuation.consumedAt === undefined) ||
-            parsed.action === "stop") {
-          invalid("Research session retrieval continuation is invalid.");
+      let previousRevision = 0;
+      for (const revision of candidate.graphRevisions) {
+        if (revision.schema !== RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1 ||
+            revision.graph.sessionId !== session.sessionId || revision.graph.turnId !== candidate.id ||
+            revision.graph.revision <= previousRevision ||
+            !RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1.includes(revision.reason)) {
+          invalid("Research session graph revision is invalid.");
         }
-        timestamp(continuation.issuedAt, "Research session retrieval continuation issuance timestamp");
-        if (continuation.consumedAt !== undefined) {
-          timestamp(continuation.consumedAt, "Research session retrieval continuation consumption timestamp");
-          if (Date.parse(continuation.consumedAt) < Date.parse(continuation.issuedAt)) {
-            invalid("Research session retrieval continuation consumption precedes issuance.");
+        validateResearchGraphV1(revision.graph);
+        validateBodyFreeReferenceIds(revision.evidenceIds, "Research session graph revision evidence IDs");
+        validateBodyFreeReferenceIds(revision.gapIds, "Research session graph revision gap IDs");
+        timestamp(revision.recordedAt, "Research session graph revision timestamp");
+        previousRevision = revision.graph.revision;
+      }
+    }
+    if (candidate.retrievalAssessments !== undefined) {
+      if (!Array.isArray(candidate.retrievalAssessments) || candidate.retrievalAssessments.length > 64) {
+        invalid("Research session retrieval assessments are invalid.");
+      }
+      const wavesByGraphRevision = new Map<number, Set<number>>();
+      for (const assessment of candidate.retrievalAssessments) {
+        if (assessment.schema !== RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 ||
+            !Number.isSafeInteger(assessment.graphRevision) || assessment.graphRevision < 1) {
+          invalid("Research session retrieval assessment is invalid or duplicated.");
+        }
+        const wave = assessment.wave ?? 1;
+        if (!Number.isSafeInteger(wave) || wave < 1) {
+          invalid("Research session retrieval assessment is invalid or duplicated.");
+        }
+        const waves = wavesByGraphRevision.get(assessment.graphRevision) ?? new Set<number>();
+        if (waves.has(wave)) invalid("Research session retrieval assessment is invalid or duplicated.");
+        waves.add(wave);
+        wavesByGraphRevision.set(assessment.graphRevision, waves);
+        timestamp(assessment.recordedAt, "Research session retrieval assessment timestamp");
+        const parsed = parseResearchRetrievalAssessmentV1(assessment.assessment);
+        const continuation = assessment.continuation;
+        if (continuation !== undefined) {
+          const expectedId = `research-continuation:${assessment.graphRevision}.${wave}`;
+          if (continuation.schema !== RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 ||
+              continuation.id !== expectedId ||
+              (continuation.status !== "issued" && continuation.status !== "consumed") ||
+              (continuation.status === "issued" && continuation.consumedAt !== undefined) ||
+              (continuation.status === "consumed" && continuation.consumedAt === undefined) ||
+              parsed.action === "stop") {
+            invalid("Research session retrieval continuation is invalid.");
+          }
+          timestamp(continuation.issuedAt, "Research session retrieval continuation issuance timestamp");
+          if (continuation.consumedAt !== undefined) {
+            timestamp(continuation.consumedAt, "Research session retrieval continuation consumption timestamp");
+            if (Date.parse(continuation.consumedAt) < Date.parse(continuation.issuedAt)) {
+              invalid("Research session retrieval continuation consumption precedes issuance.");
+            }
           }
         }
       }
-    }
-    for (const waves of wavesByGraphRevision.values()) {
-      if (Math.max(...waves) !== waves.size) {
-        invalid("Research session retrieval assessment waves are not contiguous.");
+      for (const waves of wavesByGraphRevision.values()) {
+        if (Math.max(...waves) !== waves.size) {
+          invalid("Research session retrieval assessment waves are not contiguous.");
+        }
       }
     }
   }
@@ -545,6 +605,55 @@ export function reduceResearchSessionV1(
     if (update.kind === "revise_graph" && (!current.graph || update.graph.revision <= current.graph.revision)) invalid("Research graph revision is invalid.");
     const nextTurn = { ...current, graph: clone(update.graph), revision: current.revision + 1 };
     return withNext(session, update, { status: "waiting_plan_approval", turns: replaceTurn(session, nextTurn) });
+  }
+
+  if (update.kind === "apply_graph_revision") {
+    const current = ensureActive(session, ["running"]);
+    const previous = requireGraph(current);
+    validateResearchGraphV1(update.graph);
+    validateBodyFreeReferenceIds(update.evidenceIds, "Research graph revision evidence IDs");
+    validateBodyFreeReferenceIds(update.gapIds, "Research graph revision gap IDs");
+    if (update.graph.sessionId !== session.sessionId || update.graph.turnId !== current.id ||
+        update.graph.basedOnBriefRevision !== previous.basedOnBriefRevision ||
+        update.graph.revision !== previous.revision + 1 ||
+        update.graph.status !== "running" || update.graph.approvalEnvelope.status !== "approved" ||
+        !RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1.includes(update.reason)) {
+      invalid("Research graph revision does not match the active durable graph.");
+    }
+    const previousHistory = current.graphRevisions ?? [];
+    const history = previousHistory.some((record) => record.graph.revision === previous.revision)
+      ? previousHistory
+      : [
+          ...previousHistory,
+          {
+            schema: RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1,
+            graph: clone(previous),
+            evidenceIds: [],
+            gapIds: [],
+            reason: update.reason,
+            recordedAt: previous.createdAt,
+          },
+        ];
+    if (history.some((record) => record.graph.revision === update.graph.revision) || history.length >= 16) {
+      invalid("Research graph revision history is exhausted or duplicated.");
+    }
+    const record: ResearchSessionGraphRevisionV1 = {
+      schema: RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1,
+      graph: clone(update.graph),
+      evidenceIds: [...update.evidenceIds],
+      gapIds: [...update.gapIds],
+      reason: update.reason,
+      recordedAt: update.at,
+    };
+    return withNext(session, update, {
+      status: "running",
+      turns: replaceTurn(session, {
+        ...current,
+        revision: current.revision + 1,
+        graph: clone(update.graph),
+        graphRevisions: [...history, record],
+      }),
+    });
   }
 
   if (update.kind === "approve_graph") {

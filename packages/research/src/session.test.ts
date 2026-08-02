@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createResearchBriefV1 } from "./brief.js";
 import {
+  RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+  acceptResearchGraphProposalV1,
   composeResearchGraphV1,
+  reviseResearchGraphSelectionV1,
   type ResearchGraphProposalV1,
 } from "./graph.js";
 import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
@@ -259,6 +262,80 @@ describe("durable host-neutral research session reducer", () => {
       assessment: stopAssessment,
       issueContinuation: true,
     }, "2026-08-01T09:00:05.000Z")).toThrow("terminal retrieval assessment");
+  });
+
+  test("persists a checkpoint-caused graph revision with bounded evidence and gap identifiers", () => {
+    let current = readyToRun();
+    const catalog = current.turns[0]!.graph!;
+    const selectedIds = catalog.nodes
+      .filter((node) => node.kind === "search" || node.roleId === "synthesizer")
+      .map((node) => node.id);
+    const selected = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      basedOnBriefRevision: catalog.basedOnBriefRevision,
+      basedOnGraphRevision: catalog.revision,
+      nodes: catalog.nodes.filter((node) => selectedIds.includes(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.roleId === "synthesizer"
+          ? selectedIds.filter((candidate) => candidate !== node.id)
+          : [],
+        reasonCodes: [...node.reasonCodes],
+      })),
+    });
+    current = update(current, {
+      kind: "commit_graph_selection",
+      proposal: {
+        schema: "atlcli.research-graph-proposal/v1",
+        basedOnBriefRevision: catalog.basedOnBriefRevision,
+        basedOnGraphRevision: catalog.revision,
+        nodes: selected.nodes.map((node) => ({
+          nodeId: node.id,
+          dependencies: [...node.dependencies],
+          reasonCodes: [...node.reasonCodes],
+        })),
+      },
+    }, "2026-08-01T09:00:05.000Z");
+    const active = current.turns[0]!.graph!;
+    const revised = reviseResearchGraphSelectionV1(catalog, active, {
+      schema: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+      basedOnBriefRevision: active.basedOnBriefRevision,
+      basedOnGraphRevision: active.revision,
+      nodes: catalog.nodes.filter((node) => [
+        ...selectedIds,
+        "research-node:cross-product-join",
+      ].includes(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.roleId === "synthesizer"
+          ? [
+              ...selectedIds.filter((candidate) => candidate !== node.id),
+              "research-node:cross-product-join",
+            ]
+          : node.id === "research-node:cross-product-join"
+            ? selectedIds.filter((candidate) => candidate !== "research-node:synthesizer")
+            : [],
+        reasonCodes: [...node.reasonCodes],
+        priority: node.priority,
+      })),
+      prune: [],
+    });
+    current = update(current, {
+      kind: "apply_graph_revision",
+      graph: revised,
+      evidenceIds: ["evidence:wave-one"],
+      gapIds: ["gap:coverage-one"],
+      reason: "coverage_gap",
+    }, "2026-08-01T09:00:06.000Z");
+
+    expect(current.turns[0]!.graph).toMatchObject({ revision: active.revision + 1 });
+    expect(current.turns[0]!.graphRevisions).toEqual([
+      expect.objectContaining({ graph: expect.objectContaining({ revision: active.revision }) }),
+      expect.objectContaining({
+        graph: expect.objectContaining({ revision: active.revision + 1 }),
+        evidenceIds: ["evidence:wave-one"],
+        gapIds: ["gap:coverage-one"],
+        reason: "coverage_gap",
+      }),
+    ]);
   });
 
   test("accepts a packet atomically with its task and graph node", () => {
