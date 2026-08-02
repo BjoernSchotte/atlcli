@@ -405,6 +405,41 @@ export function chromeResearchPort(): ResearchPort {
       return response.session;
     },
 
+    async rejectPlanReview(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:reject-plan-review",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:reject-plan-review-result";
+            ok: true;
+            review: ResearchSessionPlanReviewV1;
+          }
+        | {
+            kind: "research:reject-plan-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:reject-plan-review-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research plan-revision host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.review;
+    },
+
     async prepareClarificationReview(request, policy) {
       const window = await chrome.windows.getCurrent();
       if (window.id === undefined) {

@@ -24,6 +24,7 @@ import {
   type ResearchScopeClarificationReviewActionRequest,
   type ResearchScopePlanReviewActionRequest,
   type ResearchPlanReviewActionRequest,
+  type ResearchPlanRevisionActionRequest,
   type ResearchScopeReviewActionRequest,
   isExportJobsChanged,
 } from "../utils/messages.js";
@@ -63,6 +64,7 @@ import {
   projectResearchSessionScopeClarificationReviewV1,
   projectResearchSessionPlanReviewV1,
   projectResearchResumableSessionV1,
+  proposeResearchGraphForReadyBriefV1,
   recoverResearchSessionForResumeV1,
   resolveResearchSessionClarificationsV1,
   resolveResearchSessionScopeClarificationV1,
@@ -790,6 +792,75 @@ export default defineBackground({
     }
   };
 
+  /**
+   * Browser equivalent of the CLI's aggregate reject-plan command. The exact
+   * stored review establishes tenant, scope, limits, capability envelope, and
+   * lease fence; the side panel contributes only its bounded correction.
+   */
+  const rejectResearchPlanReview = async (input: {
+    windowId: number;
+    action: ResearchPlanRevisionActionRequest;
+  }) => {
+    const tenantOrigin = await activeResearchTenantOrigin(input.windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(input.action.sessionId);
+      if (!stored) {
+        throw new ResearchContractError("invalid-request", "The durable research session no longer exists.");
+      }
+      const review = projectResearchSessionPlanReviewV1(stored, tenantOrigin);
+      if (!review ||
+          review.revision !== input.action.revision ||
+          review.turn.briefRevision !== input.action.briefRevision ||
+          review.turn.graphRevision !== input.action.graphRevision) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The research plan review is stale. Refresh the sidebar before revising it.",
+        );
+      }
+      const instruction = input.action.instruction.trim();
+      if (!instruction || instruction.length > 2_000) {
+        throw new ResearchContractError("invalid-request", "A bounded plan correction is required.");
+      }
+      const at = new Date().toISOString();
+      const rejected = (await store.commit(stored.sessionId, {
+        kind: "reject_plan",
+        graphRevision: review.turn.graphRevision,
+        reason: instruction,
+        expectedRevision: stored.revision,
+        expectedLeaseEpoch: stored.lease.epoch,
+        at,
+      })).session;
+      const requested = (await store.commit(stored.sessionId, {
+        kind: "request_plan_revision",
+        graphRevision: review.turn.graphRevision,
+        instruction,
+        expectedRevision: rejected.revision,
+        expectedLeaseEpoch: rejected.lease.epoch,
+        at,
+      })).session;
+      const revised = await proposeResearchGraphForReadyBriefV1({
+        store,
+        sessionId: stored.sessionId,
+        expectedRevision: requested.revision,
+        expectedLeaseEpoch: requested.lease.epoch,
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+        approveAutomatically: false,
+        at,
+      });
+      const replacement = projectResearchSessionPlanReviewV1(revised, tenantOrigin);
+      if (!replacement) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The corrected research plan could not be projected for the active site.",
+        );
+      }
+      return replacement;
+    } finally {
+      store.close();
+    }
+  };
+
   const projectClarificationResolution = (
     session: ResearchSessionV1,
     tenantOrigin: string,
@@ -1405,6 +1476,10 @@ export default defineBackground({
         action,
       }),
       approveResearchPlanReview: (windowId, action) => approveResearchPlanReview({
+        windowId,
+        action,
+      }),
+      rejectResearchPlanReview: (windowId, action) => rejectResearchPlanReview({
         windowId,
         action,
       }),

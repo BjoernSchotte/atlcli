@@ -2563,6 +2563,13 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    rejectPlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        instruction: string;
+    }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
     prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
     listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
     resolveClarificationReview?(input: {
@@ -6916,6 +6923,13 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    rejectPlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        instruction: string;
+    }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
     prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
     listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
     resolveClarificationReview?(input: {
@@ -11267,6 +11281,13 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    rejectPlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        instruction: string;
+    }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
     prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
     listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
     resolveClarificationReview?(input: {
@@ -15840,6 +15861,13 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    rejectPlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        instruction: string;
+    }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
     prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
     listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
     resolveClarificationReview?(input: {
@@ -20549,6 +20577,13 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    rejectPlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        instruction: string;
+    }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
     prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
     listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
     resolveClarificationReview?(input: {
@@ -23061,6 +23096,13 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    rejectPlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        instruction: string;
+    }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
     prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
     listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
     resolveClarificationReview?(input: {
@@ -26479,6 +26521,13 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session.js").ResearchResumableSessionV1>;
+    rejectPlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+        instruction: string;
+    }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
     prepareClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1>;
     listClarificationReviews?(): Promise<import("./session-clarification-review.js").ResearchSessionClarificationReviewV1[]>;
     resolveClarificationReview?(input: {

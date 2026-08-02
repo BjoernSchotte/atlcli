@@ -492,6 +492,38 @@ describe("routeMessage (pure router)", () => {
       session: { sessionId: review.sessionId },
     });
     expect(JSON.stringify(approval)).not.toContain("scope");
+
+    const correction = {
+      kind: "research:reject-plan-review" as const,
+      windowId: 7,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+      instruction: "Separate direct evidence from inferred relationships.",
+    };
+    expect(await routeMessage(correction, {
+      ...okDeps,
+      rejectResearchPlanReview: async (_windowId, action) => {
+        expect(action).toEqual({
+          sessionId: review.sessionId,
+          revision: 13,
+          briefRevision: 4,
+          graphRevision: 5,
+          instruction: "Separate direct evidence from inferred relationships.",
+        });
+        return {
+          ...review,
+          revision: 16,
+          turn: { ...review.turn, briefRevision: 5, graphRevision: 6 },
+        };
+      },
+    })).toMatchObject({
+      kind: "research:reject-plan-review-result",
+      ok: true,
+      review: { sessionId: review.sessionId, revision: 16 },
+    });
+    expect(JSON.stringify(correction)).not.toContain("scope");
   });
 
   it("routes revision-fenced clarification answers and post-answer recovery", async () => {

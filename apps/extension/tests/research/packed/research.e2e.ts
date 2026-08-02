@@ -2581,6 +2581,115 @@ test("persists and approves an initial packed plan before key storage or retriev
   expect(events.some((event) => event.kind === "worker-start")).toBe(false);
 });
 
+test("persists a packed plan correction and requires an explicit replacement approval", async () => {
+  await installEventCapture(page);
+  const request = hostParityRequest();
+  const policy = {
+    ...HOST_PARITY_POLICY,
+    requestedPlanApproval: "required" as const,
+  };
+  const prepared = await page.evaluate(async ({ request, policy }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:prepare-plan-review",
+      windowId: window.id,
+      request,
+      policy,
+    });
+  }, { request, policy }) as {
+    kind: string;
+    ok: boolean;
+    review?: {
+      sessionId: string;
+      revision: number;
+      turn: { id: string; briefRevision: number; graphRevision: number };
+    };
+  };
+  if (!prepared.ok || !prepared.review) throw new Error(JSON.stringify(prepared));
+
+  const correction = "Separate direct evidence from inferred relationships.";
+  const revised = await page.evaluate(async ({ review, correction }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:reject-plan-review",
+      windowId: window.id,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+      instruction: correction,
+    });
+  }, { review: prepared.review, correction }) as {
+    kind: string;
+    ok: boolean;
+    review?: {
+      sessionId: string;
+      revision: number;
+      status: string;
+      turn: { id: string; briefRevision: number; graphRevision: number };
+    };
+  };
+  expect(revised).toMatchObject({
+    kind: "research:reject-plan-review-result",
+    ok: true,
+    review: {
+      sessionId: prepared.review.sessionId,
+      status: "waiting_plan_approval",
+      turn: { briefRevision: 2, graphRevision: 2 },
+    },
+  });
+  expect(revised.review!.revision).toBeGreaterThan(prepared.review.revision);
+  expect(JSON.stringify(revised)).not.toContain(correction);
+
+  const durable = await readPackedDurableResearchSession(
+    page,
+    prepared.review.sessionId,
+    `artifact:report:${prepared.review.turn.id}`,
+  );
+  expect(durable.session.state).toMatchObject({
+    status: "waiting_plan_approval",
+    turns: [{
+      tasks: [],
+      acceptedPackets: [],
+      brief: { revision: 2 },
+      graph: { revision: 2, status: "proposed" },
+      planRevisions: [{
+        state: "proposed",
+        rejectionReason: correction,
+        instruction: correction,
+        revisedBriefRevision: 2,
+        proposedGraphRevision: 2,
+      }],
+    }],
+  });
+  expect(durable.artifact).toBeUndefined();
+  expect((await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY)))
+    .not.toHaveProperty(RESEARCH_ANTHROPIC_SESSION_KEY);
+
+  const staleApproval = await page.evaluate(async (review) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:approve-plan-review",
+      windowId: window.id,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+    });
+  }, prepared.review);
+  expect(staleApproval).toMatchObject({
+    kind: "research:approve-plan-review-result",
+    ok: false,
+    code: "invalid-request",
+  });
+  const events = await harnessEvents(page);
+  expect(events.some((event) => event.kind === "fetch")).toBe(false);
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+});
+
 test("persists and resolves an initial packed clarification before key storage or retrieval", async () => {
   await installEventCapture(page);
   const request = {

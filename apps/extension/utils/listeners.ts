@@ -187,6 +187,14 @@ export function handleExtMessage(
             error: toMessage(err),
           });
           break;
+        case "research:reject-plan-review":
+          sendResponse({
+            kind: "research:reject-plan-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:prepare-clarification-review":
           sendResponse({
             kind: "research:prepare-clarification-review-result",

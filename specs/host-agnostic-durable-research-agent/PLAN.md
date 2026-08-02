@@ -3316,6 +3316,14 @@ Extension/browser:
       checkpoint acknowledgements, and resume transitions. A rejected plan
       never executes, and closing the sidebar while pause is pending never
       converts the request into cancellation or approval.
+
+  - [x] Add tenant-bound, revision-fenced browser plan rejection with a
+        required bounded correction. The background derives the stored
+        tenant/scope/policy/lease, atomically records rejection and correction,
+        proposes a replacement graph, and returns to explicit plan approval;
+        it starts neither retrieval nor a worker. The packed MV3 test proves
+        the durable three-transition replacement, stale-approval rejection,
+        empty task/packet state, and absent credential write (2026-08-02).
 - [ ] Prove service-worker suspension, offscreen recreation, dedicated-worker
       termination, browser restart, cancellation, and concurrent-resume
       fencing.

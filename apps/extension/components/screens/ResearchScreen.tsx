@@ -459,6 +459,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
   const [clarificationDecisions, setClarificationDecisions] = useState<Record<string, "accepted" | "rejected" | "">>({});
   const [scopeClarificationSelections, setScopeClarificationSelections] = useState<Record<string, string>>({});
+  const [planRevisionInstructions, setPlanRevisionInstructions] = useState<Record<string, string>>({});
   const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
   const [scopePlanReviewActionId, setScopePlanReviewActionId] = useState<string | null>(null);
   const [planReviewActionId, setPlanReviewActionId] = useState<string | null>(null);
@@ -953,6 +954,42 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setActionStatus(t("research.planReview.approved"));
       await refreshPlanReviews();
       void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setPlanReviewActionId(null);
+    }
+  }
+
+  async function rejectPlanReview(review: ResearchSessionPlanReviewV1): Promise<void> {
+    if (!port?.rejectPlanReview) return;
+    const instruction = planRevisionInstructions[review.sessionId]?.trim() ?? "";
+    if (!instruction) {
+      setError(t("research.planReview.correctionRequired"));
+      return;
+    }
+    setError(null);
+    setActionStatus("");
+    setPlanReviewActionId(review.sessionId);
+    try {
+      const replacement = await port.rejectPlanReview({
+        sessionId: review.sessionId,
+        revision: review.revision,
+        briefRevision: review.turn.briefRevision,
+        graphRevision: review.turn.graphRevision,
+        instruction,
+      });
+      setPlanRevisionInstructions((current) => {
+        const next = { ...current };
+        delete next[review.sessionId];
+        return next;
+      });
+      setPlanReviews((current) => [
+        replacement,
+        ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
+      ]);
+      setActionStatus(t("research.planReview.revised"));
+      await refreshPlanReviews();
     } catch (value) {
       setError(value instanceof Error ? value.message : t("research.error"));
     } finally {
@@ -1726,15 +1763,43 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   <p className="mb-0 mt-1 text-muted-foreground">
                     {t("research.planReview.noRetrieval")}
                   </p>
-                  <Button
-                    className="mt-2"
-                    size="sm"
+                  <Label className="mt-2 block" htmlFor={`research-plan-review-correction-${index}`}>
+                    {t("research.planReview.correction")}
+                  </Label>
+                  <textarea
+                    id={`research-plan-review-correction-${index}`}
+                    className="mt-1 w-full rounded-md border bg-background p-2 text-xs"
+                    rows={3}
+                    maxLength={2_000}
                     disabled={running || planReviewActionId !== null}
-                    data-testid={`research-plan-review-approve-${index}`}
-                    onClick={() => void approvePlanReview(review)}
-                  >
-                    {deciding ? t("research.planReview.deciding") : t("research.planReview.approve")}
-                  </Button>
+                    data-testid={`research-plan-review-correction-${index}`}
+                    placeholder={t("research.planReview.correctionPlaceholder")}
+                    value={planRevisionInstructions[review.sessionId] ?? ""}
+                    onChange={(event) => setPlanRevisionInstructions((current) => ({
+                      ...current,
+                      [review.sessionId]: event.target.value,
+                    }))}
+                  />
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      disabled={running || planReviewActionId !== null}
+                      data-testid={`research-plan-review-approve-${index}`}
+                      onClick={() => void approvePlanReview(review)}
+                    >
+                      {deciding ? t("research.planReview.deciding") : t("research.planReview.approve")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={running || planReviewActionId !== null ||
+                        !(planRevisionInstructions[review.sessionId]?.trim())}
+                      data-testid={`research-plan-review-revise-${index}`}
+                      onClick={() => void rejectPlanReview(review)}
+                    >
+                      {deciding ? t("research.planReview.deciding") : t("research.planReview.revise")}
+                    </Button>
+                  </div>
                 </div>
               );
             })}

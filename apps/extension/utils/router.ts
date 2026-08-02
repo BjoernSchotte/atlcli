@@ -16,6 +16,7 @@ import type {
   ResearchClarificationPlanningActionRequest,
   ResearchClarificationReviewActionRequest,
   ResearchPlanReviewActionRequest,
+  ResearchPlanRevisionActionRequest,
   ResearchScopeClarificationPlanningActionRequest,
   ResearchScopeClarificationReviewActionRequest,
   ResearchScopePlanReviewActionRequest,
@@ -108,6 +109,10 @@ export interface RouterDeps {
     windowId: number,
     action: ResearchPlanReviewActionRequest,
   ) => Promise<ResearchResumableSessionV1>;
+  rejectResearchPlanReview?: (
+    windowId: number,
+    action: ResearchPlanRevisionActionRequest,
+  ) => Promise<ResearchSessionPlanReviewV1>;
   prepareResearchClarificationReview?: (
     windowId: number,
     request: ResearchRequestV1,
@@ -507,6 +512,34 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:approve-plan-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:reject-plan-review": {
+      if (!deps.rejectResearchPlanReview) {
+        return {
+          kind: "research:reject-plan-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research plan revision is not configured.",
+        };
+      }
+      try {
+        const review = await deps.rejectResearchPlanReview(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          briefRevision: msg.briefRevision,
+          graphRevision: msg.graphRevision,
+          instruction: msg.instruction,
+        });
+        return { kind: "research:reject-plan-review-result", ok: true, review };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:reject-plan-review-result",
           ok: false,
           code: classified.code,
           error: classified.message,

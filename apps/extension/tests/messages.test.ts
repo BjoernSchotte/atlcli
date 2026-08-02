@@ -116,6 +116,34 @@ describe("message guards", () => {
       scope: { mustNotCross: true },
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:reject-plan-review",
+      windowId: 7,
+      sessionId: "research-session:plan-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      instruction: "Separate direct evidence from inferred relationships.",
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:reject-plan-review",
+      windowId: 7,
+      sessionId: "research-session:plan-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      instruction: "   ",
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:reject-plan-review",
+      windowId: 7,
+      sessionId: "research-session:plan-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      instruction: "Correction",
+      scope: { mustNotCross: true },
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:prepare-clarification-review",
       windowId: 7,
       request: { schema: "atlcli.research-request/v1" },

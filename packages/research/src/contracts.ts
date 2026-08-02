@@ -640,6 +640,18 @@ export interface ResearchPort {
     graphRevision: number;
   }): Promise<import("./session.js").ResearchResumableSessionV1>;
   /**
+   * Reject one exact plan and persist a user correction before composing a
+   * replacement that must itself be approved. The correction is deliberately
+   * not a free-form graph or scope mutation.
+   */
+  rejectPlanReview?(input: {
+    sessionId: string;
+    revision: number;
+    briefRevision: number;
+    graphRevision: number;
+    instruction: string;
+  }): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+  /**
    * Persist a required brief clarification before credentials, a provider, or
    * graph construction. Browser hosts bind it to the active tenant.
    */

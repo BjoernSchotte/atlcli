@@ -114,6 +114,14 @@ export interface ResearchPlanReviewActionRequest {
   graphRevision: number;
 }
 
+/**
+ * A correction to one exact durable plan. The panel never supplies a graph,
+ * scope, tenant, or policy; the background derives those from stored state.
+ */
+export interface ResearchPlanRevisionActionRequest extends ResearchPlanReviewActionRequest {
+  instruction: string;
+}
+
 /** Revision-fenced answers and decisions for one durable brief revision. */
 export interface ResearchClarificationReviewActionRequest {
   sessionId: string;
@@ -200,6 +208,7 @@ export type ExtRequest =
     }
   | { kind: "research:list-plan-reviews"; windowId: number }
   | ({ kind: "research:approve-plan-review"; windowId: number } & ResearchPlanReviewActionRequest)
+  | ({ kind: "research:reject-plan-review"; windowId: number } & ResearchPlanRevisionActionRequest)
   | {
       kind: "research:prepare-clarification-review";
       windowId: number;
@@ -351,6 +360,17 @@ export type ExtResponse =
     }
   | {
       kind: "research:approve-plan-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:reject-plan-review-result";
+      ok: true;
+      review: ResearchSessionPlanReviewV1;
+    }
+  | {
+      kind: "research:reject-plan-review-result";
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -569,6 +589,7 @@ export interface ResponseMap {
   "research:prepare-plan-review": Extract<ExtResponse, { kind: "research:prepare-plan-review-result" }>;
   "research:list-plan-reviews": Extract<ExtResponse, { kind: "research:list-plan-reviews-result" }>;
   "research:approve-plan-review": Extract<ExtResponse, { kind: "research:approve-plan-review-result" }>;
+  "research:reject-plan-review": Extract<ExtResponse, { kind: "research:reject-plan-review-result" }>;
   "research:prepare-clarification-review": Extract<ExtResponse, { kind: "research:prepare-clarification-review-result" }>;
   "research:list-clarification-reviews": Extract<ExtResponse, { kind: "research:list-clarification-reviews-result" }>;
   "research:resolve-clarification-review": Extract<ExtResponse, { kind: "research:resolve-clarification-review-result" }>;
@@ -687,6 +708,24 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       isResearchRevision(action.revision) &&
       isResearchRevision(action.briefRevision) &&
       isResearchRevision(action.graphRevision);
+  }
+  if (kind === "research:reject-plan-review") {
+    const action = value as Partial<ResearchPlanRevisionActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, [
+      "kind",
+      "windowId",
+      "sessionId",
+      "revision",
+      "briefRevision",
+      "graphRevision",
+      "instruction",
+    ]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      isResearchRevision(action.briefRevision) &&
+      isResearchRevision(action.graphRevision) &&
+      isResearchPlanRevisionInstruction(action.instruction);
   }
   if (kind === "research:prepare-clarification-review") {
     const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown };
@@ -940,6 +979,10 @@ function hasValidAssumptionDecisions(value: unknown): boolean {
     ((decision as { decision?: unknown }).decision === "accepted" ||
       (decision as { decision?: unknown }).decision === "rejected"),
   );
+}
+
+function isResearchPlanRevisionInstruction(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= 2_000;
 }
 
 /** Mirrors the host-neutral export-job contract: opaque, non-empty, bounded text. */

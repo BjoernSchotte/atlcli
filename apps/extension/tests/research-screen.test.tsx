@@ -899,6 +899,83 @@ describe("portable Research screen", () => {
       .toContain("Synthetic durable question.");
   });
 
+  it("persists a bounded plan correction and requires review of its replacement", async () => {
+    const review: ResearchSessionPlanReviewV1 = {
+      schema: "atlcli.research-session-plan-review/v1",
+      sessionId: "research-session:plan-correction-review",
+      revision: 4,
+      status: "waiting_plan_approval",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:plan-correction-review",
+        briefRevision: 1,
+        graphRevision: 1,
+        resolvedEffort: "deep",
+        selectedRoleIds: ["focused-researcher", "reconciler"],
+        scopeExpansionMode: "ask",
+        reconciliationMode: "required",
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+      },
+    };
+    const replacement: ResearchSessionPlanReviewV1 = {
+      ...review,
+      revision: 7,
+      turn: { ...review.turn, briefRevision: 2, graphRevision: 2 },
+    };
+    const corrections: unknown[] = [];
+    let revised = false;
+    let keyWrites = 0;
+    let runs = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => { keyWrites += 1; },
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      listPlanReviews: async () => [revised ? replacement : review],
+      rejectPlanReview: async (input) => {
+        corrections.push(input);
+        revised = true;
+        return replacement;
+      },
+      run: async () => {
+        runs += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+    await dom.setValue(
+      "research-plan-review-correction-0",
+      "Separate direct evidence from inferred relationships.",
+    );
+    await dom.click("research-plan-review-revise-0");
+    await dom.flush();
+
+    expect(corrections).toEqual([{
+      sessionId: review.sessionId,
+      revision: 4,
+      briefRevision: 1,
+      graphRevision: 1,
+      instruction: "Separate direct evidence from inferred relationships.",
+    }]);
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+    expect(dom.find("research-plan-reviews").textContent).toContain("brief revision 2");
+    expect(dom.find("research-action-status").textContent)
+      .toContain("Correction saved");
+  });
+
   it("persists and resolves an initial clarification before key storage or retrieval", async () => {
     const review: ResearchSessionClarificationReviewV1 = {
       schema: "atlcli.research-session-clarification-review/v1",
