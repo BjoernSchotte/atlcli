@@ -54,6 +54,18 @@ export interface ResearchClarificationQuestionV1 {
   candidateIds?: string[];
 }
 
+/** A user answer retained as host-owned brief data, never as hidden model state. */
+export interface ResearchBriefClarificationResponseV1 {
+  questionId: string;
+  prompt: string;
+  response: string;
+}
+
+export interface ResearchBriefAssumptionDecisionV1 {
+  assumptionId: string;
+  decision: "accepted" | "rejected";
+}
+
 export interface ResearchBriefAssumptionV1 {
   id: string;
   text: string;
@@ -99,6 +111,7 @@ export interface ResearchBriefV1 {
   sourceClasses: ResearchProduct[];
   limits: ResearchLimitsV1;
   clarificationQuestions: ResearchClarificationQuestionV1[];
+  clarificationResponses: ResearchBriefClarificationResponseV1[];
   assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -110,11 +123,31 @@ export interface ResearchBriefV1 {
 export function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequestV1 {
   return {
     schema: RESEARCH_REQUEST_SCHEMA_V1,
-    question: brief.objective,
+    question: researchQuestionFromBriefV1(brief),
     scope: structuredClone(brief.scope),
     limits: structuredClone(brief.limits),
     wikiProvider: "rest",
   };
+}
+
+/**
+ * The provider and subagents receive the accepted question plus explicitly
+ * retained user answers.  This is data, not an instruction channel and not a
+ * permission change: scope, budgets, and capabilities still come only from
+ * the validated brief fields.
+ */
+export function researchQuestionFromBriefV1(brief: ResearchBriefV1): string {
+  // V1 sessions written before this additive field existed remain resumable.
+  const responses = brief.clarificationResponses ?? [];
+  if (responses.length === 0) return brief.objective;
+  return [
+    brief.objective,
+    "",
+    "User-provided clarification (research context, not source evidence):",
+    ...responses.map((response) =>
+      `- Question: ${response.prompt}\n  Answer: ${response.response}`,
+    ),
+  ].join("\n");
 }
 
 /** Recreate the immutable execution policy from a durable brief. */
@@ -242,6 +275,7 @@ export interface CreateResearchBriefInputV1 {
   expectedSections?: readonly string[];
   coverageTargets?: readonly ResearchCoverageTargetV1[];
   clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+  clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
   assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -287,6 +321,18 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
   for (const question of clarificationQuestions) {
     if (!/^clarification:[A-Za-z0-9._-]{1,120}$/.test(question.id) || !question.prompt.trim() || question.prompt.length > 1_000 || (question.candidateIds?.length ?? 0) > 8) throw new Error("Research brief clarification question is invalid.");
   }
+  const clarificationResponses = structuredClone(input.clarificationResponses ?? []);
+  if (clarificationResponses.length > 24 ||
+      new Set(clarificationResponses.map((response) => response.questionId)).size !== clarificationResponses.length) {
+    throw new Error("Research brief clarification responses are invalid.");
+  }
+  for (const response of clarificationResponses) {
+    if (!/^clarification:[A-Za-z0-9._-]{1,120}$/.test(response.questionId) ||
+        !response.prompt.trim() || response.prompt.length > 1_000 ||
+        !response.response.trim() || response.response.length > 2_000) {
+      throw new Error("Research brief clarification response is invalid.");
+    }
+  }
   return {
     schema: RESEARCH_BRIEF_SCHEMA_V1,
     sessionId: input.sessionId,
@@ -314,6 +360,11 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
     sourceClasses,
     limits: structuredClone(input.limits ?? DEFAULT_RESEARCH_LIMITS_V1),
     clarificationQuestions: [...clarificationQuestions],
+    clarificationResponses: clarificationResponses.map((response) => ({
+      questionId: response.questionId,
+      prompt: response.prompt.trim(),
+      response: response.response.trim(),
+    })),
     assumptions: [...assumptions],
   };
 }
@@ -321,6 +372,57 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
 export function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean {
   return brief.clarificationQuestions.some((question) => question.required) ||
     brief.assumptions.some((assumption) => assumption.requiresUserDecision && assumption.status === "proposed");
+}
+
+/**
+ * Materialize a new immutable brief revision after one complete answer set.
+ * The reducer invokes this pure function while it holds the session CAS fence;
+ * no provider, workspace, scope resolution, or graph construction occurs
+ * here. Clarifications never widen the approved scope or budget.
+ */
+export function resolveResearchBriefClarificationsV1(input: {
+  brief: ResearchBriefV1;
+  answers: readonly Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">[];
+  assumptionDecisions: readonly ResearchBriefAssumptionDecisionV1[];
+}): ResearchBriefV1 {
+  const requiredQuestions = input.brief.clarificationQuestions.filter((question) => question.required);
+  const requiredAssumptions = input.brief.assumptions.filter((assumption) =>
+    assumption.requiresUserDecision && assumption.status === "proposed",
+  );
+  const answers = input.answers.map((answer) => ({
+    questionId: answer.questionId,
+    response: answer.response.trim(),
+  }));
+  const decisions = input.assumptionDecisions.map((decision) => ({ ...decision }));
+  if (answers.length !== requiredQuestions.length ||
+      decisions.length !== requiredAssumptions.length ||
+      new Set(answers.map((answer) => answer.questionId)).size !== answers.length ||
+      new Set(decisions.map((decision) => decision.assumptionId)).size !== decisions.length ||
+      answers.some((answer) => !answer.response || answer.response.length > 2_000) ||
+      !requiredQuestions.every((question) => answers.some((answer) => answer.questionId === question.id)) ||
+      !requiredAssumptions.every((assumption) => decisions.some((decision) => decision.assumptionId === assumption.id)) ||
+      decisions.some((decision) => decision.decision !== "accepted" && decision.decision !== "rejected")) {
+    throw new Error("Research clarification resolution is incomplete or invalid.");
+  }
+  const answerByQuestionId = new Map(answers.map((answer) => [answer.questionId, answer]));
+  const decisionByAssumptionId = new Map(decisions.map((decision) => [decision.assumptionId, decision]));
+  return createResearchBriefV1({
+    ...input.brief,
+    revision: input.brief.revision + 1,
+    clarificationQuestions: input.brief.clarificationQuestions.filter((question) => !question.required),
+    clarificationResponses: [
+      ...(input.brief.clarificationResponses ?? []),
+      ...requiredQuestions.map((question) => ({
+        questionId: question.id,
+        prompt: question.prompt,
+        response: answerByQuestionId.get(question.id)!.response,
+      })),
+    ],
+    assumptions: input.brief.assumptions.map((assumption) => {
+      const decision = decisionByAssumptionId.get(assumption.id);
+      return decision ? { ...assumption, status: decision.decision } : assumption;
+    }),
+  });
 }
 
 /**

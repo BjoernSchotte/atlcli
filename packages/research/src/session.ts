@@ -1,5 +1,10 @@
 import { ResearchContractError, type ResearchScopeBindingV1 } from "./contracts.js";
-import type { ResearchBriefV1 } from "./brief.js";
+import {
+  resolveResearchBriefClarificationsV1,
+  type ResearchBriefAssumptionDecisionV1,
+  type ResearchBriefClarificationResponseV1,
+  type ResearchBriefV1,
+} from "./brief.js";
 import {
   acceptResearchGraphProposalV1,
   reduceResearchGraphV1,
@@ -308,6 +313,13 @@ export type ResearchSessionUpdateV1 =
       assumptionId: string;
       decision: "accepted" | "rejected";
     })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Atomically records one complete answer set and materializes a new brief revision. */
+      kind: "resolve_clarifications";
+      briefRevision: number;
+      answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+      assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "reject_plan"; graphRevision: number; reason: string })
   | (ResearchSessionFencedUpdateV1 & { kind: "propose_scope_expansion"; proposal: ResearchScopeExpansionProposalV1 })
   | (ResearchSessionFencedUpdateV1 & { kind: "approve_scope_expansion"; proposalId: string; binding: ResearchScopeBindingV1 })
@@ -458,19 +470,6 @@ function requireGraph(current: ResearchSessionTurnV1, graphRevision?: number): R
   if (!current.graph) invalid("Research session turn does not have a graph.");
   if (graphRevision !== undefined && current.graph.revision !== graphRevision) invalid("Research graph revision is stale.");
   return current.graph;
-}
-
-function hasUnansweredBriefRequirements(current: ResearchSessionTurnV1): boolean {
-  const brief = current.brief;
-  if (!brief) return true;
-  const unansweredQuestion = brief.clarificationQuestions.some(
-    (question) => question.required && !current.clarifications.some((answer) => answer.questionId === question.id),
-  );
-  const undecidedAssumption = brief.assumptions.some(
-    (assumption) => assumption.requiresUserDecision &&
-      !current.assumptionDecisions.some((decision) => decision.assumptionId === assumption.id),
-  );
-  return unansweredQuestion || undecidedAssumption;
 }
 
 function repairFollowUpMatchesDefect(
@@ -652,9 +651,31 @@ export function reduceResearchSessionV1(
     const question = current.brief.clarificationQuestions.find((candidate) => candidate.id === update.questionId);
     if (!question || current.clarifications.some((candidate) => candidate.questionId === update.questionId)) invalid("Research clarification question is unknown or already answered.");
     if ((update.assumptionId === undefined) !== (update.assumptionDecision === undefined)) invalid("Research assumption decisions must include both ID and decision.");
-    if (update.assumptionId && !current.brief.assumptions.some((assumption) => assumption.id === update.assumptionId && assumption.requiresUserDecision)) invalid("Research clarification assumption is unknown.");
-    const nextTurn = { ...current, clarifications: [...current.clarifications, { briefRevision: update.briefRevision, questionId: update.questionId, response: update.response.trim(), ...(update.assumptionId ? { assumptionId: update.assumptionId, assumptionDecision: update.assumptionDecision } : {}), answeredAt: update.at }] };
-    return withNext(session, update, { status: hasUnansweredBriefRequirements(nextTurn) ? "waiting_clarification" : "planning", turns: replaceTurn(session, nextTurn) });
+    if (update.assumptionId && (!current.brief.assumptions.some((assumption) => assumption.id === update.assumptionId && assumption.requiresUserDecision) || current.assumptionDecisions.some((decision) => decision.assumptionId === update.assumptionId))) invalid("Research clarification assumption is unknown.");
+    const nextTurn = {
+      ...current,
+      clarifications: [...current.clarifications, {
+        briefRevision: update.briefRevision,
+        questionId: update.questionId,
+        response: update.response.trim(),
+        ...(update.assumptionId ? { assumptionId: update.assumptionId, assumptionDecision: update.assumptionDecision } : {}),
+        answeredAt: update.at,
+      }],
+      ...(update.assumptionId ? {
+        assumptionDecisions: [...current.assumptionDecisions, {
+          briefRevision: update.briefRevision,
+          assumptionId: update.assumptionId,
+          decision: update.assumptionDecision!,
+          decidedAt: update.at,
+        }],
+      } : {}),
+    };
+    // Incremental record updates preserve the durable wait. Only the closed
+    // batch transition below may materialize a runnable successor brief.
+    return withReleasedDurableWait(session, update, {
+      status: "waiting_clarification",
+      turns: replaceTurn(session, nextTurn),
+    });
   }
 
   if (update.kind === "record_assumption_decision") {
@@ -663,7 +684,68 @@ export function reduceResearchSessionV1(
     const assumption = current.brief.assumptions.find((candidate) => candidate.id === update.assumptionId);
     if (!assumption?.requiresUserDecision || current.assumptionDecisions.some((candidate) => candidate.assumptionId === update.assumptionId)) invalid("Research assumption is unknown or already decided.");
     const nextTurn = { ...current, assumptionDecisions: [...current.assumptionDecisions, { briefRevision: update.briefRevision, assumptionId: update.assumptionId, decision: update.decision, decidedAt: update.at }] };
-    return withNext(session, update, { status: hasUnansweredBriefRequirements(nextTurn) ? "waiting_clarification" : "planning", turns: replaceTurn(session, nextTurn) });
+    return withReleasedDurableWait(session, update, {
+      status: "waiting_clarification",
+      turns: replaceTurn(session, nextTurn),
+    });
+  }
+
+  if (update.kind === "resolve_clarifications") {
+    const current = ensureActive(session, ["waiting_clarification"]);
+    if (!current.brief || current.brief.revision !== update.briefRevision) {
+      invalid("Research clarification resolution does not match the active brief.");
+    }
+    const answers = [
+      ...current.clarifications.map((answer) => ({
+        questionId: answer.questionId,
+        response: answer.response,
+      })),
+      ...update.answers,
+    ];
+    const assumptionDecisions = [
+      ...current.assumptionDecisions.map((decision) => ({
+        assumptionId: decision.assumptionId,
+        decision: decision.decision,
+      })),
+      ...update.assumptionDecisions,
+    ];
+    let resolvedBrief: ResearchBriefV1;
+    try {
+      resolvedBrief = resolveResearchBriefClarificationsV1({
+        brief: current.brief,
+        answers,
+        assumptionDecisions,
+      });
+    } catch (error) {
+      invalid(error instanceof Error ? error.message : "Research clarification resolution is invalid.");
+    }
+    const nextTurn = {
+      ...current,
+      revision: current.revision + 1,
+      brief: resolvedBrief!,
+      clarifications: [
+        ...current.clarifications,
+        ...update.answers.map((answer) => ({
+          briefRevision: update.briefRevision,
+          questionId: answer.questionId,
+          response: answer.response.trim(),
+          answeredAt: update.at,
+        })),
+      ],
+      assumptionDecisions: [
+        ...current.assumptionDecisions,
+        ...update.assumptionDecisions.map((decision) => ({
+          briefRevision: update.briefRevision,
+          assumptionId: decision.assumptionId,
+          decision: decision.decision,
+          decidedAt: update.at,
+        })),
+      ],
+    };
+    return withNext(session, update, {
+      status: "planning",
+      turns: replaceTurn(session, nextTurn),
+    });
   }
 
   if (update.kind === "propose_graph" || update.kind === "revise_graph") {

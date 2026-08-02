@@ -3205,6 +3205,12 @@ unknown-outcome retry/abstain remains a separate gate below.
 - [ ] Add revision-fenced `sessions revise-plan`, `approve-scope`, `reject-scope`,
       `clarify`, `steer`, `pause`, `resume`, and `cancel` commands from the CLI
       contract.
+
+  - [x] Add `sessions clarify` for a complete, repeatable answer/assumption
+        set. It materializes a new immutable brief revision under the session
+        CAS fence, then composes and persists the graph only from that committed
+        ready brief. The command is model/provider/workspace-free and releases
+        its automatic approval lease so a later `--resume` can claim it.
 - [ ] Show the sanitized brief, graph, selected roles, dependencies, budgets,
       approval envelope including optional role/capability grants,
       scope bindings/provenance/expansion policy, pending scope proposals,
@@ -3233,6 +3239,15 @@ Extension/browser:
 - [ ] Persist required clarification questions and responses by brief revision
       plus explicit assumption accept/reject decisions by assumption ID.
       Regenerate the graph only after the response transition commits.
+
+  - [x] The shared reducer and CLI persist the original answer/decision history
+        plus a new body-free brief revision carrying resolved response context;
+        a fresh graph is proposed only in the subsequent commit. The request
+        reconstructed for an eventual provider run includes that user-supplied
+        context while retaining the original scope, limits, and capabilities.
+  - [ ] Wire the identical transition and review controls through the extension
+        side panel/offscreen host, including recovery after the answer commit
+        but before graph proposal.
 - [ ] Persist scope candidates, bindings, resolution decisions, and expansion
       proposals by brief/graph revision. Add candidate selection and
       scope-proposal approval/rejection controls; closing the sidebar or

@@ -6,6 +6,7 @@ import {
   projectResearchProposedAssumptionLimitationsV1,
   researchPolicyFromBriefV1,
   researchRequestFromBriefV1,
+  resolveResearchBriefClarificationsV1,
   resolveResearchEffortV1,
   resolveResearchPlanApprovalV1,
 } from "./brief.js";
@@ -139,6 +140,51 @@ describe("host-owned research brief", () => {
       kind: "ready",
       brief: { schema: "atlcli.research-brief/v1" },
     });
+  });
+
+  test("materializes a complete clarification answer set as an immutable ready brief revision", () => {
+    const pending = create({
+      revision: 3,
+      clarificationQuestions: [{
+        id: "clarification:time-window",
+        prompt: "Which reporting window should be used?",
+        required: true,
+      }, {
+        id: "clarification:audience",
+        prompt: "Who will read the report?",
+        required: false,
+      }],
+      assumptions: [{
+        id: "assumption:include-archived",
+        text: "Include archived items.",
+        requiresUserDecision: true,
+        status: "proposed",
+      }],
+    });
+    const resolved = resolveResearchBriefClarificationsV1({
+      brief: pending,
+      answers: [{ questionId: "clarification:time-window", response: "Use the most recent seven days." }],
+      assumptionDecisions: [{ assumptionId: "assumption:include-archived", decision: "rejected" }],
+    });
+
+    expect(resolved).toMatchObject({
+      revision: 4,
+      clarificationQuestions: [{ id: "clarification:audience", required: false }],
+      clarificationResponses: [{
+        questionId: "clarification:time-window",
+        prompt: "Which reporting window should be used?",
+        response: "Use the most recent seven days.",
+      }],
+      assumptions: [{ id: "assumption:include-archived", status: "rejected" }],
+    });
+    expect(briefRequiresClarificationV1(resolved)).toBe(false);
+    expect(researchRequestFromBriefV1(resolved).question).toContain("Use the most recent seven days.");
+    expect(researchRequestFromBriefV1(resolved).scope).toEqual(pending.scope);
+    expect(() => resolveResearchBriefClarificationsV1({
+      brief: pending,
+      answers: [],
+      assumptionDecisions: [{ assumptionId: "assumption:include-archived", decision: "rejected" }],
+    })).toThrow("incomplete");
   });
 
   test("rejects silently accepted new assumptions and invalid time context", () => {

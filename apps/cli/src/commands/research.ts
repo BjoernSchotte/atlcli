@@ -61,6 +61,7 @@ import {
   appendResearchSessionTurnV1,
   initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
+  proposeResearchGraphForReadyBriefV1,
   recoverResearchSessionForResumeV1,
 } from "@atlcli/research/node";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
@@ -420,10 +421,12 @@ function assertSessionFlags(
   flags: Record<string, string | boolean | string[]>,
   allowedValues: readonly string[],
   allowedBooleans: readonly string[] = [],
+  repeatableValues: readonly string[] = [],
 ): void {
   const permitted = new Set([
     ...allowedValues,
     ...allowedBooleans,
+    ...repeatableValues,
     "json",
     "no-log",
     "help",
@@ -438,6 +441,14 @@ function assertSessionFlags(
   }
   for (const key of allowedValues) {
     if (flags[key] !== undefined && (typeof flags[key] !== "string" || Array.isArray(flags[key]) || !flags[key])) {
+      throw new Error(`--${key} requires a value.`);
+    }
+  }
+  for (const key of repeatableValues) {
+    if (flags[key] !== undefined && getFlags(flags, key).some((value) => !value.trim())) {
+      throw new Error(`--${key} requires a value.`);
+    }
+    if (flags[key] !== undefined && getFlags(flags, key).length === 0) {
       throw new Error(`--${key} requires a value.`);
     }
   }
@@ -457,6 +468,58 @@ function expectedSessionRevision(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error("--revision must be a positive integer.");
   return parsed;
+}
+
+interface ResearchClarificationAnswerInputV1 {
+  questionId: string;
+  response: string;
+}
+
+interface ResearchAssumptionDecisionInputV1 {
+  assumptionId: string;
+  decision: "accepted" | "rejected";
+}
+
+function splitResearchSessionAssignment(value: string, option: string): [string, string] {
+  const separator = value.indexOf("=");
+  if (separator <= 0 || separator === value.length - 1) {
+    throw new Error(`${option} must use <id>=<value>.`);
+  }
+  return [value.slice(0, separator).trim(), value.slice(separator + 1).trim()];
+}
+
+function clarificationAnswersFromSessionFlags(
+  flags: Record<string, string | boolean | string[]>,
+): ResearchClarificationAnswerInputV1[] {
+  const answers = getFlags(flags, "answer").map((value) => {
+    const [questionId, response] = splitResearchSessionAssignment(value, "--answer");
+    if (!/^clarification:[A-Za-z0-9._-]{1,120}$/.test(questionId) ||
+        !response || response.length > 2_000) {
+      throw new Error("--answer must use a valid clarification ID and a response of at most 2000 characters.");
+    }
+    return { questionId, response };
+  });
+  if (new Set(answers.map((answer) => answer.questionId)).size !== answers.length) {
+    throw new Error("--answer cannot repeat a clarification ID.");
+  }
+  return answers;
+}
+
+function assumptionDecisionsFromSessionFlags(
+  flags: Record<string, string | boolean | string[]>,
+): ResearchAssumptionDecisionInputV1[] {
+  const decisions = getFlags(flags, "assumption").map((value) => {
+    const [assumptionId, decision] = splitResearchSessionAssignment(value, "--assumption");
+    if (!/^assumption:[A-Za-z0-9._-]{1,120}$/.test(assumptionId) ||
+        (decision !== "accepted" && decision !== "rejected")) {
+      throw new Error("--assumption must use <assumption-id>=accepted|rejected.");
+    }
+    return { assumptionId, decision } as const;
+  });
+  if (new Set(decisions.map((decision) => decision.assumptionId)).size !== decisions.length) {
+    throw new Error("--assumption cannot repeat an assumption ID.");
+  }
+  return decisions;
 }
 
 function requiredEvidenceId(value: string | undefined): string {
@@ -727,7 +790,7 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "approve" && command !== "reject-plan" && command !== "cancel" && command !== "delete") {
+  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "clarify" && command !== "approve" && command !== "reject-plan" && command !== "cancel" && command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
   const sessionId = requireSessionId(sessionArg);
@@ -832,6 +895,56 @@ export async function handleResearchSessions(
       });
       dependencies.writeStderr(`[research] session=${sessionId} action=cancel revision=${cancelled.session.revision} status=${cancelled.session.status}\n`);
       dependencies.emitOutput(projectResearchSessionV1(cancelled.session), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "clarify") {
+    if (args.length !== 2) {
+      throw new Error("Usage: atlcli research sessions clarify <session-id> --revision <session-revision> --brief-revision <brief-revision> [--answer <question-id>=<response>] [--assumption <assumption-id>=accepted|rejected].");
+    }
+    assertSessionFlags(flags, ["revision", "brief-revision"], [], ["answer", "assumption"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const briefRevision = expectedSessionRevision(singleSessionFlag(flags, "brief-revision", true));
+    const answers = clarificationAnswersFromSessionFlags(flags);
+    const assumptionDecisions = assumptionDecisionsFromSessionFlags(flags);
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) {
+        throw new Error("Research session revision is stale; inspect the current clarification and retry with its exact revision.");
+      }
+      const turn = activeSessionTurn(session);
+      if (!turn?.brief) throw new Error("Research session has no active brief to clarify.");
+      if (turn.brief.revision !== briefRevision) {
+        throw new Error("Research brief revision is stale; inspect the current clarification and retry with its exact brief revision.");
+      }
+      const resolved = (await opened.store.commit(sessionId, {
+        kind: "resolve_clarifications",
+        briefRevision,
+        answers,
+        assumptionDecisions,
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      const resolvedTurn = activeSessionTurn(resolved);
+      if (!resolvedTurn?.brief || resolvedTurn.graph || resolved.status !== "planning") {
+        throw new Error("Research clarification did not produce a graph-ready durable brief.");
+      }
+      const planned = await proposeResearchGraphForReadyBriefV1({
+        store: opened.store,
+        sessionId,
+        expectedRevision: resolved.revision,
+        expectedLeaseEpoch: resolved.lease.epoch,
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+        approveAutomatically: resolvedTurn.brief.resolvedPlanApproval === "automatic",
+        releaseApprovedLease: true,
+        at: new Date().toISOString(),
+      });
+      dependencies.writeStderr(`[research] session=${sessionId} action=clarify revision=${planned.revision} brief_revision=${resolvedTurn.brief.revision} status=${planned.status}\n`);
+      dependencies.emitOutput(projectResearchSessionPlanV1(planned), opts);
     } finally {
       opened.close();
     }
@@ -1644,6 +1757,8 @@ Durable session commands:
   sessions show <session-id> [--evidence|--claims|--outline|--reconciliation] [--limit <1-100>]
   sessions evidence <session-id> --id <evidence-id> [--include-text]
   sessions plan <session-id>
+  sessions clarify <session-id> --revision <session-revision> --brief-revision <brief-revision>
+      [--answer <question-id>=<response>] [--assumption <assumption-id>=accepted|rejected]
   sessions approve <session-id> --revision <session-revision>
   sessions reject-plan <session-id> --revision <session-revision> --reason <reason>
   sessions cancel <session-id> --revision <session-revision>

@@ -122,6 +122,7 @@ export interface CreateResearchBriefInputV1 {
     expectedSections?: readonly string[];
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+    clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -639,6 +640,21 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: ProposeResearchGraphForReadyBriefInputV1
+export interface ProposeResearchGraphForReadyBriefInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: proposeResearchGraphForReadyBriefV1
+export declare function proposeResearchGraphForReadyBriefV1(input: ProposeResearchGraphForReadyBriefInputV1): Promise<ResearchSessionV1>;
 
 // export: proposeResearchScopeMentionsV1
 export declare function proposeResearchScopeMentionsV1(input: {
@@ -1230,6 +1246,12 @@ export interface ResearchApprovalEnvelopeV1 {
     approvedAt?: string;
 }
 
+// export: ResearchBriefAssumptionDecisionV1
+export interface ResearchBriefAssumptionDecisionV1 {
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}
+
 // export: ResearchBriefAssumptionV1
 export interface ResearchBriefAssumptionV1 {
     id: string;
@@ -1246,6 +1268,13 @@ export interface ResearchBriefClarificationRequiredV1 {
     briefRevision: number;
     questions: ResearchClarificationQuestionV1[];
     assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefClarificationResponseV1
+export interface ResearchBriefClarificationResponseV1 {
+    questionId: string;
+    prompt: string;
+    response: string;
 }
 
 // export: ResearchBriefPreflightOutcomeV1
@@ -1288,6 +1317,7 @@ export interface ResearchBriefV1 {
     sourceClasses: ResearchProduct[];
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
+    clarificationResponses: ResearchBriefClarificationResponseV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -2349,6 +2379,9 @@ export interface ResearchProviderPage<T> {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: researchQuestionFromBriefV1
+export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
+
 // export: ResearchRankedCandidateV1
 export interface ResearchRankedCandidateV1 {
     entityRef: string;
@@ -3318,6 +3351,11 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     assumptionId: string;
     decision: "accepted" | "rejected";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resolve_clarifications";
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
@@ -3633,6 +3671,13 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveResearchBriefClarificationsV1
+export declare function resolveResearchBriefClarificationsV1(input: {
+    brief: ResearchBriefV1;
+    answers: readonly Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">[];
+    assumptionDecisions: readonly ResearchBriefAssumptionDecisionV1[];
+}): ResearchBriefV1;
 
 // export: resolveResearchEffortV1
 export declare function resolveResearchEffortV1(input: {
@@ -3915,6 +3960,7 @@ export interface CreateResearchBriefInputV1 {
     expectedSections?: readonly string[];
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+    clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -4423,6 +4469,21 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: ProposeResearchGraphForReadyBriefInputV1
+export interface ProposeResearchGraphForReadyBriefInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: proposeResearchGraphForReadyBriefV1
+export declare function proposeResearchGraphForReadyBriefV1(input: ProposeResearchGraphForReadyBriefInputV1): Promise<ResearchSessionV1>;
 
 // export: proposeResearchScopeMentionsV1
 export declare function proposeResearchScopeMentionsV1(input: {
@@ -5014,6 +5075,12 @@ export interface ResearchApprovalEnvelopeV1 {
     approvedAt?: string;
 }
 
+// export: ResearchBriefAssumptionDecisionV1
+export interface ResearchBriefAssumptionDecisionV1 {
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}
+
 // export: ResearchBriefAssumptionV1
 export interface ResearchBriefAssumptionV1 {
     id: string;
@@ -5030,6 +5097,13 @@ export interface ResearchBriefClarificationRequiredV1 {
     briefRevision: number;
     questions: ResearchClarificationQuestionV1[];
     assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefClarificationResponseV1
+export interface ResearchBriefClarificationResponseV1 {
+    questionId: string;
+    prompt: string;
+    response: string;
 }
 
 // export: ResearchBriefPreflightOutcomeV1
@@ -5072,6 +5146,7 @@ export interface ResearchBriefV1 {
     sourceClasses: ResearchProduct[];
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
+    clarificationResponses: ResearchBriefClarificationResponseV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -6133,6 +6208,9 @@ export interface ResearchProviderPage<T> {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: researchQuestionFromBriefV1
+export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
+
 // export: ResearchRankedCandidateV1
 export interface ResearchRankedCandidateV1 {
     entityRef: string;
@@ -7102,6 +7180,11 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     assumptionId: string;
     decision: "accepted" | "rejected";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resolve_clarifications";
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
@@ -7418,6 +7501,13 @@ export declare function resolveInitialResearchScopeV1(input: {
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
+// export: resolveResearchBriefClarificationsV1
+export declare function resolveResearchBriefClarificationsV1(input: {
+    brief: ResearchBriefV1;
+    answers: readonly Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">[];
+    assumptionDecisions: readonly ResearchBriefAssumptionDecisionV1[];
+}): ResearchBriefV1;
+
 // export: resolveResearchEffortV1
 export declare function resolveResearchEffortV1(input: {
     requested: ResearchRequestedEffortV1;
@@ -7688,6 +7778,7 @@ export interface CreateResearchBriefInputV1 {
     expectedSections?: readonly string[];
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+    clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -8206,6 +8297,21 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
+// export: ProposeResearchGraphForReadyBriefInputV1
+export interface ProposeResearchGraphForReadyBriefInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: proposeResearchGraphForReadyBriefV1
+export declare function proposeResearchGraphForReadyBriefV1(input: ProposeResearchGraphForReadyBriefInputV1): Promise<ResearchSessionV1>;
+
 // export: proposeResearchScopeMentionsV1
 export declare function proposeResearchScopeMentionsV1(input: {
     question: string;
@@ -8796,6 +8902,12 @@ export interface ResearchApprovalEnvelopeV1 {
     approvedAt?: string;
 }
 
+// export: ResearchBriefAssumptionDecisionV1
+export interface ResearchBriefAssumptionDecisionV1 {
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}
+
 // export: ResearchBriefAssumptionV1
 export interface ResearchBriefAssumptionV1 {
     id: string;
@@ -8812,6 +8924,13 @@ export interface ResearchBriefClarificationRequiredV1 {
     briefRevision: number;
     questions: ResearchClarificationQuestionV1[];
     assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefClarificationResponseV1
+export interface ResearchBriefClarificationResponseV1 {
+    questionId: string;
+    prompt: string;
+    response: string;
 }
 
 // export: ResearchBriefPreflightOutcomeV1
@@ -8854,6 +8973,7 @@ export interface ResearchBriefV1 {
     sourceClasses: ResearchProduct[];
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
+    clarificationResponses: ResearchBriefClarificationResponseV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -9915,6 +10035,9 @@ export interface ResearchProviderPage<T> {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: researchQuestionFromBriefV1
+export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
+
 // export: ResearchRankedCandidateV1
 export interface ResearchRankedCandidateV1 {
     entityRef: string;
@@ -10884,6 +11007,11 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     assumptionId: string;
     decision: "accepted" | "rejected";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resolve_clarifications";
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
@@ -11199,6 +11327,13 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveResearchBriefClarificationsV1
+export declare function resolveResearchBriefClarificationsV1(input: {
+    brief: ResearchBriefV1;
+    answers: readonly Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">[];
+    assumptionDecisions: readonly ResearchBriefAssumptionDecisionV1[];
+}): ResearchBriefV1;
 
 // export: resolveResearchEffortV1
 export declare function resolveResearchEffortV1(input: {
@@ -11569,6 +11704,7 @@ export interface CreateResearchBriefInputV1 {
     expectedSections?: readonly string[];
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+    clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -12163,6 +12299,21 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: ProposeResearchGraphForReadyBriefInputV1
+export interface ProposeResearchGraphForReadyBriefInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: proposeResearchGraphForReadyBriefV1
+export declare function proposeResearchGraphForReadyBriefV1(input: ProposeResearchGraphForReadyBriefInputV1): Promise<ResearchSessionV1>;
 
 // export: proposeResearchScopeMentionsV1
 export declare function proposeResearchScopeMentionsV1(input: {
@@ -12800,6 +12951,12 @@ export interface ResearchApprovalEnvelopeV1 {
     approvedAt?: string;
 }
 
+// export: ResearchBriefAssumptionDecisionV1
+export interface ResearchBriefAssumptionDecisionV1 {
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}
+
 // export: ResearchBriefAssumptionV1
 export interface ResearchBriefAssumptionV1 {
     id: string;
@@ -12816,6 +12973,13 @@ export interface ResearchBriefClarificationRequiredV1 {
     briefRevision: number;
     questions: ResearchClarificationQuestionV1[];
     assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefClarificationResponseV1
+export interface ResearchBriefClarificationResponseV1 {
+    questionId: string;
+    prompt: string;
+    response: string;
 }
 
 // export: ResearchBriefPreflightOutcomeV1
@@ -12858,6 +13022,7 @@ export interface ResearchBriefV1 {
     sourceClasses: ResearchProduct[];
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
+    clarificationResponses: ResearchBriefClarificationResponseV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -13945,6 +14110,9 @@ export interface ResearchPtcToolOptions {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: researchQuestionFromBriefV1
+export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
 // export: ResearchRankedCandidateV1
 export interface ResearchRankedCandidateV1 {
@@ -14935,6 +15103,11 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     assumptionId: string;
     decision: "accepted" | "rejected";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resolve_clarifications";
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
@@ -15291,6 +15464,13 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveResearchBriefClarificationsV1
+export declare function resolveResearchBriefClarificationsV1(input: {
+    brief: ResearchBriefV1;
+    answers: readonly Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">[];
+    assumptionDecisions: readonly ResearchBriefAssumptionDecisionV1[];
+}): ResearchBriefV1;
 
 // export: resolveResearchEffortV1
 export declare function resolveResearchEffortV1(input: {
@@ -15694,6 +15874,7 @@ export interface CreateResearchBriefInputV1 {
     expectedSections?: readonly string[];
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+    clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -16303,6 +16484,21 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: ProposeResearchGraphForReadyBriefInputV1
+export interface ProposeResearchGraphForReadyBriefInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: proposeResearchGraphForReadyBriefV1
+export declare function proposeResearchGraphForReadyBriefV1(input: ProposeResearchGraphForReadyBriefInputV1): Promise<ResearchSessionV1>;
 
 // export: proposeResearchScopeMentionsV1
 export declare function proposeResearchScopeMentionsV1(input: {
@@ -16940,6 +17136,12 @@ export interface ResearchApprovalEnvelopeV1 {
     approvedAt?: string;
 }
 
+// export: ResearchBriefAssumptionDecisionV1
+export interface ResearchBriefAssumptionDecisionV1 {
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}
+
 // export: ResearchBriefAssumptionV1
 export interface ResearchBriefAssumptionV1 {
     id: string;
@@ -16956,6 +17158,13 @@ export interface ResearchBriefClarificationRequiredV1 {
     briefRevision: number;
     questions: ResearchClarificationQuestionV1[];
     assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefClarificationResponseV1
+export interface ResearchBriefClarificationResponseV1 {
+    questionId: string;
+    prompt: string;
+    response: string;
 }
 
 // export: ResearchBriefPreflightOutcomeV1
@@ -16998,6 +17207,7 @@ export interface ResearchBriefV1 {
     sourceClasses: ResearchProduct[];
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
+    clarificationResponses: ResearchBriefClarificationResponseV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -18085,6 +18295,9 @@ export interface ResearchPtcToolOptions {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: researchQuestionFromBriefV1
+export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
 // export: ResearchRankedCandidateV1
 export interface ResearchRankedCandidateV1 {
@@ -19086,6 +19299,11 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     assumptionId: string;
     decision: "accepted" | "rejected";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resolve_clarifications";
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
@@ -19427,6 +19645,13 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveResearchBriefClarificationsV1
+export declare function resolveResearchBriefClarificationsV1(input: {
+    brief: ResearchBriefV1;
+    answers: readonly Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">[];
+    assumptionDecisions: readonly ResearchBriefAssumptionDecisionV1[];
+}): ResearchBriefV1;
 
 // export: resolveResearchEffortV1
 export declare function resolveResearchEffortV1(input: {
@@ -20548,6 +20773,7 @@ export interface ResearchBriefV1 {
     sourceClasses: ResearchProduct[];
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
+    clarificationResponses: ResearchBriefClarificationResponseV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -20950,6 +21176,7 @@ export interface CreateResearchBriefInputV1 {
     expectedSections?: readonly string[];
     coverageTargets?: readonly ResearchCoverageTargetV1[];
     clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+    clarificationResponses?: readonly ResearchBriefClarificationResponseV1[];
     assumptions?: readonly ResearchBriefAssumptionV1[];
 }
 
@@ -21559,6 +21786,21 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: ProposeResearchGraphForReadyBriefInputV1
+export interface ProposeResearchGraphForReadyBriefInputV1 {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+    approveAutomatically: boolean;
+    releaseApprovedLease?: boolean;
+    at: string;
+}
+
+// export: proposeResearchGraphForReadyBriefV1
+export declare function proposeResearchGraphForReadyBriefV1(input: ProposeResearchGraphForReadyBriefInputV1): Promise<ResearchSessionV1>;
 
 // export: proposeResearchScopeMentionsV1
 export declare function proposeResearchScopeMentionsV1(input: {
@@ -22196,6 +22438,12 @@ export interface ResearchApprovalEnvelopeV1 {
     approvedAt?: string;
 }
 
+// export: ResearchBriefAssumptionDecisionV1
+export interface ResearchBriefAssumptionDecisionV1 {
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}
+
 // export: ResearchBriefAssumptionV1
 export interface ResearchBriefAssumptionV1 {
     id: string;
@@ -22212,6 +22460,13 @@ export interface ResearchBriefClarificationRequiredV1 {
     briefRevision: number;
     questions: ResearchClarificationQuestionV1[];
     assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefClarificationResponseV1
+export interface ResearchBriefClarificationResponseV1 {
+    questionId: string;
+    prompt: string;
+    response: string;
 }
 
 // export: ResearchBriefPreflightOutcomeV1
@@ -22254,6 +22509,7 @@ export interface ResearchBriefV1 {
     sourceClasses: ResearchProduct[];
     limits: ResearchLimitsV1;
     clarificationQuestions: ResearchClarificationQuestionV1[];
+    clarificationResponses: ResearchBriefClarificationResponseV1[];
     assumptions: ResearchBriefAssumptionV1[];
 }
 
@@ -23342,6 +23598,9 @@ export interface ResearchPtcToolOptions {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: researchQuestionFromBriefV1
+export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
+
 // export: ResearchRankedCandidateV1
 export interface ResearchRankedCandidateV1 {
     entityRef: string;
@@ -24342,6 +24601,11 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     assumptionId: string;
     decision: "accepted" | "rejected";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resolve_clarifications";
+    briefRevision: number;
+    answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
+    assumptionDecisions: ResearchBriefAssumptionDecisionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "reject_plan";
     graphRevision: number;
     reason: string;
@@ -24683,6 +24947,13 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveResearchBriefClarificationsV1
+export declare function resolveResearchBriefClarificationsV1(input: {
+    brief: ResearchBriefV1;
+    answers: readonly Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">[];
+    assumptionDecisions: readonly ResearchBriefAssumptionDecisionV1[];
+}): ResearchBriefV1;
 
 // export: resolveResearchEffortV1
 export declare function resolveResearchEffortV1(input: {

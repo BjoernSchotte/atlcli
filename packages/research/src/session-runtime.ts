@@ -1,6 +1,8 @@
 import { briefRequiresClarificationV1, type ResearchBriefV1 } from "./brief.js";
 import {
+  composeResearchGraphV1,
   stageResearchGraphForDurableSessionV1,
+  type ResearchGraphCompositionOptionsV1,
   type ResearchGraphV1,
 } from "./graph.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
@@ -44,6 +46,18 @@ export interface RecoverResearchSessionForResumeInputV1 {
   sessionId: string;
   ownerId: string;
   leaseExpiresAt: string;
+  at: string;
+}
+
+export interface ProposeResearchGraphForReadyBriefInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  expectedRevision: number;
+  expectedLeaseEpoch: number;
+  packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+  approveAutomatically: boolean;
+  /** A control command has no live runner, so its approved plan must be reclaimable. */
+  releaseApprovedLease?: boolean;
   at: string;
 }
 
@@ -146,6 +160,52 @@ export async function initializeResearchSessionClarificationWaitV1(
     throw new Error("Durable research clarification wait did not persist its required state.");
   }
   return persisted;
+}
+
+/**
+ * Compose and persist a graph only from an already committed, clarification-
+ * free brief. A crash between the preceding answer commit and this call leaves
+ * a durable `planning` state that a later control command can safely advance.
+ */
+export async function proposeResearchGraphForReadyBriefV1(
+  input: ProposeResearchGraphForReadyBriefInputV1,
+): Promise<ResearchSessionV1> {
+  const current = await input.store.read(input.sessionId);
+  if (!current) throw new Error("Research session was not found.");
+  if (current.revision !== input.expectedRevision || current.lease.epoch !== input.expectedLeaseEpoch) {
+    throw new Error("Research session revision or lease epoch is stale.");
+  }
+  const active = activeTurn(current);
+  if (current.status !== "planning" || !active?.brief || active.graph || briefRequiresClarificationV1(active.brief)) {
+    throw new Error("Research session does not have a ready brief to plan.");
+  }
+  const graph = composeResearchGraphV1(active.brief, {
+    ...(input.packetOutputSchema ? { packetOutputSchema: input.packetOutputSchema } : {}),
+  });
+  const staged = stageResearchGraphForDurableSessionV1(graph);
+  let proposed = (await input.store.commit(input.sessionId, {
+    kind: "propose_graph",
+    graph: staged,
+    ...(input.approveAutomatically ? { retainLeaseForImmediateApproval: true as const } : {}),
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+  if (!input.approveAutomatically) return proposed;
+  proposed = (await input.store.commit(input.sessionId, {
+    kind: "approve_graph",
+    graphRevision: staged.revision,
+    expectedRevision: proposed.revision,
+    expectedLeaseEpoch: proposed.lease.epoch,
+    at: input.at,
+  })).session;
+  if (!input.releaseApprovedLease) return proposed;
+  return (await input.store.commit(input.sessionId, {
+    kind: "release_lease",
+    expectedRevision: proposed.revision,
+    expectedLeaseEpoch: proposed.lease.epoch,
+    at: input.at,
+  })).session;
 }
 
 /**

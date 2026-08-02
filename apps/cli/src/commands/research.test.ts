@@ -1283,6 +1283,110 @@ describe("research CLI one-shot contract", () => {
     });
   });
 
+  test("revision-fenced clarify materializes a brief revision and durable graph without model work", async () => {
+    const harness = cliHarness();
+    let keyReads = 0;
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "sk-ant-must-not-be-read";
+    };
+    const prepareBrief = harness.dependencies.prepareBrief;
+    harness.dependencies.prepareBrief = (input) => {
+      const prepared = prepareBrief(input);
+      if (prepared.kind !== "ready") throw new Error("Expected a ready test brief before clarification.");
+      const brief = {
+        ...prepared.brief,
+        clarificationQuestions: [{
+          id: "clarification:time-window",
+          prompt: "Which reporting window should be used?",
+          required: true,
+        }],
+        assumptions: [{
+          id: "assumption:include-archived",
+          text: "Archived content would be included.",
+          requiresUserDecision: true,
+          status: "proposed" as const,
+        }],
+      };
+      return {
+        schema: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
+        kind: "clarification_required" as const,
+        brief,
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1" as const,
+          sessionId: brief.sessionId,
+          turnId: brief.turnId,
+          briefRevision: brief.revision,
+          questions: [...brief.clarificationQuestions],
+          assumptionsRequiringDecision: [...brief.assumptions],
+        },
+      };
+    };
+    await expect(handleResearch(
+      ["Research the approved scopes."],
+      {},
+      { json: false },
+      harness.dependencies,
+    )).rejects.toThrow("Research brief requires clarification");
+    harness.stdout.length = 0;
+    harness.stderr.length = 0;
+
+    await handleResearch(
+      ["sessions", "clarify", "research-session:cli-plan"],
+      {
+        revision: "3",
+        "brief-revision": "1",
+        answer: "clarification:time-window=Use the latest week.",
+        assumption: "assumption:include-archived=rejected",
+      },
+      { json: true },
+      harness.dependencies,
+    );
+
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      kind: "plan",
+      status: "running",
+      planMutable: false,
+      turn: { graph: { status: "approved" } },
+    });
+    const persisted = await harness.durableStore.read("research-session:cli-plan");
+    expect(persisted).toMatchObject({
+      revision: 7,
+      status: "running",
+      turns: [{
+        brief: {
+          revision: 2,
+          clarificationResponses: [{ response: "Use the latest week." }],
+          assumptions: [{ id: "assumption:include-archived", status: "rejected" }],
+        },
+        graph: { basedOnBriefRevision: 2, status: "approved" },
+      }],
+    });
+    expect(Date.parse(persisted!.lease.expiresAt)).toBeLessThanOrEqual(Date.parse(persisted!.updatedAt) + 1);
+    expect((await harness.durableStore.events(persisted!.sessionId)).map((event) => event.kind)).toEqual([
+      "create_turn",
+      "record_brief",
+      "resolve_clarifications",
+      "propose_graph",
+      "approve_graph",
+      "release_lease",
+    ]);
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+    await expect(handleResearch(
+      ["sessions", "clarify", "research-session:cli-plan"],
+      {
+        revision: "3",
+        "brief-revision": "1",
+        answer: "clarification:time-window=Use the latest week.",
+        assumption: "assumption:include-archived=rejected",
+      },
+      { json: true },
+      harness.dependencies,
+    )).rejects.toThrow("revision is stale");
+  });
+
   test("uses the host-resolved natural scope in the graph and agent request", async () => {
     const harness = cliHarness();
     harness.dependencies.resolveScope = async ({ request }) => {

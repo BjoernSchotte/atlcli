@@ -451,6 +451,53 @@ describe("durable host-neutral research session reducer", () => {
     expect(current.turns[0]!.pausedAt).toBe("2026-08-01T09:00:06.000Z");
   });
 
+  test("atomically materializes all clarification answers before a graph can be proposed", () => {
+    const waitingBrief = createResearchBriefV1({
+      ...brief(),
+      clarificationQuestions: [{
+        id: "clarification:window",
+        prompt: "Which reporting window should be used?",
+        required: true,
+      }],
+      assumptions: [{
+        id: "assumption:archive",
+        text: "Include archived items.",
+        requiresUserDecision: true,
+        status: "proposed",
+      }],
+    });
+    let current = session();
+    current = update(current, { kind: "create_turn", turnId: waitingBrief.turnId }, "2026-08-01T09:00:01.000Z");
+    current = update(current, { kind: "record_brief", brief: waitingBrief }, "2026-08-01T09:00:02.000Z");
+
+    expect(() => update(current, {
+      kind: "resolve_clarifications",
+      briefRevision: waitingBrief.revision,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week." }],
+      assumptionDecisions: [],
+    }, "2026-08-01T09:00:03.000Z")).toThrow("incomplete");
+
+    current = update(current, {
+      kind: "resolve_clarifications",
+      briefRevision: waitingBrief.revision,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week." }],
+      assumptionDecisions: [{ assumptionId: "assumption:archive", decision: "rejected" }],
+    }, "2026-08-01T09:00:04.000Z");
+
+    expect(current).toMatchObject({
+      status: "planning",
+      turns: [{
+        brief: {
+          revision: 2,
+          clarificationResponses: [{ questionId: "clarification:window", response: "Use the latest week." }],
+          assumptions: [{ id: "assumption:archive", status: "rejected" }],
+        },
+      }],
+    });
+    expect(current.turns[0]!.clarifications).toHaveLength(1);
+    expect(current.turns[0]!.assumptionDecisions).toHaveLength(1);
+  });
+
   test("releases every persisted user wait without weakening its revision fence", () => {
     const waitingBrief = createResearchBriefV1({
       ...brief(),

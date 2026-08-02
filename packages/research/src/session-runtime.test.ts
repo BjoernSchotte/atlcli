@@ -8,6 +8,7 @@ import {
   appendResearchSessionTurnV1,
   initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
+  proposeResearchGraphForReadyBriefV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
 } from "./session-runtime.js";
@@ -62,6 +63,55 @@ describe("durable research session execution gate", () => {
     });
     expect((await store.events(result.sessionId)).map((event) => event.kind))
       .toEqual(["create_turn", "record_brief"]);
+  });
+
+  test("proposes a graph only after a committed clarification materializes a ready brief", async () => {
+    const pending = createResearchBriefV1({
+      ...brief("required"),
+      clarificationQuestions: [{
+        id: "clarification:window",
+        prompt: "Which reporting window should be used?",
+        required: true,
+      }],
+    });
+    const store = new InMemoryResearchSessionStoreV1();
+    const waiting = await initializeResearchSessionClarificationWaitV1({
+      store,
+      session: session(),
+      brief: pending,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const resolved = (await store.commit(waiting.sessionId, {
+      kind: "resolve_clarifications",
+      briefRevision: pending.revision,
+      answers: [{ questionId: "clarification:window", response: "Use the latest week." }],
+      assumptionDecisions: [],
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    })).session;
+    const proposed = await proposeResearchGraphForReadyBriefV1({
+      store,
+      sessionId: resolved.sessionId,
+      expectedRevision: resolved.revision,
+      expectedLeaseEpoch: resolved.lease.epoch,
+      approveAutomatically: false,
+      at: "2026-08-01T15:00:03.000Z",
+    });
+
+    expect(proposed).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{
+        brief: { revision: 2, clarificationResponses: [{ response: "Use the latest week." }] },
+        graph: { basedOnBriefRevision: 2, status: "proposed" },
+      }],
+    });
+    expect((await store.events(proposed.sessionId)).map((event) => event.kind)).toEqual([
+      "create_turn",
+      "record_brief",
+      "resolve_clarifications",
+      "propose_graph",
+    ]);
   });
 
   test("persists an accepted turn, brief, exact proposed graph, and separate automatic approval before execution", async () => {
