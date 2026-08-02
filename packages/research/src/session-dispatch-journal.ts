@@ -385,6 +385,45 @@ export class ResearchSessionDispatchJournalV1 {
     });
   }
 
+  /**
+   * Reissue only a consumed continuation whose stored frontier has not changed.
+   * The reducer verifies the task/packet cardinalities captured at consumption,
+   * so a restarted host cannot repeat an admitted provider operation.
+   */
+  reissueRetrievalContinuation(input: {
+    graphRevision: number;
+    wave: number;
+    continuationId: string;
+  }): Promise<ResearchSessionRetrievalContinuationV1 & {
+    graph: ResearchGraphV1;
+    assessment: ResearchRetrievalAssessmentV1;
+  }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      return this.#commit(session, {
+        kind: "reissue_retrieval_continuation",
+        graphRevision: input.graphRevision,
+        wave: input.wave,
+        continuationId: input.continuationId,
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>
+          candidate.graphRevision === input.graphRevision && candidate.wave === input.wave,
+        );
+        if (!record?.continuation || !nextTurn.graph) {
+          invalid("Research durable dispatch did not reissue its retrieval continuation.");
+        }
+        return {
+          ...record.continuation,
+          graph: nextTurn.graph,
+          assessment: record.assessment,
+        };
+      });
+    });
+  }
+
   /** Mark the durable turn complete only after its final report artifact exists. */
   complete(): Promise<ResearchSessionV1> {
     return this.#enqueue(async () => {

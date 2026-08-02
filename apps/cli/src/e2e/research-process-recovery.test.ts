@@ -41,7 +41,7 @@ async function runFixture(args: string[]): Promise<{
 }
 
 describe("research CLI process recovery", () => {
-  test("resumes a released retrieval checkpoint after a hard process stop without duplicating accepted work", async () => {
+  test("recovers hard stops at a checkpoint and after continuation consumption without duplicating accepted work", async () => {
     const root = await mkdtemp(join(tmpdir(), "atlcli-research-process-recovery-"));
     roots.push(root);
     const interrupted = await runFixture(["--mode", "interrupt", "--root", root]);
@@ -67,6 +67,23 @@ describe("research CLI process recovery", () => {
     });
     store.close();
 
+    const consumedThenKilled = await runFixture(["--mode", "consume-and-kill", "--root", root, "--output", join(root, "unused.md")]);
+    expect(consumedThenKilled.exitCode).not.toBe(0);
+    const afterConsumeStore = new SqliteResearchSessionStoreV1({
+      databasePath: join(root, "catalog.sqlite"),
+      root: join(root, "sessions"),
+    });
+    const afterConsume = await afterConsumeStore.read("research-session:process-recovery");
+    const afterConsumeTurn = afterConsume?.turns.find((turn) => turn.id === "research-turn:process-recovery");
+    expect(afterConsume).toMatchObject({ status: "running" });
+    expect(afterConsumeTurn?.retrievalAssessments).toEqual([
+      expect.objectContaining({ continuation: expect.objectContaining({ status: "consumed" }) }),
+    ]);
+    expect(afterConsumeTurn && Array.from(afterConsumeTurn.tasks, (task) => task.taskId).sort()).toEqual(taskIds);
+    expect(afterConsumeTurn && Array.from(afterConsumeTurn.acceptedPackets, (packet) => packet.packetRef).sort()).toEqual(packetIds);
+    afterConsumeStore.close();
+
+    await Bun.sleep(20);
     const output = join(root, "report.md");
     const resumed = await runFixture(["--mode", "resume", "--root", root, "--output", output]);
     expect(resumed.exitCode).toBe(0);
@@ -103,6 +120,10 @@ describe("research CLI process recovery", () => {
         "wait_authentication",
         "recover",
         "resume",
+        "consume_retrieval_continuation",
+        "heartbeat",
+        "recover",
+        "reissue_retrieval_continuation",
         "consume_retrieval_continuation",
       ]);
     reopened.close();

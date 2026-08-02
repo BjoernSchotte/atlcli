@@ -81,7 +81,10 @@ function bytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
-async function createDependencies(root: string, mode: "interrupt" | "resume"): Promise<ResearchCliDependencies> {
+async function createDependencies(
+  root: string,
+  mode: "interrupt" | "consume-and-kill" | "resume",
+): Promise<ResearchCliDependencies> {
   const databasePath = join(root, "catalog.sqlite");
   const workspaceRoot = join(root, "sessions");
   await mkdir(workspaceRoot, { recursive: true, mode: 0o700 });
@@ -116,7 +119,7 @@ async function createDependencies(root: string, mode: "interrupt" | "resume"): P
         turnId: input.durableSession.turnId,
         now: () => "2026-08-02T12:00:00.000Z",
       });
-      if (mode === "resume") {
+      if (mode === "consume-and-kill" || mode === "resume") {
         const stored = await input.durableSession.store.read(input.sessionId);
         const checkpoint = stored?.turns.find((turn) => turn.id === input.durableSession.turnId)
           ?.retrievalAssessments?.find((assessment) => assessment.continuation?.status === "issued");
@@ -128,6 +131,18 @@ async function createDependencies(root: string, mode: "interrupt" | "resume"): P
           wave: checkpoint.wave,
           continuationId: checkpoint.continuation.id,
         });
+        if (mode === "consume-and-kill") {
+          const at = new Date(Date.now() + 10).toISOString();
+          await input.durableSession.store.commit(input.sessionId, {
+            kind: "heartbeat",
+            leaseExpiresAt: new Date(Date.parse(at) + 1).toISOString(),
+            expectedRevision: stored!.revision + 1,
+            expectedLeaseEpoch: stored!.lease.epoch,
+            at,
+          });
+          process.kill(process.pid, "SIGKILL");
+          throw new Error("SIGKILL should have stopped the consumed-continuation process.");
+        }
         const recovered = report();
         await input.workspace.writeFile("/artifacts/report.md", recovered.markdown);
         return recovered;
@@ -250,7 +265,9 @@ async function createDependencies(root: string, mode: "interrupt" | "resume"): P
 
 async function main(): Promise<void> {
   const mode = argument("--mode");
-  if (mode !== "interrupt" && mode !== "resume") throw new Error("--mode must be interrupt or resume.");
+  if (mode !== "interrupt" && mode !== "consume-and-kill" && mode !== "resume") {
+    throw new Error("--mode must be interrupt, consume-and-kill, or resume.");
+  }
   const root = argument("--root");
   const dependencies = await createDependencies(root, mode);
   if (mode === "interrupt") {

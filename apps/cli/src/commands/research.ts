@@ -70,6 +70,7 @@ import {
   proposeResearchGraphForReadyBriefV1,
   refreshResearchSessionScopeClarificationV1,
   recoverResearchSessionForResumeV1,
+  isRecoverableConsumedRetrievalContinuationV1,
   resolveResearchSessionScopeClarificationV1,
 } from "@atlcli/research/node";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
@@ -1985,7 +1986,8 @@ async function resumeAuthenticationWaitingResearchSession(
     const checkpointResumable = issuedContinuations.length === 1 &&
       turn.tasks.length > 0 && turn.acceptedPackets.length > 0 &&
       turn.budgetState !== undefined;
-    if (!undispatched && !checkpointResumable) {
+    const consumedContinuationRecoverable = isRecoverableConsumedRetrievalContinuationV1(turn);
+    if (!undispatched && !checkpointResumable && !consumedContinuationRecoverable) {
       throw new Error("This durable session has dispatch state without one safe issued retrieval continuation.");
     }
     if (turn.graph.approvalEnvelope.status !== "approved" ||

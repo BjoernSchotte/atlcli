@@ -2064,6 +2064,33 @@ function packedExpiredRetrievalCheckpointSession(
   }, "2020-01-01T00:00:09.000Z");
 }
 
+/**
+ * This is the narrow crash window after a host has granted the disposable
+ * retrieval continuation but before it can durably admit another task. The
+ * captured task/packet frontier proves that a recovery may reissue it without
+ * replaying a provider or subagent operation.
+ */
+function packedExpiredConsumedRetrievalContinuationSession(
+  identity = "packed-startup-consumed-continuation",
+): ResearchSessionV1 {
+  let session = packedExpiredRetrievalCheckpointSession(identity);
+  const turn = session.turns[0]!;
+  const graph = turn.graph!;
+  const checkpoint = turn.retrievalAssessments?.find((assessment) =>
+    assessment.graphRevision === graph.revision && assessment.continuation?.status === "issued",
+  );
+  if (!checkpoint?.continuation || checkpoint.wave === undefined) {
+    throw new Error("Packed consumed-continuation fixture is missing its checkpoint.");
+  }
+  session = updatePackedResearchSession(session, {
+    kind: "consume_retrieval_continuation",
+    graphRevision: graph.revision,
+    wave: checkpoint.wave,
+    continuationId: checkpoint.continuation.id,
+  }, "2020-01-01T00:00:10.000Z");
+  return session;
+}
+
 function packedPausedRetrievalCheckpointSession(identity = "packed-steering"): ResearchSessionV1 {
   let session = packedExpiredRetrievalCheckpointSession(identity);
   session = updatePackedResearchSession(session, {
@@ -3524,6 +3551,65 @@ test("recovers an expired retrieval checkpoint when the first offscreen document
         continuation: expect.objectContaining({ status: "issued" }),
       }),
     ]);
+    expect(recovered.artifact).toBeUndefined();
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
+});
+
+test("reissues an expired consumed retrieval continuation only before durable work advances", async () => {
+  await installEventCapture(page);
+  await closePackedResearchOffscreenDocument(page);
+  const checkpoint = packedExpiredConsumedRetrievalContinuationSession();
+  const originalTurn = checkpoint.turns[0]!;
+  const originalContinuation = originalTurn.retrievalAssessments?.[0]?.continuation;
+  expect(originalContinuation).toMatchObject({
+    status: "consumed",
+    consumedTaskCount: originalTurn.tasks.length,
+    consumedPacketCount: originalTurn.acceptedPackets.length,
+  });
+  await writePackedDurableResearchSession(page, checkpoint);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  try {
+    const trigger = await runPackedResearchInBackground(
+      page,
+      hostParityRequest(),
+      "packed-startup-consumed-continuation-trigger",
+    );
+    if (!trigger.ok) {
+      throw new Error(JSON.stringify({ trigger, events: await harnessEvents(page) }, null, 2));
+    }
+    await expect.poll(async () => {
+      const durable = await readPackedDurableResearchSession(
+        page,
+        checkpoint.sessionId,
+        "artifact:report:research-turn:packed-startup-consumed-continuation",
+      );
+      return durable.session.state.status;
+    }, { timeout: 30_000 }).toBe("paused");
+    const recovered = await readPackedDurableResearchSession(
+      page,
+      checkpoint.sessionId,
+      "artifact:report:research-turn:packed-startup-consumed-continuation",
+    );
+    expect(recovered.session.state.turns[0]).toMatchObject({
+      tasks: originalTurn.tasks.map((task) => ({ taskId: task.taskId })),
+      acceptedPackets: originalTurn.acceptedPackets,
+      retrievalAssessments: [expect.objectContaining({
+        continuation: expect.objectContaining({
+          id: originalContinuation!.id,
+          status: "issued",
+        }),
+      })],
+    });
+    const reissuedContinuation = recovered.session.state.turns[0]?.retrievalAssessments?.[0]?.continuation;
+    expect(reissuedContinuation).not.toHaveProperty("consumedAt");
+    expect(reissuedContinuation).not.toHaveProperty("consumedTaskCount");
+    expect(reissuedContinuation).not.toHaveProperty("consumedPacketCount");
     expect(recovered.artifact).toBeUndefined();
   } finally {
     await page.evaluate(async (key) => {

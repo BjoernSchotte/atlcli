@@ -220,6 +220,36 @@ function isSettledIssuedRetrievalCheckpoint(turn: ResearchSessionTurnV1): boolea
   );
 }
 
+/**
+ * The continuation itself was consumed, but no subsequent task was admitted
+ * and no packet was accepted. Retrying its disposable supervisor evaluation is
+ * therefore safe: every provider/subagent execution has an earlier durable
+ * task-admission boundary. Legacy continuations lack the captured counts and
+ * intentionally do not qualify.
+ */
+export function isRecoverableConsumedRetrievalContinuationV1(
+  turn: ResearchSessionTurnV1,
+): boolean {
+  const graph = turn.graph;
+  if (!graph || graph.approvalEnvelope.status !== "approved" ||
+      graph.status !== "running" || turn.tasks.length === 0 ||
+      turn.acceptedPackets.length === 0 || !turn.budgetState ||
+      turn.tasks.some((task) =>
+        task.status === "ready" || task.status === "running" || task.status === "outcome_unknown"
+      )) {
+    return false;
+  }
+  const consumed = (turn.retrievalAssessments ?? []).filter((assessment) =>
+    assessment.graphRevision === graph.revision &&
+    assessment.continuation?.status === "consumed" &&
+    assessment.continuation.consumedTaskCount === turn.tasks.length &&
+    assessment.continuation.consumedPacketCount === turn.acceptedPackets.length,
+  );
+  return consumed.length === 1 && !(turn.retrievalAssessments ?? []).some((assessment) =>
+    assessment.assessment.action === "stop",
+  );
+}
+
 function isResumableStatus(
   status: ResearchSessionV1["status"],
 ): status is ResearchResumableSessionV1["status"] {
@@ -262,7 +292,8 @@ export function projectResearchResumableSessionV1(
     turn.tasks.length > 0 &&
     turn.acceptedPackets.length > 0 &&
     turn.budgetState !== undefined;
-  if (!undispatched && !checkpointResumable) return undefined;
+  const consumedContinuationRecoverable = isRecoverableConsumedRetrievalContinuationV1(turn);
+  if (!undispatched && !checkpointResumable && !consumedContinuationRecoverable) return undefined;
   if (turn.graph.approvalEnvelope.status !== "approved" ||
       (undispatched ? turn.graph.status !== "approved" : turn.graph.status !== "running")) {
     return undefined;
@@ -723,19 +754,41 @@ export async function recoverResearchSessionForResumeV1(
   if (Date.parse(input.at) < Date.parse(current.lease.expiresAt)) {
     throw new Error("Research session lease has not been released or expired.");
   }
-  const recovered = await input.store.commit(input.sessionId, {
+  let recovered = (await input.store.commit(input.sessionId, {
     kind: "recover",
     ownerId: input.ownerId,
     expiresAt: input.leaseExpiresAt,
     expectedRevision: current.revision,
     expectedLeaseEpoch: current.lease.epoch,
     at: input.at,
-  });
-  if (!resumesWait) return recovered.session;
+  })).session;
+  if (resumesWait) {
+    recovered = (await input.store.commit(input.sessionId, {
+      kind: "resume",
+      expectedRevision: recovered.revision,
+      expectedLeaseEpoch: recovered.lease.epoch,
+      at: input.at,
+    })).session;
+  }
+  const turn = activeTurn(recovered);
+  if (!turn || !isRecoverableConsumedRetrievalContinuationV1(turn)) return recovered;
+  const graph = turn.graph;
+  const checkpoint = graph && turn.retrievalAssessments?.find((assessment) =>
+    assessment.graphRevision === graph.revision &&
+    assessment.continuation?.status === "consumed" &&
+    assessment.continuation.consumedTaskCount === turn.tasks.length &&
+    assessment.continuation.consumedPacketCount === turn.acceptedPackets.length,
+  );
+  if (!graph || !checkpoint?.continuation || checkpoint.wave === undefined) {
+    throw new Error("Research continuation recovery lost its durable checkpoint.");
+  }
   return (await input.store.commit(input.sessionId, {
-    kind: "resume",
-    expectedRevision: recovered.session.revision,
-    expectedLeaseEpoch: recovered.session.lease.epoch,
+    kind: "reissue_retrieval_continuation",
+    graphRevision: graph.revision,
+    wave: checkpoint.wave,
+    continuationId: checkpoint.continuation.id,
+    expectedRevision: recovered.revision,
+    expectedLeaseEpoch: recovered.lease.epoch,
     at: input.at,
   })).session;
 }
@@ -776,7 +829,9 @@ export async function recoverExpiredResearchSessionsAtSafeBoundaryV1(
         isSettledIssuedRetrievalCheckpoint(turn);
       const interrupted = (current.status === "running" || current.status === "pause_requested") &&
         turn.tasks.some((task) => task.status === "running" || task.status === "outcome_unknown");
-      if (!undispatched && !checkpoint && !interrupted) continue;
+      const continuationRecovery = current.status === "running" &&
+        isRecoverableConsumedRetrievalContinuationV1(turn);
+      if (!undispatched && !checkpoint && !interrupted && !continuationRecovery) continue;
 
       let next = (await input.store.commit(current.sessionId, {
         kind: "recover",
@@ -805,6 +860,39 @@ export async function recoverExpiredResearchSessionsAtSafeBoundaryV1(
         next = (await input.store.commit(next.sessionId, {
           kind: "fail",
           reason: "Research provider outcome was unobservable after host recovery; no automatic retry was attempted.",
+          expectedRevision: next.revision,
+          expectedLeaseEpoch: next.lease.epoch,
+          at: input.at,
+        })).session;
+      } else if (continuationRecovery) {
+        const recoveryTurn = activeTurn(next);
+        const graph = recoveryTurn?.graph;
+        const continuation = graph && recoveryTurn?.retrievalAssessments?.find((assessment) =>
+          assessment.graphRevision === graph.revision &&
+          assessment.continuation?.status === "consumed" &&
+          assessment.continuation.consumedTaskCount === recoveryTurn.tasks.length &&
+          assessment.continuation.consumedPacketCount === recoveryTurn.acceptedPackets.length,
+        );
+        if (!graph || !continuation?.continuation || continuation.wave === undefined) {
+          throw new Error("Research continuation recovery lost its durable checkpoint.");
+        }
+        next = (await input.store.commit(next.sessionId, {
+          kind: "reissue_retrieval_continuation",
+          graphRevision: graph.revision,
+          wave: continuation.wave,
+          continuationId: continuation.continuation.id,
+          expectedRevision: next.revision,
+          expectedLeaseEpoch: next.lease.epoch,
+          at: input.at,
+        })).session;
+        next = (await input.store.commit(next.sessionId, {
+          kind: "request_pause",
+          expectedRevision: next.revision,
+          expectedLeaseEpoch: next.lease.epoch,
+          at: input.at,
+        })).session;
+        next = (await input.store.commit(next.sessionId, {
+          kind: "acknowledge_pause",
           expectedRevision: next.revision,
           expectedLeaseEpoch: next.lease.epoch,
           at: input.at,

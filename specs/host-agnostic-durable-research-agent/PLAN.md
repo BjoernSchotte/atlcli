@@ -3265,9 +3265,11 @@ unknown-outcome retry/abstain remains a separate gate below.
 
   - [x] A real child process completes a public CLI initialization through a
         journaled, released retrieval checkpoint and is then hard-stopped. A
-        fresh child invokes the public `--resume` path against the same SQLite
-        store, consumes exactly one continuation, preserves its accepted task
-        and packet identities, and writes the exact Markdown report (2026-08-02).
+        second child is hard-stopped immediately after consuming that
+        continuation; a fresh public `--resume` reissues it only because the
+        captured task/packet frontier is unchanged, consumes it exactly once,
+        preserves accepted identities, and writes the exact Markdown report
+        (2026-08-02).
 
 Extension/browser:
 

@@ -194,6 +194,15 @@ export interface ResearchSessionRetrievalContinuationV1 {
   status: "issued" | "consumed";
   issuedAt: string;
   consumedAt?: string;
+  /**
+   * The exact durable frontier cardinality when the continuation was consumed.
+   * A host may reissue only if neither task admission nor packet acceptance
+   * advanced afterwards, proving that no provider/subagent operation began.
+   * Older consumed continuations omit these fields and remain readable but are
+   * deliberately not eligible for automatic recovery.
+   */
+  consumedTaskCount?: number;
+  consumedPacketCount?: number;
 }
 
 /**
@@ -532,6 +541,13 @@ export type ResearchSessionUpdateV1 =
     })
   | (ResearchSessionFencedUpdateV1 & {
       kind: "consume_retrieval_continuation";
+      graphRevision: number;
+      wave: number;
+      continuationId: string;
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Retry only a continuation whose post-consumption frontier is unchanged. */
+      kind: "reissue_retrieval_continuation";
       graphRevision: number;
       wave: number;
       continuationId: string;
@@ -964,11 +980,23 @@ function validateSession(session: ResearchSessionV1): void {
         const continuation = assessment.continuation;
         if (continuation !== undefined) {
           const expectedId = `research-continuation:${assessment.graphRevision}.${wave}`;
+          const hasConsumptionCounts = continuation.consumedTaskCount !== undefined ||
+            continuation.consumedPacketCount !== undefined;
           if (continuation.schema !== RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 ||
               continuation.id !== expectedId ||
               (continuation.status !== "issued" && continuation.status !== "consumed") ||
-              (continuation.status === "issued" && continuation.consumedAt !== undefined) ||
-              (continuation.status === "consumed" && continuation.consumedAt === undefined)) {
+              (continuation.status === "issued" && (
+                continuation.consumedAt !== undefined || hasConsumptionCounts
+              )) ||
+              (continuation.status === "consumed" && continuation.consumedAt === undefined) ||
+              (hasConsumptionCounts && (
+                continuation.status !== "consumed" ||
+                continuation.consumedTaskCount === undefined ||
+                continuation.consumedPacketCount === undefined ||
+                !Number.isSafeInteger(continuation.consumedTaskCount) ||
+                !Number.isSafeInteger(continuation.consumedPacketCount) ||
+                continuation.consumedTaskCount < 0 || continuation.consumedPacketCount < 0
+              ))) {
             invalid("Research session retrieval continuation is invalid.");
           }
           timestamp(continuation.issuedAt, "Research session retrieval continuation issuance timestamp");
@@ -1945,6 +1973,8 @@ export function reduceResearchSessionV1(
         ...record.continuation,
         status: "consumed",
         consumedAt: update.at,
+        consumedTaskCount: current.tasks.length,
+        consumedPacketCount: current.acceptedPackets.length,
       },
     };
     return withNext(session, update, {
@@ -1953,6 +1983,47 @@ export function reduceResearchSessionV1(
         ...current,
         retrievalAssessments: retrievalAssessments.map((candidate, candidateIndex) =>
           candidateIndex === index ? nextRecord : candidate,
+        ),
+      }),
+    });
+  }
+
+  if (update.kind === "reissue_retrieval_continuation") {
+    const current = ensureActive(session, ["running"]);
+    const graph = requireGraph(current, update.graphRevision);
+    if (!Number.isSafeInteger(update.wave) || update.wave < 1 ||
+        !/^research-continuation:[1-9][0-9]*\.[1-9][0-9]*$/.test(update.continuationId)) {
+      invalid("Research retrieval continuation identity is invalid.");
+    }
+    const retrievalAssessments = (current.retrievalAssessments ?? []).map((candidate) =>
+      candidate.wave === undefined ? { ...candidate, wave: 1 } : candidate,
+    );
+    const index = retrievalAssessments.findIndex((candidate) =>
+      candidate.graphRevision === graph.revision && candidate.wave === update.wave,
+    );
+    const record = retrievalAssessments[index];
+    const continuation = record?.continuation;
+    if (!continuation || continuation.id !== update.continuationId ||
+        continuation.status !== "consumed" ||
+        continuation.consumedTaskCount === undefined ||
+        continuation.consumedPacketCount === undefined ||
+        current.tasks.length !== continuation.consumedTaskCount ||
+        current.acceptedPackets.length !== continuation.consumedPacketCount ||
+        current.tasks.some((task) =>
+          task.status === "ready" || task.status === "running" || task.status === "outcome_unknown"
+        )) {
+      invalid("Research retrieval continuation cannot be safely reissued after durable work changed.");
+    }
+    const { consumedAt: _consumedAt, consumedTaskCount: _consumedTaskCount,
+      consumedPacketCount: _consumedPacketCount, ...issuedContinuation } = continuation;
+    return withNext(session, update, {
+      status: "running",
+      turns: replaceTurn(session, {
+        ...current,
+        retrievalAssessments: retrievalAssessments.map((candidate, candidateIndex) =>
+          candidateIndex === index
+            ? { ...record!, continuation: { ...issuedContinuation, status: "issued" as const } }
+            : candidate,
         ),
       }),
     });

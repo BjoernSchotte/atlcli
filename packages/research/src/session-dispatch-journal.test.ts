@@ -309,15 +309,60 @@ describe("durable research task dispatch journal", () => {
       continuationId: issued.continuation!.id,
     })).rejects.toThrow("already consumed");
 
+    await expect(journal.reissueRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).resolves.toMatchObject({
+      id: issued.continuation!.id,
+      status: "issued",
+    });
+
     const turn = (await store.read(sessionId))!.turns.find((candidate) => candidate.id === turnId)!;
     expect(turn.retrievalAssessments?.[0]?.continuation).toMatchObject({
       id: issued.continuation!.id,
-      status: "consumed",
+      status: "issued",
     });
-    expect((await store.events(sessionId)).slice(-2).map((event) => event.kind)).toEqual([
+    expect((await store.events(sessionId)).slice(-3).map((event) => event.kind)).toEqual([
       "record_retrieval_assessment",
       "consume_retrieval_continuation",
+      "reissue_retrieval_continuation",
     ]);
+  });
+
+  test("never reissues a consumed continuation once a later task admission was durable", async () => {
+    const { journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    const issued = await journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    await journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    });
+    const ready = graph.nodes.find((node) => node.status === "ready");
+    if (!ready) throw new Error("Synthetic continuation graph is missing a ready task.");
+    await journal.admitAndStart(attemptFor(graph, ready.id));
+    await expect(journal.reissueRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).rejects.toThrow("cannot be safely reissued");
   });
 
   test("acknowledges a requested pause only after an issued retrieval continuation", async () => {

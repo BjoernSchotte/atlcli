@@ -914,6 +914,41 @@ describe("durable research session execution gate", () => {
       .toEqual(["recover", "resume"]);
   });
 
+  test("reissues a consumed continuation only when its durable frontier did not advance", async () => {
+    const { store, sessionId, journal, graph } = await settledRuntimeRetrievalCheckpoint();
+    const before = await store.read(sessionId);
+    const turn = before?.turns[0];
+    const checkpoint = turn?.retrievalAssessments?.[0];
+    if (!turn || !checkpoint?.continuation || checkpoint.wave === undefined) {
+      throw new Error("Synthetic runtime checkpoint is missing its continuation.");
+    }
+    await journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: checkpoint.wave,
+      continuationId: checkpoint.continuation.id,
+    });
+
+    const recovered = await recoverResearchSessionForResumeV1({
+      store,
+      sessionId,
+      ownerId: "owner:reissued",
+      leaseExpiresAt: "2026-08-01T15:20:00.000Z",
+      at: "2026-08-01T15:11:00.000Z",
+    });
+    const recoveredCheckpoint = recovered.turns[0]?.retrievalAssessments?.[0];
+    expect(recovered).toMatchObject({ status: "running", lease: { epoch: 2, ownerId: "owner:reissued" } });
+    expect(recoveredCheckpoint?.continuation).toMatchObject({
+      id: checkpoint.continuation.id,
+      status: "issued",
+    });
+    expect(recoveredCheckpoint?.continuation?.consumedAt).toBeUndefined();
+    expect(recovered.turns[0]?.tasks.map((task) => task.taskId)).toEqual(turn.tasks.map((task) => task.taskId));
+    expect(recovered.turns[0]?.acceptedPackets.map((packet) => packet.packetRef))
+      .toEqual(turn.acceptedPackets.map((packet) => packet.packetRef));
+    expect((await store.events(sessionId)).slice(-3).map((event) => event.kind))
+      .toEqual(["consume_retrieval_continuation", "recover", "reissue_retrieval_continuation"]);
+  });
+
   test("reclaims a released steering checkpoint without losing its pending graph control", async () => {
     const { store, sessionId } = await settledRuntimeRetrievalCheckpoint();
     let current = await store.read(sessionId);
@@ -998,6 +1033,57 @@ describe("durable research session execution gate", () => {
       leaseExpiresAt: "2026-08-01T15:20:00.000Z",
       at: "2026-08-01T15:11:01.000Z",
     })).resolves.toMatchObject({ status: "running", lease: { epoch: 3, ownerId: "owner:resumed" } });
+  });
+
+  test("turns an expired side-effect-free consumed continuation back into a paused resumable checkpoint", async () => {
+    const { store, sessionId, journal, graph } = await settledRuntimeRetrievalCheckpoint();
+    const issued = (await store.read(sessionId))?.turns[0]?.retrievalAssessments?.[0];
+    if (!issued?.continuation || issued.wave === undefined) {
+      throw new Error("Synthetic consumed-continuation checkpoint is missing.");
+    }
+    await journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave,
+      continuationId: issued.continuation.id,
+    });
+
+    const recovered = await recoverExpiredResearchSessionsAtSafeBoundaryV1({
+      store,
+      ownerId: "owner:browser-recovery",
+      leaseDurationMs: 60_000,
+      at: "2026-08-01T15:11:00.000Z",
+    });
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      sessionId,
+      status: "paused",
+      turns: [expect.objectContaining({
+        retrievalAssessments: [expect.objectContaining({
+          continuation: expect.objectContaining({ id: issued.continuation.id, status: "issued" }),
+        })],
+      })],
+    });
+    expect((await store.events(sessionId)).slice(-4).map((event) => event.kind)).toEqual([
+      "recover",
+      "reissue_retrieval_continuation",
+      "request_pause",
+      "acknowledge_pause",
+    ]);
+
+    await expect(recoverResearchSessionForResumeV1({
+      store,
+      sessionId,
+      ownerId: "owner:resumed",
+      leaseExpiresAt: "2026-08-01T15:20:00.000Z",
+      at: "2026-08-01T15:11:00.001Z",
+    })).resolves.toMatchObject({
+      status: "running",
+      turns: [expect.objectContaining({
+        retrievalAssessments: [expect.objectContaining({
+          continuation: expect.objectContaining({ id: issued.continuation.id, status: "issued" }),
+        })],
+      })],
+    });
   });
 
   test("releases an expired undispatched plan without replaying or rewriting it", async () => {
@@ -1118,5 +1204,28 @@ describe("durable research session execution gate", () => {
       tenantOrigin: "https://example.atlassian.net",
       at: "2026-08-01T15:00:02.001Z",
     })).toBeUndefined();
+  });
+
+  test("projects an expired side-effect-free consumed continuation for host reissue", async () => {
+    const { store, sessionId, journal, graph } = await settledRuntimeRetrievalCheckpoint();
+    const issued = (await store.read(sessionId))?.turns[0]?.retrievalAssessments?.[0];
+    if (!issued?.continuation || issued.wave === undefined) {
+      throw new Error("Synthetic resumable consumed continuation is missing.");
+    }
+    await journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave,
+      continuationId: issued.continuation.id,
+    });
+    const consumed = await store.read(sessionId);
+    if (!consumed) throw new Error("Synthetic consumed continuation session is missing.");
+    expect(projectResearchResumableSessionV1(consumed, {
+      tenantOrigin: "https://example.atlassian.net",
+      at: "2026-08-01T15:11:00.000Z",
+    })).toMatchObject({
+      sessionId,
+      status: "running",
+      turnId: "research-turn:runtime-test",
+    });
   });
 });
