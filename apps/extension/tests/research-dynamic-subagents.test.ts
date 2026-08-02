@@ -1129,10 +1129,10 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[0]?.systemPrompt).toContain("Inspect every returned candidate summary");
     expect(specs[0]?.systemPrompt).toContain("Search summaries are screening evidence only");
     expect(specs[0]?.systemPrompt).toContain("tools.researchCandidateRank");
-    expect(specs[0]?.systemPrompt).toContain("first at most 8 entityRef values returned by that ranking");
+    expect(specs[0]?.systemPrompt).toContain("first at most 5 entityRef values returned by that ranking");
     expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
     expect(specs[0]?.systemPrompt).toContain("<project-baseline>");
-    expect(specs[0]?.systemPrompt).toContain("at most four times total");
+    expect(specs[0]?.systemPrompt).toContain("at most 2 times total");
     expect(specs[0]?.systemPrompt).toContain(
       "both its Jira issue key and its Confluence content ID are non-empty identifiers",
     );
@@ -1142,8 +1142,30 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[1]?.systemPrompt).toContain("Make exactly one eval call");
     expect(specs[1]?.systemPrompt).toContain("tools.wikiSearch");
     expect(specs[5]?.systemPrompt).toContain("tools.researchCandidateRank");
-    expect(specs[5]?.systemPrompt).toContain("at most two candidate-ranking calls total");
+    expect(specs[5]?.systemPrompt).toContain("at most 2 candidate-ranking calls total");
     expect(specs[6]?.systemPrompt).toContain("sole report author");
+  });
+
+  test("reserves host candidate ranking inside each executable acquisition budget", () => {
+    const specs = compileDynamicResearchSubagents(crossProductGraph(), {
+      model,
+      broker,
+      question: request.question,
+      maxInterpreterMs: 5_000,
+      maxInterpreterMemoryBytes: 8_000_000,
+      maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 8,
+      maxPacketChars: 8_000,
+    });
+    const jira = specs.find((spec) => spec.name === "focused-researcher-jira-research");
+    const repair = specs.find((spec) => spec.name === "contradiction-verifier-reconciliation-repair");
+
+    expect(jira?.systemPrompt).toContain("at most 2 times total");
+    expect(jira?.systemPrompt).toContain("first at most 5 entityRef values returned by that ranking");
+    expect(repair?.systemPrompt).toContain("at most 2 search calls total");
+    expect(repair?.systemPrompt).toContain("at most 2 candidate-ranking calls total");
+    expect(repair?.systemPrompt).toContain("at most 4 detail calls total");
   });
 
   test("preserves successful named-page searches when a later bounded query fails", () => {
@@ -1235,7 +1257,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     }
   });
 
-  test("uses the host detail budget after paginating ordinary Confluence search results", async () => {
+  test("uses the host detail budget without exceeding its node search envelope", async () => {
     const question = "Which DOCSY pages document recent ATLCLI work?";
     const graph = composeResearchGraphV1(graphBrief(question, ["jira", "confluence"]));
     const wikiNode = graph.nodes.find((node) => node.grantedCapabilityIds.includes("wiki.search"))!;
@@ -1252,7 +1274,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         tool(async ({ cursor }) => JSON.stringify({
           items: cursor ? summaries.slice(5) : summaries.slice(0, 5),
           page: cursor
-            ? { complete: true, termination: "index-exhausted" }
+            ? { complete: false, nextCursor: "opaque:unread" }
             : { complete: false, nextCursor: "opaque:next" },
         }), {
           name: "wiki_search",
@@ -1286,7 +1308,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
     try {
       const result = await session.eval(
-        buildResearchAcquisitionProgram(wikiNode, question, 8),
+        buildResearchAcquisitionProgram(wikiNode, question, 8, 2),
         5_000,
       );
       expect(result.ok).toBe(true);
@@ -1294,6 +1316,10 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         Array.from({ length: 8 }, (_, index) => `opaque:${index + 1}`),
       );
       expect((result.value as { details: unknown[] }).details).toHaveLength(8);
+      expect((result.value as { result: { page: { complete: boolean; termination?: string } } }).result.page).toEqual({
+        complete: false,
+        termination: "local-search-cap",
+      });
     } finally {
       session.dispose();
       ReplSession.clearCache();

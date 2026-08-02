@@ -917,12 +917,12 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
       pageSize: 10,
-      // Acquisition uses at most four Jira searches. Keep one page per
-      // product available for a host-authorized reconciliation repair, in
-      // parity with the browser/default V1 budget.
+      // Each focused worker has a 16-call capability envelope. Four Jira
+      // screening queries plus host ranking still leave room for eleven
+      // evidence-backed details; keep the same bounded cross-product total.
       maxSearchPagesPerProduct: 5,
       maxItemsPerProduct: 30,
-      maxDetailItemsPerProduct: 8,
+      maxDetailItemsPerProduct: 11,
       // Research claims may only cite complete detail projections. Keep the
       // contract maximum so ordinary long-form Confluence pages are not
       // silently reduced to excerpts before synthesis.
