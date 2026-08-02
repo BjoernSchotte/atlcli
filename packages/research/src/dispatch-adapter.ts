@@ -218,6 +218,11 @@ export interface ResearchDispatchInterceptionAdapter {
   invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
   assertCapability(taskId: string, capabilityId: string): void;
   replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+  /**
+   * Add one future wave at a host-owned checkpoint. Existing admissions and
+   * every observed task status stay immutable.
+   */
+  appendAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
   snapshot(): ResearchDispatchSnapshotV1;
 }
 
@@ -331,6 +336,34 @@ export function createResearchDispatchInterceptionAdapter(options: {
       );
     }
     admissions = validatedAdmissions(nextAdmissions);
+  };
+
+  const appendAdmissions = (
+    nextAdmissions: readonly ResearchTaskAdmissionV1[],
+  ): void => {
+    if (nextAdmissions.length === 0) {
+      throw new ResearchDispatchError(
+        "admissions-locked",
+        "Research task admission append must contain at least one new task.",
+      );
+    }
+    if (activeInvocations > 0 || pendingAdmissions > 0 ||
+        [...taskStatuses.values()].some((status) => status === "started")) {
+      throw new ResearchDispatchError(
+        "admissions-locked",
+        "Research task admissions can be appended only at a settled wave checkpoint.",
+      );
+    }
+    if (nextAdmissions.some((admission) => admissions.has(admission.taskId))) {
+      throw new ResearchDispatchError(
+        "admissions-locked",
+        "Research task admission append cannot replace a prior task.",
+      );
+    }
+    admissions = validatedAdmissions([
+      ...admissions.values(),
+      ...nextAdmissions,
+    ]);
   };
 
   const reject = (
@@ -599,6 +632,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
     invoke,
     assertCapability,
     replaceAdmissions,
+    appendAdmissions,
     snapshot: () => ({
       dispatchedTasks,
       activeInvocations,

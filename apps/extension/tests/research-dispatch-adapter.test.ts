@@ -101,6 +101,91 @@ describe("research-owned native task dispatch interception", () => {
       .toThrow("immutable after dispatch observation");
   });
 
+  test("appends a later wave only after the prior admitted work has settled", async () => {
+    const calls: string[] = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("wave-1", [], { objective: "Research wave-1" })],
+      maxTasks: 2,
+      maxConcurrency: 1,
+      async invokeUpstream(_input, config) {
+        const taskId = String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]);
+        calls.push(taskId);
+        return { taskId, answer: "accepted" };
+      },
+    });
+    const first = { taskId: "wave-1", answer: "accepted" };
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "wave-1",
+        objective: "Research wave-1",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).resolves.toEqual(first);
+
+    adapter.appendAdmissions([admission("wave-2", [], {
+      objective: "Research wave-2",
+      dependsOnTaskIds: ["wave-1"],
+    })]);
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "wave-2",
+        objective: "Research wave-2",
+        dependencyResults: [{ taskId: "wave-1", result: first }],
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).resolves.toEqual({ taskId: "wave-2", answer: "accepted" });
+
+    expect(() => adapter.appendAdmissions([admission("wave-1")]))
+      .toThrow("cannot replace a prior task");
+    expect(adapter.snapshot()).toMatchObject({
+      dispatchedTasks: 2,
+      taskStatuses: { "wave-1": "completed", "wave-2": "completed" },
+    });
+    expect(calls).toEqual(["wave-1", "wave-2"]);
+  });
+
+  test("does not append a later wave while a prior task is still active", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started!: () => void;
+    const upstreamStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("active-wave", [], { objective: "Research active-wave" })],
+      maxTasks: 2,
+      maxConcurrency: 1,
+      async invokeUpstream(_input, config) {
+        started();
+        await pending;
+        return {
+          taskId: String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]),
+          answer: "accepted",
+        };
+      },
+    });
+    const execution = adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "active-wave",
+        objective: "Research active-wave",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    });
+    await upstreamStarted;
+    expect(() => adapter.appendAdmissions([admission("later-wave")]))
+      .toThrow("settled wave checkpoint");
+    release();
+    await expect(execution).resolves.toEqual({ taskId: "active-wave", answer: "accepted" });
+  });
+
   test("awaits durable admission before upstream work and durable result acceptance before publication", async () => {
     const lifecycle: string[] = [];
     const adapter = createResearchDispatchInterceptionAdapter({
