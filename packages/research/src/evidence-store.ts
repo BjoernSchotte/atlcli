@@ -37,6 +37,17 @@ export interface ResearchEvidenceAuthorityV1 {
   authorityClass: "whole_scope" | "exact_entity";
 }
 
+/**
+ * Body-free host provenance for a detail read. This remains distinct from
+ * evidence authority: authority answers *why this source may be read*, while
+ * retrieval answers *why this particular detail was selected*.
+ */
+export interface ResearchEvidenceRetrievalV1 {
+  sourceId: string;
+  reason: "question_relevance_rank";
+  rank: number;
+}
+
 export interface ResearchEvidenceVersionV1 {
   contentHash: string;
   capturedAt: string;
@@ -64,6 +75,8 @@ export interface ResearchEvidenceRecordV1 {
   /** Display-only metadata; `identity`, not this URL, is the source key. */
   source: ResearchSourceReferenceV1;
   authority: ResearchEvidenceAuthorityV1;
+  /** Optional for records created before ranked acquisition was introduced. */
+  retrieval?: ResearchEvidenceRetrievalV1;
   version: ResearchEvidenceVersionV1;
   contentChars: number;
   linkTargets: string[];
@@ -237,6 +250,29 @@ function validateSource(source: ResearchSourceReferenceV1, identity: ResearchEvi
   if (identity.product === "confluence" && source.contentId !== identity.entityId) invalid("Evidence page identity is invalid.");
 }
 
+function validateRetrieval(
+  value: unknown,
+  sourceId: string,
+): ResearchEvidenceRetrievalV1 | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid("Evidence retrieval provenance is invalid.");
+  }
+  const candidate = value as Record<string, unknown>;
+  if (
+    Object.keys(candidate).some((key) => !["sourceId", "reason", "rank"].includes(key)) ||
+    candidate.sourceId !== sourceId ||
+    candidate.reason !== "question_relevance_rank"
+  ) {
+    invalid("Evidence retrieval provenance is invalid.");
+  }
+  return {
+    sourceId,
+    reason: "question_relevance_rank",
+    rank: boundedInteger(candidate.rank, "Evidence retrieval rank", 1, 4_096),
+  };
+}
+
 function validateRecord(value: ResearchEvidenceRecordV1): ResearchEvidenceRecordV1 {
   if (!value || typeof value !== "object" || value.schema !== RESEARCH_EVIDENCE_RECORD_SCHEMA_V1) {
     invalid("Evidence record has an unsupported schema.");
@@ -256,6 +292,7 @@ function validateRecord(value: ResearchEvidenceRecordV1): ResearchEvidenceRecord
   if (!value.authority || typeof value.authority !== "object" ||
       value.authority.authorityClass !== "whole_scope" ||
       !/^scope-binding:[A-Za-z0-9._:%-]{1,240}$/.test(value.authority.bindingId)) invalid("Evidence authority is invalid.");
+  const retrieval = validateRetrieval(value.retrieval, value.source.id);
   if (!value.version || typeof value.version !== "object" || typeof value.version.truncated !== "boolean") invalid("Evidence version is invalid.");
   const version: ResearchEvidenceVersionV1 = {
     contentHash: hash(value.version.contentHash, "Evidence content hash"),
@@ -278,6 +315,7 @@ function validateRecord(value: ResearchEvidenceRecordV1): ResearchEvidenceRecord
     identity: { tenantOrigin, product: identity.product, entityKind: identity.entityKind, entityId, canonicalId },
     source: clone(value.source),
     authority: { bindingId: value.authority.bindingId, authorityClass: "whole_scope" },
+    ...(retrieval ? { retrieval } : {}),
     version,
     contentChars,
     linkTargets: [...value.linkTargets],
@@ -368,11 +406,13 @@ export async function createResearchEvidenceRecordV1(input: {
   scope: ResearchScopeV1;
   scopeBindings: readonly ResearchScopeBindingV1[];
   capturedAt: string;
+  retrieval?: ResearchEvidenceRetrievalV1;
 }): Promise<{ record: ResearchEvidenceRecordV1; chunks: ResearchEvidenceChunkV1[] }> {
   const scope = normalizeResearchScopeV1(input.scope);
   const identity = sourceIdentity(input.source, scope);
   validateSource(input.source, identity);
   const authority = authorityFor(input.source, scope, input.scopeBindings);
+  const retrieval = validateRetrieval(input.retrieval, input.source.id);
   if (!input.content || typeof input.content !== "object" || typeof input.content.truncated !== "boolean") {
     invalid("Evidence content projection is invalid.");
   }
@@ -403,6 +443,7 @@ export async function createResearchEvidenceRecordV1(input: {
     identity,
     source: clone(input.source),
     authority,
+    ...(retrieval ? { retrieval } : {}),
     version: {
       contentHash,
       capturedAt: iso(input.capturedAt, "Evidence captured time"),

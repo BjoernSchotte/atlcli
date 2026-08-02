@@ -151,6 +151,39 @@ describe("research evidence store", () => {
     })).rejects.toThrow("outside its tenant");
   });
 
+  test("persists only host-bound ranked-detail retrieval provenance", async () => {
+    const created = await createResearchEvidenceRecordV1({
+      source: source(),
+      content: { text: "ranked detail", linkTargets: [], truncated: false, inputBytes: 13 },
+      scope,
+      scopeBindings: bindings,
+      capturedAt: "2026-08-01T12:01:00.000Z",
+      retrieval: {
+        sourceId: "jira:ATLCLI-42",
+        reason: "question_relevance_rank",
+        rank: 2,
+      },
+    });
+    expect(created.record.retrieval).toEqual({
+      sourceId: "jira:ATLCLI-42",
+      reason: "question_relevance_rank",
+      rank: 2,
+    });
+
+    await expect(createResearchEvidenceRecordV1({
+      source: source(),
+      content: { text: "ranked detail", linkTargets: [], truncated: false, inputBytes: 13 },
+      scope,
+      scopeBindings: bindings,
+      capturedAt: "2026-08-01T12:01:00.000Z",
+      retrieval: {
+        sourceId: "jira:OTHER-1",
+        reason: "question_relevance_rank",
+        rank: 1,
+      },
+    })).rejects.toThrow("retrieval provenance");
+  });
+
   test("rejects caller-supplied chunk text or hashes that do not match the retained projection", async () => {
     const created = await record();
     const store = new WorkspaceResearchEvidenceStoreV1(createMemoryResearchWorkspace());

@@ -293,12 +293,25 @@ describe("bounded research capability broker", () => {
       source: { id: "jira:DEMO-1" },
       identity: { canonicalId: "https://example.atlassian.net|jira|issue|DEMO-1" },
       authority: { bindingId: "scope-binding:test:jira:DEMO" },
+      retrieval: {
+        sourceId: "jira:DEMO-1",
+        reason: "question_relevance_rank",
+        rank: 1,
+      },
     }]);
     expect(await evidence.chunks(retained.records[0]!.id)).toMatchObject([
       { text: "The Jira issue links to the implementation page." },
     ]);
     expect(broker.detailEvidenceLedger()).toMatchObject([
-      { source: { id: "jira:DEMO-1" }, evidenceId: retained.records[0]!.id },
+      {
+        source: { id: "jira:DEMO-1" },
+        retrieval: {
+          sourceId: "jira:DEMO-1",
+          reason: "question_relevance_rank",
+          rank: 1,
+        },
+        evidenceId: retained.records[0]!.id,
+      },
     ]);
   });
 
@@ -566,6 +579,14 @@ describe("bounded research capability broker", () => {
       entityRef: page.items[1]!.entityRef,
     });
     expect(providers.calls.filter((call) => call.product === "jira-detail")).toHaveLength(1);
+    expect(broker.detailEvidenceLedger()).toMatchObject([{
+      source: { id: "jira:DEMO-2" },
+      retrieval: {
+        sourceId: "jira:DEMO-2",
+        reason: "question_relevance_rank",
+        rank: 1,
+      },
+    }]);
   });
 
   it("rejects raw query languages and terminates an incomplete pagination budget visibly", async () => {
