@@ -73,6 +73,8 @@ import {
   type ResearchGraphRoleV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
+import type { ResearchRetrievalAssessmentV1 } from "./retrieval-assessment.js";
+import type { ResearchSessionRetrievalAssessmentV1 } from "./session.js";
 import {
   RESEARCH_CRITIQUE_SCHEMA_V1,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
@@ -464,6 +466,102 @@ export function createResearchGraphProposalPtcTool(
   }, {
     name: "research_graph_propose",
     description: "Propose one body-free task graph inside the approved host envelope before any research task starts.",
+    schema,
+  });
+}
+
+export const RESEARCH_RETRIEVAL_CHECKPOINT_SCHEMA_V1 =
+  "atlcli.research-retrieval-checkpoint/v1" as const;
+
+/**
+ * The only supervisor-visible result of a durable retrieval-wave checkpoint.
+ * It intentionally contains no query, source, provider cursor, content, or
+ * model rationale. The continuation ID is a host-issued one-time lease, not a
+ * model-authored workflow instruction.
+ */
+export interface ResearchRetrievalCheckpointProjectionV1 {
+  schema: typeof RESEARCH_RETRIEVAL_CHECKPOINT_SCHEMA_V1;
+  graphRevision: number;
+  wave: number;
+  action: ResearchRetrievalAssessmentV1["action"];
+  reason: ResearchRetrievalAssessmentV1["reason"];
+  continuationId?: string;
+}
+
+function projectResearchRetrievalCheckpointV1(
+  recorded: ResearchSessionRetrievalAssessmentV1,
+): ResearchRetrievalCheckpointProjectionV1 {
+  if (recorded.wave === undefined) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "A durable retrieval checkpoint must retain its host-assigned wave.",
+    );
+  }
+  if ((recorded.assessment.action === "stop") !== (recorded.continuation === undefined)) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "A retrieval checkpoint continuation does not match the host decision.",
+    );
+  }
+  return {
+    schema: RESEARCH_RETRIEVAL_CHECKPOINT_SCHEMA_V1,
+    graphRevision: recorded.graphRevision,
+    wave: recorded.wave,
+    action: recorded.assessment.action,
+    reason: recorded.assessment.reason,
+    ...(recorded.continuation ? { continuationId: recorded.continuation.id } : {}),
+  };
+}
+
+/**
+ * Persist a host-derived retrieval assessment at the end of an admitted wave.
+ * The model cannot provide an action/reason or request an issuance directly:
+ * the host derives both from its opaque broker state, then makes continuation
+ * possible only for `continue`/`replan` decisions.
+ */
+export function createResearchRetrievalCheckpointPtcTool(options: {
+  activeGraph: () => ResearchGraphV1 | undefined;
+  canCheckpoint: () => boolean;
+  assess: () => ResearchRetrievalAssessmentV1;
+  record: (input: {
+    graphRevision: number;
+    assessment: ResearchRetrievalAssessmentV1;
+    issueContinuation: boolean;
+  }) => Promise<ResearchSessionRetrievalAssessmentV1 & { graph: ResearchGraphV1 }>;
+  onRecorded?: (checkpoint: ResearchRetrievalCheckpointProjectionV1) => void;
+}): DynamicStructuredTool {
+  const schema = z.object({
+    graphRevision: z.number().int().positive(),
+  }).strict();
+  return tool(async ({ graphRevision }) => {
+    const graph = options.activeGraph();
+    if (!graph || graph.revision !== graphRevision || !options.canCheckpoint()) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The retrieval wave is not at a durable checkpoint boundary.",
+      );
+    }
+    const assessment = options.assess();
+    const recorded = await options.record({
+      graphRevision,
+      assessment,
+      issueContinuation: assessment.action !== "stop",
+    });
+    if (recorded.graph.revision !== graph.revision ||
+        recorded.graphRevision !== graphRevision ||
+        recorded.assessment.action !== assessment.action ||
+        recorded.assessment.reason !== assessment.reason) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The durable retrieval checkpoint did not preserve the host decision.",
+      );
+    }
+    const checkpoint = projectResearchRetrievalCheckpointV1(recorded);
+    options.onRecorded?.(checkpoint);
+    return JSON.stringify(checkpoint);
+  }, {
+    name: "research_retrieval_checkpoint",
+    description: "Persist the host-derived retrieval-wave decision after all admitted work has settled. The host returns only action, reason, wave, and an optional one-time continuation lease.",
     schema,
   });
 }

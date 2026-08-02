@@ -6,10 +6,16 @@ import {
   buildLegacyResearchSystemPromptV1,
   createOneShotSupervisorEvalMiddleware,
   createResearchGraphProposalPtcTool,
+  createResearchRetrievalCheckpointPtcTool,
   hostSearchCoverageLimitationsV1,
 } from "./agent-runtime-core.js";
 import { createResearchBriefV1 } from "./brief.js";
 import { composeResearchGraphV1 } from "./graph.js";
+import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
+import {
+  RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
+  RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1,
+} from "./session.js";
 
 const evalTool = tool(async () => "unused", {
   name: "eval",
@@ -211,6 +217,139 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     );
     expect(evaluatorCalls).toBe(1);
     expect((rejectedRepair as ToolMessage).content).toContain("Do not derive repairFollowUpId");
+  });
+});
+
+describe("durable retrieval checkpoint PTC", () => {
+  test("derives and persists a body-free continuation lease without model-selected control flow", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:checkpoint-tool",
+      turnId: "research-turn:checkpoint-tool",
+      objective: "Research a bounded Jira question.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    let recordedInput: unknown;
+    const checkpointTool = createResearchRetrievalCheckpointPtcTool({
+      activeGraph: () => graph,
+      canCheckpoint: () => true,
+      assess: () => assessment,
+      record: async (input) => {
+        recordedInput = input;
+        return {
+          schema: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
+          graphRevision: graph.revision,
+          wave: 1,
+          assessment,
+          continuation: {
+            schema: RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1,
+            id: `research-continuation:${graph.revision}.1`,
+            status: "issued",
+            issuedAt: "2026-08-01T10:00:01.000Z",
+          },
+          recordedAt: "2026-08-01T10:00:01.000Z",
+          graph,
+        };
+      },
+    });
+
+    const projected = JSON.parse(await checkpointTool.invoke({ graphRevision: graph.revision }));
+    expect(recordedInput).toEqual({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    expect(projected).toEqual({
+      schema: "atlcli.research-retrieval-checkpoint/v1",
+      graphRevision: graph.revision,
+      wave: 1,
+      action: "continue",
+      reason: "unread_ranked_candidates",
+      continuationId: `research-continuation:${graph.revision}.1`,
+    });
+    expect(JSON.stringify(projected)).not.toContain("DEMO-1");
+  });
+
+  test("rejects premature checkpoints and never issues a continuation for stop", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:checkpoint-stop",
+      turnId: "research-turn:checkpoint-stop",
+      objective: "Research a bounded Jira question.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: [],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 0,
+      httpAttemptsRemaining: 0,
+    });
+    const premature = createResearchRetrievalCheckpointPtcTool({
+      activeGraph: () => graph,
+      canCheckpoint: () => false,
+      assess: () => assessment,
+      record: async () => { throw new Error("must not persist"); },
+    });
+    await expect(premature.invoke({ graphRevision: graph.revision })).rejects.toThrow("checkpoint boundary");
+
+    let input: { issueContinuation: boolean } | undefined;
+    const terminal = createResearchRetrievalCheckpointPtcTool({
+      activeGraph: () => graph,
+      canCheckpoint: () => true,
+      assess: () => assessment,
+      record: async (record) => {
+        input = record;
+        return {
+          schema: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
+          graphRevision: graph.revision,
+          wave: 1,
+          assessment,
+          recordedAt: "2026-08-01T10:00:01.000Z",
+          graph,
+        };
+      },
+    });
+    expect(JSON.parse(await terminal.invoke({ graphRevision: graph.revision }))).toMatchObject({
+      action: "stop",
+      reason: "no_ranked_candidates",
+    });
+    expect(input).toEqual(expect.objectContaining({ issueContinuation: false }));
   });
 });
 
