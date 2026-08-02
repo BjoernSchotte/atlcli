@@ -76,7 +76,10 @@ import {
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
 import type { ResearchRetrievalAssessmentV1 } from "./retrieval-assessment.js";
-import type { ResearchSessionRetrievalAssessmentV1 } from "./session.js";
+import type {
+  ResearchSessionRetrievalAssessmentV1,
+  ResearchSessionRetrievalContinuationV1,
+} from "./session.js";
 import {
   RESEARCH_CRITIQUE_SCHEMA_V1,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
@@ -608,10 +611,10 @@ function projectResearchRetrievalCheckpointV1(
       "A durable retrieval checkpoint must retain its host-assigned wave.",
     );
   }
-  if ((recorded.assessment.action === "stop") !== (recorded.continuation === undefined)) {
+  if (!recorded.continuation) {
     throw new ResearchContractError(
       "invalid-request",
-      "A retrieval checkpoint continuation does not match the host decision.",
+      "A retrieval checkpoint must retain its host-issued continuation lease.",
     );
   }
   return {
@@ -628,7 +631,9 @@ function projectResearchRetrievalCheckpointV1(
  * Persist a host-derived retrieval assessment at the end of an admitted wave.
  * The model cannot provide an action/reason or request an issuance directly:
  * the host derives both from its opaque broker state, then makes continuation
- * possible only for `continue`/`replan` decisions.
+ * possible only through one host-issued continuation lease. A terminal
+ * assessment uses that lease solely to reach a fresh finalization realm; it
+ * cannot authorize more retrieval.
  */
 export function createResearchRetrievalCheckpointPtcTool(options: {
   activeGraph: () => ResearchGraphV1 | undefined;
@@ -656,7 +661,7 @@ export function createResearchRetrievalCheckpointPtcTool(options: {
     const recorded = await options.record({
       graphRevision,
       assessment,
-      issueContinuation: assessment.action !== "stop",
+      issueContinuation: true,
     });
     if (recorded.graph.revision !== graph.revision ||
         recorded.graphRevision !== graphRevision ||
@@ -672,7 +677,76 @@ export function createResearchRetrievalCheckpointPtcTool(options: {
     return JSON.stringify(checkpoint);
   }, {
     name: "research_retrieval_checkpoint",
-    description: "Persist the host-derived retrieval-wave decision after all admitted work has settled. The host returns only action, reason, wave, and an optional one-time continuation lease.",
+    description: "Persist the host-derived retrieval-wave decision after all admitted work has settled. The host returns only action, reason, wave, and one opaque one-time continuation lease; a stop decision permits finalization only.",
+    schema,
+  });
+}
+
+export const RESEARCH_RETRIEVAL_CONTINUATION_SCHEMA_V1 =
+  "atlcli.research-retrieval-continuation/v1" as const;
+
+/**
+ * Body-free receipt for the second disposable supervisor eval. The host keeps
+ * packet projections and graph topology out of this receipt; subsequent
+ * frontier tools provide only the exact compact task inputs they authorize.
+ */
+export interface ResearchRetrievalContinuationProjectionV1 {
+  schema: typeof RESEARCH_RETRIEVAL_CONTINUATION_SCHEMA_V1;
+  graphRevision: number;
+  wave: number;
+  action: ResearchRetrievalAssessmentV1["action"];
+  reason: ResearchRetrievalAssessmentV1["reason"];
+}
+
+/**
+ * Atomically consume the one continuation issued by a durable retrieval
+ * checkpoint. A model cannot manufacture a resume token or replay a prior
+ * wave: the journal owns both the revision fence and consumed state.
+ */
+export function createResearchRetrievalContinuationPtcTool(options: {
+  activeGraph: () => ResearchGraphV1 | undefined;
+  consume: (input: {
+    graphRevision: number;
+    wave: number;
+    continuationId: string;
+  }) => Promise<ResearchSessionRetrievalContinuationV1 & {
+    graph: ResearchGraphV1;
+    assessment: ResearchRetrievalAssessmentV1;
+  }>;
+  onConsumed?: (continuation: ResearchRetrievalContinuationProjectionV1) => void;
+}): DynamicStructuredTool {
+  const schema = z.object({
+    graphRevision: z.number().int().positive(),
+    wave: z.number().int().positive(),
+    continuationId: z.string().regex(/^research-continuation:[1-9][0-9]*\.[1-9][0-9]*$/),
+  }).strict();
+  return tool(async (input) => {
+    const graph = options.activeGraph();
+    if (!graph || graph.revision !== input.graphRevision) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The retrieval continuation graph revision is stale.",
+      );
+    }
+    const consumed = await options.consume(input);
+    if (consumed.status !== "consumed" || consumed.graph.revision !== graph.revision) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The durable retrieval continuation did not preserve its host state.",
+      );
+    }
+    const projection: ResearchRetrievalContinuationProjectionV1 = {
+      schema: RESEARCH_RETRIEVAL_CONTINUATION_SCHEMA_V1,
+      graphRevision: graph.revision,
+      wave: input.wave,
+      action: consumed.assessment.action,
+      reason: consumed.assessment.reason,
+    };
+    options.onConsumed?.(projection);
+    return JSON.stringify(projection);
+  }, {
+    name: "research_retrieval_continue",
+    description: "Consume one host-issued retrieval continuation before a later disposable supervisor eval. The returned action/reason are host-derived; no source content, graph topology, or dependency packets are exposed.",
     schema,
   });
 }
@@ -1127,23 +1201,36 @@ function assertSupervisorWorkflowControlFlowV1(
   const lexicalCode = blankJavaScriptStringsAndCommentsV1(code);
   const topLevelCode = topLevelJavaScriptCodeV1(code);
   const graphProposal = /\bconst\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*JSON\.parse\s*\(\s*await\s+tools\.researchGraphPropose\s*\(/.exec(topLevelCode);
+  const retrievalCheckpoint = /\bconst\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*JSON\.parse\s*\(\s*await\s+tools\.researchRetrievalCheckpoint\s*\(/.exec(topLevelCode);
+  const retrievalContinuation = /\bconst\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*JSON\.parse\s*\(\s*await\s+tools\.researchRetrievalContinue\s*\(/.exec(topLevelCode);
   const finalDraft = /\bconst\s+finalDraft\s*=\s*await\s+task\s*\(/.exec(topLevelCode);
   const firstAwait = lexicalCode.search(/\bawait\b/);
   const finalExpression = /\bfinalDraft\s*;?\s*$/.test(topLevelCode.trim());
   const proposalBeforeAnyAwait = graphProposal !== null &&
     firstAwait >= 0 &&
     graphProposal.index <= firstAwait;
+  const continuationBeforeAnyAwait = retrievalContinuation !== null &&
+    firstAwait >= 0 &&
+    retrievalContinuation.index <= firstAwait;
+  const checkpointExpression = retrievalCheckpoint !== null && new RegExp(
+    `\\b${retrievalCheckpoint[1]}\\s*;?\\s*$`,
+  ).test(topLevelCode.trim());
+  const checkpointWorkflow = retrievalCheckpoint !== null && checkpointExpression && !finalDraft;
 
   const continuationContainsProposal = !options.requireInitialProposal && graphProposal !== null;
-  if ((options.requireInitialProposal && !proposalBeforeAnyAwait) ||
-      continuationContainsProposal || !finalDraft || !finalExpression) {
+  const initialWorkflowValid = proposalBeforeAnyAwait &&
+    ((finalDraft !== null && finalExpression) || checkpointWorkflow);
+  const continuationWorkflowValid = !continuationContainsProposal &&
+    continuationBeforeAnyAwait && finalDraft !== null && finalExpression;
+  if ((options.requireInitialProposal && !initialWorkflowValid) ||
+      (!options.requireInitialProposal && !continuationWorkflowValid)) {
     throw new ResearchContractError(
       "invalid-report",
       "Supervisor workflow control flow is invalid. " +
         (options.requireInitialProposal
           ? "Start with a direct awaited tools.researchGraphPropose call, "
-          : "A checkpoint-authorized continuation must not propose a graph again; ") +
-        "bind the synthesizer as top-level `const finalDraft = await task(...)`, and end the program with `finalDraft;`. " +
+          : "A checkpoint-authorized continuation must start with a direct awaited tools.researchRetrievalContinue call and must not propose a graph again; ") +
+        "either end the initial research-wave program with its top-level retrieval checkpoint, or bind the synthesizer as top-level `const finalDraft = await task(...)` and end the program with `finalDraft;`. " +
         "Do not wrap the workflow in an async IIFE or detach its promise.",
     );
   }
@@ -1194,7 +1281,8 @@ export function createOneShotSupervisorEvalMiddleware(options: {
   canRetryAfterFailure?: () => boolean;
   /** A host-issued, durable wave checkpoint permits exactly one continuation eval. */
   canContinueAfterCheckpoint?: () => boolean;
-  consumeContinuationCheckpoint?: () => void;
+  /** Observational only; the continuation PTC consumes the durable ticket atomically. */
+  onContinuationEvalStarted?: () => void;
   onDiagnostic?: (diagnostic: ResearchSupervisorEvalDiagnosticV1) => void;
   onWorkflowCode?: (attempt: number, code: string) => void | Promise<void>;
   onFatal?: (error: ResearchContractError) => void;
@@ -1268,7 +1356,7 @@ export function createOneShotSupervisorEvalMiddleware(options: {
           name: request.toolCall.name,
         });
       }
-      if (continuationAllowed) options.consumeContinuationCheckpoint?.();
+      if (continuationAllowed) options.onContinuationEvalStarted?.();
       await options.onWorkflowCode?.(evalCalls, code);
       options.onDiagnostic?.({
         attempt: evalCalls,

@@ -196,7 +196,7 @@ describe("durable host-neutral research session reducer", () => {
     }, "2026-08-01T09:00:07.000Z")).toThrow("terminal decision");
   });
 
-  test("issues one revision-fenced continuation only for a non-terminal retrieval assessment", () => {
+  test("issues one revision-fenced continuation for replan or terminal finalization", () => {
     let current = readyToRun();
     const graphRevision = current.turns[0]!.graph!.revision;
     const continueAssessment = assessResearchRetrievalV1({
@@ -255,13 +255,16 @@ describe("durable host-neutral research session reducer", () => {
       continuationId: issued.id,
     }, "2026-08-01T09:00:07.000Z")).toThrow("already consumed");
 
-    const terminal = readyToRun();
-    expect(() => update(terminal, {
+    const terminal = update(readyToRun(), {
       kind: "record_retrieval_assessment",
-      graphRevision: terminal.turns[0]!.graph!.revision,
+      graphRevision,
       assessment: stopAssessment,
       issueContinuation: true,
-    }, "2026-08-01T09:00:05.000Z")).toThrow("terminal retrieval assessment");
+    }, "2026-08-01T09:00:05.000Z");
+    expect(terminal.turns[0]!.retrievalAssessments![0]!.continuation).toMatchObject({
+      id: `research-continuation:${graphRevision}.1`,
+      status: "issued",
+    });
   });
 
   test("persists a checkpoint-caused graph revision with bounded evidence and gap identifiers", () => {

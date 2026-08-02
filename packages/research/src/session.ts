@@ -126,7 +126,12 @@ export interface ResearchSessionRepairAuthorizationV1 {
   authorizedAt: string;
 }
 
-/** A one-time host lease for the next disposable supervisor evaluation. */
+/**
+ * A one-time host lease for the next disposable supervisor evaluation. It is
+ * issued both for a retrieval replan and for terminal finalization: the
+ * latter may render only already accepted compact packets and cannot reopen
+ * retrieval.
+ */
 export interface ResearchSessionRetrievalContinuationV1 {
   schema: typeof RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1;
   /** Deterministic from graph revision and wave; it carries no provider/model data. */
@@ -139,9 +144,10 @@ export interface ResearchSessionRetrievalContinuationV1 {
 /**
  * A durable, body-free record of the host's retrieval decision after a graph
  * state has settled. It is deliberately insufficient to recreate source
- * content, search terms, or model reasoning. A continuation is issued only
- * when the host elects to execute a later wave rather than render a one-shot
- * result; consuming it is revision-fenced and exactly once.
+ * content, search terms, or model reasoning. A continuation is issued for the
+ * next disposable supervisor eval, whether that eval replans retrieval or
+ * only finalizes accepted results. Consuming it is revision-fenced and exactly
+ * once.
  */
 export interface ResearchSessionRetrievalAssessmentV1 {
   schema: typeof RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
@@ -906,9 +912,6 @@ export function reduceResearchSessionV1(
       wave,
     });
     const assessment = parseResearchRetrievalAssessmentV1(update.assessment);
-    if (update.issueContinuation === true && assessment.action === "stop") {
-      invalid("Research terminal retrieval assessment cannot issue a continuation.");
-    }
     const record: ResearchSessionRetrievalAssessmentV1 = {
       schema: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
       graphRevision: graph.revision,

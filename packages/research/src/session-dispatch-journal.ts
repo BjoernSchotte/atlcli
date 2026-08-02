@@ -325,7 +325,10 @@ export class ResearchSessionDispatchJournalV1 {
     graphRevision: number;
     wave: number;
     continuationId: string;
-  }): Promise<ResearchSessionRetrievalContinuationV1 & { graph: ResearchGraphV1 }> {
+  }): Promise<ResearchSessionRetrievalContinuationV1 & {
+    graph: ResearchGraphV1;
+    assessment: ResearchRetrievalAssessmentV1;
+  }> {
     return this.#enqueue(async () => {
       const session = await this.#read();
       const turn = activeTurn(session, this.#turnId);
@@ -343,7 +346,11 @@ export class ResearchSessionDispatchJournalV1 {
         if (!record?.continuation || !nextTurn.graph) {
           invalid("Research durable dispatch did not retain its retrieval continuation.");
         }
-        return { ...record.continuation, graph: nextTurn.graph };
+        return {
+          ...record.continuation,
+          graph: nextTurn.graph,
+          assessment: record.assessment,
+        };
       });
     });
   }

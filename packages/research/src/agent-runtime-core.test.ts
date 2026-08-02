@@ -7,6 +7,7 @@ import {
   createOneShotSupervisorEvalMiddleware,
   createResearchGraphProposalPtcTool,
   createResearchGraphRevisionPtcTool,
+  createResearchRetrievalContinuationPtcTool,
   createResearchRetrievalCheckpointPtcTool,
   hostSearchCoverageLimitationsV1,
 } from "./agent-runtime-core.js";
@@ -40,12 +41,25 @@ const validWorkflowCode = `
 `;
 
 const continuationWorkflowCode = `
+  const continuation = JSON.parse(await tools.researchRetrievalContinue({
+    graphRevision: 1,
+    wave: 1,
+    continuationId: "research-continuation:1.1"
+  }));
   const finalDraft = await task({
     description: "synthetic continuation",
     subagentType: "synthesizer",
     responseSchema: {}
   });
   finalDraft;
+`;
+
+const checkpointWorkflowCode = `
+  const accepted = JSON.parse(await tools.researchGraphPropose({}));
+  const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({
+    graphRevision: accepted.graphRevision
+  }));
+  checkpoint;
 `;
 
 async function observeOfferedTools(
@@ -108,17 +122,29 @@ describe("one-shot supervisor eval capability lifecycle", () => {
 
   test("permits exactly one checkpoint-authorized continuation without a second graph proposal", async () => {
     let tickets = 1;
+    let continuationEvalStarts = 0;
     const middleware = createOneShotSupervisorEvalMiddleware({
       canContinueAfterCheckpoint: () => tickets > 0,
-      consumeContinuationCheckpoint: () => { tickets -= 1; },
+      onContinuationEvalStarted: () => { continuationEvalStarts += 1; },
     });
-    await completeEval(middleware, JSON.stringify({ title: "Wave one" }));
+    await completeEval(middleware, JSON.stringify({
+      schema: "atlcli.research-retrieval-checkpoint/v1",
+      graphRevision: 1,
+      wave: 1,
+      action: "stop",
+      reason: "no_ranked_candidates",
+      continuationId: "research-continuation:1.1",
+    }), checkpointWorkflowCode);
     expect(await observeOfferedTools(middleware)).toEqual([
       "eval",
       "AtlcliResearchAgentDraftV1",
     ]);
     await completeEval(middleware, JSON.stringify({ title: "Final" }), continuationWorkflowCode);
-    expect(tickets).toBe(0);
+    expect(tickets).toBe(1);
+    expect(continuationEvalStarts).toBe(1);
+    // The real continuation PTC, not the eval middleware, atomically consumes
+    // this ticket before it dispatches any later frontier.
+    tickets = 0;
     expect(await observeOfferedTools(middleware)).toEqual([
       "AtlcliResearchAgentDraftV1",
     ]);
@@ -292,7 +318,7 @@ describe("durable retrieval checkpoint PTC", () => {
     expect(JSON.stringify(projected)).not.toContain("DEMO-1");
   });
 
-  test("rejects premature checkpoints and never issues a continuation for stop", async () => {
+  test("rejects premature checkpoints and issues a finalization lease for stop", async () => {
     const brief = createResearchBriefV1({
       sessionId: "research-session:checkpoint-stop",
       turnId: "research-turn:checkpoint-stop",
@@ -341,6 +367,12 @@ describe("durable retrieval checkpoint PTC", () => {
           graphRevision: graph.revision,
           wave: 1,
           assessment,
+          continuation: {
+            schema: RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1,
+            id: `research-continuation:${graph.revision}.1`,
+            status: "issued",
+            issuedAt: "2026-08-01T10:00:01.000Z",
+          },
           recordedAt: "2026-08-01T10:00:01.000Z",
           graph,
         };
@@ -349,8 +381,71 @@ describe("durable retrieval checkpoint PTC", () => {
     expect(JSON.parse(await terminal.invoke({ graphRevision: graph.revision }))).toMatchObject({
       action: "stop",
       reason: "no_ranked_candidates",
+      continuationId: `research-continuation:${graph.revision}.1`,
     });
-    expect(input).toEqual(expect.objectContaining({ issueContinuation: false }));
+    expect(input).toEqual(expect.objectContaining({ issueContinuation: true }));
+  });
+
+  test("consumes one host-issued continuation and exposes only its decision", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:continuation-tool",
+      turnId: "research-turn:continuation-tool",
+      objective: "Research a bounded Jira question.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: [],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 0,
+      httpAttemptsRemaining: 0,
+    });
+    let consumeCalls = 0;
+    const continuation = createResearchRetrievalContinuationPtcTool({
+      activeGraph: () => graph,
+      consume: async () => {
+        consumeCalls += 1;
+        return {
+          schema: RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1,
+          id: `research-continuation:${graph.revision}.1`,
+          status: "consumed",
+          issuedAt: "2026-08-01T10:00:01.000Z",
+          consumedAt: "2026-08-01T10:00:02.000Z",
+          graph,
+          assessment,
+        };
+      },
+    });
+
+    const projected = JSON.parse(await continuation.invoke({
+      graphRevision: graph.revision,
+      wave: 1,
+      continuationId: `research-continuation:${graph.revision}.1`,
+    }));
+    expect(projected).toEqual({
+      schema: "atlcli.research-retrieval-continuation/v1",
+      graphRevision: graph.revision,
+      wave: 1,
+      action: "stop",
+      reason: "no_ranked_candidates",
+    });
+    expect(consumeCalls).toBe(1);
+    expect(JSON.stringify(projected)).not.toContain("DEMO");
   });
 });
 
