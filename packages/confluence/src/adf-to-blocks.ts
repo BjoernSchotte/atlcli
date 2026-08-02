@@ -1665,6 +1665,9 @@ function decodeTable(node: AdfNode, ctx: DecodeContext, path: string): ExportBlo
     ...(optionalStringAttr(node, "localId") !== undefined
       ? { localId: optionalStringAttr(node, "localId") }
       : {}),
+    ...(optionalStringAttr(node, "id") !== undefined
+      ? { sourceId: optionalStringAttr(node, "id") }
+      : {}),
   };
   const fragments = fragmentMarks(node.marks);
   addFragmentProjectionNote(ctx, path, fragments);
@@ -1760,6 +1763,7 @@ function decodeCell(node: AdfNode, ctx: DecodeContext, path: string): TableCell 
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(hasColumnWidths ? { columnWidths } : {}),
     ...(verticalAlignment !== undefined ? { verticalAlignment } : {}),
+    ...(optionalStringAttr(node, "title") !== undefined ? { title: optionalStringAttr(node, "title") } : {}),
     ...(optionalStringAttr(node, "localId") !== undefined
       ? { localId: optionalStringAttr(node, "localId") }
       : {}),

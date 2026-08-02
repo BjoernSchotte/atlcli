@@ -26,7 +26,7 @@ function model(kind: ChartKindV1): ChartModelV1 {
     kind,
     title: "Allocation",
     legend: "right",
-    pie: { sectionLabel: "name-value", explode: ["Run"] },
+    pie: { sectionLabelFormat: "%0%: %1%", explode: ["Run"] },
     source,
     data: { mode: "categories", labels: ["Build", "Run", "Learn"], series: [{ id: "budget", label: "Budget", values: [50, 30, 20] }] },
   };
@@ -85,6 +85,24 @@ test("compiles and renders all twelve normalized shapes through TanStack scenes"
     expect(svg).toContain(`Shape ${kind}`.replace("Shape pie", "Allocation").replace("Shape gantt", "Release plan"));
     expect(svg).not.toContain("<script");
   }
+});
+
+test("keeps validated background and border presentation in the shared TanStack scene", () => {
+  const chart: ChartModelV1 = {
+    ...model("bar"),
+    style: { backgroundColor: "#FFEECC", borderColor: "#123456" },
+  };
+  const scene = createTanStackChartSceneV1(chart);
+  expect(scene.theme.background).toBe("#FFEECC");
+  expect(scene.nodes.at(-1)).toMatchObject({
+    kind: "rect",
+    key: "atlcli-chart-border",
+    style: { fill: "none", stroke: "#123456", strokeWidth: 1 },
+  });
+  const svg = renderTanStackChartSvgV1(chart);
+  expect(svg).toContain('fill="#FFEECC"');
+  expect(svg).toContain('class="atlcli-chart-border"');
+  expect(svg).toContain('stroke="#123456"');
 });
 
 test("uses native TanStack marks for signed horizontal stacks, steps, pie labels, and Gantt dependencies", () => {
@@ -147,7 +165,7 @@ test("lays out every requested legend position outside the TanStack plot", () =>
 
 test("offsets named pie sections and their labels from the canonical TanStack scene", () => {
   const exploded = createTanStackChartSceneV1(model("pie"));
-  const plain = createTanStackChartSceneV1({ ...model("pie"), pie: { sectionLabel: "name-value" } });
+  const plain = createTanStackChartSceneV1({ ...model("pie"), pie: { sectionLabelFormat: "%0%: %1%" } });
   const explodedPoint = exploded.points.find((point) => point.groupLabel === "pie-arcs" && (point.datum as { data?: { label?: string } }).data?.label === "Run");
   const plainPoint = plain.points.find((point) => point.groupLabel === "pie-arcs" && (point.datum as { data?: { label?: string } }).data?.label === "Run");
   expect(explodedPoint).toBeTruthy();
@@ -160,9 +178,11 @@ test("offsets named pie sections and their labels from the canonical TanStack sc
 });
 
 test("maps documented category rotations and time-period tick positions", () => {
-  const category = createTanStackChartSceneV1({ ...model("line"), axes: { x: { categoryLabelPosition: "up45" } } });
-  const categoryLabels = sceneNodes(category.nodes).filter((node) => node.kind === "label" && node.key.startsWith("x-tick-label:"));
-  expect(categoryLabels.some((node) => node.kind === "label" && node.rotate === -45)).toBeTrue();
+  for (const [position, rotation] of [["up45", -45], ["up90", -90], ["down45", 45], ["down90", 90]] as const) {
+    const category = createTanStackChartSceneV1({ ...model("line"), axes: { x: { categoryLabelPosition: position } } });
+    const categoryLabels = sceneNodes(category.nodes).filter((node) => node.kind === "label" && node.key.startsWith("x-tick-label:"));
+    expect(categoryLabels.some((node) => node.kind === "label" && node.rotate === rotation)).toBeTrue();
+  }
 
   const time = createTanStackChartSceneV1({ ...model("timeSeries"), axes: { x: { dateTickPosition: "middle" }, y: { min: -10, max: 40, tickUnit: 10 } } });
   const firstPoint = time.points.filter((point) => point.markId === "chart-timeSeries").sort((left, right) => left.x - right.x)[0];
@@ -171,6 +191,20 @@ test("maps documented category rotations and time-period tick positions", () => 
   expect(firstTick?.kind).toBe("label");
   if (firstTick?.kind === "label") expect(firstTick.x).toBeGreaterThan(firstPoint!.x);
   expect(firstTick?.kind === "label" ? firstTick.text : "").toBe("01.01.2026");
+
+  const twoWeeks = createTanStackChartSceneV1({
+    ...model("timeSeries"),
+    axes: { x: { valueType: "date", tickUnit: 2, tickPeriod: "week", dateTickPosition: "start" }, y: { min: -10, max: 40, tickUnit: 10 } },
+  });
+  const dateLabels = sceneNodes(twoWeeks.nodes).filter((node) => node.kind === "label" && node.key.startsWith("x-tick-label:"));
+  expect(dateLabels).toHaveLength(2);
+  expect(dateLabels.map((node) => node.kind === "label" ? node.text : "")).toEqual(["01.01.2026", "15.01.2026"]);
+});
+
+test("renders the documented pie label mini-language as inert text", () => {
+  const svg = renderTanStackChartSvgV1({ ...model("pie"), pie: { sectionLabelFormat: "%0% = %1% (%2%)" } });
+  expect(svg).toContain("Build = 50 (50%)");
+  expect(svg).not.toContain("%0%");
 });
 
 test("bounds Gantt date ticks so adjacent provider dates cannot collide", () => {

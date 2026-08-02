@@ -28,12 +28,15 @@ it("serializes a chart ExportBlock as an SVG visual plus deterministic data tabl
       schema: "atlcli.chart/1",
       kind: "bar",
       title: "Revenue",
+      subtitle: "FY 2026 plan",
       data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
       source: { kind: "cloud-adf", macroName: "chart" },
     },
   }], { resolve: async () => { throw new Error("unused"); } });
   const bundle = serializePdfDocument(prepared, { metadata });
   expect(bundle.main).toContain('#text("Revenue")');
+  expect(bundle.main).toContain('#text("FY 2026 plan")');
+  expect(bundle.main).toContain('style: "italic"');
   expect(bundle.main).toContain('#text("Jan")');
   expect(bundle.main).toContain('#text("20")');
   expect(bundle.main).toContain("#table(columns: 2");

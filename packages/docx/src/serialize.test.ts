@@ -35,11 +35,15 @@ it("serializes a chart ExportBlock as a deterministic accessible data table", as
       schema: "atlcli.chart/1",
       kind: "bar",
       title: "Revenue",
+      subtitle: "FY 2026 plan",
       data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
       source: { kind: "cloud-adf", macroName: "chart" },
     },
   }], { styleNames: noStyles });
   expect(result.xml).toContain("Revenue");
+  expect(result.xml).toContain("FY 2026 plan");
+  expect(result.xml).toContain('<w:color w:val="5E6C84"/>');
+  expect(result.xml).toContain('<w:i/>');
   expect(result.xml).toContain("Jan");
   expect(result.xml).toContain("20");
   expect(result.xml).toContain("<w:tbl");

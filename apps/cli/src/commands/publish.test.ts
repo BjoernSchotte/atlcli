@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   handlePublish,
+  collectChartRenderDependenciesV1,
   isMissingPublicationAttachmentErrorV1,
   latestPublicationBuildNameV1,
   normalizePublicationLinksV1,
@@ -84,6 +85,34 @@ test("publication links outside the selected scope remain visible as unresolved 
     { referenceId: "inside", kind: "page", sourceId: "page-1" },
     { referenceId: "outside", kind: "unresolved", reason: "outside-scope", label: "Out-of-scope Confluence link" },
   ]);
+});
+
+test("chart source-table digests become ID-free page render dependencies", () => {
+  const dependency = (digest: string) => collectChartRenderDependenciesV1([{
+    type: "chart",
+    localId: "provider-private-local-id",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      data: { mode: "categories", labels: ["A"], series: [{ id: "value", label: "Value", values: [10] }] },
+      source: {
+        kind: "cloud-adf",
+        macroName: "chart",
+        sourceTableDigests: [digest],
+        dependencyDigest: digest,
+      },
+    },
+  }]);
+  expect(dependency("fnv1a-11111111")).toEqual([{
+    kind: "macro-data",
+    key: "chart:0",
+    version: "atlcli.chart/1",
+    digest: "fnv1a-11111111",
+    live: false,
+  }]);
+  expect(dependency("fnv1a-22222222")).not.toEqual(dependency("fnv1a-11111111"));
+  expect(JSON.stringify(dependency("fnv1a-11111111"))).not.toContain("provider-private-local-id");
+  expect(collectChartRenderDependenciesV1([])).toEqual([]);
 });
 
 test("explicit missing-attachment fallback keeps the page and removes dangling asset references", async () => {

@@ -62,6 +62,7 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain('data-atlcli-block="chart"');
   expect(html).toContain('data-atlcli-chart-kind="bar"');
   expect(html).toContain('aria-label="Normalized chart data"');
+  expect(html).toContain('data-atlcli-chart-data-display="hidden"');
   expect(html).toContain("Published pages");
   expect(html).toContain('role="img"');
   expect(html).toContain('data-atlcli-chart-island="enabled"');

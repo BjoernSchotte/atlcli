@@ -1318,6 +1318,7 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
         ...(backgroundColor ? { backgroundColor } : {}),
         ...(verticalAlignment ? { verticalAlignment } : {}),
         ...(cell.attrs["ac:local-id"] !== undefined ? { localId: cell.attrs["ac:local-id"] } : {}),
+        ...(cell.attrs.title !== undefined ? { title: cell.attrs.title } : {}),
         content: walkBlocks(cell.children, { ...ctx, inTableCell: true }),
       });
     }
@@ -1332,6 +1333,7 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const presentation: TablePresentation = {
     ...(layout !== undefined ? { layout } : {}),
     ...(localId !== undefined ? { localId } : {}),
+    ...(el.attrs.id !== undefined ? { sourceId: el.attrs.id } : {}),
   };
   return {
     type: "table",

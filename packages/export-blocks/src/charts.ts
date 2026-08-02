@@ -71,13 +71,29 @@ export type ChartCategoryLabelPositionV1 = "up45" | "up90" | "down45" | "down90"
 /** Placement of a time-series tick within its configured period. */
 export type ChartDateTickPositionV1 = "start" | "middle" | "end";
 
+/** Documented Confluence time granularity and date-axis tick unit. */
+export type ChartTimePeriodV1 =
+  | "millisecond"
+  | "second"
+  | "minute"
+  | "hour"
+  | "day"
+  | "week"
+  | "month"
+  | "quarter"
+  | "year";
+
 export interface ChartAxisV1 {
   min?: number | string;
   max?: number | string;
   tickUnit?: number;
+  /** Unit for a date-axis tick count; absent means `locale.timePeriod`. */
+  tickPeriod?: ChartTimePeriodV1;
   labelAngle?: number;
   categoryLabelPosition?: ChartCategoryLabelPositionV1;
   dateTickPosition?: ChartDateTickPositionV1;
+  /** Explicitly distinguishes numeric XY values from time-based XY values. */
+  valueType?: "number" | "date";
 }
 
 export interface ChartAxesV1 {
@@ -102,6 +118,8 @@ export interface ChartSourceProvenanceV1 {
   };
   /** Requested format of the optional Confluence-generated attachment. */
   renderedImageFormat?: "png" | "jpg";
+  /** Digests of the selected source tables, without publishing provider IDs. */
+  sourceTableDigests?: readonly string[];
   dependencyDigest?: string;
 }
 
@@ -126,7 +144,11 @@ export interface ChartModelV1 {
   style?: ChartStyleV1;
   axes?: ChartAxesV1;
   pie?: {
-    sectionLabel?: "name" | "value" | "percent" | "name-value";
+    /**
+     * Safe Confluence label mini-language: literals plus `%0%` (key), `%1%`
+     * (value), and `%2%` (percentage). No markup is interpreted.
+     */
+    sectionLabelFormat?: string;
     /** Category keys that Confluence asks to offset from the pie. */
     explode?: readonly string[];
   };
@@ -134,16 +156,7 @@ export interface ChartModelV1 {
     language?: string;
     country?: string;
     dateFormat?: string;
-    timePeriod?:
-      | "millisecond"
-      | "second"
-      | "minute"
-      | "hour"
-      | "day"
-      | "week"
-      | "month"
-      | "quarter"
-      | "year";
+    timePeriod?: ChartTimePeriodV1;
   };
   data: ChartDataV1;
   source: ChartSourceProvenanceV1;
@@ -339,6 +352,16 @@ function validateAxis(axis: ChartAxisV1 | undefined, label: string): void {
       if (typeof value !== "string" || !datePositions.has(value as ChartDateTickPositionV1)) {
         throw new ChartValidationErrorV1(`${label}.${key} is invalid`);
       }
+    } else if (key === "tickPeriod") {
+      if (typeof value !== "string" || ![
+        "millisecond", "second", "minute", "hour", "day", "week", "month", "quarter", "year",
+      ].includes(value)) {
+        throw new ChartValidationErrorV1(`${label}.${key} is invalid`);
+      }
+    } else if (key === "valueType") {
+      if (value !== "number" && value !== "date") {
+        throw new ChartValidationErrorV1(`${label}.${key} is invalid`);
+      }
     }
   }
   if (typeof axis.min === "number" && typeof axis.max === "number" && axis.max < axis.min) {
@@ -372,8 +395,12 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   ].includes(model.locale.timePeriod)) {
     throw new ChartValidationErrorV1("chart time period is invalid");
   }
-  if (model.pie?.sectionLabel !== undefined && !["name", "value", "percent", "name-value"].includes(model.pie.sectionLabel)) {
-    throw new ChartValidationErrorV1("pie section label is invalid");
+  if (model.pie?.sectionLabelFormat !== undefined) {
+    const format = boundedText(model.pie.sectionLabelFormat, "pie section label format");
+    const variables = [...format.matchAll(/%([^%]+)%/gu)].map((match) => match[1]);
+    if (!format || variables.some((variable) => variable !== "0" && variable !== "1" && variable !== "2")) {
+      throw new ChartValidationErrorV1("pie section label format contains an unsupported replacement variable");
+    }
   }
   if (model.pie?.explode !== undefined) {
     if (model.pie.explode.length > CHART_LIMITS_V1.maxRows) {
@@ -407,6 +434,17 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   if (model.data.mode === "categories") validateCategoryData(model.data);
   else if (model.data.mode === "points") validatePointData(model.data);
   else validateGanttData(model.data);
+  if ((model.kind === "timeSeries" || model.axes?.x?.valueType === "date") && model.data.mode === "points") {
+    for (const series of model.data.series) {
+      for (const point of series.points) {
+        if (typeof point.x !== "string") throw new ChartValidationErrorV1("date-valued chart points require ISO date/time x values");
+        validateDate(point.x, "date-valued chart point x");
+      }
+    }
+  }
+  if (model.axes?.x?.valueType === "date" && model.data.mode !== "points") {
+    throw new ChartValidationErrorV1("date-valued x axes require point data");
+  }
   if (model.kind === "gantt" && model.data.mode !== "gantt") throw new ChartValidationErrorV1("Gantt charts require task data");
   if (model.kind !== "gantt" && model.data.mode === "gantt") throw new ChartValidationErrorV1("non-Gantt charts cannot use task data");
   if (model.source.macroName !== "chart") throw new ChartValidationErrorV1("chart source must be the Chart macro");
@@ -419,6 +457,17 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   }
   if (model.source.renderedImageFormat !== undefined && !["png", "jpg"].includes(model.source.renderedImageFormat)) {
     throw new ChartValidationErrorV1("chart rendered image format is invalid");
+  }
+  if (model.source.sourceTableDigests !== undefined) {
+    if (model.source.sourceTableDigests.length === 0 || model.source.sourceTableDigests.length > CHART_LIMITS_V1.maxSeries) {
+      throw new ChartValidationErrorV1("chart source-table digests exceed limits");
+    }
+    for (const digest of model.source.sourceTableDigests) {
+      if (!/^fnv1a-[0-9a-f]{8}$/u.test(digest)) throw new ChartValidationErrorV1("chart source-table digest is invalid");
+    }
+    if (new Set(model.source.sourceTableDigests).size !== model.source.sourceTableDigests.length) {
+      throw new ChartValidationErrorV1("chart source-table digests must be unique");
+    }
   }
   const encoded = new TextEncoder().encode(JSON.stringify(model));
   if (encoded.byteLength > CHART_LIMITS_V1.maxPayloadBytes) throw new ChartValidationErrorV1("chart payload exceeds limits");

@@ -36,12 +36,20 @@ world-class semantic/visual gate is still open; — intentionally static.
   approximations such as flattened 3D are represented by bounded diagnostic
   codes. Lenient charts remain visibly marked in Astro and continue through
   document table projections.
-- Every current static chart retains a title/description and aligned data
-  table. Astro and document projection are visually proven for all twelve
+- Every current static chart retains title/subtitle semantics and an aligned
+  data table. Astro and document projection are visually proven for all twelve
   shapes from the same TanStack scene. The production Astro proof covers
   desktop and 390px containment, a labelled focusable mobile scroll region,
-  strict CSP, hostile labels, and its accessibility tree. The explicit
-  JavaScript-disabled and complete interaction matrix remain open.
+  strict CSP, hostile labels, its accessibility tree, reduced motion, and the
+  complete JavaScript-disabled all-shapes fallback. The optional island
+  interaction matrix remains open.
+- Cloud/DC normalization uses explicit locale, decimal/grouping and UTC date
+  rules, with deterministic `en-US` fallback. Selected source tables contribute
+  content digests to an ID-free per-page `macro-data` dependency, so cache
+  invalidation follows selected data rather than provider-local table IDs.
+- Configured chart background and border colors are projected into the shared
+  TanStack scene. Hidden data tables remain in the DOM and accessibility tree;
+  `hidden` changes only their visual presentation.
 - DOCX and PDF use the same source order and union X keys for sparse point
   series, so a missing point in one series never shifts another series' value.
   Both targets call the shared pinned TanStack SVG adapter; DOCX additionally
@@ -87,7 +95,8 @@ world-class semantic/visual gate is still open; — intentionally static.
 
 The live provider page proves one pinned `tanstack-v0.3/bar` XY-bar island and
 its provider normalization. The tenant-free corpus separately proves all
-twelve DOCX/PDF projections. A live DC
+twelve Astro and DOCX/PDF projections, including JavaScript-disabled Astro
+output. A live DC
 tenant is not available in this workspace; DC coverage is therefore fixture-
 and contract-proven rather than falsely reported as a provider E2E. A
 multi-macro Cloud fixture was also attempted and produced provider-side

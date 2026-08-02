@@ -112,11 +112,26 @@ matrix remain open. The maintained evidence matrix is in
   top/left/right legends, rotated category/date labels, sparse and stepped XY
   shapes, and the dependency-linked Gantt all fit their pages in both DOCX and
   PDF. The proof artifacts and rendered page images remain outside Git.
+- A second complete document proof after source-semantic and subtitle changes
+  rendered 12/12 DOCX pages and all 15 PDF pages at original resolution. It
+  confirms visible subtitles, scene background/border styling, separated
+  title/legend bands, unclipped plots, aligned data tables, and stable page
+  breaks for every chart kind. No asset or image was skipped.
+- Cloud and DC normalization now apply deterministic locale-aware numeric and
+  UTC date parsing, documented default values, table/column selection by
+  number or authored identity, all data orientations, strict `forgive=false`
+  rejection, and selected-table dependency digests. Publication pages convert
+  those into ID-free `macro-data` render dependencies; tests prove that an
+  unselected-table change is cache-stable while a selected-table change is
+  not.
 - The production Astro 7.1.6 consumer renders the same twelve models through
   the shared TanStack server-SVG adapter. Desktop and 390px browser inspection
   confirms all shapes, one semantic table per chart, UTF-8 labels, strict CSP,
   focusable contained mobile visuals, hostile-label inertness, no document
-  overflow, and no production browser warnings/errors.
+  overflow, and no production browser warnings/errors. A fresh JavaScript-off
+  run retains 15 static SVGs and 15 semantic tables with zero hydrated islands;
+  the JavaScript-on reduced-motion run hydrates only the two allowlisted
+  islands and retains visible keyboard focus.
 - The production ordinary-browser conformance bundle runs the same twelve
   models through both public browser document entry points. Its DOCX artifact
   contains 12 standalone TanStack SVG parts plus 12 PNG compatibility parts;
@@ -208,7 +223,7 @@ renderable by an interactive library, it still remains statically supported.
       explicit flattened semantic hint because TanStack has no 3D geometry.
 - [x] Width/height with safe bounds and responsive overflow behavior.
 - [x] `dataDisplay`: hidden, before, or after the chart.
-- [ ] Title, subtitle, x-axis label, y-axis label, and all legend positions.
+- [x] Title, subtitle, x-axis label, y-axis label, and all legend positions.
 - [x] Table selection (`tables`) and column selection (`columns`).
 - [x] Data orientation: horizontal or vertical.
 - [x] Locale/language/country and date format, with a deterministic fallback.
@@ -217,10 +232,10 @@ renderable by an interactive library, it still remains statically supported.
 - [x] `forgive` behavior as an explicit strict/lenient normalization decision;
       never silently discard malformed rows.
 - [x] Background, border, and series colors after palette validation.
-- [ ] Axis bounds, tick units, label angles, documented category-label rotation
+- [x] Axis bounds, tick units, label angles, documented category-label rotation
       (`up45`/`up90`/`down45`/`down90`), and date-period tick placement
       (`start`/`middle`/`end`), with finite-value and range validation.
-- [ ] Pie section label and section explode values in every static target.
+- [x] Pie section label and section explode values in every static target.
 - [x] Preserve generated-chart attachment name, `new`/`replace`/`keep`
       versioning, comment, thumbnail intent, and requested PNG/JPG format as
       provenance only. These Chart macro parameters control Confluence's
@@ -284,18 +299,19 @@ export interface ChartModelV1 {
   showShapes?: boolean;
   opacity?: number;
   display?: { width?: number; height?: number; data?: "hidden" | "before" | "after" };
-  palette?: readonly string[];
+  style?: { backgroundColor?: string; borderColor?: string; colors?: readonly string[] };
   axes?: ChartAxesV1;
-  pie?: { sectionLabel?: "name" | "value" | "percent" | "name-value"; explode?: readonly string[] };
-  locale?: { language?: string; country?: string; dateFormat?: string; timePeriod?: string };
+  pie?: { sectionLabelFormat?: string; explode?: readonly string[] };
+  locale?: { language?: string; country?: string; dateFormat?: string; timePeriod?: ChartTimePeriodV1 };
   data: ChartDataV1;
   source: ChartSourceProvenanceV1;
 }
 ```
 
 `ChartAxesV1` and `ChartSourceProvenanceV1` are also closed, dependency-free
-types. The former contains only finite bounds, tick units, label angles,
-documented category-label rotations, and documented date-period positions.
+types. The former contains only finite numeric/date bounds, tick units and
+periods, numeric/date value kinds, label angles, documented category-label
+rotations, and documented date-period positions.
 The latter contains a source kind (`cloud-adf` or `dc-storage`), the normalized
 generated-attachment policy, a provider-local macro identity, and safe
 dependency/model digests; it must not contain a clickable tenant URL or
@@ -354,11 +370,11 @@ only and must be safe to include in a public site manifest.
 
 - [x] Define how empty cells, non-numeric values, duplicate labels, and missing
       dates are handled under strict and lenient modes.
-- [ ] Define deterministic decimal, grouping, date, timezone, and locale rules;
+- [x] Define deterministic decimal, grouping, date, timezone, and locale rules;
       do not depend on the build machine's locale.
 - [x] Implement documented `forgive` semantics as diagnostics plus a visible
       partial-data marker when rows are skipped.
-- [ ] Include selected source-table dependency digests in the page/bundle
+- [x] Include selected source-table dependency digests in the page/bundle
       manifest so a source-data change invalidates the affected page. Generated
       chart-attachment policy remains part of the model digest, not an acquired
       asset dependency.
@@ -443,7 +459,7 @@ only and must be safe to include in a public site manifest.
       TanStack adapter; raw provider HTML and macro parameters cannot reach it.
 - [x] Ensure chart models and manifests contain no secrets, bearer tokens,
       private tenant URLs, or unreviewed customer identifiers.
-- [ ] Make cache invalidation depend on model and source-data digests, not only
+- [x] Make cache invalidation depend on model and source-data digests, not only
       page version.
 
 ## 10. Test and proof plan
@@ -492,14 +508,15 @@ listed in the capability registry.
 
 - [x] Build the packed/plain-Astro consumer and the Starlight consumer against
       the published package boundary; no workspace-private import paths.
-- [ ] Complete in-app-browser checks for all-shapes desktop/mobile layout,
-      accessibility tree,
-      keyboard navigation, reduced motion, CSP, and JavaScript disabled; the
-      representative interactive XY-bar island is proven in the local build.
-      The production Astro 7.1.6 build now proves all twelve static shapes,
-      responsive desktop/390px containment, the accessibility tree, strict
-      CSP, hostile-label inertness, UTF-8 labels, and zero browser errors;
-      explicit JavaScript-disabled and full interaction checks remain open.
+- [x] Complete in-app-browser checks for the all-shapes static matrix on
+      desktop/mobile, accessibility tree, keyboard focus, reduced motion, CSP,
+      and JavaScript disabled. The production Astro 7.1.6 build proves all
+      twelve static shapes, responsive desktop/390px containment, fifteen
+      aligned semantic tables (including thirteen visually hidden but
+      screen-reader-accessible tables), strict CSP, hostile-label inertness,
+      UTF-8 labels, visible focus, no document overflow, and zero browser
+      errors. The complete optional island interaction matrix remains the
+      separate open gate in section 7.2.
 - [x] Run the mayflower Cloud profile against the persistent, non-private
       provider fixture page and record the provider-valid XY-bar result without
       committing page content.
@@ -542,8 +559,10 @@ listed in the capability registry.
 
 - [x] Implement orientation, numeric/date parsing, aggregation metadata,
       `forgive`, and deterministic locale behavior.
-- [x] Emit model digests and bounded diagnostics; selected source-table
-      dependency digests remain a follow-up.
+- [x] Emit model digests, selected source-table dependency digests, and bounded
+      diagnostics. Publication pages retain an ID-free `macro-data` dependency
+      keyed by chart source order; changing an unselected table leaves it
+      stable while changing a selected table changes it.
 
 ### T5 — Macro registry integration
 
@@ -623,9 +642,8 @@ The follow-up PR is complete only when all gates are checked:
 - [x] A missing generated-chart attachment never fails a build: it is an output
       cache hint, not the source data. Missing/invalid body-table data follows
       the normal strict/lenient chart diagnostic policy.
-- [ ] Which Gantt dependency semantics can be represented without inventing
-      scheduling behavior? (Recommendation: preserve labels/edges and avoid
-      recalculation.)
+- [x] Preserve declared Gantt dependency labels/edges without recalculating or
+      inventing scheduling behavior.
 
 ## 14. References
 

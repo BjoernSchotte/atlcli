@@ -1,5 +1,4 @@
 import {
-  chartModelDigestV1,
   validateChartModelV1,
   type ChartDataV1,
   type ChartDiagnosticV1,
@@ -7,6 +6,7 @@ import {
   type ChartKindV1,
   type ChartModelV1,
   type ChartSourceKindV1,
+  type ChartTimePeriodV1,
 } from "@atlcli/export-blocks";
 import type { ExportBlock, MacroParameter } from "@atlcli/export-blocks";
 
@@ -38,22 +38,6 @@ function readBooleanParameter(params: readonly MacroParameter[], name: string, d
   const value = boolParameter(params, name);
   if (raw !== undefined && value === undefined) {
     diagnostics.push({ code: "invalid-option", message: `Chart parameter ${name} must be a boolean.`, parameter: name });
-  }
-  return value;
-}
-
-function numberParameter(params: readonly MacroParameter[], name: string): number | undefined {
-  const value = parameter(params, name);
-  if (value === undefined) return undefined;
-  const number = Number(value.replace(",", "."));
-  return Number.isFinite(number) ? number : undefined;
-}
-
-function readNumberParameter(params: readonly MacroParameter[], name: string, diagnostics: ChartDiagnosticV1[]): number | undefined {
-  const raw = parameter(params, name);
-  const value = numberParameter(params, name);
-  if (raw !== undefined && value === undefined) {
-    diagnostics.push({ code: "invalid-option", message: `Chart parameter ${name} must be numeric.`, parameter: name });
   }
   return value;
 }
@@ -91,38 +75,237 @@ function firstParameter(params: readonly MacroParameter[], ...names: readonly st
   return undefined;
 }
 
-function parseAxis(params: readonly MacroParameter[], axis: "x" | "y"): ChartAxisV1 | undefined {
+interface ChartParsePolicy {
+  locale: string;
+  dateFormat?: string;
+  forgive: boolean;
+}
+
+function chartLocale(language: string | undefined, country: string | undefined): string {
+  const normalizedLanguage = language?.trim().toLowerCase();
+  const normalizedCountry = country?.trim().toUpperCase();
+  const candidate = normalizedLanguage
+    ? `${normalizedLanguage}${normalizedCountry ? `-${normalizedCountry}` : ""}`
+    : normalizedCountry
+      ? `en-${normalizedCountry}`
+      : "en-US";
+  try {
+    return Intl.getCanonicalLocales(candidate)[0] ?? "en-US";
+  } catch {
+    return "en-US";
+  }
+}
+
+function regexEscape(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function localeSeparators(locale: string): { decimal: string; group: string } {
+  const parts = new Intl.NumberFormat(locale, { useGrouping: true }).formatToParts(12345.6);
+  return {
+    decimal: parts.find((part) => part.type === "decimal")?.value ?? ".",
+    group: parts.find((part) => part.type === "group")?.value ?? ",",
+  };
+}
+
+function parseLocalizedNumber(value: string, policy: ChartParsePolicy): number | undefined {
+  const raw = value.trim().replace(/[\u00a0\u202f]/gu, " ");
+  if (!raw) return undefined;
+  const percent = raw.endsWith("%");
+  const body = (percent ? raw.slice(0, -1) : raw).trim();
+  const { decimal, group } = localeSeparators(policy.locale);
+  const decimalPattern = regexEscape(decimal);
+  const groupPattern = group === " " ? "[ \\u00a0\\u202f]" : regexEscape(group);
+  const strictPattern = new RegExp(`^[+-]?(?:(?:\\d{1,3}(?:${groupPattern}\\d{3})+)|\\d+)(?:${decimalPattern}\\d+)?$`, "u");
+  let normalized: string | undefined;
+  if (strictPattern.test(body)) {
+    normalized = body
+      .replace(new RegExp(groupPattern, "gu"), "")
+      .replace(decimal, ".");
+  } else if (policy.forgive) {
+    const compact = body.replace(/\s/gu, "");
+    if (!/^[+-]?[\d.,]+$/u.test(compact)) return undefined;
+    const dot = compact.lastIndexOf(".");
+    const comma = compact.lastIndexOf(",");
+    const separatorIndex = Math.max(dot, comma);
+    if (dot >= 0 && comma >= 0) {
+      const fractionDigits = compact.length - separatorIndex - 1;
+      normalized = compact.slice(0, separatorIndex).replace(/[.,]/gu, "") + (fractionDigits > 0 ? `.${compact.slice(separatorIndex + 1)}` : "");
+    } else if (separatorIndex >= 0) {
+      const separator = compact[separatorIndex]!;
+      const digitsAfter = compact.length - separatorIndex - 1;
+      const configuredDecimal = separator === decimal;
+      const treatAsGrouping = !configuredDecimal && digitsAfter === 3;
+      normalized = treatAsGrouping
+        ? compact.replace(/[.,]/gu, "")
+        : compact.slice(0, separatorIndex).replace(/[.,]/gu, "") + `.${compact.slice(separatorIndex + 1)}`;
+    } else {
+      normalized = compact;
+    }
+  }
+  if (normalized === undefined) return undefined;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? (percent ? number / 100 : number) : undefined;
+}
+
+type DatePart = "year" | "month" | "day" | "hour" | "minute" | "second";
+
+function monthNames(locale: string, width: "short" | "long"): readonly string[] {
+  const formatter = new Intl.DateTimeFormat(locale, { month: width, timeZone: "UTC" });
+  return Array.from({ length: 12 }, (_, month) => formatter.format(new Date(Date.UTC(2020, month, 1))));
+}
+
+function parseDateWithFormat(value: string, format: string, locale: string): string | undefined {
+  const tokens = ["yyyy", "MMMM", "MMM", "yy", "MM", "dd", "HH", "mm", "ss", "M", "d", "H", "m", "s"] as const;
+  const fields: Array<{ part: DatePart; token: string; names?: readonly string[] }> = [];
+  let pattern = "^";
+  for (let index = 0; index < format.length;) {
+    if (format[index] === "'") {
+      const end = format.indexOf("'", index + 1);
+      const literal = end === -1 ? format.slice(index + 1) : format.slice(index + 1, end);
+      pattern += regexEscape(literal);
+      index = end === -1 ? format.length : end + 1;
+      continue;
+    }
+    const token = tokens.find((candidate) => format.startsWith(candidate, index));
+    if (!token) {
+      pattern += regexEscape(format[index]!);
+      index += 1;
+      continue;
+    }
+    const part: DatePart = token.startsWith("y") ? "year"
+      : token.startsWith("M") ? "month"
+        : token.startsWith("d") ? "day"
+          : token.startsWith("H") ? "hour"
+            : token.startsWith("m") ? "minute"
+              : "second";
+    if (token === "MMM" || token === "MMMM") {
+      const names = monthNames(locale, token === "MMM" ? "short" : "long");
+      fields.push({ part, token, names });
+      pattern += `(${names.map(regexEscape).sort((left, right) => right.length - left.length).join("|")})`;
+    } else {
+      fields.push({ part, token });
+      pattern += token.length === 1 ? "(\\d{1,2})" : token === "yyyy" ? "(\\d{4})" : "(\\d{2})";
+    }
+    index += token.length;
+  }
+  pattern += "$";
+  const match = value.trim().match(new RegExp(pattern, "iu"));
+  if (!match) return undefined;
+  const parts: Record<DatePart, number> = { year: 1970, month: 1, day: 1, hour: 0, minute: 0, second: 0 };
+  fields.forEach((field, index) => {
+    const captured = match[index + 1]!;
+    if (field.names) parts[field.part] = field.names.findIndex((name) => name.toLocaleLowerCase(locale) === captured.toLocaleLowerCase(locale)) + 1;
+    else if (field.part === "year" && field.token === "yy") parts.year = 2000 + Number(captured);
+    else parts[field.part] = Number(captured);
+  });
+  const timestamp = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const parsed = new Date(timestamp);
+  if (
+    parsed.getUTCFullYear() !== parts.year || parsed.getUTCMonth() !== parts.month - 1 || parsed.getUTCDate() !== parts.day ||
+    parsed.getUTCHours() !== parts.hour || parsed.getUTCMinutes() !== parts.minute || parsed.getUTCSeconds() !== parts.second
+  ) return undefined;
+  return parsed.toISOString();
+}
+
+function localeDateFormats(locale: string): readonly string[] {
+  const region = new Intl.Locale(locale).region ?? "US";
+  if (["US", "PH"].includes(region)) return ["M/d/yyyy", "M/yyyy"];
+  if (["CN", "JP", "KR", "TW"].includes(region)) return ["yyyy/M/d", "yyyy-MM-dd", "yyyy/M"];
+  if (["DE", "AT", "CH"].includes(region)) return ["d.M.yyyy", "M/yyyy"];
+  return ["d/M/yyyy", "M/yyyy"];
+}
+
+function parseLocalizedDate(value: string, policy: ChartParsePolicy): string | undefined {
+  const raw = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}(?:T[^\s]+)?$/u.test(raw)) {
+    const timestamp = Date.parse(raw);
+    if (Number.isFinite(timestamp)) return new Date(timestamp).toISOString();
+  }
+  const formats = [
+    ...(policy.dateFormat ? [policy.dateFormat] : []),
+    ...localeDateFormats(policy.locale),
+    ...(policy.forgive ? ["M/d/yyyy", "d/M/yyyy", "d.M.yyyy", "yyyy/M/d"] : []),
+  ];
+  for (const format of [...new Set(formats)]) {
+    const parsed = parseDateWithFormat(raw, format, policy.locale);
+    if (parsed) return parsed;
+  }
+  return undefined;
+}
+
+const DATE_TICK_SUFFIXES: Readonly<Record<string, ChartTimePeriodV1>> = {
+  y: "year", M: "month", d: "day", h: "hour", m: "minute", s: "second", u: "millisecond",
+};
+
+function dateTickUnit(value: string | undefined): { tickUnit: number; tickPeriod?: ChartTimePeriodV1 } | undefined {
+  if (!value) return undefined;
+  const match = value.trim().match(/^([0-9]+(?:[.,][0-9]+)?)([yMdhmsu])?$/u);
+  if (!match) return undefined;
+  const tickUnit = Number(match[1]!.replace(",", "."));
+  if (!Number.isFinite(tickUnit) || tickUnit <= 0) return undefined;
+  return { tickUnit, ...(match[2] ? { tickPeriod: DATE_TICK_SUFFIXES[match[2]] } : {}) };
+}
+
+function parseAxis(
+  params: readonly MacroParameter[],
+  axis: "x" | "y",
+  policy: ChartParsePolicy,
+  dateAxis: boolean,
+  diagnostics: ChartDiagnosticV1[],
+): ChartAxisV1 | undefined {
   const names = axis === "x"
     ? { min: ["domainaxislowerbound", "domainaxislower"], max: ["domainaxisupperbound", "domainaxisupper"], tick: "domainaxistickunit", angle: "domainaxislabelangle" }
     : { min: ["rangeaxislowerbound", "rangeaxislower"], max: ["rangeaxisupperbound", "rangeaxisupper"], tick: "rangeaxistickunit", angle: "rangeaxislabelangle" };
   const minRaw = firstParameter(params, ...names.min);
   const maxRaw = firstParameter(params, ...names.max);
-  const min = minRaw === undefined ? undefined : (Number.isFinite(Number(minRaw.replace(",", "."))) ? Number(minRaw.replace(",", ".")) : minRaw);
-  const max = maxRaw === undefined ? undefined : (Number.isFinite(Number(maxRaw.replace(",", "."))) ? Number(maxRaw.replace(",", ".")) : maxRaw);
-  const tickUnit = numberParameter(params, names.tick);
-  const labelAngle = numberParameter(params, names.angle) ?? numberParameter(params, "labelangle");
+  const parseBound = (raw: string | undefined, parameterName: string): number | string | undefined => {
+    if (raw === undefined) return undefined;
+    const parsed = dateAxis && axis === "x" ? parseLocalizedDate(raw, policy) : parseLocalizedNumber(raw, policy);
+    if (parsed === undefined) diagnostics.push({ code: dateAxis && axis === "x" ? "locale-parse" : "invalid-option", message: `Chart ${parameterName} could not be parsed deterministically.`, parameter: parameterName });
+    return parsed;
+  };
+  const min = parseBound(minRaw, names.min[0]!);
+  const max = parseBound(maxRaw, names.max[0]!);
+  const tickRaw = parameter(params, names.tick);
+  const dateTick = dateAxis && axis === "x" ? dateTickUnit(tickRaw) : undefined;
+  const numericTick = dateAxis && axis === "x" ? undefined : (tickRaw === undefined ? undefined : parseLocalizedNumber(tickRaw, policy));
+  if (tickRaw !== undefined && dateTick === undefined && numericTick === undefined) {
+    diagnostics.push({ code: "invalid-option", message: `Chart ${names.tick} must be a positive numeric tick unit${dateAxis && axis === "x" ? " with an optional y/M/d/h/m/s/u suffix" : ""}.`, parameter: names.tick });
+  }
+  const tickUnit = dateTick?.tickUnit ?? numericTick;
+  const angleRaw = parameter(params, names.angle) ?? parameter(params, "labelangle");
+  const labelAngle = angleRaw === undefined ? undefined : parseLocalizedNumber(angleRaw, policy);
+  if (angleRaw !== undefined && labelAngle === undefined) diagnostics.push({ code: "invalid-option", message: `Chart ${names.angle} must be numeric.`, parameter: names.angle });
   const categoryPosition = axis === "x" ? categoryLabelPosition(parameter(params, "categorylabelposition")) : undefined;
-  const tickPosition = axis === "x" ? dateTickPosition(firstParameter(params, "datetickmarkposition", "datetickposition")) : undefined;
-  if (min === undefined && max === undefined && tickUnit === undefined && labelAngle === undefined && categoryPosition === undefined && tickPosition === undefined) return undefined;
+  const datePositionRaw = axis === "x" ? firstParameter(params, "datetickmarkposition", "datetickposition") : undefined;
+  const tickPosition = axis === "x" ? dateTickPosition(datePositionRaw) : undefined;
+  if (axis === "x" && datePositionRaw !== undefined && tickPosition === undefined) diagnostics.push({ code: "invalid-option", message: "Chart date tick position is invalid.", parameter: "dateTickPosition" });
+  const position = dateAxis && axis === "x" ? tickPosition ?? "start" : tickPosition;
+  if (min === undefined && max === undefined && tickUnit === undefined && labelAngle === undefined && categoryPosition === undefined && position === undefined && !(dateAxis && axis === "x")) return undefined;
   return {
     ...(min === undefined ? {} : { min }),
     ...(max === undefined ? {} : { max }),
     ...(tickUnit === undefined ? {} : { tickUnit }),
+    ...(dateTick?.tickPeriod === undefined ? {} : { tickPeriod: dateTick.tickPeriod }),
     ...(labelAngle === undefined ? {} : { labelAngle }),
     ...(categoryPosition === undefined ? {} : { categoryLabelPosition: categoryPosition }),
-    ...(tickPosition === undefined ? {} : { dateTickPosition: tickPosition }),
+    ...(position === undefined ? {} : { dateTickPosition: position }),
+    ...(dateAxis && axis === "x" ? { valueType: "date" as const } : {}),
   };
 }
 
-function parseAxisWithDiagnostics(params: readonly MacroParameter[], axis: "x" | "y", diagnostics: ChartDiagnosticV1[]): ChartAxisV1 | undefined {
-  const parsed = parseAxis(params, axis);
+function parseAxisWithDiagnostics(
+  params: readonly MacroParameter[],
+  axis: "x" | "y",
+  policy: ChartParsePolicy,
+  dateAxis: boolean,
+  diagnostics: ChartDiagnosticV1[],
+): ChartAxisV1 | undefined {
+  const parsed = parseAxis(params, axis, policy, dateAxis, diagnostics);
   const position = parameter(params, "categorylabelposition");
   if (axis === "x" && position !== undefined && categoryLabelPosition(position) === undefined) {
     diagnostics.push({ code: "invalid-option", message: "Chart category label position is invalid.", parameter: "categoryLabelPosition" });
-  }
-  const datePosition = firstParameter(params, "datetickmarkposition", "datetickposition");
-  if (axis === "x" && datePosition !== undefined && dateTickPosition(datePosition) === undefined) {
-    diagnostics.push({ code: "invalid-option", message: "Chart date tick position is invalid.", parameter: "dateTickPosition" });
   }
   return parsed;
 }
@@ -156,6 +339,49 @@ function legendParameter(params: readonly MacroParameter[], diagnostics: ChartDi
   if (raw === "none" || raw === "top" || raw === "right" || raw === "bottom" || raw === "left") return raw;
   diagnostics.push({ code: "invalid-option", message: "Chart legend must be boolean or a supported position.", parameter: "legend" });
   return undefined;
+}
+
+const HTML_CHART_COLORS: Readonly<Record<string, string>> = {
+  black: "#000000", silver: "#C0C0C0", gray: "#808080", grey: "#808080",
+  white: "#FFFFFF", maroon: "#800000", red: "#FF0000", purple: "#800080",
+  fuchsia: "#FF00FF", green: "#008000", lime: "#00FF00", olive: "#808000",
+  yellow: "#FFFF00", navy: "#000080", blue: "#0000FF", teal: "#008080",
+  aqua: "#00FFFF", orange: "#FFA500",
+};
+
+function normalizeChartColor(value: string): string | undefined {
+  const raw = value.trim();
+  const long = raw.match(/^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$/iu);
+  if (long) return `#${long[1]!.toUpperCase()}`;
+  const short = raw.match(/^#?([0-9a-f]{3})$/iu);
+  if (short) return `#${[...short[1]!].map((digit) => `${digit}${digit}`).join("").toUpperCase()}`;
+  return HTML_CHART_COLORS[raw.toLowerCase()];
+}
+
+function chartColorParameter(
+  params: readonly MacroParameter[],
+  name: string,
+  diagnostics: ChartDiagnosticV1[],
+): string | undefined {
+  const raw = parameter(params, name);
+  if (raw === undefined) return undefined;
+  const color = normalizeChartColor(raw);
+  if (!color) diagnostics.push({ code: "invalid-option", message: `Chart color ${raw} is not a supported hexadecimal or HTML color.`, parameter: name });
+  return color;
+}
+
+function chartPaletteParameter(params: readonly MacroParameter[], diagnostics: ChartDiagnosticV1[]): string[] | undefined {
+  const raw = parameter(params, "colors");
+  if (raw === undefined) return undefined;
+  const colors = raw.split(",").map((value) => value.trim()).filter(Boolean).flatMap((value) => {
+    const normalized = normalizeChartColor(value);
+    if (!normalized) {
+      diagnostics.push({ code: "invalid-option", message: `Chart color ${value} is not a supported hexadecimal or HTML color.`, parameter: "colors" });
+      return [];
+    }
+    return [normalized];
+  });
+  return colors.length > 0 ? colors : undefined;
 }
 
 function textOfInline(nodes: readonly import("@atlcli/export-blocks").InlineNode[]): string {
@@ -208,15 +434,8 @@ function tableBlocks(blocks: readonly ExportBlock[]): Extract<ExportBlock, { typ
   return out;
 }
 
-function parseNumber(value: string): number | undefined {
-  const normalized = value.trim().replace(/\s/g, "").replace(/,/g, ".");
-  if (!normalized) return undefined;
-  const number = Number(normalized.replace(/%$/u, ""));
-  return Number.isFinite(number) ? number : undefined;
-}
-
 function chartKind(value: string | undefined): ChartKindV1 | undefined {
-  const normalized = (value ?? "bar").trim().toLowerCase().replace(/[-_\s]/g, "");
+  const normalized = (value ?? "pie").trim().toLowerCase().replace(/[-_\s]/g, "");
   const kinds: Record<string, ChartKindV1> = {
     pie: "pie", bar: "bar", line: "line", area: "area",
     xyarea: "xyArea", xybar: "xyBar", xyline: "xyLine", xystep: "xyStep",
@@ -225,137 +444,261 @@ function chartKind(value: string | undefined): ChartKindV1 | undefined {
   return kinds[normalized];
 }
 
-function selectedTableIndex(params: readonly MacroParameter[]): number {
-  const value = parameter(params, "tables");
-  if (!value) return 0;
-  const index = Number(value.split(/[\s,]+/u)[0]) - 1;
-  return Number.isSafeInteger(index) && index >= 0 ? index : 0;
+type ChartTableBlock = Extract<ExportBlock, { type: "table" }>;
+
+interface ChartSourceTable {
+  table: ChartTableBlock;
+  index: number;
+  rows: string[][];
+  titles: Array<string | undefined>;
+  digest: string;
 }
 
-function parseCategoryData(
-  table: Extract<ExportBlock, { type: "table" }>,
-  params: readonly MacroParameter[],
-  diagnostics: ChartDiagnosticV1[],
-): Extract<ChartDataV1, { mode: "categories" }> | undefined {
+function fnvDigest(value: string): string {
+  let hash = 2166136261;
+  for (const byte of new TextEncoder().encode(value)) {
+    hash ^= byte;
+    hash = Math.imul(hash, 16777619);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function sourceTable(table: ChartTableBlock, index: number): ChartSourceTable {
   const rows = table.rows.map((row) => row.cells.map((cell) => cell.content.map(textOfBlock).join(" ").trim()));
-  if (rows.length < 2 || rows.some((row) => row.length < 2)) {
-    diagnostics.push({ code: "malformed-data", message: "Chart table needs a header and at least one data row." });
-    return undefined;
-  }
-  const orientation = parameter(params, "dataorientation")?.toLowerCase() === "horizontal" ? "horizontal" : "vertical";
-  const selectedColumns = parameter(params, "columns")?.split(/[\s,]+/u).filter(Boolean);
-  if (orientation === "vertical") {
-    const headers = rows[0]!;
-    const labels = rows.slice(1).map((row) => row[0] ?? "");
-    const indexes = headers.slice(1).map((header, index) => ({ header, index: index + 1 }))
-      .filter(({ header, index }) => !selectedColumns || selectedColumns.includes(header) || selectedColumns.includes(String(index + 1)));
-    const series = indexes.map(({ header, index }) => ({
-      id: `series-${index}`,
-      label: header || `Series ${index}`,
-      values: rows.slice(1).map((row, rowIndex) => {
-        const value = parseNumber(row[index] ?? "");
-        if (value === undefined) diagnostics.push({ code: "skipped-row", message: `Non-numeric value skipped in row ${rowIndex + 2}.`, row: rowIndex + 2 });
-        return value ?? 0;
-      }),
-    }));
-    return { mode: "categories", labels, series };
-  }
-  const headers = rows[0]!.slice(1);
-  const labels = rows.slice(1).map((row) => row[0] ?? "");
-  const series = rows.slice(1).map((row, rowIndex) => {
-    const label = row[0] || `Series ${rowIndex + 1}`;
-    return {
-      id: `series-${rowIndex + 1}`,
-      label,
-      values: row.slice(1, headers.length + 1).map((value, valueIndex) => {
-        const number = parseNumber(value ?? "");
-        if (number === undefined) diagnostics.push({ code: "skipped-row", message: `Non-numeric value skipped in row ${rowIndex + 2}, column ${valueIndex + 2}.`, row: rowIndex + 2 });
-        return number ?? 0;
-      }),
-    };
-  });
-  // The horizontal form is most commonly authored as one series per row. For
-  // the normalized category model labels are the table headers and each row is
-  // a series, so use the series names and values from the first column.
+  const titles = table.rows[0]?.cells.map((cell) => cell.title) ?? [];
   return {
-    mode: "categories",
-    labels: headers,
-    series: series.map((item) => ({ id: item.id, label: item.label, values: item.values })),
+    table,
+    index,
+    rows,
+    titles,
+    digest: fnvDigest(JSON.stringify({ index, rows, titles })),
   };
 }
 
+function selectTables(
+  params: readonly MacroParameter[],
+  body: readonly ExportBlock[],
+  diagnostics: ChartDiagnosticV1[],
+): ChartSourceTable[] {
+  const available = tableBlocks(body).map(sourceTable);
+  const raw = parameter(params, "tables");
+  if (!raw) return available;
+  const selected: ChartSourceTable[] = [];
+  for (const selector of raw.split(",").map((value) => value.trim()).filter(Boolean)) {
+    const number = Number(selector);
+    const match = Number.isSafeInteger(number) && number >= 1
+      ? available[number - 1]
+      : available.find(({ table }) => table.presentation?.sourceId === selector || table.presentation?.localId === selector);
+    if (!match) {
+      diagnostics.push({ code: "malformed-data", message: `Chart table selector ${selector} did not match a source table.`, parameter: "tables" });
+    } else if (!selected.includes(match)) {
+      selected.push(match);
+    }
+  }
+  return selected;
+}
+
+function selectedColumnIndexes(
+  source: ChartSourceTable,
+  params: readonly MacroParameter[],
+  diagnostics: ChartDiagnosticV1[],
+): number[] {
+  const width = Math.max(0, ...source.rows.map((row) => row.length));
+  const raw = parameter(params, "columns");
+  if (!raw) return Array.from({ length: width }, (_, index) => index);
+  const headers = source.rows[0] ?? [];
+  const indexes: number[] = [0];
+  for (const selector of raw.split(",").map((value) => value.trim()).filter(Boolean)) {
+    const number = Number(selector);
+    const index = Number.isSafeInteger(number) && number >= 1
+      ? number - 1
+      : headers.findIndex((header, candidate) => header === selector || source.titles[candidate] === selector);
+    if (index < 0 || index >= width) {
+      diagnostics.push({ code: "malformed-data", message: `Chart column selector ${selector} did not match table ${source.index + 1}.`, parameter: "columns" });
+    } else if (!indexes.includes(index)) {
+      indexes.push(index);
+    }
+  }
+  return indexes.sort((left, right) => left - right);
+}
+
+function parseCategoryData(
+  sources: readonly ChartSourceTable[],
+  params: readonly MacroParameter[],
+  policy: ChartParsePolicy,
+  orientation: "horizontal" | "vertical",
+  diagnostics: ChartDiagnosticV1[],
+): Extract<ChartDataV1, { mode: "categories" }> | undefined {
+  const parsed = sources.flatMap((source) => {
+    const { rows } = source;
+    if (rows.length < 2 || rows.some((row) => row.length < 2)) {
+      diagnostics.push({ code: "malformed-data", message: `Chart table ${source.index + 1} needs a header and at least one data row.` });
+      return [];
+    }
+    const indexes = selectedColumnIndexes(source, params, diagnostics);
+    const valueIndexes = indexes.filter((index) => index !== 0);
+    if (valueIndexes.length === 0) {
+      diagnostics.push({ code: "malformed-data", message: `Chart table ${source.index + 1} has no selected value columns.`, parameter: "columns" });
+      return [];
+    }
+    if (orientation === "vertical") {
+      const labels = rows.slice(1).map((row) => row[0] ?? "");
+      const series = valueIndexes.map((index) => ({
+        id: `table-${source.index + 1}-series-${index + 1}`,
+        label: rows[0]?.[index] || `Series ${index + 1}`,
+        values: rows.slice(1).map((row, rowIndex) => {
+          const value = parseLocalizedNumber(row[index] ?? "", policy);
+          if (value === undefined) diagnostics.push({ code: "skipped-row", message: `Non-numeric value replaced with zero in table ${source.index + 1}, row ${rowIndex + 2}, column ${index + 1}.`, row: rowIndex + 2 });
+          return value ?? 0;
+        }),
+      }));
+      return [{ labels, series }];
+    }
+    const labels = valueIndexes.map((index) => rows[0]?.[index] ?? `Category ${index}`);
+    const series = rows.slice(1).map((row, rowIndex) => ({
+      id: `table-${source.index + 1}-series-${rowIndex + 1}`,
+      label: row[0] || `Series ${rowIndex + 1}`,
+      values: valueIndexes.map((index) => {
+        const value = parseLocalizedNumber(row[index] ?? "", policy);
+        if (value === undefined) diagnostics.push({ code: "skipped-row", message: `Non-numeric value replaced with zero in table ${source.index + 1}, row ${rowIndex + 2}, column ${index + 1}.`, row: rowIndex + 2 });
+        return value ?? 0;
+      }),
+    }));
+    return [{ labels, series }];
+  });
+  if (parsed.length === 0) return undefined;
+  const labels = [...parsed[0]!.labels];
+  for (const table of parsed.slice(1)) {
+    for (const label of table.labels) if (!labels.includes(label)) labels.push(label);
+  }
+  const series = parsed.flatMap((table) => table.series.map((entry) => ({
+    ...entry,
+    values: labels.map((label) => {
+      const index = table.labels.indexOf(label);
+      if (index >= 0) return entry.values[index] ?? 0;
+      diagnostics.push({ code: "skipped-row", message: `Series ${entry.label} has no value for category ${label}; zero was used.` });
+      return 0;
+    }),
+  })));
+  return series.length > 0 ? { mode: "categories", labels, series } : undefined;
+}
+
 function parsePointData(
-  table: Extract<ExportBlock, { type: "table" }>,
-  kind: ChartKindV1,
+  sources: readonly ChartSourceTable[],
+  params: readonly MacroParameter[],
+  policy: ChartParsePolicy,
+  orientation: "horizontal" | "vertical",
+  dateAxis: boolean,
   diagnostics: ChartDiagnosticV1[],
 ): Extract<ChartDataV1, { mode: "points" }> | undefined {
-  const rows = table.rows.map((row) => row.cells.map((cell) => cell.content.map(textOfBlock).join(" ").trim()));
-  if (rows.length < 2 || rows.some((row) => row.length < 2)) {
-    diagnostics.push({ code: "malformed-data", message: "XY/time-series chart table needs x/y columns." });
-    return undefined;
-  }
-  const headers = rows[0]!;
-  const xIndex = Math.max(0, headers.findIndex((header) => /^(x|date|time|start)$/iu.test(header)));
-  const yIndexes = headers.map((_, index) => index).filter((index) => index !== xIndex);
-  const series = yIndexes.map((index) => ({
-    id: `series-${index}`,
-    label: headers[index] || `Series ${index}`,
-    points: rows.slice(1).flatMap((row, rowIndex) => {
-      const y = parseNumber(row[index] ?? "");
-      if (y === undefined) {
-        diagnostics.push({ code: "skipped-row", message: `Non-numeric point skipped in row ${rowIndex + 2}.`, row: rowIndex + 2 });
-        return [];
-      }
-      const rawX = row[xIndex] ?? String(rowIndex + 1);
-      if (kind === "timeSeries" && Number.isNaN(Date.parse(rawX))) {
-        diagnostics.push({ code: "locale-parse", message: `Invalid timestamp skipped in row ${rowIndex + 2}.`, row: rowIndex + 2 });
-        return [];
-      }
-      const x = kind === "timeSeries" ? new Date(rawX).toISOString() : (parseNumber(rawX) ?? rawX);
-      return [{ x, y, label: rawX }];
-    }),
-  }));
-  return { mode: "points", series };
+  const parseX = (raw: string, row: number): number | string | undefined => {
+    const value = dateAxis ? parseLocalizedDate(raw, policy) : parseLocalizedNumber(raw, policy);
+    if (value === undefined) diagnostics.push({ code: dateAxis ? "locale-parse" : "skipped-row", message: `Invalid ${dateAxis ? "date" : "numeric"} x value skipped in row ${row}.`, row });
+    return value;
+  };
+  const series = sources.flatMap((source) => {
+    const { rows } = source;
+    if (rows.length < 2 || rows.some((row) => row.length < 2)) {
+      diagnostics.push({ code: "malformed-data", message: `XY/time-series chart table ${source.index + 1} needs x/y values.` });
+      return [];
+    }
+    const indexes = selectedColumnIndexes(source, params, diagnostics);
+    const valueIndexes = indexes.filter((index) => index !== 0);
+    if (orientation === "horizontal") {
+      const xValues = valueIndexes.map((index) => ({ raw: rows[0]?.[index] ?? "", value: parseX(rows[0]?.[index] ?? "", 1), index }));
+      return rows.slice(1).map((row, rowIndex) => ({
+        id: `table-${source.index + 1}-series-${rowIndex + 1}`,
+        label: row[0] || `Series ${rowIndex + 1}`,
+        points: xValues.flatMap((x) => {
+          const y = parseLocalizedNumber(row[x.index] ?? "", policy);
+          if (x.value === undefined || y === undefined) {
+            if (y === undefined) diagnostics.push({ code: "skipped-row", message: `Non-numeric point skipped in table ${source.index + 1}, row ${rowIndex + 2}, column ${x.index + 1}.`, row: rowIndex + 2 });
+            return [];
+          }
+          return [{ x: x.value, y, label: x.raw }];
+        }),
+      })).filter((entry) => entry.points.length > 0);
+    }
+    const xIndex = indexes.find((index) => /^(x|date|time|start)$/iu.test(rows[0]?.[index] ?? "")) ?? indexes[0] ?? 0;
+    const yIndexes = indexes.filter((index) => index !== xIndex);
+    return yIndexes.map((index) => ({
+      id: `table-${source.index + 1}-series-${index + 1}`,
+      label: rows[0]?.[index] || `Series ${index + 1}`,
+      points: rows.slice(1).flatMap((row, rowIndex) => {
+        const x = parseX(row[xIndex] ?? "", rowIndex + 2);
+        const y = parseLocalizedNumber(row[index] ?? "", policy);
+        if (x === undefined || y === undefined) {
+          if (y === undefined) diagnostics.push({ code: "skipped-row", message: `Non-numeric point skipped in table ${source.index + 1}, row ${rowIndex + 2}.`, row: rowIndex + 2 });
+          return [];
+        }
+        return [{ x, y, label: row[xIndex] ?? "" }];
+      }),
+    })).filter((entry) => entry.points.length > 0);
+  });
+  return series.length > 0 ? { mode: "points", series } : undefined;
 }
 
 function parseGanttData(
-  table: Extract<ExportBlock, { type: "table" }>,
+  sources: readonly ChartSourceTable[],
+  params: readonly MacroParameter[],
+  policy: ChartParsePolicy,
   diagnostics: ChartDiagnosticV1[],
 ): Extract<ChartDataV1, { mode: "gantt" }> | undefined {
-  const rows = table.rows.map((row) => row.cells.map((cell) => cell.content.map(textOfBlock).join(" ").trim()));
-  if (rows.length < 2) return undefined;
-  const headers = rows[0]!.map((value) => value.toLowerCase());
-  const find = (patterns: RegExp[]): number => headers.findIndex((header) => patterns.some((pattern) => pattern.test(header)));
-  const labelIndex = Math.max(0, find([/task|name|activity/u]));
-  const startIndex = find([/start|begin/u]);
-  const endIndex = find([/end|finish|due/u]);
-  if (startIndex < 0 || endIndex < 0) {
-    diagnostics.push({ code: "malformed-data", message: "Gantt table needs task, start, and end columns." });
-    return undefined;
-  }
-  const progressIndex = find([/progress|percent|complete/u]);
-  const dependencyIndex = find([/depend|predecessor/u]);
-  const tasks = rows.slice(1).flatMap((row, rowIndex) => {
-    const label = row[labelIndex] ?? `Task ${rowIndex + 1}`;
-    const start = row[startIndex] ?? "";
-    const end = row[endIndex] ?? "";
-    if (!label || !start || !end) {
-      diagnostics.push({ code: "skipped-row", message: `Incomplete Gantt task skipped in row ${rowIndex + 2}.`, row: rowIndex + 2 });
+  const unresolved = sources.flatMap((source) => {
+    const { rows } = source;
+    if (rows.length < 2) return [];
+    const selected = new Set(selectedColumnIndexes(source, params, diagnostics));
+    const headers = rows[0]!.map((value) => value.toLowerCase());
+    const find = (patterns: RegExp[]): number => headers.findIndex((header, index) => selected.has(index) && patterns.some((pattern) => pattern.test(header)));
+    const labelIndex = Math.max(0, find([/task|name|activity|plan|actual/u]));
+    const startIndex = find([/start|begin/u]);
+    const endIndex = find([/end|finish|due/u]);
+    if (startIndex < 0 || endIndex < 0) {
+      diagnostics.push({ code: "malformed-data", message: `Gantt table ${source.index + 1} needs task, start, and end columns.` });
       return [];
     }
-    const progress = progressIndex >= 0 ? parseNumber(row[progressIndex] ?? "") : undefined;
-    if (Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) {
-      diagnostics.push({ code: "locale-parse", message: `Invalid Gantt date skipped in row ${rowIndex + 2}.`, row: rowIndex + 2 });
-      return [];
-    }
-    return [{
-      id: `task-${rowIndex + 1}`,
-      label,
-      start: new Date(start).toISOString(),
-      end: new Date(end).toISOString(),
-      ...(progress === undefined ? {} : { progress: progress > 1 ? progress / 100 : progress }),
-      ...(dependencyIndex >= 0 && row[dependencyIndex] ? { dependencies: row[dependencyIndex]!.split(/[\s,]+/u).filter(Boolean) } : {}),
-    }];
+    const progressIndex = find([/progress|status|percent|complete/u]);
+    const dependencyIndex = find([/depend|predecessor/u]);
+    return rows.slice(1).flatMap((row, rowIndex) => {
+      const label = row[labelIndex] ?? `Task ${rowIndex + 1}`;
+      const start = parseLocalizedDate(row[startIndex] ?? "", policy);
+      const end = parseLocalizedDate(row[endIndex] ?? "", policy);
+      if (!label || !start || !end) {
+        diagnostics.push({ code: start && end ? "skipped-row" : "locale-parse", message: `Incomplete or invalid Gantt task skipped in table ${source.index + 1}, row ${rowIndex + 2}.`, row: rowIndex + 2 });
+        return [];
+      }
+      const rawProgress = progressIndex >= 0 ? row[progressIndex] ?? "" : "";
+      const parsedProgress = rawProgress ? parseLocalizedNumber(rawProgress, policy) : undefined;
+      const progress = parsedProgress === undefined ? undefined : Math.min(1, parsedProgress > 1 ? parsedProgress / 100 : parsedProgress);
+      return [{
+        id: `table-${source.index + 1}-task-${rowIndex + 1}`,
+        label,
+        start,
+        end,
+        progress,
+        rawDependencies: dependencyIndex >= 0 && row[dependencyIndex]
+          ? row[dependencyIndex]!.split(/[,;]/u).map((value) => value.trim()).filter(Boolean)
+          : [],
+      }];
+    });
+  });
+  if (unresolved.length === 0) return undefined;
+  const aliases = new Map<string, string>();
+  unresolved.forEach((task, index) => {
+    aliases.set(task.id, task.id);
+    aliases.set(task.label, task.id);
+    aliases.set(String(index + 1), task.id);
+  });
+  const tasks = unresolved.map(({ rawDependencies, ...task }) => {
+    const dependencies = rawDependencies.flatMap((dependency) => {
+      const resolved = aliases.get(dependency);
+      if (!resolved) {
+        diagnostics.push({ code: "invalid-option", message: `Gantt dependency ${dependency} does not identify a selected task.`, parameter: "dependency" });
+        return [];
+      }
+      return [resolved];
+    });
+    return { ...task, ...(dependencies.length > 0 ? { dependencies } : {}) };
   });
   return { mode: "gantt", tasks };
 }
@@ -376,31 +719,51 @@ export function normalizeChartMacro(
       }],
     };
   }
-  const tables = tableBlocks(body);
-  const table = tables[selectedTableIndex(params)] ?? tables[0];
+  const forgiveParameter = readBooleanParameter(params, "forgive", diagnostics);
+  const forgive = forgiveParameter ?? true;
+  const language = parameter(params, "language");
+  const country = parameter(params, "country");
+  const dateFormat = parameter(params, "dateformat");
+  const policy: ChartParsePolicy = {
+    locale: chartLocale(language, country),
+    ...(dateFormat ? { dateFormat } : {}),
+    forgive,
+  };
+  const timeSeriesParameter = readBooleanParameter(params, "timeseries", diagnostics);
+  const dateAxis = kind === "timeSeries" || timeSeriesParameter === true;
+  const dataOrientation = enumParameter(params, "dataorientation", ["horizontal", "vertical"] as const, diagnostics) ?? "horizontal";
+  const tables = selectTables(params, body, diagnostics);
   const attachmentName = parameter(params, "attachment") || params.find((item) => item.refs?.some((ref) => ref.kind === "attachment"))?.refs?.find((ref) => ref.kind === "attachment")?.filename;
-  if (!table) {
+  if (tables.length === 0) {
     diagnostics.push({ code: "malformed-data", message: "Chart macro has no table data. Its optional attachment parameter names a generated chart image, not a data source." });
     return { diagnostics };
   }
   let data: ChartDataV1 | undefined;
-  if (kind === "gantt") data = parseGanttData(table, diagnostics);
-  else if (kind === "xyArea" || kind === "xyBar" || kind === "xyLine" || kind === "xyStep" || kind === "xyStepArea" || kind === "scatter" || kind === "timeSeries") data = parsePointData(table, kind, diagnostics);
-  else data = parseCategoryData(table, params, diagnostics);
+  if (kind === "gantt") data = parseGanttData(tables, params, policy, diagnostics);
+  else if (kind === "xyArea" || kind === "xyBar" || kind === "xyLine" || kind === "xyStep" || kind === "xyStepArea" || kind === "scatter" || kind === "timeSeries") {
+    data = parsePointData(tables, params, policy, dataOrientation, dateAxis, diagnostics);
+  } else {
+    data = parseCategoryData(tables, params, policy, dataOrientation, diagnostics);
+  }
   if (!data) return { diagnostics };
-  for (const name of [
-    "width", "height", "domainAxisLower", "domainAxisUpper", "domainAxisTickUnit",
-    "domainAxisLabelAngle", "rangeAxisLower", "rangeAxisUpper", "rangeAxisTickUnit", "rangeAxisLabelAngle",
-  ]) readNumberParameter(params, name, diagnostics);
+  const dimension = (name: "width" | "height"): number => {
+    const raw = parameter(params, name);
+    if (raw === undefined) return 300;
+    const value = parseLocalizedNumber(raw, policy);
+    if (value === undefined) {
+      diagnostics.push({ code: "invalid-option", message: `Chart parameter ${name} must be numeric.`, parameter: name });
+      return 300;
+    }
+    return Math.round(value);
+  };
   const stacked = readBooleanParameter(params, "stacked", diagnostics);
   const threeD = readBooleanParameter(params, "3d", diagnostics);
   const showShapes = readBooleanParameter(params, "showshapes", diagnostics);
   const thumbnail = readBooleanParameter(params, "thumbnail", diagnostics);
-  const forgive = readBooleanParameter(params, "forgive", diagnostics);
   const legend = legendParameter(params, diagnostics);
   const orientation = enumParameter(params, "orientation", ["vertical", "horizontal"] as const, diagnostics);
   const dataDisplay = dataDisplayParameter(params, diagnostics);
-  const pieSectionLabel = enumParameter(params, "piesectionlabel", ["name", "value", "percent", "name-value"] as const, diagnostics);
+  const pieSectionLabelFormat = parameter(params, "piesectionlabel");
   const pieExplode = parameter(params, "piesectionexplode")?.split(",").map((value) => value.trim()).filter(Boolean);
   if (kind === "pie" && pieExplode && data.mode === "categories") {
     for (const key of pieExplode) {
@@ -409,12 +772,19 @@ export function normalizeChartMacro(
   }
   const timePeriod = enumParameter(params, "timeperiod", [
     "millisecond", "second", "minute", "hour", "day", "week", "month", "quarter", "year",
-  ] as const, diagnostics);
+  ] as const, diagnostics) ?? (dateAxis ? "day" : undefined);
   const attachmentVersion = enumParameter(params, "attachmentversion", ["new", "replace", "keep"] as const, diagnostics);
   const renderedImageFormat = enumParameter(params, "imageformat", ["png", "jpg"] as const, diagnostics);
   const opacity = opacityParameter(params, diagnostics);
-  const xAxis = parseAxisWithDiagnostics(params, "x", diagnostics);
-  const yAxis = parseAxisWithDiagnostics(params, "y", diagnostics);
+  const xAxis = parseAxisWithDiagnostics(params, "x", policy, dateAxis, diagnostics);
+  const yAxis = parseAxisWithDiagnostics(params, "y", policy, false, diagnostics);
+  const backgroundColor = chartColorParameter(params, "bgcolor", diagnostics);
+  const borderColor = chartColorParameter(params, "bordercolor", diagnostics);
+  const palette = chartPaletteParameter(params, diagnostics);
+  const sourceTableDigests = tables.map((table) => table.digest);
+  if (kind === "pie" && data.mode === "categories" && data.series.length > 1) {
+    diagnostics.push({ code: "invalid-option", message: "A pie chart can display one selected value series; the first series is rendered and all selected series remain in the data table.", parameter: "columns" });
+  }
   const model: ChartModelV1 = {
     schema: "atlcli.chart/1",
     kind,
@@ -422,35 +792,35 @@ export function normalizeChartMacro(
     ...(parameter(params, "subtitle") ? { subtitle: parameter(params, "subtitle") } : {}),
     ...(parameter(params, "xlabel") ? { xLabel: parameter(params, "xlabel") } : {}),
     ...(parameter(params, "ylabel") ? { yLabel: parameter(params, "ylabel") } : {}),
-    ...(legend !== undefined ? { legend } : {}),
-    ...(orientation !== undefined ? { orientation } : {}),
-    ...(stacked !== undefined ? { stacked } : {}),
-    ...(threeD !== undefined ? { threeD } : {}),
-    ...(showShapes !== undefined ? { showShapes } : {}),
-    ...(opacity !== undefined ? { opacity } : {}),
+    legend: legend ?? (source === "cloud-adf" ? "top" : "none"),
+    orientation: orientation ?? "vertical",
+    stacked: stacked ?? false,
+    threeD: threeD ?? false,
+    showShapes: showShapes ?? true,
+    opacity: opacity ?? (threeD === true ? 0.75 : kind === "area" && stacked !== true ? 0.5 : 1),
     display: {
-      ...(numberParameter(params, "width") !== undefined ? { width: Math.round(numberParameter(params, "width")!) } : {}),
-      ...(numberParameter(params, "height") !== undefined ? { height: Math.round(numberParameter(params, "height")!) } : {}),
-      ...(dataDisplay !== undefined ? { data: dataDisplay } : {}),
+      width: dimension("width"),
+      height: dimension("height"),
+      data: dataDisplay ?? "hidden",
     },
     style: {
-      ...(parameter(params, "bgcolor") ? { backgroundColor: parameter(params, "bgcolor") } : {}),
-      ...(parameter(params, "bordercolor") ? { borderColor: parameter(params, "bordercolor") } : {}),
-      ...(parameter(params, "colors") ? { colors: parameter(params, "colors")!.split(/[\s,]+/u).filter(Boolean) } : {}),
+      ...(backgroundColor ? { backgroundColor } : {}),
+      ...(borderColor ? { borderColor } : {}),
+      ...(palette ? { colors: palette } : {}),
     },
     axes: {
       ...(xAxis ? { x: xAxis } : {}),
       ...(yAxis ? { y: yAxis } : {}),
     },
     locale: {
-      ...(parameter(params, "language") ? { language: parameter(params, "language") } : {}),
-      ...(parameter(params, "country") ? { country: parameter(params, "country") } : {}),
-      ...(parameter(params, "dateformat") ? { dateFormat: parameter(params, "dateformat") } : {}),
+      ...(language ? { language } : {}),
+      ...(country ? { country } : {}),
+      ...(dateFormat ? { dateFormat } : {}),
       ...(timePeriod !== undefined ? { timePeriod } : {}),
     },
-    ...(kind === "pie" && (parameter(params, "piesectionlabel") || pieExplode) ? {
+    ...(kind === "pie" && (pieSectionLabelFormat || pieExplode) ? {
       pie: {
-        ...(pieSectionLabel !== undefined ? { sectionLabel: pieSectionLabel } : {}),
+        ...(pieSectionLabelFormat !== undefined ? { sectionLabelFormat: pieSectionLabelFormat } : {}),
         ...(pieExplode ? { explode: pieExplode } : {}),
       },
     } : {}),
@@ -461,12 +831,14 @@ export function normalizeChartMacro(
       ...(attachmentName ? {
         attachment: {
           filename: attachmentName,
-          ...(attachmentVersion !== undefined ? { version: attachmentVersion } : {}),
+          version: attachmentVersion ?? "new",
           ...(parameter(params, "attachmentcomment") ? { comment: parameter(params, "attachmentcomment") } : {}),
-          ...(thumbnail !== undefined ? { thumbnail } : {}),
+          thumbnail: thumbnail ?? false,
         },
       } : {}),
-      ...(renderedImageFormat !== undefined ? { renderedImageFormat } : {}),
+      renderedImageFormat: renderedImageFormat ?? "png",
+      sourceTableDigests,
+      dependencyDigest: fnvDigest(JSON.stringify(sourceTableDigests)),
     },
   };
   if (threeD === true) diagnostics.push({ code: "invalid-option", message: "3D chart perspective is flattened in the source-neutral render model.", parameter: "3d" });
@@ -476,7 +848,7 @@ export function normalizeChartMacro(
   }
   try {
     const normalized = validateChartModelV1(model);
-    return { model: { ...normalized, source: { ...normalized.source, dependencyDigest: chartModelDigestV1(normalized) } }, diagnostics };
+    return { model: normalized, diagnostics };
   } catch (error) {
     diagnostics.push({ code: "invalid-option", message: error instanceof Error ? error.message : "Chart model validation failed." });
     return { diagnostics };

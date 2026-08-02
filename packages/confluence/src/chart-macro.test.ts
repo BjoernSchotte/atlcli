@@ -3,7 +3,7 @@ import { adfToBlocks } from "./adf-to-blocks.js";
 import { storageToBlocks } from "./export-blocks.js";
 
 const storageChart = (type: string, extra = "") =>
-  `<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">${type}</ac:parameter>${extra}<ac:rich-text-body><table><tbody><tr><th>Month</th><th>Revenue</th></tr><tr><td>Jan</td><td>10</td></tr><tr><td>Feb</td><td>20</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>`;
+  `<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">${type}</ac:parameter><ac:parameter ac:name="dataOrientation">vertical</ac:parameter>${extra}<ac:rich-text-body><table><tbody><tr><th>Month</th><th>Revenue</th></tr><tr><td>Jan</td><td>10</td></tr><tr><td>Feb</td><td>20</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>`;
 
 describe("Confluence Chart macro normalization", () => {
   test("storage emits a source-ordered chart ExportBlock instead of a sidecar/unknown block", () => {
@@ -26,7 +26,7 @@ describe("Confluence Chart macro normalization", () => {
       attrs: {
         extensionType: "com.atlassian.confluence.macro.core",
         extensionKey: "chart",
-        parameters: { type: "line" },
+        parameters: { type: "line", dataOrientation: "vertical" },
       },
       content: [{
         type: "table",
@@ -107,9 +107,9 @@ describe("Confluence Chart macro normalization", () => {
       const body = kind === "gantt"
         ? gantt
         : pointKinds.has(kind)
-          ? `<ac:rich-text-body><table><tbody><tr><th>X</th><th>Value</th></tr><tr><td>1</td><td>10</td></tr><tr><td>2</td><td>20</td></tr></tbody></table></ac:rich-text-body>`
+          ? `<ac:rich-text-body><table><tbody><tr><th>X</th><th>Value</th></tr><tr><td>${kind === "timeSeries" ? "2026-01-01" : "1"}</td><td>10</td></tr><tr><td>${kind === "timeSeries" ? "2026-01-02" : "2"}</td><td>20</td></tr></tbody></table></ac:rich-text-body>`
           : `<ac:rich-text-body><table><tbody><tr><th>Label</th><th>Value</th></tr><tr><td>A</td><td>10</td></tr><tr><td>B</td><td>20</td></tr></tbody></table></ac:rich-text-body>`;
-      const result = storageToBlocks(`<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">${kind}</ac:parameter>${body}</ac:structured-macro>`);
+      const result = storageToBlocks(`<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">${kind}</ac:parameter><ac:parameter ac:name="dataOrientation">vertical</ac:parameter>${body}</ac:structured-macro>`);
       expect(result.blocks[0]).toMatchObject({ type: "chart", chart: { kind } });
     }
   });
@@ -118,7 +118,7 @@ describe("Confluence Chart macro normalization", () => {
     const pointKinds = new Set(["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"]);
     for (const kind of ["pie", "bar", "line", "area", ...pointKinds, "gantt"]) {
       const headers = kind === "gantt" ? ["Task", "Start", "End"] : pointKinds.has(kind) ? ["X", "Value"] : ["Label", "Value"];
-      const values = kind === "gantt" ? ["Build", "2026-01-01", "2026-01-03"] : pointKinds.has(kind) ? ["1", "10"] : ["A", "10"];
+      const values = kind === "gantt" ? ["Build", "2026-01-01", "2026-01-03"] : pointKinds.has(kind) ? [kind === "timeSeries" ? "2026-01-01" : "1", "10"] : ["A", "10"];
       const content = [headers, values].map((row, rowIndex) => ({
         type: "tableRow",
         content: row.map((text) => ({
@@ -128,7 +128,7 @@ describe("Confluence Chart macro normalization", () => {
       }));
       const result = adfToBlocks(JSON.stringify({ version: 1, type: "doc", content: [{
         type: "bodiedExtension",
-        attrs: { extensionType: "com.atlassian.confluence.macro.core", extensionKey: "chart", parameters: { type: kind } },
+        attrs: { extensionType: "com.atlassian.confluence.macro.core", extensionKey: "chart", parameters: { type: kind, dataOrientation: "vertical" } },
         content: [{ type: "table", content }],
       }] }));
       expect(result.blocks[0]).toMatchObject({ type: "chart", chart: { kind } });
@@ -158,5 +158,136 @@ describe("Confluence Chart macro normalization", () => {
     ].join("")));
     expect(strict.blocks[0]).toMatchObject({ type: "unknown", macroName: "chart" });
     expect(strict.notes.some((note) => note.message.includes("strict"))).toBeTrue();
+  });
+
+  test("uses the documented pie and horizontal-content defaults with grouped numbers", () => {
+    const result = storageToBlocks(`<ac:structured-macro ac:name="chart"><ac:rich-text-body><table><tbody>
+      <tr><th>Metric</th><th>2025</th><th>2026</th></tr>
+      <tr><td>Revenue</td><td>9,500</td><td>10,200</td></tr>
+    </tbody></table></ac:rich-text-body></ac:structured-macro>`);
+    expect(result.blocks[0]).toMatchObject({
+      type: "chart",
+      chart: {
+        kind: "pie",
+        data: { mode: "categories", labels: ["2025", "2026"], series: [{ label: "Revenue", values: [9500, 10200] }] },
+        display: { width: 300, height: 300, data: "hidden" },
+        orientation: "vertical",
+      },
+    });
+  });
+
+  test("parses locale-specific decimals deterministically and strict mode rejects a mismatched format", () => {
+    const german = storageToBlocks(`<ac:structured-macro ac:name="chart">
+      <ac:parameter ac:name="type">bar</ac:parameter><ac:parameter ac:name="dataOrientation">vertical</ac:parameter>
+      <ac:parameter ac:name="language">de</ac:parameter><ac:parameter ac:name="country">DE</ac:parameter>
+      <ac:rich-text-body><table><tbody><tr><th>Label</th><th>Value</th></tr><tr><td>A</td><td>1.234,56</td></tr></tbody></table></ac:rich-text-body>
+    </ac:structured-macro>`);
+    expect(german.blocks[0]).toMatchObject({ type: "chart", chart: { data: { series: [{ values: [1234.56] }] } } });
+
+    const strict = storageToBlocks(`<ac:structured-macro ac:name="chart">
+      <ac:parameter ac:name="type">bar</ac:parameter><ac:parameter ac:name="dataOrientation">vertical</ac:parameter>
+      <ac:parameter ac:name="language">de</ac:parameter><ac:parameter ac:name="country">DE</ac:parameter><ac:parameter ac:name="forgive">false</ac:parameter>
+      <ac:rich-text-body><table><tbody><tr><th>Label</th><th>Value</th></tr><tr><td>A</td><td>1,234.56</td></tr></tbody></table></ac:rich-text-body>
+    </ac:structured-macro>`);
+    expect(strict.blocks[0]).toMatchObject({ type: "unknown", macroName: "chart" });
+    expect(strict.notes.some((note) => note.message.includes("strict"))).toBeTrue();
+  });
+
+  test("selects tables by authored id and columns by header title without publishing source ids", () => {
+    const result = storageToBlocks(`<ac:structured-macro ac:name="chart">
+      <ac:parameter ac:name="type">bar</ac:parameter><ac:parameter ac:name="dataOrientation">vertical</ac:parameter>
+      <ac:parameter ac:name="tables">second</ac:parameter><ac:parameter ac:name="columns">Chosen</ac:parameter>
+      <ac:rich-text-body>
+        <table id="first"><tbody><tr><th>Label</th><th title="Chosen">Revenue</th></tr><tr><td>A</td><td>10</td></tr></tbody></table>
+        <table id="second"><tbody><tr><th>Label</th><th title="Chosen">Revenue</th></tr><tr><td>B</td><td>20</td></tr></tbody></table>
+      </ac:rich-text-body>
+    </ac:structured-macro>`);
+    expect(result.blocks[0]).toMatchObject({
+      type: "chart",
+      chart: {
+        data: { labels: ["B"], series: [{ label: "Revenue", values: [20] }] },
+        source: { sourceTableDigests: [expect.stringMatching(/^fnv1a-/)], dependencyDigest: expect.stringMatching(/^fnv1a-/) },
+      },
+    });
+    expect(JSON.stringify(result.blocks[0])).not.toContain("second");
+  });
+
+  test("invalidates the chart dependency digest only when a selected source table changes", () => {
+    const source = (selectedValue: number, unselectedValue: number) => `<ac:structured-macro ac:name="chart">
+      <ac:parameter ac:name="type">bar</ac:parameter><ac:parameter ac:name="dataOrientation">vertical</ac:parameter>
+      <ac:parameter ac:name="tables">1</ac:parameter>
+      <ac:rich-text-body>
+        <table><tbody><tr><th>Label</th><th>Value</th></tr><tr><td>Selected</td><td>${selectedValue}</td></tr></tbody></table>
+        <table><tbody><tr><th>Label</th><th>Value</th></tr><tr><td>Ignored</td><td>${unselectedValue}</td></tr></tbody></table>
+      </ac:rich-text-body>
+    </ac:structured-macro>`;
+    const digest = (selectedValue: number, unselectedValue: number): string => {
+      const block = storageToBlocks(source(selectedValue, unselectedValue)).blocks[0];
+      if (block?.type !== "chart" || !block.chart.source.dependencyDigest) throw new Error("chart dependency digest missing");
+      return block.chart.source.dependencyDigest;
+    };
+    const baseline = digest(10, 20);
+    expect(digest(10, 999)).toBe(baseline);
+    expect(digest(11, 20)).not.toBe(baseline);
+  });
+
+  test("normalizes time-based XY data, explicit date formats, and suffixed tick units", () => {
+    const result = storageToBlocks(`<ac:structured-macro ac:name="chart">
+      <ac:parameter ac:name="type">xyLine</ac:parameter><ac:parameter ac:name="timeSeries">true</ac:parameter>
+      <ac:parameter ac:name="dateFormat">MM/yyyy</ac:parameter><ac:parameter ac:name="timePeriod">month</ac:parameter>
+      <ac:parameter ac:name="domainAxisTickUnit">2M</ac:parameter><ac:parameter ac:name="dateTickMarkPosition">middle</ac:parameter>
+      <ac:rich-text-body><table><tbody>
+        <tr><th>Month</th><th>01/2026</th><th>02/2026</th><th>03/2026</th></tr>
+        <tr><td>Revenue</td><td>10</td><td>20</td><td>30</td></tr>
+      </tbody></table></ac:rich-text-body>
+    </ac:structured-macro>`);
+    expect(result.blocks[0]).toMatchObject({
+      type: "chart",
+      chart: {
+        kind: "xyLine",
+        axes: { x: { valueType: "date", tickUnit: 2, tickPeriod: "month", dateTickPosition: "middle" } },
+        locale: { dateFormat: "MM/yyyy", timePeriod: "month" },
+        data: { mode: "points", series: [{ points: [
+          { x: "2026-01-01T00:00:00.000Z", y: 10 },
+          { x: "2026-02-01T00:00:00.000Z", y: 20 },
+          { x: "2026-03-01T00:00:00.000Z", y: 30 },
+        ] }] },
+      },
+    });
+  });
+
+  test("retains the documented pie label format and canonicalizes HTML color names", () => {
+    const result = storageToBlocks(storageChart("pie", [
+      '<ac:parameter ac:name="pieSectionLabel">%0% = %1% (%2%)</ac:parameter>',
+      '<ac:parameter ac:name="bgColor">white</ac:parameter>',
+      '<ac:parameter ac:name="borderColor">navy</ac:parameter>',
+      '<ac:parameter ac:name="colors">red, #0c66e4, lime</ac:parameter>',
+    ].join("")));
+    expect(result.blocks[0]).toMatchObject({
+      type: "chart",
+      chart: {
+        pie: { sectionLabelFormat: "%0% = %1% (%2%)" },
+        style: { backgroundColor: "#FFFFFF", borderColor: "#000080", colors: ["#FF0000", "#0C66E4", "#00FF00"] },
+      },
+    });
+  });
+
+  test("resolves Gantt dependencies without recalculating provider scheduling", () => {
+    const result = storageToBlocks(`<ac:structured-macro ac:name="chart">
+      <ac:parameter ac:name="type">gantt</ac:parameter><ac:parameter ac:name="columns">,,1,2,3,4,5</ac:parameter>
+      <ac:parameter ac:name="dateFormat">MM/dd/yyyy</ac:parameter>
+      <ac:rich-text-body><table><tbody>
+        <tr><th>Task</th><th>Start</th><th>End</th><th>Status</th><th>Predecessor</th></tr>
+        <tr><td>Build</td><td>06/25/2013</td><td>07/10/2013</td><td>100%</td><td></td></tr>
+        <tr><td>Publish</td><td>07/13/2013</td><td>07/20/2013</td><td>40%</td><td>Build</td></tr>
+      </tbody></table></ac:rich-text-body>
+    </ac:structured-macro>`);
+    expect(result.blocks[0]).toMatchObject({
+      type: "chart",
+      chart: { data: { mode: "gantt", tasks: [
+        { id: "table-1-task-1", label: "Build", progress: 1 },
+        { id: "table-1-task-2", label: "Publish", progress: 0.4, dependencies: ["table-1-task-1"] },
+      ] } },
+    });
   });
 });

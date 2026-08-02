@@ -331,10 +331,11 @@ function block(value: unknown, path: string): void {
         array(row.cells, `${rowPath}.cells`).forEach((cellEntry, cellIndex) => {
           const cellPath = `${rowPath}.cells[${cellIndex}]`;
           const cell = record(cellEntry, cellPath);
-          keys(cell, cellPath, ["header", "colspan", "rowspan", "backgroundColor", "columnWidths", "verticalAlignment", "localId", "content"]);
+          keys(cell, cellPath, ["header", "colspan", "rowspan", "backgroundColor", "columnWidths", "verticalAlignment", "localId", "title", "content"]);
           boolean(cell.header, `${cellPath}.header`);
           positiveInteger(cell.colspan, `${cellPath}.colspan`);
           positiveInteger(cell.rowspan, `${cellPath}.rowspan`);
+          optional(cell, "title", cellPath, string);
           blockArray(cell.content, `${cellPath}.content`);
         });
       });

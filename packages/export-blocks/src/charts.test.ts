@@ -96,6 +96,21 @@ describe("ChartModelV1", () => {
     expect(() => validateChartModelV1({ ...model("line"), legend: "outside" as never })).toThrow("legend");
   });
 
+  test("validates date-axis units, date-valued XY data, pie formats, and source-table digests", () => {
+    const validated = validateChartModelV1({
+      ...model("xyLine"),
+      axes: { x: { valueType: "date", tickUnit: 2, tickPeriod: "week", dateTickPosition: "middle" } },
+      pie: { sectionLabelFormat: "%0% = %1% (%2%)" },
+      data: { mode: "points", series: [{ id: "s1", label: "Value", points: [{ x: "2026-01-01T00:00:00.000Z", y: 3 }] }] },
+      source: { ...source, sourceTableDigests: ["fnv1a-1234abcd"] },
+    });
+    expect(validated.axes?.x?.tickPeriod).toBe("week");
+    expect(validated.source.sourceTableDigests).toEqual(["fnv1a-1234abcd"]);
+    expect(() => validateChartModelV1({ ...model("xyLine"), axes: { x: { tickPeriod: "fortnight" as never } } })).toThrow("tickPeriod");
+    expect(() => validateChartModelV1({ ...model("pie"), pie: { sectionLabelFormat: "%3%" } })).toThrow("replacement variable");
+    expect(() => validateChartModelV1({ ...model("pie"), source: { ...source, sourceTableDigests: ["raw-id"] } })).toThrow("source-table digest");
+  });
+
   test("produces a stable digest for the validated model", () => {
     const value = model("line");
     expect(chartModelDigestV1(value)).toBe(chartModelDigestV1(structuredClone(value)));

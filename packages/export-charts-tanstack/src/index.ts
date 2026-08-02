@@ -266,19 +266,23 @@ function axisTickOptions(axis: ChartAxisV1 | undefined, values?: readonly ChartV
   };
 }
 
-function nextUtcPeriodStart(value: Date, period: NonNullable<ChartModelV1["locale"]>["timePeriod"]): Date {
+function nextUtcPeriodStart(
+  value: Date,
+  period: NonNullable<ChartModelV1["locale"]>["timePeriod"],
+  count = 1,
+): Date {
   const next = new Date(value.getTime());
   switch (period) {
-    case "millisecond": next.setTime(next.getTime() + 1); break;
-    case "second": next.setUTCSeconds(next.getUTCSeconds() + 1); break;
-    case "minute": next.setUTCMinutes(next.getUTCMinutes() + 1); break;
-    case "hour": next.setUTCHours(next.getUTCHours() + 1); break;
-    case "week": next.setUTCDate(next.getUTCDate() + 7); break;
-    case "month": next.setUTCMonth(next.getUTCMonth() + 1); break;
-    case "quarter": next.setUTCMonth(next.getUTCMonth() + 3); break;
-    case "year": next.setUTCFullYear(next.getUTCFullYear() + 1); break;
+    case "millisecond": next.setTime(next.getTime() + count); break;
+    case "second": next.setUTCSeconds(next.getUTCSeconds() + count); break;
+    case "minute": next.setUTCMinutes(next.getUTCMinutes() + count); break;
+    case "hour": next.setUTCHours(next.getUTCHours() + count); break;
+    case "week": next.setUTCDate(next.getUTCDate() + 7 * count); break;
+    case "month": next.setUTCMonth(next.getUTCMonth() + count); break;
+    case "quarter": next.setUTCMonth(next.getUTCMonth() + 3 * count); break;
+    case "year": next.setUTCFullYear(next.getUTCFullYear() + count); break;
     case "day":
-    default: next.setUTCDate(next.getUTCDate() + 1); break;
+    default: next.setUTCDate(next.getUTCDate() + count); break;
   }
   return next;
 }
@@ -286,13 +290,24 @@ function nextUtcPeriodStart(value: Date, period: NonNullable<ChartModelV1["local
 function positionedDateTicks(chart: ChartModelV1, timestamps: readonly number[]): { values?: readonly Date[]; format: (value: Date) => string } {
   const dateFormat = utcFormatter(chart.locale?.dateFormat);
   const position = chart.axes?.x?.dateTickPosition;
-  if (!position) return { format: dateFormat };
-  const period = chart.locale?.timePeriod ?? "day";
+  const tickUnit = chart.axes?.x?.tickUnit;
+  if (!position && tickUnit === undefined) return { format: dateFormat };
+  const period = chart.axes?.x?.tickPeriod ?? chart.locale?.timePeriod ?? "day";
+  const count = tickUnit ?? 1;
   const labels = new Map<number, Date>();
-  const values = [...new Set(timestamps)].sort((left, right) => left - right).map((timestamp) => {
-    const start = new Date(timestamp);
-    const next = nextUtcPeriodStart(start, period);
-    const positioned = position === "start" ? start
+  const sorted = [...new Set(timestamps)].sort((left, right) => left - right);
+  const starts: Date[] = [];
+  if (tickUnit !== undefined && sorted.length > 0) {
+    const end = sorted.at(-1)!;
+    for (let start = new Date(sorted[0]!), guard = 0; start.getTime() <= end && guard < 128; start = nextUtcPeriodStart(start, period, count), guard += 1) {
+      starts.push(start);
+    }
+  } else {
+    starts.push(...sorted.map((timestamp) => new Date(timestamp)));
+  }
+  const values = starts.map((start) => {
+    const next = nextUtcPeriodStart(start, period, count);
+    const positioned = !position || position === "start" ? start
       : position === "middle" ? new Date(start.getTime() + (next.getTime() - start.getTime()) / 2)
         : new Date(next.getTime() - 1);
     labels.set(positioned.getTime(), start);
@@ -330,7 +345,7 @@ function categoryRows(chart: ChartModelV1): CategoryRow[] {
 
 function pointRows(chart: ChartModelV1): PointRow[] {
   if (chart.data.mode !== "points") return [];
-  const isTime = chart.kind === "timeSeries";
+  const isTime = chart.kind === "timeSeries" || chart.axes?.x?.valueType === "date";
   return chart.data.series.flatMap((series) => series.points.map((point, pointIndex) => ({
     id: `${series.id}:${pointIndex}`,
     x: isTime ? new Date(String(point.x)) : typeof point.x === "number" ? point.x : Number(point.x),
@@ -373,7 +388,7 @@ function categoryDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
 function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
   const rows = pointRows(chart);
   const series = chart.data.mode === "points" ? chart.data.series.map((entry) => entry.label) : [];
-  const isTime = chart.kind === "timeSeries";
+  const isTime = chart.kind === "timeSeries" || chart.axes?.x?.valueType === "date";
   const numericX = rows.map((row) => row.x instanceof Date ? row.x.getTime() : row.x);
   const dateTicks = isTime ? positionedDateTicks(chart, numericX) : undefined;
   const extentValues = dateTicks?.values ? [...numericX, ...dateTicks.values.map((value) => value.getTime())] : numericX;
@@ -410,13 +425,11 @@ function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
 
 function pieLabel(chart: ChartModelV1, row: PieRow, total: number): string {
   const percent = `${Math.round((row.value / total) * 100)}%`;
-  switch (chart.pie?.sectionLabel) {
-    case "value": return String(row.value);
-    case "percent": return percent;
-    case "name-value": return `${row.label}: ${row.value}`;
-    case "name":
-    default: return row.label;
-  }
+  const format = chart.pie?.sectionLabelFormat ?? "%0%";
+  return format
+    .replaceAll("%0%", row.label)
+    .replaceAll("%1%", String(row.value))
+    .replaceAll("%2%", percent);
 }
 
 function pieDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
@@ -551,7 +564,25 @@ export function createTanStackChartSceneV1(input: ChartModelV1, options: Pick<Re
   const { definition } = createTanStackChartDefinitionV1(chart);
   const width = Math.max(320, Math.min(1200, Math.round(options.width ?? chart.display?.width ?? TANSTACK_CHART_SIZE_V1.width)));
   const height = Math.max(220, Math.min(800, Math.round(options.height ?? chart.display?.height ?? TANSTACK_CHART_SIZE_V1.height)));
-  return explodePieScene(chart, createChartScene(definition, { width, height }));
+  const scene = explodePieScene(chart, createChartScene(definition, { width, height }));
+  if (!chart.style?.borderColor) return scene;
+  return {
+    ...scene,
+    nodes: [
+      ...scene.nodes,
+      {
+        kind: "rect",
+        key: "atlcli-chart-border",
+        className: "atlcli-chart-border",
+        ariaHidden: true,
+        x: 0.5,
+        y: 0.5,
+        width: Math.max(0, scene.width - 1),
+        height: Math.max(0, scene.height - 1),
+        style: { fill: "none", stroke: chart.style.borderColor, strokeWidth: 1 },
+      },
+    ],
+  };
 }
 
 export function renderTanStackChartSvgV1(input: ChartModelV1, options: RenderTanStackChartSvgOptionsV1 = {}): string {

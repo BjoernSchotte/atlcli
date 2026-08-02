@@ -23,7 +23,7 @@ const chart = validateChartModelV1(block.chart);
 const title = chart.title || `${chart.kind} chart`;
 const digest = chartModelDigestV1(chart);
 const chartId = `atlcli-chart-${digest}`;
-const displayData = chart.display?.data ?? "after";
+const displayData = chart.display?.data ?? "hidden";
 const diagnostics = block.diagnostics ?? [];
 const diagnosticsText = diagnostics.map((diagnostic) => diagnostic.message).join(" ");
 const description = chart.data.mode === "categories"
@@ -73,6 +73,9 @@ const figureStyle = [
     <strong>Chart data note:</strong> {diagnosticsText}
   </aside>}
   {displayData === "before" && <ChartTable data={chart.data} title={title} />}
+  {displayData === "hidden" && <div class="atlcli-chart-data-visually-hidden" data-atlcli-chart-data-display="hidden">
+    <ChartTable data={chart.data} title={title} />
+  </div>}
   <div
     data-atlcli-chart-visual="tanstack-svg"
     data-atlcli-chart-legend={chart.legend ?? "top"}

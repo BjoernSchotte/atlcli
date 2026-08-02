@@ -1741,11 +1741,14 @@ function serializeBlock(
       ));
       const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
       const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
+      const subtitle = block.chart.subtitle
+        ? `#par[#text(size: 9pt, style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(block.chart.subtitle)}]]\n`
+        : "";
       const visual = block.visualAssetPath
         ? `#image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") })\n`
         : "";
       const figureBody = `block(width: 100%)[\n${visual}${table}\n]`;
-      value = title + (block.caption
+      value = title + subtitle + (block.caption
         ? `#figure(${figureBody}, ${captionFigureArgs(block.caption, writer)})`
         : `#${figureBody}`);
       break;

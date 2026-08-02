@@ -35,7 +35,7 @@ test("the corpus exercises world-class semantics instead of one-point dispatch s
   expect(byKind.bar?.data.mode === "categories" && byKind.bar.data.series.some((series) => series.values.some((value) => value < 0))).toBe(true);
   expect(byKind.xyStep?.data.mode === "points" && byKind.xyStep.data.series[0]!.points).toHaveLength(4);
   expect(byKind.xyStepArea?.data.mode === "points" && byKind.xyStepArea.data.series[0]!.points).toHaveLength(4);
-  expect(byKind.pie?.pie).toEqual({ sectionLabel: "name-value", explode: ["Experience"] });
+  expect(byKind.pie?.pie).toEqual({ sectionLabelFormat: "%0%: %1%", explode: ["Experience"] });
   expect(byKind.timeSeries?.locale).toEqual({ language: "de", country: "DE", dateFormat: "dd.MM.yyyy", timePeriod: "day" });
   expect(byKind.gantt?.data.mode === "gantt" && byKind.gantt.data.tasks[2]?.dependencies).toEqual(["themes"]);
 });

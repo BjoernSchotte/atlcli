@@ -38,7 +38,7 @@ export const CHART_WORLD_CLASS_BLOCKS_V1: readonly Extract<ExportBlock, { type: 
     subtitle: "Approved investment by workstream",
     legend: "right",
     threeD: true,
-    pie: { sectionLabel: "name-value", explode: ["Experience"] },
+    pie: { sectionLabelFormat: "%0%: %1%", explode: ["Experience"] },
     style: { colors: ["#0c66e4", "#00875a", "#6554c0", "#974f0c"] },
     display: { width: 720, height: 360, data: "after" },
     data: {

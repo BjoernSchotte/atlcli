@@ -1066,8 +1066,11 @@ async function serializeBlock(
         notes,
       );
       const title = block.chart.title ? paragraph(run(block.chart.title, { bold: true })) : "";
+      const subtitle = block.chart.subtitle
+        ? paragraph(run(block.chart.subtitle, { italic: true, color: "5E6C84", fontSizeHalfPoints: 20 }))
+        : "";
       const caption = block.caption ? await captionXml(block.caption, ctx, notes) : "";
-      return title + visualXml + tableXml + caption;
+      return title + subtitle + visualXml + tableXml + caption;
     }
 
     case "blockquote": {

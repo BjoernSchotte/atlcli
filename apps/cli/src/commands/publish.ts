@@ -42,6 +42,7 @@ import {
   type PublicationPageV1,
   type PublicationRefreshPlanV1,
   type PublicationIssueV1,
+  type PublicationDependencyV1,
   type PublicationProjectV1,
   type PublicationRouteRecordV1,
   type PublicationSourcePageSnapshotV1,
@@ -264,6 +265,35 @@ function collectPageReferences(pageId: string, blocks: readonly ExportBlock[]): 
   return { links, assetIds: [...assets.keys()], assets: [...assets.values()].sort((left, right) => left.assetId.localeCompare(right.assetId)) };
 }
 
+/**
+ * Frozen Chart macro body tables are render inputs even though they are not
+ * separately acquired assets. Persist only their safe digest and source-order
+ * ordinal: provider table/local IDs stay out of the public bundle.
+ */
+export function collectChartRenderDependenciesV1(
+  blocks: readonly ExportBlock[],
+): readonly PublicationDependencyV1[] {
+  const dependencies: PublicationDependencyV1[] = [];
+  let ordinal = 0;
+  visitExportBlocksV1(blocks, {
+    block(block) {
+      if (block.type !== "chart") return;
+      const digest = block.chart.source.dependencyDigest;
+      if (digest !== undefined) {
+        dependencies.push({
+          kind: "macro-data",
+          key: `chart:${ordinal}`,
+          version: block.chart.schema,
+          digest,
+          live: false,
+        });
+      }
+      ordinal += 1;
+    },
+  });
+  return dependencies;
+}
+
 async function snapshotAndPages(
   project: PublicationProjectV1,
   graph: Awaited<ReturnType<typeof resolveConfluencePageGraphV1>>,
@@ -300,7 +330,8 @@ async function snapshotAndPages(
     const contentDigest = await digestPublicationJsonV1({ blocks: node.blocks, notes: node.notes });
     const metadataDigest = await digestPublicationJsonV1({ title: node.title, labels: node.meta.labels, parentId: node.parentId, position, depth: node.effectiveDepth });
     const assetMetadataDigest = await digestPublicationJsonV1(references.assets);
-    const macroDependencyDigest = await digestPublicationJsonV1({});
+    const macroDependencies = collectChartRenderDependenciesV1(node.blocks);
+    const macroDependencyDigest = await digestPublicationJsonV1(macroDependencies);
     snapshots.push({
       sourceId: node.pageId,
       sourceVersion,
@@ -329,7 +360,10 @@ async function snapshotAndPages(
       labels: [...node.meta.labels].sort(),
       links: normalizePublicationLinksV1(references.links, inScopeSourceIds),
       assetIds: references.assetIds,
-      renderDependencies: [{ kind: "source-page" as const, key: node.pageId, version: sourceVersion, digest: contentDigest, live: false }],
+      renderDependencies: [
+        { kind: "source-page" as const, key: node.pageId, version: sourceVersion, digest: contentDigest, live: false },
+        ...macroDependencies,
+      ],
       pageDigest: "pending",
     };
     pages.push({ ...draft, pageDigest: await digestPublicationPageV1(draft) });
