@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
   RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
   acceptResearchGraphProposalV1,
   composeResearchGraphV1,
@@ -7,6 +8,7 @@ import {
   projectSelectedResearchRolesV1,
   researchPlanApprovalRequiredV1,
   reduceResearchGraphV1,
+  reviseResearchGraphSelectionV1,
   validateResearchGraphV1,
   type ResearchGraphProposalV1,
   type ResearchGraphV1,
@@ -78,6 +80,25 @@ function proposalFor(
             : [],
       reasonCodes: [node.reasonCodes[0]!],
     })),
+  };
+}
+
+function revisionProposalFor(
+  catalog: ResearchGraphV1,
+  current: ResearchGraphV1,
+  selectedIds: readonly string[],
+  prune: Array<{ nodeId: string; reasonCode: "budget_pruned" | "not_applicable" }> = [],
+) {
+  const proposal = proposalFor(catalog, selectedIds);
+  return {
+    schema: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+    basedOnBriefRevision: current.basedOnBriefRevision,
+    basedOnGraphRevision: current.revision,
+    nodes: proposal.nodes.map((node) => ({
+      ...node,
+      priority: catalog.nodes.find((candidate) => candidate.id === node.nodeId)!.priority,
+    })),
+    prune,
   };
 }
 
@@ -392,6 +413,127 @@ describe("dynamic research graph composition", () => {
       "research-node:reconciliation-repair",
       "research-node:synthesizer",
     ]))).toThrow("cannot be selected before critique");
+  });
+
+  test("revises a settled graph from the original approved catalog without rewriting accepted evidence", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "Which Confluence pages are related to Jira tickets?",
+      ["jira", "confluence"],
+      "auto",
+    ));
+    const selectedIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    let current = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, selectedIds));
+    for (const nodeId of selectedIds.slice(0, 2)) {
+      current = reduceResearchGraphV1(current, {
+        kind: "start_node",
+        expectedRevision: current.revision,
+        nodeId,
+      });
+      current = reduceResearchGraphV1(current, {
+        kind: "complete_node",
+        expectedRevision: current.revision,
+        nodeId,
+        packetRef: `packet:${nodeId}`,
+      });
+    }
+    expect(current.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("ready");
+
+    const revision = revisionProposalFor(catalog, current, [
+      ...selectedIds.slice(0, 2),
+      "research-node:cross-product-join",
+      selectedIds[2]!,
+    ]);
+    revision.nodes.find((node) => node.nodeId === "research-node:cross-product-join")!.priority = 71;
+    const revised = reviseResearchGraphSelectionV1(catalog, current, revision);
+    expect(revised).toMatchObject({
+      revision: current.revision + 1,
+      status: "running",
+      approvalEnvelope: { basedOnGraphRevision: current.revision + 1, status: "approved" },
+    });
+    expect(revised.nodes.find((node) => node.id === "research-node:jira-research")).toMatchObject({
+      status: "complete",
+      packetRef: "packet:research-node:jira-research",
+    });
+    expect(revised.nodes.find((node) => node.id === "research-node:cross-product-join")).toMatchObject({
+      status: "ready",
+      priority: 71,
+    });
+    expect(revised.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("blocked");
+    validateResearchGraphV1(revised);
+  });
+
+  test("allows closing only undispatched optional work and rejects historic-node rewrites", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "Which Confluence pages are related to Jira tickets?",
+      ["jira", "confluence"],
+      "auto",
+    ));
+    const selectedIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:synthesizer",
+    ];
+    let current = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, selectedIds));
+    for (const nodeId of selectedIds.slice(0, 2)) {
+      current = reduceResearchGraphV1(current, {
+        kind: "start_node",
+        expectedRevision: current.revision,
+        nodeId,
+      });
+      current = reduceResearchGraphV1(current, {
+        kind: "complete_node",
+        expectedRevision: current.revision,
+        nodeId,
+        packetRef: `packet:${nodeId}`,
+      });
+    }
+
+    const closed = reviseResearchGraphSelectionV1(catalog, current, revisionProposalFor(
+      catalog,
+      current,
+      selectedIds,
+      [{ nodeId: "research-node:cross-product-join", reasonCode: "budget_pruned" }],
+    ));
+    expect(closed.nodes.find((node) => node.id === "research-node:cross-product-join")).toMatchObject({
+      status: "pruned",
+      stopReason: "graph-revision:budget_pruned",
+    });
+    expect(closed.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("ready");
+
+    const rewrittenPriority = revisionProposalFor(catalog, current, selectedIds);
+    rewrittenPriority.nodes[0] = { ...rewrittenPriority.nodes[0]!, priority: 1 };
+    expect(() => reviseResearchGraphSelectionV1(catalog, current, rewrittenPriority))
+      .toThrow("cannot alter an observed node");
+    expect(() => reviseResearchGraphSelectionV1(catalog, current, revisionProposalFor(
+      catalog,
+      current,
+      selectedIds,
+      [{ nodeId: "research-node:synthesizer", reasonCode: "not_applicable" }],
+    ))).toThrow("cannot close required acquisition or synthesis");
+
+    const requiredCatalog = composeResearchGraphV1(brief(
+      "Which Confluence pages are related to Jira tickets?",
+      ["jira", "confluence"],
+      "required",
+    ));
+    const requiredSelectedIds = requiredCatalog.nodes
+      .filter((node) => node.kind !== "repair")
+      .map((node) => node.id);
+    const requiredCurrent = acceptResearchGraphProposalV1(
+      requiredCatalog,
+      proposalFor(requiredCatalog, requiredSelectedIds),
+    );
+    expect(() => reviseResearchGraphSelectionV1(requiredCatalog, requiredCurrent, revisionProposalFor(
+      requiredCatalog,
+      requiredCurrent,
+      requiredSelectedIds,
+      [{ nodeId: "research-node:reconciler", reasonCode: "not_applicable" }],
+    ))).toThrow("cannot close required acquisition or synthesis");
   });
 
   test("rejects cycles, unknown dependencies, depth, and capability widening", () => {

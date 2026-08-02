@@ -124,6 +124,32 @@ export interface ResearchGraphProposalV1 {
   nodes: ResearchGraphProposalNodeV1[];
 }
 
+export const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1 =
+  "atlcli.research-graph-revision-proposal/v1" as const;
+
+/**
+ * A later supervisor selection may only draw from the original approved
+ * catalog. It can add unselected catalog nodes, reprioritize undispatched
+ * nodes, and close undispatched optional work. It never grants a capability,
+ * alters a completed task, or constructs a free-form node.
+ */
+export interface ResearchGraphRevisionProposalNodeV1 extends ResearchGraphProposalNodeV1 {
+  priority: number;
+}
+
+export interface ResearchGraphRevisionPruneV1 {
+  nodeId: string;
+  reasonCode: ResearchCompositionReasonV1;
+}
+
+export interface ResearchGraphRevisionProposalV1 {
+  schema: typeof RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1;
+  basedOnBriefRevision: number;
+  basedOnGraphRevision: number;
+  nodes: ResearchGraphRevisionProposalNodeV1[];
+  prune: ResearchGraphRevisionPruneV1[];
+}
+
 export interface ResearchNodeCompletionPolicyV1 {
   requiredCoverageTargetIds: string[];
   allowAbstention: boolean;
@@ -1045,6 +1071,207 @@ export function acceptResearchGraphProposalV1(
   };
   validateResearchGraphV1(accepted);
   return accepted;
+}
+
+function parseResearchGraphRevisionProposalNodeV1(
+  value: unknown,
+): ResearchGraphRevisionProposalNodeV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      !equalSet(Object.keys(value as Record<string, unknown>), [
+        "nodeId",
+        "dependencies",
+        "reasonCodes",
+        "priority",
+      ]) ||
+      !Number.isSafeInteger((value as Record<string, unknown>).priority)) {
+    invalid("Research graph revision proposal node is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  const priority = record.priority as number;
+  if (priority < 0 || priority > 100) {
+    invalid("Research graph revision proposal node is invalid.");
+  }
+  const node = parseResearchGraphProposalNodeV1({
+    nodeId: record.nodeId,
+    dependencies: record.dependencies,
+    reasonCodes: record.reasonCodes,
+  });
+  return { ...node, priority };
+}
+
+export function parseResearchGraphRevisionProposalV1(
+  value: unknown,
+): ResearchGraphRevisionProposalV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid("Research graph revision proposal is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (!equalSet(Object.keys(record), [
+    "schema",
+    "basedOnBriefRevision",
+    "basedOnGraphRevision",
+    "nodes",
+    "prune",
+  ]) ||
+      record.schema !== RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1 ||
+      !Number.isSafeInteger(record.basedOnBriefRevision) ||
+      !Number.isSafeInteger(record.basedOnGraphRevision) ||
+      !Array.isArray(record.nodes) || record.nodes.length < 2 || record.nodes.length > 9 ||
+      !Array.isArray(record.prune) || record.prune.length > 8) {
+    invalid("Research graph revision proposal is invalid.");
+  }
+  const nodes = record.nodes.map(parseResearchGraphRevisionProposalNodeV1);
+  if (new Set(nodes.map((node) => node.nodeId)).size !== nodes.length) {
+    invalid("Research graph revision proposal node IDs must be unique.");
+  }
+  const prune = record.prune.map((value): ResearchGraphRevisionPruneV1 => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      invalid("Research graph revision prune is invalid.");
+    }
+    const entry = value as Record<string, unknown>;
+    if (!equalSet(Object.keys(entry), ["nodeId", "reasonCode"]) ||
+        typeof entry.nodeId !== "string" ||
+        !/^research-node:[A-Za-z0-9._-]{1,120}$/.test(entry.nodeId) ||
+        !RESEARCH_COMPOSITION_REASONS_V1.includes(entry.reasonCode as ResearchCompositionReasonV1)) {
+      invalid("Research graph revision prune is invalid.");
+    }
+    return {
+      nodeId: entry.nodeId,
+      reasonCode: entry.reasonCode as ResearchCompositionReasonV1,
+    };
+  });
+  if (new Set(prune.map((entry) => entry.nodeId)).size !== prune.length) {
+    invalid("Research graph revision prune node IDs must be unique.");
+  }
+  return {
+    schema: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+    basedOnBriefRevision: record.basedOnBriefRevision as number,
+    basedOnGraphRevision: record.basedOnGraphRevision as number,
+    nodes,
+    prune,
+  };
+}
+
+function sameGraphDependencies(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return left.length === right.length && left.every((dependency, index) => dependency === right[index]);
+}
+
+function observedNodeStatus(status: ResearchNodeStatusV1): boolean {
+  return status === "running" || status === "complete" ||
+    status === "failed" || status === "quarantined";
+}
+
+/**
+ * Rebase a new selected subset of the original catalog onto a settled graph.
+ * The next graph revision retains every historic node and packet reference,
+ * while admitting only never-observed catalog nodes. This is the host boundary
+ * that makes a later QuickJS evaluation disposable: it receives a fresh
+ * bounded frontier from durable graph state, not from prior guest globals.
+ */
+export function reviseResearchGraphSelectionV1(
+  catalogGraph: ResearchGraphV1,
+  currentGraph: ResearchGraphV1,
+  value: unknown,
+): ResearchGraphV1 {
+  validateResearchGraphV1(catalogGraph);
+  validateResearchGraphV1(currentGraph);
+  const proposal = parseResearchGraphRevisionProposalV1(value);
+  if (catalogGraph.sessionId !== currentGraph.sessionId ||
+      catalogGraph.turnId !== currentGraph.turnId ||
+      catalogGraph.basedOnBriefRevision !== currentGraph.basedOnBriefRevision ||
+      currentGraph.status === "complete" ||
+      currentGraph.nodes.some((node) => node.status === "running") ||
+      proposal.basedOnBriefRevision !== currentGraph.basedOnBriefRevision ||
+      proposal.basedOnGraphRevision !== currentGraph.revision) {
+    invalid("Research graph revision proposal is stale or the graph is unsettled.");
+  }
+  const currentById = new Map(currentGraph.nodes.map((node) => [node.id, node]));
+  if (currentGraph.nodes.some((node) => !catalogGraph.nodes.some((candidate) => candidate.id === node.id))) {
+    invalid("Research graph revision is outside the original approved catalog.");
+  }
+  const selectedNodeIds = new Set(proposal.nodes.map((node) => node.nodeId));
+  if ([...currentById.keys()].some((nodeId) => !selectedNodeIds.has(nodeId))) {
+    invalid("Research graph revision cannot discard prior graph history.");
+  }
+  const catalogSelection = acceptResearchGraphProposalV1(catalogGraph, {
+    schema: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
+    basedOnBriefRevision: catalogGraph.basedOnBriefRevision,
+    basedOnGraphRevision: catalogGraph.revision,
+    nodes: proposal.nodes.map(({ priority: _priority, ...node }) => node),
+  });
+  const proposalById = new Map(proposal.nodes.map((node) => [node.nodeId, node]));
+  const prunedById = new Map(proposal.prune.map((entry) => [entry.nodeId, entry]));
+  const nodes = catalogSelection.nodes.map((candidate) => {
+    const previous = currentById.get(candidate.id);
+    const proposed = proposalById.get(candidate.id)!;
+    const prune = prunedById.get(candidate.id);
+    if (previous && observedNodeStatus(previous.status)) {
+      if (!sameGraphDependencies(previous.dependencies, candidate.dependencies) ||
+          previous.priority !== proposed.priority || prune) {
+        invalid("Research graph revision cannot alter an observed node.");
+      }
+      return structuredClone(previous);
+    }
+    if (previous?.status === "pruned") {
+      if (prune || !sameGraphDependencies(previous.dependencies, candidate.dependencies) ||
+          previous.priority !== proposed.priority) {
+        invalid("Research graph revision cannot reopen or alter a closed node.");
+      }
+      return structuredClone(previous);
+    }
+    if (prune) {
+      if (candidate.roleId === "synthesizer" || candidate.kind === "search" ||
+          candidate.kind === "resolve_scope" ||
+          (catalogGraph.reconciliationPolicy.mode === "required" && candidate.roleId === "reconciler")) {
+        invalid("Research graph revision cannot close required acquisition or synthesis.");
+      }
+      return {
+        ...candidate,
+        priority: proposed.priority,
+        status: "pruned" as const,
+        stopReason: `graph-revision:${prune.reasonCode}`,
+      };
+    }
+    return {
+      ...candidate,
+      priority: proposed.priority,
+      status: "blocked" as const,
+      ...(previous ? { attempt: previous.attempt } : {}),
+    };
+  });
+  const unlocked = readyDependents(nodes);
+  const revision = currentGraph.revision + 1;
+  const synthesizer = unlocked.find((node) => node.roleId === "synthesizer");
+  const maxResearchWaves = researchWaveCeiling(unlocked);
+  if (currentGraph.researchWavesCompleted > maxResearchWaves) {
+    invalid("Research graph revision cannot reduce the completed wave envelope.");
+  }
+  const next: ResearchGraphV1 = {
+    ...catalogSelection,
+    revision,
+    status: synthesizer?.status === "complete" ? "complete" : "running",
+    nodes: unlocked,
+    roleDecisions: roleDecisions(unlocked),
+    totalBudget: aggregateBudget(unlocked),
+    maxResearchWaves,
+    researchWavesCompleted: currentGraph.researchWavesCompleted,
+    reconciliationWavesCompleted: currentGraph.reconciliationWavesCompleted,
+    createdAt: currentGraph.createdAt,
+    ...(currentGraph.approvedAt ? { approvedAt: currentGraph.approvedAt } : {}),
+    approvalEnvelope: {
+      ...catalogSelection.approvalEnvelope,
+      id: `research-approval:${currentGraph.turnId}:${revision}`,
+      status: "approved",
+      basedOnGraphRevision: revision,
+      maxResearchWaves,
+      ...(currentGraph.approvedAt ? { approvedAt: currentGraph.approvedAt } : {}),
+    },
+  };
+  validateResearchGraphV1(next);
+  return next;
 }
 
 export type ResearchGraphUpdateV1 =
