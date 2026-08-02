@@ -16,7 +16,12 @@ export const RESEARCH_SCOPE_CATALOG_TOOL_NAMES = {
 export interface ResearchScopeCatalogPtcOptions {
   tenantOrigin: string;
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-  onResult?: (tool: ResearchScopeCatalogCapabilityId, result: unknown) => void;
+  /** Host-only observation of a bounded catalog result before QuickJS sees it. */
+  onResult?: (
+    tool: ResearchScopeCatalogCapabilityId,
+    result: unknown,
+    callId: string,
+  ) => void | Promise<void>;
   now?: () => number;
 }
 
@@ -111,7 +116,7 @@ export function createResearchScopeCatalogPtcTools(
         options.tenantOrigin,
       );
       const serialized = JSON.stringify(result);
-      options.onResult?.(capability, result);
+      await options.onResult?.(capability, result, callId);
       const candidates = result && typeof result === "object" &&
         "candidates" in result && Array.isArray(result.candidates)
         ? result.candidates

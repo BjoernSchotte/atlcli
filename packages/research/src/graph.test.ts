@@ -282,6 +282,39 @@ describe("dynamic research graph composition", () => {
     expect(graph.approvalEnvelope.allowedCapabilityIds).toEqual(["jira.issue.search"]);
   });
 
+  test("grants bounded metadata discovery only to relationship-shaped research nodes", () => {
+    const related = composeResearchGraphV1(brief(
+      "Which related Confluence space and Jira project should be investigated from explicit links?",
+      ["jira", "confluence"],
+    ));
+    const jira = related.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const wiki = related.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    expect(jira.grantedCapabilityIds).toEqual([
+      "jira.issue.search",
+      "research.candidate.rank",
+      "jira.issue.get",
+      "jira.project.search",
+      "atlassian.reference.resolve",
+    ]);
+    expect(wiki.grantedCapabilityIds).toEqual([
+      "wiki.search",
+      "research.candidate.rank",
+      "wiki.page.get",
+      "wiki.space.search",
+      "atlassian.reference.resolve",
+    ]);
+    expect(jira.reasonCodes).toContain("related_scope_discovery");
+
+    const hostTrimmed = composeResearchGraphV1(brief(
+      "Which related Jira project should be investigated?",
+      ["jira"],
+    ), {
+      grants: { "focused-researcher": ["jira.issue.search", "jira.project.search"] },
+    });
+    expect(hostTrimmed.nodes.find((node) => node.id === "research-node:jira-research")
+      ?.grantedCapabilityIds).toEqual(["jira.issue.search", "jira.project.search"]);
+  });
+
   test("selects dedicated joining, verification, and moderation for task-shaped briefs", () => {
     const standard = composeResearchGraphV1(brief(
       "How do these pages describe the funnel, and which DEMO work items correspond to each stage?",

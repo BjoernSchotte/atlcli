@@ -601,14 +601,29 @@ function composeSeeds(brief: ResearchBriefV1, includeOutlinePlanner: boolean): N
     "konflikt",
   ]);
   const deep = brief.resolvedEffort === "deep";
+  // Metadata discovery is intentionally opt-in at graph-composition time. A
+  // relationship/reference-shaped question may benefit from bounded catalog
+  // or exact-link resolution, but ordinary content research receives no
+  // additional visibility merely because the host supports those tools.
+  const relatedScopeDiscovery = brief.scopeDiscoveryPolicy.catalogDiscovery === "on" &&
+    hasAny(objective, [
+      "related", "relationship", "reference", "linked", "link", "connected",
+      "verwandt", "zusammenhang", "verknüpf", "referenz", "gehören",
+    ]);
+  const jiraRelatedScopeCapabilities: ResearchGraphCapabilityV1[] = relatedScopeDiscovery && jira
+    ? ["jira.project.search", "atlassian.reference.resolve"]
+    : [];
+  const wikiRelatedScopeCapabilities: ResearchGraphCapabilityV1[] = relatedScopeDiscovery && wiki
+    ? ["wiki.space.search", "atlassian.reference.resolve"]
+    : [];
   const seeds: NodeSeed[] = [];
 
   if (brief.resolvedEffort === "lookup") {
-    if (jira) seeds.push({ id: "research-node:jira-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
-    if (wiki) seeds.push({ id: "research-node:wiki-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
+    if (jira) seeds.push({ id: "research-node:jira-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get", ...jiraRelatedScopeCapabilities], dependencies: [], reasonCodes: ["simple_lookup", ...(relatedScopeDiscovery ? ["related_scope_discovery"] as const : [])], priority: 100 });
+    if (wiki) seeds.push({ id: "research-node:wiki-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get", ...wikiRelatedScopeCapabilities], dependencies: [], reasonCodes: ["simple_lookup", ...(relatedScopeDiscovery ? ["related_scope_discovery"] as const : [])], priority: 100 });
   } else {
-    if (jira) seeds.push({ id: "research-node:jira-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the accepted objective.", requestedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
-    if (wiki) seeds.push({ id: "research-node:wiki-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the accepted objective.", requestedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
+    if (jira) seeds.push({ id: "research-node:jira-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the accepted objective.", requestedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get", ...jiraRelatedScopeCapabilities], dependencies: [], reasonCodes: ["independent_branch", ...(relatedScopeDiscovery ? ["related_scope_discovery"] as const : [])], priority: 100 });
+    if (wiki) seeds.push({ id: "research-node:wiki-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the accepted objective.", requestedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get", ...wikiRelatedScopeCapabilities], dependencies: [], reasonCodes: ["independent_branch", ...(relatedScopeDiscovery ? ["related_scope_discovery"] as const : [])], priority: 100 });
   }
 
   const researchIds = seeds.map((seed) => seed.id);

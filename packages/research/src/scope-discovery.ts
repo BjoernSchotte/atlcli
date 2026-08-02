@@ -18,6 +18,8 @@ export const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1 =
   "atlcli.research-scope-resolution/v1" as const;
 export const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1 =
   "atlcli.research-scope-expansion-proposal/v1" as const;
+export const RESEARCH_SCOPE_DISCOVERY_SCHEMA_V1 =
+  "atlcli.research-scope-discovery/v1" as const;
 
 export type {
   ResearchScopeAuthorityV1,
@@ -98,6 +100,76 @@ export interface ResearchScopeExpansionProposalV1 {
   provenanceRefs: string[];
   status: "proposed" | "approved" | "rejected" | "expired";
   approvedBindingId?: string;
+}
+
+/**
+ * A host-observed, read-only scope candidate returned by an already admitted
+ * research node. This is deliberately distinct from a binding or an expansion
+ * proposal: observing a candidate never authorizes content retrieval.
+ */
+export interface ResearchScopeDiscoveryV1 {
+  schema: typeof RESEARCH_SCOPE_DISCOVERY_SCHEMA_V1;
+  id: string;
+  taskId: string;
+  nodeId: string;
+  graphRevision: number;
+  capability: "jira.project.search" | "wiki.space.search" | "atlassian.reference.resolve";
+  candidate: ResearchScopeCandidateV1;
+  reason: string;
+  provenanceRefs: string[];
+  observedAt: string;
+}
+
+export function createResearchScopeDiscoveryV1(
+  input: Omit<ResearchScopeDiscoveryV1, "schema">,
+): ResearchScopeDiscoveryV1 {
+  if (!/^scope-discovery:[A-Za-z0-9._:-]{1,160}$/.test(input.id)) {
+    invalidMention("Research scope discovery ID is invalid.");
+  }
+  if (!/^(?:research-task|task):[A-Za-z0-9._:-]{1,180}$/.test(input.taskId) ||
+      !/^research-node:[A-Za-z0-9._-]{1,120}$/.test(input.nodeId)) {
+    invalidMention("Research scope discovery task identity is invalid.");
+  }
+  if (!Number.isSafeInteger(input.graphRevision) || input.graphRevision < 1) {
+    invalidMention("Research scope discovery graph revision is invalid.");
+  }
+  if (![
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve",
+  ].includes(input.capability)) {
+    invalidMention("Research scope discovery capability is invalid.");
+  }
+  const candidate = input.candidate;
+  if (candidate.schema !== RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1 ||
+      !/^research-scope-candidate:[A-Za-z0-9._-]{1,160}$/.test(candidate.id) ||
+      !/^research-scope-entity:[A-Za-z0-9._-]{1,200}$/.test(candidate.entityRef) ||
+      candidate.accessible !== true || !candidate.tenantOrigin.startsWith("https://") ||
+      !candidate.name.trim() || !["jira", "confluence"].includes(candidate.product) ||
+      !["project", "space", "issue", "page"].includes(candidate.entityKind) ||
+      !Number.isFinite(Date.parse(candidate.providerFreshnessAt))) {
+    invalidMention("Research scope discovery candidate is invalid.");
+  }
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 500) {
+    invalidMention("Research scope discovery reason is invalid.");
+  }
+  if (!Array.isArray(input.provenanceRefs) || input.provenanceRefs.length < 2 ||
+      input.provenanceRefs.length > 8 ||
+      new Set(input.provenanceRefs).size !== input.provenanceRefs.length ||
+      input.provenanceRefs.some((reference) => !/^[A-Za-z][A-Za-z0-9:._-]{1,180}$/.test(reference))) {
+    invalidMention("Research scope discovery provenance is invalid.");
+  }
+  if (!Number.isFinite(Date.parse(input.observedAt))) {
+    invalidMention("Research scope discovery timestamp is invalid.");
+  }
+  return {
+    schema: RESEARCH_SCOPE_DISCOVERY_SCHEMA_V1,
+    ...structuredClone(input),
+    candidate: structuredClone(candidate),
+    reason,
+    provenanceRefs: [...input.provenanceRefs],
+  };
 }
 
 export function createResearchScopeExpansionProposalV1(

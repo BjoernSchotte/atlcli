@@ -1793,6 +1793,124 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(false);
   });
 
+  test("retains a dynamic worker's catalog result in the durable session without widening scope", async () => {
+    const brief = graphBrief(
+      "Which related Jira project should be considered from an explicit reference?",
+      ["jira"],
+      "analysis",
+      "off",
+    );
+    const graph = composeResearchGraphV1(brief);
+    const researcher = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+    expect(researcher.grantedCapabilityIds).toContain("jira.project.search");
+    const researcherTask = taskEnvelope(graph, researcher.id);
+    const draft = {
+      title: "Durable catalog discovery",
+      executiveSummary: "A metadata candidate was retained without becoming authority.",
+      selectedClaimIds: [],
+      findings: [],
+      relationships: [],
+      limitations: ["Synthetic scope-discovery characterization."],
+    };
+    const code = `
+      ${graphProposalPrelude(graph)}
+      const worker = await task({
+        description: ${JSON.stringify(researcherTask.description)},
+        subagentType: ${JSON.stringify(researcherTask.subagentType)},
+        responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+      });
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, synthesizer))},
+          objective: ${JSON.stringify(synthesizer.objective)},
+          dependencyResults: [{ taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, researcher))}, result: worker }]
+        }),
+        subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizer))},
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code } }])
+      .respondWithTools([{ name: "eval", args: { code: "JSON.parse(await tools.jiraProjectSearch({ query: 'related' })); ({ observed: true });" } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: {
+        schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+        answeredQuestion: "Synthetic related-scope lookup.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: ["No detail-backed finding was returned."],
+      } }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:catalog-discovery",
+        createdAt: "2026-08-02T16:00:00.000Z",
+        leaseExpiresAt: "2026-08-02T16:10:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-02T16:00:00.000Z",
+    });
+    const scopeCatalog = new ResearchScopeCatalogBroker({
+      tenantOrigin: request.scope.siteOrigin,
+      providers: {
+        jira: { async listProjects() { return { candidates: [{
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-project",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "jira",
+          entityKind: "project",
+          entityRef: "research-scope-entity:related-project",
+          key: "RELATED",
+          name: "Related project",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: "2026-08-02T16:00:00.000Z",
+        }] }; } },
+        confluence: { async listSpaces() { return { candidates: [] }; } },
+        async resolveReference() { return undefined; },
+      },
+    });
+    const report = await runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { throw new Error("worker used the catalog only"); }, async getIssue() { throw new Error("unused"); } },
+        wiki: { async searchPage() { throw new Error("unused"); }, async getPage() { throw new Error("unused"); } },
+      },
+      researchGraph: graph,
+      brief,
+      durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
+      scopeCatalog: { broker: scopeCatalog, tenantOrigin: request.scope.siteOrigin },
+      runId: "durable-catalog-discovery",
+    });
+
+    expect(report.title).toBe(draft.title);
+    const stored = await durableStore.read(graph.sessionId);
+    const turn = stored!.turns.find((candidate) => candidate.id === graph.turnId)!;
+    expect(turn.scopeDiscoveries).toEqual([expect.objectContaining({
+      capability: "jira.project.search",
+      nodeId: researcher.id,
+      candidate: expect.objectContaining({ key: "RELATED" }),
+      provenanceRefs: expect.arrayContaining([
+        `task:${researchTaskIdForNodeV1(graph, researcher)}`,
+        "capability:jira.project.search",
+      ]),
+    })]);
+    expect(turn.scopeBindings).toEqual([]);
+    expect(turn.scopeExpansionProposals).toEqual([]);
+  });
+
   test("continues a durable deep run through source, analysis, and synthesis frontiers", async () => {
     const brief = graphBrief(
       "Research the bounded Jira evidence before composing a report.",
@@ -4056,11 +4174,23 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         async resolveReference() { return undefined; },
       },
     });
+    const observed: Array<{ tool: string; callId: string; candidateCount: number }> = [];
     const session = new ReplSession("dynamic-node-catalog-grant", {
       tools: createResearchNodePtcToolsV1(
         node,
         broker,
         { broker: scopeCatalog, tenantOrigin: request.scope.siteOrigin },
+        undefined,
+        async (tool, result, callId) => {
+          observed.push({
+            tool,
+            callId,
+            candidateCount: result && typeof result === "object" &&
+              "candidates" in result && Array.isArray(result.candidates)
+              ? result.candidates.length
+              : 0,
+          });
+        },
       ),
       maxPtcCalls: 2,
       captureConsole: false,
@@ -4084,6 +4214,11 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           issueToolType: "undefined",
         },
       });
+      expect(observed).toEqual([{
+        tool: "jira.project.search",
+        callId: "jira.project.search:1",
+        candidateCount: 1,
+      }]);
     } finally {
       session.dispose();
       scopeCatalog.cancel();

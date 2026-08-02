@@ -11,6 +11,7 @@ import { initializeResearchSessionTurnV1 } from "./session-runtime.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
+import { createResearchScopeDiscoveryV1 } from "./scope-discovery.js";
 import {
   RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
@@ -112,6 +113,57 @@ function attemptFor(
 }
 
 describe("durable research task dispatch journal", () => {
+  test("persists a host-observed catalog candidate without creating authority", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("jira.project.search"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:jira-research:1",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "jira.project.search",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-project",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "research-scope-entity:related-project",
+          key: "RELATED",
+          name: "Related project",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node received this candidate from a bounded metadata catalog.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:jira.project.search:1",
+          "capability:jira.project.search",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns[0]!;
+    expect(turn.scopeDiscoveries).toEqual([
+      expect.objectContaining({
+        candidate: expect.objectContaining({ key: "RELATED" }),
+        capability: "jira.project.search",
+      }),
+    ]);
+    expect(turn.scopeCandidates).toContainEqual(expect.objectContaining({ key: "RELATED" }));
+    expect(turn.scopeBindings).toEqual([]);
+    expect(turn.scopeExpansionProposals).toEqual([]);
+  });
+
   test("commits selected graph, ready task, dispatch start, and accepted packet through one session journal", async () => {
     const { store, sessionId, turnId, journal, graph } = await initializedJournal();
     const node = graph.nodes.find((candidate) => candidate.status === "ready")!;

@@ -3761,10 +3761,15 @@ Shared:
         sequence. With no whole project/space binding, the broker makes no
         JQL/CQL search, accepts only the exact returned identity, and retains
         evidence under `exact_entity` authority (2026-08-02).
-- [ ] Let dynamically selected PTC/subagent nodes invoke the catalog/reference
+- [x] Let dynamically selected PTC/subagent nodes invoke the catalog/reference
       capabilities during research and return bounded related-scope
       candidates with evidence/reference provenance. They may not return an
-      authoritative binding.
+      authoritative binding. Relationship/reference-shaped focused-researcher
+      nodes receive only the role- and host-granted metadata tools; the
+      QuickJS callback persists capped host-observed candidates with task,
+      capability, and PTC-call provenance while the admitting task runs.
+      The reducer verifies the active task grant and records neither a binding
+      nor an expansion proposal (2026-08-02).
 - [ ] Let the central supervisor accept or reject each related-scope candidate
       and, when content is materially required, create a typed
       `ResearchScopeExpansionProposalV1` for either one exact entity or a whole

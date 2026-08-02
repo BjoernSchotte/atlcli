@@ -353,6 +353,26 @@ function researchNodeAcquisitionBudgetV1(
   };
 }
 
+function relatedScopeDiscoveryInstructions(
+  node: ResearchGraphNodeV1,
+  maxCatalogCalls: number,
+): string {
+  const catalogCapabilities = node.grantedCapabilityIds.filter((capability) =>
+    SCOPE_CATALOG_CAPABILITIES.has(capability),
+  );
+  if (catalogCapabilities.length === 0 || maxCatalogCalls < 1) return "";
+  const tools = catalogCapabilities.map((capability) => quickJsToolForCapability[capability]);
+  const productSearch = node.grantedCapabilityIds.includes("jira.project.search")
+    ? "tools.jiraProjectSearch({ query: <concise related-project term> })"
+    : node.grantedCapabilityIds.includes("wiki.space.search")
+      ? "tools.wikiSpaceSearch({ query: <concise related-space term> })"
+      : undefined;
+  const exactReference = node.grantedCapabilityIds.includes("atlassian.reference.resolve")
+    ? "tools.atlassianReferenceResolve({ reference: <exact current-tenant Jira or Confluence URL observed in detailed content>, expectedKinds: [\"issue\", \"page\"] })"
+    : undefined;
+  return `\n\nRelated-scope metadata is optional and independently bounded. After the approved in-scope acquisition, you may make at most ${maxCatalogCalls} calls across ${tools.join(", ")} only when a bounded catalog lookup or an exact URL from detailed evidence is materially relevant to an unresolved coverage gap. ${productSearch ? `For a named related scope, use ${productSearch}; do not enumerate the tenant.` : ""} ${exactReference ? `For a current-tenant exact reference, use ${exactReference}; do not resolve a foreign URL.` : ""} A returned candidate is metadata only: do not cite it as evidence, do not detail-fetch it, do not treat it as a binding, and do not claim that its parent project/space is in scope. The host records a bounded candidate/provenance projection separately; you must not invent an expansion proposal or return the candidate as a factual finding.`;
+}
+
 function rolePrompt(
   node: ResearchGraphNodeV1,
   question: string,
@@ -404,7 +424,7 @@ Do not broaden scope, invent another follow-up, call a subagent, or retry an emp
 
   switch (node.roleId) {
     case "focused-researcher":
-      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, acquisitionBudget.maxDetailCalls, acquisitionBudget.maxSearchCalls)}\n\nReturn schema ${node.outputSchema}. Your packet must summarize detailed evidence, not merely the search result list. ${v2Packet ? "Select at most 8 claimCandidates: prioritize one decision-relevant claim per detailed source. Every factual candidate needs one or more exact detail quotes; never cite a search-only candidate, an empty detail body, or a truncated detail result as support." : "Select at most 12 findingCandidates that materially answer the question. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support."} Represent acquisition failures as typed gaps and coverageLimits.`;
+      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, acquisitionBudget.maxDetailCalls, acquisitionBudget.maxSearchCalls)}${relatedScopeDiscoveryInstructions(node, acquisitionBudget.maxCatalogCalls)}\n\nReturn schema ${node.outputSchema}. Your packet must summarize detailed evidence, not merely the search result list. ${v2Packet ? "Select at most 8 claimCandidates: prioritize one decision-relevant claim per detailed source. Every factual candidate needs one or more exact detail quotes; never cite a search-only candidate, an empty detail body, or a truncated detail result as support." : "Select at most 12 findingCandidates that materially answer the question. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support."} Represent acquisition failures as typed gaps and coverageLimits.`;
     case "document-distiller":
       return `${shared}\n\nCompare the supplied Jira and Confluence packets. Return at most 8 non-overlapping relationship findings. A verified relationship requires explicit detailed content or a link; title or time similarity alone is only a hypothesis. Do not perform new reads.`;
     case "contradiction-verifier":
@@ -428,7 +448,11 @@ export function createResearchNodePtcToolsV1(
   broker: ResearchCapabilityBroker,
   scopeCatalog: DynamicResearchSubagentOptions["scopeCatalog"],
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void,
-  onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void,
+  onResult?: (
+    tool: ResearchGraphCapabilityV1,
+    result: unknown,
+    callId: string,
+  ) => void | Promise<void>,
   now?: () => number,
 ): DynamicStructuredTool[] {
   const contentTools = createResearchPtcTools(broker, {
@@ -476,7 +500,12 @@ export interface DynamicResearchSubagentOptions {
   maxPacketChars: number;
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
   onNodePtcDiagnostic?: (nodeId: string, diagnostic: ResearchPtcDiagnosticV1) => void;
-  onNodePtcResult?: (nodeId: string, tool: ResearchGraphCapabilityV1, result: unknown) => void;
+  onNodePtcResult?: (
+    nodeId: string,
+    tool: ResearchGraphCapabilityV1,
+    result: unknown,
+    callId: string,
+  ) => void | Promise<void>;
   /** Required only by graph nodes whose host-selected output is V2. */
   normalizePacketV2?: (input: {
     taskId: string;
@@ -567,7 +596,7 @@ export function compileDynamicResearchSubagents(
         options.onPtcDiagnostic?.(scopedDiagnostic);
         options.onNodePtcDiagnostic?.(node.id, scopedDiagnostic);
       },
-      (tool, result) => options.onNodePtcResult?.(node.id, tool, result),
+      (tool, result, callId) => options.onNodePtcResult?.(node.id, tool, result, callId),
       options.now,
     );
     const acquisitionBudget = researchNodeAcquisitionBudgetV1(node, options);

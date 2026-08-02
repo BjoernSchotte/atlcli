@@ -75,7 +75,16 @@ export interface ResearchPtcDiagnosticV1 {
 
 export interface ResearchPtcToolOptions {
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-  onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void;
+  /**
+   * Host-only result observation. It runs before the success diagnostic so a
+   * durable host can retain an allowlisted result projection before QuickJS
+   * receives the serialized value.
+   */
+  onResult?: (
+    tool: ResearchGraphCapabilityV1,
+    result: unknown,
+    callId: string,
+  ) => void | Promise<void>;
   now?: () => number;
 }
 
@@ -145,7 +154,7 @@ export function createResearchPtcTools(
         schema: RESEARCH_CAPABILITY_SCHEMAS[id].input,
       });
       const serialized = jsonResult(result);
-      options.onResult?.(id, result);
+      await options.onResult?.(id, result, callId);
       const page =
         typeof result === "object" && result !== null && "page" in result
           ? result.page

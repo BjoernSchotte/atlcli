@@ -13,6 +13,7 @@ import type {
   ResearchSessionUpdateV1,
   ResearchSessionV1,
 } from "./session.js";
+import type { ResearchScopeDiscoveryV1 } from "./scope-discovery.js";
 import type {
   ResearchAcceptedPacketV1,
   ResearchReconciliationDispositionV1,
@@ -155,6 +156,27 @@ export class ResearchSessionDispatchJournalV1 {
         reason: input.reason,
         ...(input.steeringId === undefined ? {} : { steeringId: input.steeringId }),
       }, (next) => activeTurn(next, this.#turnId).graph!);
+    });
+  }
+
+  /**
+   * Retain host-observed metadata candidates while their admitting task is
+   * still running. The session reducer verifies the exact task grant and does
+   * not treat this observation as a binding or an approval.
+   */
+  recordScopeDiscoveries(input: {
+    graphRevision: number;
+    discoveries: ResearchScopeDiscoveryV1[];
+  }): Promise<void> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      await this.#commit(session, {
+        kind: "record_scope_discoveries",
+        graphRevision: input.graphRevision,
+        discoveries: input.discoveries,
+      }, () => undefined);
     });
   }
 

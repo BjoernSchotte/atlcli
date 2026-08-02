@@ -24,8 +24,12 @@ import {
   type ResearchGraphProposalV1,
   type ResearchGraphV1,
 } from "./graph.js";
+import {
+  createResearchScopeDiscoveryV1,
+} from "./scope-discovery.js";
 import type {
   ResearchScopeCandidateV1,
+  ResearchScopeDiscoveryV1,
   ResearchScopeExpansionProposalV1,
   ResearchScopeResolutionV1,
 } from "./scope-discovery.js";
@@ -327,6 +331,8 @@ export interface ResearchSessionTurnV1 {
   /** Present only after the latent node has entered the execution graph. */
   repairAuthorization?: ResearchSessionRepairAuthorizationV1;
   scopeCandidates: ResearchScopeCandidateV1[];
+  /** Host-observed catalog/reference candidates; neither bindings nor authority. */
+  scopeDiscoveries: ResearchScopeDiscoveryV1[];
   scopeBindings: ResearchScopeBindingV1[];
   scopeResolutions: ResearchScopeResolutionV1[];
   scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
@@ -490,6 +496,12 @@ export type ResearchSessionUpdateV1 =
       kind: "request_plan_revision";
       graphRevision: number;
       instruction: string;
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Persist bounded host-observed related-scope candidates during a running task. */
+      kind: "record_scope_discoveries";
+      graphRevision: number;
+      discoveries: ResearchScopeDiscoveryV1[];
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "propose_scope_expansion"; proposal: ResearchScopeExpansionProposalV1 })
   | (ResearchSessionFencedUpdateV1 & {
@@ -1159,6 +1171,7 @@ export function reduceResearchSessionV1(
       createdAt: update.at,
       brief: clone(update.brief),
       scopeCandidates: clone(update.scopeCandidates ?? update.brief.scopeCandidates),
+      scopeDiscoveries: [],
       scopeBindings: clone(update.scopeBindings ?? update.brief.scopeBindings),
       scopeResolutions: clone(update.scopeResolutions ?? update.brief.scopeResolutions),
       scopeExpansionProposals: [],
@@ -1196,7 +1209,7 @@ export function reduceResearchSessionV1(
       id: update.turnId,
       revision: 1,
       createdAt: update.at,
-      scopeCandidates: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], planRevisions: [], scopeRevisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
+      scopeCandidates: [], scopeDiscoveries: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], planRevisions: [], scopeRevisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
     };
     return withNext(session, update, { status: "planning", activeTurnId: update.turnId, turns: [...session.turns, nextTurn] });
   }
@@ -1562,6 +1575,54 @@ export function reduceResearchSessionV1(
           revisedBriefRevision: revisedBrief!.revision,
         } : record),
         revision: current.revision + 1,
+      }),
+    });
+  }
+
+  if (update.kind === "record_scope_discoveries") {
+    const current = ensureActive(session, ["running", "waiting_steering"]);
+    const graph = requireGraph(current, update.graphRevision);
+    const brief = current.brief;
+    if (!brief || !Array.isArray(update.discoveries) || update.discoveries.length < 1 ||
+        update.discoveries.length > brief.scopeDiscoveryPolicy.maxCandidatesPerMention) {
+      invalid("Research scope discoveries are invalid.");
+    }
+    const knownCandidates = new Map(current.scopeCandidates.map((candidate) => [candidate.id, candidate]));
+    const knownDiscoveryIds = new Set((current.scopeDiscoveries ?? []).map((discovery) => discovery.id));
+    const nextDiscoveries = [...(current.scopeDiscoveries ?? [])];
+    for (const received of update.discoveries) {
+      const discovery = createResearchScopeDiscoveryV1({
+        ...received,
+      });
+      if (
+          discovery.graphRevision !== graph.revision ||
+          discovery.candidate.tenantOrigin !== brief.scope.siteOrigin ||
+          knownDiscoveryIds.has(discovery.id) ||
+          !discovery.provenanceRefs.includes(`task:${discovery.taskId}`) ||
+          !discovery.provenanceRefs.includes(`capability:${discovery.capability}`)) {
+        invalid("Research scope discovery is invalid or stale.");
+      }
+      const task = current.tasks.find((candidate) => candidate.taskId === discovery.taskId);
+      if (!task || task.nodeId !== discovery.nodeId || task.graphRevision !== graph.revision ||
+          task.status !== "running" || !task.grantedCapabilityIds.includes(discovery.capability)) {
+        invalid("Research scope discovery is outside the active task grant.");
+      }
+      const existing = knownCandidates.get(discovery.candidate.id);
+      if (existing && JSON.stringify(existing) !== JSON.stringify(discovery.candidate)) {
+        invalid("Research scope discovery candidate identity changed.");
+      }
+      if (!existing) {
+        knownCandidates.set(discovery.candidate.id, clone(discovery.candidate));
+      }
+      knownDiscoveryIds.add(discovery.id);
+      nextDiscoveries.push(clone(discovery));
+    }
+    return withNext(session, update, {
+      status: session.status,
+      turns: replaceTurn(session, {
+        ...current,
+        scopeCandidates: [...knownCandidates.values()],
+        scopeDiscoveries: nextDiscoveries,
       }),
     });
   }

@@ -23,6 +23,10 @@ import {
 import type { ResearchRunBudget } from "./budget.js";
 import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import {
+  createResearchScopeDiscoveryV1,
+  type ResearchScopeCandidateV1,
+} from "./scope-discovery.js";
+import {
   RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
   RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1,
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
@@ -129,6 +133,20 @@ const MODEL_SPEC = `anthropic:${RESEARCH_MODEL_ID}` as const;
 const LEGACY_RESEARCH_RECURSION_LIMIT_V1 = 24;
 const MIN_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1 = 32;
 const MAX_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1 = 96;
+
+function scopeCandidatesFromCatalogResultV1(result: unknown): ResearchScopeCandidateV1[] {
+  if (!result || typeof result !== "object") return [];
+  const record = result as { candidates?: unknown; candidate?: unknown };
+  const candidates = Array.isArray(record.candidates)
+    ? record.candidates
+    : record.candidate === undefined
+      ? []
+      : [record.candidate];
+  return candidates.filter((candidate): candidate is ResearchScopeCandidateV1 =>
+    Boolean(candidate) && typeof candidate === "object" &&
+    (candidate as { schema?: unknown }).schema === "atlcli.research-scope-candidate/v1",
+  );
+}
 
 export interface ResearchAgentRuntimeBindings {
   StateBackend: typeof import("deepagents/browser").StateBackend;
@@ -2115,6 +2133,7 @@ async function runResearchAgentWithBindings(
     : createAnthropicSubagentModels(input.apiKey ?? "");
   const directDetailSourceIdsByNode = new Map<string, Set<string>>();
   const capabilityCallsByNode = new Map<string, number>();
+  const scopeDiscoverySequenceByNode = new Map<string, number>();
   const durableEvidenceSourceIdsByEvidenceId = new Map<string, string>();
   if (durableEvidence) {
     let cursor: string | undefined;
@@ -2379,14 +2398,59 @@ async function runResearchAgentWithBindings(
             capabilityCallsByNode.set(nodeId, (capabilityCallsByNode.get(nodeId) ?? 0) + 1);
           }
         },
-        onNodePtcResult: (nodeId, toolId, result) => {
-          if (toolId !== "jira.issue.get" && toolId !== "wiki.page.get") return;
-          if (!result || typeof result !== "object" || !("source" in result) ||
-            !result.source || typeof result.source !== "object" || !("sourceId" in result.source) ||
-            typeof result.source.sourceId !== "string") return;
-          const sourceIds = directDetailSourceIdsByNode.get(nodeId) ?? new Set<string>();
-          sourceIds.add(result.source.sourceId);
-          directDetailSourceIdsByNode.set(nodeId, sourceIds);
+        onNodePtcResult: async (nodeId, toolId, result, callId) => {
+          if (toolId === "jira.issue.get" || toolId === "wiki.page.get") {
+            if (!result || typeof result !== "object" || !("source" in result) ||
+              !result.source || typeof result.source !== "object" || !("sourceId" in result.source) ||
+              typeof result.source.sourceId !== "string") return;
+            const sourceIds = directDetailSourceIdsByNode.get(nodeId) ?? new Set<string>();
+            sourceIds.add(result.source.sourceId);
+            directDetailSourceIdsByNode.set(nodeId, sourceIds);
+            return;
+          }
+          if (
+            toolId !== "jira.project.search" &&
+            toolId !== "wiki.space.search" &&
+            toolId !== "atlassian.reference.resolve"
+          ) {
+            return;
+          }
+          if (!durableDispatchJournal || !input.brief) {
+            return;
+          }
+          const graph = acceptedGraph;
+          const node = graph?.nodes.find((candidate) => candidate.id === nodeId);
+          if (!graph || !node || !node.grantedCapabilityIds.includes(toolId)) return;
+          const candidates = scopeCandidatesFromCatalogResultV1(result)
+            .slice(0, input.brief.scopeDiscoveryPolicy.maxCandidatesPerMention);
+          if (candidates.length === 0) return;
+          const taskId = researchTaskIdForNodeV1(graph, node);
+          let sequence = scopeDiscoverySequenceByNode.get(nodeId) ?? 0;
+          const discoveries = candidates.map((candidate) => {
+            sequence += 1;
+            return createResearchScopeDiscoveryV1({
+              id: `scope-discovery:${nodeId.slice("research-node:".length)}:${sequence}`,
+              taskId,
+              nodeId,
+              graphRevision: node.taskGraphRevision ?? graph.revision,
+              capability: toolId,
+              candidate,
+              reason: toolId === "atlassian.reference.resolve"
+                ? "An admitted research node resolved an exact current-tenant reference."
+                : "An admitted research node received this candidate from a bounded metadata catalog.",
+              provenanceRefs: [
+                `task:${taskId}`,
+                `ptc:${callId}`,
+                `capability:${toolId}`,
+              ],
+              observedAt: new Date(now()).toISOString(),
+            });
+          });
+          scopeDiscoverySequenceByNode.set(nodeId, sequence);
+          await durableDispatchJournal.recordScopeDiscoveries({
+            graphRevision: node.taskGraphRevision ?? graph.revision,
+            discoveries,
+          });
         },
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
