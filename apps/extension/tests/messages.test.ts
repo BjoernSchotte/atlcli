@@ -76,6 +76,32 @@ describe("message guards", () => {
       sessionId: "must-not-cross",
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:list-retained-sessions",
+      windowId: 7,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:prepare-follow-up-turn",
+      windowId: 7,
+      sessionId: "research-session:terminal",
+      revision: 12,
+      question: "Check the remaining evidence.",
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:prepare-follow-up-turn",
+      windowId: 7,
+      sessionId: "research-session:terminal",
+      revision: 12,
+      question: "   ",
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:prepare-follow-up-turn",
+      windowId: 7,
+      sessionId: "research-session:terminal",
+      revision: 12,
+      question: "Check the remaining evidence.",
+      scope: { jiraProjectKeys: ["must-not-cross"] },
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:steer-session",
       windowId: 7,
       sessionId: "research-session:checkpoint",

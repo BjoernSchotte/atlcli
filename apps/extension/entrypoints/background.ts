@@ -49,6 +49,7 @@ import {
   RESEARCH_PACKET_BODY_SCHEMA_V2,
   approveResearchScopeExpansionV1,
   composeResearchGraphV1,
+  appendResearchSessionTurnV1,
   createResearchSessionV1,
   createResearchScopeBindingV1,
   createStandardResearchBriefV1,
@@ -65,6 +66,7 @@ import {
   projectResearchSessionClarificationReviewV1,
   projectResearchSessionScopeClarificationReviewV1,
   projectResearchSessionPlanReviewV1,
+  projectResearchRetainedSessionV1,
   projectResearchResumableSessionV1,
   proposeResearchGraphForReadyBriefV1,
   recoverResearchSessionForResumeV1,
@@ -72,6 +74,7 @@ import {
   resolveResearchSessionScopeClarificationV1,
   refreshResearchSessionScopeClarificationV1,
   researchRequestFromBriefV1,
+  researchPolicyFromBriefV1,
   type ResearchSessionV1,
   type ResearchScopePreflightOptionsV1,
 } from "@atlcli/research/browser";
@@ -698,6 +701,111 @@ export default defineBackground({
         })
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
         .slice(0, 20);
+    } finally {
+      store.close();
+    }
+  };
+
+  const listRetainedResearchSessions = async (windowId: number) => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const page = await store.list({ limit: 100 });
+      return page.sessions
+        .flatMap((session) => {
+          const projected = projectResearchRetainedSessionV1(session, { tenantOrigin });
+          return projected ? [projected] : [];
+        })
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+        .slice(0, 20);
+    } finally {
+      store.close();
+    }
+  };
+
+  /**
+   * Browser equivalent of the CLI's `research --session` path. A caller adds
+   * only a question; the terminal projection, scope provenance, policy,
+   * limits, tenant, and revision fence all come from durable host state. The
+   * result is deliberately paused at a plan-review or resume affordance, never
+   * dispatched from the side-panel control message.
+   */
+  const prepareResearchFollowUpTurn = async (
+    windowId: number,
+    action: { sessionId: string; revision: number; question: string },
+  ) => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    if ([...activeResearchRuns.values()].some((active) => active.sessionId === action.sessionId)) {
+      throw new ResearchContractError("invalid-request", "An active research session cannot accept a follow-up turn.");
+    }
+    const question = action.question.trim();
+    if (!question) throw new ResearchContractError("invalid-request", "A follow-up research question is required.");
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(action.sessionId);
+      if (!stored) throw new ResearchContractError("invalid-request", "The terminal research session no longer exists.");
+      const retained = projectResearchRetainedSessionV1(stored, { tenantOrigin });
+      if (!retained || retained.revision !== action.revision) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The terminal research session is stale or belongs to a different Atlassian site. Refresh the sidebar before continuing.",
+        );
+      }
+      const previousTurn = stored.turns.find((candidate) => candidate.id === retained.turnId);
+      if (!previousTurn?.brief) {
+        throw new ResearchContractError("invalid-request", "The terminal research session is missing its accepted brief.");
+      }
+      const now = new Date().toISOString();
+      const turnId = `research-turn:${crypto.randomUUID()}`;
+      const request = normalizeResearchRequestV1({
+        ...researchRequestFromBriefV1(previousTurn.brief),
+        question,
+      });
+      const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(
+        request.question,
+        {
+          sessionId: stored.sessionId,
+          turnId,
+          scope: request.scope,
+          scopeBindings: previousTurn.scopeBindings,
+          limits: request.limits,
+          asOf: now,
+          policy: researchPolicyFromBriefV1(previousTurn.brief),
+        },
+      ));
+      if (briefOutcome.kind !== "ready") {
+        throw new ResearchContractError(
+          "clarification-required",
+          "The follow-up question requires clarification before it can be added to the terminal session.",
+        );
+      }
+      const graph = composeResearchGraphV1(briefOutcome.brief, {
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      });
+      let appended = await appendResearchSessionTurnV1({
+        store,
+        sessionId: stored.sessionId,
+        brief: briefOutcome.brief,
+        graph,
+        approveAutomatically: briefOutcome.brief.resolvedPlanApproval === "automatic",
+        at: now,
+      });
+      const review = projectResearchSessionPlanReviewV1(appended, tenantOrigin);
+      if (review) return { kind: "plan_review" as const, review };
+      if (appended.status !== "running") {
+        throw new ResearchContractError("provider-error", "The follow-up research turn did not reach a safe durable state.");
+      }
+      appended = (await store.commit(appended.sessionId, {
+        kind: "release_lease",
+        expectedRevision: appended.revision,
+        expectedLeaseEpoch: appended.lease.epoch,
+        at: now,
+      })).session;
+      const resumable = projectResearchResumableSessionV1(appended, { tenantOrigin, at: now });
+      if (!resumable) {
+        throw new ResearchContractError("provider-error", "The follow-up research turn could not be made safely resumable.");
+      }
+      return { kind: "resumable" as const, session: resumable };
     } finally {
       store.close();
     }
@@ -1745,6 +1853,8 @@ export default defineBackground({
       runResearch,
       resumeResearch,
       listResumableResearchSessions,
+      listRetainedResearchSessions,
+      prepareResearchFollowUpTurn,
       requestResearchSteering,
       deleteResearchSession,
       listResearchScopeReviews,

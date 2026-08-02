@@ -5,6 +5,7 @@ import {
 } from "../../../utils/research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchRetainedSessionV1,
   ResearchClarificationReviewResolutionV1,
   ResearchSessionClarificationReviewV1,
   ResearchScopeClarificationReviewResolutionV1,
@@ -125,6 +126,75 @@ export function chromeResearchPort(): ResearchPort {
       }
       if (!response.ok) throw new ResearchContractError(response.code, response.error);
       return response.sessions;
+    },
+
+    async listRetainedSessions() {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:list-retained-sessions",
+        windowId: window.id,
+      }) as
+        | {
+            kind: "research:list-retained-sessions-result";
+            ok: true;
+            sessions: ResearchRetainedSessionV1[];
+          }
+        | {
+            kind: "research:list-retained-sessions-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:list-retained-sessions-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The retained research session host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.sessions;
+    },
+
+    async prepareFollowUpTurn(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:prepare-follow-up-turn",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:prepare-follow-up-turn-result";
+            ok: true;
+            outcome: Awaited<ReturnType<NonNullable<ResearchPort["prepareFollowUpTurn"]>>>;
+          }
+        | {
+            kind: "research:prepare-follow-up-turn-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:prepare-follow-up-turn-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research follow-up host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.outcome;
     },
 
     async requestSteering(input) {

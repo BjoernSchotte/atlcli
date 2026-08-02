@@ -602,6 +602,27 @@ export interface ResearchPort {
     import("./session.js").ResearchResumableSessionV1[]
   >;
   /**
+   * Terminal turns available to the active tenant for a user-authored follow-up.
+   * The host projects these from durable state; callers cannot select scope,
+   * policy, or budget for the resulting turn.
+   */
+  listRetainedSessions?(): Promise<
+    import("./session.js").ResearchRetainedSessionV1[]
+  >;
+  /**
+   * Append and durably prepare a question against a terminal session's exact
+   * stored scope, policy, and limits. This intentionally never starts a
+   * worker: the caller must separately approve or resume the returned state.
+   */
+  prepareFollowUpTurn?(input: {
+    sessionId: string;
+    revision: number;
+    question: string;
+  }): Promise<
+    | { kind: "plan_review"; review: import("./session-plan-review.js").ResearchSessionPlanReviewV1 }
+    | { kind: "resumable"; session: import("./session.js").ResearchResumableSessionV1 }
+  >;
+  /**
    * Persist one user-originated focus/prioritization request at an already
    * settled retrieval checkpoint. Hosts bind tenant and revisions themselves.
    */

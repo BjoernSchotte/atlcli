@@ -4376,6 +4376,66 @@ test("persists an explicit packed user cancellation and rejects later recovery",
       ok: false,
       code: "invalid-request",
     });
+
+    const retained = await page.evaluate(async () => {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+      return chrome.runtime.sendMessage({
+        kind: "research:list-retained-sessions",
+        windowId: window.id,
+      });
+    }) as {
+      kind: string;
+      ok: boolean;
+      sessions?: Array<{ sessionId: string; revision: number; turnId: string; question: string }>;
+    };
+    expect(retained).toMatchObject({ kind: "research:list-retained-sessions-result", ok: true });
+    const terminal = retained.sessions?.find((session) => session.sessionId === sessionId);
+    if (!terminal) throw new Error("Cancelled packed session was not safely projected for a follow-up turn.");
+
+    const followUpQuestion = "Which bounded evidence should be checked next?";
+    const prepared = await page.evaluate(async ({ sessionId: id, revision, question }) => {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+      return chrome.runtime.sendMessage({
+        kind: "research:prepare-follow-up-turn",
+        windowId: window.id,
+        sessionId: id,
+        revision,
+        question,
+      });
+    }, { sessionId, revision: terminal.revision, question: followUpQuestion }) as {
+      kind: string;
+      ok: boolean;
+      outcome?: { kind: string; session?: { turnId: string; question: string } };
+    };
+    expect(prepared).toMatchObject({
+      kind: "research:prepare-follow-up-turn-result",
+      ok: true,
+      outcome: { kind: "resumable", session: { question: followUpQuestion } },
+    });
+    const followUpTurnId = prepared.outcome?.session?.turnId;
+    if (!followUpTurnId) throw new Error("Packed follow-up preparation did not return its durable turn.");
+    const followUp = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:${followUpTurnId}`,
+    );
+    expect(followUp.session.state).toMatchObject({
+      status: "running",
+      activeTurnId: followUpTurnId,
+      turns: [
+        { id: terminal.turnId, scopeBindings: expect.any(Array) },
+        {
+          id: followUpTurnId,
+          brief: expect.objectContaining({ objective: followUpQuestion }),
+          tasks: [],
+          acceptedPackets: [],
+          scopeBindings: expect.any(Array),
+        },
+      ],
+    });
+    expect(followUp.artifact).toBeUndefined();
   } finally {
     await page.evaluate(async (key) => {
       await chrome.storage.session.remove(key);

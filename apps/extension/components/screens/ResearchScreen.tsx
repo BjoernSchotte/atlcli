@@ -33,6 +33,7 @@ import type {
   ResearchSessionClarificationReviewV1,
   ResearchSessionScopeClarificationReviewV1,
   ResearchResumableSessionV1,
+  ResearchRetainedSessionV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ResearchScopeCandidateSelectionV1,
@@ -463,6 +464,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [resumableSessions, setResumableSessions] = useState<
     ResearchResumableSessionV1[]
   >([]);
+  const [retainedSessions, setRetainedSessions] = useState<
+    ResearchRetainedSessionV1[]
+  >([]);
   const [scopeReviews, setScopeReviews] = useState<
     ResearchSessionScopeReviewV1[]
   >([]);
@@ -481,11 +485,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [scopeClarificationSelections, setScopeClarificationSelections] = useState<Record<string, string>>({});
   const [planRevisionInstructions, setPlanRevisionInstructions] = useState<Record<string, string>>({});
   const [steeringInstructions, setSteeringInstructions] = useState<Record<string, string>>({});
+  const [followUpQuestions, setFollowUpQuestions] = useState<Record<string, string>>({});
   const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
   const [scopePlanReviewActionId, setScopePlanReviewActionId] = useState<string | null>(null);
   const [planReviewActionId, setPlanReviewActionId] = useState<string | null>(null);
   const [clarificationActionId, setClarificationActionId] = useState<string | null>(null);
   const [scopeClarificationActionId, setScopeClarificationActionId] = useState<string | null>(null);
+  const [followUpActionId, setFollowUpActionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const planReviewListingGeneration = useRef(0);
 
@@ -514,6 +520,22 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       // explicit resume request instead of presenting it during mount.
       .catch(() => {
         if (active) setResumableSessions([]);
+      });
+    return () => { active = false; };
+  }, [port, site]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.listRetainedSessions || !site) {
+      setRetainedSessions([]);
+      return () => { active = false; };
+    }
+    void port.listRetainedSessions()
+      .then((sessions) => {
+        if (active) setRetainedSessions(sessions);
+      })
+      .catch(() => {
+        if (active) setRetainedSessions([]);
       });
     return () => { active = false; };
   }, [port, site]);
@@ -613,6 +635,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setResumableSessions(await port.listResumableSessions());
     } catch {
       setResumableSessions([]);
+    }
+  }
+
+  async function refreshRetainedSessions(): Promise<void> {
+    if (!port?.listRetainedSessions || !site) {
+      setRetainedSessions([]);
+      return;
+    }
+    try {
+      setRetainedSessions(await port.listRetainedSessions());
+    } catch {
+      setRetainedSessions([]);
     }
   }
 
@@ -849,6 +883,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setRunning(false);
       setPauseRequested(false);
       void refreshResumableSessions();
+      void refreshRetainedSessions();
       void refreshScopeReviews();
       void refreshScopePlanReviews();
       void refreshPlanReviews();
@@ -901,6 +936,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setRunning(false);
       setPauseRequested(false);
       void refreshResumableSessions();
+      void refreshRetainedSessions();
       void refreshScopeReviews();
       void refreshScopePlanReviews();
       void refreshPlanReviews();
@@ -920,6 +956,42 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     } catch (value) {
       setPauseRequested(false);
       setError(value instanceof Error ? value.message : t("research.error"));
+    }
+  }
+
+  async function prepareFollowUpTurn(session: ResearchRetainedSessionV1): Promise<void> {
+    const question = followUpQuestions[session.sessionId]?.trim();
+    if (!question || !port?.prepareFollowUpTurn) return;
+    setError(null);
+    setActionStatus("");
+    setFollowUpActionId(session.sessionId);
+    try {
+      const outcome = await port.prepareFollowUpTurn({
+        sessionId: session.sessionId,
+        revision: session.revision,
+        question,
+      });
+      setFollowUpQuestions((current) => ({ ...current, [session.sessionId]: "" }));
+      if (outcome.kind === "plan_review") {
+        ++planReviewListingGeneration.current;
+        setPlanReviews((current) => [
+          outcome.review,
+          ...current.filter((candidate) => candidate.sessionId !== outcome.review.sessionId),
+        ]);
+      } else {
+        setResumableSessions((current) => [
+          outcome.session,
+          ...current.filter((candidate) => candidate.sessionId !== outcome.session.sessionId),
+        ]);
+      }
+      setActionStatus(t("research.followUp.prepared"));
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setFollowUpActionId(null);
+      void refreshRetainedSessions();
+      void refreshResumableSessions();
+      void refreshPlanReviews();
     }
   }
 
@@ -1939,6 +2011,62 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                       {deciding ? t("research.planReview.deciding") : t("research.planReview.revise")}
                     </Button>
                   </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {retainedSessions.length > 0 && (
+        <Card data-testid="research-retained-sessions">
+          <CardHeader>
+            <CardTitle>{t("research.retainedSessions")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {retainedSessions.map((session, index) => {
+              const preparing = followUpActionId === session.sessionId;
+              const followUpQuestion = followUpQuestions[session.sessionId] ?? "";
+              return (
+                <div
+                  key={session.sessionId}
+                  className="rounded-md border p-2 text-xs"
+                  data-testid={`research-retained-session-${index}`}
+                >
+                  <p className="m-0 font-medium">{session.question}</p>
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.resumeScope", {
+                      jira: session.scope.jiraProjectKeys.join(", ") || "—",
+                      confluence: session.scope.confluenceSpaceKeys.join(", ") || "—",
+                      status: session.status,
+                    })}
+                  </p>
+                  <Label className="mt-2 block" htmlFor={`research-follow-up-question-${index}`}>
+                    {t("research.followUp.question")}
+                  </Label>
+                  <textarea
+                    id={`research-follow-up-question-${index}`}
+                    className="mt-1 w-full rounded-md border bg-background p-2 text-xs"
+                    rows={3}
+                    maxLength={10_000}
+                    disabled={running || followUpActionId !== null}
+                    data-testid={`research-follow-up-question-${index}`}
+                    placeholder={t("research.followUp.placeholder")}
+                    value={followUpQuestion}
+                    onChange={(event) => setFollowUpQuestions((current) => ({
+                      ...current,
+                      [session.sessionId]: event.target.value,
+                    }))}
+                  />
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    disabled={running || followUpActionId !== null || !followUpQuestion.trim()}
+                    data-testid={`research-follow-up-prepare-${index}`}
+                    onClick={() => void prepareFollowUpTurn(session)}
+                  >
+                    {preparing ? t("research.followUp.preparing") : t("research.followUp.prepare")}
+                  </Button>
                 </div>
               );
             })}

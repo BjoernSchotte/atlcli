@@ -736,6 +736,11 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchRetainedSessionV1
+export declare function projectResearchRetainedSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+}): ResearchRetainedSessionV1 | undefined;
+
 // export: projectResearchSessionClarificationReviewV1
 export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
 
@@ -1172,6 +1177,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
 
 // export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
 export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
+
+// export: RESEARCH_RETAINED_SESSION_SCHEMA_V1
+export declare const RESEARCH_RETAINED_SESSION_SCHEMA_V1: "atlcli.research-retained-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -2755,6 +2763,18 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    listRetainedSessions?(): Promise<import("./session.js").ResearchRetainedSessionV1[]>;
+    prepareFollowUpTurn?(input: {
+        sessionId: string;
+        revision: number;
+        question: string;
+    }): Promise<{
+        kind: "plan_review";
+        review: import("./session-plan-review.js").ResearchSessionPlanReviewV1;
+    } | {
+        kind: "resumable";
+        session: import("./session.js").ResearchResumableSessionV1;
+    }>;
     requestSteering?(input: {
         sessionId: string;
         revision: number;
@@ -3093,6 +3113,21 @@ export interface ResearchResumableSessionV1 {
     revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
+
+// export: ResearchRetainedSessionV1
+export interface ResearchRetainedSessionV1 {
+    schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "complete" | "cancelled" | "failed">;
     updatedAt: string;
     question: string;
     scope: {
@@ -5556,6 +5591,11 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchRetainedSessionV1
+export declare function projectResearchRetainedSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+}): ResearchRetainedSessionV1 | undefined;
+
 // export: projectResearchSessionClarificationReviewV1
 export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
 
@@ -5992,6 +6032,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
 
 // export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
 export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
+
+// export: RESEARCH_RETAINED_SESSION_SCHEMA_V1
+export declare const RESEARCH_RETAINED_SESSION_SCHEMA_V1: "atlcli.research-retained-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -7575,6 +7618,18 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    listRetainedSessions?(): Promise<import("./session.js").ResearchRetainedSessionV1[]>;
+    prepareFollowUpTurn?(input: {
+        sessionId: string;
+        revision: number;
+        question: string;
+    }): Promise<{
+        kind: "plan_review";
+        review: import("./session-plan-review.js").ResearchSessionPlanReviewV1;
+    } | {
+        kind: "resumable";
+        session: import("./session.js").ResearchResumableSessionV1;
+    }>;
     requestSteering?(input: {
         sessionId: string;
         revision: number;
@@ -7913,6 +7968,21 @@ export interface ResearchResumableSessionV1 {
     revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
+
+// export: ResearchRetainedSessionV1
+export interface ResearchRetainedSessionV1 {
+    schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "complete" | "cancelled" | "failed">;
     updatedAt: string;
     question: string;
     scope: {
@@ -10374,6 +10444,11 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchRetainedSessionV1
+export declare function projectResearchRetainedSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+}): ResearchRetainedSessionV1 | undefined;
+
 // export: projectResearchSessionClarificationReviewV1
 export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
 
@@ -10810,6 +10885,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
 
 // export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
 export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
+
+// export: RESEARCH_RETAINED_SESSION_SCHEMA_V1
+export declare const RESEARCH_RETAINED_SESSION_SCHEMA_V1: "atlcli.research-retained-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -12393,6 +12471,18 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    listRetainedSessions?(): Promise<import("./session.js").ResearchRetainedSessionV1[]>;
+    prepareFollowUpTurn?(input: {
+        sessionId: string;
+        revision: number;
+        question: string;
+    }): Promise<{
+        kind: "plan_review";
+        review: import("./session-plan-review.js").ResearchSessionPlanReviewV1;
+    } | {
+        kind: "resumable";
+        session: import("./session.js").ResearchResumableSessionV1;
+    }>;
     requestSteering?(input: {
         sessionId: string;
         revision: number;
@@ -12731,6 +12821,21 @@ export interface ResearchResumableSessionV1 {
     revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
+
+// export: ResearchRetainedSessionV1
+export interface ResearchRetainedSessionV1 {
+    schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "complete" | "cancelled" | "failed">;
     updatedAt: string;
     question: string;
     scope: {
@@ -15378,6 +15483,11 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchRetainedSessionV1
+export declare function projectResearchRetainedSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+}): ResearchRetainedSessionV1 | undefined;
+
 // export: projectResearchSessionClarificationReviewV1
 export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
 
@@ -15834,6 +15944,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
 
 // export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
 export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
+
+// export: RESEARCH_RETAINED_SESSION_SCHEMA_V1
+export declare const RESEARCH_RETAINED_SESSION_SCHEMA_V1: "atlcli.research-retained-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -17465,6 +17578,18 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    listRetainedSessions?(): Promise<import("./session.js").ResearchRetainedSessionV1[]>;
+    prepareFollowUpTurn?(input: {
+        sessionId: string;
+        revision: number;
+        question: string;
+    }): Promise<{
+        kind: "plan_review";
+        review: import("./session-plan-review.js").ResearchSessionPlanReviewV1;
+    } | {
+        kind: "resumable";
+        session: import("./session.js").ResearchResumableSessionV1;
+    }>;
     requestSteering?(input: {
         sessionId: string;
         revision: number;
@@ -17842,6 +17967,21 @@ export interface ResearchResumableSessionV1 {
     revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
+
+// export: ResearchRetainedSessionV1
+export interface ResearchRetainedSessionV1 {
+    schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "complete" | "cancelled" | "failed">;
     updatedAt: string;
     question: string;
     scope: {
@@ -20586,6 +20726,11 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchRetainedSessionV1
+export declare function projectResearchRetainedSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+}): ResearchRetainedSessionV1 | undefined;
+
 // export: projectResearchSessionClarificationReviewV1
 export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
 
@@ -21042,6 +21187,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
 
 // export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
 export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
+
+// export: RESEARCH_RETAINED_SESSION_SCHEMA_V1
+export declare const RESEARCH_RETAINED_SESSION_SCHEMA_V1: "atlcli.research-retained-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -22673,6 +22821,18 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    listRetainedSessions?(): Promise<import("./session.js").ResearchRetainedSessionV1[]>;
+    prepareFollowUpTurn?(input: {
+        sessionId: string;
+        revision: number;
+        question: string;
+    }): Promise<{
+        kind: "plan_review";
+        review: import("./session-plan-review.js").ResearchSessionPlanReviewV1;
+    } | {
+        kind: "resumable";
+        session: import("./session.js").ResearchResumableSessionV1;
+    }>;
     requestSteering?(input: {
         sessionId: string;
         revision: number;
@@ -23050,6 +23210,21 @@ export interface ResearchResumableSessionV1 {
     revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
+
+// export: ResearchRetainedSessionV1
+export interface ResearchRetainedSessionV1 {
+    schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "complete" | "cancelled" | "failed">;
     updatedAt: string;
     question: string;
     scope: {
@@ -25432,6 +25607,18 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    listRetainedSessions?(): Promise<import("./session.js").ResearchRetainedSessionV1[]>;
+    prepareFollowUpTurn?(input: {
+        sessionId: string;
+        revision: number;
+        question: string;
+    }): Promise<{
+        kind: "plan_review";
+        review: import("./session-plan-review.js").ResearchSessionPlanReviewV1;
+    } | {
+        kind: "resumable";
+        session: import("./session.js").ResearchResumableSessionV1;
+    }>;
     requestSteering?(input: {
         sessionId: string;
         revision: number;
@@ -27032,6 +27219,11 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchRetainedSessionV1
+export declare function projectResearchRetainedSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+}): ResearchRetainedSessionV1 | undefined;
+
 // export: projectResearchSessionClarificationReviewV1
 export declare function projectResearchSessionClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionClarificationReviewV1 | undefined;
 
@@ -27488,6 +27680,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
 
 // export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
 export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
+
+// export: RESEARCH_RETAINED_SESSION_SCHEMA_V1
+export declare const RESEARCH_RETAINED_SESSION_SCHEMA_V1: "atlcli.research-retained-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -29119,6 +29314,18 @@ export interface ResearchPort {
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
+    listRetainedSessions?(): Promise<import("./session.js").ResearchRetainedSessionV1[]>;
+    prepareFollowUpTurn?(input: {
+        sessionId: string;
+        revision: number;
+        question: string;
+    }): Promise<{
+        kind: "plan_review";
+        review: import("./session-plan-review.js").ResearchSessionPlanReviewV1;
+    } | {
+        kind: "resumable";
+        session: import("./session.js").ResearchResumableSessionV1;
+    }>;
     requestSteering?(input: {
         sessionId: string;
         revision: number;
@@ -29496,6 +29703,21 @@ export interface ResearchResumableSessionV1 {
     revision: number;
     turnId: string;
     status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "waiting_steering" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
+
+// export: ResearchRetainedSessionV1
+export interface ResearchRetainedSessionV1 {
+    schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "complete" | "cancelled" | "failed">;
     updatedAt: string;
     question: string;
     scope: {

@@ -686,6 +686,77 @@ describe("portable Research screen", () => {
       .toContain("The page explicitly links the issue.");
   });
 
+  it("prepares a terminal-session follow-up without starting a provider run", async () => {
+    const retained = {
+      schema: "atlcli.research-retained-session/v1" as const,
+      sessionId: "research-session:terminal",
+      revision: 12,
+      turnId: "research-turn:terminal",
+      status: "complete" as const,
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      question: "What did the first research turn establish?",
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+    };
+    const resumed = {
+      schema: "atlcli.research-resumable-session/v1" as const,
+      sessionId: retained.sessionId,
+      revision: 16,
+      turnId: "research-turn:follow-up",
+      status: "running" as const,
+      updatedAt: "2026-08-02T12:01:00.000Z",
+      question: "Which evidence is still missing?",
+      scope: retained.scope,
+    };
+    const prepared: Array<{ sessionId: string; revision: number; question: string }> = [];
+    let retainedListing = 0;
+    let resumables: typeof resumed[] = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      listRetainedSessions: async () => (++retainedListing === 1 ? [retained] : []),
+      listResumableSessions: async () => resumables,
+      prepareFollowUpTurn: async (input) => {
+        prepared.push(input);
+        resumables = [resumed];
+        return { kind: "resumable", session: resumed };
+      },
+      run: async () => {
+        throw new Error("A follow-up preparation must not start the provider.");
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    expect(dom.find("research-retained-sessions").textContent)
+      .toContain("What did the first research turn establish?");
+    await dom.setValue("research-follow-up-question-0", resumed.question);
+    await dom.click("research-follow-up-prepare-0");
+    await dom.flush();
+
+    expect(prepared).toEqual([{
+      sessionId: retained.sessionId,
+      revision: retained.revision,
+      question: resumed.question,
+    }]);
+    expect(dom.find("research-resumable-sessions").textContent).toContain(resumed.question);
+    expect(dom.find("research-action-status").textContent)
+      .toContain("Follow-up prepared. Review its plan or resume it when ready.");
+  });
+
   it("stores one bounded steering instruction from a paused durable session", async () => {
     const resumable = {
       schema: "atlcli.research-resumable-session/v1" as const,

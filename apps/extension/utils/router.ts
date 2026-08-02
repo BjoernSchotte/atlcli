@@ -32,6 +32,7 @@ import type {
 } from "./research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchRetainedSessionV1,
   ResearchClarificationReviewResolutionV1,
   ResearchSessionClarificationReviewV1,
   ResearchScopeClarificationReviewResolutionV1,
@@ -85,6 +86,16 @@ export interface RouterDeps {
   listResumableResearchSessions?: (
     windowId: number,
   ) => Promise<ResearchResumableSessionV1[]>;
+  listRetainedResearchSessions?: (
+    windowId: number,
+  ) => Promise<ResearchRetainedSessionV1[]>;
+  prepareResearchFollowUpTurn?: (
+    windowId: number,
+    action: { sessionId: string; revision: number; question: string },
+  ) => Promise<
+    | { kind: "plan_review"; review: ResearchSessionPlanReviewV1 }
+    | { kind: "resumable"; session: ResearchResumableSessionV1 }
+  >;
   requestResearchSteering?: (
     windowId: number,
     action: ResearchSessionSteeringActionRequest,
@@ -322,6 +333,54 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:list-resumable-sessions-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:list-retained-sessions": {
+      if (!deps.listRetainedResearchSessions) {
+        return {
+          kind: "research:list-retained-sessions-result",
+          ok: false,
+          code: "provider-error",
+          error: "Retained research session listing is not configured.",
+        };
+      }
+      try {
+        const sessions = await deps.listRetainedResearchSessions(msg.windowId);
+        return { kind: "research:list-retained-sessions-result", ok: true, sessions };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:list-retained-sessions-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:prepare-follow-up-turn": {
+      if (!deps.prepareResearchFollowUpTurn) {
+        return {
+          kind: "research:prepare-follow-up-turn-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research follow-up preparation is not configured.",
+        };
+      }
+      try {
+        const outcome = await deps.prepareResearchFollowUpTurn(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          question: msg.question,
+        });
+        return { kind: "research:prepare-follow-up-turn-result", ok: true, outcome };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:prepare-follow-up-turn-result",
           ok: false,
           code: classified.code,
           error: classified.message,

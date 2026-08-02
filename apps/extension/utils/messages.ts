@@ -26,6 +26,7 @@ import type {
 } from "./research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchRetainedSessionV1,
   ResearchClarificationReviewResolutionV1,
   ResearchScopeClarificationReviewResolutionV1,
   ResearchSessionClarificationReviewV1,
@@ -208,6 +209,14 @@ export type ExtRequest =
       windowId: number;
     }
   | { kind: "research:list-resumable-sessions"; windowId: number }
+  | { kind: "research:list-retained-sessions"; windowId: number }
+  | {
+      kind: "research:prepare-follow-up-turn";
+      windowId: number;
+      sessionId: string;
+      revision: number;
+      question: string;
+    }
   | ({ kind: "research:steer-session"; windowId: number } & ResearchSessionSteeringActionRequest)
   | ({ kind: "research:delete-session"; windowId: number } & ResearchSessionDeletionActionRequest)
   | { kind: "research:list-scope-reviews"; windowId: number }
@@ -292,6 +301,30 @@ export type ExtResponse =
     }
   | {
       kind: "research:list-resumable-sessions-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:list-retained-sessions-result";
+      ok: true;
+      sessions: ResearchRetainedSessionV1[];
+    }
+  | {
+      kind: "research:list-retained-sessions-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:prepare-follow-up-turn-result";
+      ok: true;
+      outcome:
+        | { kind: "plan_review"; review: ResearchSessionPlanReviewV1 }
+        | { kind: "resumable"; session: ResearchResumableSessionV1 };
+    }
+  | {
+      kind: "research:prepare-follow-up-turn-result";
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -642,6 +675,8 @@ export interface ResponseMap {
   "research:run": Extract<ExtResponse, { kind: "research:run-result" }>;
   "research:resume": Extract<ExtResponse, { kind: "research:resume-result" }>;
   "research:list-resumable-sessions": Extract<ExtResponse, { kind: "research:list-resumable-sessions-result" }>;
+  "research:list-retained-sessions": Extract<ExtResponse, { kind: "research:list-retained-sessions-result" }>;
+  "research:prepare-follow-up-turn": Extract<ExtResponse, { kind: "research:prepare-follow-up-turn-result" }>;
   "research:steer-session": Extract<ExtResponse, { kind: "research:steer-session-result" }>;
   "research:delete-session": Extract<ExtResponse, { kind: "research:delete-session-result" }>;
   "research:list-scope-reviews": Extract<ExtResponse, { kind: "research:list-scope-reviews-result" }>;
@@ -707,6 +742,17 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   }
   if (kind === "research:list-resumable-sessions") {
     return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:list-retained-sessions") {
+    return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:prepare-follow-up-turn") {
+    const action = value as { windowId?: unknown; sessionId?: unknown; revision?: unknown; question?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "sessionId", "revision", "question"]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      typeof action.question === "string" && action.question.trim().length > 0 && action.question.length <= 10_000;
   }
   if (kind === "research:steer-session") {
     const action = value as Partial<ResearchSessionSteeringActionRequest & { windowId: unknown }>;

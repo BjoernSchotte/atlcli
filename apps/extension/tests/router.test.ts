@@ -360,6 +360,72 @@ describe("routeMessage (pure router)", () => {
     });
   });
 
+  it("lists terminal sessions and prepares a revision-fenced follow-up without caller scope", async () => {
+    const sessions = [{
+      schema: "atlcli.research-retained-session/v1" as const,
+      sessionId: "research-session:terminal",
+      revision: 12,
+      turnId: "research-turn:terminal",
+      status: "complete" as const,
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      question: "What did the original research establish?",
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+    }];
+    expect(await routeMessage({
+      kind: "research:list-retained-sessions",
+      windowId: 7,
+    }, {
+      ...okDeps,
+      listRetainedResearchSessions: async (windowId) => {
+        expect(windowId).toBe(7);
+        return sessions;
+      },
+    })).toEqual({
+      kind: "research:list-retained-sessions-result",
+      ok: true,
+      sessions,
+    });
+
+    const request = {
+      kind: "research:prepare-follow-up-turn" as const,
+      windowId: 7,
+      sessionId: sessions[0]!.sessionId,
+      revision: sessions[0]!.revision,
+      question: "Which remaining evidence should be checked?",
+    };
+    expect(await routeMessage(request, {
+      ...okDeps,
+      prepareResearchFollowUpTurn: async (windowId, action) => {
+        expect(windowId).toBe(7);
+        expect(action).toEqual({
+          sessionId: sessions[0]!.sessionId,
+          revision: sessions[0]!.revision,
+          question: request.question,
+        });
+        return {
+          kind: "resumable" as const,
+          session: {
+            schema: "atlcli.research-resumable-session/v1" as const,
+            sessionId: sessions[0]!.sessionId,
+            revision: 16,
+            turnId: "research-turn:follow-up",
+            status: "running" as const,
+            updatedAt: sessions[0]!.updatedAt,
+            question: request.question,
+            scope: sessions[0]!.scope,
+          },
+        };
+      },
+    })).toMatchObject({
+      kind: "research:prepare-follow-up-turn-result",
+      ok: true,
+      outcome: { kind: "resumable", session: { turnId: "research-turn:follow-up" } },
+    });
+    expect(JSON.stringify(request)).not.toContain("scope");
+    expect(JSON.stringify(request)).not.toContain("policy");
+    expect(JSON.stringify(request)).not.toContain("limits");
+  });
+
   it("routes revision-fenced steering without caller graph authority", async () => {
     const request = {
       kind: "research:steer-session" as const,
