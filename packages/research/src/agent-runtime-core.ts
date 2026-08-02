@@ -69,8 +69,10 @@ import {
   RESEARCH_COMPOSITION_REASONS_V1,
   acceptResearchGraphProposalV1,
   assertResearchGraphExecutableV1,
+  reviseResearchGraphSelectionV1,
   reduceResearchGraphV1,
   type ResearchGraphRoleV1,
+  type ResearchGraphRevisionProposalV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
 import type { ResearchRetrievalAssessmentV1 } from "./retrieval-assessment.js";
@@ -466,6 +468,115 @@ export function createResearchGraphProposalPtcTool(
   }, {
     name: "research_graph_propose",
     description: "Propose one body-free task graph inside the approved host envelope before any research task starts.",
+    schema,
+  });
+}
+
+export const RESEARCH_GRAPH_REVISION_ACCEPTED_SCHEMA_V1 =
+  "atlcli.accepted-research-graph-revision/v1" as const;
+
+/** A compact host projection after a persisted graph revision. */
+export interface ResearchAcceptedGraphRevisionV1 {
+  schema: typeof RESEARCH_GRAPH_REVISION_ACCEPTED_SCHEMA_V1;
+  graphRevision: number;
+  addedNodeIds: string[];
+  prunedNodeIds: string[];
+  selectedRoleIds: ResearchGraphRoleV1[];
+}
+
+function projectAcceptedGraphRevisionV1(
+  previous: ResearchGraphV1,
+  next: ResearchGraphV1,
+): ResearchAcceptedGraphRevisionV1 {
+  const previousNodeIds = new Set(previous.nodes.map((node) => node.id));
+  return {
+    schema: RESEARCH_GRAPH_REVISION_ACCEPTED_SCHEMA_V1,
+    graphRevision: next.revision,
+    addedNodeIds: next.nodes
+      .filter((node) => !previousNodeIds.has(node.id))
+      .map((node) => node.id),
+    prunedNodeIds: next.nodes
+      .filter((node) => node.status === "pruned" && previous.nodes.find((previousNode) =>
+        previousNode.id === node.id,
+      )?.status !== "pruned")
+      .map((node) => node.id),
+    selectedRoleIds: next.roleDecisions
+      .filter((decision) => decision.decision === "selected")
+      .map((decision) => decision.roleId),
+  };
+}
+
+/**
+ * Accept one supervisor-authored graph revision only at a host checkpoint.
+ * The revision can select/prioritize/close catalog nodes but cannot carry
+ * model-selected evidence, gaps, scope, grants, or budget values. The host
+ * writes its causal identifier projection in the same durable CAS update.
+ */
+export function createResearchGraphRevisionPtcTool(
+  catalogGraph: ResearchGraphV1,
+  options: {
+    activeGraph: () => ResearchGraphV1 | undefined;
+    canRevise: () => boolean;
+    evidenceIds: () => string[];
+    gapIds: () => string[];
+    reason: () => ResearchRetrievalAssessmentV1["reason"];
+    apply: (input: {
+      graph: ResearchGraphV1;
+      evidenceIds: string[];
+      gapIds: string[];
+      reason: ResearchRetrievalAssessmentV1["reason"];
+    }) => Promise<ResearchGraphV1>;
+    onAccepted?: (projection: ResearchAcceptedGraphRevisionV1) => void;
+  },
+): DynamicStructuredTool {
+  const nodeSchema = z.object({
+    nodeId: z.string().max(140),
+    dependencies: z.array(z.string().max(140)).max(9),
+    reasonCodes: z.array(z.enum(RESEARCH_COMPOSITION_REASONS_V1)).min(1).max(4),
+    priority: z.number().int().min(0).max(100),
+  }).strict();
+  const schema = z.object({
+    basedOnBriefRevision: z.number().int().positive(),
+    basedOnGraphRevision: z.number().int().positive(),
+    nodes: z.array(nodeSchema).min(2).max(9),
+    prune: z.array(z.object({
+      nodeId: z.string().max(140),
+      reasonCode: z.enum(RESEARCH_COMPOSITION_REASONS_V1),
+    }).strict()).max(8),
+  }).strict();
+  return tool(async (proposal) => {
+    const previous = options.activeGraph();
+    if (!previous || !options.canRevise()) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The supervisor cannot revise a graph outside a durable retrieval checkpoint.",
+      );
+    }
+    const revised = reviseResearchGraphSelectionV1(catalogGraph, previous, {
+      schema: "atlcli.research-graph-revision-proposal/v1",
+      ...proposal,
+    } satisfies ResearchGraphRevisionProposalV1);
+    const evidenceIds = options.evidenceIds();
+    const gapIds = options.gapIds();
+    const reason = options.reason();
+    const persisted = await options.apply({
+      graph: revised,
+      evidenceIds,
+      gapIds,
+      reason,
+    });
+    if (JSON.stringify(persisted) !== JSON.stringify(revised)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The durable graph revision does not match the host-validated revision.",
+      );
+    }
+    const projection = projectAcceptedGraphRevisionV1(previous, persisted);
+    options.onAccepted?.(projection);
+    return JSON.stringify(projection);
+  }, {
+    name: "research_graph_revise",
+    description: "At a durable retrieval checkpoint, revise the selected graph only from the original approved catalog. Evidence, gaps, scope, grants, and budgets remain host-owned.",
     schema,
   });
 }

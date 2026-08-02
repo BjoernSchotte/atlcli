@@ -6,11 +6,12 @@ import {
   buildLegacyResearchSystemPromptV1,
   createOneShotSupervisorEvalMiddleware,
   createResearchGraphProposalPtcTool,
+  createResearchGraphRevisionPtcTool,
   createResearchRetrievalCheckpointPtcTool,
   hostSearchCoverageLimitationsV1,
 } from "./agent-runtime-core.js";
 import { createResearchBriefV1 } from "./brief.js";
-import { composeResearchGraphV1 } from "./graph.js";
+import { acceptResearchGraphProposalV1, composeResearchGraphV1 } from "./graph.js";
 import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
 import {
   RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
@@ -350,6 +351,138 @@ describe("durable retrieval checkpoint PTC", () => {
       reason: "no_ranked_candidates",
     });
     expect(input).toEqual(expect.objectContaining({ issueContinuation: false }));
+  });
+});
+
+describe("durable graph revision PTC", () => {
+  test("persists a host-validated catalog revision without exposing causal evidence or gaps", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:revision-tool",
+      turnId: "research-turn:revision-tool",
+      objective: "Which Confluence pages are related to Jira tickets?",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["DOCS"],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const catalog = composeResearchGraphV1(brief);
+    const initialIds = new Set([
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ]);
+    const initial = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      basedOnBriefRevision: catalog.basedOnBriefRevision,
+      basedOnGraphRevision: catalog.revision,
+      nodes: catalog.nodes.filter((node) => initialIds.has(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => initialIds.has(dependency)),
+        reasonCodes: node.reasonCodes,
+      })),
+    });
+    const revisedIds = new Set([...initialIds, "research-node:cross-product-join"]);
+    const revision = {
+      basedOnBriefRevision: initial.basedOnBriefRevision,
+      basedOnGraphRevision: initial.revision,
+      nodes: catalog.nodes.filter((node) => revisedIds.has(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => revisedIds.has(dependency)),
+        reasonCodes: node.reasonCodes,
+        priority: node.id === "research-node:cross-product-join" ? 71 : node.priority,
+      })),
+      prune: [],
+    };
+    let persistedInput: unknown;
+    const revisionTool = createResearchGraphRevisionPtcTool(catalog, {
+      activeGraph: () => initial,
+      canRevise: () => true,
+      evidenceIds: () => ["evidence:host-coverage-1"],
+      gapIds: () => ["gap:host-coverage-1"],
+      reason: () => "coverage_gap",
+      apply: async (input) => {
+        persistedInput = input;
+        return input.graph;
+      },
+    });
+
+    const projected = JSON.parse(await revisionTool.invoke(revision));
+
+    expect(persistedInput).toEqual(expect.objectContaining({
+      evidenceIds: ["evidence:host-coverage-1"],
+      gapIds: ["gap:host-coverage-1"],
+      reason: "coverage_gap",
+      graph: expect.objectContaining({ revision: initial.revision + 1 }),
+    }));
+    expect(projected).toEqual(expect.objectContaining({
+      schema: "atlcli.accepted-research-graph-revision/v1",
+      graphRevision: initial.revision + 1,
+      addedNodeIds: ["research-node:cross-product-join"],
+      prunedNodeIds: [],
+    }));
+    expect(projected.selectedRoleIds).toEqual(expect.arrayContaining([
+      "focused-researcher",
+      "document-distiller",
+      "synthesizer",
+    ]));
+    expect(JSON.stringify(projected)).not.toContain("evidence:host-coverage-1");
+    expect(JSON.stringify(projected)).not.toContain("gap:host-coverage-1");
+  });
+
+  test("rejects model-supplied host state and revisions outside a checkpoint", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:revision-reject",
+      turnId: "research-turn:revision-reject",
+      objective: "Find one Jira ticket.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const catalog = composeResearchGraphV1(brief);
+    const active = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      basedOnBriefRevision: catalog.basedOnBriefRevision,
+      basedOnGraphRevision: catalog.revision,
+      nodes: catalog.nodes.map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies,
+        reasonCodes: node.reasonCodes,
+      })),
+    });
+    const proposal = {
+      basedOnBriefRevision: active.basedOnBriefRevision,
+      basedOnGraphRevision: active.revision,
+      nodes: active.nodes.map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies,
+        reasonCodes: node.reasonCodes,
+        priority: node.priority,
+      })),
+      prune: [],
+    };
+    const closed = createResearchGraphRevisionPtcTool(catalog, {
+      activeGraph: () => active,
+      canRevise: () => false,
+      evidenceIds: () => [],
+      gapIds: () => [],
+      reason: () => "no_ranked_candidates",
+      apply: async () => { throw new Error("must not persist"); },
+    });
+
+    await expect(closed.invoke(proposal)).rejects.toThrow("durable retrieval checkpoint");
+    await expect(closed.invoke({ ...proposal, evidenceIds: ["evidence:forged"] }))
+      .rejects.toThrow();
   });
 });
 
