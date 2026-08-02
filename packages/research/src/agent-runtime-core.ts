@@ -67,14 +67,6 @@ import {
   type ResearchOutlineV1,
 } from "./outline.js";
 import {
-  WorkspaceResearchMessageLineageStoreV1,
-  type ResearchMessageLineageEventV1,
-} from "./message-lineage.js";
-import {
-  buildResearchTurnContextV1,
-  renderResearchTurnContextV1,
-} from "./turn-context.js";
-import {
   normalizeResearchPacketModelBodyV2,
   normalizeResearchPacketReferenceModelBodyV2,
 } from "./packet-v2-normalizer.js";
@@ -1569,12 +1561,10 @@ const disabledMiddleware = [
 ];
 
 /*
- * DeepAgentsJS' standard summarizer is retained for durable deep runs, but it
- * must never become the sole copy of the conversation it compacts.  This
- * wrapper deliberately has the same middleware identity as the native
- * SummarizationMiddleware: createDeepAgent therefore replaces its default
- * instance with this wrapper, and the wrapper delegates to the exact native
- * implementation after archiving the complete input message sequence.
+ * Keep the standard DeepAgentsJS summarizer as the single conversation
+ * compaction mechanism. Its wrapper has only one host-specific job: remove a
+ * history-file instruction that would be false in our capability-scoped
+ * virtual filesystem. Checkpointer and native backend own all persistence.
  */
 const RESEARCH_NATIVE_SUMMARIZATION_TRIGGER_V1 = [
   { type: "messages" as const, value: 48 },
@@ -1606,14 +1596,6 @@ function textFromResearchSummaryValue(value: unknown): string | undefined {
   return undefined;
 }
 
-function serializedResearchMessageV1(value: unknown): string {
-  const serialized = JSON.stringify(value);
-  if (typeof serialized !== "string") {
-    throw new Error("A native summarization message cannot be durably serialized.");
-  }
-  return serialized;
-}
-
 function nativeSummarizationTextV1(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const update = (result as { update?: unknown }).update;
@@ -1626,18 +1608,6 @@ function nativeSummarizationTextV1(result: unknown): string | undefined {
   if (!content) return undefined;
   const enclosedSummary = content.match(/<summary>\s*([\s\S]*?)\s*<\/summary>/i)?.[1]?.trim();
   return enclosedSummary || content.replaceAll(/\/conversation_history\/[^\s)]+/g, "[host-private history unavailable]");
-}
-
-function nativeSummarizationCutoffIndexV1(result: unknown): number | undefined {
-  if (!result || typeof result !== "object") return undefined;
-  const update = (result as { update?: unknown }).update;
-  if (!update || typeof update !== "object") return undefined;
-  const event = (update as { _summarizationEvent?: unknown })._summarizationEvent;
-  if (!event || typeof event !== "object") return undefined;
-  const cutoffIndex = (event as { cutoffIndex?: unknown }).cutoffIndex;
-  return typeof cutoffIndex === "number" && Number.isSafeInteger(cutoffIndex) && cutoffIndex > 0
-    ? cutoffIndex
-    : undefined;
 }
 
 function replaceNativeSummarizationMessageV1(result: unknown, summary: string): void {
@@ -1669,11 +1639,6 @@ export function createResearchDurableSummarizationMiddleware(
   options: {
     workspace: ResearchWorkspace;
     model: BaseChatModel;
-    archiveMessages: (messages: readonly unknown[]) => Promise<ResearchMessageLineageEventV1[]>;
-    recordSummary: (input: {
-      summary: string;
-      sourceEventIds: readonly string[];
-    }) => Promise<void>;
   },
 ): AgentMiddleware {
   const native = runtime.createSummarizationMiddleware({
@@ -1683,61 +1648,20 @@ export function createResearchDurableSummarizationMiddleware(
     keep: RESEARCH_NATIVE_SUMMARIZATION_KEEP_V1,
     historyPathPrefix: RESEARCH_DEEPAGENT_SUMMARIZATION_HISTORY_PREFIX_V1,
     summaryPrompt: RESEARCH_NATIVE_SUMMARIZATION_PROMPT_V1,
-    // Deliberately omit truncateArgsSettings. Full raw messages are archived
-    // before native compaction, and never truncated in the evidence journal.
+    // Deliberately omit truncateArgsSettings. The native checkpointer retains
+    // canonical thread state while this middleware bounds model context.
   });
   const nativeWrapModelCall = native.wrapModelCall;
   if (!nativeWrapModelCall) {
     throw new Error("DeepAgentsJS did not expose native summarization model middleware.");
   }
-  let previousMessagePayloads: string[] = [];
-  let previousMessageEvents: ResearchMessageLineageEventV1[] = [];
-  let summarizedThrough = 0;
   return {
     ...native,
     async wrapModelCall(...args: Parameters<NonNullable<typeof nativeWrapModelCall>>) {
-      const [request] = args;
-      const messages = Array.isArray(request.messages) ? request.messages : [];
-      const payloads = messages.map(serializedResearchMessageV1);
-      let commonPrefixLength = 0;
-      while (commonPrefixLength < payloads.length &&
-        commonPrefixLength < previousMessagePayloads.length &&
-        payloads[commonPrefixLength] === previousMessagePayloads[commonPrefixLength]) {
-        commonPrefixLength += 1;
-      }
-      if (commonPrefixLength === 0 && previousMessagePayloads.length > 0) {
-        // A host checkpoint replaced active state. Its replacement messages
-        // start a fresh raw-tail projection, while older originals remain in
-        // the immutable archive and are reachable through the summary DAG.
-        summarizedThrough = 0;
-      }
-      const appendedMessages = messages.slice(commonPrefixLength);
-      const appendedEvents = appendedMessages.length === 0
-        ? []
-        : await options.archiveMessages(appendedMessages);
-      if (appendedEvents.length !== appendedMessages.length) {
-        throw new Error("The durable message archive did not retain every new native message.");
-      }
-      previousMessagePayloads = payloads;
-      previousMessageEvents = [
-        ...previousMessageEvents.slice(0, commonPrefixLength),
-        ...appendedEvents,
-      ];
       const result = await nativeWrapModelCall(...args);
       const summary = nativeSummarizationTextV1(result);
-      const cutoffIndex = nativeSummarizationCutoffIndexV1(result);
       if (summary) {
-        if (cutoffIndex === undefined || cutoffIndex > previousMessageEvents.length) {
-          throw new Error("Native summarization did not return a retained message cutoff.");
-        }
-        const sourceEvents = previousMessageEvents.slice(summarizedThrough, cutoffIndex);
-        if (sourceEvents.length === 0) return result;
         replaceNativeSummarizationMessageV1(result, summary);
-        await options.recordSummary({
-          summary,
-          sourceEventIds: sourceEvents.map((event) => event.id),
-        });
-        summarizedThrough = cutoffIndex;
       }
       return result;
     },
@@ -2311,16 +2235,6 @@ async function runResearchAgentWithBindings(
   const workspace = input.durableSession
     ? await input.durableSession.store.workspace(input.durableSession.sessionId)
     : input.workspace ?? createMemoryResearchWorkspace();
-  /*
-   * Opaque LangGraph checkpoints support execution recovery, but are not a
-   * searchable record of prior conversation. Keep complete originals in a
-   * private lineage archive before any middleware compacts active context.
-   */
-  const durableLineage = input.durableSession
-    ? new WorkspaceResearchMessageLineageStoreV1(workspace)
-    : undefined;
-  const durableLineageRunToken = durableLineage ? crypto.randomUUID() : undefined;
-  let durableLineageTail: Promise<void> = Promise.resolve();
   const durableDataWorkspaces = input.durableSession &&
     hasResearchSessionDataWorkspaceStoreV1(input.durableSession.store)
     ? await Promise.all([
@@ -2388,15 +2302,6 @@ async function runResearchAgentWithBindings(
   const usesCheckpointedSupervisor = Boolean(
     input.researchGraph && durableDispatchJournal && input.researchGraph.resolvedEffort === "deep",
   );
-  const durableLineageLinks = () => ({
-    ...(input.durableSession ? { turnId: input.durableSession.turnId } : {}),
-    ...(acceptedGraph?.revision ?? input.researchGraph?.revision
-      ? { graphRevision: acceptedGraph?.revision ?? input.researchGraph!.revision }
-      : {}),
-    ...(acceptedPacketsByTaskId.size > 0
-      ? { packetRefs: [...acceptedPacketsByTaskId.values()].map((packet) => packet.packetRef).sort() }
-      : {}),
-  });
   const emitEvent = (event: ResearchOneShotEventInputV1): void => {
     const emitted = {
       ...event,
@@ -2404,17 +2309,6 @@ async function runResearchAgentWithBindings(
       at: new Date(now()).toISOString(),
     } as ResearchOneShotEventV1;
     input.options?.onEvent?.(emitted);
-    if (durableLineage && durableLineageRunToken) {
-      const links = durableLineageLinks();
-      durableLineageTail = durableLineageTail.then(async () => {
-        await durableLineage.appendHostEvents({
-          batchId: `event:${durableLineageRunToken}:${emitted.seq}`,
-          createdAt: emitted.at,
-          links,
-          events: [emitted],
-        });
-      });
-    }
   };
   const emitProgress = (progress: ResearchProgressV1): void => {
     input.options?.onProgress?.(progress);
@@ -3725,14 +3619,6 @@ async function runResearchAgentWithBindings(
         },
       })
     : undefined;
-  const durableTurnContext = isDynamic && durableLineage && input.brief && input.researchGraph
-    ? await buildResearchTurnContextV1({
-        brief: input.brief,
-        graph: input.researchGraph,
-        ...(durableTurn ? { turn: durableTurn } : {}),
-        lineage: durableLineage,
-      })
-    : undefined;
   const dynamicSupervisorSystemPrompt = isDynamic
     ? [
         usesCheckpointedSupervisor
@@ -3741,45 +3627,12 @@ async function runResearchAgentWithBindings(
               ...(resumedSteering ? { steering: resumedSteering } : {}),
             })
           : buildDynamicSupervisorPrompt(input.researchGraph!),
-        ...(durableTurnContext ? [renderResearchTurnContextV1(durableTurnContext)] : []),
       ].join("\n\n")
     : undefined;
-  let durableModelInputArchiveSequence = 0;
-  const durableSummarizationMiddleware = isDynamic && durableLineage && durableLineageRunToken
+  const durableSummarizationMiddleware = isDynamic
     ? createResearchDurableSummarizationMiddleware(runtime, {
         workspace,
         model,
-        archiveMessages: async (messages) => {
-          const batchId = `model-input:${durableLineageRunToken}:${++durableModelInputArchiveSequence}`;
-          const createdAt = new Date(now()).toISOString();
-          let archived: ResearchMessageLineageEventV1[] | undefined;
-          durableLineageTail = durableLineageTail.then(async () => {
-            archived = await durableLineage.appendMessages({
-              batchId,
-              createdAt,
-              links: durableLineageLinks(),
-              messages,
-            });
-          });
-          await durableLineageTail;
-          return archived!;
-        },
-        recordSummary: async ({ summary, sourceEventIds }) => {
-          const createdAt = new Date(now()).toISOString();
-          durableLineageTail = durableLineageTail.then(async () => {
-            const parent = await durableLineage.latestSummary();
-            await durableLineage.appendSummary({
-              kind: "turn",
-              createdAt,
-              author: "model",
-              summary,
-              sourceEventIds,
-              ...(parent ? { parentSummaryIds: [parent.id] } : {}),
-              links: durableLineageLinks(),
-            });
-          });
-          await durableLineageTail;
-        },
       })
     : undefined;
   let structuredRepairAttempts = 0;
@@ -3841,16 +3694,6 @@ async function runResearchAgentWithBindings(
                   "Start the next QuickJS evaluator by calling researchRetrievalContinue with exactly the graphRevision, wave, and continuationId above. Do not propose a graph again.",
                 ].join("\n"),
               };
-            },
-            onBeforeCompact: async ({ checkpoint, messages }) => {
-              if (!durableLineage || !durableLineageRunToken) return;
-              await durableLineageTail;
-              await durableLineage.appendMessages({
-                batchId: `checkpoint:${durableLineageRunToken}:${checkpoint.id}`,
-                createdAt: new Date(now()).toISOString(),
-                links: durableLineageLinks(),
-                messages,
-              });
             },
           }),
           createOneShotSupervisorEvalMiddleware({
@@ -3959,21 +3802,6 @@ async function runResearchAgentWithBindings(
         signal: broker.signal,
       }
     );
-    if (durableLineage && durableLineageRunToken) {
-      if (!Array.isArray(result.messages)) {
-        throw new ResearchContractError(
-          "invalid-report",
-          "A durable research run did not return its complete supervisor transcript.",
-        );
-      }
-      await durableLineageTail;
-      await durableLineage.appendMessages({
-        batchId: `final:${durableLineageRunToken}`,
-        createdAt: new Date(now()).toISOString(),
-        links: durableLineageLinks(),
-        messages: result.messages,
-      });
-    }
     if (isDynamic && !acceptedGraph) {
       throw new ResearchContractError(
         "invalid-report",
@@ -4221,7 +4049,6 @@ async function runResearchAgentWithBindings(
     await durableDispatchJournal?.fail();
     throw error;
   } finally {
-    await durableLineageTail;
     input.options?.signal?.removeEventListener("abort", onAbort);
     broker.cancel();
     input.scopeCatalog?.broker.cancel();

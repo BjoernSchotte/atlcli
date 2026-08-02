@@ -37,7 +37,6 @@ import {
   createResearchScopeDiscoveryV1,
   createResearchScopeExpansionProposalV1,
 } from "./scope-discovery.js";
-import { WorkspaceResearchMessageLineageStoreV1 } from "./message-lineage.js";
 import { createMemoryResearchWorkspace } from "./workspace.js";
 
 const evalTool = tool(async () => "unused", {
@@ -365,37 +364,14 @@ describe("durable checkpoint transcript compaction", () => {
 });
 
 describe("durable native DeepAgentsJS summarization", () => {
-  test("archives complete messages before native compaction and records a non-authoritative lineage summary", async () => {
+  test("keeps the native summary while removing an unavailable history-file instruction", async () => {
     const workspace = createMemoryResearchWorkspace();
-    const lineage = new WorkspaceResearchMessageLineageStoreV1(workspace);
     const model = fakeModel().respond(new AIMessage("Synthetic operational summary."));
-    let archiveComplete = false;
-    let batch = 0;
     const middleware = createResearchDurableSummarizationMiddleware(
       { createSummarizationMiddleware },
       {
         workspace,
         model,
-        archiveMessages: async (messages) => {
-          const records = await lineage.appendMessages({
-            batchId: `test-model-input:${++batch}`,
-            createdAt: "2026-08-02T10:00:00.000Z",
-            messages,
-          });
-          archiveComplete = true;
-          return records;
-        },
-        recordSummary: async ({ summary, sourceEventIds }) => {
-          const parent = await lineage.latestSummary();
-          await lineage.appendSummary({
-            kind: "turn",
-            createdAt: "2026-08-02T10:00:01.000Z",
-            author: "model",
-            summary,
-            sourceEventIds,
-            ...(parent ? { parentSummaryIds: [parent.id] } : {}),
-          });
-        },
       },
     );
     const messages = Array.from(
@@ -412,7 +388,6 @@ describe("durable native DeepAgentsJS summarization", () => {
         tools: [],
       } as never,
       async () => {
-        expect(archiveComplete).toBe(true);
         return new AIMessage("Supervisor handler result.");
       },
     );
@@ -422,47 +397,19 @@ describe("durable native DeepAgentsJS summarization", () => {
     }).update?._summarizationEvent?.summaryMessage?.content;
     expect(String(activeSummary)).not.toContain("/conversation_history/");
     expect(String(activeSummary)).toContain("host-private conversation history");
-    await expect(lineage.describe()).resolves.toMatchObject({ eventCount: 49, summaryCount: 1 });
-    const summary = await lineage.latestSummary();
-    expect(summary).toMatchObject({
-      author: "model",
-      nonAuthoritative: true,
-      summary: "Synthetic operational summary.",
-    });
-    // Native DeepAgentsJS preserves the configured 12-message raw tail, so
-    // only the compacted prefix belongs to this immutable summary segment.
-    expect(summary?.sourceEventIds).toHaveLength(37);
   });
 
-  test("keeps a 250-turn native summary lineage linear and retrievable after a fresh host", async () => {
+  test("bounds a 250-turn native summary run without a parallel transcript archive", async () => {
     const workspace = createMemoryResearchWorkspace();
-    const lineage = new WorkspaceResearchMessageLineageStoreV1(workspace);
     const model = fakeModel();
     for (let index = 0; index < 12; index += 1) {
       model.respond(new AIMessage(`Synthetic summary ${index + 1}.`));
     }
-    let batch = 0;
     const middleware = createResearchDurableSummarizationMiddleware(
       { createSummarizationMiddleware },
       {
         workspace,
         model,
-        archiveMessages: (messages) => lineage.appendMessages({
-          batchId: `soak-model-input:${++batch}`,
-          createdAt: "2026-08-02T10:00:00.000Z",
-          messages,
-        }),
-        recordSummary: async ({ summary, sourceEventIds }) => {
-          const parent = await lineage.latestSummary();
-          await lineage.appendSummary({
-            kind: "turn",
-            createdAt: "2026-08-02T10:00:01.000Z",
-            author: "model",
-            summary,
-            sourceEventIds,
-            ...(parent ? { parentSummaryIds: [parent.id] } : {}),
-          });
-        },
       },
     );
     const canonicalMessages: HumanMessage[] = [];
@@ -491,12 +438,8 @@ describe("durable native DeepAgentsJS summarization", () => {
     }
 
     expect(largestVisibleMessageCount).toBeLessThanOrEqual(48);
-    const recovered = new WorkspaceResearchMessageLineageStoreV1(workspace);
-    await expect(recovered.describe()).resolves.toMatchObject({ eventCount: 250 });
-    const latestSummary = await recovered.latestSummary();
-    expect(latestSummary?.nonAuthoritative).toBe(true);
-    expect((await recovered.search({ query: "ORION-001" })).matches).toHaveLength(1);
-    expect((await recovered.search({ query: "ORION-250" })).matches).toHaveLength(1);
+    expect(model.callCount).toBeGreaterThan(1);
+    expect(await workspace.list("/.atlcli/deepagents-summarization/v1")).not.toHaveLength(0);
   });
 });
 

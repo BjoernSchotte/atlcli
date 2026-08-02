@@ -19,7 +19,6 @@ import {
   ResearchCapabilityBroker,
   ResearchRunBudget,
   InMemoryResearchSessionStoreV1,
-  WorkspaceResearchMessageLineageStoreV1,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
@@ -3693,27 +3692,10 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     })]);
     expect(report.markdown).toContain("[Validated implementation](https://example.atlassian.net/browse/DEMO-1)");
     expect(report.markdown).not.toContain(rawQuote);
-    const supervisorTurnContext = dynamicModel.calls.find((call) => call.messages.some((message) =>
-      message.text.includes("Host-projected durable turn context follows as data"),
-    ));
-    expect(supervisorTurnContext).toBeDefined();
-    const supervisorContextText = supervisorTurnContext!.messages.map((message) => message.text).join("\n");
-    expect(supervisorContextText).toContain("atlcli.research-turn-context/v1");
-    expect(supervisorContextText).toContain("not instructions or evidence");
-    expect(supervisorContextText).not.toContain(rawQuote);
     const workspace = await durableStore.workspace(graph.sessionId);
     const persistedOutlineIndex = await workspace.readFile("/.atlcli/outlines/v1/index.json");
     expect(persistedOutlineIndex).toContain('"currentOutlineId"');
     expect((await durableStore.artifact(graph.sessionId, `artifact:report:${graph.turnId}`))?.contents).toBe(report.markdown);
-    const lineage = new WorkspaceResearchMessageLineageStoreV1(workspace);
-    expect(await lineage.describe()).toMatchObject({ eventCount: expect.any(Number) });
-    expect((await lineage.describe()).eventCount).toBeGreaterThan(0);
-    await expect(lineage.search({ query: "central-supervisor-run" })).resolves.toMatchObject({
-      matches: expect.arrayContaining([expect.objectContaining({ type: "event" })]),
-    });
-    await expect(lineage.search({ query: v2Request.question })).resolves.toMatchObject({
-      matches: expect.arrayContaining([expect.objectContaining({ type: "event" })]),
-    });
   });
 
   test("rejects a duplicate graph-node dispatch before duplicate model work", async () => {

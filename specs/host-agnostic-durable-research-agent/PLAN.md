@@ -1883,9 +1883,9 @@ It may not:
   revisions, approval state, or accepted packet status.
 
 The normal DeepAgents filesystem tools operate only on the injected virtual
-workspace. `/evidence/` is read-only. Re-enable summarization only after the
-full message transcript is durably preserved and the report no longer depends
-on summary text.
+workspace. `/evidence/` is read-only. Native summarization is operational
+context only: the checkpointer retains the canonical conversation state, while
+summaries never become evidence or a second host-owned transcript system.
 
 ### Dynamic subagent composition
 
@@ -3890,27 +3890,17 @@ Gate:
 Shared:
 
 - [x] Re-enable filesystem middleware against the injected composite backend.
-- [x] Re-enable native DeepAgentsJS summarization only after complete original
-      messages are durably stored and can be searched from the session. Archive
-      each pre-compaction supervisor input in immutable lineage, keep native
-      history in a host-private durable namespace, and remove its otherwise
-      misleading model-visible history-file hint (2026-08-02).
+- [x] Re-enable native DeepAgentsJS summarization with its durable backend and
+      remove its otherwise misleading model-visible history-file hint. The
+      session checkpointer remains the canonical conversation record; no
+      parallel host transcript or summary DAG is active at runtime (2026-08-02).
 - [x] Treat `/workspace/plan.md` as a projection of the durable graph and
       regenerate it after every accepted graph revision.
 - [ ] Persist query intents, gap assessments, and report drafts as artifacts
       rather than growing the live prompt.
-- [x] Add an immutable message/event store plus a hierarchical summary DAG
-      whose nodes retain lineage to original turns, graph revisions, packets,
-      and artifacts.
-- [x] Build turn context from current brief, current graph frontier, compact
-      session/closed-branch summaries, relevant packet/artifact references,
-      unresolved tasks, and a recent human-interaction tail; never replay all
-      source bodies or child trajectories by default (2026-08-02).
-- [x] Provide bounded `describe`, `search`, and `expand` operations over summary
-      lineage so the supervisor or reconciler can recover exact prior state.
-- [ ] Mark model summaries as non-authoritative and regenerate them from durable
-      events/artifacts when missing. The non-authoritative marker and exact
-      event lineage are implemented; deterministic regeneration remains open.
+- [ ] Add cross-turn memory only when a real user workflow requires it. It must
+      be explicitly user-namespaced, read-only by default, and must not retain
+      raw Atlassian content. It is not part of the MVP.
 - [ ] Add explicit context and storage compaction with retention of canonical
       evidence and accepted reports.
 - [ ] Compact only completed branches deeply; keep the active frontier and
@@ -3935,8 +3925,10 @@ Extension/browser:
 
 Gate:
 
-- [ ] A 250-turn deterministic soak passes before dynamic subagents become the
-      default product path; the bounded T3 experiment may run earlier.
+- [x] A 250-turn deterministic native-summary soak keeps visible model context
+      at or below the configured 48-message trigger and retains native durable
+      history; a separate fresh-host test proves the same session thread
+      restores prior user and agent turns (2026-08-02).
 - [ ] A 1,000-turn synthetic stretch soak completes with bounded checkpoint and
       active-context growth.
 - [ ] Repeated planted evaluation questions at turns 1, 50, 100, 250, 500, and
@@ -3944,9 +3936,9 @@ Gate:
       turn-1 baseline.
 - [ ] Active model context after compaction stays below 60% of the configured
       model input limit at the measurement checkpoints.
-- [ ] Exact facts planted in early turns can be recovered through summary
-      lineage at turns 50, 250, and 1,000 without treating the summary itself
-      as evidence.
+- [ ] Exact facts planted in early turns can be recovered from canonical
+      checkpointed conversation state or cited evidence at turns 50, 250, and
+      1,000; summaries themselves never count as evidence.
 - [ ] Closed branch compression, graph revision, user steering, and
       reconciliation do not erase unresolved tasks or accepted/rejected defect
       decisions.
@@ -4116,7 +4108,7 @@ Cross-host release gates:
 | One-shot result | shared scenario | source + built CLI | packed MV3 |
 | Real Atlassian data | sanitized metrics | `mayflower` profile | Mayflower browser session |
 | Recovery | state-machine fixtures | killed process | killed worker/offscreen/service worker/browser |
-| Long session | 250/1,000-turn + summary-lineage soak | retained real directory | retained browser DB |
+| Long session | 250/1,000-turn native-summary/checkpoint soak | retained real directory | retained browser DB |
 | Presentation | structured report/Markdown | stdout/file/JSON | formatted/raw/copy/download |
 
 CLI live E2E is the default fast feedback loop because it avoids extension
