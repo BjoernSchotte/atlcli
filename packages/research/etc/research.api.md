@@ -2620,6 +2620,11 @@ export interface ResearchPort {
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
 
+// export: ResearchPostCommitResultError
+export declare class ResearchPostCommitResultError extends Error {
+    constructor();
+}
+
 // export: ResearchProduct
 export type ResearchProduct = "jira" | "confluence";
 
@@ -7020,6 +7025,11 @@ export interface ResearchPort {
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
 
+// export: ResearchPostCommitResultError
+export declare class ResearchPostCommitResultError extends Error {
+    constructor();
+}
+
 // export: ResearchProduct
 export type ResearchProduct = "jira" | "confluence";
 
@@ -11416,6 +11426,11 @@ export interface ResearchPort {
     }): Promise<import("./session-scope-clarification-review.js").ResearchScopeClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
+}
+
+// export: ResearchPostCommitResultError
+export declare class ResearchPostCommitResultError extends Error {
+    constructor();
 }
 
 // export: ResearchProduct
@@ -16036,6 +16051,11 @@ export interface ResearchPort {
     }): Promise<import("./session-scope-clarification-review.js").ResearchScopeClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
+}
+
+// export: ResearchPostCommitResultError
+export declare class ResearchPostCommitResultError extends Error {
+    constructor();
 }
 
 // export: ResearchProduct
@@ -20792,6 +20812,11 @@ export interface ResearchPort {
     }): Promise<import("./session-scope-clarification-review.js").ResearchScopeClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
+}
+
+// export: ResearchPostCommitResultError
+export declare class ResearchPostCommitResultError extends Error {
+    constructor();
 }
 
 // export: ResearchProduct
@@ -26782,6 +26807,11 @@ export interface ResearchPort {
     }): Promise<import("./session-scope-clarification-review.js").ResearchScopeClarificationReviewResolutionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
+}
+
+// export: ResearchPostCommitResultError
+export declare class ResearchPostCommitResultError extends Error {
+    constructor();
 }
 
 // export: ResearchProduct

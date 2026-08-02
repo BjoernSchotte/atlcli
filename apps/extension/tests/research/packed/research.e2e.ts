@@ -1651,6 +1651,23 @@ async function researchWorkerTargets(session: CDPSession): Promise<TargetInfo[]>
   return (await targets(session)).filter((target) => target.type === "worker");
 }
 
+/** Force the next request to cross the production offscreen-start recovery boundary. */
+async function closePackedResearchOffscreenDocument(page: Page): Promise<void> {
+  const root = await context.newCDPSession(page);
+  try {
+    const target = (await targets(root)).find(
+      (candidate) => candidate.url === `chrome-extension://${extensionId}/offscreen.html`,
+    );
+    if (!target) return;
+    await root.send("Target.closeTarget", { targetId: target.targetId });
+    await expect.poll(async () =>
+      (await targets(root)).some((candidate) => candidate.targetId === target.targetId),
+    ).toBe(false);
+  } finally {
+    await root.detach();
+  }
+}
+
 async function harnessEvents(page: Page): Promise<HarnessEvent[]> {
   return page.evaluate(
     () =>
@@ -2484,6 +2501,23 @@ async function writePackedDurableResearchSession(
   page: Page,
   session: ResearchSessionV1,
 ): Promise<void> {
+  // The direct IndexedDB seed below intentionally bypasses the product store
+  // to construct a precise recovery checkpoint. Bootstrap the production
+  // schema first so this proof remains independent of the surrounding test
+  // order (and never creates an empty version-1 database by accident).
+  const initialized = await page.evaluate(async () => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) {
+      throw new Error("Packed side-panel window is unavailable.");
+    }
+    return chrome.runtime.sendMessage({
+      kind: "research:list-resumable-sessions",
+      windowId: window.id,
+    });
+  }) as { kind?: string; ok?: boolean };
+  if (initialized.kind !== "research:list-resumable-sessions-result" || initialized.ok !== true) {
+    throw new Error("Packed research session store did not initialize before fixture seeding.");
+  }
   await page.evaluate(async (state) => {
     const open = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("atlcli-research-sessions");
@@ -3512,6 +3546,11 @@ test("records an expired in-flight provider call as an abstained outcome on firs
     kind: "research:list-resumable-sessions-result",
     ok: true,
   });
+  // The preceding recovery proof may have already created an offscreen
+  // document. Close it explicitly: this test exercises a *new* offscreen
+  // startup after an in-flight provider boundary, not merely a later request
+  // against an already warm document.
+  await closePackedResearchOffscreenDocument(page);
   const interrupted = packedExpiredRetrievalCheckpointSession(
     "packed-startup-interrupted",
     { settled: false },

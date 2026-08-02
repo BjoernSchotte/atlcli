@@ -103,6 +103,19 @@ export class ResearchDispatchError extends Error {
   }
 }
 
+/**
+ * The authoritative packet transaction completed, but this disposable host
+ * instance could not publish its required in-memory projections. Callers must
+ * stop and recover from the durable journal; they must not turn the completed
+ * provider invocation into an `outcome_unknown` transition.
+ */
+export class ResearchPostCommitResultError extends Error {
+  constructor() {
+    super("A durable research packet requires local recovery before the run can continue.");
+    this.name = "ResearchPostCommitResultError";
+  }
+}
+
 export function encodeResearchTaskDescriptionV1(
   value: Omit<ResearchTaskDescriptionV1, "schema">,
 ): string {
@@ -681,6 +694,13 @@ export function createResearchDispatchInterceptionAdapter(options: {
       emit({ taskId, status: "completed", resultBytes });
       return dependencyResult;
     } catch (error) {
+      if (error instanceof ResearchPostCommitResultError) {
+        // The packet was persisted before the local projection failed. Preserve
+        // the terminal dispatch truth and let the caller restart from the
+        // authoritative journal instead of recording an unknown outcome.
+        emit({ taskId, status: "completed", resultBytes });
+        throw error;
+      }
       await observeUncommitted("result-commit-failed", { error });
       emit({ taskId, status: "failed" });
       throw error;

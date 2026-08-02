@@ -3452,9 +3452,10 @@ Gate:
         No partial task, graph, packet, or event leaks; a fresh journal then
         accepts exactly one packet and one journal event (17 focused tests,
         2026-08-02).
-  - [x] A disconnected post-commit graph, packet, or diagnostic observer cannot
-        reclassify a durable packet as an uncommitted provider outcome. The
-        focused dynamic-middleware test injects all three failures and retains
+  - [x] A post-commit local packet projection failure terminates the disposable
+        host for durable recovery rather than reclassifying the provider result
+        as uncommitted. The focused dynamic-middleware test injects a failed
+        packet projection plus a disconnected diagnostic stream and retains
         exactly one completed task, graph node, packet, and journal event (44
         dynamic-subagent tests, 2026-08-02).
 - [ ] Failure injection at every result-publication sub-boundary proves that a

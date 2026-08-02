@@ -30,6 +30,7 @@ import {
   encodeResearchTaskDescriptionV1,
   initializeResearchSessionTurnV1,
   projectResearchReconciliationInputV1,
+  ResearchPostCommitResultError,
   ResearchSessionDispatchJournalV1,
   researchCheckpointConfigV1,
   type ResearchAcceptedPacketV1,
@@ -3764,7 +3765,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
   });
 
-  test("keeps a durable packet terminal when post-commit observers throw", async () => {
+  test("halts for recovery when a durable packet cannot update its local projection", async () => {
     const brief = graphBrief(
       "Retrieve one bounded Jira item.",
       ["jira"],
@@ -3811,6 +3812,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       description: "Synthetic upstream task.",
       schema: z.object({ description: z.string(), subagent_type: z.string() }),
     });
+    const fatalErrors: unknown[] = [];
     const middleware = createBoundedResearchSubagentMiddleware(
       model,
       catalog,
@@ -3831,16 +3833,19 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       {
         activeGraph: () => activeGraph,
         durableDispatchJournal: journal,
-        onGraphUpdated: () => { throw new Error("synthetic graph observer disconnected"); },
+        onGraphUpdated: (next) => { activeGraph = next; },
         onAcceptedPacket: () => { throw new Error("synthetic packet observer disconnected"); },
         onDiagnostic: () => { throw new Error("synthetic diagnostic observer disconnected"); },
+        onFatal: (error) => { fatalErrors.push(error); },
       },
     );
 
     await expect(middleware.tools![0]!.invoke({
       description: taskEnvelope(activeGraph, node.id).description,
       subagent_type: researchSubagentTypeForNodeV1(node),
-    })).resolves.toMatchObject({ schema: "atlcli.research-dependency-packet/v1" });
+    })).rejects.toBeInstanceOf(ResearchPostCommitResultError);
+    expect(fatalErrors).toHaveLength(1);
+    expect(fatalErrors[0]).toBeInstanceOf(ResearchPostCommitResultError);
 
     const turn = (await store.read(brief.sessionId))!.turns.find((candidate) =>
       candidate.id === brief.turnId,

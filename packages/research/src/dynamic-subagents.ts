@@ -54,6 +54,7 @@ import type { ResearchRunBudgetStateV1 } from "./budget.js";
 import {
   DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY,
   ResearchDispatchError,
+  ResearchPostCommitResultError,
   createResearchDispatchInterceptionAdapter,
   type ResearchDispatchDiagnosticV1,
   type ResearchTaskAdmissionV1,
@@ -1277,17 +1278,31 @@ export function createBoundedResearchSubagentMiddleware(
           maximumResultBytes: node.budget.maxResultBytes,
           ...(options.budgetState ? { budgetState: options.budgetState() } : {}),
         })
-        .then((durable) => {
-          if (durable.packetRef !== preview.packet.packetRef ||
-              durable.graphRevision !== preview.packet.graphRevision) {
-            throw new Error("Durable research packet diverged from the local validated envelope.");
-          }
-          return notifyPostCommitResearchObserverV1(() => {
+        .then(async (durable) => {
+          try {
+            if (durable.packetRef !== preview.packet.packetRef ||
+                durable.graphRevision !== preview.packet.graphRevision) {
+              throw new Error("Durable research packet diverged from the local validated envelope.");
+            }
+            // These projections drive the local supervisor's later frontiers
+            // and report validation. They are not a best-effort stream: once
+            // the authoritative packet exists, a failure must stop this host
+            // instance and let a fresh one hydrate it rather than continuing
+            // with stale in-memory graph or packet state.
             options.onGraphUpdated?.(durable.graph);
-          }).then(() => {
             const packet = dispatchPort.accept(packetInput);
-            return notifyPostCommitResearchObserverV1(() => options.onAcceptedPacket?.(packet));
-          });
+            await options.onAcceptedPacket?.(packet);
+          } catch {
+            const recovery = new ResearchPostCommitResultError();
+            try {
+              options.onFatal?.(recovery);
+            } catch {
+              // The durable packet remains authoritative even if a host fatal
+              // observer is itself disconnected. The caller still receives
+              // the sanitized recovery error below.
+            }
+            throw recovery;
+          }
         });
     },
     onUncommittedOutcome: async ({ taskId, reason, error }) => {
@@ -1469,23 +1484,6 @@ export interface ResearchSubagentDiagnosticV1 {
   durationMs?: number;
   errorCode?: string;
   errorMessage?: string;
-}
-
-/**
- * A packet is authoritative as soon as the durable dispatch journal accepts
- * it. Host observers update only in-process projections or streams, so their
- * failure must never turn that committed result into `outcome_unknown`.
- */
-async function notifyPostCommitResearchObserverV1(
-  callback: () => void | Promise<void>,
-): Promise<void> {
-  try {
-    await callback();
-  } catch {
-    // A restarted host rehydrates the accepted task and graph from the
-    // journal. Do not retain or rethrow observer errors (which may contain
-    // provider/user text) into durable research state.
-  }
 }
 
 function descriptionForRole(role: ResearchGraphRoleV1): string {

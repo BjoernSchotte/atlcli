@@ -4,6 +4,7 @@ import {
   DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY,
   RESEARCH_TASK_ID_CONFIG_KEY,
   ResearchDispatchError,
+  ResearchPostCommitResultError,
   createResearchDispatchInterceptionAdapter,
   encodeResearchTaskDescriptionV1,
   type ResearchDispatchDiagnosticV1,
@@ -322,6 +323,43 @@ describe("research-owned native task dispatch interception", () => {
     expect(lifecycle).toEqual(["upstream", "project-dependency"]);
     expect(outcomes).toEqual(["result-commit-failed"]);
     expect(adapter.snapshot().taskStatuses["dependency-projection-failure"]).toBe("failed");
+  });
+
+  test("preserves a durable terminal dispatch when local recovery is required", async () => {
+    const outcomes: string[] = [];
+    const diagnostics: ResearchDispatchDiagnosticV1[] = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("post-commit-recovery")],
+      maxTasks: 1,
+      maxConcurrency: 1,
+      async invokeUpstream() {
+        return { taskId: "post-commit-recovery", answer: "accepted" };
+      },
+      acceptResult() {
+        throw new ResearchPostCommitResultError();
+      },
+      onUncommittedOutcome: ({ reason }) => {
+        outcomes.push(reason);
+      },
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "post-commit-recovery",
+        objective: "Research post-commit-recovery",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).rejects.toBeInstanceOf(ResearchPostCommitResultError);
+
+    expect(outcomes).toEqual([]);
+    expect(adapter.snapshot().taskStatuses["post-commit-recovery"]).toBe("completed");
+    expect(diagnostics).toEqual([
+      { taskId: "post-commit-recovery", status: "started" },
+      { taskId: "post-commit-recovery", status: "completed", resultBytes: 53 },
+    ]);
   });
 
   test("does not start provider work when durable admission fails", async () => {
