@@ -227,6 +227,7 @@ export class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     this.#db.transaction(() => {
       const written = this.#db.query("UPDATE research_sessions_v1 SET revision = ?, lease_epoch = ?, state_json = ? WHERE session_id = ? AND revision = ? AND lease_epoch = ?").run(next.revision, next.lease.epoch, JSON.stringify(next), sessionId, current.revision, current.lease.epoch);
       if (written.changes !== 1) invalid("Research session store compare-and-swap fence is stale.");
+      this.#fail("after_state_commit", sessionId, { updateKind: update.kind });
       this.#db.query("INSERT INTO research_session_events_v1 (session_id, session_revision, event_json) VALUES (?, ?, ?)").run(sessionId, next.revision, JSON.stringify(event));
     })();
     await writeAtomic(this.#manifestPath(sessionId), JSON.stringify(next));

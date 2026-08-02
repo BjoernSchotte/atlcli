@@ -64,6 +64,7 @@ export interface ResearchSessionCommitV1 {
 export type ResearchSessionStoreFailureStageV1 =
   | "before_create"
   | "before_state_commit"
+  | "after_state_commit"
   | "before_event_append"
   | "before_artifact_write"
   | "before_source_ref_write"
@@ -253,6 +254,16 @@ export class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     this.#fail("before_state_commit", sessionId, { updateKind: update.kind });
     this.#fail("before_event_append", sessionId, { updateKind: update.kind });
     this.#sessions.set(sessionId, clone(next));
+    try {
+      this.#fail("after_state_commit", sessionId, { updateKind: update.kind });
+    } catch (error) {
+      // Match the transactional stores: a fault after writing the aggregate
+      // state but before the journal append restores the prior aggregate, so a
+      // failed commit is never externally visible as a terminal task without
+      // its matching event.
+      this.#sessions.set(sessionId, clone(current));
+      throw error;
+    }
     this.#events.set(sessionId, [...events, clone(event)]);
     return { session: clone(next), event: clone(event) };
   }

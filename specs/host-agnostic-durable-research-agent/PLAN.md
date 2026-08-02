@@ -3469,6 +3469,11 @@ Gate:
         packet acceptance. Its focused adapter fault test proves a projection
         failure invokes no durable acceptance callback, records exactly the
         uncommitted outcome, and leaves the task non-terminal (2026-08-02).
+  - [x] Shared store conformance injects a failure after the aggregate state
+        write but before the accepted-packet journal append. Memory restores
+        its prior snapshot and SQLite/IndexedDB roll back their transaction;
+        all three adapters then recover to exactly one terminal task, graph
+        node, packet, and event (17 focused tests, 2026-08-02).
 - [ ] Clarification/candidate selection, plan rejection and replacement,
       scope-expansion approval/rejection, pause request, pause acknowledgement,
       and resume transitions pass revision-race and process/worker-restart

@@ -3750,7 +3750,7 @@ export interface ResearchSessionStoreFailureInjectionV1 {
 }
 
 // export: ResearchSessionStoreFailureStageV1
-export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "after_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
 
 // export: ResearchSessionStoreV1
 export interface ResearchSessionStoreV1 {
@@ -8155,7 +8155,7 @@ export interface ResearchSessionStoreFailureInjectionV1 {
 }
 
 // export: ResearchSessionStoreFailureStageV1
-export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "after_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
 
 // export: ResearchSessionStoreV1
 export interface ResearchSessionStoreV1 {
@@ -12558,7 +12558,7 @@ export interface ResearchSessionStoreFailureInjectionV1 {
 }
 
 // export: ResearchSessionStoreFailureStageV1
-export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "after_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
 
 // export: ResearchSessionStoreV1
 export interface ResearchSessionStoreV1 {
@@ -17230,7 +17230,7 @@ export interface ResearchSessionStoreFailureInjectionV1 {
 }
 
 // export: ResearchSessionStoreFailureStageV1
-export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "after_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
 
 // export: ResearchSessionStoreV1
 export interface ResearchSessionStoreV1 {
@@ -22002,7 +22002,7 @@ export interface ResearchSessionStoreFailureInjectionV1 {
 }
 
 // export: ResearchSessionStoreFailureStageV1
-export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "after_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
 
 // export: ResearchSessionStoreV1
 export interface ResearchSessionStoreV1 {
@@ -27997,7 +27997,7 @@ export interface ResearchSessionStoreFailureInjectionV1 {
 }
 
 // export: ResearchSessionStoreFailureStageV1
-export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "after_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
 
 // export: ResearchSessionStoreV1
 export interface ResearchSessionStoreV1 {

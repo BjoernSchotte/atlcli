@@ -409,7 +409,7 @@ export async function verifyResearchSessionStoreConformanceV1(
   const afterFailure = await failing.read(failureInitial.sessionId);
   assert(afterFailure?.revision === 1 && (await failing.events(failureInitial.sessionId)).length === 0, "failed aggregate commit leaked partial state");
 
-  for (const stage of ["before_state_commit", "before_event_append"] as const) {
+  for (const stage of ["before_state_commit", "after_state_commit", "before_event_append"] as const) {
     let injected = false;
     const publishing = await factory.create({
       failureInjection: {

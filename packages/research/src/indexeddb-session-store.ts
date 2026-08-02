@@ -325,6 +325,7 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, 
               this.#fail("before_state_commit", sessionId, { updateKind: update.kind });
               this.#fail("before_event_append", sessionId, { updateKind: update.kind });
               stores[SESSIONS]!.put({ sessionId, state: clone(next) } satisfies StoredSession);
+              this.#fail("after_state_commit", sessionId, { updateKind: update.kind });
               const eventRequest = stores[EVENTS]!.add({ sessionId, sessionRevision: next.revision, event } satisfies StoredEvent);
               eventRequest.onsuccess = () => finish({ session: clone(next), event: clone(event) });
               eventRequest.onerror = () => fail(eventRequest.error ?? new Error("Research session journal append failed."));
