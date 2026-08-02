@@ -3252,6 +3252,13 @@ Extension/browser:
       resume.
 - [ ] Persist plan-approval and steering waits before notifying the sidebar;
       sidebar closure or browser restart must not auto-approve a plan.
+
+  - [x] Persist an initial required browser plan before any Anthropic key write,
+        provider construction, worker start, or content retrieval. The
+        tenant-bound sidebar review carries only session/brief/graph revisions,
+        selected roles, and scope keys; its approval atomically creates the
+        existing resumable-session handoff. Packed MV3 tests prove both the
+        absent credential write and zero retrieval/worker activity.
 - [ ] Persist required clarification questions and responses by brief revision
       plus explicit assumption accept/reject decisions by assumption ID.
       Regenerate the graph only after the response transition commits.

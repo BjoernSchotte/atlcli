@@ -163,6 +163,30 @@ export function handleExtMessage(
             error: toMessage(err),
           });
           break;
+        case "research:prepare-plan-review":
+          sendResponse({
+            kind: "research:prepare-plan-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-plan-reviews":
+          sendResponse({
+            kind: "research:list-plan-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:approve-plan-review":
+          sendResponse({
+            kind: "research:approve-plan-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:resolve-scope":
           sendResponse({
             kind: "research:resolve-scope-result",

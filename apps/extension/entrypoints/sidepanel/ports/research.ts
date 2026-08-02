@@ -5,6 +5,7 @@ import {
 } from "../../../utils/research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
 import {
@@ -293,6 +294,111 @@ export function chromeResearchPort(): ResearchPort {
       }
       if (!response.ok) throw new ResearchContractError(response.code, response.error);
       return response.review;
+    },
+
+    async preparePlanReview(request, policy) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:prepare-plan-review",
+        windowId: window.id,
+        request,
+        policy,
+      }) as
+        | {
+            kind: "research:prepare-plan-review-result";
+            ok: true;
+            review: ResearchSessionPlanReviewV1;
+          }
+        | {
+            kind: "research:prepare-plan-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:prepare-plan-review-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research plan-preparation host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.review;
+    },
+
+    async listPlanReviews() {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:list-plan-reviews",
+        windowId: window.id,
+      }) as
+        | {
+            kind: "research:list-plan-reviews-result";
+            ok: true;
+            reviews: ResearchSessionPlanReviewV1[];
+          }
+        | {
+            kind: "research:list-plan-reviews-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:list-plan-reviews-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research plan-review host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.reviews;
+    },
+
+    async approvePlanReview(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:approve-plan-review",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:approve-plan-review-result";
+            ok: true;
+            session: ResearchResumableSessionV1;
+          }
+        | {
+            kind: "research:approve-plan-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:approve-plan-review-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research plan-approval host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.session;
     },
 
     async run(request, options) {

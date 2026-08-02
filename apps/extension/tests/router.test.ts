@@ -4,6 +4,7 @@ import type { EntityDetection } from "../utils/messages.js";
 import type {
   ResearchReportV1,
   ResearchRequestV1,
+  ResearchOneShotPolicyV1,
 } from "../utils/research/contracts.js";
 import type {
   ResearchScopePreflightOutcomeV1,
@@ -422,6 +423,75 @@ describe("routeMessage (pure router)", () => {
     });
     expect(JSON.stringify(request)).not.toContain("proposalId");
     expect(JSON.stringify(request)).not.toContain("tenantOrigin");
+  });
+
+  it("prepares and approves an initial plan with a revision fence only", async () => {
+    const review = {
+      schema: "atlcli.research-session-plan-review/v1" as const,
+      sessionId: "research-session:plan-review",
+      revision: 13,
+      status: "waiting_plan_approval" as const,
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:plan-review",
+        briefRevision: 4,
+        graphRevision: 5,
+        resolvedEffort: "deep" as const,
+        selectedRoleIds: ["focused-researcher"],
+        scopeExpansionMode: "ask" as const,
+        reconciliationMode: "required" as const,
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+      },
+    };
+    const request = {
+      kind: "research:prepare-plan-review" as const,
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" } as ResearchRequestV1,
+      policy: { schema: "atlcli.research-one-shot-policy/v1" } as ResearchOneShotPolicyV1,
+    };
+    expect(await routeMessage(request, {
+      ...okDeps,
+      prepareResearchPlanReview: async (windowId, received, policy) => {
+        expect(windowId).toBe(7);
+        expect(received).toBe(request.request);
+        expect(policy).toBe(request.policy);
+        return review;
+      },
+    })).toEqual({ kind: "research:prepare-plan-review-result", ok: true, review });
+
+    const approval = {
+      kind: "research:approve-plan-review" as const,
+      windowId: 7,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+    };
+    expect(await routeMessage(approval, {
+      ...okDeps,
+      approveResearchPlanReview: async (_windowId, action) => {
+        expect(action).toEqual({
+          sessionId: review.sessionId,
+          revision: 13,
+          briefRevision: 4,
+          graphRevision: 5,
+        });
+        return {
+          schema: "atlcli.research-resumable-session/v1",
+          sessionId: review.sessionId,
+          turnId: review.turn.id,
+          status: "running",
+          updatedAt: review.updatedAt,
+          question: "not exposed by approval request",
+          scope: review.turn.scope,
+        };
+      },
+    })).toMatchObject({
+      kind: "research:approve-plan-review-result",
+      ok: true,
+      session: { sessionId: review.sessionId },
+    });
+    expect(JSON.stringify(approval)).not.toContain("scope");
   });
 
   it("routes catalog-only research scope preflight without an Anthropic key", async () => {

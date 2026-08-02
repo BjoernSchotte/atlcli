@@ -669,6 +669,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionPlanReviewV1
+export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
+
 // export: projectResearchSessionScopeReviewV1
 export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
 
@@ -1178,6 +1181,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
+
+// export: RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1: "atlcli.research-session-plan-review/v1";
 
 // export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
@@ -2462,6 +2468,14 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    preparePlanReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+    listPlanReviews?(): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1[]>;
+    approvePlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+    }): Promise<import("./session.js").ResearchResumableSessionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -3289,6 +3303,28 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionPlanReviewV1
+export interface ResearchSessionPlanReviewV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_plan_approval";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        resolvedEffort: "lookup" | "quick" | "analysis" | "deep";
+        selectedRoleIds: string[];
+        scopeExpansionMode: "strict" | "ask" | "exact-linked";
+        reconciliationMode: "off" | "auto" | "required";
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+    };
 }
 
 // export: ResearchSessionPlanRevisionV1
@@ -4729,6 +4765,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionPlanReviewV1
+export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
+
 // export: projectResearchSessionScopeReviewV1
 export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
 
@@ -5238,6 +5277,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
+
+// export: RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1: "atlcli.research-session-plan-review/v1";
 
 // export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
@@ -6522,6 +6564,14 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    preparePlanReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+    listPlanReviews?(): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1[]>;
+    approvePlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+    }): Promise<import("./session.js").ResearchResumableSessionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -7349,6 +7399,28 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionPlanReviewV1
+export interface ResearchSessionPlanReviewV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_plan_approval";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        resolvedEffort: "lookup" | "quick" | "analysis" | "deep";
+        selectedRoleIds: string[];
+        scopeExpansionMode: "strict" | "ask" | "exact-linked";
+        reconciliationMode: "off" | "auto" | "required";
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+    };
 }
 
 // export: ResearchSessionPlanRevisionV1
@@ -8787,6 +8859,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionPlanReviewV1
+export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
+
 // export: projectResearchSessionScopeReviewV1
 export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
 
@@ -9296,6 +9371,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
+
+// export: RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1: "atlcli.research-session-plan-review/v1";
 
 // export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
@@ -10580,6 +10658,14 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    preparePlanReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+    listPlanReviews?(): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1[]>;
+    approvePlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+    }): Promise<import("./session.js").ResearchResumableSessionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -11407,6 +11493,28 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionPlanReviewV1
+export interface ResearchSessionPlanReviewV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_plan_approval";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        resolvedEffort: "lookup" | "quick" | "analysis" | "deep";
+        selectedRoleIds: string[];
+        scopeExpansionMode: "strict" | "ask" | "exact-linked";
+        reconciliationMode: "off" | "auto" | "required";
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+    };
 }
 
 // export: ResearchSessionPlanRevisionV1
@@ -13021,6 +13129,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionPlanReviewV1
+export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
+
 // export: projectResearchSessionScopeReviewV1
 export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
 
@@ -13554,6 +13665,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
+
+// export: RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1: "atlcli.research-session-plan-review/v1";
 
 // export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
@@ -14860,6 +14974,14 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    preparePlanReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+    listPlanReviews?(): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1[]>;
+    approvePlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+    }): Promise<import("./session.js").ResearchResumableSessionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -15734,6 +15856,28 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionPlanReviewV1
+export interface ResearchSessionPlanReviewV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_plan_approval";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        resolvedEffort: "lookup" | "quick" | "analysis" | "deep";
+        selectedRoleIds: string[];
+        scopeExpansionMode: "strict" | "ask" | "exact-linked";
+        reconciliationMode: "off" | "auto" | "required";
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+    };
 }
 
 // export: ResearchSessionPlanRevisionV1
@@ -17437,6 +17581,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionPlanReviewV1
+export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
+
 // export: projectResearchSessionScopeReviewV1
 export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
 
@@ -17970,6 +18117,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
+
+// export: RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1: "atlcli.research-session-plan-review/v1";
 
 // export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
@@ -19276,6 +19426,14 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    preparePlanReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+    listPlanReviews?(): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1[]>;
+    approvePlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+    }): Promise<import("./session.js").ResearchResumableSessionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -20161,6 +20319,28 @@ export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
     put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
     putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
     deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionPlanReviewV1
+export interface ResearchSessionPlanReviewV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_plan_approval";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        resolvedEffort: "lookup" | "quick" | "analysis" | "deep";
+        selectedRoleIds: string[];
+        scopeExpansionMode: "strict" | "ask" | "exact-linked";
+        reconciliationMode: "off" | "auto" | "required";
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+    };
 }
 
 // export: ResearchSessionPlanRevisionV1
@@ -21588,6 +21768,14 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    preparePlanReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+    listPlanReviews?(): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1[]>;
+    approvePlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+    }): Promise<import("./session.js").ResearchResumableSessionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -23041,6 +23229,9 @@ export declare function projectResearchResumableSessionV1(session: ResearchSessi
     at: string;
 }): ResearchResumableSessionV1 | undefined;
 
+// export: projectResearchSessionPlanReviewV1
+export declare function projectResearchSessionPlanReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionPlanReviewV1 | undefined;
+
 // export: projectResearchSessionScopeReviewV1
 export declare function projectResearchSessionScopeReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ResearchSessionScopeReviewV1 | undefined;
 
@@ -23574,6 +23765,9 @@ export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sess
 
 // export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
 export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 2;
+
+// export: RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1
+export declare const RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1: "atlcli.research-session-plan-review/v1";
 
 // export: RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1
 export declare const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1: "atlcli.research-session-plan-revision/v1";
@@ -24880,6 +25074,14 @@ export interface ResearchPort {
         briefRevision: number;
         graphRevision: number;
     }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+    preparePlanReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+    listPlanReviews?(): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1[]>;
+    approvePlanReview?(input: {
+        sessionId: string;
+        revision: number;
+        briefRevision: number;
+        graphRevision: number;
+    }): Promise<import("./session.js").ResearchResumableSessionV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -25765,6 +25967,28 @@ export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
     put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
     putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
     deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionPlanReviewV1
+export interface ResearchSessionPlanReviewV1 {
+    schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_plan_approval";
+    updatedAt: string;
+    turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        resolvedEffort: "lookup" | "quick" | "analysis" | "deep";
+        selectedRoleIds: string[];
+        scopeExpansionMode: "strict" | "ask" | "exact-linked";
+        reconciliationMode: "off" | "auto" | "required";
+        scope: {
+            jiraProjectKeys: string[];
+            confluenceSpaceKeys: string[];
+        };
+    };
 }
 
 // export: ResearchSessionPlanRevisionV1

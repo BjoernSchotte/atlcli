@@ -30,6 +30,7 @@ import {
 import type {
   ResearchBriefClarificationRequiredV1,
   ResearchResumableSessionV1,
+  ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ResearchScopeCandidateSelectionV1,
   ResearchScopeCandidateV1,
@@ -445,9 +446,12 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [scopePlanReviews, setScopePlanReviews] = useState<
     ResearchSessionScopeReviewV1[]
   >([]);
+  const [planReviews, setPlanReviews] = useState<ResearchSessionPlanReviewV1[]>([]);
   const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
   const [scopePlanReviewActionId, setScopePlanReviewActionId] = useState<string | null>(null);
+  const [planReviewActionId, setPlanReviewActionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const planReviewListingGeneration = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -475,6 +479,23 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       // explicit resume request instead of presenting it during mount.
       .catch(() => {
         if (active) setResumableSessions([]);
+      });
+    return () => { active = false; };
+  }, [port, site]);
+
+  useEffect(() => {
+    let active = true;
+    const generation = ++planReviewListingGeneration.current;
+    if (!port?.listPlanReviews || !site) {
+      setPlanReviews([]);
+      return () => { active = false; };
+    }
+    void port.listPlanReviews()
+      .then((reviews) => {
+        if (active && generation === planReviewListingGeneration.current) setPlanReviews(reviews);
+      })
+      .catch(() => {
+        if (active && generation === planReviewListingGeneration.current) setPlanReviews([]);
       });
     return () => { active = false; };
   }, [port, site]);
@@ -549,6 +570,20 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setScopePlanReviews(await port.listScopePlanReviews());
     } catch {
       setScopePlanReviews([]);
+    }
+  }
+
+  async function refreshPlanReviews(): Promise<void> {
+    const generation = ++planReviewListingGeneration.current;
+    if (!port?.listPlanReviews || !site) {
+      setPlanReviews([]);
+      return;
+    }
+    try {
+      const reviews = await port.listPlanReviews();
+      if (generation === planReviewListingGeneration.current) setPlanReviews(reviews);
+    } catch {
+      if (generation === planReviewListingGeneration.current) setPlanReviews([]);
     }
   }
 
@@ -636,6 +671,19 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       });
       const approvalRequired = researchPlanApprovalRequiredV1(graph);
       if (approvalRequired) {
+        if (port!.preparePlanReview) {
+          const review = await port!.preparePlanReview(request, policy);
+          ++planReviewListingGeneration.current;
+          setPlanReviews((current) => [
+            review,
+            ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
+          ]);
+          setActivity([]);
+          setReport(null);
+          setProgress("");
+          setActionStatus(t("research.planReview.prepared"));
+          return;
+        }
         setPlanApprovalRequired(approvalRequired);
         setActivity([]);
         setReport(null);
@@ -673,6 +721,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       void refreshResumableSessions();
       void refreshScopeReviews();
       void refreshScopePlanReviews();
+      void refreshPlanReviews();
     }
   }
 
@@ -714,6 +763,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       void refreshResumableSessions();
       void refreshScopeReviews();
       void refreshScopePlanReviews();
+      void refreshPlanReviews();
     }
   }
 
@@ -748,6 +798,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       ));
       await refreshScopeReviews();
       await refreshScopePlanReviews();
+      await refreshPlanReviews();
       void refreshResumableSessions();
     } catch (value) {
       setError(value instanceof Error ? value.message : t("research.error"));
@@ -782,6 +833,33 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setError(value instanceof Error ? value.message : t("research.error"));
     } finally {
       setScopePlanReviewActionId(null);
+    }
+  }
+
+  async function approvePlanReview(review: ResearchSessionPlanReviewV1): Promise<void> {
+    if (!port?.approvePlanReview) return;
+    setError(null);
+    setActionStatus("");
+    setPlanReviewActionId(review.sessionId);
+    try {
+      const session = await port.approvePlanReview({
+        sessionId: review.sessionId,
+        revision: review.revision,
+        briefRevision: review.turn.briefRevision,
+        graphRevision: review.turn.graphRevision,
+      });
+      setPlanReviews((current) => current.filter((candidate) => candidate.sessionId !== review.sessionId));
+      setResumableSessions((current) => [
+        session,
+        ...current.filter((candidate) => candidate.sessionId !== session.sessionId),
+      ]);
+      setActionStatus(t("research.planReview.approved"));
+      await refreshPlanReviews();
+      void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setPlanReviewActionId(null);
     }
   }
 
@@ -1196,6 +1274,57 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   </Button>
                 </div>
               )];
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {planReviews.length > 0 && (
+        <Card data-testid="research-plan-reviews">
+          <CardHeader>
+            <CardTitle>{t("research.planReview.title")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {planReviews.map((review, index) => {
+              const deciding = planReviewActionId === review.sessionId;
+              return (
+                <div
+                  key={review.sessionId}
+                  className="rounded-md border p-2 text-xs"
+                  data-testid={`research-plan-review-${index}`}
+                >
+                  <p className="m-0 font-medium">
+                    {t("research.planReview.value", {
+                      effort: review.turn.resolvedEffort,
+                      brief: String(review.turn.briefRevision),
+                      graph: String(review.turn.graphRevision),
+                    })}
+                  </p>
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.planReview.roles", {
+                      roles: review.turn.selectedRoleIds.join(", "),
+                    })}
+                  </p>
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.planReview.scope", {
+                      jira: review.turn.scope.jiraProjectKeys.join(", ") || "—",
+                      confluence: review.turn.scope.confluenceSpaceKeys.join(", ") || "—",
+                    })}
+                  </p>
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.planReview.noRetrieval")}
+                  </p>
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    disabled={running || planReviewActionId !== null}
+                    data-testid={`research-plan-review-approve-${index}`}
+                    onClick={() => void approvePlanReview(review)}
+                  >
+                    {deciding ? t("research.planReview.deciding") : t("research.planReview.approve")}
+                  </Button>
+                </div>
+              );
             })}
           </CardContent>
         </Card>

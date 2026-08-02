@@ -89,6 +89,33 @@ describe("message guards", () => {
       proposalId: "must-not-cross",
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:prepare-plan-review",
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" },
+      policy: { schema: "atlcli.research-one-shot-policy/v1" },
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:list-plan-reviews",
+      windowId: 7,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:approve-plan-review",
+      windowId: 7,
+      sessionId: "research-session:plan-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:approve-plan-review",
+      windowId: 7,
+      sessionId: "research-session:plan-review",
+      revision: 12,
+      briefRevision: 3,
+      graphRevision: 4,
+      scope: { mustNotCross: true },
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:approve-scope-review",
       windowId: 7,
       sessionId: "research-session:scope-review",

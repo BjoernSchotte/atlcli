@@ -15,6 +15,7 @@ import {
 import { I18nProvider } from "../utils/i18n/context.js";
 import type {
   ResearchBriefClarificationRequiredV1,
+  ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
@@ -791,6 +792,109 @@ describe("portable Research screen", () => {
     expect(dom.find("research-formatted-report").textContent).toContain(
       "The page explicitly links the issue.",
     );
+  });
+
+  it("persists an initial deep plan for review before key storage or retrieval", async () => {
+    const review: ResearchSessionPlanReviewV1 = {
+      schema: "atlcli.research-session-plan-review/v1",
+      sessionId: "research-session:initial-plan-review",
+      revision: 4,
+      status: "waiting_plan_approval",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      turn: {
+        id: "research-turn:initial-plan-review",
+        briefRevision: 1,
+        graphRevision: 1,
+        resolvedEffort: "deep",
+        selectedRoleIds: ["focused-researcher", "reconciler"],
+        scopeExpansionMode: "ask",
+        reconciliationMode: "required",
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+      },
+    };
+    const prepared: Array<{ request: ResearchRequestV1; policy: unknown }> = [];
+    const approvals: unknown[] = [];
+    let preparedReview = false;
+    let approvedSession = false;
+    let keyWrites = 0;
+    let runs = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => { keyWrites += 1; },
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      preparePlanReview: async (request, policy) => {
+        prepared.push({ request, policy });
+        preparedReview = true;
+        return review;
+      },
+      listPlanReviews: async () => (preparedReview ? [review] : []),
+      listResumableSessions: async () => (approvedSession ? [{
+        schema: "atlcli.research-resumable-session/v1" as const,
+        sessionId: review.sessionId,
+        turnId: review.turn.id,
+        status: "running" as const,
+        updatedAt: review.updatedAt,
+        question: "Synthetic durable question.",
+        scope: review.turn.scope,
+      }] : []),
+      approvePlanReview: async (input) => {
+        approvals.push(input);
+        approvedSession = true;
+        return {
+          schema: "atlcli.research-resumable-session/v1",
+          sessionId: review.sessionId,
+          turnId: review.turn.id,
+          status: "running",
+          updatedAt: review.updatedAt,
+          question: "Synthetic durable question.",
+          scope: review.turn.scope,
+        };
+      },
+      run: async () => {
+        runs += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-key", "synthetic-key");
+    await dom.setValue(
+      "research-question",
+      "Perform exhaustive contradiction analysis for Jira project DEMO and Confluence space KB.",
+    );
+    await dom.setValue("research-effort", "deep");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(prepared).toHaveLength(1);
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+    expect(dom.find("research-plan-reviews").textContent).toContain("reconciler");
+    expect(dom.find("research-plan-reviews").textContent).toContain("does not store a key");
+    await dom.click("research-plan-review-approve-0");
+    await dom.flush();
+
+    expect(approvals).toEqual([{
+      sessionId: review.sessionId,
+      revision: 4,
+      briefRevision: 1,
+      graphRevision: 1,
+    }]);
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+    expect(dom.find("research-resumable-sessions").textContent)
+      .toContain("Synthetic durable question.");
   });
 
   it("renders removable context chips and freezes the submitted scope across tab changes", async () => {

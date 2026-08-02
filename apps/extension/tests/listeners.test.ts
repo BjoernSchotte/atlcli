@@ -200,6 +200,27 @@ describe("handleExtMessage (background listener adapter)", () => {
     }]);
   });
 
+  it("returns true and lists tenant-bound initial plan reviews", async () => {
+    const cap = captureResponse<ExtResponse>();
+    expect(handleExtMessage(
+      { kind: "research:list-plan-reviews", windowId: 7 },
+      cap.sendResponse,
+      {
+        ...okRouterDeps,
+        listResearchPlanReviews: async (windowId) => {
+          expect(windowId).toBe(7);
+          return [];
+        },
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{
+      kind: "research:list-plan-reviews-result",
+      ok: true,
+      reviews: [],
+    }]);
+  });
+
   it("returns true and responds to DOCX runtime preparation", async () => {
     const cap = captureResponse<ExtResponse>();
     expect(handleExtMessage(

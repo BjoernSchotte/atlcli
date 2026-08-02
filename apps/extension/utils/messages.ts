@@ -26,6 +26,7 @@ import type {
 } from "./research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
@@ -101,6 +102,14 @@ export interface ResearchScopePlanReviewActionRequest {
   graphRevision: number;
 }
 
+/** Revision fence for one initial durable research plan. */
+export interface ResearchPlanReviewActionRequest {
+  sessionId: string;
+  revision: number;
+  briefRevision: number;
+  graphRevision: number;
+}
+
 /** Bounded timing/result projection for cross-realm DOCX runtime preparation. */
 export interface DocxRuntimePreparationMessage {
   totalMs: number;
@@ -146,6 +155,14 @@ export type ExtRequest =
   | ({ kind: "research:reject-scope-review"; windowId: number } & ResearchScopeReviewActionRequest)
   | { kind: "research:list-scope-plan-reviews"; windowId: number }
   | ({ kind: "research:approve-scope-plan-review"; windowId: number } & ResearchScopePlanReviewActionRequest)
+  | {
+      kind: "research:prepare-plan-review";
+      windowId: number;
+      request: ResearchRequestV1;
+      policy: ResearchOneShotPolicyV1;
+    }
+  | { kind: "research:list-plan-reviews"; windowId: number }
+  | ({ kind: "research:approve-plan-review"; windowId: number } & ResearchPlanReviewActionRequest)
   | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
@@ -246,6 +263,39 @@ export type ExtResponse =
     }
   | {
       kind: "research:approve-scope-plan-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:prepare-plan-review-result";
+      ok: true;
+      review: ResearchSessionPlanReviewV1;
+    }
+  | {
+      kind: "research:prepare-plan-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:list-plan-reviews-result";
+      ok: true;
+      reviews: ResearchSessionPlanReviewV1[];
+    }
+  | {
+      kind: "research:list-plan-reviews-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:approve-plan-review-result";
+      ok: true;
+      session: ResearchResumableSessionV1;
+    }
+  | {
+      kind: "research:approve-plan-review-result";
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -373,6 +423,9 @@ export interface ResponseMap {
   "research:reject-scope-review": Extract<ExtResponse, { kind: "research:reject-scope-review-result" }>;
   "research:list-scope-plan-reviews": Extract<ExtResponse, { kind: "research:list-scope-plan-reviews-result" }>;
   "research:approve-scope-plan-review": Extract<ExtResponse, { kind: "research:approve-scope-plan-review-result" }>;
+  "research:prepare-plan-review": Extract<ExtResponse, { kind: "research:prepare-plan-review-result" }>;
+  "research:list-plan-reviews": Extract<ExtResponse, { kind: "research:list-plan-reviews-result" }>;
+  "research:approve-plan-review": Extract<ExtResponse, { kind: "research:approve-plan-review-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
@@ -444,6 +497,32 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   }
   if (kind === "research:approve-scope-plan-review") {
     const action = value as Partial<ResearchScopePlanReviewActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, [
+      "kind",
+      "windowId",
+      "sessionId",
+      "revision",
+      "briefRevision",
+      "graphRevision",
+    ]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      isResearchRevision(action.briefRevision) &&
+      isResearchRevision(action.graphRevision);
+  }
+  if (kind === "research:prepare-plan-review") {
+    const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "request", "policy"]) &&
+      isWindowId(prepare.windowId) &&
+      typeof prepare.request === "object" && prepare.request !== null &&
+      typeof prepare.policy === "object" && prepare.policy !== null;
+  }
+  if (kind === "research:list-plan-reviews") {
+    return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:approve-plan-review") {
+    const action = value as Partial<ResearchPlanReviewActionRequest & { windowId: unknown }>;
     return hasOnlyKeys(value, [
       "kind",
       "windowId",

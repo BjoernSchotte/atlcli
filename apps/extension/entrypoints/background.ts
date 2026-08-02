@@ -19,6 +19,7 @@ import {
   type OffscreenResponse,
   type PdfCompileHints,
   type ResearchScopePlanReviewActionRequest,
+  type ResearchPlanReviewActionRequest,
   type ResearchScopeReviewActionRequest,
   isExportJobsChanged,
 } from "../utils/messages.js";
@@ -38,12 +39,19 @@ import {
 import { profileFromTabUrl } from "../utils/profile.js";
 import {
   ResearchScopeCatalogBroker,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
   approveResearchScopeExpansionV1,
+  composeResearchGraphV1,
+  createResearchSessionV1,
   createResearchScopeBindingV1,
+  createStandardResearchBriefV1,
   createRestScopeCatalogProviders,
   IndexedDbResearchSessionStoreV1,
+  initializeResearchSessionTurnV1,
+  prepareResearchBriefPreflightV1,
   prepareResearchScopePreflightV1,
   projectResearchSessionScopeReviewV1,
+  projectResearchSessionPlanReviewV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
   researchRequestFromBriefV1,
@@ -642,6 +650,133 @@ export default defineBackground({
     return new URL(profile.baseUrl).origin;
   };
 
+  const prepareResearchPlanReview = async (
+    windowId: number,
+    value: ResearchRequestV1,
+    policyValue: ResearchOneShotPolicyV1,
+  ) => {
+    const request = normalizeResearchRequestV1(value);
+    const policy = normalizeResearchOneShotPolicyV1(policyValue);
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    if (request.scope.siteOrigin !== tenantOrigin) {
+      throw new ResearchContractError(
+        "access-denied",
+        "The active Atlassian tab no longer matches the research site.",
+      );
+    }
+    const sessionId = `research-session:${crypto.randomUUID()}`;
+    const turnId = `research-turn:${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(
+      request.question,
+      {
+        sessionId,
+        turnId,
+        scope: request.scope,
+        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+        limits: request.limits,
+        asOf: now,
+        policy,
+      },
+    ));
+    if (briefOutcome.kind !== "ready") {
+      throw new ResearchContractError(
+        "clarification-required",
+        "Research brief requires clarification before plan preparation.",
+      );
+    }
+    const graph = composeResearchGraphV1(briefOutcome.brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const session = await initializeResearchSessionTurnV1({
+        store,
+        session: createResearchSessionV1({
+          sessionId,
+          ownerId: `owner:browser-plan-review-${sessionId.slice("research-session:".length)}`,
+          createdAt: now,
+          leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+        }),
+        brief: briefOutcome.brief,
+        graph,
+        approveAutomatically: false,
+        at: now,
+      });
+      const review = projectResearchSessionPlanReviewV1(session, tenantOrigin);
+      if (!review) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The durable research plan could not be projected for the active site.",
+        );
+      }
+      return review;
+    } finally {
+      store.close();
+    }
+  };
+
+  const listResearchPlanReviews = async (windowId: number) => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const page = await store.list({ limit: 100 });
+      return page.sessions
+        .flatMap((session) => {
+          const review = projectResearchSessionPlanReviewV1(session, tenantOrigin);
+          return review ? [review] : [];
+        })
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    } finally {
+      store.close();
+    }
+  };
+
+  const approveResearchPlanReview = async (input: {
+    windowId: number;
+    action: ResearchPlanReviewActionRequest;
+  }) => {
+    const tenantOrigin = await activeResearchTenantOrigin(input.windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(input.action.sessionId);
+      if (!stored) {
+        throw new ResearchContractError("invalid-request", "The durable research session no longer exists.");
+      }
+      const review = projectResearchSessionPlanReviewV1(stored, tenantOrigin);
+      if (!review ||
+          review.revision !== input.action.revision ||
+          review.turn.briefRevision !== input.action.briefRevision ||
+          review.turn.graphRevision !== input.action.graphRevision) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The research plan review is stale. Refresh the sidebar before approving it.",
+        );
+      }
+      const at = new Date().toISOString();
+      const committed = (await store.commit(stored.sessionId, {
+        kind: "approve_graph",
+        graphRevision: input.action.graphRevision,
+        expectedRevision: input.action.revision,
+        expectedLeaseEpoch: stored.lease.epoch,
+        at,
+      })).session;
+      const resumable = projectResearchResumableSessionV1(committed, {
+        tenantOrigin,
+        at,
+      });
+      if (!resumable) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The approved research plan could not be made resumable for the active site.",
+        );
+      }
+      return resumable;
+    } finally {
+      store.close();
+    }
+  };
+
   const scopeReviewForActiveTenant = async (input: {
     windowId: number;
     action: ResearchScopeReviewActionRequest;
@@ -889,6 +1024,8 @@ export default defineBackground({
       listResumableResearchSessions,
       listResearchScopeReviews,
       listResearchScopePlanReviews,
+      prepareResearchPlanReview,
+      listResearchPlanReviews,
       approveResearchScopeReview: (windowId, action) => scopeReviewForActiveTenant({
         windowId,
         action,
@@ -900,6 +1037,10 @@ export default defineBackground({
         approve: false,
       }),
       approveResearchScopePlanReview: (windowId, action) => approveResearchScopePlanReview({
+        windowId,
+        action,
+      }),
+      approveResearchPlanReview: (windowId, action) => approveResearchPlanReview({
         windowId,
         action,
       }),

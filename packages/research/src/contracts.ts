@@ -620,6 +620,25 @@ export interface ResearchPort {
     briefRevision: number;
     graphRevision: number;
   }): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1>;
+  /**
+   * Persist an initial required plan before key storage, model construction,
+   * or retrieval. Hosts that cannot offer durable sessions omit this method.
+   */
+  preparePlanReview?(
+    request: ResearchRequestV1,
+    policy: ResearchOneShotPolicyV1,
+  ): Promise<import("./session-plan-review.js").ResearchSessionPlanReviewV1>;
+  /** Tenant-bound, body-free initial plan review discovery. */
+  listPlanReviews?(): Promise<
+    import("./session-plan-review.js").ResearchSessionPlanReviewV1[]
+  >;
+  /** Approves one exact initial plan revision and returns its resumable turn. */
+  approvePlanReview?(input: {
+    sessionId: string;
+    revision: number;
+    briefRevision: number;
+    graphRevision: number;
+  }): Promise<import("./session.js").ResearchResumableSessionV1>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }

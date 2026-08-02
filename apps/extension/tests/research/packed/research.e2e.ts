@@ -2276,11 +2276,13 @@ test("reviews a durable scope proposal in packed MV3 without allowing caller-own
   }) as {
     kind: string;
     ok: boolean;
+    error?: string;
     reviews?: Array<{
       sessionId: string;
       revision: number;
       status: string;
       turn: {
+        id: string;
         briefRevision: number;
         graphRevision: number;
         candidates: Array<{ key?: string; name: string }>;
@@ -2344,6 +2346,7 @@ test("reviews a durable scope proposal in packed MV3 without allowing caller-own
       revision: number;
       status: string;
       turn: {
+        id: string;
         briefRevision: number;
         graphRevision: number;
         scopeRevisions: Array<{
@@ -2452,6 +2455,93 @@ test("reviews a durable scope proposal in packed MV3 without allowing caller-own
     ok: false,
     code: "invalid-request",
   });
+});
+
+test("persists and approves an initial packed plan before key storage or retrieval", async () => {
+  await installEventCapture(page);
+  const request = hostParityRequest();
+  const policy = {
+    ...HOST_PARITY_POLICY,
+    requestedPlanApproval: "required" as const,
+  };
+  const prepared = await page.evaluate(async ({ request, policy }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:prepare-plan-review",
+      windowId: window.id,
+      request,
+      policy,
+    });
+  }, { request, policy }) as {
+    kind: string;
+    ok: boolean;
+    review?: {
+      sessionId: string;
+      revision: number;
+      status: string;
+      turn: {
+        id: string;
+        briefRevision: number;
+        graphRevision: number;
+        selectedRoleIds: string[];
+      };
+    };
+  };
+  if (!prepared.ok) throw new Error(JSON.stringify(prepared));
+  expect(prepared).toMatchObject({
+    kind: "research:prepare-plan-review-result",
+    ok: true,
+    review: {
+      status: "waiting_plan_approval",
+      turn: { briefRevision: 1, graphRevision: 1 },
+    },
+  });
+  expect(prepared.review?.turn.selectedRoleIds).toContain("reconciler");
+  expect(JSON.stringify(prepared)).not.toContain("tenantOrigin");
+  expect(JSON.stringify(prepared)).not.toContain(HOST_PARITY_QUESTION);
+
+  const durable = await readPackedDurableResearchSession(
+    page,
+    prepared.review!.sessionId,
+    `artifact:report:${prepared.review!.turn.id}`,
+  );
+  expect(durable.session.state).toMatchObject({
+    status: "waiting_plan_approval",
+    turns: [{
+      tasks: [],
+      acceptedPackets: [],
+      graph: { revision: 1, status: "proposed" },
+    }],
+  });
+  expect(durable.artifact).toBeUndefined();
+  expect((await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY)))
+    .not.toHaveProperty(RESEARCH_ANTHROPIC_SESSION_KEY);
+
+  const approved = await page.evaluate(async (review) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:approve-plan-review",
+      windowId: window.id,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      briefRevision: review.turn.briefRevision,
+      graphRevision: review.turn.graphRevision,
+    });
+  }, prepared.review!) as {
+    kind: string;
+    ok: boolean;
+    session?: { sessionId: string; status: string };
+  };
+  expect(approved).toMatchObject({
+    kind: "research:approve-plan-review-result",
+    ok: true,
+    session: { sessionId: prepared.review!.sessionId, status: "running" },
+  });
+  const events = await harnessEvents(page);
+  expect(events.some((event) => event.kind === "fetch")).toBe(false);
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
 });
 
 test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {
@@ -2618,13 +2708,13 @@ test("resumes a checkpointed packed session in a fresh dedicated worker without 
     expect(resumableSessions).toMatchObject({
       kind: "research:list-resumable-sessions-result",
       ok: true,
-      sessions: [{
-        sessionId,
-        turnId: `research-turn:${initialRunId}`,
-        question: HOST_PARITY_QUESTION,
-        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
-      }],
     });
+    expect(resumableSessions.sessions).toContainEqual(expect.objectContaining({
+      sessionId,
+      turnId: `research-turn:${initialRunId}`,
+      question: HOST_PARITY_QUESTION,
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+    }));
 
     const resumed = await resumePackedResearchInBackground(
       page,

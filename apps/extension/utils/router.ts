@@ -13,6 +13,7 @@ import type {
   ExtRequest,
   ExtResponse,
   PdfCompileHints,
+  ResearchPlanReviewActionRequest,
   ResearchScopePlanReviewActionRequest,
   ResearchScopeReviewActionRequest,
 } from "./messages.js";
@@ -24,6 +25,7 @@ import type {
 } from "./research/contracts.js";
 import type {
   ResearchResumableSessionV1,
+  ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
@@ -86,6 +88,18 @@ export interface RouterDeps {
     windowId: number,
     action: ResearchScopePlanReviewActionRequest,
   ) => Promise<ResearchSessionScopeReviewV1>;
+  prepareResearchPlanReview?: (
+    windowId: number,
+    request: ResearchRequestV1,
+    policy: ResearchOneShotPolicyV1,
+  ) => Promise<ResearchSessionPlanReviewV1>;
+  listResearchPlanReviews?: (
+    windowId: number,
+  ) => Promise<ResearchSessionPlanReviewV1[]>;
+  approveResearchPlanReview?: (
+    windowId: number,
+    action: ResearchPlanReviewActionRequest,
+  ) => Promise<ResearchResumableSessionV1>;
   rejectResearchScopeReview?: (
     windowId: number,
     action: ResearchScopeReviewActionRequest,
@@ -378,6 +392,81 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:approve-scope-plan-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:prepare-plan-review": {
+      if (!deps.prepareResearchPlanReview) {
+        return {
+          kind: "research:prepare-plan-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research plan preparation is not configured.",
+        };
+      }
+      try {
+        const review = await deps.prepareResearchPlanReview(
+          msg.windowId,
+          msg.request,
+          msg.policy,
+        );
+        return { kind: "research:prepare-plan-review-result", ok: true, review };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:prepare-plan-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:list-plan-reviews": {
+      if (!deps.listResearchPlanReviews) {
+        return {
+          kind: "research:list-plan-reviews-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research plan review is not configured.",
+        };
+      }
+      try {
+        const reviews = await deps.listResearchPlanReviews(msg.windowId);
+        return { kind: "research:list-plan-reviews-result", ok: true, reviews };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:list-plan-reviews-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:approve-plan-review": {
+      if (!deps.approveResearchPlanReview) {
+        return {
+          kind: "research:approve-plan-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research plan approval is not configured.",
+        };
+      }
+      try {
+        const session = await deps.approveResearchPlanReview(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          briefRevision: msg.briefRevision,
+          graphRevision: msg.graphRevision,
+        });
+        return { kind: "research:approve-plan-review-result", ok: true, session };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:approve-plan-review-result",
           ok: false,
           code: classified.code,
           error: classified.message,
