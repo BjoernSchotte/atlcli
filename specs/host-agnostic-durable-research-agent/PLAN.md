@@ -3263,6 +3263,12 @@ unknown-outcome retry/abstain remains a separate gate below.
       after an `outcome_unknown` boundary may repeat only under the configured
       retry policy and must appear in sanitized duplicate-work metrics.
 
+  - [x] A real child process completes a public CLI initialization through a
+        journaled, released retrieval checkpoint and is then hard-stopped. A
+        fresh child invokes the public `--resume` path against the same SQLite
+        store, consumes exactly one continuation, preserves its accepted task
+        and packet identities, and writes the exact Markdown report (2026-08-02).
+
 Extension/browser:
 
 - [x] Implement IndexedDB session, event, workspace, graph, task,
