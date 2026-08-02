@@ -3518,6 +3518,10 @@ Gate:
         fresh dedicated worker through the public resume boundary, and compares
         its complete report plus Markdown bytes to the canonical Node fixture
         (32 packed-extension tests, 2026-08-02).
+  - [x] The public CLI `--resume` path consumes one journaled continuation and
+        preserves the exact agent report in its JSON projection, external
+        Markdown artifact, and session workspace (41 CLI contract tests,
+        2026-08-02).
 
 ### T5 — Add the evidence store, claim ledger, outline, and report V2
 

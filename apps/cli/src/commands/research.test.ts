@@ -1426,7 +1426,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).toContain(`session=${sessionId} status=running recovery=claimed lease_epoch=2`);
   });
 
-  test("reclaims and consumes exactly one issued retrieval continuation after an interrupted host", async () => {
+  test("reclaims one issued continuation and preserves the exact resumed report bytes", async () => {
     const harness = cliHarness();
     const { sessionId, turnId, continuationId } = await seedIssuedContinuationSession(harness);
     const originalRunAgent = harness.dependencies.runAgent;
@@ -1450,7 +1450,7 @@ describe("research CLI one-shot contract", () => {
       return originalRunAgent(input);
     };
 
-    await handleResearch([], { resume: sessionId }, { json: false }, harness.dependencies);
+    await handleResearch([], { resume: sessionId }, { json: true }, harness.dependencies);
 
     expect(harness.runInputs).toHaveLength(1);
     expect(harness.runInputs[0]).toMatchObject({
@@ -1468,6 +1468,13 @@ describe("research CLI one-shot contract", () => {
     expect((await harness.durableStore.events(sessionId)).filter((event) =>
       event.kind === "consume_retrieval_continuation",
     )).toHaveLength(1);
+    expect(JSON.parse(harness.stdout.join(""))).toEqual({
+      sessionId,
+      artifactPath: "/external/artifact/report.md",
+      report,
+    });
+    expect(harness.writes.get("/external/artifact/report.md")).toBe(report.markdown);
+    await expect(harness.workspaces[0]?.readFile("/artifacts/report.md")).resolves.toBe(report.markdown);
   });
 
   test("records a revision-fenced steering request only at a paused retrieval checkpoint", async () => {
