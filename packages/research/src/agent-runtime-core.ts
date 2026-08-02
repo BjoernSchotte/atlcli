@@ -88,6 +88,7 @@ import {
   providerCompatibleResearchSchema,
   researchSubagentTypeForNodeV1,
   researchTaskIdForNodeV1,
+  type ResearchReadyFrontierControllerV1,
   type ResearchSubagentDiagnosticV1,
 } from "./dynamic-subagents.js";
 import {
@@ -747,6 +748,82 @@ export function createResearchRetrievalContinuationPtcTool(options: {
   }, {
     name: "research_retrieval_continue",
     description: "Consume one host-issued retrieval continuation before a later disposable supervisor eval. The returned action/reason are host-derived; no source content, graph topology, or dependency packets are exposed.",
+    schema,
+  });
+}
+
+export const RESEARCH_READY_FRONTIER_SCHEMA_V1 =
+  "atlcli.research-ready-frontier/v1" as const;
+
+/**
+ * The minimal host-issued task envelope for one ready graph frontier. Any
+ * dependency result has already passed packet acceptance and is a compact
+ * downstream projection, never a child trajectory or raw source body.
+ */
+export interface ResearchReadyFrontierTaskProjectionV1 {
+  taskId: string;
+  nodeId: string;
+  subagentType: string;
+  outputSchema: ResearchTaskOutputSchemaV1;
+  objective: string;
+  dependencyResults: Array<{ taskId: string; result: unknown }>;
+}
+
+export interface ResearchReadyFrontierProjectionV1 {
+  schema: typeof RESEARCH_READY_FRONTIER_SCHEMA_V1;
+  graphRevision: number;
+  tasks: ResearchReadyFrontierTaskProjectionV1[];
+}
+
+/**
+ * Return exactly one host-admitted ready frontier after the continuation has
+ * been atomically consumed. The supervisor cannot enumerate a graph, replay
+ * completed work, or manufacture dependency results through this PTC.
+ */
+export function createResearchReadyFrontierPtcTool(options: {
+  activeGraph: () => ResearchGraphV1 | undefined;
+  canRead: () => boolean;
+  frontier: () => ResearchReadyFrontierTaskProjectionV1[];
+}): DynamicStructuredTool {
+  const schema = z.object({
+    graphRevision: z.number().int().positive(),
+  }).strict();
+  return tool(async ({ graphRevision }) => {
+    const graph = options.activeGraph();
+    if (!graph || graph.revision !== graphRevision || !options.canRead()) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The ready research frontier is not available at this workflow phase.",
+      );
+    }
+    const tasks = options.frontier();
+    if (tasks.length === 0 || tasks.length > graph.maxParallelNodes) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The host did not provide a bounded ready research frontier.",
+      );
+    }
+    const taskIds = new Set<string>();
+    for (const task of tasks) {
+      if (!task.taskId || !task.nodeId || !task.subagentType || !task.objective ||
+          taskIds.has(task.taskId) || task.dependencyResults.length > 8 ||
+          new Set(task.dependencyResults.map((dependency) => dependency.taskId)).size !==
+            task.dependencyResults.length) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The host ready research frontier is invalid.",
+        );
+      }
+      taskIds.add(task.taskId);
+    }
+    return JSON.stringify({
+      schema: RESEARCH_READY_FRONTIER_SCHEMA_V1,
+      graphRevision,
+      tasks,
+    } satisfies ResearchReadyFrontierProjectionV1);
+  }, {
+    name: "research_ready_frontier",
+    description: "Return one exact host-admitted ready task frontier with only accepted compact dependency projections. It never exposes the full graph, source bodies, provider state, or completed child trajectories.",
     schema,
   });
 }
@@ -1589,6 +1666,10 @@ async function runResearchAgentWithBindings(
   let repairAuthorization: ResearchRepairAuthorizationV1 | undefined;
   let acceptedRepairPacket: ResearchAcceptedPacketV1 | undefined;
   let researchWavesConsumed = 1;
+  let readyFrontierController: ResearchReadyFrontierControllerV1 | undefined;
+  let initialReadyFrontierIssued = false;
+  let retrievalCheckpoint: ResearchRetrievalCheckpointProjectionV1 | undefined;
+  let retrievalContinuationConsumed = false;
   const emitEvent = (event: ResearchOneShotEventInputV1): void => {
     input.options?.onEvent?.({
       ...event,
@@ -2019,6 +2100,9 @@ async function runResearchAgentWithBindings(
         admissionMode: input.researchGraph!.nodes.every((node) => node.executor === "subagent")
           ? "ready_frontier"
           : "whole_graph",
+        onReadyFrontierController: (controller) => {
+          readyFrontierController = controller;
+        },
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
         ...(durableDispatchJournal ? { durableDispatchJournal } : {}),

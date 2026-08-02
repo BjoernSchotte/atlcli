@@ -629,6 +629,8 @@ export function compileDynamicResearchSubagents(
 export interface ResearchReadyFrontierControllerV1 {
   configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
   appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
+  /** Read the current durable ready set without reopening a prior task. */
+  currentReadyFrontier(): readonly ResearchTaskAdmissionV1[];
   /** Admit the caller's node only if it belongs to the current ready frontier. */
   ensureTaskFrontier(taskId: string): void;
 }
@@ -1370,6 +1372,8 @@ export function createBoundedResearchSubagentMiddleware(
       next.forEach((admission) => admittedFrontierTaskIds.add(admission.taskId));
       return next;
     },
+    currentReadyFrontier: (): readonly ResearchTaskAdmissionV1[] =>
+      readyAdmissionsForGraph(requireActiveGraph()),
     ensureTaskFrontier: (taskId: string): void => {
       if (!readyFrontierConfigured) readyFrontierController.configureInitialFrontier();
       if (admittedFrontierTaskIds.has(taskId)) return;

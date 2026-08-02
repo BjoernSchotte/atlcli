@@ -9,6 +9,7 @@ import {
   createResearchGraphRevisionPtcTool,
   createResearchRetrievalContinuationPtcTool,
   createResearchRetrievalCheckpointPtcTool,
+  createResearchReadyFrontierPtcTool,
   hostSearchCoverageLimitationsV1,
 } from "./agent-runtime-core.js";
 import { createResearchBriefV1 } from "./brief.js";
@@ -446,6 +447,59 @@ describe("durable retrieval checkpoint PTC", () => {
     });
     expect(consumeCalls).toBe(1);
     expect(JSON.stringify(projected)).not.toContain("DEMO");
+  });
+});
+
+describe("ready frontier PTC", () => {
+  test("returns only one bounded task group with accepted compact dependencies", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:frontier-tool",
+      turnId: "research-turn:frontier-tool",
+      objective: "Research a bounded Jira question.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const frontier = createResearchReadyFrontierPtcTool({
+      activeGraph: () => graph,
+      canRead: () => true,
+      frontier: () => [{
+        taskId: "research-task:r1:jira-lookup:a1",
+        nodeId: "research-node:jira-lookup",
+        subagentType: "research-focused-researcher-jira-lookup",
+        outputSchema: "atlcli.research-packet-body/v1",
+        objective: "Acquire bounded Jira evidence.",
+        dependencyResults: [{
+          taskId: "research-task:prior:a1",
+          result: {
+            schema: "atlcli.research-dependency-packet/v1",
+            sourceIds: ["jira:DEMO-1"],
+          },
+        }],
+      }],
+    });
+
+    const projected = JSON.parse(await frontier.invoke({ graphRevision: graph.revision }));
+    expect(projected).toEqual({
+      schema: "atlcli.research-ready-frontier/v1",
+      graphRevision: graph.revision,
+      tasks: [expect.objectContaining({
+        taskId: "research-task:r1:jira-lookup:a1",
+        dependencyResults: [expect.objectContaining({ taskId: "research-task:prior:a1" })],
+      })],
+    });
+    await expect(createResearchReadyFrontierPtcTool({
+      activeGraph: () => graph,
+      canRead: () => false,
+      frontier: () => [],
+    }).invoke({ graphRevision: graph.revision })).rejects.toThrow("not available");
   });
 });
 
