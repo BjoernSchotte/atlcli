@@ -286,6 +286,44 @@ describe("research-owned native task dispatch interception", () => {
     expect(adapter.snapshot().taskStatuses["durable-task"]).toBe("completed");
   });
 
+  test("fails a dependency projection before committing a durable packet", async () => {
+    const lifecycle: string[] = [];
+    const outcomes: string[] = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("dependency-projection-failure")],
+      maxTasks: 1,
+      maxConcurrency: 1,
+      async invokeUpstream() {
+        lifecycle.push("upstream");
+        return { taskId: "dependency-projection-failure", answer: "accepted" };
+      },
+      projectDependencyResult() {
+        lifecycle.push("project-dependency");
+        throw new Error("synthetic dependency projection failure");
+      },
+      acceptResult() {
+        lifecycle.push("durable-accept");
+      },
+      onUncommittedOutcome: ({ reason }) => {
+        outcomes.push(reason);
+      },
+    });
+
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "dependency-projection-failure",
+        objective: "Research dependency-projection-failure",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).rejects.toThrow("synthetic dependency projection failure");
+
+    expect(lifecycle).toEqual(["upstream", "project-dependency"]);
+    expect(outcomes).toEqual(["result-commit-failed"]);
+    expect(adapter.snapshot().taskStatuses["dependency-projection-failure"]).toBe("failed");
+  });
+
   test("does not start provider work when durable admission fails", async () => {
     let upstreamCalls = 0;
     const adapter = createResearchDispatchInterceptionAdapter({

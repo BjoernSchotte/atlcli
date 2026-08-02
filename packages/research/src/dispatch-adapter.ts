@@ -668,9 +668,15 @@ export function createResearchDispatchInterceptionAdapter(options: {
       const projectedResult = options.projectResult
         ? await options.projectResult(first.value, { taskId, admission })
         : first.value;
-      await options.acceptResult?.(taskId, projectedResult, first.value);
+      // Project the only result shape that a later task may receive before the
+      // durable packet commit. If this deterministic host projection cannot be
+      // produced, the provider result has not yet become authoritative and the
+      // uncommitted-outcome path below remains valid. Performing it after the
+      // packet commit would incorrectly try to reclassify a completed durable
+      // task as an unknown provider outcome on a local projection failure.
       const projectedDependency = options.projectDependencyResult?.(taskId, projectedResult);
       const dependencyResult = projectedDependency === undefined ? first.value : projectedDependency;
+      await options.acceptResult?.(taskId, projectedResult, first.value);
       completedResults.set(taskId, structuredClone(dependencyResult));
       emit({ taskId, status: "completed", resultBytes });
       return dependencyResult;

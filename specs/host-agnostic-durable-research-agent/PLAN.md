@@ -3460,6 +3460,11 @@ Gate:
 - [ ] Failure injection at every result-publication sub-boundary proves that a
       task cannot be terminal while its authoritative graph node remains
       running, and that recovery accepts exactly one packet/outbox event.
+
+  - [x] The host computes the body-free downstream dependency projection before
+        packet acceptance. Its focused adapter fault test proves a projection
+        failure invokes no durable acceptance callback, records exactly the
+        uncommitted outcome, and leaves the task non-terminal (2026-08-02).
 - [ ] Clarification/candidate selection, plan rejection and replacement,
       scope-expansion approval/rejection, pause request, pause acknowledgement,
       and resume transitions pass revision-race and process/worker-restart
