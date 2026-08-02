@@ -54,6 +54,12 @@ describe("message guards", () => {
       windowId: 7,
       request: { mustNotCross: true },
     })).toBe(false);
+    expect(isExtRequest({ kind: "research:cancel-session", runId: "run-1" })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:cancel-session",
+      runId: "run-1",
+      sessionId: "must-not-cross",
+    })).toBe(false);
     expect(isExtRequest({
       kind: "research:list-resumable-sessions",
       windowId: 7,

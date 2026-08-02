@@ -3324,6 +3324,14 @@ Extension/browser:
         it starts neither retrieval nor a worker. The packed MV3 test proves
         the durable three-transition replacement, stale-approval rejection,
         empty task/packet state, and absent credential write (2026-08-02).
+  - [x] Separate an explicit sidebar cancellation from an uncorrelated worker
+        interruption. The sidebar sends only a run ID; the background resolves
+        its owned session from ephemeral routing state, stops the dedicated
+        worker, then commits the fenced terminal session cancellation. The
+        original worker-only interruption remains recoverable for lifecycle
+        tests, and sidebar unmount no longer aborts a durable run. The packed
+        MV3 test proves the visible cancellation retains a `cancelled` session
+        and rejects a later recovery attempt (23 packed tests, 2026-08-02).
 - [ ] Prove service-worker suspension, offscreen recreation, dedicated-worker
       termination, browser restart, cancellation, and concurrent-resume
       fencing.

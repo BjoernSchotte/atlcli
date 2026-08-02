@@ -464,6 +464,13 @@ export default defineBackground({
       return { state: result.state, value: result.detection };
     });
 
+  /**
+   * Ephemeral routing only: the durable store remains authoritative. Keeping
+   * this map in the service worker lets an explicit UI cancellation identify
+   * its own session without accepting a caller-provided session ID.
+   */
+  const activeResearchRuns = new Map<string, { sessionId: string }>();
+
   const runResearch = async (
     runId: string,
     sessionId: string,
@@ -488,6 +495,10 @@ export default defineBackground({
     const apiKey = normalizeAnthropicApiKey(
       stored[RESEARCH_ANTHROPIC_SESSION_KEY]
     );
+    if (activeResearchRuns.has(runId)) {
+      throw new ResearchContractError("invalid-request", "Research run id is already active.");
+    }
+    activeResearchRuns.set(runId, { sessionId });
     offscreenActivity.begin();
     try {
       await ensureOffscreen();
@@ -516,6 +527,7 @@ export default defineBackground({
       return response.report;
     } finally {
       offscreenActivity.end();
+      activeResearchRuns.delete(runId);
     }
   };
 
@@ -598,6 +610,10 @@ export default defineBackground({
           "Recovered browser session no longer has its accepted durable turn.",
         );
       }
+      if (activeResearchRuns.has(runId)) {
+        throw new ResearchContractError("invalid-request", "Research run id is already active.");
+      }
+      activeResearchRuns.set(runId, { sessionId: resumed.sessionId });
       offscreenActivity.begin();
       try {
         await ensureOffscreen();
@@ -618,6 +634,7 @@ export default defineBackground({
         return response.report;
       } finally {
         offscreenActivity.end();
+        activeResearchRuns.delete(runId);
       }
     } finally {
       store.close();
@@ -1432,6 +1449,35 @@ export default defineBackground({
     );
   };
 
+  /**
+   * A deliberate sidebar cancellation is terminal only after its dedicated
+   * worker has stopped. An uncorrelated worker interrupt remains resumable for
+   * recovery tests and host-loss handling; the UI uses this durable variant.
+   */
+  const cancelResearchSession = async (runId: string): Promise<boolean> => {
+    const active = activeResearchRuns.get(runId);
+    if (!active) return false;
+    const interrupted = await cancelResearch(runId);
+    if (!interrupted) return false;
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const current = await store.read(active.sessionId);
+      if (!current) return true;
+      if (current.status === "cancelled" || current.status === "complete" || current.status === "failed") {
+        return current.status === "cancelled";
+      }
+      await store.commit(current.sessionId, {
+        kind: "cancel",
+        expectedRevision: current.revision,
+        expectedLeaseEpoch: current.lease.epoch,
+        at: new Date().toISOString(),
+      });
+      return true;
+    } finally {
+      store.close();
+    }
+  };
+
   // Start-up pass: a worker that just woke may be looking at records whose
   // compile died with the previous one.
   sweepJobs(true);
@@ -1505,6 +1551,7 @@ export default defineBackground({
       }),
       resolveResearchScope,
       cancelResearch,
+      cancelResearchSession,
     });
     if (handled) {
       // Opening or reading the panel is not acknowledgement. Productive queue

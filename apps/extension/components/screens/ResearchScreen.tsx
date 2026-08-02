@@ -475,7 +475,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     });
     return () => {
       active = false;
-      abortRef.current?.abort();
     };
   }, [port]);
 

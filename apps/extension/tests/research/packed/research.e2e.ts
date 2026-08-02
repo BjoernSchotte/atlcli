@@ -2060,6 +2060,40 @@ async function readPackedDurableResearchSession(
   }, { sessionId, artifactId });
 }
 
+async function findPackedDurableResearchSessionByObjective(
+  page: Page,
+  objective: string,
+): Promise<{ sessionId: string; status: string } | undefined> {
+  return page.evaluate(async (expectedObjective) => {
+    type SessionRecord = {
+      sessionId: string;
+      state: {
+        status: string;
+        turns?: Array<{ brief?: { objective?: string } }>;
+      };
+    };
+    const open = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("atlcli-research-sessions");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const records = await new Promise<SessionRecord[]>((resolve, reject) => {
+        const transaction = open.transaction("sessions", "readonly");
+        const request = transaction.objectStore("sessions").getAll();
+        request.onsuccess = () => resolve(request.result as SessionRecord[]);
+        request.onerror = () => reject(request.error);
+      });
+      const record = records.find((candidate) =>
+        candidate.state.turns?.some((turn) => turn.brief?.objective === expectedObjective)
+      );
+      return record && { sessionId: record.sessionId, status: record.state.status };
+    } finally {
+      open.close();
+    }
+  }, objective);
+}
+
 async function writePackedDurableResearchSession(
   page: Page,
   session: ResearchSessionV1,
@@ -3168,6 +3202,69 @@ test("resumes a checkpointed packed session in a fresh dedicated worker without 
   }
 });
 
+test("persists an explicit packed user cancellation and rejects later recovery", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  const runId = "packed-durable-cancel";
+  const sessionId = `research-session:${runId}`;
+  const initial = runPackedResearchInBackground(page, {
+    ...hostParityRequest(),
+    question: HOST_PARITY_QUESTION,
+  }, runId);
+  try {
+    await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+      event.kind === "packed-resume-checkpoint-reached"
+    ), { timeout: 30_000 }).toBe(true);
+
+    const cancelled = await page.evaluate(async (value) =>
+      chrome.runtime.sendMessage({ kind: "research:cancel-session", runId: value }),
+    runId);
+    expect(cancelled).toEqual({
+      kind: "research:cancel-session-result",
+      runId,
+      cancelled: true,
+    });
+    await expect(initial).resolves.toMatchObject({
+      kind: "research:run-result",
+      runId,
+      ok: false,
+      code: "cancelled",
+    });
+
+    const durable = await readPackedDurableResearchSession(
+      page,
+      sessionId,
+      `artifact:report:research-turn:${runId}`,
+    );
+    expect(durable.session.state).toMatchObject({
+      status: "cancelled",
+      turns: [{
+        acceptedPackets: expect.any(Array),
+        cancelledAt: expect.any(String),
+      }],
+    });
+    expect(durable.artifact).toBeUndefined();
+
+    const resumed = await resumePackedResearchInBackground(
+      page,
+      sessionId,
+      "packed-cancelled-recovery",
+    );
+    expect(resumed).toMatchObject({
+      kind: "research:resume-result",
+      ok: false,
+      code: "invalid-request",
+    });
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
+});
+
 test("keeps raw child trajectories and hidden supervisor state out of packed MV3 specialist inputs", async () => {
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
@@ -3926,9 +4023,10 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await expect(page.getByTestId("research-key")).toHaveValue("");
 
   await installEventCapture(page);
+  const cancelledObjective = "cancel-before-ptc: Search Jira project DEMO and Confluence space KB.";
   await fillResearchForm(
     page,
-    "cancel-before-ptc: Search Jira project DEMO and Confluence space KB.",
+    cancelledObjective,
     { includeKey: false }
   );
   await page.getByTestId("research-run").click();
@@ -3954,6 +4052,18 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await expect
     .poll(async () => (await researchWorkerTargets(cancelRoot)).length)
     .toBe(0);
+  await expect
+    .poll(async () => (await findPackedDurableResearchSessionByObjective(page, cancelledObjective))?.status)
+    .toBe("cancelled");
+  const cancelledSession = await findPackedDurableResearchSessionByObjective(page, cancelledObjective);
+  if (!cancelledSession) throw new Error("Packed UI cancellation did not retain its durable session.");
+  await expect(
+    resumePackedResearchInBackground(page, cancelledSession.sessionId, "packed-ui-cancelled-recovery")
+  ).resolves.toMatchObject({
+    kind: "research:resume-result",
+    ok: false,
+    code: "invalid-request",
+  });
   await cancelRoot.detach();
 
   const allStarts = [

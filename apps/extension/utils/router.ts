@@ -155,6 +155,7 @@ export interface RouterDeps {
     options?: ResearchScopePreflightOptionsV1,
   ) => Promise<ResearchScopePreflightOutcomeV1>;
   cancelResearch?: (runId: string) => Promise<boolean>;
+  cancelResearchSession?: (runId: string) => Promise<boolean>;
 }
 
 /**
@@ -777,6 +778,14 @@ export async function routeMessage(
       const cancelled = await deps.cancelResearch?.(msg.runId).catch(() => false);
       return {
         kind: "research:cancel-result",
+        runId: msg.runId,
+        cancelled: cancelled ?? false,
+      };
+    }
+    case "research:cancel-session": {
+      const cancelled = await deps.cancelResearchSession?.(msg.runId).catch(() => false);
+      return {
+        kind: "research:cancel-session-result",
         runId: msg.runId,
         cancelled: cancelled ?? false,
       };

@@ -259,6 +259,13 @@ export function handleExtMessage(
             error: toMessage(err),
           });
           break;
+        case "research:cancel-session":
+          sendResponse({
+            kind: "research:cancel-session-result",
+            runId: message.runId,
+            cancelled: false,
+          });
+          break;
         case "research:resolve-scope":
           sendResponse({
             kind: "research:resolve-scope-result",

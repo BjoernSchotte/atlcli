@@ -227,7 +227,10 @@ export type ExtRequest =
   | { kind: "research:list-scope-clarification-reviews"; windowId: number }
   | ({ kind: "research:resolve-scope-clarification-review"; windowId: number } & ResearchScopeClarificationReviewActionRequest)
   | ({ kind: "research:continue-scope-clarification-review"; windowId: number } & ResearchScopeClarificationPlanningActionRequest)
-  | { kind: "research:cancel"; runId: string };
+  /** Stop only the in-flight worker; recovery remains possible. */
+  | { kind: "research:cancel"; runId: string }
+  /** Explicit user cancellation also terminally records the owned session. */
+  | { kind: "research:cancel-session"; runId: string };
 
 /** Response messages returned to the panel. */
 export type ExtResponse =
@@ -463,7 +466,8 @@ export type ExtResponse =
       code: ResearchErrorCode;
       error: string;
     }
-  | { kind: "research:cancel-result"; runId: string; cancelled: boolean };
+  | { kind: "research:cancel-result"; runId: string; cancelled: boolean }
+  | { kind: "research:cancel-session-result"; runId: string; cancelled: boolean };
 
 /**
  * Push message: the service worker (canonical tab observer, PLAN §2.1) notifies
@@ -599,6 +603,7 @@ export interface ResponseMap {
   "research:resolve-scope-clarification-review": Extract<ExtResponse, { kind: "research:resolve-scope-clarification-review-result" }>;
   "research:continue-scope-clarification-review": Extract<ExtResponse, { kind: "research:continue-scope-clarification-review-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
+  "research:cancel-session": Extract<ExtResponse, { kind: "research:cancel-session-result" }>;
 }
 
 export type ResponseFor<K extends ExtRequestKind> = ResponseMap[K];
@@ -796,7 +801,7 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       preflight.request !== null &&
       hasValidScopePreflightOptions(preflight.options);
   }
-  if (kind === "research:cancel") {
+  if (kind === "research:cancel" || kind === "research:cancel-session") {
     const cancel = value as { runId?: unknown };
     return hasOnlyKeys(value, ["kind", "runId"]) && isResearchRunId(cancel.runId);
   }

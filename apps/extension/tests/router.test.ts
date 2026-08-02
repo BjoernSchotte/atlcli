@@ -241,6 +241,17 @@ describe("routeMessage (pure router)", () => {
       runId: "run-1",
       cancelled: true,
     });
+    expect(await routeMessage({
+      kind: "research:cancel-session",
+      runId: "run-1",
+    }, {
+      ...okDeps,
+      cancelResearchSession: async (runId) => runId === "run-1",
+    })).toEqual({
+      kind: "research:cancel-session-result",
+      runId: "run-1",
+      cancelled: true,
+    });
     expect(JSON.stringify({
       kind: "research:run",
       runId: "run-1",

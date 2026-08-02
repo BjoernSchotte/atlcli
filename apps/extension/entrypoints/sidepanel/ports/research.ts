@@ -729,7 +729,7 @@ export function chromeResearchPort(): ResearchPort {
       };
       const cancel = (): void => {
         void chrome.runtime.sendMessage({
-          kind: "research:cancel",
+          kind: "research:cancel-session",
           runId,
         }).catch(() => undefined);
       };
@@ -812,7 +812,7 @@ export function chromeResearchPort(): ResearchPort {
       };
       const cancel = (): void => {
         void chrome.runtime.sendMessage({
-          kind: "research:cancel",
+          kind: "research:cancel-session",
           runId,
         }).catch(() => undefined);
       };
