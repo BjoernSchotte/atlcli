@@ -515,9 +515,9 @@ export function researchSubagentTypeForNodeV1(
 /** Stable host-owned task ID for one T3 graph-node attempt. */
 export function researchTaskIdForNodeV1(
   graph: Pick<ResearchGraphV1, "revision">,
-  node: Pick<ResearchGraphNodeV1, "id">,
+  node: Pick<ResearchGraphNodeV1, "id" | "taskGraphRevision">,
 ): string {
-  return `research-task:r${graph.revision}:${researchNodeSuffix(node)}:a1`;
+  return `research-task:r${node.taskGraphRevision ?? graph.revision}:${researchNodeSuffix(node)}:a1`;
 }
 
 /**
@@ -699,12 +699,18 @@ export function createBoundedResearchSubagentMiddleware(
   const nodeBySubagentType = new Map(
     executableNodes.map((node) => [researchSubagentTypeForNodeV1(node), node]),
   );
-  const taskIdByNodeId = new Map(
-    executableNodes.map((node) => [node.id, researchTaskIdForNodeV1(graph, node)]),
-  );
-  const nodeByTaskId = new Map(
-    executableNodes.map((node) => [researchTaskIdForNodeV1(graph, node), node]),
-  );
+  const nodeForTaskId = (taskId: string): (ResearchGraphNodeV1 & {
+    roleId: ResearchGraphRoleV1;
+  }) | undefined => {
+    const activeGraph = options.activeGraph?.() ?? graph;
+    const fromActiveGraph = activeGraph.nodes.find(
+      (node): node is ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 } =>
+        node.executor === "subagent" && Boolean(node.roleId) &&
+        researchTaskIdForNodeV1(activeGraph, node) === taskId,
+    );
+    if (fromActiveGraph) return fromActiveGraph;
+    return executableNodes.find((node) => researchTaskIdForNodeV1(graph, node) === taskId);
+  };
   const expectedSubagentTypes = [...nodeBySubagentType.keys()].sort();
   const actualSubagentTypes = subagents.map((subagent) => subagent.name).sort();
   if (JSON.stringify(actualSubagentTypes) !== JSON.stringify(expectedSubagentTypes)) {
@@ -739,6 +745,24 @@ export function createBoundedResearchSubagentMiddleware(
   for (const node of executableNodes) {
     dispatchPort.admit(taskAttemptForNode(node, graph));
   }
+  const ensureLocalAdmission = (
+    admission: ResearchTaskAdmissionV1,
+    activeGraph: ResearchGraphV1,
+  ): void => {
+    if (dispatchPort.attempt(admission.taskId)) return;
+    const node = activeGraph.nodes.find(
+      (candidate): candidate is ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 } =>
+        candidate.executor === "subagent" && Boolean(candidate.roleId) &&
+        researchTaskIdForNodeV1(activeGraph, candidate) === admission.taskId,
+    );
+    if (!node) {
+      throw new ResearchDispatchError(
+        "graph-proposal-required",
+        "A ready research frontier task is absent from the active graph.",
+      );
+    }
+    dispatchPort.admit(taskAttemptForNode(node, activeGraph));
+  };
 
   const structuredCandidate = (result: unknown): unknown => {
     if (typeof result === "string") return JSON.parse(result);
@@ -813,18 +837,22 @@ export function createBoundedResearchSubagentMiddleware(
     validateResearchGraphV1(activeGraph);
     if (activeGraph.sessionId !== graph.sessionId ||
         activeGraph.turnId !== graph.turnId ||
-        activeGraph.revision !== graph.revision ||
         activeGraph.basedOnBriefRevision !== graph.basedOnBriefRevision) {
       throw new ResearchDispatchError(
         "graph-proposal-required",
-        "The accepted research graph does not match the compiled host envelope.",
+        "The accepted research graph is outside the compiled host envelope.",
       );
     }
-    const activeNodes = activeGraph.nodes
+    const activeExecutionNodes = activeGraph.nodes
       .filter((node): node is ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 } =>
-        node.executor === "subagent" && node.kind !== "repair" &&
+        node.executor === "subagent" &&
         node.status !== "pruned" && Boolean(node.roleId)
       );
+    const activeNodes = activeExecutionNodes.filter((node) => node.kind !== "repair");
+    const taskIdByNodeId = new Map(activeExecutionNodes.map((node) => [
+      node.id,
+      researchTaskIdForNodeV1(activeGraph, node),
+    ]));
     const reconciliationNode = activeNodes.find((node) => node.roleId === "reconciler");
     const latentRepairNode = reconciliationNode
       ? executableNodes.find((node) => node.kind === "repair")
@@ -858,28 +886,32 @@ export function createBoundedResearchSubagentMiddleware(
     const readyNodeIds = new Set(activeGraph.nodes
       .filter((node) => node.status === "ready")
       .map((node) => node.id));
-    return admissionsForGraph(activeGraph).filter((admission) =>
-      readyNodeIds.has(nodeByTaskId.get(admission.taskId)?.id ?? ""),
-    );
+    return admissionsForGraph(activeGraph).filter((admission) => {
+      const node = activeGraph.nodes.find((candidate) =>
+        researchTaskIdForNodeV1(activeGraph, candidate) === admission.taskId,
+      );
+      return node !== undefined && readyNodeIds.has(node.id);
+    });
   };
   const admissions = admissionsForGraph(graph);
   const roleForDiagnostic = (diagnostic: ResearchDispatchDiagnosticV1): ResearchGraphRoleV1 | undefined =>
-    diagnostic.taskId ? nodeByTaskId.get(diagnostic.taskId)?.roleId : undefined;
+    diagnostic.taskId ? nodeForTaskId(diagnostic.taskId)?.roleId : undefined;
   const emitDispatchDiagnostic = (diagnostic: ResearchDispatchDiagnosticV1): void => {
     const role = roleForDiagnostic(diagnostic);
     if (!diagnostic.taskId || !role) return;
+    const executionGraph = options.activeGraph?.() ?? graph;
     if (diagnostic.status === "started") {
       startedAtByTaskId.set(diagnostic.taskId, now());
-      dispatchPort.start(diagnostic.taskId, graph.revision, new Date(now()).toISOString());
+      dispatchPort.start(diagnostic.taskId, executionGraph.revision, new Date(now()).toISOString());
     } else if (diagnostic.status === "failed") {
       const attempt = dispatchPort.attempt(diagnostic.taskId);
       if (attempt?.status === "running" || attempt?.status === "outcome_unknown") {
-        dispatchPort.fail(diagnostic.taskId, graph.revision, new Date(now()).toISOString());
+        dispatchPort.fail(diagnostic.taskId, attempt.graphRevision, new Date(now()).toISOString());
       }
     } else if (diagnostic.status === "cancelled") {
       const attempt = dispatchPort.attempt(diagnostic.taskId);
       if (attempt?.status === "running" || attempt?.status === "outcome_unknown") {
-        dispatchPort.cancel(diagnostic.taskId, graph.revision, new Date(now()).toISOString());
+        dispatchPort.cancel(diagnostic.taskId, attempt.graphRevision, new Date(now()).toISOString());
       }
     }
     const status = diagnostic.status === "completed"
@@ -1016,7 +1048,7 @@ export function createBoundedResearchSubagentMiddleware(
     },
     projectResult: async (value, { taskId }) => {
       const candidate = structuredCandidate(value);
-      const node = nodeByTaskId.get(taskId);
+      const node = nodeForTaskId(taskId);
       if (!node) throw new Error(`Research task result has no graph node: ${taskId}`);
       if (node.outputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V2 &&
           node.outputSchema !== RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2) return candidate;
@@ -1054,9 +1086,8 @@ export function createBoundedResearchSubagentMiddleware(
     },
     ...(durableDispatchJournal ? {
       beforeInvoke: ({ taskId }: { taskId: string }) => {
-        const catalogNode = nodeByTaskId.get(taskId);
         const executionGraph = options.activeGraph?.() ?? graph;
-        const activeNode = catalogNode && executionGraph.nodes.find((node) => node.id === catalogNode.id);
+        const activeNode = nodeForTaskId(taskId);
         if (!activeNode || !activeNode.roleId || activeNode.executor !== "subagent") {
           throw new ResearchDispatchError(
             "graph-proposal-required",
@@ -1072,8 +1103,9 @@ export function createBoundedResearchSubagentMiddleware(
       },
     } : {}),
     acceptResult(taskId, result, rawResult) {
-      const node = nodeByTaskId.get(taskId);
+      const node = nodeForTaskId(taskId);
       if (!node) throw new Error(`Research task result has no graph node: ${taskId}`);
+      const executionGraph = options.activeGraph?.() ?? graph;
       const messages = rawResult && typeof rawResult === "object" && "update" in rawResult &&
         rawResult.update && typeof rawResult.update === "object" && "messages" in rawResult.update &&
         Array.isArray(rawResult.update.messages)
@@ -1101,7 +1133,7 @@ export function createBoundedResearchSubagentMiddleware(
       };
       const packetInput = {
         taskId,
-        graphRevision: graph.revision,
+        graphRevision: executionGraph.revision,
         body: result,
         usage: observed,
         acceptedAt: new Date(now()).toISOString(),
@@ -1126,7 +1158,7 @@ export function createBoundedResearchSubagentMiddleware(
       return durableDispatchJournal
         .acceptPacket({
           taskId,
-          graphRevision: graph.revision,
+          graphRevision: executionGraph.revision,
           body: result,
           usage: observed,
           availableSourceIds: [...packetInput.availableSourceIds],
@@ -1193,6 +1225,7 @@ export function createBoundedResearchSubagentMiddleware(
         );
       }
       adapter.replaceAdmissions(initial);
+      initial.forEach((admission) => ensureLocalAdmission(admission, requireActiveGraph()));
       initial.forEach((admission) => admittedFrontierTaskIds.add(admission.taskId));
       readyFrontierConfigured = true;
       return initial;
@@ -1209,6 +1242,7 @@ export function createBoundedResearchSubagentMiddleware(
       );
       if (next.length === 0) return [];
       adapter.appendAdmissions(next);
+      next.forEach((admission) => ensureLocalAdmission(admission, requireActiveGraph()));
       next.forEach((admission) => admittedFrontierTaskIds.add(admission.taskId));
       return next;
     },
@@ -1232,16 +1266,24 @@ export function createBoundedResearchSubagentMiddleware(
   };
 
   const boundedTask = tool(async (input, config) => {
-    const node = nodeBySubagentType.get(input.subagent_type);
-    if (!node) throw new Error(`Research task subagent is not admitted: ${input.subagent_type}`);
+    const catalogNode = nodeBySubagentType.get(input.subagent_type);
+    if (!catalogNode) throw new Error(`Research task subagent is not admitted: ${input.subagent_type}`);
+    const executionGraph = options.activeGraph?.() ?? graph;
+    const node = executionGraph.nodes.find((candidate) => candidate.id === catalogNode.id) ?? catalogNode;
+    if (!node.roleId || node.executor !== "subagent") {
+      throw new ResearchDispatchError(
+        "unknown-task",
+        "The active research graph has no executable node for this subagent.",
+      );
+    }
     if (admissionMode === "ready_frontier") {
-      readyFrontierController.ensureTaskFrontier(researchTaskIdForNodeV1(graph, node));
+      readyFrontierController.ensureTaskFrontier(researchTaskIdForNodeV1(executionGraph, node));
     } else {
       ensureActiveAdmissions();
     }
     if (node.kind === "repair") {
       const authorization = options.repairAuthorization?.();
-      if (!authorization || authorization.taskId !== researchTaskIdForNodeV1(graph, node) ||
+      if (!authorization || authorization.taskId !== researchTaskIdForNodeV1(executionGraph, node) ||
           authorization.nodeId !== node.id) {
         throw new ResearchDispatchError(
           "repair-not-authorized",
@@ -1261,7 +1303,7 @@ export function createBoundedResearchSubagentMiddleware(
         },
       });
     } catch (error) {
-      const taskId = researchTaskIdForNodeV1(graph, node);
+      const taskId = researchTaskIdForNodeV1(executionGraph, node);
       const status = adapter.snapshot().taskStatuses[taskId];
       if (status === "failed" || status === "cancelled") options.onFatal?.(error);
       throw error;

@@ -10,6 +10,7 @@ import {
   composeResearchGraphV1,
   composeStandardResearchGraphV1,
   reduceResearchGraphV1,
+  reviseResearchGraphSelectionV1,
   type ResearchBriefV1,
   type ResearchGraphNodeV1,
   type ResearchGraphV1,
@@ -2990,6 +2991,112 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       joinTask.subagentType,
       synthesisTask.subagentType,
     ]);
+  });
+
+  test("keeps completed dependency task IDs stable when a checkpoint revision admits new work", async () => {
+    const catalog = composeResearchGraphV1(graphBrief(
+      request.question,
+      ["jira", "confluence"],
+      "analysis",
+      "off",
+    ));
+    const initialIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    let activeGraph = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog, initialIds),
+    });
+    const jira = activeGraph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const wiki = activeGraph.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    const upstreamTask = tool(async () => ({
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion: "Bounded graph revision result.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    }), {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    let controller: ResearchReadyFrontierControllerV1 | undefined;
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      catalog,
+      compileDynamicResearchSubagents(catalog, {
+        model,
+        broker,
+        question: request.question,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [upstreamTask] })) as never,
+      },
+      {
+        activeGraph: () => activeGraph,
+        admissionMode: "ready_frontier",
+        onReadyFrontierController: (next) => { controller = next; },
+      },
+    );
+    const taskTool = middleware.tools![0]!;
+    const jiraResult = await taskTool.invoke({
+      description: taskEnvelope(activeGraph, jira.id).description,
+      subagent_type: researchSubagentTypeForNodeV1(jira),
+    });
+    const wikiResult = await taskTool.invoke({
+      description: taskEnvelope(activeGraph, wiki.id).description,
+      subagent_type: researchSubagentTypeForNodeV1(wiki),
+    });
+    for (const nodeId of [jira.id, wiki.id]) {
+      activeGraph = reduceResearchGraphV1(activeGraph, {
+        kind: "start_node", expectedRevision: activeGraph.revision, nodeId,
+      });
+      activeGraph = reduceResearchGraphV1(activeGraph, {
+        kind: "complete_node", expectedRevision: activeGraph.revision,
+        nodeId, packetRef: `packet:revision:${nodeId}`,
+      });
+    }
+    const revisedIds = new Set([...initialIds, "research-node:cross-product-join"]);
+    activeGraph = reviseResearchGraphSelectionV1(catalog, activeGraph, {
+      schema: "atlcli.research-graph-revision-proposal/v1",
+      basedOnBriefRevision: activeGraph.basedOnBriefRevision,
+      basedOnGraphRevision: activeGraph.revision,
+      nodes: catalog.nodes.filter((node) => revisedIds.has(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => revisedIds.has(dependency)),
+        reasonCodes: node.reasonCodes,
+        priority: node.priority,
+      })),
+      prune: [],
+    });
+    const join = activeGraph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+    const revisedJira = activeGraph.nodes.find((node) => node.id === jira.id)!;
+    const revisedWiki = activeGraph.nodes.find((node) => node.id === wiki.id)!;
+    const joinedFrontier = controller?.appendNextFrontier();
+
+    expect(joinedFrontier?.map((admission) => admission.taskId)).toEqual([
+      researchTaskIdForNodeV1(activeGraph, join),
+    ]);
+    expect(researchTaskIdForNodeV1(activeGraph, revisedJira)).toBe("research-task:r1:jira-research:a1");
+    expect(researchTaskIdForNodeV1(activeGraph, join)).toBe("research-task:r2:cross-product-join:a1");
+    await taskTool.invoke({
+      description: taskEnvelope(activeGraph, join.id, [
+        { taskId: researchTaskIdForNodeV1(activeGraph, revisedJira), result: jiraResult },
+        { taskId: researchTaskIdForNodeV1(activeGraph, revisedWiki), result: wikiResult },
+      ]).description,
+      subagent_type: researchSubagentTypeForNodeV1(join),
+    });
   });
 
   test("runs independent native task calls concurrently before critique and synthesis", async () => {

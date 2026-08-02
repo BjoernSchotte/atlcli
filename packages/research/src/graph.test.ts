@@ -13,6 +13,7 @@ import {
   type ResearchGraphProposalV1,
   type ResearchGraphV1,
 } from "./graph.js";
+import { researchTaskIdForNodeV1 } from "./dynamic-subagents.js";
 import { createResearchBriefV1 } from "./brief.js";
 import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 import {
@@ -427,6 +428,7 @@ describe("dynamic research graph composition", () => {
       "research-node:synthesizer",
     ];
     let current = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, selectedIds));
+    const completedTaskIds = new Map<string, string>();
     for (const nodeId of selectedIds.slice(0, 2)) {
       current = reduceResearchGraphV1(current, {
         kind: "start_node",
@@ -439,6 +441,8 @@ describe("dynamic research graph composition", () => {
         nodeId,
         packetRef: `packet:${nodeId}`,
       });
+      const node = current.nodes.find((candidate) => candidate.id === nodeId)!;
+      completedTaskIds.set(nodeId, researchTaskIdForNodeV1(current, node));
     }
     expect(current.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("ready");
 
@@ -457,11 +461,18 @@ describe("dynamic research graph composition", () => {
     expect(revised.nodes.find((node) => node.id === "research-node:jira-research")).toMatchObject({
       status: "complete",
       packetRef: "packet:research-node:jira-research",
+      taskGraphRevision: current.revision,
     });
     expect(revised.nodes.find((node) => node.id === "research-node:cross-product-join")).toMatchObject({
       status: "ready",
       priority: 71,
     });
+    const revisedJira = revised.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const revisedJoin = revised.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+    expect(researchTaskIdForNodeV1(revised, revisedJira))
+      .toBe(completedTaskIds.get(revisedJira.id)!);
+    expect(researchTaskIdForNodeV1(revised, revisedJoin))
+      .toBe(`research-task:r${revised.revision}:cross-product-join:a1`);
     expect(revised.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("blocked");
     validateResearchGraphV1(revised);
   });

@@ -175,6 +175,12 @@ export interface ResearchGraphNodeV1 {
   depth: 0 | 1;
   priority: number;
   attempt: number;
+  /**
+   * Graph revision that admitted the currently observed task attempt. It is
+   * host-assigned when a ready node starts and stays fixed across later graph
+   * revisions so completed dependency task IDs remain stable.
+   */
+  taskGraphRevision?: number;
   maxAttempts: number;
   budget: ResearchNodeBudgetV1;
   completion: ResearchNodeCompletionPolicyV1;
@@ -863,7 +869,8 @@ export function validateResearchGraphV1(graph: ResearchGraphV1): void {
     if (node.dependencies.includes(node.id)) invalid("Research graph dependencies must be acyclic.");
     if (node.dependencies.some((dependency) => !graph.nodes.some((candidate) => candidate.id === dependency))) invalid("Research graph dependency is invalid.");
     if (node.dependencies.some((dependency) => executionRank(graph.nodes.find((candidate) => candidate.id === dependency)!) >= executionRank(node))) invalid("Research graph dependency is incompatible with the execution phase.");
-    if (!Number.isSafeInteger(node.priority) || node.priority < 0 || !Number.isSafeInteger(node.attempt) || node.attempt < 0 || !Number.isSafeInteger(node.maxAttempts) || node.maxAttempts < 1 || node.attempt > node.maxAttempts) invalid("Research graph node scheduling fields are invalid.");
+    if (!Number.isSafeInteger(node.priority) || node.priority < 0 || !Number.isSafeInteger(node.attempt) || node.attempt < 0 || !Number.isSafeInteger(node.maxAttempts) || node.maxAttempts < 1 || node.attempt > node.maxAttempts ||
+        (node.taskGraphRevision !== undefined && (!Number.isSafeInteger(node.taskGraphRevision) || node.taskGraphRevision < 1 || node.taskGraphRevision > graph.revision))) invalid("Research graph node scheduling fields are invalid.");
     validateBudget(node.budget, `Research graph node ${node.id} budget`);
   }
   const visiting = new Set<string>();
@@ -1385,7 +1392,12 @@ export function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGr
   const nodes = graph.nodes.map((candidate) => ({ ...candidate }));
   if (update.kind === "start_node") {
     if (node.status !== "ready") invalid("Only a ready research node can start.");
-    nodes[index] = { ...node, status: "running", attempt: node.attempt + 1 };
+    nodes[index] = {
+      ...node,
+      status: "running",
+      attempt: node.attempt + 1,
+      taskGraphRevision: graph.revision,
+    };
   } else if (update.kind === "complete_node") {
     if (node.status !== "running" || !/^packet:[A-Za-z0-9:._-]{1,200}$/.test(update.packetRef)) invalid("Only a running research node can accept a packet.");
     nodes[index] = { ...node, status: "complete", packetRef: update.packetRef };
