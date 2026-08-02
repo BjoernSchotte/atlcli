@@ -1,4 +1,4 @@
-import { ResearchContractError } from "./contracts.js";
+import { ResearchContractError, type ResearchScopeBindingV1 } from "./contracts.js";
 import type { ResearchGraphProposalV1, ResearchGraphV1 } from "./graph.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
 import type {
@@ -202,6 +202,7 @@ export class ResearchSessionDispatchJournalV1 {
   }): Promise<{
     dispositions: ResearchScopeDiscoveryDispositionV1[];
     proposal?: ResearchScopeExpansionProposalV1;
+    preauthorizedExactBinding?: ResearchScopeBindingV1;
   }> {
     return this.#enqueue(async () => {
       const session = await this.#read();
@@ -209,6 +210,7 @@ export class ResearchSessionDispatchJournalV1 {
       graphFor(turn, input.graphRevision);
       const existingDispositionCount = (turn.scopeDiscoveryDispositions ?? []).length;
       const existingProposalIds = new Set(turn.scopeExpansionProposals.map((proposal) => proposal.id));
+      const existingBindingIds = new Set(turn.scopeBindings.map((binding) => binding.id));
       return this.#commit(session, {
         kind: "disposition_scope_discoveries",
         graphRevision: input.graphRevision,
@@ -222,9 +224,13 @@ export class ResearchSessionDispatchJournalV1 {
         const proposal = nextTurn.scopeExpansionProposals.find((candidate) =>
           !existingProposalIds.has(candidate.id),
         );
+        const preauthorizedExactBinding = nextTurn.scopeBindings.find((binding) =>
+          !existingBindingIds.has(binding.id),
+        );
         return {
           dispositions,
           ...(proposal === undefined ? {} : { proposal }),
+          ...(preauthorizedExactBinding === undefined ? {} : { preauthorizedExactBinding }),
         };
       });
     });

@@ -468,6 +468,67 @@ describe("bounded research capability broker", () => {
     });
   });
 
+  it("admits one host-preauthorized exact link without a parent-space search", async () => {
+    const exactRequest = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Read the one exact linked Confluence page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      limits: { maxDetailItemsPerProduct: 1 },
+      wikiProvider: "rest",
+    });
+    const providers = fakeProviders();
+    let wikiSearches = 0;
+    providers.wiki.searchPage = async () => {
+      wikiSearches += 1;
+      throw new Error("preauthorized exact scope must not issue a parent-space search");
+    };
+    providers.wiki.getPage = async ({ contentId }) => ({
+      contentId,
+      spaceKey: "UNSCOPED",
+      title: "Preauthorized exact page",
+      content: { text: "Exact linked evidence.", linkTargets: [], truncated: false, inputBytes: 22 },
+    });
+    const broker = new ResearchCapabilityBroker(exactRequest, providers, {
+      createEntityId: () => "preauthorized-entity-1",
+    });
+    broker.allowPreauthorizedExactEntity({
+      schema: "atlcli.research-scope-binding/v1",
+      id: "scope-binding:preauthorized:research-scope-candidate:linked-page",
+      tenantOrigin: "https://example.atlassian.net",
+      product: "confluence",
+      entityKind: "page",
+      entityRef: "research-scope-entity:linked-page",
+      key: "1001",
+      name: "Preauthorized exact page",
+      source: "research_discovery",
+      authority: "approved",
+      candidateId: "research-scope-candidate:linked-page",
+      approvedAt: "2026-08-02T20:00:00.000Z",
+    });
+
+    const wiki = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    expect(wiki.items).toEqual([expect.objectContaining({ contentId: "1001" })]);
+    expect(wiki.page).toEqual({ complete: true, termination: "index-exhausted" });
+    expect(wikiSearches).toBe(0);
+
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+    const detail = await broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: wiki.items[0]!.entityRef,
+    });
+    expect(detail).toMatchObject({
+      source: { contentId: "1001", url: "https://example.atlassian.net/wiki/spaces/UNSCOPED/pages/1001" },
+      content: { text: "Exact linked evidence." },
+    });
+  });
+
   it("invalidates claims that depend on a superseded provider detail version", async () => {
     const workspace = createMemoryResearchWorkspace();
     const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);

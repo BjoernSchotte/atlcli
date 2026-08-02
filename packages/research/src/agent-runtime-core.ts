@@ -979,9 +979,10 @@ export interface ResearchSupervisorScopeDiscoveryDispositionResultV1 {
   schema: typeof RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_SCHEMA_V1;
   graphRevision: number;
   dispositionIds: string[];
-  status: "recorded" | "waiting_scope_approval";
+  status: "recorded" | "preauthorized_exact_entity" | "waiting_scope_approval";
   proposal?: Pick<ResearchScopeExpansionProposalV1,
     "id" | "candidateId" | "expansionKind" | "status">;
+  preauthorizedExactBindingId?: string;
 }
 
 /**
@@ -1005,6 +1006,7 @@ export function createResearchScopeDiscoveryDispositionsPtcTool(options: {
   }) => Promise<{
     dispositions: ResearchScopeDiscoveryDispositionV1[];
     proposal?: ResearchScopeExpansionProposalV1;
+    preauthorizedExactBinding?: import("./contracts.js").ResearchScopeBindingV1;
   }>;
   onAccepted?: (result: ResearchSupervisorScopeDiscoveryDispositionResultV1) => void | Promise<void>;
 }): DynamicStructuredTool {
@@ -1079,7 +1081,11 @@ export function createResearchScopeDiscoveryDispositionsPtcTool(options: {
       schema: RESEARCH_SCOPE_DISCOVERY_DISPOSITIONS_SCHEMA_V1,
       graphRevision: input.graphRevision,
       dispositionIds: recorded.dispositions.map((disposition) => disposition.id),
-      status: recorded.proposal === undefined ? "recorded" : "waiting_scope_approval",
+      status: recorded.proposal === undefined
+        ? "recorded"
+        : recorded.proposal.status === "approved" && recorded.preauthorizedExactBinding
+          ? "preauthorized_exact_entity"
+          : "waiting_scope_approval",
       ...(recorded.proposal === undefined ? {} : {
         proposal: {
           id: recorded.proposal.id,
@@ -1088,12 +1094,15 @@ export function createResearchScopeDiscoveryDispositionsPtcTool(options: {
           status: recorded.proposal.status,
         },
       }),
+      ...(recorded.preauthorizedExactBinding === undefined ? {} : {
+        preauthorizedExactBindingId: recorded.preauthorizedExactBinding.id,
+      }),
     };
     await options.onAccepted?.(result);
     return JSON.stringify(result);
   }, {
     name: "research_scope_discovery_dispositions",
-    description: "Record the central supervisor's closed-enum disposition for bounded related-scope discoveries. A proposed content expansion enters user approval before any candidate content retrieval.",
+    description: "Record the central supervisor's closed-enum disposition for bounded related-scope discoveries. Whole scope and ordinary exact proposals enter user approval; only an eligible exact-linked policy binding may be preauthorized by the host.",
     schema,
   });
 }
@@ -2978,6 +2987,12 @@ async function runResearchAgentWithBindings(
         discoveries: pendingScopeDiscoveries,
         disposition: async (inputForDisposition) => {
           const recorded = await durableDispatchJournal.dispositionScopeDiscoveries(inputForDisposition);
+          if (recorded.preauthorizedExactBinding) {
+            // Only the durable reducer can derive this binding.  QuickJS sees
+            // its opaque ID at most; the live broker receives the complete
+            // tenant-bound identity directly from the host transition.
+            broker.allowPreauthorizedExactEntity(recorded.preauthorizedExactBinding);
+          }
           recorded.dispositions.forEach((disposition) => decidedScopeDiscoveryIds.add(
             disposition.discoveryId,
           ));

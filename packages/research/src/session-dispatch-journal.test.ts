@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createResearchBriefV1 } from "./brief.js";
+import {
+  DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1,
+  createResearchBriefV1,
+} from "./brief.js";
 import {
   RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
   composeResearchGraphV1,
@@ -24,7 +27,9 @@ function bytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
-async function initializedJournal() {
+async function initializedJournal(options: {
+  scopeExpansionMode?: "strict" | "ask" | "exact-linked";
+} = {}) {
   const brief = createResearchBriefV1({
     sessionId: "research-session:dispatch-journal",
     turnId: "research-turn:dispatch-journal",
@@ -38,6 +43,10 @@ async function initializedJournal() {
     timezone: "UTC",
     requestedPlanApproval: "automatic",
     requestedReconciliation: "required",
+    scopeDiscoveryPolicy: {
+      ...DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1,
+      expansionMode: options.scopeExpansionMode ?? "ask",
+    },
   });
   const store = new InMemoryResearchSessionStoreV1();
   const session = await initializeResearchSessionTurnV1({
@@ -244,6 +253,141 @@ describe("durable research task dispatch journal", () => {
         ]),
       }),
     ]);
+  });
+
+  test("preauthorizes one verified exact link without widening its parent scope", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal({
+      scopeExpansionMode: "exact-linked",
+    });
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:wiki-research:linked-page",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "atlassian.reference.resolve",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-page",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:related-page",
+          key: "1001",
+          name: "Related exact page",
+          canonicalUrl: "https://example.atlassian.net/wiki/spaces/RELATED/pages/1001",
+          match: "exact_link",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node resolved an exact current-tenant reference.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:atlassian.reference.resolve:1",
+          "capability:atlassian.reference.resolve",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    const result = await journal.dispositionScopeDiscoveries({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: "scope-discovery:wiki-research:linked-page",
+        decision: "propose_exact_entity",
+        reasonCode: "exact_reference",
+      }],
+    });
+
+    expect(result).toMatchObject({
+      proposal: {
+        candidateId: "research-scope-candidate:related-page",
+        expansionKind: "exact_entity",
+        status: "approved",
+      },
+      preauthorizedExactBinding: {
+        entityKind: "page",
+        source: "research_discovery",
+        authority: "approved",
+        key: "1001",
+      },
+    });
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns[0]!;
+    expect(stored!.status).toBe("running");
+    expect(turn.brief!.scope.confluenceSpaceKeys).toEqual(["DOCS"]);
+    expect(turn.scopeBindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: result.preauthorizedExactBinding!.id,
+        entityKind: "page",
+        source: "research_discovery",
+        authority: "approved",
+      }),
+    ]));
+    expect(turn.scopeExpansionProposals).toEqual([
+      expect.objectContaining({
+        id: result.proposal!.id,
+        status: "approved",
+        approvedBindingId: result.preauthorizedExactBinding!.id,
+      }),
+    ]);
+  });
+
+  test("rejects exact-link expansion in strict mode", async () => {
+    const { journal, graph } = await initializedJournal({ scopeExpansionMode: "strict" });
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:wiki-research:strict-page",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "atlassian.reference.resolve",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:strict-page",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:strict-page",
+          key: "1002",
+          name: "Strict exact page",
+          canonicalUrl: "https://example.atlassian.net/wiki/spaces/RELATED/pages/1002",
+          match: "exact_link",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node resolved an exact current-tenant reference.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:atlassian.reference.resolve:1",
+          "capability:atlassian.reference.resolve",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    await expect(journal.dispositionScopeDiscoveries({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: "scope-discovery:wiki-research:strict-page",
+        decision: "propose_exact_entity",
+        reasonCode: "exact_reference",
+      }],
+    })).rejects.toThrow("cannot expand this scope");
   });
 
   test("commits selected graph, ready task, dispatch start, and accepted packet through one session journal", async () => {

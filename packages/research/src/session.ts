@@ -25,6 +25,7 @@ import {
   type ResearchGraphV1,
 } from "./graph.js";
 import {
+  createResearchScopeBindingV1,
   createResearchScopeDiscoveryV1,
   createResearchScopeDiscoveryDispositionV1,
   createResearchScopeExpansionProposalV1,
@@ -1683,6 +1684,7 @@ export function reduceResearchSessionV1(
       invalid("Research scope discovery dispositions are duplicated or over budget.");
     }
     let proposal: ResearchScopeExpansionProposalV1 | undefined;
+    let preauthorizedExactBinding: ResearchScopeBindingV1 | undefined;
     const nextDispositions: ResearchScopeDiscoveryDispositionV1[] = [];
     for (let index = 0; index < update.decisions.length; index += 1) {
       const decision = update.decisions[index]!;
@@ -1707,6 +1709,13 @@ export function reduceResearchSessionV1(
         Boolean(candidate.key);
       const validExactEntity = proposesExactEntity &&
         (candidate.entityKind === "issue" || candidate.entityKind === "page");
+      const exactIdentityIsValid = candidate.entityKind === "issue"
+        ? candidate.product === "jira" && typeof candidate.key === "string" &&
+          /^[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}$/.test(candidate.key.toLocaleUpperCase("en-US"))
+        : candidate.entityKind === "page"
+          ? candidate.product === "confluence" && typeof candidate.key === "string" &&
+            /^[1-9][0-9]{0,127}$/.test(candidate.key)
+          : false;
       if (decision.coverageGapId !== undefined && !knownGapIds.has(decision.coverageGapId)) {
         invalid("Research scope discovery disposition coverage gap is unknown.");
       }
@@ -1714,6 +1723,25 @@ export function reduceResearchSessionV1(
           (brief.scopeDiscoveryPolicy.expansionMode === "strict" ||
             (!validWholeScope && !validExactEntity))) {
         invalid("Research scope discovery disposition cannot expand this scope.");
+      }
+      const preauthorizesExactLink = proposesExactEntity &&
+        brief.scopeDiscoveryPolicy.expansionMode === "exact-linked" &&
+        discovery.capability === "atlassian.reference.resolve" &&
+        candidate.match === "exact_link" &&
+        exactIdentityIsValid &&
+        !preauthorizedExactBinding &&
+        current.scopeBindings.filter((binding) =>
+          (binding.entityKind === "issue" || binding.entityKind === "page") &&
+          (binding.authority === "approved" || binding.authority === "locked"),
+        ).length < brief.scopeDiscoveryPolicy.maxExactLinkedEntities &&
+        !current.scopeBindings.some((binding) =>
+          binding.entityRef === candidate.entityRef &&
+          binding.product === candidate.product &&
+          binding.entityKind === candidate.entityKind,
+        );
+      if (proposesExactEntity && brief.scopeDiscoveryPolicy.expansionMode === "exact-linked" &&
+          !preauthorizesExactLink) {
+        invalid("Research exact-linked expansion is not an eligible exact current-tenant reference.");
       }
       const proposalId = (proposesWholeScope || proposesExactEntity)
         ? `scope-expansion:r${graph.revision}-d${current.scopeExpansionProposals.length + 1}`
@@ -1730,6 +1758,15 @@ export function reduceResearchSessionV1(
       });
       nextDispositions.push(disposition);
       if (proposalId !== undefined) {
+        if (preauthorizesExactLink) {
+          preauthorizedExactBinding = createResearchScopeBindingV1({
+            candidate,
+            source: "research_discovery",
+            authority: "approved",
+            bindingId: `scope-binding:preauthorized:${candidate.id}`,
+            approvedAt: update.at,
+          });
+        }
         proposal = createResearchScopeExpansionProposalV1({
           id: proposalId,
           sessionId: session.sessionId,
@@ -1747,7 +1784,8 @@ export function reduceResearchSessionV1(
             `capability:${discovery.capability}`,
             ...(decision.coverageGapId === undefined ? [] : [decision.coverageGapId]),
           ],
-          status: "proposed",
+          status: preauthorizedExactBinding ? "approved" : "proposed",
+          ...(preauthorizedExactBinding ? { approvedBindingId: preauthorizedExactBinding.id } : {}),
         });
       }
     }
@@ -1755,8 +1793,11 @@ export function reduceResearchSessionV1(
       ...current,
       scopeDiscoveryDispositions: [...priorDispositions, ...nextDispositions],
       ...(proposal ? { scopeExpansionProposals: [...current.scopeExpansionProposals, proposal] } : {}),
+      ...(preauthorizedExactBinding ? {
+        scopeBindings: [...current.scopeBindings, preauthorizedExactBinding],
+      } : {}),
     };
-    return proposal
+    return proposal?.status === "proposed"
       ? withReleasedDurableWait(session, update, {
           status: "waiting_scope_approval",
           turns: replaceTurn(session, nextTurn),

@@ -234,7 +234,7 @@ export class ResearchCapabilityBroker {
   readonly #sources = new Map<string, ResearchSourceReferenceV1>();
   readonly #detailEvidence = new Map<string, ResearchDetailEvidenceV1>();
   readonly #rankedEntityRefs = new Map<string, RankedDetailAdmissionV1>();
-  readonly #scopeBindings: readonly ResearchScopeBindingV1[];
+  readonly #scopeBindings: ResearchScopeBindingV1[];
   readonly #exactEntityBindings = new Map<string, ExactEntityBindingV1>();
   readonly #exactSearchEmitted = new Set<ResearchProduct>();
   readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
@@ -271,18 +271,43 @@ export class ResearchCapabilityBroker {
       createId: options.createEntityId,
     });
     this.#evidence = options.evidence;
-    this.#scopeBindings = options.scopeBindings ?? options.evidence?.scopeBindings ??
-      request.scopeSeeds?.map((seed) => seed.binding) ?? [];
-    for (const binding of this.#scopeBindings) {
-      const exact = exactEntityBinding(binding, request.scope.siteOrigin);
-      if (!exact) continue;
-      const key = `${exact.product}:${exact.entityId}`;
-      if (this.#exactEntityBindings.has(key)) {
-        throw new ResearchContractError("invalid-request", "Approved exact research scope binding is duplicated.");
-      }
-      this.#exactEntityBindings.set(key, exact);
-    }
+    this.#scopeBindings = [...(options.scopeBindings ?? options.evidence?.scopeBindings ??
+      request.scopeSeeds?.map((seed) => seed.binding) ?? [])];
+    this.#scopeBindings.forEach((binding) => this.#registerExactEntityBinding(binding));
     this.#gate = new ConcurrencyGate(request.limits.maxConcurrentCalls);
+  }
+
+  /**
+   * Add one host-derived exact-entity binding after the durable session reducer
+   * has accepted an `exact-linked` policy transition. The caller cannot widen
+   * a project/space or replace an existing exact entity.
+   */
+  allowPreauthorizedExactEntity(binding: ResearchScopeBindingV1): void {
+    if (binding.source !== "research_discovery" || binding.authority !== "approved" ||
+        !binding.candidateId || binding.id !== `scope-binding:preauthorized:${binding.candidateId}` ||
+        !binding.approvedAt || !Number.isFinite(Date.parse(binding.approvedAt))) {
+      throw new ResearchContractError("invalid-request", "Preauthorized exact research scope binding is invalid.");
+    }
+    const exact = exactEntityBinding(binding, this.#request.scope.siteOrigin);
+    if (!exact) {
+      throw new ResearchContractError("invalid-request", "Preauthorized binding must name one exact page or issue.");
+    }
+    if (this.#scopeBindings.some((candidate) => candidate.id === binding.id)) {
+      throw new ResearchContractError("invalid-request", "Preauthorized exact research scope binding is duplicated.");
+    }
+    this.#scopeBindings.push({ ...binding });
+    this.#registerExactEntityBinding(binding);
+    this.#exactSearchEmitted.delete(exact.product);
+  }
+
+  #registerExactEntityBinding(binding: ResearchScopeBindingV1): void {
+    const exact = exactEntityBinding(binding, this.#request.scope.siteOrigin);
+    if (!exact) return;
+    const key = `${exact.product}:${exact.entityId}`;
+    if (this.#exactEntityBindings.has(key)) {
+      throw new ResearchContractError("invalid-request", "Approved exact research scope binding is duplicated.");
+    }
+    this.#exactEntityBindings.set(key, exact);
   }
 
   get signal(): AbortSignal {

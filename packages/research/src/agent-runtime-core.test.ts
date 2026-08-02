@@ -14,6 +14,7 @@ import {
   createResearchScopeDiscoveriesPtcTool,
   createResearchScopeDiscoveryDispositionsPtcTool,
   hostSearchCoverageLimitationsV1,
+  type ResearchSupervisorScopeDiscoveryDispositionResultV1,
 } from "./agent-runtime-core.js";
 import { createResearchBriefV1 } from "./brief.js";
 import { acceptResearchGraphProposalV1, composeResearchGraphV1 } from "./graph.js";
@@ -655,6 +656,140 @@ describe("central related-scope disposition PTCs", () => {
         reasonCode: "not_material",
       }],
     })).rejects.toThrow("unknown or duplicate");
+  });
+
+  test("reports only an opaque preauthorized exact-link binding", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:exact-link-tool",
+      turnId: "research-turn:exact-link-tool",
+      objective: "Inspect one related exact Confluence page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["DOCS"],
+      },
+      scopeDiscoveryPolicy: {
+        schema: "atlcli.research-scope-discovery-policy/v1",
+        catalogDiscovery: "on",
+        expansionMode: "exact-linked",
+        maxCatalogPagesPerCapability: 5,
+        maxCandidatesPerMention: 8,
+        maxCatalogResultBytes: 128_000,
+        maxExactLinkedEntities: 8,
+        maxScopeExpansionProposals: 4,
+      },
+      asOf: "2026-08-02T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const discovery = createResearchScopeDiscoveryV1({
+      id: "scope-discovery:wiki-research:exact-page",
+      taskId: researchTaskIdForNodeV1(graph, node),
+      nodeId: node.id,
+      graphRevision: graph.revision,
+      capability: "atlassian.reference.resolve",
+      candidate: {
+        schema: "atlcli.research-scope-candidate/v1",
+        id: "research-scope-candidate:exact-page",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "research-scope-entity:exact-page",
+        key: "1001",
+        name: "Exact related page",
+        canonicalUrl: "https://example.atlassian.net/wiki/spaces/RELATED/pages/1001",
+        match: "exact_link",
+        status: "current",
+        accessible: true,
+        providerFreshnessAt: "2026-08-02T10:00:00.000Z",
+      },
+      reason: "An admitted research node resolved an exact current-tenant reference.",
+      provenanceRefs: [
+        `task:${researchTaskIdForNodeV1(graph, node)}`,
+        "ptc:atlassian.reference.resolve:1",
+        "capability:atlassian.reference.resolve",
+      ],
+      observedAt: "2026-08-02T10:00:00.000Z",
+    });
+    let accepted: ResearchSupervisorScopeDiscoveryDispositionResultV1 | undefined;
+    const dispositions = createResearchScopeDiscoveryDispositionsPtcTool({
+      activeGraph: () => graph,
+      canRecord: () => true,
+      discoveries: () => [discovery],
+      disposition: async () => {
+        const binding = {
+          schema: "atlcli.research-scope-binding/v1" as const,
+          id: "scope-binding:preauthorized:research-scope-candidate:exact-page",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "confluence" as const,
+          entityKind: "page" as const,
+          entityRef: "research-scope-entity:exact-page",
+          key: "1001",
+          name: "Exact related page",
+          source: "research_discovery" as const,
+          authority: "approved" as const,
+          candidateId: discovery.candidate.id,
+          approvedAt: "2026-08-02T10:00:01.000Z",
+        };
+        const proposal = createResearchScopeExpansionProposalV1({
+          id: "scope-expansion:r1-d1",
+          sessionId: graph.sessionId,
+          turnId: graph.turnId,
+          basedOnBriefRevision: graph.basedOnBriefRevision,
+          basedOnGraphRevision: graph.revision,
+          candidateId: discovery.candidate.id,
+          expansionKind: "exact_entity",
+          reason: "The central supervisor accepted an exact related reference.",
+          provenanceRefs: [discovery.id],
+          status: "approved",
+          approvedBindingId: binding.id,
+        });
+        return {
+          dispositions: [createResearchScopeDiscoveryDispositionV1({
+            id: "scope-disposition:r1:1",
+            discoveryId: discovery.id,
+            candidateId: discovery.candidate.id,
+            decision: "propose_exact_entity",
+            reasonCode: "exact_reference",
+            proposedExpansionId: proposal.id,
+            recordedAt: "2026-08-02T10:00:01.000Z",
+          })],
+          proposal,
+          preauthorizedExactBinding: binding,
+        };
+      },
+      onAccepted: (result) => { accepted = result; },
+    });
+
+    const result = JSON.parse(await dispositions.invoke({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: discovery.id,
+        decision: "propose_exact_entity",
+        reasonCode: "exact_reference",
+      }],
+    }));
+    expect(result).toEqual({
+      schema: "atlcli.research-scope-discovery-dispositions/v1",
+      graphRevision: graph.revision,
+      dispositionIds: ["scope-disposition:r1:1"],
+      status: "preauthorized_exact_entity",
+      proposal: {
+        id: "scope-expansion:r1-d1",
+        candidateId: discovery.candidate.id,
+        expansionKind: "exact_entity",
+        status: "approved",
+      },
+      preauthorizedExactBindingId: "scope-binding:preauthorized:research-scope-candidate:exact-page",
+    });
+    expect(accepted).toEqual(result);
+    expect(JSON.stringify(result)).not.toContain("example.atlassian.net");
+    expect(JSON.stringify(result)).not.toContain("research-scope-entity");
   });
 });
 
