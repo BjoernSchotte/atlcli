@@ -3727,11 +3727,17 @@ export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
     failureAtomicity: "passed";
+    packetPublicationAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureContextV1
+export interface ResearchSessionStoreFailureContextV1 {
+    updateKind?: ResearchSessionUpdateV1["kind"];
 }
 
 // export: ResearchSessionStoreFailureInjectionV1
 export interface ResearchSessionStoreFailureInjectionV1 {
-    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string, context?: ResearchSessionStoreFailureContextV1): void;
 }
 
 // export: ResearchSessionStoreFailureStageV1
@@ -8117,11 +8123,17 @@ export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
     failureAtomicity: "passed";
+    packetPublicationAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureContextV1
+export interface ResearchSessionStoreFailureContextV1 {
+    updateKind?: ResearchSessionUpdateV1["kind"];
 }
 
 // export: ResearchSessionStoreFailureInjectionV1
 export interface ResearchSessionStoreFailureInjectionV1 {
-    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string, context?: ResearchSessionStoreFailureContextV1): void;
 }
 
 // export: ResearchSessionStoreFailureStageV1
@@ -12505,11 +12517,17 @@ export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
     failureAtomicity: "passed";
+    packetPublicationAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureContextV1
+export interface ResearchSessionStoreFailureContextV1 {
+    updateKind?: ResearchSessionUpdateV1["kind"];
 }
 
 // export: ResearchSessionStoreFailureInjectionV1
 export interface ResearchSessionStoreFailureInjectionV1 {
-    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string, context?: ResearchSessionStoreFailureContextV1): void;
 }
 
 // export: ResearchSessionStoreFailureStageV1
@@ -17162,11 +17180,17 @@ export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
     failureAtomicity: "passed";
+    packetPublicationAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureContextV1
+export interface ResearchSessionStoreFailureContextV1 {
+    updateKind?: ResearchSessionUpdateV1["kind"];
 }
 
 // export: ResearchSessionStoreFailureInjectionV1
 export interface ResearchSessionStoreFailureInjectionV1 {
-    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string, context?: ResearchSessionStoreFailureContextV1): void;
 }
 
 // export: ResearchSessionStoreFailureStageV1
@@ -21919,11 +21943,17 @@ export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
     failureAtomicity: "passed";
+    packetPublicationAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureContextV1
+export interface ResearchSessionStoreFailureContextV1 {
+    updateKind?: ResearchSessionUpdateV1["kind"];
 }
 
 // export: ResearchSessionStoreFailureInjectionV1
 export interface ResearchSessionStoreFailureInjectionV1 {
-    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string, context?: ResearchSessionStoreFailureContextV1): void;
 }
 
 // export: ResearchSessionStoreFailureStageV1
@@ -27899,11 +27929,17 @@ export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
     failureAtomicity: "passed";
+    packetPublicationAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureContextV1
+export interface ResearchSessionStoreFailureContextV1 {
+    updateKind?: ResearchSessionUpdateV1["kind"];
 }
 
 // export: ResearchSessionStoreFailureInjectionV1
 export interface ResearchSessionStoreFailureInjectionV1 {
-    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string, context?: ResearchSessionStoreFailureContextV1): void;
 }
 
 // export: ResearchSessionStoreFailureStageV1

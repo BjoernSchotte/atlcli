@@ -3430,6 +3430,12 @@ Gate:
         `outcome_unknown`, closes the task and graph node together, terminally
         fails the session without a report or accepted packet, and performs no
         automatic provider retry (31 packed tests, 2026-08-02).
+  - [x] Shared store conformance injects a failed `accept_packet` immediately
+        before both authoritative publication writes (`before_state_commit` and
+        `before_event_append`) in memory, SQLite/filesystem, and IndexedDB.
+        No partial task, graph, packet, or event leaks; a fresh journal then
+        accepts exactly one packet and one journal event (17 focused tests,
+        2026-08-02).
 - [ ] Failure injection at every result-publication sub-boundary proves that a
       task cannot be terminal while its authoritative graph node remains
       running, and that recovery accepts exactly one packet/outbox event.

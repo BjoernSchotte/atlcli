@@ -47,7 +47,12 @@ describe("in-memory durable research session store", () => {
       create(options) {
         return new InMemoryResearchSessionStoreV1(options);
       },
-    })).resolves.toEqual({ aggregateCommit: "passed", staleCas: "passed", failureAtomicity: "passed" });
+    })).resolves.toEqual({
+      aggregateCommit: "passed",
+      staleCas: "passed",
+      failureAtomicity: "passed",
+      packetPublicationAtomicity: "passed",
+    });
   });
 
   test("commits the reduced snapshot and a bounded, body-free journal event together", async () => {

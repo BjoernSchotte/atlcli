@@ -12,7 +12,9 @@ import {
   type ResearchSessionArtifactV1,
   type ResearchSessionCommitV1,
   type ResearchSessionEventV1,
+  type ResearchSessionStoreFailureContextV1,
   type ResearchSessionStoreFailureInjectionV1,
+  type ResearchSessionStoreFailureStageV1,
   type ResearchSessionStoreV1,
 } from "./session-store.js";
 import {
@@ -153,8 +155,12 @@ export class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     this.#db.close();
   }
 
-  #fail(stage: Parameters<NonNullable<ResearchSessionStoreFailureInjectionV1["onStage"]>>[0], sessionId: string): void {
-    this.#failureInjection?.onStage?.(stage, sessionId);
+  #fail(
+    stage: ResearchSessionStoreFailureStageV1,
+    sessionId: string,
+    context?: ResearchSessionStoreFailureContextV1,
+  ): void {
+    this.#failureInjection?.onStage?.(stage, sessionId, context);
   }
 
   #sessionRoot(sessionId: string): string {
@@ -216,8 +222,8 @@ export class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     const event = eventFor(next, update);
     const eventCount = this.#db.query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM research_session_events_v1 WHERE session_id = ?").get(sessionId)?.count ?? 0;
     if (eventCount >= MAXIMUM_EVENTS_PER_SESSION_V1) invalid("Research session event limit is exhausted.");
-    this.#fail("before_state_commit", sessionId);
-    this.#fail("before_event_append", sessionId);
+    this.#fail("before_state_commit", sessionId, { updateKind: update.kind });
+    this.#fail("before_event_append", sessionId, { updateKind: update.kind });
     this.#db.transaction(() => {
       const written = this.#db.query("UPDATE research_sessions_v1 SET revision = ?, lease_epoch = ?, state_json = ? WHERE session_id = ? AND revision = ? AND lease_epoch = ?").run(next.revision, next.lease.epoch, JSON.stringify(next), sessionId, current.revision, current.lease.epoch);
       if (written.changes !== 1) invalid("Research session store compare-and-swap fence is stale.");

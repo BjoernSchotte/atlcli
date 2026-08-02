@@ -12,7 +12,9 @@ import {
   type ResearchSessionArtifactV1,
   type ResearchSessionCommitV1,
   type ResearchSessionEventV1,
+  type ResearchSessionStoreFailureContextV1,
   type ResearchSessionStoreFailureInjectionV1,
+  type ResearchSessionStoreFailureStageV1,
   type ResearchSessionStoreV1,
   type ResearchSessionDataNamespaceV1,
   type ResearchSessionDataWorkspaceStoreV1,
@@ -261,8 +263,12 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, 
 
   close(): void { this.#db.close(); }
 
-  #fail(stage: Parameters<NonNullable<ResearchSessionStoreFailureInjectionV1["onStage"]>>[0], sessionId: string): void {
-    this.#failureInjection?.onStage?.(stage, sessionId);
+  #fail(
+    stage: ResearchSessionStoreFailureStageV1,
+    sessionId: string,
+    context?: ResearchSessionStoreFailureContextV1,
+  ): void {
+    this.#failureInjection?.onStage?.(stage, sessionId, context);
   }
 
   async #required(sessionId: string): Promise<ResearchSessionV1> {
@@ -316,8 +322,8 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, 
           count.onsuccess = () => {
             try {
               if (count.result >= MAXIMUM_EVENTS_PER_SESSION_V1) invalid("Research session event limit is exhausted.");
-              this.#fail("before_state_commit", sessionId);
-              this.#fail("before_event_append", sessionId);
+              this.#fail("before_state_commit", sessionId, { updateKind: update.kind });
+              this.#fail("before_event_append", sessionId, { updateKind: update.kind });
               stores[SESSIONS]!.put({ sessionId, state: clone(next) } satisfies StoredSession);
               const eventRequest = stores[EVENTS]!.add({ sessionId, sessionRevision: next.revision, event } satisfies StoredEvent);
               eventRequest.onsuccess = () => finish({ session: clone(next), event: clone(event) });

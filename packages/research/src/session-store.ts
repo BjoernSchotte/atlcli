@@ -69,8 +69,17 @@ export type ResearchSessionStoreFailureStageV1 =
   | "before_source_ref_write"
   | "before_delete";
 
+/** Test-only context that lets one operation be faulted without perturbing setup. */
+export interface ResearchSessionStoreFailureContextV1 {
+  updateKind?: ResearchSessionUpdateV1["kind"];
+}
+
 export interface ResearchSessionStoreFailureInjectionV1 {
-  onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+  onStage?(
+    stage: ResearchSessionStoreFailureStageV1,
+    sessionId: string,
+    context?: ResearchSessionStoreFailureContextV1,
+  ): void;
 }
 
 /**
@@ -190,8 +199,12 @@ export class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     this.#failureInjection = options.failureInjection;
   }
 
-  #fail(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void {
-    this.#failureInjection?.onStage?.(stage, sessionId);
+  #fail(
+    stage: ResearchSessionStoreFailureStageV1,
+    sessionId: string,
+    context?: ResearchSessionStoreFailureContextV1,
+  ): void {
+    this.#failureInjection?.onStage?.(stage, sessionId, context);
   }
 
   #require(sessionId: string): ResearchSessionV1 {
@@ -237,8 +250,8 @@ export class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     const event = eventFor(next, update);
     const events = this.#events.get(sessionId)!;
     if (events.length >= MAXIMUM_EVENTS_PER_SESSION_V1) invalid("Research session event limit is exhausted.");
-    this.#fail("before_state_commit", sessionId);
-    this.#fail("before_event_append", sessionId);
+    this.#fail("before_state_commit", sessionId, { updateKind: update.kind });
+    this.#fail("before_event_append", sessionId, { updateKind: update.kind });
     this.#sessions.set(sessionId, clone(next));
     this.#events.set(sessionId, [...events, clone(event)]);
     return { session: clone(next), event: clone(event) };
