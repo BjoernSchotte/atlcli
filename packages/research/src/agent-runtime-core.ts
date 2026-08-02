@@ -92,9 +92,11 @@ import {
   isResearchPacketBodyV2,
   parseResearchReconciliationDispositionV1,
   projectResearchReconciliationInputV1,
+  isResearchReconciliationReferenceKnownV1,
+  isResearchReconciliationTargetKnownV1,
   type ReconciliationBodyV1,
   type ResearchAcceptedPacketV1,
-  type ResearchFollowUpProposalV1,
+  type ResearchReconciliationFollowUpProposalV1,
   type ResearchPacketBodyV2,
   type ResearchReconciliationDefectV1,
   type ResearchReconciliationDispositionV1,
@@ -467,7 +469,7 @@ export interface ResearchRepairAuthorizationV1 {
   objective: string;
   dependencyTaskIds: string[];
   grantedCapabilityIds: string[];
-  followUp: ResearchFollowUpProposalV1;
+  followUp: ResearchReconciliationFollowUpProposalV1;
 }
 
 function dispositionReasonMatchesDecision(
@@ -492,8 +494,9 @@ function dispositionReasonMatchesDecision(
 
 function followUpMatchesDefect(
   defect: ResearchReconciliationDefectV1,
-  followUp: ResearchFollowUpProposalV1,
+  followUp: ResearchReconciliationFollowUpProposalV1,
 ): boolean {
+  if (followUp.defectId !== defect.id) return false;
   switch (defect.code) {
     case "missing_coverage": return followUp.reasonCode === "coverage_gap";
     case "contradicted": return followUp.reasonCode === "contradiction";
@@ -530,7 +533,7 @@ export function createResearchReconciliationDispositionPtcTool(
       graph: ResearchGraphV1;
       reconciliationTaskId: string;
       defect: ResearchReconciliationDefectV1;
-      followUp: ResearchFollowUpProposalV1;
+      followUp: ResearchReconciliationFollowUpProposalV1;
     }) => ResearchRepairAuthorizationV1 | undefined;
     now?: () => number;
     onAccepted?: (
@@ -621,24 +624,22 @@ export function createResearchReconciliationDispositionPtcTool(
         );
       }
       const recordedAt = new Date(options.now?.() ?? Date.now()).toISOString();
-      const repairDecision = input.repairFollowUpId === undefined
-        ? undefined
-        : input.decisions.find((decision) => decision.decision === "add_follow_up" &&
-          body.proposedFollowUps.some((followUp) =>
-            followUp.id === input.repairFollowUpId && decision.defectId ===
-              body.defects.find((defect) => defect.id === decision.defectId)?.id
-          ));
       const repairFollowUp = input.repairFollowUpId === undefined
         ? undefined
         : body.proposedFollowUps.find((followUp) => followUp.id === input.repairFollowUpId);
+      const repairDecision = repairFollowUp === undefined
+        ? undefined
+        : input.decisions.find((decision) =>
+          decision.decision === "add_follow_up" && decision.defectId === repairFollowUp.defectId
+        );
       if (input.repairFollowUpId !== undefined && (!repairDecision || !repairFollowUp)) {
         throw new ResearchContractError(
           "invalid-request",
           "A repair request must reference one accepted add_follow_up decision and one exact critic follow-up ID.",
         );
       }
-      const repairDefect = repairDecision
-        ? body.defects.find((defect) => defect.id === repairDecision.defectId)
+      const repairDefect = repairFollowUp
+        ? body.defects.find((defect) => defect.id === repairFollowUp.defectId)
         : undefined;
       if (repairDefect && repairFollowUp && !followUpMatchesDefect(repairDefect, repairFollowUp)) {
         throw new ResearchContractError(
@@ -1616,6 +1617,50 @@ async function runResearchAgentWithBindings(
     : [];
   const isDynamic = input.researchGraph !== undefined;
   let fatalWorkflowError: unknown;
+  const reconciliationInputContext = (): ReturnType<typeof projectResearchReconciliationInputV1> => {
+    const graph = acceptedGraph;
+    if (!graph) {
+      throw new ResearchContractError(
+        "invalid-report",
+        "Reconciliation requires one accepted research graph.",
+      );
+    }
+    const reconciliationNode = graph.nodes.find((node) =>
+      node.roleId === "reconciler" && node.status !== "pruned"
+    );
+    if (!reconciliationNode) {
+      throw new ResearchContractError(
+        "invalid-report",
+        "The accepted research graph has no reconciliation task.",
+      );
+    }
+    const acceptedPackets = reconciliationNode.dependencies.map((nodeId) => {
+      const dependencyNode = graph.nodes.find((node) => node.id === nodeId);
+      if (!dependencyNode) {
+        throw new ResearchContractError(
+          "invalid-report",
+          `Reconciliation dependency is absent from the accepted graph: ${nodeId}.`,
+        );
+      }
+      const packet = acceptedPacketsByTaskId.get(
+        researchTaskIdForNodeV1(graph, dependencyNode),
+      );
+      if (!packet) {
+        throw new ResearchContractError(
+          "invalid-report",
+          `Reconciliation dependency has no accepted packet: ${nodeId}.`,
+        );
+      }
+      return packet;
+    });
+    return projectResearchReconciliationInputV1({
+      briefRevision: graph.basedOnBriefRevision,
+      graphRevision: graph.revision,
+      coverageTargetIds: reconciliationNode.completion.requiredCoverageTargetIds,
+      nodeIds: graph.nodes.map((node) => node.id),
+      acceptedPackets,
+    });
+  };
   const boundedSubagentMiddleware = isDynamic
       ? createBoundedResearchSubagentMiddleware(model, input.researchGraph!, dynamicSubagents, runtime, {
         structuredOutputStrategy: input.model ? "tool" : "provider",
@@ -1631,49 +1676,7 @@ async function runResearchAgentWithBindings(
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
         ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
-        reconciliationInputContext: () => {
-          const graph = acceptedGraph;
-          if (!graph) {
-            throw new ResearchContractError(
-              "invalid-report",
-              "Reconciliation requires one accepted research graph.",
-            );
-          }
-          const reconciliationNode = graph.nodes.find((node) =>
-            node.roleId === "reconciler" && node.status !== "pruned"
-          );
-          if (!reconciliationNode) {
-            throw new ResearchContractError(
-              "invalid-report",
-              "The accepted research graph has no reconciliation task.",
-            );
-          }
-          const acceptedPackets = reconciliationNode.dependencies.map((nodeId) => {
-            const dependencyNode = graph.nodes.find((node) => node.id === nodeId);
-            if (!dependencyNode) {
-              throw new ResearchContractError(
-                "invalid-report",
-                `Reconciliation dependency is absent from the accepted graph: ${nodeId}.`,
-              );
-            }
-            const packet = acceptedPacketsByTaskId.get(
-              researchTaskIdForNodeV1(graph, dependencyNode),
-            );
-            if (!packet) {
-              throw new ResearchContractError(
-                "invalid-report",
-                `Reconciliation dependency has no accepted packet: ${nodeId}.`,
-              );
-            }
-            return packet;
-          });
-          return projectResearchReconciliationInputV1({
-            briefRevision: graph.basedOnBriefRevision,
-            graphRevision: graph.revision,
-            coverageTargetIds: reconciliationNode.completion.requiredCoverageTargetIds,
-            acceptedPackets,
-          });
-        },
+        reconciliationInputContext,
         synthesisReconciliationContext: () => {
           const graph = acceptedGraph;
           if (!graph) {
@@ -1824,64 +1827,10 @@ async function runResearchAgentWithBindings(
     ? createResearchReconciliationDispositionPtcTool(input.researchGraph!, {
         activeGraph: () => acceptedGraph,
         reconciliationPacket: (taskId) => acceptedPacketsByTaskId.get(taskId),
-        isKnownTarget: (defect) => {
-          if (defect.target.kind === "node") {
-            return Boolean(acceptedGraph?.nodes.some((node) => node.id === defect.target.id));
-          }
-          if (defect.target.kind === "coverage") {
-            if (acceptedGraph?.nodes.some((node) =>
-              node.roleId === "reconciler" &&
-              node.status !== "pruned" &&
-              node.completion.requiredCoverageTargetIds.includes(defect.target.id)
-            )) return true;
-            return [...acceptedPacketsByTaskId.values()].some((packet) =>
-              "gaps" in packet.body && packet.body.gaps.some((gap) =>
-                gap.id === defect.target.id || gap.targetId === defect.target.id
-              )
-            );
-          }
-          if (defect.target.kind === "finding") {
-            return [...acceptedPacketsByTaskId.values()].some((packet) =>
-              "findingCandidates" in packet.body &&
-              packet.body.findingCandidates.some((candidate) => candidate.id === defect.target.id)
-            );
-          }
-          if (defect.target.kind === "relationship") {
-            return [...acceptedPacketsByTaskId.values()].some((packet) =>
-              "relationshipCandidates" in packet.body &&
-              packet.body.relationshipCandidates.some((candidate) => candidate.id === defect.target.id)
-            );
-          }
-          if (defect.target.kind === "claim") {
-            return [...acceptedPacketsByTaskId.values()].some((packet) =>
-              isResearchPacketBodyV2(packet.body) &&
-              (packet.body.claims.some((claim) => claim.claimId === defect.target.id) ||
-                packet.body.referencedClaimIds.includes(defect.target.id))
-            );
-          }
-          if (defect.target.kind === "section") {
-            return [...acceptedPacketsByTaskId.values()].some((packet) =>
-              isResearchPacketBodyV2(packet.body) &&
-              packet.body.outlineProposals.some((proposal) => proposal.sectionId === defect.target.id)
-            );
-          }
-          return false;
-        },
-        isKnownReference: (reference) => {
-          if (reference.kind === "source") {
-            return [...acceptedPacketsByTaskId.values()].some((packet) =>
-              isResearchPacketBodyV1(packet.body) &&
-              packet.body.sourceIds.includes(reference.id)
-            );
-          }
-          return [...acceptedPacketsByTaskId.values()].some((packet) =>
-            isResearchPacketBodyV2(packet.body) &&
-            (packet.body.contradictions.some((contradiction) =>
-                contradiction.evidenceIds.includes(reference.id)) ||
-              packet.body.outlineProposals.some((proposal) =>
-                proposal.evidenceIds.includes(reference.id)))
-          );
-        },
+        isKnownTarget: (defect) =>
+          isResearchReconciliationTargetKnownV1(defect.target, reconciliationInputContext()),
+        isKnownReference: (reference) =>
+          isResearchReconciliationReferenceKnownV1(reference, reconciliationInputContext()),
         canRecord: () => !synthesizerTaskStarted && reconciliationDispositions === undefined,
         authorizeRepair: ({ graph, reconciliationTaskId, defect, followUp }) => {
           const repairNode = input.researchGraph!.nodes.find((node) => node.kind === "repair");

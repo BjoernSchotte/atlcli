@@ -20,7 +20,8 @@ import {
 import {
   parseResearchReconciliationDispositionV1,
   type ResearchAcceptedPacketV1,
-  type ResearchFollowUpProposalV1,
+  type ResearchReconciliationFollowUpProposalV1,
+  type ResearchReconciliationDefectV1,
   type ResearchReconciliationDispositionV1,
   type ResearchTaskAttemptV1,
   type ResearchTaskUsageV1,
@@ -109,7 +110,7 @@ export interface ResearchSessionRepairAuthorizationV1 {
   schema: "atlcli.research-session-repair-authorization/v1";
   nodeId: string;
   reconciliationTaskId: string;
-  followUp: ResearchFollowUpProposalV1;
+  followUp: ResearchReconciliationFollowUpProposalV1;
   authorizedAt: string;
 }
 
@@ -314,16 +315,16 @@ function hasUnansweredBriefRequirements(current: ResearchSessionTurnV1): boolean
 }
 
 function repairFollowUpMatchesDefect(
-  code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" |
-    "instruction_mismatch" | "duplicate" | "stale",
-  reasonCode: ResearchFollowUpProposalV1["reasonCode"],
+  defect: ResearchReconciliationDefectV1,
+  followUp: ResearchReconciliationFollowUpProposalV1,
 ): boolean {
-  switch (code) {
-    case "missing_coverage": return reasonCode === "coverage_gap";
-    case "contradicted": return reasonCode === "contradiction";
-    case "stale": return reasonCode === "stale_or_truncated";
+  if (followUp.defectId !== defect.id) return false;
+  switch (defect.code) {
+    case "missing_coverage": return followUp.reasonCode === "coverage_gap";
+    case "contradicted": return followUp.reasonCode === "contradiction";
+    case "stale": return followUp.reasonCode === "stale_or_truncated";
     case "unsupported":
-    case "overstated": return reasonCode === "negative_claim";
+    case "overstated": return followUp.reasonCode === "negative_claim";
     case "instruction_mismatch":
     case "duplicate": return false;
   }
@@ -640,7 +641,7 @@ export function reduceResearchSessionV1(
           )
         : undefined;
       if (authorizingDisposition.length !== 1 || !followUp || !authorizingDefect ||
-          !repairFollowUpMatchesDefect(authorizingDefect.code, followUp.reasonCode)) {
+          !repairFollowUpMatchesDefect(authorizingDefect, followUp)) {
         invalid("Research reconciliation repair must reference one accepted add-follow-up disposition.");
       }
       nextGraph = reduceResearchGraphV1(graph, {

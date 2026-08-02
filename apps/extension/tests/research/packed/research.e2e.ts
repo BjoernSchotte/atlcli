@@ -952,6 +952,7 @@ const critique = {
   }],
   proposedFollowUps: [{
     id: "follow-up:packed-relationship-review",
+    defectId: "defect:packed-relationship-review",
     objective: "Recheck the bounded Jira and Confluence evidence for the relationship coverage gap.",
     reasonCode: "coverage_gap",
     sourceIds: ["jira:DEMO-1", "wiki:1001"],
@@ -1911,8 +1912,8 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
       nestingDepth: 4,
     },
     ReconciliationBodyV1: {
-      serializedBytes: 1_859,
-      propertyCount: 18,
+      serializedBytes: 1_929,
+      propertyCount: 19,
       nestingDepth: 5,
     },
   });

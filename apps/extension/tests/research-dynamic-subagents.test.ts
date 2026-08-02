@@ -581,6 +581,8 @@ test("injects a body-free reconciliation packet-set only after admitted dependen
           "packet:coverage:1",
         ],
         coverageTargetIds: ["coverage:primary-question"],
+        nodeIds: Object.values(nodes).map((node) => node.id),
+        sectionIds: [],
         projection: {
           kind: "v1-packet-set",
           findingCandidateIds: ["finding:jira:1", "finding:wiki:1"],
@@ -629,6 +631,8 @@ test("injects a body-free reconciliation packet-set only after admitted dependen
       "packet:coverage:1",
     ],
     coverageTargetIds: ["coverage:primary-question"],
+    nodeIds: Object.values(nodes).map((node) => node.id),
+    sectionIds: [],
     projection: {
       kind: "v1-packet-set",
       findingCandidateIds: ["finding:jira:1", "finding:wiki:1"],
@@ -731,6 +735,7 @@ test("rejects duplicate packet candidate IDs before the reconciler provider call
         briefRevision: graph.basedOnBriefRevision,
         graphRevision: graph.revision,
         coverageTargetIds: reconciler.completion.requiredCoverageTargetIds,
+        nodeIds: graph.nodes.map((node) => node.id),
         acceptedPackets,
       }),
     },
@@ -1479,6 +1484,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         }],
         proposedFollowUps: [{
           id: "follow-up:coverage-no-budget",
+          defectId: "defect:coverage-no-budget",
           objective: "Perform one bounded coverage check.",
           reasonCode: "coverage_gap",
           sourceIds: [],
@@ -1519,6 +1525,25 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         reasonCode: "insufficient_budget",
       }),
     ]);
+
+    const mismatchedPacket = structuredClone(packet);
+    mismatchedPacket.body.proposedFollowUps[0]!.defectId = "defect:other";
+    const mismatchedTool = createResearchReconciliationDispositionPtcTool(catalog, {
+      activeGraph: () => graph,
+      reconciliationPacket: () => mismatchedPacket,
+      isKnownTarget: () => true,
+      authorizeRepair: () => undefined,
+    });
+    await expect(mismatchedTool.invoke({
+      basedOnGraphRevision: graph.revision,
+      reconciliationTaskId,
+      repairFollowUpId: "follow-up:coverage-no-budget",
+      decisions: [{
+        defectId: "defect:coverage-no-budget",
+        decision: "add_follow_up",
+        reasonCode: "insufficient_budget",
+      }],
+    })).rejects.toThrow("repair request must reference");
   });
 
   test("rejects the latent repair slot before host authorization and before provider work", async () => {
@@ -1971,6 +1996,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       }],
       proposedFollowUps: [{
         id: "follow-up:synthetic-coverage",
+        defectId: "defect:synthetic-coverage",
         objective: "Check the bounded sources once for the missing synthetic coverage target.",
         reasonCode: "coverage_gap",
         sourceIds: [],

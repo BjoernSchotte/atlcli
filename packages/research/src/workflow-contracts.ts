@@ -281,6 +281,11 @@ export interface ResearchFollowUpProposalV1 {
   sourceIds: string[];
 }
 
+/** A reconciliation-only follow-up is inseparable from the defect it repairs. */
+export interface ResearchReconciliationFollowUpProposalV1 extends ResearchFollowUpProposalV1 {
+  defectId: string;
+}
+
 export interface ResearchFindingCandidateV1 {
   id: string;
   classification: "fact" | "inference";
@@ -405,6 +410,16 @@ export interface ResearchReconciliationInputV1 {
   graphRevision: number;
   acceptedPacketRefs: string[];
   coverageTargetIds: string[];
+  /**
+   * IDs from the accepted graph. They are host-authored topology identifiers,
+   * never model-supplied node names.
+   */
+  nodeIds: string[];
+  /**
+   * Section identities proposed in an already accepted V2 dependency packet.
+   * They fence critique targets only; they are not a published OutlineV1.
+   */
+  sectionIds: string[];
   projection:
     | {
         kind: "v1-packet-set";
@@ -453,7 +468,7 @@ export interface ResearchReconciliationDefectV1 {
 export interface ReconciliationBodyV1 {
   schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
   defects: ResearchReconciliationDefectV1[];
-  proposedFollowUps: ResearchFollowUpProposalV1[];
+  proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
 export interface ResearchTaskAttemptV1 {
@@ -628,6 +643,23 @@ function parseFollowUp(value: unknown): ResearchFollowUpProposalV1 {
     objective: boundedString(item.objective, "Research follow-up objective", 1_000),
     reasonCode: item.reasonCode as typeof reasonCodes[number],
     sourceIds: stringArray(item.sourceIds, "Research follow-up sourceIds", 12),
+  };
+}
+
+function parseReconciliationFollowUp(
+  value: unknown,
+): ResearchReconciliationFollowUpProposalV1 {
+  const item = object(value, "Reconciliation follow-up proposal");
+  assertKeys(item, ["id", "defectId", "objective", "reasonCode", "sourceIds"], "Reconciliation follow-up proposal");
+  const followUp = parseFollowUp({
+    id: item.id,
+    objective: item.objective,
+    reasonCode: item.reasonCode,
+    sourceIds: item.sourceIds,
+  });
+  return {
+    ...followUp,
+    defectId: boundedString(item.defectId, "Reconciliation follow-up defect id", 160),
   };
 }
 
@@ -968,7 +1000,7 @@ export function parseResearchReconciliationInputV1(
   const input = object(value, "Research reconciliation input");
   assertKeys(input, [
     "schema", "briefRevision", "graphRevision", "acceptedPacketRefs",
-    "coverageTargetIds", "projection",
+    "coverageTargetIds", "nodeIds", "sectionIds", "projection",
   ], "Research reconciliation input");
   if (input.schema !== RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1 ||
       !Number.isSafeInteger(input.briefRevision) || Number(input.briefRevision) < 1 ||
@@ -1027,8 +1059,48 @@ export function parseResearchReconciliationInputV1(
       "Research reconciliation coverage target ids",
       32,
     ),
+    nodeIds: stringArray(input.nodeIds, "Research reconciliation graph node ids", 64),
+    sectionIds: stringArray(input.sectionIds, "Research reconciliation section ids", 96),
     projection: parsedProjection,
   };
+}
+
+/**
+ * Test whether a reconciliation defect points at the exact body-free
+ * namespace projected by the host. Keeping this separate lets both admission
+ * and the later disposition PTC enforce the same identities.
+ */
+export function isResearchReconciliationTargetKnownV1(
+  target: ResearchReconciliationDefectV1["target"],
+  input: ResearchReconciliationInputV1,
+): boolean {
+  const coverageIds = new Set([
+    ...input.coverageTargetIds,
+    ...input.projection.gapIds,
+  ]);
+  if (target.kind === "coverage") return coverageIds.has(target.id);
+  if (target.kind === "node") return input.nodeIds.includes(target.id);
+  if (target.kind === "section") return input.sectionIds.includes(target.id);
+  if (target.kind === "finding") {
+    return input.projection.kind === "v1-packet-set" &&
+      input.projection.findingCandidateIds.includes(target.id);
+  }
+  if (target.kind === "relationship") {
+    return input.projection.kind === "v1-packet-set" &&
+      input.projection.relationshipCandidateIds.includes(target.id);
+  }
+  return input.projection.kind === "v2-claim-set" &&
+    input.projection.claimIds.includes(target.id);
+}
+
+/** Test whether a critic reference belongs to the host-projected packet set. */
+export function isResearchReconciliationReferenceKnownV1(
+  reference: ResearchSupportRefV1,
+  input: ResearchReconciliationInputV1,
+): boolean {
+  return reference.kind === "source"
+    ? input.projection.kind === "v1-packet-set" && input.projection.sourceIds.includes(reference.id)
+    : input.projection.kind === "v2-claim-set" && input.projection.evidenceIds.includes(reference.id);
 }
 
 /**
@@ -1041,32 +1113,26 @@ export function validateResearchReconciliationBodyNamespaceV1(
   body: ReconciliationBodyV1,
   input: ResearchReconciliationInputV1,
 ): ReconciliationBodyV1 {
-  const coverageIds = new Set([
-    ...input.coverageTargetIds,
-    ...input.projection.gapIds,
-  ]);
-  const v1 = input.projection.kind === "v1-packet-set" ? input.projection : undefined;
-  const v2 = input.projection.kind === "v2-claim-set" ? input.projection : undefined;
+  const v1Projection = input.projection.kind === "v1-packet-set"
+    ? input.projection
+    : undefined;
   for (const defect of body.defects) {
-    const targetKnown = defect.target.kind === "coverage"
-      ? coverageIds.has(defect.target.id)
-      : defect.target.kind === "finding"
-        ? v1?.findingCandidateIds.includes(defect.target.id) === true
-        : defect.target.kind === "relationship"
-          ? v1?.relationshipCandidateIds.includes(defect.target.id) === true
-          : defect.target.kind === "claim"
-            ? v2?.claimIds.includes(defect.target.id) === true
-            : false;
-    if (!targetKnown) {
+    if (!isResearchReconciliationTargetKnownV1(defect.target, input)) {
       invalid(`Reconciliation defect target is outside the host namespace: ${defect.id}`);
     }
     for (const reference of defect.references) {
-      const referenceKnown = reference.kind === "source"
-        ? v1?.sourceIds.includes(reference.id) === true
-        : v2?.evidenceIds.includes(reference.id) === true;
-      if (!referenceKnown) {
+      if (!isResearchReconciliationReferenceKnownV1(reference, input)) {
         invalid(`Reconciliation defect reference is outside the host namespace: ${defect.id}`);
       }
+    }
+  }
+  for (const followUp of body.proposedFollowUps) {
+    if (input.projection.kind === "v2-claim-set" && followUp.sourceIds.length > 0) {
+      invalid(`Reconciliation V2 follow-up must rely on its defect evidence references: ${followUp.id}`);
+    }
+    if (v1Projection &&
+        followUp.sourceIds.some((sourceId) => !v1Projection.sourceIds.includes(sourceId))) {
+      invalid(`Reconciliation follow-up source is outside the host namespace: ${followUp.id}`);
     }
   }
   return body;
@@ -1082,6 +1148,7 @@ export function projectResearchReconciliationInputV1(input: {
   briefRevision: number;
   graphRevision: number;
   coverageTargetIds: readonly string[];
+  nodeIds: readonly string[];
   acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1 {
   function appendUniqueCandidateIds(
@@ -1117,6 +1184,7 @@ export function projectResearchReconciliationInputV1(input: {
     }
     const claimIds = new Set<string>();
     const evidenceIds = new Set<string>();
+    const sectionIds = new Set<string>();
     const gapIds: string[] = [];
     const seenGapIds = new Set<string>();
     for (const body of packetBodies) {
@@ -1127,8 +1195,10 @@ export function projectResearchReconciliationInputV1(input: {
       body.referencedClaimIds.forEach((claimId) => claimIds.add(claimId));
       body.contradictions.forEach((contradiction) =>
         contradiction.evidenceIds.forEach((evidenceId) => evidenceIds.add(evidenceId)));
-      body.outlineProposals.forEach((proposal) =>
-        proposal.evidenceIds.forEach((evidenceId) => evidenceIds.add(evidenceId)));
+      body.outlineProposals.forEach((proposal) => {
+        sectionIds.add(proposal.sectionId);
+        proposal.evidenceIds.forEach((evidenceId) => evidenceIds.add(evidenceId));
+      });
       // A V2 gap ID is model-local metadata, rather than a durable Claim or
       // Evidence identity. The reconciler receives each packet's gap records
       // in its dependency envelope, while this body-free index has no
@@ -1146,6 +1216,8 @@ export function projectResearchReconciliationInputV1(input: {
       graphRevision: input.graphRevision,
       acceptedPacketRefs: input.acceptedPackets.map((packet) => packet.packetRef),
       coverageTargetIds: [...input.coverageTargetIds],
+      nodeIds: [...input.nodeIds],
+      sectionIds: [...sectionIds].sort(),
       projection: {
         kind: "v2-claim-set",
         claimIds: [...claimIds].sort(),
@@ -1196,6 +1268,8 @@ export function projectResearchReconciliationInputV1(input: {
     graphRevision: input.graphRevision,
     acceptedPacketRefs: input.acceptedPackets.map((packet) => packet.packetRef),
     coverageTargetIds: [...input.coverageTargetIds],
+    nodeIds: [...input.nodeIds],
+    sectionIds: [],
     projection: {
       kind: "v1-packet-set",
       findingCandidateIds,
@@ -1239,10 +1313,26 @@ export function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1 
   assertKeys(body, ["schema", "defects", "proposedFollowUps"], "Reconciliation body");
   if (body.schema !== RESEARCH_RECONCILIATION_BODY_SCHEMA_V1) invalid("Unsupported reconciliation body schema.");
   if (!Array.isArray(body.defects) || body.defects.length > 16 || !Array.isArray(body.proposedFollowUps) || body.proposedFollowUps.length > 3) invalid("Reconciliation body arrays are invalid.");
+  const defects = body.defects.map(parseReconciliationDefect);
+  const proposedFollowUps = body.proposedFollowUps.map(parseReconciliationFollowUp);
+  const defectsById = new Map(defects.map((defect) => [defect.id, defect] as const));
+  const seenFollowUpIds = new Set<string>();
+  const seenFollowUpDefectIds = new Set<string>();
+  for (const followUp of proposedFollowUps) {
+    const defect = defectsById.get(followUp.defectId);
+    if (!defect || defect.suggestedAction !== "add_follow_up") {
+      invalid("Reconciliation follow-up must bind one add_follow_up defect.");
+    }
+    if (seenFollowUpIds.has(followUp.id) || seenFollowUpDefectIds.has(followUp.defectId)) {
+      invalid("Reconciliation follow-up IDs and defect bindings must be unique.");
+    }
+    seenFollowUpIds.add(followUp.id);
+    seenFollowUpDefectIds.add(followUp.defectId);
+  }
   return {
     schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
-    defects: body.defects.map(parseReconciliationDefect),
-    proposedFollowUps: body.proposedFollowUps.map(parseFollowUp),
+    defects,
+    proposedFollowUps,
   };
 }
 

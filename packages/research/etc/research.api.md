@@ -421,6 +421,12 @@ export declare function isResearchPacketBodyV1(body: ResearchAcceptedPacketV1["b
 // export: isResearchPacketBodyV2
 export declare function isResearchPacketBodyV2(body: ResearchAcceptedPacketV1["body"]): body is ResearchPacketBodyV2;
 
+// export: isResearchReconciliationReferenceKnownV1
+export declare function isResearchReconciliationReferenceKnownV1(reference: ResearchSupportRefV1, input: ResearchReconciliationInputV1): boolean;
+
+// export: isResearchReconciliationTargetKnownV1
+export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
+
 // export: isResearchScopeClarificationRequiredV1
 export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
@@ -569,6 +575,7 @@ export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
     coverageTargetIds: readonly string[];
+    nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
 
@@ -587,7 +594,7 @@ export declare function proposeResearchScopeMentionsV1(input: {
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
     defects: ResearchReconciliationDefectV1[];
-    proposedFollowUps: ResearchFollowUpProposalV1[];
+    proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
 // export: RecoverResearchSessionForResumeInputV1
@@ -2219,6 +2226,11 @@ export interface ResearchReconciliationDispositionV1 {
     recordedAt: string;
 }
 
+// export: ResearchReconciliationFollowUpProposalV1
+export interface ResearchReconciliationFollowUpProposalV1 extends ResearchFollowUpProposalV1 {
+    defectId: string;
+}
+
 // export: ResearchReconciliationInputV1
 export interface ResearchReconciliationInputV1 {
     schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
@@ -2226,6 +2238,8 @@ export interface ResearchReconciliationInputV1 {
     graphRevision: number;
     acceptedPacketRefs: string[];
     coverageTargetIds: string[];
+    nodeIds: string[];
+    sectionIds: string[];
     projection: {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
@@ -2812,7 +2826,7 @@ export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
     nodeId: string;
     reconciliationTaskId: string;
-    followUp: ResearchFollowUpProposalV1;
+    followUp: ResearchReconciliationFollowUpProposalV1;
     authorizedAt: string;
 }
 
@@ -3820,6 +3834,12 @@ export declare function isResearchPacketBodyV1(body: ResearchAcceptedPacketV1["b
 // export: isResearchPacketBodyV2
 export declare function isResearchPacketBodyV2(body: ResearchAcceptedPacketV1["body"]): body is ResearchPacketBodyV2;
 
+// export: isResearchReconciliationReferenceKnownV1
+export declare function isResearchReconciliationReferenceKnownV1(reference: ResearchSupportRefV1, input: ResearchReconciliationInputV1): boolean;
+
+// export: isResearchReconciliationTargetKnownV1
+export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
+
 // export: isResearchScopeClarificationRequiredV1
 export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
@@ -3968,6 +3988,7 @@ export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
     coverageTargetIds: readonly string[];
+    nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
 
@@ -3986,7 +4007,7 @@ export declare function proposeResearchScopeMentionsV1(input: {
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
     defects: ResearchReconciliationDefectV1[];
-    proposedFollowUps: ResearchFollowUpProposalV1[];
+    proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
 // export: RecoverResearchSessionForResumeInputV1
@@ -5618,6 +5639,11 @@ export interface ResearchReconciliationDispositionV1 {
     recordedAt: string;
 }
 
+// export: ResearchReconciliationFollowUpProposalV1
+export interface ResearchReconciliationFollowUpProposalV1 extends ResearchFollowUpProposalV1 {
+    defectId: string;
+}
+
 // export: ResearchReconciliationInputV1
 export interface ResearchReconciliationInputV1 {
     schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
@@ -5625,6 +5651,8 @@ export interface ResearchReconciliationInputV1 {
     graphRevision: number;
     acceptedPacketRefs: string[];
     coverageTargetIds: string[];
+    nodeIds: string[];
+    sectionIds: string[];
     projection: {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
@@ -6211,7 +6239,7 @@ export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
     nodeId: string;
     reconciliationTaskId: string;
-    followUp: ResearchFollowUpProposalV1;
+    followUp: ResearchReconciliationFollowUpProposalV1;
     authorizedAt: string;
 }
 
@@ -7217,6 +7245,12 @@ export declare function isResearchPacketBodyV1(body: ResearchAcceptedPacketV1["b
 // export: isResearchPacketBodyV2
 export declare function isResearchPacketBodyV2(body: ResearchAcceptedPacketV1["body"]): body is ResearchPacketBodyV2;
 
+// export: isResearchReconciliationReferenceKnownV1
+export declare function isResearchReconciliationReferenceKnownV1(reference: ResearchSupportRefV1, input: ResearchReconciliationInputV1): boolean;
+
+// export: isResearchReconciliationTargetKnownV1
+export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
+
 // export: isResearchScopeClarificationRequiredV1
 export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
@@ -7365,6 +7399,7 @@ export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
     coverageTargetIds: readonly string[];
+    nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
 
@@ -7383,7 +7418,7 @@ export declare function proposeResearchScopeMentionsV1(input: {
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
     defects: ResearchReconciliationDefectV1[];
-    proposedFollowUps: ResearchFollowUpProposalV1[];
+    proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
 // export: RecoverResearchSessionForResumeInputV1
@@ -9015,6 +9050,11 @@ export interface ResearchReconciliationDispositionV1 {
     recordedAt: string;
 }
 
+// export: ResearchReconciliationFollowUpProposalV1
+export interface ResearchReconciliationFollowUpProposalV1 extends ResearchFollowUpProposalV1 {
+    defectId: string;
+}
+
 // export: ResearchReconciliationInputV1
 export interface ResearchReconciliationInputV1 {
     schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
@@ -9022,6 +9062,8 @@ export interface ResearchReconciliationInputV1 {
     graphRevision: number;
     acceptedPacketRefs: string[];
     coverageTargetIds: string[];
+    nodeIds: string[];
+    sectionIds: string[];
     projection: {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
@@ -9608,7 +9650,7 @@ export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
     nodeId: string;
     reconciliationTaskId: string;
-    followUp: ResearchFollowUpProposalV1;
+    followUp: ResearchReconciliationFollowUpProposalV1;
     authorizedAt: string;
 }
 
@@ -10336,6 +10378,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         reconciliationTaskId: string;
         followUp: {
             id: string;
+            defectId: string;
             objective: string;
             reasonCode: string;
             sourceIds: string[];
@@ -10506,7 +10549,7 @@ export declare function createResearchReconciliationDispositionPtcTool(catalogGr
         graph: ResearchGraphV1;
         reconciliationTaskId: string;
         defect: ResearchReconciliationDefectV1;
-        followUp: ResearchFollowUpProposalV1;
+        followUp: ResearchReconciliationFollowUpProposalV1;
     }) => ResearchRepairAuthorizationV1 | undefined;
     now?: () => number;
     onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
@@ -10784,6 +10827,12 @@ export declare function isResearchPacketBodyV1(body: ResearchAcceptedPacketV1["b
 // export: isResearchPacketBodyV2
 export declare function isResearchPacketBodyV2(body: ResearchAcceptedPacketV1["body"]): body is ResearchPacketBodyV2;
 
+// export: isResearchReconciliationReferenceKnownV1
+export declare function isResearchReconciliationReferenceKnownV1(reference: ResearchSupportRefV1, input: ResearchReconciliationInputV1): boolean;
+
+// export: isResearchReconciliationTargetKnownV1
+export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
+
 // export: isResearchScopeClarificationRequiredV1
 export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
@@ -10932,6 +10981,7 @@ export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
     coverageTargetIds: readonly string[];
+    nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
 
@@ -10956,7 +11006,7 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
     defects: ResearchReconciliationDefectV1[];
-    proposedFollowUps: ResearchFollowUpProposalV1[];
+    proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
 // export: RecoverResearchSessionForResumeInputV1
@@ -12648,6 +12698,11 @@ export interface ResearchReconciliationDispositionV1 {
     recordedAt: string;
 }
 
+// export: ResearchReconciliationFollowUpProposalV1
+export interface ResearchReconciliationFollowUpProposalV1 extends ResearchFollowUpProposalV1 {
+    defectId: string;
+}
+
 // export: ResearchReconciliationInputV1
 export interface ResearchReconciliationInputV1 {
     schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
@@ -12655,6 +12710,8 @@ export interface ResearchReconciliationInputV1 {
     graphRevision: number;
     acceptedPacketRefs: string[];
     coverageTargetIds: string[];
+    nodeIds: string[];
+    sectionIds: string[];
     projection: {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
@@ -13252,7 +13309,7 @@ export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
     nodeId: string;
     reconciliationTaskId: string;
-    followUp: ResearchFollowUpProposalV1;
+    followUp: ResearchReconciliationFollowUpProposalV1;
     authorizedAt: string;
 }
 
@@ -14051,6 +14108,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         reconciliationTaskId: string;
         followUp: {
             id: string;
+            defectId: string;
             objective: string;
             reasonCode: string;
             sourceIds: string[];
@@ -14221,7 +14279,7 @@ export declare function createResearchReconciliationDispositionPtcTool(catalogGr
         graph: ResearchGraphV1;
         reconciliationTaskId: string;
         defect: ResearchReconciliationDefectV1;
-        followUp: ResearchFollowUpProposalV1;
+        followUp: ResearchReconciliationFollowUpProposalV1;
     }) => ResearchRepairAuthorizationV1 | undefined;
     now?: () => number;
     onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
@@ -14514,6 +14572,12 @@ export declare function isResearchPacketBodyV1(body: ResearchAcceptedPacketV1["b
 // export: isResearchPacketBodyV2
 export declare function isResearchPacketBodyV2(body: ResearchAcceptedPacketV1["body"]): body is ResearchPacketBodyV2;
 
+// export: isResearchReconciliationReferenceKnownV1
+export declare function isResearchReconciliationReferenceKnownV1(reference: ResearchSupportRefV1, input: ResearchReconciliationInputV1): boolean;
+
+// export: isResearchReconciliationTargetKnownV1
+export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
+
 // export: isResearchScopeClarificationRequiredV1
 export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
@@ -14662,6 +14726,7 @@ export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
     coverageTargetIds: readonly string[];
+    nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
 
@@ -14686,7 +14751,7 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
     defects: ResearchReconciliationDefectV1[];
-    proposedFollowUps: ResearchFollowUpProposalV1[];
+    proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
 // export: RecoverResearchSessionForResumeInputV1
@@ -16378,6 +16443,11 @@ export interface ResearchReconciliationDispositionV1 {
     recordedAt: string;
 }
 
+// export: ResearchReconciliationFollowUpProposalV1
+export interface ResearchReconciliationFollowUpProposalV1 extends ResearchFollowUpProposalV1 {
+    defectId: string;
+}
+
 // export: ResearchReconciliationInputV1
 export interface ResearchReconciliationInputV1 {
     schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
@@ -16385,6 +16455,8 @@ export interface ResearchReconciliationInputV1 {
     graphRevision: number;
     acceptedPacketRefs: string[];
     coverageTargetIds: string[];
+    nodeIds: string[];
+    sectionIds: string[];
     projection: {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
@@ -16993,7 +17065,7 @@ export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
     nodeId: string;
     reconciliationTaskId: string;
-    followUp: ResearchFollowUpProposalV1;
+    followUp: ResearchReconciliationFollowUpProposalV1;
     authorizedAt: string;
 }
 
@@ -18808,6 +18880,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         reconciliationTaskId: string;
         followUp: {
             id: string;
+            defectId: string;
             objective: string;
             reasonCode: string;
             sourceIds: string[];
@@ -18978,7 +19051,7 @@ export declare function createResearchReconciliationDispositionPtcTool(catalogGr
         graph: ResearchGraphV1;
         reconciliationTaskId: string;
         defect: ResearchReconciliationDefectV1;
-        followUp: ResearchFollowUpProposalV1;
+        followUp: ResearchReconciliationFollowUpProposalV1;
     }) => ResearchRepairAuthorizationV1 | undefined;
     now?: () => number;
     onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
@@ -19271,6 +19344,12 @@ export declare function isResearchPacketBodyV1(body: ResearchAcceptedPacketV1["b
 // export: isResearchPacketBodyV2
 export declare function isResearchPacketBodyV2(body: ResearchAcceptedPacketV1["body"]): body is ResearchPacketBodyV2;
 
+// export: isResearchReconciliationReferenceKnownV1
+export declare function isResearchReconciliationReferenceKnownV1(reference: ResearchSupportRefV1, input: ResearchReconciliationInputV1): boolean;
+
+// export: isResearchReconciliationTargetKnownV1
+export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
+
 // export: isResearchScopeClarificationRequiredV1
 export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
@@ -19419,6 +19498,7 @@ export declare function projectResearchReconciliationInputV1(input: {
     briefRevision: number;
     graphRevision: number;
     coverageTargetIds: readonly string[];
+    nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
 
@@ -19443,7 +19523,7 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
     defects: ResearchReconciliationDefectV1[];
-    proposedFollowUps: ResearchFollowUpProposalV1[];
+    proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
 // export: RecoverResearchSessionForResumeInputV1
@@ -21135,6 +21215,11 @@ export interface ResearchReconciliationDispositionV1 {
     recordedAt: string;
 }
 
+// export: ResearchReconciliationFollowUpProposalV1
+export interface ResearchReconciliationFollowUpProposalV1 extends ResearchFollowUpProposalV1 {
+    defectId: string;
+}
+
 // export: ResearchReconciliationInputV1
 export interface ResearchReconciliationInputV1 {
     schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
@@ -21142,6 +21227,8 @@ export interface ResearchReconciliationInputV1 {
     graphRevision: number;
     acceptedPacketRefs: string[];
     coverageTargetIds: string[];
+    nodeIds: string[];
+    sectionIds: string[];
     projection: {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
@@ -21750,7 +21837,7 @@ export interface ResearchSessionRepairAuthorizationV1 {
     schema: "atlcli.research-session-repair-authorization/v1";
     nodeId: string;
     reconciliationTaskId: string;
-    followUp: ResearchFollowUpProposalV1;
+    followUp: ResearchReconciliationFollowUpProposalV1;
     authorizedAt: string;
 }
 

@@ -48,6 +48,21 @@ const followUpSchema = closedObject(
   ["id", "objective", "reasonCode", "sourceIds"],
 );
 
+const reconciliationFollowUpSchema = closedObject(
+  "ResearchReconciliationFollowUpProposalV1",
+  {
+    id: boundedString(160),
+    defectId: boundedString(160),
+    objective: boundedString(1_000),
+    reasonCode: {
+      type: "string",
+      enum: ["coverage_gap", "contradiction", "negative_claim", "stale_or_truncated"],
+    },
+    sourceIds: boundedStringArray(12),
+  },
+  ["id", "defectId", "objective", "reasonCode", "sourceIds"],
+);
+
 export const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown> = closedObject(
   "ResearchPacketBodyV1",
   {
@@ -285,7 +300,7 @@ export const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown
         ["id", "severity", "target", "code", "references", "explanation", "suggestedAction"],
       ),
     ),
-    proposedFollowUps: boundedObjectArray(3, followUpSchema),
+    proposedFollowUps: boundedObjectArray(3, reconciliationFollowUpSchema),
   },
   ["schema", "defects", "proposedFollowUps"],
 );

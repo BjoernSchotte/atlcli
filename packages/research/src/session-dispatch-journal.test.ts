@@ -223,6 +223,7 @@ describe("durable research task dispatch journal", () => {
             }],
             proposedFollowUps: [{
               id: "follow-up:coverage-gap",
+              defectId: "defect:coverage-gap",
               objective: "Perform one bounded coverage check.",
               reasonCode: "coverage_gap",
               sourceIds: [],

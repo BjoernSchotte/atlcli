@@ -3356,7 +3356,7 @@ proposals before the resulting outline passes the same store validation.
       `ResearchOutlineProposalV1` values and let the supervisor explicitly
       accept, reject, or revise them into a new authoritative outline
       revision.
-- [ ] Validate every reconciliation defect and follow-up proposal against
+- [x] Validate every reconciliation defect and follow-up proposal against
       existing claim, section, node, and evidence IDs before the supervisor may
       act on it.
 - [x] Introduce `atlcli.research-report/v2` while retaining a V1 reader for
@@ -3386,6 +3386,17 @@ source body requires both its exact opaque evidence ID and the explicit
 tests prove metadata-only evidence, claim, outline, and reconciliation views
 and prove source text is absent until that explicit request; a real ATLCLI/DOCSY
 plan E2E exercises the bundled command and removes its temporary session.
+
+T5 reconciliation-namespace checkpoint (2026-08-02): the host now projects
+one body-free namespace for a critique: accepted V1 findings/relationships and
+source IDs, V2 Claim/Evidence IDs, accepted V2 proposed section IDs,
+host-authored graph node IDs, coverage targets, and packet-local gaps. The
+reconciler validates against that same projection before its packet is
+accepted; the later disposition PTC reuses the identical pure validators, so
+it cannot broaden the namespace between critique and action. V2 follow-ups
+carry no free source IDs; their support is bound only through the corresponding
+defect's validated Evidence references. Unit, dynamic composition, TypeScript,
+and packed-MV3 tests prove the common contract with synthetic data only.
 
 Extension/browser:
 

@@ -189,6 +189,29 @@ describe("T3 workflow contracts", () => {
     };
     expect(parseReconciliationBodyV1(body)).toEqual(body);
     expect(() => parseReconciliationBodyV1({ ...body, query: "project = SECRET" })).toThrow("unexpected field");
+
+    const actionable = {
+      ...body,
+      defects: [{ ...body.defects[0]!, suggestedAction: "add_follow_up" as const }],
+      proposedFollowUps: [{
+        id: "follow-up:1",
+        defectId: "defect:1",
+        objective: "Perform one bounded verification.",
+        reasonCode: "negative_claim" as const,
+        sourceIds: ["jira:DEMO-1"],
+      }],
+    };
+    expect(parseReconciliationBodyV1(actionable)).toEqual(actionable);
+    expect(() => parseReconciliationBodyV1({
+      ...actionable,
+      proposedFollowUps: [{ ...actionable.proposedFollowUps[0]!, defectId: "defect:invented" }],
+    })).toThrow("must bind one add_follow_up defect");
+    expect(() => parseReconciliationBodyV1({
+      ...actionable,
+      proposedFollowUps: [{ ...actionable.proposedFollowUps[0]!, defectId: "defect:1" }, {
+        ...actionable.proposedFollowUps[0]!, id: "follow-up:2", defectId: "defect:1",
+      }],
+    })).toThrow("defect bindings must be unique");
   });
 
   test("rejects critic references and coverage targets outside its host namespace before disposition", () => {
@@ -198,6 +221,8 @@ describe("T3 workflow contracts", () => {
       graphRevision: 3,
       acceptedPacketRefs: ["packet:detail:1"],
       coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:detail"],
+      sectionIds: ["section:verified"],
       projection: {
         kind: "v2-claim-set",
         claimIds: ["claim:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
@@ -220,10 +245,36 @@ describe("T3 workflow contracts", () => {
     });
 
     expect(validateResearchReconciliationBodyNamespaceV1(valid, input)).toEqual(valid);
+    expect(validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      defects: [{ ...valid.defects[0]!, target: { kind: "node", id: "research-node:detail" } }],
+    }, input)).toEqual(expect.any(Object));
+    expect(validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      defects: [{ ...valid.defects[0]!, target: { kind: "section", id: "section:verified" } }],
+    }, input)).toEqual(expect.any(Object));
     expect(() => validateResearchReconciliationBodyNamespaceV1({
       ...valid,
       defects: [{ ...valid.defects[0]!, target: { kind: "coverage", id: "coverage:invented" } }],
     }, input)).toThrow("outside the host namespace");
+    expect(() => validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      defects: [{ ...valid.defects[0]!, target: { kind: "node", id: "research-node:invented" } }],
+    }, input)).toThrow("outside the host namespace");
+    expect(() => validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      defects: [{ ...valid.defects[0]!, target: { kind: "section", id: "section:invented" } }],
+    }, input)).toThrow("outside the host namespace");
+    expect(() => validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      proposedFollowUps: [{
+        id: "follow-up:v2-source",
+        defectId: "defect:coverage",
+        objective: "Inspect a bounded missing detail.",
+        reasonCode: "coverage_gap",
+        sourceIds: ["jira:DEMO-1"],
+      }],
+    }, input)).toThrow("V2 follow-up");
     expect(() => validateResearchReconciliationBodyNamespaceV1({
       ...valid,
       defects: [{
@@ -254,6 +305,7 @@ describe("T3 workflow contracts", () => {
       briefRevision: 2,
       graphRevision: 3,
       coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:jira", "research-node:wiki"],
       acceptedPackets: [jira, wiki],
     })).toEqual({
       schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
@@ -261,6 +313,8 @@ describe("T3 workflow contracts", () => {
       graphRevision: 3,
       acceptedPacketRefs: ["packet:jira:1", "packet:wiki:1"],
       coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:jira", "research-node:wiki"],
+      sectionIds: [],
       projection: {
         kind: "v1-packet-set",
         findingCandidateIds: ["finding:1", "finding:2"],
@@ -311,6 +365,7 @@ describe("T3 workflow contracts", () => {
       briefRevision: 2,
       graphRevision: 3,
       coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:detail", "research-node:analysis"],
       acceptedPackets: [detailPacket, analysisPacket],
     })).toEqual({
       schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
@@ -318,6 +373,8 @@ describe("T3 workflow contracts", () => {
       graphRevision: 3,
       acceptedPacketRefs: ["packet:detail:1", "packet:analysis:1"],
       coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:detail", "research-node:analysis"],
+      sectionIds: ["section:v2:1"],
       projection: {
         kind: "v2-claim-set",
         claimIds: [claimId],
@@ -338,6 +395,7 @@ describe("T3 workflow contracts", () => {
       briefRevision: 2,
       graphRevision: 3,
       coverageTargetIds: ["coverage:question"],
+      nodeIds: ["research-node:detail", "research-node:analysis", "research-node:analysis:2"],
       acceptedPackets: [detailPacket, analysisPacket, repeatedLocalGap],
     }).projection).toMatchObject({
       kind: "v2-claim-set",
@@ -348,6 +406,7 @@ describe("T3 workflow contracts", () => {
       briefRevision: 2,
       graphRevision: 3,
       coverageTargetIds: ["coverage:question"],
+      nodeIds: [],
       acceptedPackets: [acceptedPacket("task:v1", "packet:v1:1", packet()), detailPacket],
     })).toThrow("cannot mix V1 and V2");
   });
@@ -367,6 +426,7 @@ describe("T3 workflow contracts", () => {
       briefRevision: 2,
       graphRevision: 3,
       coverageTargetIds: ["coverage:question"],
+      nodeIds: [],
       acceptedPackets: [first, second],
     })).toThrow("duplicated across accepted packets");
 
@@ -374,6 +434,7 @@ describe("T3 workflow contracts", () => {
       briefRevision: 2,
       graphRevision: 3,
       coverageTargetIds: ["coverage:question"],
+      nodeIds: [],
       acceptedPackets: [first],
     });
     expect(parseResearchReconciliationInputV1(valid)).toEqual(valid);
