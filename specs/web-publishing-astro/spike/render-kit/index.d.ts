@@ -28,8 +28,6 @@ export interface T0ExportDocumentProps {
   blocks: readonly Record<string, unknown>[];
   context: T0RenderContextV1;
   overrides?: T0RendererOverridesV1;
-  chart?: T0ChartModelV1;
-  interactiveChart?: boolean;
 }
 
 export declare function assertT0ChartModel(value: unknown): asserts value is T0ChartModelV1;

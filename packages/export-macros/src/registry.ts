@@ -9,6 +9,7 @@ import type { MacroRenderer, MacroRendererRegistry } from "./types.js";
 import type {
   ExtractMacroBodyDep,
   HtmlToExportBlocksDep,
+  NormalizeChartMacroDep,
   ParsePagePropertiesDep,
   StorageToBlocksDep,
 } from "./deps.js";
@@ -23,6 +24,7 @@ import { includeRenderer, excerptIncludeRenderer, excerptRenderer } from "./incl
 import { pagePropertiesReportRenderer } from "./page-properties-report.js";
 import { whiteboardRenderer } from "./whiteboard.js";
 import { exportViewFallbackRenderer } from "./export-view.js";
+import { chartMacroRenderer } from "./chart.js";
 
 /**
  * Dependencies the E1/E4/E5 renderers need, injected rather than imported at
@@ -35,6 +37,7 @@ export interface DefaultRegistryDeps {
   htmlToExportBlocks: HtmlToExportBlocksDep;
   parsePageProperties: ParsePagePropertiesDep;
   extractMacroBody: ExtractMacroBodyDep;
+  normalizeChartMacro?: NormalizeChartMacroDep;
 }
 
 /**
@@ -149,6 +152,7 @@ export function defaultRegistry(deps: DefaultRegistryDeps): MacroRendererRegistr
       storageToBlocks: deps.storageToBlocks,
       parsePageProperties: deps.parsePageProperties,
     }),
+    ...(deps.normalizeChartMacro ? [chartMacroRenderer({ normalizeChartMacro: deps.normalizeChartMacro })] : []),
     whiteboardRenderer(),
     exportViewFallbackRenderer({ htmlToExportBlocks: deps.htmlToExportBlocks }),
   ]);

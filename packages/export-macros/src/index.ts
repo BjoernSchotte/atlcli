@@ -61,6 +61,7 @@ export type {
   HtmlToExportBlocksDep,
   ParsePagePropertiesDep,
   ExtractMacroBodyDep,
+  NormalizeChartMacroDep,
 } from "./deps.js";
 
 // --- Resolver pass (resolve.ts) ---

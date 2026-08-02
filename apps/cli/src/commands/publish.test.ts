@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   handlePublish,
+  collectChartRenderDependenciesV1,
   isMissingPublicationAttachmentErrorV1,
   latestPublicationBuildNameV1,
   normalizePublicationLinksV1,
   normalizePublicationPositionV1,
+  publicationBuildEnvironmentV1,
   publishHelp,
   replaceMissingPublicationAssetsV1,
 } from "./publish.js";
@@ -69,6 +71,17 @@ test("publishing help documents the four-stage lifecycle and explicit safety fla
   expect(publishHelp()).toContain("--confirm-public");
 });
 
+test("Astro build handoff exposes only the active bundle and private inventory paths", () => {
+  const environment = publicationBuildEnvironmentV1("./bundle/publication.json", "./private/inventory.json");
+  expect(Object.keys(environment).sort()).toEqual([
+    "ATLCLI_PUBLICATION_BUNDLE_PATH",
+    "ATLCLI_PUBLICATION_INVENTORY_PATH",
+  ]);
+  expect(environment.ATLCLI_PUBLICATION_BUNDLE_PATH).toBe(resolve("./bundle/publication.json"));
+  expect(environment.ATLCLI_PUBLICATION_INVENTORY_PATH).toBe(resolve("./private/inventory.json"));
+  expect(() => publicationBuildEnvironmentV1("", "inventory.json")).toThrow("non-empty");
+});
+
 test("publication positions replace provider non-finite ordering values deterministically", () => {
   expect(normalizePublicationPositionV1(3, 9)).toBe(3);
   expect(normalizePublicationPositionV1(null, 9)).toBe(9);
@@ -84,6 +97,34 @@ test("publication links outside the selected scope remain visible as unresolved 
     { referenceId: "inside", kind: "page", sourceId: "page-1" },
     { referenceId: "outside", kind: "unresolved", reason: "outside-scope", label: "Out-of-scope Confluence link" },
   ]);
+});
+
+test("chart source-table digests become ID-free page render dependencies", () => {
+  const dependency = (digest: string) => collectChartRenderDependenciesV1([{
+    type: "chart",
+    localId: "provider-private-local-id",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      data: { mode: "categories", labels: ["A"], series: [{ id: "value", label: "Value", values: [10] }] },
+      source: {
+        kind: "cloud-adf",
+        macroName: "chart",
+        sourceTableDigests: [digest],
+        dependencyDigest: digest,
+      },
+    },
+  }]);
+  expect(dependency("fnv1a-11111111")).toEqual([{
+    kind: "macro-data",
+    key: "chart:0",
+    version: "atlcli.chart/1",
+    digest: "fnv1a-11111111",
+    live: false,
+  }]);
+  expect(dependency("fnv1a-22222222")).not.toEqual(dependency("fnv1a-11111111"));
+  expect(JSON.stringify(dependency("fnv1a-11111111"))).not.toContain("provider-private-local-id");
+  expect(collectChartRenderDependenciesV1([])).toEqual([]);
 });
 
 test("explicit missing-attachment fallback keeps the page and removes dangling asset references", async () => {

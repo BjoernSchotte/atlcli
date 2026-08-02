@@ -485,6 +485,181 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: CHART_DIAGNOSTIC_CODES_V1
+export declare const CHART_DIAGNOSTIC_CODES_V1: readonly [
+    "unsupported-kind",
+    "malformed-data",
+    "invalid-option",
+    "locale-parse",
+    "skipped-row",
+    "missing-attachment",
+    "truncated",
+    "renderer-fallback"
+];
+
+// export: CHART_KINDS_V1
+export declare const CHART_KINDS_V1: readonly ChartKindV1[];
+
+// export: CHART_LIMITS_V1
+export declare const CHART_LIMITS_V1: Readonly<{
+    maxRows: 2000;
+    maxSeries: 64;
+    maxPoints: 20000;
+    maxTasks: 5000;
+    maxTextLength: 10000;
+    maxPayloadBytes: number;
+    maxPaletteEntries: 64;
+}>;
+
+// export: ChartAxesV1
+export interface ChartAxesV1 {
+    x?: ChartAxisV1;
+    y?: ChartAxisV1;
+}
+
+// export: ChartAxisV1
+export interface ChartAxisV1 {
+    min?: number | string;
+    max?: number | string;
+    tickUnit?: number;
+    tickPeriod?: ChartTimePeriodV1;
+    labelAngle?: number;
+    categoryLabelPosition?: ChartCategoryLabelPositionV1;
+    dateTickPosition?: ChartDateTickPositionV1;
+    valueType?: "number" | "date";
+}
+
+// export: ChartCategoryLabelPositionV1
+export type ChartCategoryLabelPositionV1 = "up45" | "up90" | "down45" | "down90";
+
+// export: ChartCategorySeriesV1
+export interface ChartCategorySeriesV1 {
+    id: string;
+    label: string;
+    values: readonly number[];
+}
+
+// export: ChartDataV1
+export type ChartDataV1 = {
+    mode: "categories";
+    labels: readonly string[];
+    series: readonly ChartCategorySeriesV1[];
+} | {
+    mode: "points";
+    series: readonly ChartPointSeriesV1[];
+} | {
+    mode: "gantt";
+    tasks: readonly GanttTaskV1[];
+};
+
+// export: ChartDateTickPositionV1
+export type ChartDateTickPositionV1 = "start" | "middle" | "end";
+
+// export: ChartDiagnosticCodeV1
+export type ChartDiagnosticCodeV1 = "unsupported-kind" | "malformed-data" | "invalid-option" | "locale-parse" | "skipped-row" | "missing-attachment" | "truncated" | "renderer-fallback";
+
+// export: ChartDiagnosticV1
+export interface ChartDiagnosticV1 {
+    code: ChartDiagnosticCodeV1;
+    message: string;
+    parameter?: string;
+    row?: number;
+}
+
+// export: ChartKindV1
+export type ChartKindV1 = "pie" | "bar" | "line" | "area" | "xyArea" | "xyBar" | "xyLine" | "xyStep" | "xyStepArea" | "scatter" | "timeSeries" | "gantt";
+
+// export: ChartMacroNormalizationResult
+export interface ChartMacroNormalizationResult {
+    model?: ChartModelV1;
+    diagnostics: ChartDiagnosticV1[];
+}
+
+// export: chartModelDigestV1
+export declare function chartModelDigestV1(model: ChartModelV1): string;
+
+// export: ChartModelV1
+export interface ChartModelV1 {
+    schema: "atlcli.chart/1";
+    kind: ChartKindV1;
+    title?: string;
+    subtitle?: string;
+    xLabel?: string;
+    yLabel?: string;
+    legend?: "none" | "top" | "right" | "bottom" | "left";
+    orientation?: "vertical" | "horizontal";
+    stacked?: boolean;
+    threeD?: boolean;
+    showShapes?: boolean;
+    opacity?: number;
+    display?: {
+        width?: number;
+        height?: number;
+        data?: "hidden" | "before" | "after";
+    };
+    style?: ChartStyleV1;
+    axes?: ChartAxesV1;
+    pie?: {
+        sectionLabelFormat?: string;
+        explode?: readonly string[];
+    };
+    locale?: {
+        language?: string;
+        country?: string;
+        dateFormat?: string;
+        timePeriod?: ChartTimePeriodV1;
+    };
+    data: ChartDataV1;
+    source: ChartSourceProvenanceV1;
+}
+
+// export: ChartPointSeriesV1
+export interface ChartPointSeriesV1 {
+    id: string;
+    label: string;
+    points: readonly ChartPointV1[];
+}
+
+// export: ChartPointV1
+export interface ChartPointV1 {
+    x: number | string;
+    y: number;
+    label?: string;
+}
+
+// export: ChartSourceKindV1
+export type ChartSourceKindV1 = "cloud-adf" | "dc-storage";
+
+// export: ChartSourceProvenanceV1
+export interface ChartSourceProvenanceV1 {
+    kind: ChartSourceKindV1;
+    macroName: "chart";
+    attachment?: {
+        filename: string;
+        version?: "new" | "replace" | "keep";
+        comment?: string;
+        thumbnail?: boolean;
+    };
+    renderedImageFormat?: "png" | "jpg";
+    sourceTableDigests?: readonly string[];
+    dependencyDigest?: string;
+}
+
+// export: ChartStyleV1
+export interface ChartStyleV1 {
+    backgroundColor?: string;
+    borderColor?: string;
+    colors?: readonly string[];
+}
+
+// export: ChartTimePeriodV1
+export type ChartTimePeriodV1 = "millisecond" | "second" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
+
+// export: ChartValidationErrorV1
+export declare class ChartValidationErrorV1 extends Error {
+    constructor(message: string);
+}
+
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
 
@@ -1354,6 +1529,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -1755,6 +1936,16 @@ export interface FooterComment extends BaseComment {
 // export: formatAdfDateTimestamp
 export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
 
+// export: GanttTaskV1
+export interface GanttTaskV1 {
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+    progress?: number;
+    dependencies?: readonly string[];
+}
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -1884,6 +2075,9 @@ export type InlineNode = {
 } | {
     type: "lineBreak";
 };
+
+// export: isChartMacroName
+export declare function isChartMacroName(value: string | undefined): boolean;
 
 // export: isColonEmojiShortName
 export declare function isColonEmojiShortName(value: string): boolean;
@@ -2081,6 +2275,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     kind: CaptionKind;
     note?: ExportNote;
 };
+
+// export: normalizeChartMacro
+export declare function normalizeChartMacro(params: readonly MacroParameter[], body: readonly ExportBlock[], source: ChartSourceKindV1): ChartMacroNormalizationResult;
 
 // export: normalizeEmojiShortName
 export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
@@ -2564,6 +2761,7 @@ export interface TableCell {
     columnWidths?: number[];
     verticalAlignment?: TableVerticalAlignment;
     localId?: string;
+    title?: string;
     content: ExportBlock[];
 }
 
@@ -2583,6 +2781,7 @@ export interface TablePresentation {
     displayMode?: TableDisplayMode;
     numberedColumn?: boolean;
     localId?: string;
+    sourceId?: string;
 }
 
 // export: TableRow
@@ -2812,6 +3011,12 @@ export type ValidAdfDocument = AdfDocument;
 export declare function validateAdf(input: string | unknown, options?: {
     budget?: Partial<AdfParseBudget>;
 }): ValidatedAdfDocument;
+
+// export: validateChartDiagnosticsV1
+export declare function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[];
+
+// export: validateChartModelV1
+export declare function validateChartModelV1(model: ChartModelV1): ChartModelV1;
 
 // export: ValidatedAdfDocument
 export interface ValidatedAdfDocument {
@@ -3334,6 +3539,181 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: CHART_DIAGNOSTIC_CODES_V1
+export declare const CHART_DIAGNOSTIC_CODES_V1: readonly [
+    "unsupported-kind",
+    "malformed-data",
+    "invalid-option",
+    "locale-parse",
+    "skipped-row",
+    "missing-attachment",
+    "truncated",
+    "renderer-fallback"
+];
+
+// export: CHART_KINDS_V1
+export declare const CHART_KINDS_V1: readonly ChartKindV1[];
+
+// export: CHART_LIMITS_V1
+export declare const CHART_LIMITS_V1: Readonly<{
+    maxRows: 2000;
+    maxSeries: 64;
+    maxPoints: 20000;
+    maxTasks: 5000;
+    maxTextLength: 10000;
+    maxPayloadBytes: number;
+    maxPaletteEntries: 64;
+}>;
+
+// export: ChartAxesV1
+export interface ChartAxesV1 {
+    x?: ChartAxisV1;
+    y?: ChartAxisV1;
+}
+
+// export: ChartAxisV1
+export interface ChartAxisV1 {
+    min?: number | string;
+    max?: number | string;
+    tickUnit?: number;
+    tickPeriod?: ChartTimePeriodV1;
+    labelAngle?: number;
+    categoryLabelPosition?: ChartCategoryLabelPositionV1;
+    dateTickPosition?: ChartDateTickPositionV1;
+    valueType?: "number" | "date";
+}
+
+// export: ChartCategoryLabelPositionV1
+export type ChartCategoryLabelPositionV1 = "up45" | "up90" | "down45" | "down90";
+
+// export: ChartCategorySeriesV1
+export interface ChartCategorySeriesV1 {
+    id: string;
+    label: string;
+    values: readonly number[];
+}
+
+// export: ChartDataV1
+export type ChartDataV1 = {
+    mode: "categories";
+    labels: readonly string[];
+    series: readonly ChartCategorySeriesV1[];
+} | {
+    mode: "points";
+    series: readonly ChartPointSeriesV1[];
+} | {
+    mode: "gantt";
+    tasks: readonly GanttTaskV1[];
+};
+
+// export: ChartDateTickPositionV1
+export type ChartDateTickPositionV1 = "start" | "middle" | "end";
+
+// export: ChartDiagnosticCodeV1
+export type ChartDiagnosticCodeV1 = "unsupported-kind" | "malformed-data" | "invalid-option" | "locale-parse" | "skipped-row" | "missing-attachment" | "truncated" | "renderer-fallback";
+
+// export: ChartDiagnosticV1
+export interface ChartDiagnosticV1 {
+    code: ChartDiagnosticCodeV1;
+    message: string;
+    parameter?: string;
+    row?: number;
+}
+
+// export: ChartKindV1
+export type ChartKindV1 = "pie" | "bar" | "line" | "area" | "xyArea" | "xyBar" | "xyLine" | "xyStep" | "xyStepArea" | "scatter" | "timeSeries" | "gantt";
+
+// export: ChartMacroNormalizationResult
+export interface ChartMacroNormalizationResult {
+    model?: ChartModelV1;
+    diagnostics: ChartDiagnosticV1[];
+}
+
+// export: chartModelDigestV1
+export declare function chartModelDigestV1(model: ChartModelV1): string;
+
+// export: ChartModelV1
+export interface ChartModelV1 {
+    schema: "atlcli.chart/1";
+    kind: ChartKindV1;
+    title?: string;
+    subtitle?: string;
+    xLabel?: string;
+    yLabel?: string;
+    legend?: "none" | "top" | "right" | "bottom" | "left";
+    orientation?: "vertical" | "horizontal";
+    stacked?: boolean;
+    threeD?: boolean;
+    showShapes?: boolean;
+    opacity?: number;
+    display?: {
+        width?: number;
+        height?: number;
+        data?: "hidden" | "before" | "after";
+    };
+    style?: ChartStyleV1;
+    axes?: ChartAxesV1;
+    pie?: {
+        sectionLabelFormat?: string;
+        explode?: readonly string[];
+    };
+    locale?: {
+        language?: string;
+        country?: string;
+        dateFormat?: string;
+        timePeriod?: ChartTimePeriodV1;
+    };
+    data: ChartDataV1;
+    source: ChartSourceProvenanceV1;
+}
+
+// export: ChartPointSeriesV1
+export interface ChartPointSeriesV1 {
+    id: string;
+    label: string;
+    points: readonly ChartPointV1[];
+}
+
+// export: ChartPointV1
+export interface ChartPointV1 {
+    x: number | string;
+    y: number;
+    label?: string;
+}
+
+// export: ChartSourceKindV1
+export type ChartSourceKindV1 = "cloud-adf" | "dc-storage";
+
+// export: ChartSourceProvenanceV1
+export interface ChartSourceProvenanceV1 {
+    kind: ChartSourceKindV1;
+    macroName: "chart";
+    attachment?: {
+        filename: string;
+        version?: "new" | "replace" | "keep";
+        comment?: string;
+        thumbnail?: boolean;
+    };
+    renderedImageFormat?: "png" | "jpg";
+    sourceTableDigests?: readonly string[];
+    dependencyDigest?: string;
+}
+
+// export: ChartStyleV1
+export interface ChartStyleV1 {
+    backgroundColor?: string;
+    borderColor?: string;
+    colors?: readonly string[];
+}
+
+// export: ChartTimePeriodV1
+export type ChartTimePeriodV1 = "millisecond" | "second" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
+
+// export: ChartValidationErrorV1
+export declare class ChartValidationErrorV1 extends Error {
+    constructor(message: string);
+}
+
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
 
@@ -4203,6 +4583,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -4604,6 +4990,16 @@ export interface FooterComment extends BaseComment {
 // export: formatAdfDateTimestamp
 export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
 
+// export: GanttTaskV1
+export interface GanttTaskV1 {
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+    progress?: number;
+    dependencies?: readonly string[];
+}
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -4733,6 +5129,9 @@ export type InlineNode = {
 } | {
     type: "lineBreak";
 };
+
+// export: isChartMacroName
+export declare function isChartMacroName(value: string | undefined): boolean;
 
 // export: isColonEmojiShortName
 export declare function isColonEmojiShortName(value: string): boolean;
@@ -4930,6 +5329,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     kind: CaptionKind;
     note?: ExportNote;
 };
+
+// export: normalizeChartMacro
+export declare function normalizeChartMacro(params: readonly MacroParameter[], body: readonly ExportBlock[], source: ChartSourceKindV1): ChartMacroNormalizationResult;
 
 // export: normalizeEmojiShortName
 export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
@@ -5413,6 +5815,7 @@ export interface TableCell {
     columnWidths?: number[];
     verticalAlignment?: TableVerticalAlignment;
     localId?: string;
+    title?: string;
     content: ExportBlock[];
 }
 
@@ -5432,6 +5835,7 @@ export interface TablePresentation {
     displayMode?: TableDisplayMode;
     numberedColumn?: boolean;
     localId?: string;
+    sourceId?: string;
 }
 
 // export: TableRow
@@ -5661,6 +6065,12 @@ export type ValidAdfDocument = AdfDocument;
 export declare function validateAdf(input: string | unknown, options?: {
     budget?: Partial<AdfParseBudget>;
 }): ValidatedAdfDocument;
+
+// export: validateChartDiagnosticsV1
+export declare function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[];
+
+// export: validateChartModelV1
+export declare function validateChartModelV1(model: ChartModelV1): ChartModelV1;
 
 // export: ValidatedAdfDocument
 export interface ValidatedAdfDocument {
@@ -6183,6 +6593,181 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: CHART_DIAGNOSTIC_CODES_V1
+export declare const CHART_DIAGNOSTIC_CODES_V1: readonly [
+    "unsupported-kind",
+    "malformed-data",
+    "invalid-option",
+    "locale-parse",
+    "skipped-row",
+    "missing-attachment",
+    "truncated",
+    "renderer-fallback"
+];
+
+// export: CHART_KINDS_V1
+export declare const CHART_KINDS_V1: readonly ChartKindV1[];
+
+// export: CHART_LIMITS_V1
+export declare const CHART_LIMITS_V1: Readonly<{
+    maxRows: 2000;
+    maxSeries: 64;
+    maxPoints: 20000;
+    maxTasks: 5000;
+    maxTextLength: 10000;
+    maxPayloadBytes: number;
+    maxPaletteEntries: 64;
+}>;
+
+// export: ChartAxesV1
+export interface ChartAxesV1 {
+    x?: ChartAxisV1;
+    y?: ChartAxisV1;
+}
+
+// export: ChartAxisV1
+export interface ChartAxisV1 {
+    min?: number | string;
+    max?: number | string;
+    tickUnit?: number;
+    tickPeriod?: ChartTimePeriodV1;
+    labelAngle?: number;
+    categoryLabelPosition?: ChartCategoryLabelPositionV1;
+    dateTickPosition?: ChartDateTickPositionV1;
+    valueType?: "number" | "date";
+}
+
+// export: ChartCategoryLabelPositionV1
+export type ChartCategoryLabelPositionV1 = "up45" | "up90" | "down45" | "down90";
+
+// export: ChartCategorySeriesV1
+export interface ChartCategorySeriesV1 {
+    id: string;
+    label: string;
+    values: readonly number[];
+}
+
+// export: ChartDataV1
+export type ChartDataV1 = {
+    mode: "categories";
+    labels: readonly string[];
+    series: readonly ChartCategorySeriesV1[];
+} | {
+    mode: "points";
+    series: readonly ChartPointSeriesV1[];
+} | {
+    mode: "gantt";
+    tasks: readonly GanttTaskV1[];
+};
+
+// export: ChartDateTickPositionV1
+export type ChartDateTickPositionV1 = "start" | "middle" | "end";
+
+// export: ChartDiagnosticCodeV1
+export type ChartDiagnosticCodeV1 = "unsupported-kind" | "malformed-data" | "invalid-option" | "locale-parse" | "skipped-row" | "missing-attachment" | "truncated" | "renderer-fallback";
+
+// export: ChartDiagnosticV1
+export interface ChartDiagnosticV1 {
+    code: ChartDiagnosticCodeV1;
+    message: string;
+    parameter?: string;
+    row?: number;
+}
+
+// export: ChartKindV1
+export type ChartKindV1 = "pie" | "bar" | "line" | "area" | "xyArea" | "xyBar" | "xyLine" | "xyStep" | "xyStepArea" | "scatter" | "timeSeries" | "gantt";
+
+// export: ChartMacroNormalizationResult
+export interface ChartMacroNormalizationResult {
+    model?: ChartModelV1;
+    diagnostics: ChartDiagnosticV1[];
+}
+
+// export: chartModelDigestV1
+export declare function chartModelDigestV1(model: ChartModelV1): string;
+
+// export: ChartModelV1
+export interface ChartModelV1 {
+    schema: "atlcli.chart/1";
+    kind: ChartKindV1;
+    title?: string;
+    subtitle?: string;
+    xLabel?: string;
+    yLabel?: string;
+    legend?: "none" | "top" | "right" | "bottom" | "left";
+    orientation?: "vertical" | "horizontal";
+    stacked?: boolean;
+    threeD?: boolean;
+    showShapes?: boolean;
+    opacity?: number;
+    display?: {
+        width?: number;
+        height?: number;
+        data?: "hidden" | "before" | "after";
+    };
+    style?: ChartStyleV1;
+    axes?: ChartAxesV1;
+    pie?: {
+        sectionLabelFormat?: string;
+        explode?: readonly string[];
+    };
+    locale?: {
+        language?: string;
+        country?: string;
+        dateFormat?: string;
+        timePeriod?: ChartTimePeriodV1;
+    };
+    data: ChartDataV1;
+    source: ChartSourceProvenanceV1;
+}
+
+// export: ChartPointSeriesV1
+export interface ChartPointSeriesV1 {
+    id: string;
+    label: string;
+    points: readonly ChartPointV1[];
+}
+
+// export: ChartPointV1
+export interface ChartPointV1 {
+    x: number | string;
+    y: number;
+    label?: string;
+}
+
+// export: ChartSourceKindV1
+export type ChartSourceKindV1 = "cloud-adf" | "dc-storage";
+
+// export: ChartSourceProvenanceV1
+export interface ChartSourceProvenanceV1 {
+    kind: ChartSourceKindV1;
+    macroName: "chart";
+    attachment?: {
+        filename: string;
+        version?: "new" | "replace" | "keep";
+        comment?: string;
+        thumbnail?: boolean;
+    };
+    renderedImageFormat?: "png" | "jpg";
+    sourceTableDigests?: readonly string[];
+    dependencyDigest?: string;
+}
+
+// export: ChartStyleV1
+export interface ChartStyleV1 {
+    backgroundColor?: string;
+    borderColor?: string;
+    colors?: readonly string[];
+}
+
+// export: ChartTimePeriodV1
+export type ChartTimePeriodV1 = "millisecond" | "second" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
+
+// export: ChartValidationErrorV1
+export declare class ChartValidationErrorV1 extends Error {
+    constructor(message: string);
+}
+
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
 
@@ -7052,6 +7637,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -7453,6 +8044,16 @@ export interface FooterComment extends BaseComment {
 // export: formatAdfDateTimestamp
 export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
 
+// export: GanttTaskV1
+export interface GanttTaskV1 {
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+    progress?: number;
+    dependencies?: readonly string[];
+}
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -7582,6 +8183,9 @@ export type InlineNode = {
 } | {
     type: "lineBreak";
 };
+
+// export: isChartMacroName
+export declare function isChartMacroName(value: string | undefined): boolean;
 
 // export: isColonEmojiShortName
 export declare function isColonEmojiShortName(value: string): boolean;
@@ -7779,6 +8383,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     kind: CaptionKind;
     note?: ExportNote;
 };
+
+// export: normalizeChartMacro
+export declare function normalizeChartMacro(params: readonly MacroParameter[], body: readonly ExportBlock[], source: ChartSourceKindV1): ChartMacroNormalizationResult;
 
 // export: normalizeEmojiShortName
 export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
@@ -8262,6 +8869,7 @@ export interface TableCell {
     columnWidths?: number[];
     verticalAlignment?: TableVerticalAlignment;
     localId?: string;
+    title?: string;
     content: ExportBlock[];
 }
 
@@ -8281,6 +8889,7 @@ export interface TablePresentation {
     displayMode?: TableDisplayMode;
     numberedColumn?: boolean;
     localId?: string;
+    sourceId?: string;
 }
 
 // export: TableRow
@@ -8510,6 +9119,12 @@ export type ValidAdfDocument = AdfDocument;
 export declare function validateAdf(input: string | unknown, options?: {
     budget?: Partial<AdfParseBudget>;
 }): ValidatedAdfDocument;
+
+// export: validateChartDiagnosticsV1
+export declare function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[];
+
+// export: validateChartModelV1
+export declare function validateChartModelV1(model: ChartModelV1): ChartModelV1;
 
 // export: ValidatedAdfDocument
 export interface ValidatedAdfDocument {
@@ -8798,6 +9413,175 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
+
+// export: CHART_DIAGNOSTIC_CODES_V1
+export declare const CHART_DIAGNOSTIC_CODES_V1: readonly [
+    "unsupported-kind",
+    "malformed-data",
+    "invalid-option",
+    "locale-parse",
+    "skipped-row",
+    "missing-attachment",
+    "truncated",
+    "renderer-fallback"
+];
+
+// export: CHART_KINDS_V1
+export declare const CHART_KINDS_V1: readonly ChartKindV1[];
+
+// export: CHART_LIMITS_V1
+export declare const CHART_LIMITS_V1: Readonly<{
+    maxRows: 2000;
+    maxSeries: 64;
+    maxPoints: 20000;
+    maxTasks: 5000;
+    maxTextLength: 10000;
+    maxPayloadBytes: number;
+    maxPaletteEntries: 64;
+}>;
+
+// export: ChartAxesV1
+export interface ChartAxesV1 {
+    x?: ChartAxisV1;
+    y?: ChartAxisV1;
+}
+
+// export: ChartAxisV1
+export interface ChartAxisV1 {
+    min?: number | string;
+    max?: number | string;
+    tickUnit?: number;
+    tickPeriod?: ChartTimePeriodV1;
+    labelAngle?: number;
+    categoryLabelPosition?: ChartCategoryLabelPositionV1;
+    dateTickPosition?: ChartDateTickPositionV1;
+    valueType?: "number" | "date";
+}
+
+// export: ChartCategoryLabelPositionV1
+export type ChartCategoryLabelPositionV1 = "up45" | "up90" | "down45" | "down90";
+
+// export: ChartCategorySeriesV1
+export interface ChartCategorySeriesV1 {
+    id: string;
+    label: string;
+    values: readonly number[];
+}
+
+// export: ChartDataV1
+export type ChartDataV1 = {
+    mode: "categories";
+    labels: readonly string[];
+    series: readonly ChartCategorySeriesV1[];
+} | {
+    mode: "points";
+    series: readonly ChartPointSeriesV1[];
+} | {
+    mode: "gantt";
+    tasks: readonly GanttTaskV1[];
+};
+
+// export: ChartDateTickPositionV1
+export type ChartDateTickPositionV1 = "start" | "middle" | "end";
+
+// export: ChartDiagnosticCodeV1
+export type ChartDiagnosticCodeV1 = "unsupported-kind" | "malformed-data" | "invalid-option" | "locale-parse" | "skipped-row" | "missing-attachment" | "truncated" | "renderer-fallback";
+
+// export: ChartDiagnosticV1
+export interface ChartDiagnosticV1 {
+    code: ChartDiagnosticCodeV1;
+    message: string;
+    parameter?: string;
+    row?: number;
+}
+
+// export: ChartKindV1
+export type ChartKindV1 = "pie" | "bar" | "line" | "area" | "xyArea" | "xyBar" | "xyLine" | "xyStep" | "xyStepArea" | "scatter" | "timeSeries" | "gantt";
+
+// export: chartModelDigestV1
+export declare function chartModelDigestV1(model: ChartModelV1): string;
+
+// export: ChartModelV1
+export interface ChartModelV1 {
+    schema: "atlcli.chart/1";
+    kind: ChartKindV1;
+    title?: string;
+    subtitle?: string;
+    xLabel?: string;
+    yLabel?: string;
+    legend?: "none" | "top" | "right" | "bottom" | "left";
+    orientation?: "vertical" | "horizontal";
+    stacked?: boolean;
+    threeD?: boolean;
+    showShapes?: boolean;
+    opacity?: number;
+    display?: {
+        width?: number;
+        height?: number;
+        data?: "hidden" | "before" | "after";
+    };
+    style?: ChartStyleV1;
+    axes?: ChartAxesV1;
+    pie?: {
+        sectionLabelFormat?: string;
+        explode?: readonly string[];
+    };
+    locale?: {
+        language?: string;
+        country?: string;
+        dateFormat?: string;
+        timePeriod?: ChartTimePeriodV1;
+    };
+    data: ChartDataV1;
+    source: ChartSourceProvenanceV1;
+}
+
+// export: ChartPointSeriesV1
+export interface ChartPointSeriesV1 {
+    id: string;
+    label: string;
+    points: readonly ChartPointV1[];
+}
+
+// export: ChartPointV1
+export interface ChartPointV1 {
+    x: number | string;
+    y: number;
+    label?: string;
+}
+
+// export: ChartSourceKindV1
+export type ChartSourceKindV1 = "cloud-adf" | "dc-storage";
+
+// export: ChartSourceProvenanceV1
+export interface ChartSourceProvenanceV1 {
+    kind: ChartSourceKindV1;
+    macroName: "chart";
+    attachment?: {
+        filename: string;
+        version?: "new" | "replace" | "keep";
+        comment?: string;
+        thumbnail?: boolean;
+    };
+    renderedImageFormat?: "png" | "jpg";
+    sourceTableDigests?: readonly string[];
+    dependencyDigest?: string;
+}
+
+// export: ChartStyleV1
+export interface ChartStyleV1 {
+    backgroundColor?: string;
+    borderColor?: string;
+    colors?: readonly string[];
+}
+
+// export: ChartTimePeriodV1
+export type ChartTimePeriodV1 = "millisecond" | "second" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
+
+// export: ChartValidationErrorV1
+export declare class ChartValidationErrorV1 extends Error {
+    constructor(message: string);
+}
 
 // export: checkUsersFromPull
 export declare function checkUsersFromPull(pages: ConfluencePageDetails[], client: ConfluenceClient, adapter: SyncDbAdapter, options?: UserCheckOptions): Promise<UserCheckResult>;
@@ -9669,6 +10453,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -9924,6 +10714,16 @@ export declare function formatValidationReport(result: ValidationResult): string
 
 // export: FrontmatterContentType
 export type FrontmatterContentType = "page" | "folder";
+
+// export: GanttTaskV1
+export interface GanttTaskV1 {
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+    progress?: number;
+    dependencies?: readonly string[];
+}
 
 // export: generateConflictFilename
 export declare function generateConflictFilename(filename: string): string;
@@ -11335,6 +12135,7 @@ export interface TableCell {
     columnWidths?: number[];
     verticalAlignment?: TableVerticalAlignment;
     localId?: string;
+    title?: string;
     content: ExportBlock[];
 }
 
@@ -11351,6 +12152,7 @@ export interface TablePresentation {
     displayMode?: TableDisplayMode;
     numberedColumn?: boolean;
     localId?: string;
+    sourceId?: string;
 }
 
 // export: TableRow
@@ -11451,6 +12253,12 @@ export declare function usesSiblingPattern(relativePath: string, existingPaths: 
 
 // export: validateAllLinks
 export declare function validateAllLinks(adapter: SyncDbAdapter, localDir: string): Promise<LinkValidationResult[]>;
+
+// export: validateChartDiagnosticsV1
+export declare function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[];
+
+// export: validateChartModelV1
+export declare function validateChartModelV1(model: ChartModelV1): ChartModelV1;
 
 // export: validateDirectory
 export declare function validateDirectory(dir: string, state: AtlcliState | null, atlcliDir: string | null, options?: ValidationOptions): Promise<ValidationResult>;
@@ -12089,6 +12897,181 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
+
+// export: CHART_DIAGNOSTIC_CODES_V1
+export declare const CHART_DIAGNOSTIC_CODES_V1: readonly [
+    "unsupported-kind",
+    "malformed-data",
+    "invalid-option",
+    "locale-parse",
+    "skipped-row",
+    "missing-attachment",
+    "truncated",
+    "renderer-fallback"
+];
+
+// export: CHART_KINDS_V1
+export declare const CHART_KINDS_V1: readonly ChartKindV1[];
+
+// export: CHART_LIMITS_V1
+export declare const CHART_LIMITS_V1: Readonly<{
+    maxRows: 2000;
+    maxSeries: 64;
+    maxPoints: 20000;
+    maxTasks: 5000;
+    maxTextLength: 10000;
+    maxPayloadBytes: number;
+    maxPaletteEntries: 64;
+}>;
+
+// export: ChartAxesV1
+export interface ChartAxesV1 {
+    x?: ChartAxisV1;
+    y?: ChartAxisV1;
+}
+
+// export: ChartAxisV1
+export interface ChartAxisV1 {
+    min?: number | string;
+    max?: number | string;
+    tickUnit?: number;
+    tickPeriod?: ChartTimePeriodV1;
+    labelAngle?: number;
+    categoryLabelPosition?: ChartCategoryLabelPositionV1;
+    dateTickPosition?: ChartDateTickPositionV1;
+    valueType?: "number" | "date";
+}
+
+// export: ChartCategoryLabelPositionV1
+export type ChartCategoryLabelPositionV1 = "up45" | "up90" | "down45" | "down90";
+
+// export: ChartCategorySeriesV1
+export interface ChartCategorySeriesV1 {
+    id: string;
+    label: string;
+    values: readonly number[];
+}
+
+// export: ChartDataV1
+export type ChartDataV1 = {
+    mode: "categories";
+    labels: readonly string[];
+    series: readonly ChartCategorySeriesV1[];
+} | {
+    mode: "points";
+    series: readonly ChartPointSeriesV1[];
+} | {
+    mode: "gantt";
+    tasks: readonly GanttTaskV1[];
+};
+
+// export: ChartDateTickPositionV1
+export type ChartDateTickPositionV1 = "start" | "middle" | "end";
+
+// export: ChartDiagnosticCodeV1
+export type ChartDiagnosticCodeV1 = "unsupported-kind" | "malformed-data" | "invalid-option" | "locale-parse" | "skipped-row" | "missing-attachment" | "truncated" | "renderer-fallback";
+
+// export: ChartDiagnosticV1
+export interface ChartDiagnosticV1 {
+    code: ChartDiagnosticCodeV1;
+    message: string;
+    parameter?: string;
+    row?: number;
+}
+
+// export: ChartKindV1
+export type ChartKindV1 = "pie" | "bar" | "line" | "area" | "xyArea" | "xyBar" | "xyLine" | "xyStep" | "xyStepArea" | "scatter" | "timeSeries" | "gantt";
+
+// export: ChartMacroNormalizationResult
+export interface ChartMacroNormalizationResult {
+    model?: ChartModelV1;
+    diagnostics: ChartDiagnosticV1[];
+}
+
+// export: chartModelDigestV1
+export declare function chartModelDigestV1(model: ChartModelV1): string;
+
+// export: ChartModelV1
+export interface ChartModelV1 {
+    schema: "atlcli.chart/1";
+    kind: ChartKindV1;
+    title?: string;
+    subtitle?: string;
+    xLabel?: string;
+    yLabel?: string;
+    legend?: "none" | "top" | "right" | "bottom" | "left";
+    orientation?: "vertical" | "horizontal";
+    stacked?: boolean;
+    threeD?: boolean;
+    showShapes?: boolean;
+    opacity?: number;
+    display?: {
+        width?: number;
+        height?: number;
+        data?: "hidden" | "before" | "after";
+    };
+    style?: ChartStyleV1;
+    axes?: ChartAxesV1;
+    pie?: {
+        sectionLabelFormat?: string;
+        explode?: readonly string[];
+    };
+    locale?: {
+        language?: string;
+        country?: string;
+        dateFormat?: string;
+        timePeriod?: ChartTimePeriodV1;
+    };
+    data: ChartDataV1;
+    source: ChartSourceProvenanceV1;
+}
+
+// export: ChartPointSeriesV1
+export interface ChartPointSeriesV1 {
+    id: string;
+    label: string;
+    points: readonly ChartPointV1[];
+}
+
+// export: ChartPointV1
+export interface ChartPointV1 {
+    x: number | string;
+    y: number;
+    label?: string;
+}
+
+// export: ChartSourceKindV1
+export type ChartSourceKindV1 = "cloud-adf" | "dc-storage";
+
+// export: ChartSourceProvenanceV1
+export interface ChartSourceProvenanceV1 {
+    kind: ChartSourceKindV1;
+    macroName: "chart";
+    attachment?: {
+        filename: string;
+        version?: "new" | "replace" | "keep";
+        comment?: string;
+        thumbnail?: boolean;
+    };
+    renderedImageFormat?: "png" | "jpg";
+    sourceTableDigests?: readonly string[];
+    dependencyDigest?: string;
+}
+
+// export: ChartStyleV1
+export interface ChartStyleV1 {
+    backgroundColor?: string;
+    borderColor?: string;
+    colors?: readonly string[];
+}
+
+// export: ChartTimePeriodV1
+export type ChartTimePeriodV1 = "millisecond" | "second" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
+
+// export: ChartValidationErrorV1
+export declare class ChartValidationErrorV1 extends Error {
+    constructor(message: string);
+}
 
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
@@ -12959,6 +13942,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -13360,6 +14349,16 @@ export interface FooterComment extends BaseComment {
 // export: formatAdfDateTimestamp
 export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
 
+// export: GanttTaskV1
+export interface GanttTaskV1 {
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+    progress?: number;
+    dependencies?: readonly string[];
+}
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -13489,6 +14488,9 @@ export type InlineNode = {
 } | {
     type: "lineBreak";
 };
+
+// export: isChartMacroName
+export declare function isChartMacroName(value: string | undefined): boolean;
 
 // export: isColonEmojiShortName
 export declare function isColonEmojiShortName(value: string): boolean;
@@ -13686,6 +14688,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     kind: CaptionKind;
     note?: ExportNote;
 };
+
+// export: normalizeChartMacro
+export declare function normalizeChartMacro(params: readonly MacroParameter[], body: readonly ExportBlock[], source: ChartSourceKindV1): ChartMacroNormalizationResult;
 
 // export: normalizeEmojiShortName
 export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
@@ -14169,6 +15174,7 @@ export interface TableCell {
     columnWidths?: number[];
     verticalAlignment?: TableVerticalAlignment;
     localId?: string;
+    title?: string;
     content: ExportBlock[];
 }
 
@@ -14188,6 +15194,7 @@ export interface TablePresentation {
     displayMode?: TableDisplayMode;
     numberedColumn?: boolean;
     localId?: string;
+    sourceId?: string;
 }
 
 // export: TableRow
@@ -14417,6 +15424,12 @@ export type ValidAdfDocument = AdfDocument;
 export declare function validateAdf(input: string | unknown, options?: {
     budget?: Partial<AdfParseBudget>;
 }): ValidatedAdfDocument;
+
+// export: validateChartDiagnosticsV1
+export declare function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[];
+
+// export: validateChartModelV1
+export declare function validateChartModelV1(model: ChartModelV1): ChartModelV1;
 
 // export: ValidatedAdfDocument
 export interface ValidatedAdfDocument {

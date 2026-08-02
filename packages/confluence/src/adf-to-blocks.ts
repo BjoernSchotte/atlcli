@@ -50,6 +50,7 @@ import {
   statusDisplayText,
 } from "./export-blocks.js";
 import { translateDatasourceLink } from "./datasource.js";
+import { isChartMacroName, normalizeChartMacro } from "./chart-macro.js";
 import { commentBodyToText } from "./comment-text.js";
 import type { InlineComment } from "./client.js";
 import { sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
@@ -1133,6 +1134,28 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
   const bodyNotes = bodyCollector.finish(sourceFor(bodyCtx, `${path}.content`));
   const extensionType = stringAttr(node, "extensionType") ?? "unknown";
   const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
+  if (isChartMacroName(extensionKey)) {
+    const result = normalizeChartMacro(params, body, "cloud-adf");
+    for (const diagnostic of result.diagnostics) {
+      ctx.notes.add({
+        level: "warning",
+        code: "macro-not-rendered",
+        message: `Chart macro: ${diagnostic.message}`,
+        macroName: "chart",
+        source: sourceFor(ctx, path),
+      }, `chart|${path}|${diagnostic.code}|${diagnostic.message}`);
+    }
+    if (result.model) {
+      return {
+        type: "chart",
+        chart: result.model,
+        ...(result.diagnostics.length > 0 ? { diagnostics: result.diagnostics } : {}),
+        ...(optionalStringAttr(node, "localId") !== undefined
+          ? { localId: optionalStringAttr(node, "localId") }
+          : {}),
+      };
+    }
+  }
   addExtensionResolutionNote(ctx, path, node.type, extensionKey);
   const adfExtension: AdfExtensionIdentity = {
     extensionType,
@@ -1642,6 +1665,9 @@ function decodeTable(node: AdfNode, ctx: DecodeContext, path: string): ExportBlo
     ...(optionalStringAttr(node, "localId") !== undefined
       ? { localId: optionalStringAttr(node, "localId") }
       : {}),
+    ...(optionalStringAttr(node, "id") !== undefined
+      ? { sourceId: optionalStringAttr(node, "id") }
+      : {}),
   };
   const fragments = fragmentMarks(node.marks);
   addFragmentProjectionNote(ctx, path, fragments);
@@ -1737,6 +1763,7 @@ function decodeCell(node: AdfNode, ctx: DecodeContext, path: string): TableCell 
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(hasColumnWidths ? { columnWidths } : {}),
     ...(verticalAlignment !== undefined ? { verticalAlignment } : {}),
+    ...(optionalStringAttr(node, "title") !== undefined ? { title: optionalStringAttr(node, "title") } : {}),
     ...(optionalStringAttr(node, "localId") !== undefined
       ? { localId: optionalStringAttr(node, "localId") }
       : {}),

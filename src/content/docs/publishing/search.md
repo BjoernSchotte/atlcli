@@ -3,8 +3,6 @@ title: "Search, indexing, and ranking"
 description: "Configure privacy-safe Pagefind search for static Astro publications"
 ---
 
-# Search, indexing, and ranking
-
 The supported Starlight experience uses Pagefind as a post-build, static search
 index. It does not require a hosted search backend or transmit source content.
 

@@ -7,11 +7,20 @@
 ### Entry point `.`
 
 ```ts
+// export: applyPublicationChartBudgetPolicyV1
+export declare function applyPublicationChartBudgetPolicyV1(project: PublicationProjectV1, pages: readonly PublicationPageV1[], refreshPlan: PublicationRefreshPlanV1): Promise<PublicationRefreshPlanV1>;
+
+// export: applyPublicationChartDiagnosticPolicyV1
+export declare function applyPublicationChartDiagnosticPolicyV1(project: PublicationProjectV1, pages: readonly PublicationPageV1[], refreshPlan: PublicationRefreshPlanV1): Promise<PublicationRefreshPlanV1>;
+
 // export: assertPublicationBundleReferencesV1
 export declare function assertPublicationBundleReferencesV1(bundle: PublicationBundleV1, pages: readonly PublicationPageV1[]): void;
 
 // export: assertPublicationCacheKeyV1
 export declare function assertPublicationCacheKeyV1(cacheKey: PublicationCacheKeyV1): void;
+
+// export: assertPublicationChartBuildPolicyV1
+export declare function assertPublicationChartBuildPolicyV1(project: PublicationProjectV1, issues: readonly PublicationIssueV1[]): void;
 
 // export: AstroAtlcliIntegrationOptionsV1
 export interface AstroAtlcliIntegrationOptionsV1 {
@@ -93,8 +102,43 @@ export interface BuiltSeoArtifactsV1 {
 // export: canonicalPublicationJsonV1
 export declare function canonicalPublicationJsonV1(value: unknown): string;
 
+// export: collectPublicationChartBudgetIssuesV1
+export declare function collectPublicationChartBudgetIssuesV1(project: PublicationProjectV1, pages: readonly PublicationPageV1[]): readonly PublicationIssueV1[];
+
+// export: collectPublicationChartIssuesV1
+export declare function collectPublicationChartIssuesV1(project: PublicationProjectV1, pages: readonly PublicationPageV1[]): readonly PublicationIssueV1[];
+
+// export: createPublicationChartRenderPolicyV1
+export declare function createPublicationChartRenderPolicyV1(project: PublicationProjectV1): PublicationChartRenderPolicyV1;
+
 // export: createPublicationRendererRegistryV1
 export declare function createPublicationRendererRegistryV1(descriptorValues: readonly unknown[]): PublicationRendererRegistryV1;
+
+// export: DEFAULT_CHART_P0_DIAGNOSTIC_CODES_V1
+export declare const DEFAULT_CHART_P0_DIAGNOSTIC_CODES_V1: readonly [
+    "unsupported-kind",
+    "malformed-data",
+    "locale-parse",
+    "skipped-row",
+    "truncated",
+    "renderer-fallback"
+];
+
+// export: DEFAULT_PUBLICATION_CHART_ACQUISITION_MS_V1
+export declare const DEFAULT_PUBLICATION_CHART_ACQUISITION_MS_V1: number;
+
+// export: DEFAULT_PUBLICATION_CHART_AGGREGATE_BYTES_V1
+export declare const DEFAULT_PUBLICATION_CHART_AGGREGATE_BYTES_V1: number;
+
+// export: DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1
+export declare const DEFAULT_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 250;
+
+// export: DEFAULT_PUBLICATION_CHART_STATIC_BUDGET_V1
+export declare const DEFAULT_PUBLICATION_CHART_STATIC_BUDGET_V1: Readonly<{
+    maxSvgNodes: 100000;
+    maxSvgBytes: number;
+    maxRenderMs: 2000;
+}>;
 
 // export: DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1
 export declare const DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1: Readonly<PublicationValidationBudgetV1>;
@@ -113,6 +157,15 @@ export declare function digestPublicationPageV1(page: PublicationPageV1): Promis
 
 // export: digestPublicationRefreshPlanV1
 export declare function digestPublicationRefreshPlanV1(plan: PublicationRefreshPlanV1): Promise<string>;
+
+// export: MAX_PUBLICATION_CHART_ACQUISITION_MS_V1
+export declare const MAX_PUBLICATION_CHART_ACQUISITION_MS_V1: number;
+
+// export: MAX_PUBLICATION_CHART_AGGREGATE_BYTES_V1
+export declare const MAX_PUBLICATION_CHART_AGGREGATE_BYTES_V1: number;
+
+// export: MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1
+export declare const MAX_PUBLICATION_CHART_ISLAND_MOUNT_MS_V1 = 1000;
 
 // export: negotiatePublicationExperienceV1
 export declare function negotiatePublicationExperienceV1(selection: PublicationExperienceSelectionV1, descriptorValue: unknown, tokenValidator: PublicationDesignTokenValidatorV1): PublicationExperienceNegotiationV1;
@@ -342,6 +395,7 @@ export interface PublicationBundleV1 {
     };
     sourceSnapshot: PublicationSourceSnapshotV1;
     sourcePolicyDigest: string;
+    chartPolicy?: PublicationChartRenderPolicyV1;
     complete: boolean;
     rootIds: readonly string[];
     pages: readonly PublicationPageEntryV1[];
@@ -380,6 +434,46 @@ export interface PublicationChangeV1 {
     nextDigest?: string;
     previousRoute?: string;
     nextRoute?: string;
+}
+
+// export: PublicationChartAcquisitionDeadlineErrorV1
+export declare class PublicationChartAcquisitionDeadlineErrorV1 extends Error {
+    readonly maxDurationMs: number;
+    readonly code: "chart-acquisition-timeout";
+    constructor(maxDurationMs: number);
+}
+
+// export: PublicationChartDiagnosticPolicyErrorV1
+export declare class PublicationChartDiagnosticPolicyErrorV1 extends Error {
+    constructor(message: string);
+}
+
+// export: PublicationChartRenderPolicyV1
+export interface PublicationChartRenderPolicyV1 {
+    strict: boolean;
+    acquisition: {
+        maxDurationMs: number;
+        maxAggregateBytes: number;
+    };
+    normalization: {
+        maxRows: number;
+        maxSeries: number;
+        maxPoints: number;
+        maxBytes: number;
+    };
+    static: {
+        maxSvgNodes: number;
+        maxSvgBytes: number;
+        maxRenderMs: number;
+    };
+    island: {
+        enabled: boolean;
+        maxRows: number;
+        maxSeries: number;
+        maxPoints: number;
+        maxBytes: number;
+        maxMountMs: number;
+    };
 }
 
 // export: PublicationComponentOverrideV1
@@ -483,7 +577,7 @@ export interface PublicationI18nOptionsV1 {
 }
 
 // export: PublicationIssueCodeV1
-export type PublicationIssueCodeV1 = "partial-source" | "inaccessible-source" | "confirmed-delete" | "excluded-source" | "out-of-scope-source" | "route-collision" | "output-path-collision" | "unsafe-route" | "ambiguous-link" | "outside-scope-link" | "unsafe-link" | "dangling-reference" | "blocked-asset" | "invalid-bundle" | "capability-mismatch" | "other";
+export type PublicationIssueCodeV1 = "partial-source" | "inaccessible-source" | "confirmed-delete" | "excluded-source" | "out-of-scope-source" | "route-collision" | "output-path-collision" | "unsafe-route" | "ambiguous-link" | "outside-scope-link" | "unsafe-link" | "dangling-reference" | "blocked-asset" | "invalid-bundle" | "capability-mismatch" | "chart-p0-diagnostic" | "chart-diagnostic" | "other";
 
 // export: PublicationIssueSourceV1
 export interface PublicationIssueSourceV1 {
@@ -547,6 +641,9 @@ export interface PublicationMacroPolicyV1 {
     maxRows: number;
     maxNodes: number;
     maxBytes: number;
+    chartDiagnostics?: {
+        p0Codes: readonly ChartDiagnosticCodeV1[];
+    };
 }
 
 // export: PublicationMediaOptionsV1
@@ -779,6 +876,13 @@ export interface PublicationRendererPolicyV1 {
     maxIslandBytes: number;
     maxChartRows: number;
     maxChartSeries: number;
+    maxChartPoints?: number;
+    maxChartSvgNodes?: number;
+    maxChartSvgBytes?: number;
+    maxChartRenderMs?: number;
+    maxChartIslandMountMs?: number;
+    maxChartAcquisitionMs?: number;
+    maxChartAggregateBytes?: number;
 }
 
 // export: PublicationRendererRegistryErrorV1
@@ -1095,6 +1199,12 @@ export type ResolvedPublicationLinkV1 = {
 // export: runPublicationBuildV1
 export declare function runPublicationBuildV1(builder: PublicationBuilderV1, requestValue: unknown): Promise<PublicationBuildResultV1>;
 
+// export: runWithPublicationChartAcquisitionDeadlineV1
+export declare function runWithPublicationChartAcquisitionDeadlineV1<T>(operation: (signal: AbortSignal) => Promise<T>, options: {
+    maxDurationMs: number;
+    signal?: AbortSignal;
+}): Promise<T>;
+
 // export: STATIC_PUBLICATION_MANIFEST_SCHEMA_V1
 export declare const STATIC_PUBLICATION_MANIFEST_SCHEMA_V1: "atlcli.static-publication-manifest/1";
 
@@ -1170,6 +1280,7 @@ export interface NodePublicationBundleMaterializationRequestV1 {
     refreshPlan: PublicationRefreshPlanV1;
     createdBy: PublicationBundleV1["createdBy"];
     sourcePolicyDigest: string;
+    chartPolicy?: PublicationChartRenderPolicyV1;
     rootIds: readonly string[];
     pages: readonly PublicationPageV1[];
     routes: readonly PublicationRouteRecordV1[];

@@ -3,8 +3,6 @@ title: "CLI Commands"
 description: "CLI Commands - atlcli documentation"
 ---
 
-# CLI Commands
-
 Quick reference for all atlcli commands.
 
 ## Global Options
@@ -351,6 +349,58 @@ progress while another process can monitor or cancel them. There is no
 `--detach` mode. See [DOCX and PDF Export](/confluence/export/) for export flags
 and [Export Jobs & Operations](/reference/export-jobs/) for recovery and
 retention.
+
+### Static Web Publishing
+
+```bash
+# Inspect Confluence and route changes without activating a bundle
+atlcli wiki publish plan --project .atlcli/publish.json --profile work
+
+# Acquire, validate, and atomically activate an immutable bundle
+atlcli wiki publish refresh --project .atlcli/publish.json --profile work
+
+# Build the active bundle with the project-owned Astro site
+atlcli wiki publish build --project .atlcli/publish.json
+
+# Verify the latest build, or select one by digest
+atlcli wiki publish verify --project .atlcli/publish.json
+atlcli wiki publish verify --project .atlcli/publish.json --build <digest>
+
+# Run refresh, build, and verify in sequence
+atlcli wiki publish run --project .atlcli/publish.json --profile work
+
+# Inspect and safely prune local retained state
+atlcli wiki publish status --project .atlcli/publish.json
+atlcli wiki publish prune --project .atlcli/publish.json --confirm
+```
+
+| Flag | Operations | Meaning |
+| --- | --- | --- |
+| `--project <path>` | all | Project JSON; defaults to `.atlcli/publish.json` |
+| `--workspace <path>` | all | Private bundle/build workspace; defaults to `.atlcli/publish/<publicationKey>` |
+| `--profile <name>` | `plan`, `refresh`, `run` | Atlassian authentication profile used only during acquisition |
+| `--confirm-public` | source-reading operations | Required when `visibility` is `public` |
+| `--allow-partial` | source-reading operations | Required when `completeness` is `allow-partial` |
+| `--dry-run` | `refresh`, `run` | Produce and persist the plan without bundle activation or build |
+| `--build <digest>` | `verify` | Verify a specific retained build instead of the newest |
+| `--confirm` | `prune` | Required before verified unreachable state can be removed |
+| `--json` | all | Emit the versioned machine-readable stage result |
+
+`plan` reads source data but writes only `last-plan.json` in the private
+workspace. `refresh` is the only bundle-activation stage. `build` receives the
+active bundle and inventory paths through a bounded, non-secret child
+environment; it does not receive Atlassian credentials. `verify` reports a
+verified local artifact, never a remote deployment.
+
+Public and partial acknowledgements are independent and fail closed when
+missing. An incomplete plan, stale bundle/build digest, failed Astro command,
+unowned output, broken link/anchor, unsafe resource, privacy marker, or manifest
+drift produces a non-zero command failure. Use `--json` in CI and retain the
+reported bundle/build digests with the deployed artifact.
+
+See [Publish Confluence as a static Astro site](/publishing/), the
+[complete configuration reference](/publishing/configuration/), and
+[operations and rollback](/publishing/operations/).
 
 ### PDF Template Authoring
 

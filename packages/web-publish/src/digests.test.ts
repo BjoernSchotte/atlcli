@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chartModelDigestV1, type ChartModelV1 } from "@atlcli/export-blocks";
 import {
   PublicationDigestErrorV1,
   PublicationReferencePlanningErrorV1,
@@ -161,5 +162,100 @@ describe("canonical publication digests", () => {
       ...bundle,
       assets: [],
     }, [page])).toThrow(PublicationReferencePlanningErrorV1);
+  });
+
+  test("propagates a selected chart-table change through model, page, and bundle identities", async () => {
+    const chart = {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      data: {
+        mode: "categories",
+        labels: ["Guide"],
+        series: [{ id: "pages", label: "Pages", values: [12] }],
+      },
+      source: {
+        kind: "cloud-adf",
+        macroName: "chart",
+        sourceTableDigests: ["fnv1a-12345678"],
+        dependencyDigest: "selected-table-fnv1a-12345678",
+      },
+    } as const satisfies ChartModelV1;
+    const changedChart = {
+      ...chart,
+      data: {
+        ...chart.data,
+        series: [{ ...chart.data.series[0]!, values: [13] }],
+      },
+      source: {
+        ...chart.source,
+        sourceTableDigests: ["fnv1a-87654321"],
+        dependencyDigest: "selected-table-fnv1a-87654321",
+      },
+    } as const satisfies ChartModelV1;
+    const chartPage = {
+      ...page,
+      sourceId: "provider-page-21465016",
+      sourceVersion: "41",
+      route: "/charts/",
+      title: "Charts",
+      blocks: [{ type: "chart" as const, chart }],
+      links: [],
+      assetIds: [],
+    } satisfies PublicationPageV1;
+    const changedChartPage = {
+      ...chartPage,
+      sourceVersion: "42",
+      blocks: [{ type: "chart" as const, chart: changedChart }],
+    } satisfies PublicationPageV1;
+    const oldPageDigest = await digestPublicationPageV1(chartPage);
+    const newPageDigest = await digestPublicationPageV1(changedChartPage);
+    const storedChartPage = { ...chartPage, pageDigest: oldPageDigest } satisfies PublicationPageV1;
+    const storedChangedChartPage = { ...changedChartPage, pageDigest: newPageDigest } satisfies PublicationPageV1;
+    const chartBundle = {
+      ...bundle,
+      sourceSnapshot: {
+        ...bundle.sourceSnapshot,
+        rootIds: [chartPage.sourceId],
+        pages: [{
+          ...bundle.sourceSnapshot.pages[0]!,
+          sourceId: chartPage.sourceId,
+          sourceVersion: chartPage.sourceVersion,
+          title: chartPage.title,
+          contentDigest: chartModelDigestV1(chart),
+          macroDependencyDigest: chart.source.dependencyDigest,
+        }],
+      },
+      rootIds: [chartPage.sourceId],
+      pages: [{ sourceId: chartPage.sourceId, path: "pages/chart.json", pageDigest: oldPageDigest }],
+      routes: [{ sourceId: chartPage.sourceId, route: chartPage.route, state: "active" as const, assignedBy: "generated" as const, previousRoutes: [] }],
+      assets: [],
+    } satisfies PublicationBundleV1;
+    const changedChartBundle = {
+      ...chartBundle,
+      sourceSnapshot: {
+        ...chartBundle.sourceSnapshot,
+        sourceDigest: "source-digest-after-selected-table-change",
+        pages: [{
+          ...chartBundle.sourceSnapshot.pages[0]!,
+          sourceVersion: changedChartPage.sourceVersion,
+          contentDigest: chartModelDigestV1(changedChart),
+          macroDependencyDigest: changedChart.source.dependencyDigest,
+        }],
+      },
+      pages: [{ ...chartBundle.pages[0]!, pageDigest: newPageDigest }],
+    } satisfies PublicationBundleV1;
+
+    expect(chartModelDigestV1(changedChart)).not.toBe(chartModelDigestV1(chart));
+    expect(newPageDigest).not.toBe(oldPageDigest);
+    await expect(digestPublicationBundleV1(changedChartBundle, [storedChangedChartPage])).resolves.not.toBe(
+      await digestPublicationBundleV1(chartBundle, [storedChartPage]),
+    );
+
+    // Provider identifiers remain available to the private build package while
+    // the source-neutral chart node carries only non-reversible table digests.
+    expect(chartPage.sourceId).toBe("provider-page-21465016");
+    expect(chartPage.sourceVersion).toBe("41");
+    expect(JSON.stringify(chartPage.blocks)).not.toContain(chartPage.sourceId);
+    expect(JSON.stringify(chartPage.blocks)).not.toContain(chartPage.sourceVersion);
   });
 });

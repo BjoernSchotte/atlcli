@@ -57,18 +57,39 @@ const request = {
   lockfileDigest: "lockfile-digest",
 } as unknown as PublicationBuildRequestV1;
 
-function builder(command = request.project.builder.buildCommand) {
+function builder(
+  command = request.project.builder.buildCommand,
+  environment?: Readonly<Record<string, string>>,
+) {
   return createAstroStaticPublicationBuilderV1({
     version: "0.1.0-test",
     astroVersion: "7.1.6",
     inventoryPath,
     outputDirectory,
     experience: { id: "test.experience", version: "1", digest: "experience-digest" },
+    ...(environment === undefined ? {} : { environment }),
   }).build({
     ...request,
     project: { ...request.project, builder: { ...request.project.builder, buildCommand: command } },
   });
 }
+
+test("passes explicit non-secret handoff values to the Astro build", async () => {
+  const marker = resolve(fixtureDirectory, "build-environment-proof.txt");
+  const proof = "active-bundle-handoff";
+  const command = [
+    process.execPath,
+    "-e",
+    `require("node:fs").writeFileSync(${JSON.stringify(marker)}, process.env.ATLCLI_BUILD_HANDOFF_PROOF ?? "missing"); const result = require("node:child_process").spawnSync("bun", ["run", "build"], { cwd: process.cwd(), env: process.env, stdio: "inherit" }); process.exit(result.status ?? 1);`,
+  ] as const;
+  try {
+    await builder(command, { ATLCLI_BUILD_HANDOFF_PROOF: proof });
+    expect(await readFile(marker, "utf8")).toBe(proof);
+  } finally {
+    await rm(marker, { force: true });
+    await rm(inventoryPath, { force: true });
+  }
+}, 30_000);
 
 test("builder runs the trusted Astro project and consumes only its fresh private inventory", async () => {
   try {

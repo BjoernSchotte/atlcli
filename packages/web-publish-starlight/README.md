@@ -24,6 +24,11 @@ metadata, and optional provider-validated Confluence edit actions. Pagefind is
 static and built locally; analytics is off by default; PWA/service-worker
 output is deferred.
 
+In the CLI lifecycle, read the active bundle and private inventory paths from
+`ATLCLI_PUBLICATION_BUNDLE_PATH` and `ATLCLI_PUBLICATION_INVENTORY_PATH` in the
+project-owned Astro config. Do not pin a fixture or previous digest directory:
+every successful refresh activates a new immutable bundle.
+
 Compatibility is Astro `>=7.1.6 <8` with the tested Starlight release declared
 by the package. The consumer project owns its theme and build command. Theme
 changes must preserve the neutral `ExportBlock[]` body, semantic hooks,

@@ -6,6 +6,7 @@ import type {
 } from "@atlcli/export-blocks-astro";
 import type { ExportBlock } from "@atlcli/export-blocks";
 import StarlightCodeBlock from "./StarlightCodeBlock.astro";
+import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
 
 interface Props {
   blocks: readonly ExportBlock[];
@@ -21,7 +22,7 @@ interface Props {
 }
 
 const { blocks, context, search, overrides } = Astro.props;
-const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlock, ...overrides };
+const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlock, chart: InteractiveChart, ...overrides };
 ---
 
 <!-- StarlightPage owns the single canonical Pagefind body region. -->

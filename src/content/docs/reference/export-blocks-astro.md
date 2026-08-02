@@ -82,10 +82,13 @@ implemented.
 
 ## Charts
 
-`StaticChart.astro` emits an accessible SVG and table fallback. The opt-in
-`InteractiveChart.astro` island uses the pinned `@tanstack/charts` `0.3.1`
-adapter with bounded frozen data. It must remain useful with JavaScript off.
-Chart data is a normalized render model, not raw ADF or macro parameters.
+`ChartBlock.astro` consumes the `type: "chart"` `ExportBlock` and its validated
+`atlcli.chart/1` model. It emits accessible static SVG/HTML plus a semantic data
+table for all twelve supported shape kinds, including the task-table fallback
+for Gantt data. The optional `@tanstack/charts` `0.3.1` island is an additive,
+bounded enhancement; it is never required for content, accessibility, or
+JavaScript-off output. Chart data is a normalized render model, not raw ADF or
+macro parameters.
 
 ## Security and accessibility
 
@@ -107,4 +110,5 @@ Confluence access into this render kit.
 - [Publish with Astro](/publishing/)
 - [Experience adapter authoring](/publishing/adapter-authoring/)
 - [Renderers and charts](/publishing/renderers/)
+- [Confluence chart support](/publishing/charts/)
 - [Package consumption](/reference/package-consumption/)

@@ -1,25 +1,64 @@
 ---
-import { resolveChartRendererAdapterV1, type ChartRendererAdapterIdV1, type StaticChartModelV1 } from "../charts.js";
+import type { ExportBlock } from "@atlcli/export-blocks";
+import {
+  resolveChartExportBlockRendererAdapterV1,
+  resolveChartRendererAdapterV1,
+  type AstroExportBlockRenderContextV1,
+  type ChartRendererAdapterIdV1,
+  type StaticChartModelV1,
+} from "../index.js";
+import ChartBlock from "./ChartBlock.astro";
 import StaticChart from "./StaticChart.astro";
 
 interface Props {
-  chart: StaticChartModelV1;
-  /** A trusted project must select interaction explicitly. Source content cannot. */
+  /** New source-neutral chart block. Preferred for publication rendering. */
+  block?: Extract<ExportBlock, { type: "chart" }>;
+  context?: AstroExportBlockRenderContextV1;
+  /** Legacy standalone chart model retained for package compatibility. */
+  chart?: StaticChartModelV1;
+  /** A trusted project may select interaction; source content cannot. */
   enabled?: boolean;
-  /** Closed renderer selection owned by the Astro project, never by source content. */
+  /** Legacy closed renderer selection owned by the Astro project. */
   renderer?: ChartRendererAdapterIdV1;
 }
 
-const { chart, enabled = false, renderer = "tanstack-v0.3" } = Astro.props;
-const adapter = resolveChartRendererAdapterV1(renderer);
-if (enabled) adapter.validate(chart);
+const { block, context, chart, renderer = "tanstack-v0.3" } = Astro.props;
+const requested = Astro.props.enabled ?? block !== undefined;
+const policyAllowsIslands = context?.chartPolicy?.island.enabled ?? Astro.props.enabled === true;
+const enabled = requested && policyAllowsIslands;
+if (block === undefined && chart === undefined) throw new TypeError("InteractiveChart requires a chart ExportBlock or legacy chart model");
+const legacyAdapter = resolveChartRendererAdapterV1(renderer);
+const blockAdapter = resolveChartExportBlockRendererAdapterV1();
+let interactive = enabled;
+if (enabled && block !== undefined) {
+  try {
+    blockAdapter.validate(block, context?.chartPolicy === undefined ? undefined : {
+      maxRows: context.chartPolicy.island.maxRows,
+      maxSeries: context.chartPolicy.island.maxSeries,
+      maxPoints: context.chartPolicy.island.maxPoints,
+      maxPayloadBytes: context.chartPolicy.island.maxBytes,
+    });
+  } catch {
+    interactive = false;
+  }
+}
+if (enabled && block === undefined && chart !== undefined) legacyAdapter.validate(chart);
+const runtimeId = block === undefined ? legacyAdapter.id : blockAdapter.id;
+const staticFallbackReason = enabled && block !== undefined && !interactive ? "renderer-fallback" : undefined;
 ---
 
-<section data-atlcli-chart-island={enabled ? "enabled" : "static"} data-atlcli-chart-renderer={enabled ? adapter.id : undefined}>
-  <StaticChart chart={chart} />
+<section
+  data-atlcli-chart-island={interactive ? "enabled" : "static"}
+  data-atlcli-chart-renderer={interactive ? runtimeId : undefined}
+  data-atlcli-chart-capability={interactive && block !== undefined ? blockAdapter.id : undefined}
+  data-atlcli-chart-fallback={staticFallbackReason}
+  data-atlcli-chart-max-mount-ms={interactive ? context?.chartPolicy?.island.maxMountMs ?? 250 : undefined}
+>
+  {staticFallbackReason && <p data-atlcli-chart-fallback-status role="status">Interactive chart enhancement is unavailable for this shape; the accessible static chart and data table remain available.</p>}
+  {block !== undefined && context !== undefined ? <ChartBlock block={block} context={context} /> : chart !== undefined ? <StaticChart chart={chart} /> : null}
 </section>
 
-{enabled && <script>
+{interactive && <script>
   import { activateChartIslandV1 } from "./chart-island-client.ts";
   for (const root of document.querySelectorAll<HTMLElement>("[data-atlcli-chart-island=enabled]")) activateChartIslandV1(root);
 </script>}

@@ -1,6 +1,7 @@
 export const ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1 = [
   "heading", "paragraph", "code", "callout", "expand", "list", "layout", "table",
   "image", "media-fallback", "blockquote", "smart-card", "unknown",
+  "chart",
 ] as const;
 
 export type AstroExportBlockOverrideSlotV1 = (typeof ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1)[number];

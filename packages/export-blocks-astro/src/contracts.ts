@@ -3,7 +3,7 @@ import type { ExportBlock, InlineNode } from "@atlcli/export-blocks";
 export const EXPORT_BLOCK_TYPES_V1 = [
   "heading", "paragraph", "smartCard", "codeBlock", "callout", "expand",
   "list", "layout", "table", "image", "mediaFallback", "blockquote",
-  "divider", "pageBreak", "orientation", "anchor", "unknown",
+  "chart", "divider", "pageBreak", "orientation", "anchor", "unknown",
 ] as const satisfies readonly ExportBlock["type"][];
 
 export const INLINE_NODE_TYPES_V1 = [
@@ -24,7 +24,7 @@ export function exportBlockKindV1(block: ExportBlock): ExportBlock["type"] {
   switch (block.type) {
     case "heading": case "paragraph": case "smartCard": case "codeBlock":
     case "callout": case "expand": case "list": case "layout": case "table":
-    case "image": case "mediaFallback": case "blockquote": case "divider":
+    case "image": case "mediaFallback": case "blockquote": case "chart": case "divider":
     case "pageBreak": case "orientation": case "anchor": case "unknown":
       return block.type;
     default: return assertNeverExportBlockV1(block);

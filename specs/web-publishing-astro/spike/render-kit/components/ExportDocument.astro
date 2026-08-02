@@ -1,14 +1,10 @@
 ---
 import Block from "./Block.astro";
-import ChartIsland from "./ChartIsland.astro";
-import StaticChart from "./StaticChart.astro";
 
 const {
   blocks,
   context = { locale: "en" },
   overrides = {},
-  chart,
-  interactiveChart = false,
 } = Astro.props;
 
 if (!Array.isArray(blocks)) throw new TypeError("ExportDocument blocks must be an array");
@@ -18,6 +14,4 @@ const locale = typeof context?.locale === "string" && context.locale.trim() ? co
 
 <section data-atlcli-export-document data-render-model="export-blocks-t0" lang={locale} dir={direction}>
   {blocks.map((block) => <Block block={block} context={context} overrides={overrides} />)}
-  {chart && interactiveChart && <ChartIsland model={chart} />}
-  {chart && !interactiveChart && <StaticChart model={chart} />}
 </section>

@@ -150,6 +150,40 @@ describe("publication refresh planning", () => {
     expect(forward.planDigest).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  test("invalidates only the page whose selected chart table changed", async () => {
+    const previous = snapshot([
+      page("chart-page", {
+        contentDigest: "chart-model-fnv1a-old",
+        macroDependencyDigest: "selected-table-fnv1a-old",
+      }),
+      page("unrelated-page", {
+        contentDigest: "unrelated-content-stable",
+        macroDependencyDigest: "selected-table-fnv1a-stable",
+      }),
+    ]);
+    const current = snapshot([
+      page("chart-page", {
+        sourceVersion: "2",
+        contentDigest: "chart-model-fnv1a-new",
+        macroDependencyDigest: "selected-table-fnv1a-new",
+      }),
+      page("unrelated-page", {
+        sourceVersion: "2",
+        contentDigest: "unrelated-content-stable",
+        macroDependencyDigest: "selected-table-fnv1a-stable",
+      }),
+    ]);
+
+    const plan = await planPublicationRefreshV1({ previous, current });
+
+    expect(plan.changes.map((change) => [change.sourceId, change.kind])).toEqual([
+      ["chart-page", "content-change"],
+      ["chart-page", "live-dependency-change"],
+    ]);
+    expect(plan.changes.some((change) => change.sourceId === "unrelated-page")).toBe(false);
+    expect(plan.planDigest).toMatch(/^[a-f0-9]{64}$/);
+  });
+
   test("rejects duplicate observations and registry records rather than changing output ambiguously", async () => {
     await expectError(() => planPublicationRefreshV1({
       current: snapshot([page("guide"), page("guide")]),

@@ -15,6 +15,7 @@ import type {
   PublicationAssetEntryV1,
   PublicationAssetPolicyV1,
   PublicationBundleV1,
+  PublicationChartRenderPolicyV1,
   PublicationIssueV1,
   PublicationPageV1,
   PublicationPageEntryV1,
@@ -65,6 +66,7 @@ export interface NodePublicationBundleMaterializationRequestV1 {
   refreshPlan: PublicationRefreshPlanV1;
   createdBy: PublicationBundleV1["createdBy"];
   sourcePolicyDigest: string;
+  chartPolicy?: PublicationChartRenderPolicyV1;
   rootIds: readonly string[];
   pages: readonly PublicationPageV1[];
   routes: readonly PublicationRouteRecordV1[];
@@ -632,6 +634,7 @@ async function buildBundle(
     createdBy: request.createdBy,
     sourceSnapshot: request.refreshPlan.sourceSnapshot,
     sourcePolicyDigest: request.sourcePolicyDigest,
+    ...(request.chartPolicy === undefined ? {} : { chartPolicy: request.chartPolicy }),
     complete: true,
     rootIds: [...request.rootIds],
     pages: pageEntries.sort((left, right) => left.sourceId.localeCompare(right.sourceId)),

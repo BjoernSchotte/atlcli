@@ -54,6 +54,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "Keep it experimental until exhaustive block/macro rendering, a packed plain-Astro consumer, " +
       "and Starlight-independent accessibility/security evidence prove its public component contract.",
   },
+  "@atlcli/export-charts-tanstack": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: pinned TanStack Charts adapter shared by Astro, DOCX, and PDF chart " +
+      "projections. Keep it experimental while the upstream 0.x API and the all-shapes " +
+      "scene/SVG contract mature through real publication consumers.",
+  },
   "@atlcli/web-publish": {
     version: "0.x",
     frozen: false,

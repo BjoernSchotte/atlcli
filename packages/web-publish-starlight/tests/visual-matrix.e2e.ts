@@ -111,6 +111,146 @@ test("the plain experience preserves RTL logical layout, custom tokens, keyboard
   await context.close();
 });
 
+test("TanStack chart islands provide responsive legends, pointer and keyboard tooltips, reduced motion, and a JavaScript-off exact-value fallback", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 1180, height: 900 } });
+  const page = await context.newPage();
+  const browserErrors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") browserErrors.push(message.text()); });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  await page.goto("/plain/charts/", { waitUntil: "networkidle" });
+  const islands = page.locator('[data-atlcli-chart-island="hydrated"]');
+  await expect(islands).toHaveCount(2);
+  await expect(page.locator("[data-atlcli-chart-runtime]")).toHaveCount(2);
+  const legends = page.locator("[data-atlcli-chart-runtime] .ts-chart__legend");
+  await expect(legends).toHaveCount(2);
+  await expect(legends.first()).toContainText("Primary");
+  await expect(legends.first()).toContainText("Secondary");
+  await expect(page.locator("table[data-atlcli-chart-data]")).toHaveCount(2);
+  await expect(page.locator('figure[data-atlcli-chart-fallback="static-hidden"]')).toHaveCount(2);
+
+  const firstRuntime = page.locator("[data-atlcli-chart-runtime]").first();
+  const surface = firstRuntime.locator("svg");
+  await expect(surface).toHaveAttribute("tabindex", "0");
+  await expect(surface).toHaveAttribute("aria-label", "bar sample");
+  await surface.focus();
+  const tooltip = page.locator(".ts-chart-tooltip").first();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveAttribute("role", "status");
+  const initialTooltip = await tooltip.textContent();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => tooltip.textContent()).not.toBe(initialTooltip);
+  await page.keyboard.press("Enter");
+  await expect(tooltip).toHaveAttribute("data-sticky", "true");
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toBeHidden();
+
+  const firstBar = firstRuntime.locator(".ts-chart__bar rect").first();
+  await firstBar.scrollIntoViewIfNeeded();
+  const barBox = await firstBar.boundingBox();
+  expect(barBox).not.toBeNull();
+  await page.mouse.move((barBox?.x ?? 0) + (barBox?.width ?? 0) / 2, (barBox?.y ?? 0) + (barBox?.height ?? 0) / 2);
+  await expect(tooltip).toBeVisible();
+  const desktopWidth = Number(await islands.first().getAttribute("data-atlcli-chart-width"));
+  expect(desktopWidth).toBeGreaterThan(700);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(async () => Number(await islands.first().getAttribute("data-atlcli-chart-width"))).toBeLessThan(desktopWidth);
+  const mobileLayout = await page.evaluate(assertNoHorizontalOverflow());
+  expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.width);
+  expect(browserErrors).toEqual([]);
+  await context.close();
+
+  const reducedContext = await browser.newContext({ viewport: { width: 900, height: 700 }, reducedMotion: "reduce" });
+  const reducedPage = await reducedContext.newPage();
+  await reducedPage.goto("/plain/charts/", { waitUntil: "networkidle" });
+  await expect(reducedPage.locator('[data-atlcli-chart-island="hydrated"]')).toHaveCount(2);
+  await expect(reducedPage.locator('[data-atlcli-chart-motion="reduced"]')).toHaveCount(2);
+  await expect.poll(() => reducedPage.evaluate(() => document.getAnimations().filter((animation) => animation.playState === "running").length)).toBe(0);
+  await reducedContext.close();
+
+  const staticContext = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  const staticPage = await staticContext.newPage();
+  await staticPage.goto("/plain/charts/", { waitUntil: "networkidle" });
+  await expect(staticPage.locator('[data-atlcli-chart-island="enabled"]')).toHaveCount(2);
+  await expect(staticPage.locator("[data-atlcli-chart-runtime]")).toHaveCount(0);
+  await expect(staticPage.locator("figure[data-atlcli-block=chart] svg")).toHaveCount(2);
+  await expect(staticPage.locator("table[data-atlcli-chart-data]")).toHaveCount(2);
+  const staticLayout = await staticPage.evaluate(assertNoHorizontalOverflow());
+  expect(staticLayout.scrollWidth).toBeLessThanOrEqual(staticLayout.width);
+  await staticContext.close();
+});
+
+test("the clean Starlight gallery proves every static shape and both bounded islands with and without JavaScript", async ({ browser }) => {
+  const expectedKinds = [
+    "pie", "bar", "line", "area", "xyArea", "xyBar", "xyLine", "xyStep",
+    "xyStepArea", "scatter", "timeSeries", "gantt",
+  ].sort();
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  const browserErrors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") browserErrors.push(message.text()); });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  await page.goto("/starlight/charts/", { waitUntil: "networkidle" });
+  await expect(page.getByRole("heading", { level: 1, name: "Chart gallery" })).toBeVisible();
+  const charts = page.locator('figure[data-atlcli-block="chart"]');
+  await expect(charts).toHaveCount(14);
+  await expect(charts.locator("svg")).toHaveCount(14);
+  await expect(page.locator("table[data-atlcli-chart-data]")).toHaveCount(14);
+  const kinds = await charts.evaluateAll((figures) => [...new Set(figures.map((figure) => figure.getAttribute("data-atlcli-chart-kind")))].sort());
+  expect(kinds).toEqual(expectedKinds);
+  await expect(page.locator('[data-atlcli-chart-island="hydrated"]')).toHaveCount(2);
+  await expect(page.locator('[data-atlcli-chart-island="static"]')).toHaveCount(12);
+  await expect(page.locator('[data-atlcli-chart-capability="tanstack-v0.3/bar"]')).toHaveCount(2);
+  await expect(page.getByText("Interactive chart enhancement is unavailable", { exact: false })).toHaveCount(0);
+  expect(await page.locator("body").innerText()).not.toContain("onerror=alert");
+  expect(await page.evaluate(assertNoHorizontalOverflow())).toMatchObject({ scrollWidth: 1440, width: 1440 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileLayout = await page.evaluate(assertNoHorizontalOverflow());
+  expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.width);
+  await expect(page.locator('[data-atlcli-chart-island="hydrated"]')).toHaveCount(2);
+  expect(browserErrors).toEqual([]);
+  await context.close();
+
+  const staticContext = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  const externalRequests: string[] = [];
+  await staticContext.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== `http://127.0.0.1:${process.env.ATLCLI_WEB_PUBLISH_VISUAL_PORT ?? "4387"}`) {
+      externalRequests.push(url.href);
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+  const staticPage = await staticContext.newPage();
+  const response = await staticPage.goto("/starlight/charts/", { waitUntil: "networkidle" });
+  expect(response?.headers()["content-security-policy"]).toContain("default-src 'self'");
+  await expect(staticPage.locator('figure[data-atlcli-block="chart"]')).toHaveCount(14);
+  await expect(staticPage.locator('figure[data-atlcli-block="chart"] svg')).toHaveCount(14);
+  await expect(staticPage.locator("table[data-atlcli-chart-data]")).toHaveCount(14);
+  await expect(staticPage.locator("[data-atlcli-chart-runtime]")).toHaveCount(0);
+  await expect(staticPage.locator('[data-atlcli-chart-island="hydrated"]')).toHaveCount(0);
+  const staticKinds = await staticPage.locator('figure[data-atlcli-block="chart"]').evaluateAll((figures) =>
+    [...new Set(figures.map((figure) => figure.getAttribute("data-atlcli-chart-kind")))].sort()
+  );
+  expect(staticKinds).toEqual(expectedKinds);
+  const staticLayout = await staticPage.evaluate(assertNoHorizontalOverflow());
+  expect(staticLayout.scrollWidth).toBeLessThanOrEqual(staticLayout.width);
+  expect(externalRequests).toEqual([]);
+  await staticContext.close();
+});
+
+test("an island runtime-budget overrun tears down TanStack and exposes the complete static chart", async ({ page }) => {
+  await page.goto("/plain/charts-budget/", { waitUntil: "networkidle" });
+  const island = page.locator('[data-atlcli-chart-island="static"]');
+  await expect(island).toHaveCount(1);
+  await expect(island).toHaveAttribute("data-atlcli-chart-fallback", "runtime-budget");
+  await expect(island.locator("[data-atlcli-chart-runtime-status]")).toContainText("complete static chart and data table remain available");
+  await expect(island.locator("[data-atlcli-chart-runtime]")).toHaveCount(0);
+  await expect(island.locator("figure[data-atlcli-block=chart] svg")).toBeVisible();
+  await expect(island.locator("table[data-atlcli-chart-data]")).toHaveCount(1);
+  await expect(island.locator("table[data-atlcli-chart-data] tbody tr")).toHaveCount(66);
+});
+
 test("the Starlight Expressive Code surface keeps fixed presentation controls and hostile code inert", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();

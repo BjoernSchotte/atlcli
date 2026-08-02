@@ -8,6 +8,15 @@
 
 [data-fixture-trusted-override] { color: #0055cc; }
 
+[data-fixture-security-proof] {
+  margin-block: 3rem;
+  padding: 1rem;
+  border: 2px dashed #c9372c;
+  background: #fff7f5;
+}
+
+[data-fixture-security-proof] > h2 { margin-block-start: 0; }
+
 @media print {
   [data-atlcli-document] { color: #000; }
   [data-atlcli-chart-island] { break-inside: avoid; }

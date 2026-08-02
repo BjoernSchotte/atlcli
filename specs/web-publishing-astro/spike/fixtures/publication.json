@@ -225,18 +225,27 @@
         {
           "type": "paragraph",
           "content": [{ "type": "text", "text": "The table remains available when JavaScript is disabled." }]
+        },
+        {
+          "type": "chart",
+          "chart": {
+            "schema": "atlcli.chart/1",
+            "kind": "bar",
+            "title": "Quarterly adoption </script><script>window.__hostile = true</script>",
+            "subtitle": "Validated chart data remains inert.",
+            "display": { "data": "after" },
+            "data": {
+              "mode": "categories",
+              "labels": ["Q1", "Q2", "Q3"],
+              "series": [
+                { "id": "teams", "label": "Teams", "values": [12, 25, 41] },
+                { "id": "spaces", "label": "Spaces", "values": [30, 55, 89] }
+              ]
+            },
+            "source": { "kind": "cloud-adf", "macroName": "chart" }
+          }
         }
-      ],
-      "chart": {
-        "schema": "atlcli.chart-model/1-t0",
-        "title": "Quarterly adoption </script><script>window.__hostile = true</script>",
-        "description": "Validated chart data remains inert.",
-        "categories": ["Q1", "Q2", "Q3"],
-        "series": [
-          { "key": "teams", "label": "Teams", "values": [12, 25, 41] },
-          { "key": "spaces", "label": "Spaces", "values": [30, 55, 89] }
-        ]
-      }
+      ]
     },
     {
       "id": "page-de",

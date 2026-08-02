@@ -83,6 +83,7 @@ export interface DefaultRegistryDeps {
     htmlToExportBlocks: HtmlToExportBlocksDep;
     parsePageProperties: ParsePagePropertiesDep;
     extractMacroBody: ExtractMacroBodyDep;
+    normalizeChartMacro?: NormalizeChartMacroDep;
 }
 
 // export: ExportViewPort
@@ -255,6 +256,12 @@ export interface MacroWebRenderModelDescriptorV1 {
 
 // export: MacroWebRenderModelKindV1
 export type MacroWebRenderModelKindV1 = "toc" | "jira-data" | "diagram" | "chart" | "status" | "smart-card" | "unknown";
+
+// export: NormalizeChartMacroDep
+export type NormalizeChartMacroDep = (params: readonly MacroParameter[], body: readonly ExportBlock[], source: ChartSourceKindV1) => {
+    model?: ChartModelV1;
+    diagnostics: readonly ChartDiagnosticV1[];
+};
 
 // export: ParsePagePropertiesDep
 export type ParsePagePropertiesDep = (storage: string) => {

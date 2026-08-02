@@ -14,11 +14,16 @@ test("is a Starlight-free Astro render-kit package with an isolated chart runtim
   expect(manifest.peerDependencies?.astro).toBe(">=7.1.6 <8");
   expect(manifest.dependencies).toEqual({
     "@atlcli/export-blocks": "workspace:*",
+    "@atlcli/export-charts-tanstack": "workspace:*",
     "@tanstack/charts": "0.3.1",
     "d3-scale": "4.0.2",
   });
   expect(manifest.exports).toMatchObject({
-    "./fixtures": { default: "./dist/fixtures.js" },
+    "./fixtures": {
+      development: "./src/fixtures.ts",
+      types: "./dist/fixtures.d.ts",
+      default: "./dist/fixtures.js",
+    },
     "./components/Caption.astro": "./dist/components/Caption.astro",
   });
   const source = await readFile(resolve(packageRoot, "src/index.ts"), "utf8");
@@ -32,18 +37,27 @@ test("is a Starlight-free Astro render-kit package with an isolated chart runtim
 test("render-kit sources expose no implicit acquisition, network, or raw-html sink", async () => {
   const packageRoot = resolve(import.meta.dir, "..");
   const sourceDirectory = resolve(packageRoot, "src");
-  async function sourcesAt(directory: string): Promise<string[]> {
+  async function sourcesAt(directory: string): Promise<Array<{ file: string; source: string }>> {
     const entries = await readdir(directory, { withFileTypes: true });
     return (await Promise.all(entries.map(async (entry) => entry.isDirectory()
       ? sourcesAt(resolve(directory, entry.name))
       : entry.name.endsWith(".test.ts") ? []
-      : [await readFile(resolve(directory, entry.name), "utf8")],
+      : [{
+          file: resolve(directory, entry.name),
+          source: await readFile(resolve(directory, entry.name), "utf8"),
+        }],
     ))).flat();
   }
   const sources = await sourcesAt(sourceDirectory);
-  for (const source of sources) {
+  const trustedChartComponent = resolve(sourceDirectory, "components/ChartBlock.astro");
+  const rawHtmlSinks = sources.filter(({ source }) => source.includes("set:html"));
+  expect(rawHtmlSinks.map(({ file }) => file)).toEqual([trustedChartComponent]);
+  expect(rawHtmlSinks[0]?.source).toContain("This is the only trusted markup seam");
+  expect(rawHtmlSinks[0]?.source).toContain("renderTanStackChartSvgV1");
+  expect(rawHtmlSinks[0]?.source).toContain("provider HTML never reaches set:html");
+  for (const { file, source } of sources) {
     expect(source).not.toContain("fetch(");
-    expect(source).not.toContain("set:html");
+    if (file !== trustedChartComponent) expect(source).not.toContain("set:html");
     expect(source).not.toContain("@atlcli/confluence");
     expect(source).not.toContain("from \"node:");
   }

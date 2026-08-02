@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
+import { CHART_KINDS_V1 } from "@atlcli/export-blocks";
 import {
   CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
@@ -19,6 +21,134 @@ const metadata = {
   region: "US",
   exportedAt: new Date("2026-07-16T12:00:00Z"),
 };
+
+const NON_CHART_REGRESSION_BLOCKS_V1: ExportBlock[] = [
+  { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Existing exports must not enter the chart rendering path." }] },
+  {
+    type: "list", ordered: false, items: [
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] },
+    ],
+  },
+  {
+    type: "table", rows: [{ cells: [
+      { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+      { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+    ] }],
+  },
+];
+
+it("pins a chart-free PDF Typst structure golden with no generated chart asset", async () => {
+  const prepared = await preparePdfDocument(NON_CHART_REGRESSION_BLOCKS_V1, {
+    resolve: async () => { throw new Error("non-chart fixture attempted an asset resolve"); },
+  });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.assets.some((asset) => asset.path.startsWith("assets/chart-"))).toBe(false);
+  expect(createHash("sha256").update(bundle.main).digest("hex")).toBe("19ac73191b15b7637c5b6da7de258eee2046e9ab7083b212f9e6f7fea3d5af91");
+});
+
+it("serializes a chart ExportBlock as an SVG visual plus deterministic data table", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      subtitle: "FY 2026 plan",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+    diagnostics: [{ code: "skipped-row", message: "One malformed row was skipped.", row: 3 }],
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main).toContain('#text("Revenue")');
+  expect(bundle.main).toContain('#text("FY 2026 plan")');
+  expect(bundle.main).toContain('style: "italic"');
+  expect(bundle.main).toContain('#text("Chart data note: One malformed row was skipped.")');
+  expect(bundle.main).toContain('fill: rgb("#FFFAE6")');
+  expect(bundle.main).toContain('stroke: rgb("#974F0C")');
+  expect(bundle.main).toContain('#text("Jan")');
+  expect(bundle.main).toContain('#text("20")');
+  expect(bundle.main).toContain("#table(columns: 2");
+  expect(bundle.main).toContain('image("assets/chart-1-');
+  expect(bundle.assets.some((asset) => asset.mediaType === "image/svg+xml" && asset.path.startsWith("assets/chart-"))).toBe(true);
+  const chartAsset = bundle.assets.find((asset) => asset.mediaType === "image/svg+xml" && asset.path.startsWith("assets/chart-"));
+  expect(chartAsset).toBeDefined();
+  const chartSvg = new TextDecoder().decode(chartAsset!.bytes);
+  expect(chartSvg).toContain('class="ts-chart"');
+  expect(chartSvg).toContain("ts-chart__bar");
+  expect(chartSvg).toContain('role="img"');
+  expect(bundle.main).toContain('[#text("Revenue")]');
+  expect(bundle.main).not.toContain(', #text("Revenue")');
+
+  const themedManifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+  themedManifest.design!.typography.roles.adfSmallText!.size = "8.25pt";
+  themedManifest.design!.tokens.layout.calloutInsetX = "13pt";
+  themedManifest.design!.tokens.layout.calloutInsetY = "10pt";
+  themedManifest.design!.tokens.layout.calloutRadius = "5pt";
+  themedManifest.design!.semanticPalettes.callouts.warning = {
+    background: "#EAF7F0",
+    foreground: "#14532D",
+  };
+  const themed = serializePdfDocument(prepared, { metadata, templateManifest: themedManifest });
+  expect(themed.main).toContain('size: 8.25pt');
+  expect(themed.main).toContain('inset: (x: 13pt, y: 10pt)');
+  expect(themed.main).toContain('fill: rgb("#EAF7F0")');
+  expect(themed.main).toContain('stroke: rgb("#14532D")');
+  expect(themed.main).toContain('radius: 5pt');
+});
+
+it("keeps a captioned chart visual and semantic table in one figure", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan"], series: [{ id: "revenue", label: "Value", values: [10] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+    caption: { kind: "figure", content: [{ type: "text", text: "Revenue proof" }] },
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main.match(/#table\(columns:/gu)).toHaveLength(1);
+  expect(bundle.main.match(/#figure\(/gu)).toHaveLength(1);
+  expect(bundle.main).toContain('#figure(block(width: 100%)[');
+  expect(bundle.main).toContain('#image("assets/chart-1-');
+});
+
+it("keeps sparse XY series aligned by their own x keys", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1", kind: "xyLine", title: "Sparse",
+      data: { mode: "points", series: [
+        { id: "a", label: "A", points: [{ x: 1, y: 10 }, { x: 2, y: 20 }] },
+        { id: "b", label: "B", points: [{ x: 2, y: 30 }] },
+      ] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main).toContain('#text("2")');
+  expect(bundle.main).toContain('#text("20")');
+  expect(bundle.main).toContain('#text("30")');
+});
+
+it("projects every normalized chart shape into a non-empty PDF table", async () => {
+  const blocks: ExportBlock[] = CHART_KINDS_V1.map((kind) => ({
+    type: "chart" as const,
+    chart: kind === "gantt"
+      ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "gantt" as const, tasks: [{ id: "t", label: "Task", start: "2026-01-01", end: "2026-01-02" }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+      : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"].includes(kind)
+        ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "points" as const, series: [{ id: "s", label: "Value", points: [{ x: kind === "timeSeries" ? "2026-01-01" : 1, y: 2 }] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+        : { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "categories" as const, labels: ["A"], series: [{ id: "s", label: "Value", values: [2] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } },
+  }));
+  const prepared = await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  for (const kind of CHART_KINDS_V1) expect(bundle.main).toContain(`shape-${kind}`);
+});
 
 function pngBytes(): Uint8Array {
   return new Uint8Array([

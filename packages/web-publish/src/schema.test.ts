@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import {
   PUBLICATION_BUNDLE_SCHEMA_V1,
   PUBLICATION_EXPERIENCE_SCHEMA_V1,
@@ -72,6 +74,7 @@ const project = {
     maxIslandBytes: 250_000,
     maxChartRows: 5_000,
     maxChartSeries: 100,
+    maxChartIslandMountMs: 250,
   },
   experience: {
     id: "atlcli.starlight",
@@ -129,6 +132,16 @@ const project = {
   retention: { bundles: 3, builds: 3, graceSeconds: 86_400 },
 } as const satisfies PublicationProjectV1;
 
+test("the downloadable Starlight project example stays schema-valid and private by default", async () => {
+  const path = resolve(import.meta.dir, "../../../public/examples/publish-starlight.json");
+  const documented = parsePublicationProjectV1(JSON.parse(await readFile(path, "utf8")));
+  expect(documented.visibility).toBe("internal");
+  expect(documented.completeness).toBe("strict");
+  expect(documented.analytics).toEqual({ provider: "none" });
+  expect(documented.editLink).toEqual({ provider: "none" });
+  expect(documented.renderers.allowedRendererIds).toContain("atlcli.chart");
+});
+
 const sourceSnapshot = {
   sourceDigest: "source-sha256",
   complete: true,
@@ -181,6 +194,13 @@ const bundle = {
   createdBy: { name: "atlcli", version: "0.17.2" },
   sourceSnapshot,
   sourcePolicyDigest: "policy-sha256",
+  chartPolicy: {
+    strict: true,
+    acquisition: { maxDurationMs: 300_000, maxAggregateBytes: 16_777_216 },
+    normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
+    static: { maxSvgNodes: 50_000, maxSvgBytes: 1_000_000, maxRenderMs: 1_000 },
+    island: { enabled: true, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536, maxMountMs: 250 },
+  },
   complete: true,
   rootIds: ["100"],
   pages: [{ sourceId: "100", path: "pages/100.json", pageDigest: "page-sha256" }],
@@ -303,6 +323,14 @@ describe("web publication runtime schemas v1", () => {
     expect(parsePublicationRendererDescriptorV1(renderer)).toBe(renderer);
     expect(parsePublicationBuildRequestV1(buildRequest)).toBe(buildRequest);
     expect(parsePublicationBuildResultV1(buildResult)).toBe(buildResult);
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      renderers: { ...project.renderers, maxChartAcquisitionMs: 0 },
+    })).toThrow("$.renderers.maxChartAcquisitionMs");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      renderers: { ...project.renderers, maxChartAggregateBytes: Number.POSITIVE_INFINITY },
+    })).toThrow("$.renderers.maxChartAggregateBytes");
   });
 
   test("reject unknown fields and wrong schema revisions at their exact paths", () => {
@@ -341,6 +369,21 @@ describe("web publication runtime schemas v1", () => {
         componentOverrides: { arbitraryScript: "./unsafe.js" },
       },
     })).toThrow("$.experience.componentOverrides.arbitraryScript: unknown field");
+    expect(parsePublicationProjectV1({
+      ...project,
+      macros: {
+        ...project.macros,
+        chartDiagnostics: { p0Codes: ["malformed-data", "renderer-fallback"] },
+      },
+    }).macros.chartDiagnostics?.p0Codes).toEqual(["malformed-data", "renderer-fallback"]);
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      macros: { ...project.macros, chartDiagnostics: { p0Codes: ["arbitrary-code"] } },
+    })).toThrow("$.macros.chartDiagnostics.p0Codes[0]: expected one of");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      macros: { ...project.macros, chartDiagnostics: { p0Codes: [] } },
+    })).toThrow("$.macros.chartDiagnostics.p0Codes: expected at least one");
   });
 
   test("reject unsafe, non-canonical, and out-of-prefix routes", () => {
@@ -384,6 +427,10 @@ describe("web publication runtime schemas v1", () => {
     })).toThrow("expected a finite number");
     expect(() => parsePublicationProjectV1(new (class Project {})()))
       .toThrow("expected a plain object");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      renderers: { ...project.renderers, maxChartIslandMountMs: 0 },
+    })).toThrow("$.renderers.maxChartIslandMountMs");
     const accessor = { ...project } as Record<string, unknown>;
     Object.defineProperty(accessor, "hidden", { get: () => "evaluated", enumerable: true });
     expect(() => parsePublicationProjectV1(accessor))

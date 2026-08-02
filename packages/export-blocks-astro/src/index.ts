@@ -27,6 +27,13 @@ export interface AstroResolvedAssetV1 {
   mode?: "verified-original" | "astro-responsive";
 }
 
+export interface AstroChartRenderPolicyV1 {
+  strict: boolean;
+  normalization: { maxRows: number; maxSeries: number; maxPoints: number; maxBytes: number };
+  static: { maxSvgNodes: number; maxSvgBytes: number; maxRenderMs: number };
+  island: { enabled: boolean; maxRows: number; maxSeries: number; maxPoints: number; maxBytes: number; maxMountMs: number };
+}
+
 /**
  * The render-kit deliberately accepts only normalized block data plus
  * pre-resolved, render-safe publication context. It never decodes ADF/Storage
@@ -40,6 +47,8 @@ export interface AstroExportBlockRenderContextV1 {
   headingAnchors?: Readonly<Record<string, string>>;
   links: Readonly<Record<string, AstroResolvedLinkV1>>;
   assets: Readonly<Record<string, AstroResolvedAssetV1>>;
+  /** Trusted bundle policy; absent contexts default to static-only rendering. */
+  chartPolicy?: AstroChartRenderPolicyV1;
   notes: "inline" | "collect" | "omit-noncritical";
 }
 
@@ -94,13 +103,22 @@ export {
 
 export {
   StaticChartValidationErrorV1,
+  INTERACTIVE_CHART_LIMITS_V1,
+  TANSTACK_CHART_EXPORT_BLOCK_RENDERER_ADAPTER_V1,
   TANSTACK_CHART_RENDERER_ADAPTER_V1,
+  resolveChartExportBlockRendererAdapterV1,
   normalizeStaticChartV1,
   resolveChartRendererAdapterV1,
+  validateInteractiveChartExportBlockV1,
   validateInteractiveChartV1,
+  type ChartExportBlockRendererAdapterIdV1,
+  type ChartExportBlockRendererAdapterV1,
+  type ChartExportBlockRowV1,
+  type NormalizedChartExportBlockV1,
   type ChartRendererAdapterIdV1,
   type ChartRendererAdapterV1,
   type NormalizedStaticChartV1,
+  type InteractiveChartLimitsV1,
   type StaticChartModelV1,
   type StaticChartSeriesV1,
 } from "./charts.js";

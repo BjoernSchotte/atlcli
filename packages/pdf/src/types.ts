@@ -86,7 +86,7 @@ export type PreparedPdfCaption = Omit<Caption, "content"> & {
 };
 
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  | Exclude<ExportBlock, { type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart" }>
   | (Omit<Extract<ExportBlock, { type: "heading" }>, "content"> & {
       content: PreparedPdfInlineNode[];
     })
@@ -124,6 +124,11 @@ export type PreparedPdfBlock =
         cells: Array<Omit<TableCell, "content"> & { content: PreparedPdfBlock[] }>;
       }>;
     }
+  | (Omit<Extract<ExportBlock, { type: "chart" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+      /** Deterministic SVG visual embedded before the accessible data table. */
+      visualAssetPath?: string;
+    })
   | {
       type: "image";
       assetPath?: string;

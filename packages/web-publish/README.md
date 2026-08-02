@@ -48,6 +48,18 @@ Refresh planning records asset-metadata and frozen live-macro dependency changes
 as independent changes, so neither can remain stale when a page body is
 unchanged.
 
+Chart publication derives an ID-free `PublicationChartRenderPolicyV1` from the
+private project and stores it in the immutable bundle. Normalization admission,
+static TanStack scene/SVG/render-time work, and optional client islands have
+independent structural limits. `maxChartAcquisitionMs` bounds source acquisition
+plus chart normalization with cooperative cancellation and a raced deadline,
+while `maxChartAggregateBytes` limits the aggregate encoded chart-model payload
+admitted by one refresh. `maxChartIslandMountMs` separately bounds client mount
+work; an overrun is a visible static fallback rather than missing content.
+Strict projects reject configured P0 admission/render degradation, while
+explicit partial projects retain the complete exact-value table and a
+diagnostic. A timed-out acquisition never activates a candidate bundle.
+
 `materializeNodePublicationBundleV1()` is the Node-only activation seam. It
 accepts only a complete, digest-valid `PublicationRefreshPlanV1` and already
 normalized pages plus materialized asset bytes. It rechecks page, graph, asset,

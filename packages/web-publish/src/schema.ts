@@ -1,4 +1,5 @@
 import {
+  CHART_DIAGNOSTIC_CODES_V1,
   EXPORT_BLOCK_MODEL_SCHEMA_V1,
   parseExportBlockDocumentV1,
 } from "@atlcli/export-blocks";
@@ -137,6 +138,8 @@ const ISSUE_CODES = [
   "blocked-asset",
   "invalid-bundle",
   "capability-mismatch",
+  "chart-p0-diagnostic",
+  "chart-diagnostic",
   "other",
 ] as const satisfies readonly PublicationIssueCodeV1[];
 
@@ -458,13 +461,21 @@ function routePolicy(value: unknown, path: string): void {
 
 function macroPolicy(value: unknown, path: string): void {
   const candidate = object(value, path);
-  keys(candidate, path, ["mode", "unknown", "liveFreshnessSeconds", "maxRows", "maxNodes", "maxBytes"]);
+  keys(candidate, path, ["mode", "unknown", "liveFreshnessSeconds", "maxRows", "maxNodes", "maxBytes", "chartDiagnostics"]);
   oneOf(candidate.mode, `${path}.mode`, ["static-only", "allow-frozen-live"]);
   literal(candidate.unknown, `${path}.unknown`, "visible-fallback");
   optional(candidate, "liveFreshnessSeconds", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
   safeInteger(candidate.maxRows, `${path}.maxRows`, 1);
   safeInteger(candidate.maxNodes, `${path}.maxNodes`, 1);
   safeInteger(candidate.maxBytes, `${path}.maxBytes`, 1);
+  optional(candidate, "chartDiagnostics", path, (entry, entryPath) => {
+    const policy = object(entry, entryPath);
+    keys(policy, entryPath, ["p0Codes"]);
+    enumValues(policy.p0Codes, `${entryPath}.p0Codes`, CHART_DIAGNOSTIC_CODES_V1);
+    if (array(policy.p0Codes, `${entryPath}.p0Codes`).length === 0) {
+      fail(`${entryPath}.p0Codes`, "expected at least one diagnostic code");
+    }
+  });
 }
 
 function assetPolicy(value: unknown, path: string): void {
@@ -485,12 +496,52 @@ function assetPolicy(value: unknown, path: string): void {
 
 function rendererPolicy(value: unknown, path: string): void {
   const candidate = object(value, path);
-  keys(candidate, path, ["allowedRendererIds", "allowIslands", "maxIslandBytes", "maxChartRows", "maxChartSeries"]);
+  keys(candidate, path, [
+    "allowedRendererIds", "allowIslands", "maxIslandBytes", "maxChartRows",
+    "maxChartSeries", "maxChartPoints", "maxChartSvgNodes", "maxChartSvgBytes",
+    "maxChartRenderMs", "maxChartIslandMountMs", "maxChartAcquisitionMs", "maxChartAggregateBytes",
+  ]);
   stringValues(candidate.allowedRendererIds, `${path}.allowedRendererIds`);
   boolean(candidate.allowIslands, `${path}.allowIslands`);
   safeInteger(candidate.maxIslandBytes, `${path}.maxIslandBytes`, 1);
   safeInteger(candidate.maxChartRows, `${path}.maxChartRows`, 1);
   safeInteger(candidate.maxChartSeries, `${path}.maxChartSeries`, 1);
+  optional(candidate, "maxChartPoints", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartSvgNodes", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartSvgBytes", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartRenderMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartIslandMountMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartAcquisitionMs", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+  optional(candidate, "maxChartAggregateBytes", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
+}
+
+function chartRenderPolicy(value: unknown, path: string): void {
+  const candidate = object(value, path);
+  keys(candidate, path, ["strict", "acquisition", "normalization", "static", "island"]);
+  boolean(candidate.strict, `${path}.strict`);
+  const acquisition = object(candidate.acquisition, `${path}.acquisition`);
+  keys(acquisition, `${path}.acquisition`, ["maxDurationMs", "maxAggregateBytes"]);
+  safeInteger(acquisition.maxDurationMs, `${path}.acquisition.maxDurationMs`, 1);
+  safeInteger(acquisition.maxAggregateBytes, `${path}.acquisition.maxAggregateBytes`, 1);
+  const normalization = object(candidate.normalization, `${path}.normalization`);
+  keys(normalization, `${path}.normalization`, ["maxRows", "maxSeries", "maxPoints", "maxBytes"]);
+  safeInteger(normalization.maxRows, `${path}.normalization.maxRows`, 1);
+  safeInteger(normalization.maxSeries, `${path}.normalization.maxSeries`, 1);
+  safeInteger(normalization.maxPoints, `${path}.normalization.maxPoints`, 1);
+  safeInteger(normalization.maxBytes, `${path}.normalization.maxBytes`, 1);
+  const staticPolicy = object(candidate.static, `${path}.static`);
+  keys(staticPolicy, `${path}.static`, ["maxSvgNodes", "maxSvgBytes", "maxRenderMs"]);
+  safeInteger(staticPolicy.maxSvgNodes, `${path}.static.maxSvgNodes`, 1);
+  safeInteger(staticPolicy.maxSvgBytes, `${path}.static.maxSvgBytes`, 1);
+  safeInteger(staticPolicy.maxRenderMs, `${path}.static.maxRenderMs`, 1);
+  const island = object(candidate.island, `${path}.island`);
+  keys(island, `${path}.island`, ["enabled", "maxRows", "maxSeries", "maxPoints", "maxBytes", "maxMountMs"]);
+  boolean(island.enabled, `${path}.island.enabled`);
+  safeInteger(island.maxRows, `${path}.island.maxRows`, 1);
+  safeInteger(island.maxSeries, `${path}.island.maxSeries`, 1);
+  safeInteger(island.maxPoints, `${path}.island.maxPoints`, 1);
+  safeInteger(island.maxBytes, `${path}.island.maxBytes`, 1);
+  safeInteger(island.maxMountMs, `${path}.island.maxMountMs`, 1);
 }
 
 function experienceSelection(value: unknown, path: string): void {
@@ -874,7 +925,7 @@ function publicationBundle(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, [
     "schema", "bundleDigest", "createdBy", "sourceSnapshot", "sourcePolicyDigest",
-    "complete", "rootIds", "pages", "routes", "assets", "issues",
+    "chartPolicy", "complete", "rootIds", "pages", "routes", "assets", "issues",
   ]);
   literal(candidate.schema, `${path}.schema`, PUBLICATION_BUNDLE_SCHEMA_V1);
   nonEmptyString(candidate.bundleDigest, `${path}.bundleDigest`);
@@ -884,6 +935,7 @@ function publicationBundle(value: unknown, path: string): void {
   nonEmptyString(createdBy.version, `${path}.createdBy.version`);
   sourceSnapshot(candidate.sourceSnapshot, `${path}.sourceSnapshot`);
   nonEmptyString(candidate.sourcePolicyDigest, `${path}.sourcePolicyDigest`);
+  optional(candidate, "chartPolicy", path, chartRenderPolicy);
   boolean(candidate.complete, `${path}.complete`);
   stringValues(candidate.rootIds, `${path}.rootIds`);
   values(candidate.pages, `${path}.pages`, pageEntry);

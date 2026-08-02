@@ -321,6 +321,8 @@ export interface TablePresentation {
   numberedColumn?: boolean;
   /** Stable ADF editor identity. */
   localId?: string;
+  /** Authored table identifier used by the Chart macro's `tables` selector. */
+  sourceId?: string;
 }
 
 /** A table cell. Confluence `<th>` → `header: true`. colspan/rowspan default to 1. */
@@ -336,6 +338,8 @@ export interface TableCell {
   verticalAlignment?: TableVerticalAlignment;
   /** Stable ADF/Storage editor identity, including an explicitly empty value. */
   localId?: string;
+  /** Authored HTML/ADF title used by the Chart macro's `columns` selector. */
+  title?: string;
   content: ExportBlock[];
 }
 
@@ -887,6 +891,14 @@ export type ExportBlock =
     }
   | ({ type: "layout" } & PageLayout)
   | {
+      type: "chart";
+      chart: import("./charts.js").ChartModelV1;
+      caption?: Caption;
+      diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+      /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
+      localId?: string;
+    }
+  | {
       type: "table";
       rows: TableRow[];
       columnWidths?: number[];
@@ -1067,6 +1079,8 @@ export function materializeTable(
     columnWidths: [48, ...Array.from({ length: sourceColumnCount }, () => sourceTrack)],
   };
 }
+
+export * from "./charts.js";
 
 /**
  * Provenance of an {@link ExportNote} — where in a (possibly multi-page) export

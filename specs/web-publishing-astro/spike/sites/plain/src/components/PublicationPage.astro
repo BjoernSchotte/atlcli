@@ -39,12 +39,10 @@ const canonical = new URL(publicationCanonicalPath(page), Astro.site);
         {page.labels.map((label) => <span data-pagefind-filter={`label:${label}`}></span>)}
       </div>
       <ExportDocument
-        blocks={page.blocks}
-        context={{ locale: page.locale, resolvedAssets: page.resolvedAssets }}
-        overrides={{ paragraph: PlainParagraph }}
-        chart={page.chart}
-        interactiveChart={page.id === "page-charts"}
-      />
+      blocks={page.blocks}
+      context={{ locale: page.locale, resolvedAssets: page.resolvedAssets }}
+      overrides={{ paragraph: PlainParagraph }}
+    />
     </main>
   </body>
 </html>

@@ -29,6 +29,7 @@ import { decodeHTML } from "entities";
 import { KNOWN_MACROS } from "./markdown.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import { translateDatasourceLink } from "./datasource.js";
+import { normalizeChartMacro } from "./chart-macro.js";
 import type { AdfJsonValue } from "./adf-types.js";
 import type { BlocksResult } from "./page-body.js";
 import {
@@ -1317,6 +1318,7 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
         ...(backgroundColor ? { backgroundColor } : {}),
         ...(verticalAlignment ? { verticalAlignment } : {}),
         ...(cell.attrs["ac:local-id"] !== undefined ? { localId: cell.attrs["ac:local-id"] } : {}),
+        ...(cell.attrs.title !== undefined ? { title: cell.attrs.title } : {}),
         content: walkBlocks(cell.children, { ...ctx, inTableCell: true }),
       });
     }
@@ -1331,6 +1333,7 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const presentation: TablePresentation = {
     ...(layout !== undefined ? { layout } : {}),
     ...(localId !== undefined ? { localId } : {}),
+    ...(el.attrs.id !== undefined ? { sourceId: el.attrs.id } : {}),
   };
   return {
     type: "table",
@@ -1392,6 +1395,31 @@ const CALLOUT_KINDS = new Set<CalloutKind>([
 
 function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   const macroName = (el.attrs["ac:name"] ?? "").toLowerCase();
+
+  if (macroName === "chart") {
+    const body = childByName(el, "ac:rich-text-body");
+    const bodyBlocks = body ? walkBlocks(body.children, ctx) : [];
+    const result = normalizeChartMacro(captureMacroParams(el), bodyBlocks, "dc-storage");
+    for (const diagnostic of result.diagnostics) {
+      ctx.notes.push(withSource(ctx, {
+        level: "warning",
+        code: "macro-not-rendered",
+        message: `Chart macro: ${diagnostic.message}`,
+        macroName: "chart",
+      }));
+    }
+    if (result.model) {
+      return [{
+        type: "chart",
+        chart: result.model,
+        ...(result.diagnostics.length > 0 ? { diagnostics: result.diagnostics } : {}),
+        ...(storageLocalId(el) !== undefined ? { localId: storageLocalId(el) } : {}),
+      }];
+    }
+    // No semantic table data remained (usually an attachment was not acquired).
+    // Continue through the normal unknown-macro capture so the source remains
+    // visible and a future macro resolver can still inspect it.
+  }
 
   // Callouts + generic panel.
   if (CALLOUT_KINDS.has(macroName as CalloutKind)) {

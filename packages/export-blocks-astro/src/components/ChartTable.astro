@@ -1,0 +1,34 @@
+---
+import type { ChartDataV1 } from "@atlcli/export-blocks";
+
+interface Props {
+  data: ChartDataV1;
+  title: string;
+}
+
+const { data, title } = Astro.props;
+const pointKeys = data.mode === "points"
+  ? [...new Set(data.series.flatMap((series) => series.points.map((point) => `${typeof point.x}:${String(point.x)}`)))]
+  : [];
+const pointValue = (series: Extract<typeof data, { mode: "points" }>['series'][number], key: string): number | string => {
+  const point = series.points.find((candidate) => `${typeof candidate.x}:${String(candidate.x)}` === key);
+  return point?.y ?? "";
+};
+const pointLabel = (key: string): string => key.slice(key.indexOf(":") + 1);
+---
+
+<table data-atlcli-chart-data aria-label={`${title} data`}>
+  <caption>{title} data</caption>
+  {data.mode === "categories" && <>
+    <thead><tr><th scope="col">Label</th>{data.series.map((series) => <th scope="col">{series.label}</th>)}</tr></thead>
+    <tbody>{data.labels.map((label, index) => <tr><th scope="row">{label}</th>{data.series.map((series) => <td>{series.values[index]}</td>)}</tr>)}</tbody>
+  </>}
+  {data.mode === "points" && <>
+    <thead><tr><th scope="col">X</th>{data.series.map((series) => <th scope="col">{series.label}</th>)}</tr></thead>
+    <tbody>{pointKeys.map((key) => <tr><th scope="row">{pointLabel(key)}</th>{data.series.map((series) => <td>{pointValue(series, key)}</td>)}</tr>)}</tbody>
+  </>}
+  {data.mode === "gantt" && <>
+    <thead><tr><th scope="col">Task</th><th scope="col">Start</th><th scope="col">End</th><th scope="col">Progress</th></tr></thead>
+    <tbody>{data.tasks.map((task) => <tr><th scope="row">{task.label}</th><td>{task.start}</td><td>{task.end}</td><td>{task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`}</td></tr>)}</tbody>
+  </>}
+</table>

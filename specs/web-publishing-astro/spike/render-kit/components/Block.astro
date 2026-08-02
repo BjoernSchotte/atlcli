@@ -23,7 +23,7 @@ const resolvedImage = typeof sourceName === "string"
 const smartCardHref = safePublicHref(block?.card?.url);
 const supportedBlockTypes = new Set([
   "heading", "paragraph", "smartCard", "codeBlock", "callout", "expand",
-  "list", "layout", "table", "image", "mediaFallback", "blockquote",
+  "list", "layout", "table", "image", "mediaFallback", "blockquote", "chart",
   "divider", "pageBreak", "orientation", "anchor", "unknown", "invalid",
 ]);
 ---
@@ -106,6 +106,28 @@ const supportedBlockTypes = new Set([
         ))}
       </tbody>
     </table>
+  </figure>
+)}
+{type === "chart" && block.chart?.data?.mode === "categories" && (
+  <figure data-atlcli-block="chart" data-atlcli-chart-kind={String(block.chart.kind ?? "bar")}>
+    <h3>{String(block.chart.title ?? `${block.chart.kind ?? "bar"} chart`)}</h3>
+    {block.chart.subtitle && <p>{String(block.chart.subtitle)}</p>}
+    <table aria-label="Normalized chart data">
+      <thead><tr><th scope="col">Category</th>{block.chart.data.series.map((series) => <th scope="col">{String(series.label)}</th>)}</tr></thead>
+      <tbody>{block.chart.data.labels.map((label, index) => <tr><th scope="row">{String(label)}</th>{block.chart.data.series.map((series) => <td>{String(series.values[index] ?? "")}</td>)}</tr>)}</tbody>
+    </table>
+  </figure>
+)}
+{type === "chart" && block.chart?.data?.mode === "points" && (
+  <figure data-atlcli-block="chart" data-atlcli-chart-kind={String(block.chart.kind ?? "line")}>
+    <h3>{String(block.chart.title ?? `${block.chart.kind ?? "line"} chart`)}</h3>
+    <table aria-label="Normalized chart data"><thead><tr><th scope="col">X</th>{block.chart.data.series.map((series) => <th scope="col">{String(series.label)}</th>)}</tr></thead><tbody>{block.chart.data.series[0]?.points.map((point, index) => <tr><th scope="row">{String(point.x)}</th>{block.chart.data.series.map((series) => <td>{String(series.points[index]?.y ?? "")}</td>)}</tr>)}</tbody></table>
+  </figure>
+)}
+{type === "chart" && block.chart?.data?.mode === "gantt" && (
+  <figure data-atlcli-block="chart" data-atlcli-chart-kind="gantt">
+    <h3>{String(block.chart.title ?? "Gantt chart")}</h3>
+    <table aria-label="Normalized chart data"><thead><tr><th scope="col">Task</th><th scope="col">Start</th><th scope="col">End</th><th scope="col">Progress</th></tr></thead><tbody>{block.chart.data.tasks.map((task) => <tr><th scope="row">{String(task.label)}</th><td>{String(task.start)}</td><td>{String(task.end)}</td><td>{task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`}</td></tr>)}</tbody></table>
   </figure>
 )}
 {type === "image" && resolvedImage && (

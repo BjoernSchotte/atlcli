@@ -24,6 +24,8 @@ const JOB_L = "f23e4567-e89b-42d3-a456-426614174000";
 const JOB_M = "013e4567-e89b-42d3-a456-426614174001";
 const JOB_N = "113e4567-e89b-42d3-a456-426614174001";
 const JOB_O = "213e4567-e89b-42d3-a456-426614174001";
+const JOB_P = "313e4567-e89b-42d3-a456-426614174001";
+const JOB_Q = "413e4567-e89b-42d3-a456-426614174001";
 const SHA_ABC =
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -612,6 +614,33 @@ async function submitPackedTreePdf(jobId: string): Promise<string> {
     }).exportJobStoreProbe;
     return probe.submitPdf(id, "tree");
   }, jobId);
+}
+
+const PACKED_CHART_KINDS = [
+  "pie", "bar", "line", "area", "xyArea", "xyBar", "xyLine", "xyStep",
+  "xyStepArea", "scatter", "timeSeries", "gantt",
+] as const;
+
+function packedChartStorage(): string {
+  return PACKED_CHART_KINDS.map((kind, index) => {
+    const title = `Packed chart ${kind}`;
+    const body = kind === "gantt"
+      ? "<table><tbody><tr><th>Task</th><th>Start</th><th>End</th><th>Progress</th></tr>" +
+        "<tr><td>Build</td><td>2026-01-01</td><td>2026-01-03</td><td>50%</td></tr></tbody></table>"
+      : kind === "timeSeries"
+        ? "<table><tbody><tr><th>Date</th><th>Value</th></tr>" +
+          "<tr><td>2026-01-01</td><td>10</td></tr><tr><td>2026-01-02</td><td>20</td></tr></tbody></table>"
+        : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter"].includes(kind)
+          ? "<table><tbody><tr><th>X</th><th>Value</th></tr>" +
+            "<tr><td>1</td><td>10</td></tr><tr><td>2</td><td>20</td></tr></tbody></table>"
+          : "<table><tbody><tr><th>Label</th><th>Value</th></tr>" +
+            "<tr><td>A</td><td>10</td></tr><tr><td>B</td><td>20</td></tr></tbody></table>";
+    return `<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">${kind}</ac:parameter>` +
+      `<ac:parameter ac:name="title">${title}</ac:parameter>` +
+      `<ac:parameter ac:name="dataOrientation">vertical</ac:parameter>` +
+      `<ac:rich-text-body>${body}</ac:rich-text-body>` +
+      `</ac:structured-macro>${index === PACKED_CHART_KINDS.length - 1 ? "" : '<ac:structured-macro ac:name="scroll-pagebreak"/>'}`;
+  }).join("");
 }
 
 async function seedJob(
@@ -1750,6 +1779,85 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
       mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     },
   });
+});
+
+test("packed MV3 jobs render all chart shapes as DOCX SVG+PNG and PDF vector pages", async () => {
+  await ensureCatalog();
+  await preparePackedDocxRuntime();
+  const storage = packedChartStorage();
+  await installOffscreenFetchStub([], { [JOB_P]: storage, [JOB_Q]: storage });
+  const templateBytes = buildDocx({
+    body: para("$scroll.title") + para("$scroll.content"),
+    date: new Date("2026-08-01T00:00:00.000Z"),
+  });
+
+  await expect(submitPackedDocx(JOB_P, templateBytes)).resolves.toBe(JOB_P);
+  const docx = await waitForJobState(JOB_P, "succeeded", 90_000);
+  await expect(submitPackedPdf(JOB_Q)).resolves.toBe(JOB_Q);
+  const pdf = await waitForJobState(JOB_Q, "succeeded", 90_000);
+  if (!docx.snapshot.artifact || !docx.snapshot.reportRef || !pdf.snapshot.artifact || !pdf.snapshot.reportRef) {
+    throw new Error("Packed chart jobs did not retain their artifacts and reports.");
+  }
+
+  const evidence = await page.evaluate(async (input) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        retainedDocxChartEvidence(
+          artifactRef: string,
+          reportRef: string,
+          titles: string[],
+        ): Promise<{
+          svgParts: number;
+          pngParts: number;
+          titlesInDocument: number;
+          presentTitles: string[];
+          complete?: boolean;
+          noteCodes: string[];
+        }>;
+        retainedPdfChartEvidence(
+          artifactRef: string,
+          reportRef: string,
+        ): Promise<{
+          prefix: string;
+          byteLength: number;
+          pageCount?: number;
+          complete?: boolean;
+          noteCodes: string[];
+        }>;
+      };
+    }).exportJobStoreProbe;
+    return {
+      docx: await probe.retainedDocxChartEvidence(
+        input.docxArtifactRef,
+        input.docxReportRef,
+        input.titles,
+      ),
+      pdf: await probe.retainedPdfChartEvidence(
+        input.pdfArtifactRef,
+        input.pdfReportRef,
+      ),
+    };
+  }, {
+    docxArtifactRef: docx.snapshot.artifact.ref,
+    docxReportRef: docx.snapshot.reportRef,
+    pdfArtifactRef: pdf.snapshot.artifact.ref,
+    pdfReportRef: pdf.snapshot.reportRef,
+    titles: PACKED_CHART_KINDS.map((kind) => `Packed chart ${kind}`),
+  });
+
+  expect(evidence.docx.presentTitles).toEqual(
+    PACKED_CHART_KINDS.map((kind) => `Packed chart ${kind}`),
+  );
+  expect(evidence.docx).toMatchObject({
+    svgParts: 12,
+    pngParts: 12,
+    titlesInDocument: 12,
+    complete: true,
+  });
+  expect(evidence.docx.noteCodes).not.toContain("image-svg-no-rasterizer");
+  expect(evidence.pdf).toMatchObject({ prefix: "%PDF-", complete: true });
+  expect(evidence.pdf.byteLength).toBeGreaterThan(1_000);
+  expect(evidence.pdf.pageCount).toBeGreaterThanOrEqual(12);
 });
 
 test("packed PDF and DOCX exports apply the same durable payload retention", async () => {

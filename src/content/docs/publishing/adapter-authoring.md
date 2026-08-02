@@ -3,8 +3,6 @@ title: "Experience adapter authoring"
 description: "Add an Astro presentation layer without coupling it to Confluence or ADF"
 ---
 
-# Experience adapter authoring
-
 An experience adapter owns presentation, not source acquisition. The neutral
 publication bundle and `@atlcli/export-blocks-astro` remain the stable seam
 between Confluence and Astro.

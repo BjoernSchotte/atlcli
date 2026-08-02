@@ -114,6 +114,24 @@ test("every registered conformance case passes from nested production output", a
   expect(blocks.pdfHasCodeCollapseProjection).toBe(true);
   expect(blocks.docxHasCodeCollapseProjection).toBe(true);
 
+  const charts = JSON.parse(
+    (await page.getByTestId("charts-result").textContent()) ?? "null",
+  );
+  expect(charts.shapes).toHaveLength(12);
+  expect(charts.docx).toMatchObject({
+    svgParts: 12,
+    pngFallbackParts: 12,
+    titlesInDocument: 12,
+    complete: true,
+  });
+  expect(charts.pdf).toMatchObject({
+    svgAssets: 12,
+    titlesInTypstSource: 12,
+    complete: true,
+  });
+  expect(charts.docx.byteLength).toBeGreaterThan(1_000);
+  expect(charts.pdf.byteLength).toBeGreaterThan(1_000);
+
   const adfSource = JSON.parse(
     (await page.getByTestId("adf-source-result").textContent()) ?? "null",
   );

@@ -191,6 +191,8 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
           return block.alt ?? block.label;
         case "smartCard":
           return smartCardDisplayText(block.card);
+        case "chart":
+          return chartPlainText(block.chart);
         case "diagram":
           return block.alt ?? "Diagram";
         case "divider":
@@ -1725,6 +1727,40 @@ function serializeBlock(
         : `#${tableBlockExpr}`;
       break;
     }
+    case "chart": {
+      // Embed the shared deterministic SVG visual and retain the semantic table
+      // immediately below it for tagged-PDF consumers and copy/paste fallback.
+      const rows = chartRows(block.chart);
+      const columns = Math.max(1, rows.reduce((max, row) => Math.max(max, row.length), 0));
+      // `table(...)` arguments are Typst code mode. Each cell therefore needs
+      // a content block around its markup expression; emitting a bare
+      // `#text(...)` here makes Typst reject the `#` as invalid code.
+      const cells = rows.flatMap((row) => Array.from(
+        { length: columns },
+        (_, index) => `[${literalText(row[index] ?? "")}]`,
+      ));
+      const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
+      const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
+      const subtitleSize = readPdfDesignCapability<string>(
+        writer.catalogDesign,
+        "typography.roles.adfSmallText.size",
+      );
+      const subtitle = block.chart.subtitle
+        ? `#par[#text(size: ${subtitleSize}, style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(block.chart.subtitle)}]]\n`
+        : "";
+      const warningPalette = writer.catalogDesign.semanticPalettes.callouts.warning;
+      const diagnostics = block.diagnostics?.length
+        ? `#block(width: 100%, inset: (x: ${designLength(writer.catalogDesign, "calloutInsetX")}, y: ${designLength(writer.catalogDesign, "calloutInsetY")}), fill: rgb(${typstString(warningPalette.background)}), stroke: rgb(${typstString(warningPalette.foreground)}), radius: ${designLength(writer.catalogDesign, "calloutRadius")})[#text(weight: "bold", fill: rgb(${typstString(warningPalette.foreground)}))[${literalText(`Chart data note: ${block.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`)}]]\n`
+        : "";
+      const visual = block.visualAssetPath
+        ? `#image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") })\n`
+        : "";
+      const figureBody = `block(width: 100%)[\n${visual}${table}\n]`;
+      value = title + subtitle + diagnostics + (block.caption
+        ? `#figure(${figureBody}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${figureBody}`);
+      break;
+    }
     case "divider":
       value = `#line(length: 100%, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}))`;
       break;
@@ -1864,6 +1900,48 @@ function serializeBlock(
     value += annotationMarkers(block.annotations, context.comments);
   }
   return writeMapped(block, writer, path, value, summary);
+}
+
+function chartPlainText(chart: import("@atlcli/export-blocks").ChartModelV1): string {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [chart.title, ...data.labels, ...data.series.flatMap((series) => [series.label, ...series.values.map(String)])]
+      .filter(Boolean).join(" ");
+  }
+  if (data.mode === "points") {
+    return [chart.title, ...data.series.flatMap((series) => [series.label, ...series.points.flatMap((point) => [String(point.x), String(point.y)])])]
+      .filter(Boolean).join(" ");
+  }
+  return [chart.title, ...data.tasks.flatMap((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${task.progress * 100}%`])]
+    .filter(Boolean).join(" ");
+}
+
+function chartRows(chart: import("@atlcli/export-blocks").ChartModelV1): string[][] {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [
+      ["Label", ...data.series.map((series) => series.label)],
+      ...data.labels.map((label, index) => [label, ...data.series.map((series) => String(series.values[index] ?? ""))]),
+    ];
+  }
+  if (data.mode === "points") {
+    const keys = [...new Set(data.series.flatMap((series) => series.points.map((point) => `${typeof point.x}:${String(point.x)}`)))];
+    const valueAt = (series: (typeof data.series)[number], key: string): string | number => {
+      const point = series.points.find((candidate) => `${typeof candidate.x}:${String(candidate.x)}` === key);
+      return point?.y ?? "";
+    };
+    return [
+      ["X", ...data.series.map((series) => series.label)],
+      ...keys.map((key) => [
+        key.slice(key.indexOf(":") + 1),
+        ...data.series.map((series) => String(valueAt(series, key))),
+      ]),
+    ];
+  }
+  return [
+    ["Task", "Start", "End", "Progress"],
+    ...data.tasks.map((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`]),
+  ];
 }
 
 function mediaImageWidth(

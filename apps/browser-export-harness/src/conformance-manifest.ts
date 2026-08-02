@@ -116,6 +116,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: true,
   },
   {
+    id: "charts",
+    title: "All-shapes TanStack chart export",
+    folderTaskIds: ["web-publishing-astro/PLAN-CHART"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "raster",
+    emitsDigests: false,
+  },
+  {
     id: "adf-source",
     title: "ADF-primary source to DOCX/PDF",
     folderTaskIds: ["adf-export/WP9"],
@@ -209,6 +217,7 @@ export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf-settings",
   "docx-template-intake",
   "blocks",
+  "charts",
   "adf-source",
   "scope",
   "content-compat",

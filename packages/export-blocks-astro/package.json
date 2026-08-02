@@ -23,6 +23,7 @@
       "default": "./dist/index.js"
     },
     "./fixtures": {
+      "development": "./src/fixtures.ts",
       "types": "./dist/fixtures.d.ts",
       "default": "./dist/fixtures.js"
     },
@@ -30,6 +31,8 @@
     "./components/Caption.astro": "./dist/components/Caption.astro",
     "./components/StaticChart.astro": "./dist/components/StaticChart.astro",
     "./components/InteractiveChart.astro": "./dist/components/InteractiveChart.astro",
+    "./components/ChartBlock.astro": "./dist/components/ChartBlock.astro",
+    "./components/ChartTable.astro": "./dist/components/ChartTable.astro",
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {
@@ -40,6 +43,7 @@
   },
   "dependencies": {
     "@atlcli/export-blocks": "workspace:*",
+    "@atlcli/export-charts-tanstack": "workspace:*",
     "@tanstack/charts": "0.3.1",
     "d3-scale": "4.0.2"
   },

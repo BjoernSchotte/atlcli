@@ -29,6 +29,10 @@ import { resolveConfluencePageGraphV1 } from "@atlcli/export-wiring/jobs";
 import type { ExportSourceV1 } from "@atlcli/export-jobs";
 import {
   canonicalPublicationJsonV1,
+  applyPublicationChartBudgetPolicyV1,
+  applyPublicationChartDiagnosticPolicyV1,
+  assertPublicationChartBuildPolicyV1,
+  createPublicationChartRenderPolicyV1,
   digestPublicationJsonV1,
   digestPublicationRefreshPlanV1,
   digestPublicationPageV1,
@@ -37,11 +41,13 @@ import {
   parsePublicationBundleV1,
   parsePublicationProjectV1,
   parseStaticPublicationManifestV1,
+  runWithPublicationChartAcquisitionDeadlineV1,
   type PublicationBundleV1,
   type PublicationLinkReferenceV1,
   type PublicationPageV1,
   type PublicationRefreshPlanV1,
   type PublicationIssueV1,
+  type PublicationDependencyV1,
   type PublicationProjectV1,
   type PublicationRouteRecordV1,
   type PublicationSourcePageSnapshotV1,
@@ -96,6 +102,20 @@ function projectFile(flags: Flags): string {
 
 function workspaceFor(project: PublicationProjectV1, flags: Flags): string {
   return resolve(nonEmptyFlag(flags, "workspace") ?? join(".atlcli", "publish", project.publicationKey));
+}
+
+/** The project-owned Astro build receives paths, never source credentials. */
+export function publicationBuildEnvironmentV1(
+  bundlePath: string,
+  inventoryPath: string,
+): Readonly<Record<string, string>> {
+  if (bundlePath.length === 0 || inventoryPath.length === 0) {
+    throw new TypeError("publication build handoff paths must be non-empty");
+  }
+  return Object.freeze({
+    ATLCLI_PUBLICATION_BUNDLE_PATH: resolve(bundlePath),
+    ATLCLI_PUBLICATION_INVENTORY_PATH: resolve(inventoryPath),
+  });
 }
 
 function requireExplicitPublicationChoices(project: PublicationProjectV1, flags: Flags): void {
@@ -264,6 +284,35 @@ function collectPageReferences(pageId: string, blocks: readonly ExportBlock[]): 
   return { links, assetIds: [...assets.keys()], assets: [...assets.values()].sort((left, right) => left.assetId.localeCompare(right.assetId)) };
 }
 
+/**
+ * Frozen Chart macro body tables are render inputs even though they are not
+ * separately acquired assets. Persist only their safe digest and source-order
+ * ordinal: provider table/local IDs stay out of the public bundle.
+ */
+export function collectChartRenderDependenciesV1(
+  blocks: readonly ExportBlock[],
+): readonly PublicationDependencyV1[] {
+  const dependencies: PublicationDependencyV1[] = [];
+  let ordinal = 0;
+  visitExportBlocksV1(blocks, {
+    block(block) {
+      if (block.type !== "chart") return;
+      const digest = block.chart.source.dependencyDigest;
+      if (digest !== undefined) {
+        dependencies.push({
+          kind: "macro-data",
+          key: `chart:${ordinal}`,
+          version: block.chart.schema,
+          digest,
+          live: false,
+        });
+      }
+      ordinal += 1;
+    },
+  });
+  return dependencies;
+}
+
 async function snapshotAndPages(
   project: PublicationProjectV1,
   graph: Awaited<ReturnType<typeof resolveConfluencePageGraphV1>>,
@@ -300,7 +349,8 @@ async function snapshotAndPages(
     const contentDigest = await digestPublicationJsonV1({ blocks: node.blocks, notes: node.notes });
     const metadataDigest = await digestPublicationJsonV1({ title: node.title, labels: node.meta.labels, parentId: node.parentId, position, depth: node.effectiveDepth });
     const assetMetadataDigest = await digestPublicationJsonV1(references.assets);
-    const macroDependencyDigest = await digestPublicationJsonV1({});
+    const macroDependencies = collectChartRenderDependenciesV1(node.blocks);
+    const macroDependencyDigest = await digestPublicationJsonV1(macroDependencies);
     snapshots.push({
       sourceId: node.pageId,
       sourceVersion,
@@ -329,7 +379,10 @@ async function snapshotAndPages(
       labels: [...node.meta.labels].sort(),
       links: normalizePublicationLinksV1(references.links, inScopeSourceIds),
       assetIds: references.assetIds,
-      renderDependencies: [{ kind: "source-page" as const, key: node.pageId, version: sourceVersion, digest: contentDigest, live: false }],
+      renderDependencies: [
+        { kind: "source-page" as const, key: node.pageId, version: sourceVersion, digest: contentDigest, live: false },
+        ...macroDependencies,
+      ],
       pageDigest: "pending",
     };
     pages.push({ ...draft, pageDigest: await digestPublicationPageV1(draft) });
@@ -369,12 +422,21 @@ async function graphAndPlan(state: PublishProjectStateV1, profile: Profile, sign
 }> {
   const client = new ConfluenceClient(profile);
   const source = sourceRequest(state.project, profile);
-  const graph = await resolveConfluencePageGraphV1(source, {
-    exporter: "web",
-    port: confluenceSourceResolverPortFromClientV1(client),
-    signal,
-  });
-  const { pages, snapshot, assetRequests } = await snapshotAndPages(state.project, graph);
+  const acquisitionPolicy = createPublicationChartRenderPolicyV1(state.project).acquisition;
+  const { pages, snapshot, assetRequests } = await runWithPublicationChartAcquisitionDeadlineV1(
+    async (acquisitionSignal) => {
+      const graph = await resolveConfluencePageGraphV1(source, {
+        exporter: "web",
+        port: confluenceSourceResolverPortFromClientV1(client),
+        signal: acquisitionSignal,
+      });
+      acquisitionSignal.throwIfAborted();
+      const acquired = await snapshotAndPages(state.project, graph);
+      acquisitionSignal.throwIfAborted();
+      return acquired;
+    },
+    { maxDurationMs: acquisitionPolicy.maxDurationMs, signal },
+  );
   const previous = await readActiveBundle(state.workspaceDirectory);
   const previousPages = previous === undefined ? undefined : {
     ...previous.bundle.sourceSnapshot,
@@ -389,11 +451,21 @@ async function graphAndPlan(state: PublishProjectStateV1, profile: Profile, sign
     policy: state.project.routes,
     outputProfile: state.project.builder.outputProfile,
   });
-  const refreshPlan = await planPublicationRefreshV1({
+  const baseRefreshPlan = await planPublicationRefreshV1({
     ...(previous === undefined ? {} : { previousBundleDigest: previous.bundle.bundleDigest, previous: previousPages, previousRoutes: previous.bundle.routes }),
     current: snapshot,
     currentRoutes: routePlan.routes,
   });
+  const diagnosticRefreshPlan = await applyPublicationChartDiagnosticPolicyV1(
+    state.project,
+    pages,
+    baseRefreshPlan,
+  );
+  const refreshPlan = await applyPublicationChartBudgetPolicyV1(
+    state.project,
+    pages,
+    diagnosticRefreshPlan,
+  );
   const report: PublishPlanReportV1 = {
     schema: PUBLISH_PLAN_SCHEMA_V1,
     publicationKey: state.project.publicationKey,
@@ -477,6 +549,7 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
       refreshPlan,
       createdBy: { name: "atlcli", version: "0.17.2" },
       sourcePolicyDigest: await digestPublicationJsonV1(state.project.sourcePolicy),
+      chartPolicy: createPublicationChartRenderPolicyV1(state.project),
       rootIds: planned.snapshot.rootIds,
       pages,
       routes: planned.routes,
@@ -495,6 +568,7 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
 async function executeBuild(state: PublishProjectStateV1): Promise<Record<string, unknown>> {
   const active = await readActiveBundle(state.workspaceDirectory);
   if (active === undefined) throw new Error("No active publication bundle; run `wiki publish refresh` first.");
+  assertPublicationChartBuildPolicyV1(state.project, active.bundle.issues);
   const projectDigest = await digestPublicationJsonV1(state.project);
   const lockfile = await readFile(resolve(state.project.builder.projectDir, "bun.lock"), "utf8").catch(() => "");
   const lockfileDigest = createHash("sha256").update(lockfile).digest("hex");
@@ -508,6 +582,10 @@ async function executeBuild(state: PublishProjectStateV1): Promise<Record<string
       astroVersion: "7.1.6",
       inventoryPath: join(state.workspaceDirectory, "build-inventory.json"),
       outputDirectory: resolve(state.project.builder.projectDir, "dist"),
+      environment: publicationBuildEnvironmentV1(
+        active.bundlePath,
+        join(state.workspaceDirectory, "build-inventory.json"),
+      ),
       signal: controller.signal,
       experience: { id: STARLIGHT_PUBLISHING_EXPERIENCE_V1.id, version: STARLIGHT_PUBLISHING_EXPERIENCE_V1.version, digest: experienceDigest },
     });

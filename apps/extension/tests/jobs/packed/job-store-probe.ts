@@ -23,6 +23,7 @@ import {
   type DurableJobsPort,
 } from "../../../utils/jobs/store.js";
 import { deletePdfJob } from "../../../utils/pdf/job-store.js";
+import { unzipDocx } from "@atlcli/docx/browser-entry";
 import type {
   DocxExportJobRequestV1,
   ExportJobRequestV1,
@@ -536,6 +537,74 @@ const probe = {
             highlightTokenizeMs: report.timings.highlightTokenizeMs,
           }
         : {}),
+    };
+  },
+  async retainedDocxChartEvidence(
+    artifactRef: string,
+    reportRef: string,
+    titles: string[],
+  ): Promise<{
+    svgParts: number;
+    pngParts: number;
+    titlesInDocument: number;
+    presentTitles: string[];
+    complete?: boolean;
+    noteCodes: string[];
+  }> {
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
+    for await (const chunk of new IndexedDbExportByteStore().read(artifactRef)) {
+      chunks.push(chunk);
+      byteLength += chunk.byteLength;
+    }
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const zip = unzipDocx(bytes);
+    const media = Object.keys(zip.files).filter((path) => path.startsWith("word/media/"));
+    const documentXml = zip.file("word/document.xml")?.asText() ?? "";
+    const report = await readExtensionDocxExportReport(reportRef);
+    return {
+      svgParts: media.filter((path) => path.endsWith(".svg")).length,
+      pngParts: media.filter((path) => path.endsWith(".png")).length,
+      titlesInDocument: titles.filter((title) => documentXml.includes(title)).length,
+      presentTitles: titles.filter((title) => documentXml.includes(title)),
+      ...(report ? { complete: report.complete } : {}),
+      noteCodes: report
+        ? [...new Set(report.notes.map((note) => note.code))].sort()
+        : [],
+    };
+  },
+  async retainedPdfChartEvidence(
+    artifactRef: string,
+    reportRef: string,
+  ): Promise<{
+    prefix: string;
+    byteLength: number;
+    pageCount?: number;
+    complete?: boolean;
+    noteCodes: string[];
+  }> {
+    const prefix: number[] = [];
+    let byteLength = 0;
+    for await (const chunk of new IndexedDbExportByteStore().read(artifactRef)) {
+      for (const byte of chunk) {
+        if (prefix.length < 5) prefix.push(byte);
+      }
+      byteLength += chunk.byteLength;
+    }
+    const report = await readExtensionPdfExportReport(reportRef);
+    return {
+      prefix: new TextDecoder().decode(Uint8Array.from(prefix)),
+      byteLength,
+      ...(report?.pageCount !== undefined ? { pageCount: report.pageCount } : {}),
+      ...(report ? { complete: report.complete } : {}),
+      noteCodes: report
+        ? [...new Set(report.notes.map((note) => note.code))].sort()
+        : [],
     };
   },
   async retainCompleted(ids: string[]): Promise<{

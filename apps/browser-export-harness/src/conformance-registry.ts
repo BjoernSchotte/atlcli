@@ -10,6 +10,7 @@ import { runAdfSourceCase } from "./adf-source-case.js";
 import { runActivityMonitorCase } from "./activity-monitor-case.js";
 import { runAssetSpoolRecoveryCase } from "./asset-spool-recovery-case.js";
 import { runBlocksCase } from "./blocks-case.js";
+import { runChartCase } from "./chart-case.js";
 import { runContentCase } from "./content-case.js";
 import { runDocxCase } from "./docx-case.js";
 import { runDocxJobParityCase } from "./docx-job-parity-case.js";
@@ -41,6 +42,7 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   "pdf-settings": runPdfSettingsCase,
   "docx-template-intake": runDocxTemplateIntakeCase,
   blocks: runBlocksCase,
+  charts: runChartCase,
   "adf-source": runAdfSourceCase,
   scope: runScopeCase,
   "content-compat": runContentCase,

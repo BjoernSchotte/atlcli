@@ -1,4 +1,4 @@
-import type { ExportBlock, ExportNote } from "@atlcli/export-blocks";
+import type { ChartDiagnosticCodeV1, ExportBlock, ExportNote } from "@atlcli/export-blocks";
 
 export const PUBLICATION_PROJECT_SCHEMA_V1 = "atlcli.publication-project/1" as const;
 export const PUBLISH_RUN_REQUEST_SCHEMA_V1 = "atlcli.publish-run-request/1" as const;
@@ -55,6 +55,10 @@ export interface PublicationMacroPolicyV1 {
   maxRows: number;
   maxNodes: number;
   maxBytes: number;
+  /** P0 chart diagnostics that make a strict publication incomplete. */
+  chartDiagnostics?: {
+    p0Codes: readonly ChartDiagnosticCodeV1[];
+  };
 }
 
 export interface PublicationAssetPolicyV1 {
@@ -74,6 +78,43 @@ export interface PublicationRendererPolicyV1 {
   maxIslandBytes: number;
   maxChartRows: number;
   maxChartSeries: number;
+  maxChartPoints?: number;
+  maxChartSvgNodes?: number;
+  maxChartSvgBytes?: number;
+  maxChartRenderMs?: number;
+  maxChartIslandMountMs?: number;
+  /** Wall-clock budget for source acquisition plus chart normalization. */
+  maxChartAcquisitionMs?: number;
+  /** Aggregate encoded ChartRenderModel payload admitted in one refresh. */
+  maxChartAggregateBytes?: number;
+}
+
+/** Safe, public build-time chart policy derived from the private project. */
+export interface PublicationChartRenderPolicyV1 {
+  strict: boolean;
+  acquisition: {
+    maxDurationMs: number;
+    maxAggregateBytes: number;
+  };
+  normalization: {
+    maxRows: number;
+    maxSeries: number;
+    maxPoints: number;
+    maxBytes: number;
+  };
+  static: {
+    maxSvgNodes: number;
+    maxSvgBytes: number;
+    maxRenderMs: number;
+  };
+  island: {
+    enabled: boolean;
+    maxRows: number;
+    maxSeries: number;
+    maxPoints: number;
+    maxBytes: number;
+    maxMountMs: number;
+  };
 }
 
 export type PublicationDesignTokenValueV1 = string | number | boolean;
@@ -148,6 +189,8 @@ export type PublicationIssueCodeV1 =
   | "blocked-asset"
   | "invalid-bundle"
   | "capability-mismatch"
+  | "chart-p0-diagnostic"
+  | "chart-diagnostic"
   | "other";
 
 export interface PublicationIssueV1 {
@@ -366,6 +409,8 @@ export interface PublicationBundleV1 {
   createdBy: { name: "atlcli"; version: string };
   sourceSnapshot: PublicationSourceSnapshotV1;
   sourcePolicyDigest: string;
+  /** Frozen, ID-free chart admission/render limits for the selected build. */
+  chartPolicy?: PublicationChartRenderPolicyV1;
   complete: boolean;
   rootIds: readonly string[];
   pages: readonly PublicationPageEntryV1[];

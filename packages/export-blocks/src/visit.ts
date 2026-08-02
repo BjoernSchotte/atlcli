@@ -111,6 +111,9 @@ function visitBlock(
       }));
       visitCaption(block, block.caption, `${path}.caption`, nestedAncestors, visitor);
       return;
+    case "chart":
+      visitCaption(block, block.caption, `${path}.caption`, nestedAncestors, visitor);
+      return;
     case "image":
     case "mediaFallback":
       visitCaption(block, block.caption, `${path}.caption`, nestedAncestors, visitor);
