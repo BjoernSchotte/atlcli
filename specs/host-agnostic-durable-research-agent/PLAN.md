@@ -3369,12 +3369,23 @@ proposals before the resulting outline passes the same store validation.
 
 CLI:
 
-- [ ] Implement the CLI evidence/claim stores inside the session directory
+- [x] Implement the CLI evidence/claim stores inside the session directory
       without exposing real paths to the agent.
-- [ ] Add `research sessions show <id> --evidence` with metadata only; require an
+- [x] Add `research sessions show <id> --evidence` with metadata only; require an
       explicit path/id request to print source text.
-- [ ] Add bounded `--claims`, `--outline`, and `--reconciliation` metadata
+- [x] Add bounded `--claims`, `--outline`, and `--reconciliation` metadata
       views that never dump hidden reasoning.
+
+T5 CLI inspection checkpoint (2026-08-02): all durable V2 private records use
+the existing session-owned virtual workspace: filesystem-backed for the Bun
+host and IndexedDB-backed in the browser. The CLI now exposes one bounded
+metadata view at a time through `research sessions show <id>`; it never emits
+source chunks, packet bodies, prompts, or hidden trajectories. A retained
+source body requires both its exact opaque evidence ID and the explicit
+`sessions evidence <id> --include-text` disclosure command. Synthetic command
+tests prove metadata-only evidence, claim, outline, and reconciliation views
+and prove source text is absent until that explicit request; a real ATLCLI/DOCSY
+plan E2E exercises the bundled command and removes its temporary session.
 
 Extension/browser:
 

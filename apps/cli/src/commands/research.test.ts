@@ -8,6 +8,12 @@ import {
   RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
   ResearchContractError,
   InMemoryResearchSessionStoreV1,
+  WorkspaceResearchClaimLedgerV1,
+  WorkspaceResearchEvidenceStoreV1,
+  WorkspaceResearchOutlineStoreV1,
+  createResearchClaimV1,
+  createResearchEvidenceRecordV1,
+  createResearchOutlineFromClaimsV1,
   createResearchSessionV1,
   createMemoryResearchWorkspace,
   initializeResearchSessionTurnV1,
@@ -283,6 +289,80 @@ async function seedFailedSession(harness: CliHarness): Promise<ResearchSessionV1
   })).session;
 }
 
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function seedInspectableV2Session(harness: CliHarness): Promise<{
+  sessionId: string;
+  evidenceId: string;
+  sourceText: string;
+}> {
+  await handleResearch(["Inspect retained research evidence."], { "plan-only": true }, { json: true }, harness.dependencies);
+  const created = JSON.parse(harness.stdout.join("")) as { sessionId: string };
+  const session = await harness.durableStore.read(created.sessionId);
+  const turn = session?.turns.at(-1);
+  if (!session || !turn?.brief) throw new Error("Expected a durable plan-only session with one brief.");
+  const workspace = await harness.durableStore.workspace(session.sessionId);
+  const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+  const sourceText = "Synthetic source body that must only appear after explicit evidence disclosure.";
+  const retained = await createResearchEvidenceRecordV1({
+    source: {
+      id: "jira:ATLCLI-101",
+      product: "jira",
+      title: "Synthetic retained issue",
+      url: "https://tenant-a.atlassian.net/browse/ATLCLI-101",
+      issueKey: "ATLCLI-101",
+      projectKey: "ATLCLI",
+      updatedAt: "2026-08-02T10:00:00.000Z",
+    },
+    content: {
+      text: sourceText,
+      linkTargets: [],
+      truncated: false,
+      inputBytes: sourceText.length,
+    },
+    scope: turn.brief.scope,
+    scopeBindings: turn.scopeBindings,
+    capturedAt: "2026-08-02T10:00:01.000Z",
+  });
+  await evidence.put(retained.record, retained.chunks);
+  const claims = new WorkspaceResearchClaimLedgerV1(workspace, evidence);
+  const support = retained.chunks[0]!;
+  const claimText = support.text.slice(0, 18);
+  const claim = await createResearchClaimV1({
+    evidenceStore: evidence,
+    classification: "fact",
+    statement: "A synthetic retained issue is available for inspection.",
+    evidenceSpans: [{
+      evidenceId: retained.record.id,
+      chunkId: support.id,
+      start: support.start,
+      end: support.start + claimText.length,
+      textHash: await sha256(claimText),
+    }],
+    createdAt: "2026-08-02T10:00:02.000Z",
+  });
+  await claims.put(claim);
+  const outline = await createResearchOutlineFromClaimsV1({
+    claimIds: [claim.id],
+    claimLedger: claims,
+    evidenceStore: evidence,
+    coverageTargets: turn.brief.coverageTargets,
+    basedOnBriefRevision: turn.brief.revision,
+    createdAt: "2026-08-02T10:00:03.000Z",
+  });
+  const outlines = new WorkspaceResearchOutlineStoreV1({
+    workspace,
+    evidenceStore: evidence,
+    claimLedger: claims,
+    coverageTargets: turn.brief.coverageTargets,
+  });
+  await outlines.put(outline);
+  return { sessionId: session.sessionId, evidenceId: retained.record.id, sourceText };
+}
+
 async function seedTerminalResearchSession(harness: CliHarness): Promise<ResearchSessionV1> {
   const sessionId = "research-session:new-turn-test";
   const turnId = "research-turn:new-turn-first";
@@ -385,6 +465,103 @@ describe("research CLI one-shot contract", () => {
     });
     expect(JSON.stringify(projected)).not.toContain("acceptedPackets");
     expect(JSON.stringify(projected)).not.toContain("sourceRefs");
+  });
+
+  test("inspects retained V2 evidence, claims, outlines, and reconciliation metadata without accidental source disclosure", async () => {
+    const harness = cliHarness();
+    const seeded = await seedInspectableV2Session(harness);
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "show", seeded.sessionId],
+      { evidence: true },
+      { json: true },
+      harness.dependencies,
+    );
+    const evidenceView = JSON.parse(harness.stdout.join(""));
+    expect(evidenceView).toMatchObject({
+      schema: "atlcli.research-session-inspection/v1",
+      kind: "evidence",
+      items: [{ id: seeded.evidenceId, chunkCount: 1, source: { issueKey: "ATLCLI-101" } }],
+    });
+    expect(JSON.stringify(evidenceView)).not.toContain(seeded.sourceText);
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "show", seeded.sessionId],
+      { claims: true },
+      { json: true },
+      harness.dependencies,
+    );
+    const claimsView = JSON.parse(harness.stdout.join(""));
+    expect(claimsView).toMatchObject({
+      kind: "claims",
+      items: [{
+        statement: "A synthetic retained issue is available for inspection.",
+        evidenceIds: [seeded.evidenceId],
+        freshness: "current",
+      }],
+    });
+    expect(JSON.stringify(claimsView)).not.toContain(seeded.sourceText);
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "show", seeded.sessionId],
+      { outline: true },
+      { json: true },
+      harness.dependencies,
+    );
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      kind: "outline",
+      outline: {
+        sections: [{ id: "outline-section:validated-findings", evidenceIds: [seeded.evidenceId] }],
+      },
+    });
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "show", seeded.sessionId],
+      { reconciliation: true },
+      { json: true },
+      harness.dependencies,
+    );
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({ kind: "reconciliation", items: [] });
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "evidence", seeded.sessionId],
+      { id: seeded.evidenceId },
+      { json: true },
+      harness.dependencies,
+    );
+    const metadataOnly = JSON.parse(harness.stdout.join(""));
+    expect(metadataOnly).toMatchObject({
+      schema: "atlcli.research-session-evidence-view/v1",
+      evidence: { id: seeded.evidenceId },
+    });
+    expect(metadataOnly.sourceText).toBeUndefined();
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "evidence", seeded.sessionId],
+      { id: seeded.evidenceId, "include-text": true },
+      { json: true },
+      harness.dependencies,
+    );
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({ sourceText: seeded.sourceText });
+
+    await expect(handleResearch(
+      ["sessions", "show", seeded.sessionId],
+      { evidence: true, claims: true },
+      { json: true },
+      harness.dependencies,
+    )).rejects.toThrow("at most one");
+    await expect(handleResearch(
+      ["sessions", "evidence", seeded.sessionId],
+      { id: "evidence:not-valid" },
+      { json: true },
+      harness.dependencies,
+    )).rejects.toThrow("evidence ID");
   });
 
   test("approves or rejects only the exact durable plan revision", async () => {

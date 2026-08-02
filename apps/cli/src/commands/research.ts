@@ -28,6 +28,9 @@ import {
   RESEARCH_SCOPE_EXPANSION_MODES_V1,
   ResearchScopeCatalogBroker,
   ResearchRunBudget,
+  WorkspaceResearchClaimLedgerV1,
+  WorkspaceResearchEvidenceStoreV1,
+  WorkspaceResearchOutlineStoreV1,
   createResearchSessionV1,
   createResearchKeyScopeSeedV1,
   createRestResearchProviders,
@@ -50,6 +53,9 @@ import {
   type ResearchSessionStoreV1,
   type ResearchSessionV1,
   type ResearchWorkspace,
+  type ResearchClaimV1,
+  type ResearchEvidenceRecordV1,
+  type ResearchOutlineV1,
   appendResearchSessionTurnV1,
   initializeResearchSessionTurnV1,
   recoverResearchSessionForResumeV1,
@@ -409,17 +415,25 @@ function singleSessionFlag(
 
 function assertSessionFlags(
   flags: Record<string, string | boolean | string[]>,
-  allowed: readonly string[],
+  allowedValues: readonly string[],
+  allowedBooleans: readonly string[] = [],
 ): void {
-  const permitted = new Set([...allowed, "json", "no-log", "help", "h"]);
+  const permitted = new Set([
+    ...allowedValues,
+    ...allowedBooleans,
+    "json",
+    "no-log",
+    "help",
+    "h",
+  ]);
   const unknown = Object.keys(flags).filter((key) => !permitted.has(key));
   if (unknown.length > 0) {
     throw new Error(`Unknown research session option${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}.`);
   }
-  for (const key of ["json", "no-log", "help", "h"]) {
+  for (const key of ["json", "no-log", "help", "h", ...allowedBooleans]) {
     if (flags[key] !== undefined && flags[key] !== true) throw new Error(`--${key} does not accept a value.`);
   }
-  for (const key of allowed) {
+  for (const key of allowedValues) {
     if (flags[key] !== undefined && (typeof flags[key] !== "string" || Array.isArray(flags[key]) || !flags[key])) {
       throw new Error(`--${key} requires a value.`);
     }
@@ -440,6 +454,13 @@ function expectedSessionRevision(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error("--revision must be a positive integer.");
   return parsed;
+}
+
+function requiredEvidenceId(value: string | undefined): string {
+  if (!value || !/^evidence:[a-f0-9]{48}$/.test(value)) {
+    throw new Error("A valid retained evidence ID is required.");
+  }
+  return value;
 }
 
 function activeSessionTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefined {
@@ -524,6 +545,146 @@ function projectResearchSessionPlanV1(session: ResearchSessionV1): Record<string
   };
 }
 
+/**
+ * Evidence inspection is intentionally limited to durable metadata. Source
+ * text requires the separate, explicit `sessions evidence --include-text`
+ * command so ordinary session inspection cannot accidentally disclose it.
+ */
+function projectResearchEvidenceMetadataV1(record: ResearchEvidenceRecordV1): Record<string, unknown> {
+  return {
+    id: record.id,
+    identity: record.identity,
+    source: record.source,
+    authority: record.authority,
+    version: record.version,
+    contentChars: record.contentChars,
+    chunkCount: record.chunkIds.length,
+    linkTargetCount: record.linkTargets.length,
+  };
+}
+
+function projectResearchClaimMetadataV1(claim: ResearchClaimV1): Record<string, unknown> {
+  return {
+    id: claim.id,
+    classification: claim.classification,
+    statement: claim.statement,
+    evidenceIds: claim.evidenceIds,
+    evidenceSpanCount: claim.evidenceSpans.length,
+    scopeBindingIds: claim.scopeBindingIds,
+    freshness: claim.freshness,
+    createdAt: claim.createdAt,
+    freshnessCheckedAt: claim.freshnessCheckedAt,
+    ...(claim.invalidatedAt === undefined ? {} : { invalidatedAt: claim.invalidatedAt }),
+    ...(claim.invalidationReason === undefined ? {} : { invalidationReason: claim.invalidationReason }),
+  };
+}
+
+function projectResearchOutlineMetadataV1(outline: ResearchOutlineV1): Record<string, unknown> {
+  return {
+    id: outline.id,
+    revision: outline.revision,
+    basedOnBriefRevision: outline.basedOnBriefRevision,
+    ...(outline.supersedesOutlineId === undefined ? {} : { supersedesOutlineId: outline.supersedesOutlineId }),
+    createdAt: outline.createdAt,
+    sections: outline.sections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      question: section.question,
+      claimIds: section.claimIds,
+      evidenceIds: section.evidenceIds,
+      contradictionIds: section.contradictionIds,
+      coverageTargetIds: section.coverageTargetIds,
+      dependsOnSectionIds: section.dependsOnSectionIds,
+    })),
+    contradictions: outline.contradictions.map((contradiction) => ({
+      id: contradiction.id,
+      claimIds: contradiction.claimIds,
+      evidenceIds: contradiction.evidenceIds,
+      status: contradiction.status,
+      detectedAt: contradiction.detectedAt,
+      ...(contradiction.resolvedAt === undefined ? {} : { resolvedAt: contradiction.resolvedAt }),
+    })),
+    coverage: outline.coverage,
+  };
+}
+
+type ResearchSessionInspectionKindV1 = "evidence" | "claims" | "outline" | "reconciliation";
+
+function selectedResearchSessionInspectionV1(
+  flags: Record<string, string | boolean | string[]>,
+): ResearchSessionInspectionKindV1 | undefined {
+  const selected = (["evidence", "claims", "outline", "reconciliation"] as const)
+    .filter((kind) => flags[kind] === true);
+  if (selected.length > 1) {
+    throw new Error("Select at most one research session inspection view at a time.");
+  }
+  return selected[0];
+}
+
+async function projectResearchSessionInspectionV1(input: {
+  store: ResearchSessionStoreV1;
+  session: ResearchSessionV1;
+  kind: ResearchSessionInspectionKindV1;
+  limit?: number;
+}): Promise<Record<string, unknown>> {
+  const turn = activeSessionTurn(input.session);
+  const workspace = await input.store.workspace(input.session.sessionId);
+  const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+  const claims = new WorkspaceResearchClaimLedgerV1(workspace, evidence);
+  const base = {
+    schema: "atlcli.research-session-inspection/v1",
+    sessionId: input.session.sessionId,
+    ...(turn ? { turnId: turn.id } : {}),
+    kind: input.kind,
+  };
+  if (input.kind === "evidence") {
+    const page = await evidence.list({ limit: input.limit ?? 100 });
+    return {
+      ...base,
+      items: page.records.map(projectResearchEvidenceMetadataV1),
+      ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+    };
+  }
+  if (input.kind === "claims") {
+    const page = await claims.list({ limit: input.limit ?? 100 });
+    return {
+      ...base,
+      items: page.claims.map(projectResearchClaimMetadataV1),
+      ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+    };
+  }
+  if (input.kind === "outline") {
+    if (!turn?.brief) return { ...base, outline: undefined };
+    const outlines = new WorkspaceResearchOutlineStoreV1({
+      workspace,
+      evidenceStore: evidence,
+      claimLedger: claims,
+      coverageTargets: turn.brief.coverageTargets,
+    });
+    const current = await outlines.current();
+    return { ...base, outline: current ? projectResearchOutlineMetadataV1(current) : undefined };
+  }
+  return {
+    ...base,
+    items: (turn?.reconciliationDispositions ?? []).map((disposition) => ({
+      id: disposition.id,
+      reconciliationPacketRef: disposition.reconciliationPacketRef,
+      defectId: disposition.defectId,
+      basedOnGraphRevision: disposition.basedOnGraphRevision,
+      decision: disposition.decision,
+      reasonCode: disposition.reasonCode,
+      ...(disposition.resultingGraphRevision === undefined
+        ? {}
+        : { resultingGraphRevision: disposition.resultingGraphRevision }),
+      ...(disposition.resultingNodeId === undefined
+        ? {}
+        : { resultingNodeId: disposition.resultingNodeId }),
+      resultingClaimIds: disposition.resultingClaimIds,
+      recordedAt: disposition.recordedAt,
+    })),
+  };
+}
+
 async function requireStoredResearchSession(
   store: ResearchSessionStoreV1,
   sessionId: string,
@@ -563,17 +724,56 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "approve" && command !== "reject-plan" && command !== "cancel" && command !== "delete") {
+  if (command !== "show" && command !== "plan" && command !== "evidence" && command !== "approve" && command !== "reject-plan" && command !== "cancel" && command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
   const sessionId = requireSessionId(sessionArg);
   if (command === "show" || command === "plan") {
     if (args.length !== 2) throw new Error(`Usage: atlcli research sessions ${command} <session-id>.`);
-    assertSessionFlags(flags, []);
+    assertSessionFlags(
+      flags,
+      command === "show" ? ["limit"] : [],
+      command === "show" ? ["evidence", "claims", "outline", "reconciliation"] : [],
+    );
+    const inspection = command === "show" ? selectedResearchSessionInspectionV1(flags) : undefined;
+    const limit = command === "show" ? boundedSessionLimit(singleSessionFlag(flags, "limit")) : undefined;
     const opened = await dependencies.openSessionStore();
     try {
       const session = await requireStoredResearchSession(opened.store, sessionId);
-      dependencies.emitOutput(command === "plan" ? projectResearchSessionPlanV1(session) : projectResearchSessionV1(session), opts);
+      const view = command === "plan"
+        ? projectResearchSessionPlanV1(session)
+        : inspection
+          ? await projectResearchSessionInspectionV1({
+              store: opened.store,
+              session,
+              kind: inspection,
+              ...(limit === undefined ? {} : { limit }),
+            })
+          : projectResearchSessionV1(session);
+      dependencies.emitOutput(view, opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "evidence") {
+    if (args.length !== 2) throw new Error("Usage: atlcli research sessions evidence <session-id> --id <evidence-id> [--include-text].");
+    assertSessionFlags(flags, ["id"], ["include-text"]);
+    const evidenceId = requiredEvidenceId(singleSessionFlag(flags, "id", true));
+    const includeText = flags["include-text"] === true;
+    const opened = await dependencies.openSessionStore();
+    try {
+      await requireStoredResearchSession(opened.store, sessionId);
+      const evidence = new WorkspaceResearchEvidenceStoreV1(await opened.store.workspace(sessionId));
+      const record = await evidence.get(evidenceId);
+      if (!record) throw new Error("Retained research evidence was not found.");
+      const chunks = includeText ? await evidence.chunks(record.id) : undefined;
+      dependencies.emitOutput({
+        schema: "atlcli.research-session-evidence-view/v1",
+        sessionId,
+        evidence: projectResearchEvidenceMetadataV1(record),
+        ...(chunks === undefined ? {} : { sourceText: chunks.map((chunk) => chunk.text).join("") }),
+      }, opts);
     } finally {
       opened.close();
     }
@@ -1392,7 +1592,7 @@ export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
 atlcli research --session <session-id> <question>
-atlcli research sessions <list|show|plan|approve|reject-plan|cancel|delete>
+atlcli research sessions <list|show|evidence|plan|approve|reject-plan|cancel|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -1419,7 +1619,8 @@ Options:
 
 Durable session commands:
   sessions list [--limit <1-100>] [--cursor <session-id>]
-  sessions show <session-id>
+  sessions show <session-id> [--evidence|--claims|--outline|--reconciliation] [--limit <1-100>]
+  sessions evidence <session-id> --id <evidence-id> [--include-text]
   sessions plan <session-id>
   sessions approve <session-id> --revision <session-revision>
   sessions reject-plan <session-id> --revision <session-revision> --reason <reason>
@@ -1431,5 +1632,7 @@ ANTHROPIC_API_KEY must be supplied through the process environment.
 --resume preserves the accepted brief, graph, scope, and limits; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
 --session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
 Approving a durable plan persists its exact revision only; it starts no model research until durable task dispatch arrives.
+Session inspection views expose bounded durable metadata only. Source text is returned only by the separate
+\`sessions evidence <session-id> --id <evidence-id> --include-text\` command.
 `;
 }
