@@ -1744,11 +1744,14 @@ function serializeBlock(
       const subtitle = block.chart.subtitle
         ? `#par[#text(size: 9pt, style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(block.chart.subtitle)}]]\n`
         : "";
+      const diagnostics = block.diagnostics?.length
+        ? `#block(width: 100%, inset: 7pt, fill: rgb("#FFF7D6"), stroke: rgb("#CF9F02"), radius: 3pt)[#text(weight: "bold", fill: rgb("#7F5F01"))[${literalText(`Chart data note: ${block.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`)}]]\n`
+        : "";
       const visual = block.visualAssetPath
         ? `#image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") })\n`
         : "";
       const figureBody = `block(width: 100%)[\n${visual}${table}\n]`;
-      value = title + subtitle + (block.caption
+      value = title + subtitle + diagnostics + (block.caption
         ? `#figure(${figureBody}, ${captionFigureArgs(block.caption, writer)})`
         : `#${figureBody}`);
       break;

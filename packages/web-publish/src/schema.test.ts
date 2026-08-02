@@ -341,6 +341,21 @@ describe("web publication runtime schemas v1", () => {
         componentOverrides: { arbitraryScript: "./unsafe.js" },
       },
     })).toThrow("$.experience.componentOverrides.arbitraryScript: unknown field");
+    expect(parsePublicationProjectV1({
+      ...project,
+      macros: {
+        ...project.macros,
+        chartDiagnostics: { p0Codes: ["malformed-data", "renderer-fallback"] },
+      },
+    }).macros.chartDiagnostics?.p0Codes).toEqual(["malformed-data", "renderer-fallback"]);
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      macros: { ...project.macros, chartDiagnostics: { p0Codes: ["arbitrary-code"] } },
+    })).toThrow("$.macros.chartDiagnostics.p0Codes[0]: expected one of");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      macros: { ...project.macros, chartDiagnostics: { p0Codes: [] } },
+    })).toThrow("$.macros.chartDiagnostics.p0Codes: expected at least one");
   });
 
   test("reject unsafe, non-canonical, and out-of-prefix routes", () => {

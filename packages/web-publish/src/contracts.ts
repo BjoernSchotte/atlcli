@@ -1,4 +1,4 @@
-import type { ExportBlock, ExportNote } from "@atlcli/export-blocks";
+import type { ChartDiagnosticCodeV1, ExportBlock, ExportNote } from "@atlcli/export-blocks";
 
 export const PUBLICATION_PROJECT_SCHEMA_V1 = "atlcli.publication-project/1" as const;
 export const PUBLISH_RUN_REQUEST_SCHEMA_V1 = "atlcli.publish-run-request/1" as const;
@@ -55,6 +55,10 @@ export interface PublicationMacroPolicyV1 {
   maxRows: number;
   maxNodes: number;
   maxBytes: number;
+  /** P0 chart diagnostics that make a strict publication incomplete. */
+  chartDiagnostics?: {
+    p0Codes: readonly ChartDiagnosticCodeV1[];
+  };
 }
 
 export interface PublicationAssetPolicyV1 {
@@ -148,6 +152,8 @@ export type PublicationIssueCodeV1 =
   | "blocked-asset"
   | "invalid-bundle"
   | "capability-mismatch"
+  | "chart-p0-diagnostic"
+  | "chart-diagnostic"
   | "other";
 
 export interface PublicationIssueV1 {

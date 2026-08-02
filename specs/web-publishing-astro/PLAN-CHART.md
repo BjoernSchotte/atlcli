@@ -124,6 +124,16 @@ matrix remain open. The maintained evidence matrix is in
   those into ID-free `macro-data` render dependencies; tests prove that an
   unselected-table change is cache-stable while a selected-table change is
   not.
+- Publication projects may configure the chart diagnostic codes treated as
+  P0. The default policy treats incomplete data, parse failures, truncation,
+  unsupported shapes, and renderer fallback as P0: strict refreshes become
+  incomplete and strict builds reject an affected active bundle. Explicit
+  `allow-partial` projects retain the chart, report every diagnostic, and keep
+  the detailed warning visibly attached to Astro, DOCX, and PDF output. A
+  deliberate skipped-row proof compiled through the real document engines;
+  original-resolution inspection confirms the DOCX warning line and PDF
+  warning callout fit above the unchanged TanStack visual/table without
+  clipping or collisions.
 - The production Astro 7.1.6 consumer renders the same twelve models through
   the shared TanStack server-SVG adapter. Desktop and 390px browser inspection
   confirms all shapes, one semantic table per chart, UTF-8 labels, strict CSP,
@@ -449,7 +459,7 @@ only and must be safe to include in a public site manifest.
 - [x] Define stable diagnostic codes for unsupported kind, malformed table,
       locale/date parse, truncation, skipped row, invalid generated-attachment
       policy, and renderer fallback.
-- [ ] Make strict mode fail the page/build for configured P0 errors; make
+- [x] Make strict mode fail the page/build for configured P0 errors; make
       lenient mode publish a visibly marked partial result and report all
       diagnostics.
 - [ ] Enforce resource/time/memory budgets separately for acquisition,

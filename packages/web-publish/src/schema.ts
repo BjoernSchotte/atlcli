@@ -1,4 +1,5 @@
 import {
+  CHART_DIAGNOSTIC_CODES_V1,
   EXPORT_BLOCK_MODEL_SCHEMA_V1,
   parseExportBlockDocumentV1,
 } from "@atlcli/export-blocks";
@@ -137,6 +138,8 @@ const ISSUE_CODES = [
   "blocked-asset",
   "invalid-bundle",
   "capability-mismatch",
+  "chart-p0-diagnostic",
+  "chart-diagnostic",
   "other",
 ] as const satisfies readonly PublicationIssueCodeV1[];
 
@@ -458,13 +461,21 @@ function routePolicy(value: unknown, path: string): void {
 
 function macroPolicy(value: unknown, path: string): void {
   const candidate = object(value, path);
-  keys(candidate, path, ["mode", "unknown", "liveFreshnessSeconds", "maxRows", "maxNodes", "maxBytes"]);
+  keys(candidate, path, ["mode", "unknown", "liveFreshnessSeconds", "maxRows", "maxNodes", "maxBytes", "chartDiagnostics"]);
   oneOf(candidate.mode, `${path}.mode`, ["static-only", "allow-frozen-live"]);
   literal(candidate.unknown, `${path}.unknown`, "visible-fallback");
   optional(candidate, "liveFreshnessSeconds", path, (entry, entryPath) => safeInteger(entry, entryPath, 1));
   safeInteger(candidate.maxRows, `${path}.maxRows`, 1);
   safeInteger(candidate.maxNodes, `${path}.maxNodes`, 1);
   safeInteger(candidate.maxBytes, `${path}.maxBytes`, 1);
+  optional(candidate, "chartDiagnostics", path, (entry, entryPath) => {
+    const policy = object(entry, entryPath);
+    keys(policy, entryPath, ["p0Codes"]);
+    enumValues(policy.p0Codes, `${entryPath}.p0Codes`, CHART_DIAGNOSTIC_CODES_V1);
+    if (array(policy.p0Codes, `${entryPath}.p0Codes`).length === 0) {
+      fail(`${entryPath}.p0Codes`, "expected at least one diagnostic code");
+    }
+  });
 }
 
 function assetPolicy(value: unknown, path: string): void {

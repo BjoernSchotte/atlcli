@@ -32,11 +32,14 @@ it("serializes a chart ExportBlock as an SVG visual plus deterministic data tabl
       data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
       source: { kind: "cloud-adf", macroName: "chart" },
     },
+    diagnostics: [{ code: "skipped-row", message: "One malformed row was skipped.", row: 3 }],
   }], { resolve: async () => { throw new Error("unused"); } });
   const bundle = serializePdfDocument(prepared, { metadata });
   expect(bundle.main).toContain('#text("Revenue")');
   expect(bundle.main).toContain('#text("FY 2026 plan")');
   expect(bundle.main).toContain('style: "italic"');
+  expect(bundle.main).toContain('#text("Chart data note: One malformed row was skipped.")');
+  expect(bundle.main).toContain('fill: rgb("#FFF7D6")');
   expect(bundle.main).toContain('#text("Jan")');
   expect(bundle.main).toContain('#text("20")');
   expect(bundle.main).toContain("#table(columns: 2");

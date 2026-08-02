@@ -40,7 +40,18 @@ const metadata: PdfExportMetadata = {
 };
 
 function proofBlocks(): ExportBlock[] {
-  return chartWorldClassBlocksV1().flatMap((block, index, blocks) => (
+  const blocks = chartWorldClassBlocksV1();
+  if (process.argv.includes("--diagnostic") && blocks[0]) {
+    blocks[0] = {
+      ...blocks[0],
+      diagnostics: [{
+        code: "skipped-row",
+        message: "One malformed source row was skipped; the remaining values are shown.",
+        row: 3,
+      }],
+    };
+  }
+  return blocks.flatMap((block, index) => (
     index === blocks.length - 1 ? [block] : [block, { type: "pageBreak" }]
   ));
 }

@@ -29,6 +29,8 @@ import { resolveConfluencePageGraphV1 } from "@atlcli/export-wiring/jobs";
 import type { ExportSourceV1 } from "@atlcli/export-jobs";
 import {
   canonicalPublicationJsonV1,
+  applyPublicationChartDiagnosticPolicyV1,
+  assertPublicationChartBuildPolicyV1,
   digestPublicationJsonV1,
   digestPublicationRefreshPlanV1,
   digestPublicationPageV1,
@@ -423,11 +425,16 @@ async function graphAndPlan(state: PublishProjectStateV1, profile: Profile, sign
     policy: state.project.routes,
     outputProfile: state.project.builder.outputProfile,
   });
-  const refreshPlan = await planPublicationRefreshV1({
+  const baseRefreshPlan = await planPublicationRefreshV1({
     ...(previous === undefined ? {} : { previousBundleDigest: previous.bundle.bundleDigest, previous: previousPages, previousRoutes: previous.bundle.routes }),
     current: snapshot,
     currentRoutes: routePlan.routes,
   });
+  const refreshPlan = await applyPublicationChartDiagnosticPolicyV1(
+    state.project,
+    pages,
+    baseRefreshPlan,
+  );
   const report: PublishPlanReportV1 = {
     schema: PUBLISH_PLAN_SCHEMA_V1,
     publicationKey: state.project.publicationKey,
@@ -529,6 +536,7 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
 async function executeBuild(state: PublishProjectStateV1): Promise<Record<string, unknown>> {
   const active = await readActiveBundle(state.workspaceDirectory);
   if (active === undefined) throw new Error("No active publication bundle; run `wiki publish refresh` first.");
+  assertPublicationChartBuildPolicyV1(state.project, active.bundle.issues);
   const projectDigest = await digestPublicationJsonV1(state.project);
   const lockfile = await readFile(resolve(state.project.builder.projectDir, "bun.lock"), "utf8").catch(() => "");
   const lockfileDigest = createHash("sha256").update(lockfile).digest("hex");

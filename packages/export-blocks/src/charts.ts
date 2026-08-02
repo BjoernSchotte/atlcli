@@ -172,6 +172,17 @@ export type ChartDiagnosticCodeV1 =
   | "truncated"
   | "renderer-fallback";
 
+export const CHART_DIAGNOSTIC_CODES_V1 = Object.freeze([
+  "unsupported-kind",
+  "malformed-data",
+  "invalid-option",
+  "locale-parse",
+  "skipped-row",
+  "missing-attachment",
+  "truncated",
+  "renderer-fallback",
+] as const satisfies readonly ChartDiagnosticCodeV1[]);
+
 export interface ChartDiagnosticV1 {
   code: ChartDiagnosticCodeV1;
   message: string;
@@ -181,10 +192,7 @@ export interface ChartDiagnosticV1 {
 
 /** Validate diagnostics retained on a chart block after lenient source parsing. */
 export function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[] {
-  const codes = new Set<ChartDiagnosticCodeV1>([
-    "unsupported-kind", "malformed-data", "invalid-option", "locale-parse", "skipped-row",
-    "missing-attachment", "truncated", "renderer-fallback",
-  ]);
+  const codes = new Set<ChartDiagnosticCodeV1>(CHART_DIAGNOSTIC_CODES_V1);
   if (diagnostics.length > 256) throw new ChartValidationErrorV1("chart diagnostics exceed limits");
   return diagnostics.map((diagnostic, index) => {
     if (!diagnostic || !codes.has(diagnostic.code)) throw new ChartValidationErrorV1(`chart diagnostic ${index + 1} code is invalid`);

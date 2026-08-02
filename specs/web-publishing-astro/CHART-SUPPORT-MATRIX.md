@@ -34,8 +34,10 @@ world-class semantic/visual gate is still open; — intentionally static.
   from that SVG rather than capturing an independent browser screenshot.
 - Invalid options, skipped rows, strict-mode rejection, unsupported kinds, and
   approximations such as flattened 3D are represented by bounded diagnostic
-  codes. Lenient charts remain visibly marked in Astro and continue through
-  document table projections.
+  codes. Project configuration selects the P0 set: strict refresh/build gates
+  reject P0 degradation, while explicit partial mode reports every issue and
+  keeps the warning visibly attached in Astro, DOCX, and PDF. The document
+  warning presentation is compilation- and visually proven.
 - Every current static chart retains title/subtitle semantics and an aligned
   data table. Astro and document projection are visually proven for all twelve
   shapes from the same TanStack scene. The production Astro proof covers
