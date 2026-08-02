@@ -3750,6 +3750,11 @@ Shared:
 - [ ] Compile typed search intents into scope-clamped JQL/CQL in the host.
 - [ ] Add exact link, issue-key, page-ID, ancestor/child, label, comment, and
       issue-link graph extraction.
+  - [x] Resolve an exact, current-tenant Jira issue or Confluence page URL to
+        one opaque, read-only candidate through the existing reference
+        capability. The REST adapter verifies that the returned Issue/Page is
+        the requested identity before emitting a candidate; it neither binds
+        the entity nor widens to its parent project/space (2026-08-02).
 - [ ] Let dynamically selected PTC/subagent nodes invoke the catalog/reference
       capabilities during research and return bounded related-scope
       candidates with evidence/reference provenance. They may not return an

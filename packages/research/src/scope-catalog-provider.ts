@@ -1,6 +1,6 @@
 import type { Profile } from "@atlcli/core";
 import { getConfluenceBaseUrl } from "@atlcli/core";
-import { JiraClient, type JiraProject } from "@atlcli/jira/browser";
+import { JiraClient, type JiraIssue, type JiraProject } from "@atlcli/jira/browser";
 import { ConfluenceClient, type ConfluenceSpace } from "@atlcli/confluence/research";
 import type {
   ResearchReferenceResolveIntentV1,
@@ -51,11 +51,13 @@ function idPart(value: string): string {
   return value.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
 
-function candidateId(product: "jira" | "confluence", kind: "project" | "space", key: string): string {
+type ScopeCandidateKind = "project" | "space" | "issue" | "page";
+
+function candidateId(product: "jira" | "confluence", kind: ScopeCandidateKind, key: string): string {
   return `research-scope-candidate:${product}-${kind}-${idPart(key)}`;
 }
 
-function entityRef(product: "jira" | "confluence", kind: "project" | "space", key: string): string {
+function entityRef(product: "jira" | "confluence", kind: ScopeCandidateKind, key: string): string {
   return `research-scope-entity:${product}-${kind}-${idPart(key)}`;
 }
 
@@ -138,6 +140,47 @@ function spaceCandidate(
   };
 }
 
+function issueCandidate(
+  issue: JiraIssue,
+  origin: string,
+  freshnessAt: string,
+): ResearchScopeCandidateV1 {
+  const issueKey = issue.key;
+  const summary = typeof issue.fields.summary === "string" && issue.fields.summary.trim()
+    ? issue.fields.summary.trim()
+    : issueKey;
+  return {
+    schema: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1,
+    id: candidateId("jira", "issue", issueKey),
+    tenantOrigin: origin,
+    product: "jira",
+    entityKind: "issue",
+    entityRef: entityRef("jira", "issue", issueKey),
+    key: issueKey,
+    name: summary,
+    accessible: true,
+    providerFreshnessAt: freshnessAt,
+  };
+}
+
+function pageCandidate(
+  page: Awaited<ReturnType<ConfluenceClient["getPage"]>>,
+  origin: string,
+  freshnessAt: string,
+): ResearchScopeCandidateV1 {
+  return {
+    schema: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1,
+    id: candidateId("confluence", "page", page.id),
+    tenantOrigin: origin,
+    product: "confluence",
+    entityKind: "page",
+    entityRef: entityRef("confluence", "page", page.id),
+    name: page.title,
+    accessible: true,
+    providerFreshnessAt: freshnessAt,
+  };
+}
+
 function matchesQuery(candidate: ResearchScopeCandidateV1, query: string | undefined): boolean {
   if (!query) return true;
   const normalized = query.trim().toLocaleLowerCase("en-US");
@@ -195,6 +238,11 @@ function jiraProjectKey(reference: URL): string | undefined {
   return match?.[1];
 }
 
+function jiraIssueKey(reference: URL): string | undefined {
+  const match = /^\/browse\/([A-Za-z][A-Za-z0-9_]*-\d+)(?:\/|$)/.exec(reference.pathname);
+  return match?.[1];
+}
+
 function confluenceSpaceKey(profile: Profile, reference: URL): string | undefined {
   let basePath: string;
   try {
@@ -206,6 +254,23 @@ function confluenceSpaceKey(profile: Profile, reference: URL): string | undefine
     return undefined;
   }
   const match = new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/(?:spaces|display)/([^/]+)(?:/|$)`).exec(reference.pathname);
+  return match?.[1];
+}
+
+function confluencePageId(profile: Profile, reference: URL): string | undefined {
+  let basePath: string;
+  try {
+    basePath = new URL(getConfluenceBaseUrl(profile)).pathname.replace(/\/+$/, "");
+  } catch {
+    return undefined;
+  }
+  if (basePath && reference.pathname !== basePath && !reference.pathname.startsWith(`${basePath}/`)) {
+    return undefined;
+  }
+  const escapedBasePath = basePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(
+    `^${escapedBasePath}/(?:(?:spaces|display)/[^/]+/pages|pages)/(\\d+)(?:/|$)`,
+  ).exec(reference.pathname);
   return match?.[1];
 }
 
@@ -312,6 +377,20 @@ export function createRestScopeCatalogProviders(
           return referenceCandidate(projectCandidate(project, origin, currentTimestamp(options)), input.reference);
         }
       }
+      if (input.expectedKinds.includes("issue")) {
+        const key = jiraIssueKey(reference);
+        if (key) {
+          const issue = await safeReferenceRead(() => jira.getIssue(key, { signal: input.signal }));
+          if (!issue) return undefined;
+          if (issue.key.toLocaleUpperCase("en-US") !== key.toLocaleUpperCase("en-US")) {
+            throw new ResearchContractError(
+              "provider-error",
+              "The exact Jira reference did not resolve to its requested issue.",
+            );
+          }
+          return referenceCandidate(issueCandidate(issue, origin, currentTimestamp(options)), input.reference);
+        }
+      }
       if (input.expectedKinds.includes("space")) {
         const key = confluenceSpaceKey(profile, reference);
         if (key) {
@@ -319,6 +398,20 @@ export function createRestScopeCatalogProviders(
           if (!space) return undefined;
           const candidate = spaceCandidate(space, origin, currentTimestamp(options));
           return candidate ? referenceCandidate(candidate, input.reference) : undefined;
+        }
+      }
+      if (input.expectedKinds.includes("page")) {
+        const id = confluencePageId(profile, reference);
+        if (id) {
+          const page = await safeReferenceRead(() => confluence.getPage(id, { signal: input.signal }));
+          if (!page) return undefined;
+          if (page.id !== id) {
+            throw new ResearchContractError(
+              "provider-error",
+              "The exact Confluence reference did not resolve to its requested page.",
+            );
+          }
+          return referenceCandidate(pageCandidate(page, origin, currentTimestamp(options)), input.reference);
         }
       }
       return undefined;

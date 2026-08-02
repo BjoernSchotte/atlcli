@@ -182,6 +182,135 @@ describe("REST scope catalog providers", () => {
     expect(resolved?.canonicalUrl).toBe(`${tenantOrigin}/projects/ATLCLI/summary`);
   });
 
+  test("resolves one exact Jira issue reference without widening it to its project", async () => {
+    globalThis.fetch = mock((url: string) => {
+      expect(url).toContain("/rest/api/3/issue/ATLCLI-42");
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          id: "42",
+          key: "ATLCLI-42",
+          self: `${tenantOrigin}/rest/api/3/issue/42`,
+          fields: {
+            summary: "Exact linked implementation issue",
+            project: { id: "1", key: "ATLCLI", name: "atlcli" },
+          },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const providers = createRestScopeCatalogProviders(profile, tenantOrigin, {
+      now: () => "2026-08-02T18:00:00.000Z",
+    });
+
+    const resolved = await providers.resolveReference({
+      schema: "atlcli.ptc/atlassian.reference.resolve.input/v1",
+      reference: `${tenantOrigin}/browse/ATLCLI-42`,
+      expectedTenantOrigin: tenantOrigin,
+      expectedKinds: ["issue"],
+      signal: new AbortController().signal,
+    });
+
+    expect(resolved).toEqual({
+      schema: "atlcli.research-scope-candidate/v1",
+      id: "research-scope-candidate:jira-issue-atlcli-42",
+      tenantOrigin,
+      product: "jira",
+      entityKind: "issue",
+      entityRef: "research-scope-entity:jira-issue-atlcli-42",
+      key: "ATLCLI-42",
+      name: "Exact linked implementation issue",
+      canonicalUrl: `${tenantOrigin}/browse/ATLCLI-42`,
+      match: "exact_link",
+      accessible: true,
+      providerFreshnessAt: "2026-08-02T18:00:00.000Z",
+    });
+  });
+
+  test("resolves one exact Confluence page reference without widening it to its space", async () => {
+    globalThis.fetch = mock((url: string) => {
+      expect(url).toContain("/wiki/rest/api/content/1001");
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          id: "1001",
+          title: "Exact linked implementation page",
+          space: { key: "DOCSY" },
+          version: { number: 7 },
+          body: { storage: { value: "<p>Private fixture body.</p>" } },
+          _links: { base: tenantOrigin, webui: "/wiki/spaces/DOCSY/pages/1001" },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const providers = createRestScopeCatalogProviders(profile, tenantOrigin, {
+      now: () => "2026-08-02T18:00:00.000Z",
+    });
+
+    const resolved = await providers.resolveReference({
+      schema: "atlcli.ptc/atlassian.reference.resolve.input/v1",
+      reference: `${tenantOrigin}/wiki/spaces/DOCSY/pages/1001/Exact-linked-implementation-page`,
+      expectedTenantOrigin: tenantOrigin,
+      expectedKinds: ["page"],
+      signal: new AbortController().signal,
+    });
+
+    expect(resolved).toEqual({
+      schema: "atlcli.research-scope-candidate/v1",
+      id: "research-scope-candidate:confluence-page-1001",
+      tenantOrigin,
+      product: "confluence",
+      entityKind: "page",
+      entityRef: "research-scope-entity:confluence-page-1001",
+      name: "Exact linked implementation page",
+      canonicalUrl: `${tenantOrigin}/wiki/spaces/DOCSY/pages/1001/Exact-linked-implementation-page`,
+      match: "exact_link",
+      accessible: true,
+      providerFreshnessAt: "2026-08-02T18:00:00.000Z",
+    });
+  });
+
+  test("fails closed when an exact-reference read returns a different entity", async () => {
+    globalThis.fetch = mock((url: string) => {
+      if (url.includes("/rest/api/3/issue/ATLCLI-42")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          id: "43",
+          key: "ATLCLI-43",
+          self: `${tenantOrigin}/rest/api/3/issue/43`,
+          fields: { summary: "Wrong issue", project: { id: "1", key: "ATLCLI", name: "atlcli" } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+      if (url.includes("/wiki/rest/api/content/1001")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          id: "1002",
+          title: "Wrong page",
+          space: { key: "DOCSY" },
+          body: { storage: { value: "<p>Private fixture body.</p>" } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+      throw new Error(`Unexpected exact-reference request: ${url}`);
+    }) as unknown as typeof fetch;
+    const providers = createRestScopeCatalogProviders(profile, tenantOrigin);
+    const signal = new AbortController().signal;
+
+    await expect(providers.resolveReference({
+      schema: "atlcli.ptc/atlassian.reference.resolve.input/v1",
+      reference: `${tenantOrigin}/browse/ATLCLI-42`,
+      expectedTenantOrigin: tenantOrigin,
+      expectedKinds: ["issue"],
+      signal,
+    })).rejects.toThrow("did not resolve to its requested issue");
+    await expect(providers.resolveReference({
+      schema: "atlcli.ptc/atlassian.reference.resolve.input/v1",
+      reference: `${tenantOrigin}/wiki/spaces/DOCSY/pages/1001/Exact-linked-implementation-page`,
+      expectedTenantOrigin: tenantOrigin,
+      expectedKinds: ["page"],
+      signal,
+    })).rejects.toThrow("did not resolve to its requested page");
+  });
+
   test("clamps Jira page size, forwards query, and sorts duplicate names deterministically", async () => {
     let requested = "";
     globalThis.fetch = mock((url: string) => {
