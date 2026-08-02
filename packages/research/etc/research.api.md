@@ -1309,7 +1309,10 @@ export declare class ResearchCapabilityBroker {
     cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
-    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[]): ResearchRetrievalAssessmentV1;
+    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[], options?: {
+        unresolvedCoverageTargetIds?: readonly string[];
+        unresolvedContradictionIds?: readonly string[];
+    }): ResearchRetrievalAssessmentV1;
     completionStatus(products?: readonly ResearchProduct[]): {
         complete: boolean;
         warnings: string[];
@@ -5025,7 +5028,10 @@ export declare class ResearchCapabilityBroker {
     cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
-    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[]): ResearchRetrievalAssessmentV1;
+    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[], options?: {
+        unresolvedCoverageTargetIds?: readonly string[];
+        unresolvedContradictionIds?: readonly string[];
+    }): ResearchRetrievalAssessmentV1;
     completionStatus(products?: readonly ResearchProduct[]): {
         complete: boolean;
         warnings: string[];
@@ -8739,7 +8745,10 @@ export declare class ResearchCapabilityBroker {
     cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
-    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[]): ResearchRetrievalAssessmentV1;
+    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[], options?: {
+        unresolvedCoverageTargetIds?: readonly string[];
+        unresolvedContradictionIds?: readonly string[];
+    }): ResearchRetrievalAssessmentV1;
     completionStatus(products?: readonly ResearchProduct[]): {
         complete: boolean;
         warnings: string[];
@@ -12674,7 +12683,10 @@ export declare class ResearchCapabilityBroker {
     cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
-    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[]): ResearchRetrievalAssessmentV1;
+    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[], options?: {
+        unresolvedCoverageTargetIds?: readonly string[];
+        unresolvedContradictionIds?: readonly string[];
+    }): ResearchRetrievalAssessmentV1;
     completionStatus(products?: readonly ResearchProduct[]): {
         complete: boolean;
         warnings: string[];
@@ -16745,7 +16757,10 @@ export declare class ResearchCapabilityBroker {
     cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
-    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[]): ResearchRetrievalAssessmentV1;
+    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[], options?: {
+        unresolvedCoverageTargetIds?: readonly string[];
+        unresolvedContradictionIds?: readonly string[];
+    }): ResearchRetrievalAssessmentV1;
     completionStatus(products?: readonly ResearchProduct[]): {
         complete: boolean;
         warnings: string[];
@@ -21930,7 +21945,10 @@ export declare class ResearchCapabilityBroker {
     cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
-    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[]): ResearchRetrievalAssessmentV1;
+    retrievalAssessment(products?: readonly ResearchProduct[], priorAcceptedSourceIds?: readonly string[], options?: {
+        unresolvedCoverageTargetIds?: readonly string[];
+        unresolvedContradictionIds?: readonly string[];
+    }): ResearchRetrievalAssessmentV1;
     completionStatus(products?: readonly ResearchProduct[]): {
         complete: boolean;
         warnings: string[];

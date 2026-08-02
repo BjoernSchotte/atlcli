@@ -2569,6 +2569,24 @@ async function runResearchAgentWithBindings(
       `A ready research frontier has an unsupported accepted dependency packet: ${taskId}.`,
     );
   };
+  /**
+   * A packet may name an arbitrary gap ID, but it may request a retrieval
+   * replan only for a coverage target the host placed in the accepted brief.
+   * This keeps model-authored prose from becoming a workflow branch.
+   */
+  const unresolvedCoverageTargetIds = (): string[] => {
+    const briefTargetIds = new Set(input.brief?.coverageTargets.map((target) => target.id) ?? []);
+    if (briefTargetIds.size === 0) return [];
+    return [...new Set(
+      [...acceptedPacketsByTaskId.values()].flatMap((packet) =>
+        isResearchPacketBodyV1(packet.body) || isResearchPacketBodyV2(packet.body)
+          ? packet.body.gaps.flatMap((gap) =>
+            gap.targetId && briefTargetIds.has(gap.targetId) ? [gap.targetId] : []
+          )
+          : [],
+      ),
+    )].sort();
+  };
   const readyFrontierTool = usesCheckpointedSupervisor
     ? createResearchReadyFrontierPtcTool({
         activeGraph: () => acceptedGraph,
@@ -2639,7 +2657,11 @@ async function runResearchAgentWithBindings(
             }),
           );
         },
-        assess: () => broker.retrievalAssessment(selectedSearchProductsV1(acceptedGraph) ?? []),
+        assess: () => broker.retrievalAssessment(
+          selectedSearchProductsV1(acceptedGraph) ?? [],
+          [],
+          { unresolvedCoverageTargetIds: unresolvedCoverageTargetIds() },
+        ),
         record: async ({ graphRevision, assessment, issueContinuation }) => {
           const recorded = await durableDispatchJournal!.recordRetrievalAssessment({
             graphRevision,

@@ -275,6 +275,15 @@ export class ResearchCapabilityBroker {
   retrievalAssessment(
     products: readonly ResearchProduct[] = ["jira", "confluence"],
     priorAcceptedSourceIds: readonly string[] = [],
+    options: {
+      /**
+       * Host-validated brief coverage targets still unmet by accepted packets.
+       * The broker persists only their opaque IDs in its body-free assessment.
+       */
+      unresolvedCoverageTargetIds?: readonly string[];
+      /** Host-validated contradiction IDs still needing a bounded response. */
+      unresolvedContradictionIds?: readonly string[];
+    } = {},
   ): ResearchRetrievalAssessmentV1 {
     const selectedProducts = [...new Set(products)];
     if (selectedProducts.length === 0 || selectedProducts.some((product) =>
@@ -298,6 +307,8 @@ export class ResearchCapabilityBroker {
         canReadMoreDetails: this.budget.canReadAnotherDetail(product),
       })),
       priorAcceptedSourceIds: [...priorAcceptedSourceIds],
+      unresolvedCoverageTargetIds: [...(options.unresolvedCoverageTargetIds ?? [])],
+      unresolvedContradictionIds: [...(options.unresolvedContradictionIds ?? [])],
       ptcCallsRemaining: snapshot.ptcRemaining,
       httpAttemptsRemaining: snapshot.httpAttemptsRemaining,
     });

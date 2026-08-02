@@ -1815,7 +1815,14 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       sourceIds: [],
       findingCandidates: [],
       relationshipCandidates: [],
-      gaps: [],
+      // A model can name a gap, but it cannot turn an unapproved target into
+      // another retrieval wave. The host accepts only brief target IDs.
+      gaps: [{
+        id: "gap:synthetic-unapproved-target",
+        summary: "This synthetic target was not admitted by the brief.",
+        targetId: "coverage:unapproved",
+        sourceIds: [],
+      }],
       proposedFollowUps: [],
       coverageLimits: ["Synthetic checkpoint proof has no retrieved detail evidence."],
     };
@@ -1942,6 +1949,177 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     )).toMatchObject({
       dependencyTaskIds: [researchTaskIdForNodeV1(graph, researcher)],
     });
+  });
+
+  test("replans a durable deep run only from a host-validated brief coverage gap", async () => {
+    const brief = graphBrief(
+      "Research the bounded Jira evidence and resolve every approved coverage target.",
+      ["jira"],
+      "deep",
+      "off",
+    );
+    const coverageTargetId = brief.coverageTargets[0]?.id;
+    if (!coverageTargetId) throw new Error("Synthetic deep brief requires one host coverage target.");
+    const graph = composeResearchGraphV1(brief);
+    const researcher = graph.nodes.find((node) => node.kind === "search" && node.roleId)!;
+    const coverageModerator = graph.nodes.find((node) => node.roleId === "coverage-moderator")!;
+    const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer")!;
+    const initialNodeIds = [researcher.id, synthesizer.id];
+    const revisedNodeIds = [researcher.id, coverageModerator.id, synthesizer.id];
+    const revisionProposal = {
+      basedOnBriefRevision: graph.basedOnBriefRevision,
+      basedOnGraphRevision: graph.revision,
+      nodes: graph.nodes.filter((node) => revisedNodeIds.includes(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => revisedNodeIds.includes(dependency)),
+        reasonCodes: node.reasonCodes,
+        priority: node.priority,
+      })),
+      prune: [],
+    };
+    const responseSchemas = {
+      "atlcli.research-packet-body/v1": RESEARCH_WORKER_PACKET_SCHEMA_V1,
+      "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+    };
+    const draft = {
+      title: "Coverage-gap replan",
+      executiveSummary: "The host admitted one additional coverage review after a bounded gap.",
+      selectedClaimIds: [],
+      findings: [],
+      relationships: [],
+      limitations: ["Synthetic proof of host-derived replan control."],
+    };
+    const sourcePacket = {
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion: "The initial retrieval frontier exposed an approved coverage gap.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [{
+        id: "gap:synthetic-approved-coverage",
+        summary: "The approved coverage target needs a bounded moderator review.",
+        targetId: coverageTargetId,
+        sourceIds: [],
+      }],
+      proposedFollowUps: [],
+      coverageLimits: ["Synthetic coverage-gap proof."],
+    };
+    const analysisPacket = {
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion: "The host-admitted coverage moderator completed.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["Synthetic replan proof has no external detail evidence."],
+    };
+    const firstEval = `
+      ${graphProposalPrelude(graph, initialNodeIds)}
+      const responseSchemas = ${JSON.stringify(responseSchemas)};
+      const frontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: acceptedGraph.graphRevision }));
+      await Promise.all(frontier.tasks.map((returnedTask) => task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: returnedTask.taskId,
+          objective: returnedTask.objective
+        }),
+        subagentType: returnedTask.subagentType,
+        responseSchema: responseSchemas[returnedTask.outputSchema]
+      })));
+      const checkpoint = JSON.parse(await tools.researchRetrievalCheckpoint({ graphRevision: acceptedGraph.graphRevision }));
+      checkpoint;
+    `;
+    const secondEval = `
+      const continuation = JSON.parse(await tools.researchRetrievalContinue({
+        graphRevision: 1,
+        wave: 1,
+        continuationId: "research-continuation:1.1"
+      }));
+      if (continuation.action !== "replan") throw new Error("Expected a host-derived replan.");
+      const revised = JSON.parse(await tools.researchGraphRevise(${JSON.stringify(revisionProposal)}));
+      const responseSchemas = ${JSON.stringify(responseSchemas)};
+      const analysisFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: revised.graphRevision }));
+      const analysisTask = analysisFrontier.tasks[0];
+      await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: analysisTask.taskId,
+          objective: analysisTask.objective,
+          dependencyResults: analysisTask.dependencyResults
+        }),
+        subagentType: analysisTask.subagentType,
+        responseSchema: responseSchemas[analysisTask.outputSchema]
+      });
+      const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: revised.graphRevision }));
+      const finalTask = finalFrontier.tasks[0];
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: finalTask.taskId,
+          objective: finalTask.objective,
+          dependencyResults: finalTask.dependencyResults
+        }),
+        subagentType: finalTask.subagentType,
+        responseSchema: responseSchemas[finalTask.outputSchema]
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code: firstEval } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: sourcePacket }])
+      .respondWithTools([{ name: "eval", args: { code: secondEval } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: analysisPacket }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:coverage-gap-replan",
+        createdAt: "2026-08-02T12:00:00.000Z",
+        leaseExpiresAt: "2026-08-02T12:10:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-02T12:00:00.000Z",
+    });
+    const events: ResearchOneShotEventV1[] = [];
+    const report = await runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { throw new Error("model skipped PTC"); }, async getIssue() { throw new Error("unused"); } },
+        wiki: { async searchPage() { throw new Error("unused"); }, async getPage() { throw new Error("unused"); } },
+      },
+      researchGraph: graph,
+      brief,
+      durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
+      runId: "coverage-gap-replan",
+      options: { onEvent: (event) => events.push(event) },
+    });
+
+    expect(report.title).toBe(draft.title);
+    expect(dynamicModel.callCount).toBe(6);
+    expect(events.filter((event) => event.kind === "retrieval")).toEqual([
+      expect.objectContaining({ action: "replan", reason: "coverage_gap", unresolvedCoverageTargetCount: 1 }),
+    ]);
+    const session = await durableStore.read(graph.sessionId);
+    const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
+    expect(turn.graph?.revision).toBe(2);
+    expect(turn.graphRevisions).toHaveLength(2);
+    expect(turn.graphRevisions?.at(-1)).toMatchObject({
+      graph: expect.objectContaining({ revision: 2 }),
+      gapIds: ["gap:synthetic-approved-coverage"],
+      reason: "coverage_gap",
+    });
+    expect(turn.tasks.map((task) => [task.taskId, task.graphRevision])).toEqual([
+      [researchTaskIdForNodeV1(graph, researcher), 1],
+      ["research-task:r2:coverage-moderation:a1", 2],
+      ["research-task:r2:synthesizer:a1", 2],
+    ]);
   });
 
   test("lets one supervisor prune optional roles before any native task dispatch", async () => {

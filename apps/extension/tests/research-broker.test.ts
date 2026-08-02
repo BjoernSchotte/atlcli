@@ -268,6 +268,17 @@ describe("bounded research capability broker", () => {
       reason: "search_budget_exhausted",
       newDetailSourceCount: 1,
     });
+    const gapBroker = new ResearchCapabilityBroker(
+      request({ maxSearchPagesPerProduct: 1, maxDetailItemsPerProduct: 1 }),
+      fakeProviders(),
+    );
+    expect(gapBroker.retrievalAssessment(["jira"], [], {
+      unresolvedCoverageTargetIds: ["coverage-target:approved"],
+    })).toMatchObject({
+      action: "replan",
+      reason: "coverage_gap",
+      unresolvedCoverageTargetCount: 1,
+    });
   });
 
   it("persists approved, tenant-bound evidence before publishing a detail body to the broker ledger", async () => {
