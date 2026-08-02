@@ -124,12 +124,13 @@ async function completeEval(
 
 async function invokeBeforeModel(
   middleware: ReturnType<typeof createResearchCheckpointTranscriptCompactionMiddleware>,
+  state: unknown = {},
 ): Promise<unknown> {
   const beforeModel = middleware.beforeModel;
   if (typeof beforeModel !== "function") {
     throw new Error("Synthetic middleware requires a callable beforeModel hook.");
   }
-  return beforeModel({} as never, {} as never);
+  return beforeModel(state as never, {} as never);
 }
 
 describe("one-shot supervisor eval capability lifecycle", () => {
@@ -305,6 +306,29 @@ describe("one-shot supervisor eval capability lifecycle", () => {
 });
 
 describe("durable checkpoint transcript compaction", () => {
+  test("archives the complete raw transcript before replacing it with body-free host context", async () => {
+    const archived: Array<{ checkpoint: string; messages: readonly unknown[] }> = [];
+    const middleware = createResearchCheckpointTranscriptCompactionMiddleware({
+      checkpoint: () => ({ id: "research-continuation:1.1", content: "Body-free continuation." }),
+      onBeforeCompact: async ({ checkpoint, messages }) => {
+        archived.push({ checkpoint: checkpoint.id, messages: structuredClone(messages) });
+      },
+    });
+    await invokeBeforeModel(middleware, {
+      messages: [
+        { type: "human", content: "Complete user objective." },
+        { type: "tool", content: { exact: "complete raw tool result" } },
+      ],
+    });
+    expect(archived).toEqual([{
+      checkpoint: "research-continuation:1.1",
+      messages: [
+        { type: "human", content: "Complete user objective." },
+        { type: "tool", content: { exact: "complete raw tool result" } },
+      ],
+    }]);
+  });
+
   test("replaces a settled wave exactly once with body-free host continuation context", async () => {
     let checkpoint: { id: string; content: string } | undefined = {
       id: "research-continuation:1.1",

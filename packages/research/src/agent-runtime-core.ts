@@ -66,6 +66,7 @@ import {
   resolveResearchOutlineProposalV1,
   type ResearchOutlineV1,
 } from "./outline.js";
+import { WorkspaceResearchMessageLineageStoreV1 } from "./message-lineage.js";
 import {
   normalizeResearchPacketModelBodyV2,
   normalizeResearchPacketReferenceModelBodyV2,
@@ -1924,13 +1925,24 @@ interface ResearchCheckpointTranscriptCompactionV1 {
  */
 export function createResearchCheckpointTranscriptCompactionMiddleware(options: {
   checkpoint: () => ResearchCheckpointTranscriptCompactionV1 | undefined;
+  /** Persist the exact transcript before it leaves active model context. */
+  onBeforeCompact?: (input: {
+    checkpoint: ResearchCheckpointTranscriptCompactionV1;
+    messages: readonly unknown[];
+  }) => Promise<void>;
 }) {
   let compactedCheckpointId: string | undefined;
   return createMiddleware({
     name: "ResearchCheckpointTranscriptCompactionMiddleware",
-    beforeModel: () => {
+    beforeModel: async (state) => {
       const checkpoint = options.checkpoint();
       if (!checkpoint || checkpoint.id === compactedCheckpointId) return undefined;
+      const messages = Array.isArray((state as { messages?: unknown }).messages)
+        ? (state as { messages: unknown[] }).messages
+        : [];
+      if (messages.length > 0) {
+        await options.onBeforeCompact?.({ checkpoint, messages });
+      }
       compactedCheckpointId = checkpoint.id;
       return {
         messages: [
@@ -2111,6 +2123,16 @@ async function runResearchAgentWithBindings(
   const workspace = input.durableSession
     ? await input.durableSession.store.workspace(input.durableSession.sessionId)
     : input.workspace ?? createMemoryResearchWorkspace();
+  /*
+   * Opaque LangGraph checkpoints support execution recovery, but are not a
+   * searchable record of prior conversation. Keep complete originals in a
+   * private lineage archive before any middleware compacts active context.
+   */
+  const durableLineage = input.durableSession
+    ? new WorkspaceResearchMessageLineageStoreV1(workspace)
+    : undefined;
+  const durableLineageRunToken = durableLineage ? crypto.randomUUID() : undefined;
+  let durableLineageTail: Promise<void> = Promise.resolve();
   const durableDataWorkspaces = input.durableSession &&
     hasResearchSessionDataWorkspaceStoreV1(input.durableSession.store)
     ? await Promise.all([
@@ -2178,12 +2200,33 @@ async function runResearchAgentWithBindings(
   const usesCheckpointedSupervisor = Boolean(
     input.researchGraph && durableDispatchJournal && input.researchGraph.resolvedEffort === "deep",
   );
+  const durableLineageLinks = () => ({
+    ...(input.durableSession ? { turnId: input.durableSession.turnId } : {}),
+    ...(acceptedGraph?.revision ?? input.researchGraph?.revision
+      ? { graphRevision: acceptedGraph?.revision ?? input.researchGraph!.revision }
+      : {}),
+    ...(acceptedPacketsByTaskId.size > 0
+      ? { packetRefs: [...acceptedPacketsByTaskId.values()].map((packet) => packet.packetRef).sort() }
+      : {}),
+  });
   const emitEvent = (event: ResearchOneShotEventInputV1): void => {
-    input.options?.onEvent?.({
+    const emitted = {
       ...event,
       seq: ++eventSequence,
       at: new Date(now()).toISOString(),
-    } as ResearchOneShotEventV1);
+    } as ResearchOneShotEventV1;
+    input.options?.onEvent?.(emitted);
+    if (durableLineage && durableLineageRunToken) {
+      const links = durableLineageLinks();
+      durableLineageTail = durableLineageTail.then(async () => {
+        await durableLineage.appendHostEvents({
+          batchId: `event:${durableLineageRunToken}:${emitted.seq}`,
+          createdAt: emitted.at,
+          links,
+          events: [emitted],
+        });
+      });
+    }
   };
   const emitProgress = (progress: ResearchProgressV1): void => {
     input.options?.onProgress?.(progress);
@@ -3558,6 +3601,16 @@ async function runResearchAgentWithBindings(
                 ].join("\n"),
               };
             },
+            onBeforeCompact: async ({ checkpoint, messages }) => {
+              if (!durableLineage || !durableLineageRunToken) return;
+              await durableLineageTail;
+              await durableLineage.appendMessages({
+                batchId: `checkpoint:${durableLineageRunToken}:${checkpoint.id}`,
+                createdAt: new Date(now()).toISOString(),
+                links: durableLineageLinks(),
+                messages,
+              });
+            },
           }),
           createOneShotSupervisorEvalMiddleware({
             canRetryAfterFailure: () => !subagentTaskStarted,
@@ -3665,6 +3718,21 @@ async function runResearchAgentWithBindings(
         signal: broker.signal,
       }
     );
+    if (durableLineage && durableLineageRunToken) {
+      if (!Array.isArray(result.messages)) {
+        throw new ResearchContractError(
+          "invalid-report",
+          "A durable research run did not return its complete supervisor transcript.",
+        );
+      }
+      await durableLineageTail;
+      await durableLineage.appendMessages({
+        batchId: `final:${durableLineageRunToken}`,
+        createdAt: new Date(now()).toISOString(),
+        links: durableLineageLinks(),
+        messages: result.messages,
+      });
+    }
     if (isDynamic && !acceptedGraph) {
       throw new ResearchContractError(
         "invalid-report",
@@ -3912,6 +3980,7 @@ async function runResearchAgentWithBindings(
     await durableDispatchJournal?.fail();
     throw error;
   } finally {
+    await durableLineageTail;
     input.options?.signal?.removeEventListener("abort", onAbort);
     broker.cancel();
     input.scopeCatalog?.broker.cancel();

@@ -3892,11 +3892,11 @@ Shared:
 - [x] Re-enable filesystem middleware against the injected composite backend.
 - [ ] Re-enable summarization only after complete original messages are stored
       durably and can be searched from the session.
-- [ ] Treat `/workspace/plan.md` as a projection of the durable graph and
+- [x] Treat `/workspace/plan.md` as a projection of the durable graph and
       regenerate it after every accepted graph revision.
 - [ ] Persist query intents, gap assessments, and report drafts as artifacts
       rather than growing the live prompt.
-- [ ] Add an immutable message/event store plus a hierarchical summary DAG
+- [x] Add an immutable message/event store plus a hierarchical summary DAG
       whose nodes retain lineage to original turns, graph revisions, packets,
       and artifacts.
 - [ ] Build turn context from current brief, current graph frontier, compact

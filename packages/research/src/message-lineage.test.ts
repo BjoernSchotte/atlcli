@@ -136,9 +136,10 @@ describe("research message lineage store", () => {
   });
 
   test("bounds search explicitly instead of silently treating a partial scan as complete", async () => {
-    const store = new WorkspaceResearchMessageLineageStoreV1(createMemoryResearchWorkspace());
+    const workspace = createMemoryResearchWorkspace();
+    const store = new WorkspaceResearchMessageLineageStoreV1(workspace);
     const large = "x".repeat(1_400_000);
-    await store.appendMessages({
+    const events = await store.appendMessages({
       batchId: "checkpoint:research-turn:3:wave:1",
       createdAt: "2026-08-02T12:00:00.000Z",
       messages: [
@@ -148,6 +149,10 @@ describe("research message lineage store", () => {
         { type: "human", content: large },
       ],
     });
+    const recovered = new WorkspaceResearchMessageLineageStoreV1(workspace);
+    const expanded = await recovered.expand(events[0]!.id);
+    if (!expanded || !("payloadJson" in expanded)) throw new Error("Expected a retained raw message payload.");
+    expect(expanded.payloadJson).toContain(large);
     await expect(store.search({ query: "not-present" })).resolves.toMatchObject({
       matches: [],
       exhaustive: false,

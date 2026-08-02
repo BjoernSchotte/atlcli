@@ -20,7 +20,11 @@ const INDEX_PATH = `${ROOT_PATH}/index.json`;
 const MAXIMUM_EVENTS = 8_192;
 const MAXIMUM_SUMMARIES = 2_048;
 const MAXIMUM_MESSAGES_PER_BATCH = 512;
-const MAXIMUM_JSON_BYTES = 1_500_000;
+/* Individual workspace files cap at 2 MB; original messages are chunked. */
+const MAXIMUM_JSON_BYTES = 16_000_000;
+const MAXIMUM_INLINE_JSON_BYTES = 750_000;
+const PAYLOAD_CHUNK_CHARS = 120_000;
+const MAXIMUM_PAYLOAD_CHUNKS = 160;
 const MAXIMUM_SUMMARY_CHARS = 24_000;
 const MAXIMUM_REFERENCE_IDS = 512;
 const MAXIMUM_INDEX_BYTES = 1_750_000;
@@ -122,6 +126,13 @@ interface PersistedLineageIndexV1 {
   summaries: PersistedLineageIndexEntryV1[];
 }
 
+/** Disk form keeps oversized raw messages in verified private chunk files. */
+interface PersistedMessageLineageEventV1 extends Omit<ResearchMessageLineageEventV1, "payloadJson"> {
+  payloadJson?: string;
+  payloadChunkCount: number;
+  payloadBytes: number;
+}
+
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-request", message);
 }
@@ -216,6 +227,10 @@ function summaryPath(id: string): string {
   return `${ROOT_PATH}/summaries/${summaryId(id)}.json`;
 }
 
+function payloadChunkPath(id: string, ordinal: number): string {
+  return `${ROOT_PATH}/payloads/${eventId(id)}/${String(ordinal).padStart(3, "0")}.json`;
+}
+
 function parseJsonPayload(value: unknown, label: string): string {
   let serialized: string | undefined;
   try {
@@ -251,6 +266,21 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function splitPayload(value: string): string[] {
+  const chunks: string[] = [];
+  for (let start = 0; start < value.length;) {
+    let end = Math.min(value.length, start + PAYLOAD_CHUNK_CHARS);
+    if (end < value.length && /[\uD800-\uDBFF]/.test(value.charAt(end - 1))) end -= 1;
+    if (end <= start) invalid("Message lineage payload has an invalid Unicode boundary.");
+    chunks.push(value.slice(start, end));
+    start = end;
+  }
+  if (chunks.length === 0 || chunks.length > MAXIMUM_PAYLOAD_CHUNKS) {
+    invalid("Message lineage payload is too large.");
+  }
+  return chunks;
+}
+
 function normalizeEvent(value: ResearchMessageLineageEventV1): ResearchMessageLineageEventV1 {
   if (!value || typeof value !== "object" || value.schema !== RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1) {
     invalid("Message lineage event schema is invalid.");
@@ -270,6 +300,36 @@ function normalizeEvent(value: ResearchMessageLineageEventV1): ResearchMessageLi
     payloadJson,
     payloadHash: hash(value.payloadHash, "Message lineage event payload hash"),
     ...links,
+  };
+}
+
+function parsePersistedEvent(value: unknown): PersistedMessageLineageEventV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalid("Stored message lineage event is invalid.");
+  const candidate = value as Partial<PersistedMessageLineageEventV1>;
+  const payloadChunkCount = candidate.payloadChunkCount === undefined
+    ? 0 // Backwards-compatible records from the first schema implementation.
+    : Number.isSafeInteger(candidate.payloadChunkCount) && candidate.payloadChunkCount >= 0 && candidate.payloadChunkCount <= MAXIMUM_PAYLOAD_CHUNKS
+      ? candidate.payloadChunkCount
+      : invalid("Stored message lineage payload chunk count is invalid.");
+  const payloadBytes = candidate.payloadBytes === undefined
+    ? candidate.payloadJson === undefined ? invalid("Stored message lineage payload is missing.") : bytes(storedJsonPayload(candidate.payloadJson, "Stored message lineage payload"))
+    : Number.isSafeInteger(candidate.payloadBytes) && candidate.payloadBytes >= 1 && candidate.payloadBytes <= MAXIMUM_JSON_BYTES
+      ? candidate.payloadBytes
+      : invalid("Stored message lineage payload byte count is invalid.");
+  if ((payloadChunkCount === 0) !== (candidate.payloadJson !== undefined)) {
+    invalid("Stored message lineage payload representation is invalid.");
+  }
+  const placeholder = candidate.payloadJson ?? "null";
+  const validated = normalizeEvent({
+    ...(candidate as Omit<ResearchMessageLineageEventV1, "payloadJson">),
+    payloadJson: placeholder,
+  });
+  const { payloadJson: _validatedPayloadJson, ...metadata } = validated;
+  return {
+    ...metadata,
+    ...(candidate.payloadJson === undefined ? {} : { payloadJson: storedJsonPayload(candidate.payloadJson, "Stored message lineage payload") }),
+    payloadChunkCount,
+    payloadBytes,
   };
 }
 
@@ -394,11 +454,43 @@ export class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLi
     const contents = await this.#workspace.readFile(eventPath(id));
     if (contents === undefined) return undefined;
     try {
-      return normalizeEvent(JSON.parse(contents) as ResearchMessageLineageEventV1);
+      const persisted = parsePersistedEvent(JSON.parse(contents));
+      const payloadJson = persisted.payloadJson ?? (
+        await Promise.all(
+          Array.from({ length: persisted.payloadChunkCount }, async (_, index) => {
+            const chunk = await this.#workspace.readFile(payloadChunkPath(persisted.id, index + 1));
+            if (chunk === undefined) invalid("Stored message lineage payload chunk is missing.");
+            return chunk;
+          }),
+        )
+      ).join("");
+      const validated = normalizeEvent({ ...persisted, payloadJson });
+      if (bytes(payloadJson) !== persisted.payloadBytes || await sha256(payloadJson) !== validated.payloadHash) {
+        invalid("Stored message lineage payload does not match its retained hash.");
+      }
+      return validated;
     } catch (error) {
       if (error instanceof ResearchContractError) throw error;
       invalid("Stored message lineage event is not JSON.");
     }
+  }
+
+  async #writeEvent(record: ResearchMessageLineageEventV1): Promise<void> {
+    const payloadBytes = bytes(record.payloadJson);
+    const chunks = payloadBytes > MAXIMUM_INLINE_JSON_BYTES ? splitPayload(record.payloadJson) : undefined;
+    if (chunks) {
+      for (const [index, chunk] of chunks.entries()) {
+        await this.#workspace.writeFile(payloadChunkPath(record.id, index + 1), chunk);
+      }
+    }
+    const { payloadJson, ...metadata } = record;
+    const persisted: PersistedMessageLineageEventV1 = {
+      ...metadata,
+      ...(chunks ? {} : { payloadJson }),
+      payloadChunkCount: chunks?.length ?? 0,
+      payloadBytes,
+    };
+    await this.#workspace.writeFile(eventPath(record.id), JSON.stringify(persisted));
   }
 
   async #readSummary(id: string): Promise<ResearchMessageLineageSummaryV1 | undefined> {
@@ -477,7 +569,7 @@ export class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLi
         if (this.#index.events.length + newRecords.length >= MAXIMUM_EVENTS) {
           throw new ResearchContractError("limit-exceeded", "Message lineage event limit is exhausted.");
         }
-        await this.#workspace.writeFile(eventPath(record.id), JSON.stringify(record));
+        await this.#writeEvent(record);
         newRecords.push(record);
       }
       if (newRecords.length > 0) {

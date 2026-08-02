@@ -19,6 +19,7 @@ import {
   ResearchCapabilityBroker,
   ResearchRunBudget,
   InMemoryResearchSessionStoreV1,
+  WorkspaceResearchMessageLineageStoreV1,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
@@ -3696,6 +3697,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const persistedOutlineIndex = await workspace.readFile("/.atlcli/outlines/v1/index.json");
     expect(persistedOutlineIndex).toContain('"currentOutlineId"');
     expect((await durableStore.artifact(graph.sessionId, `artifact:report:${graph.turnId}`))?.contents).toBe(report.markdown);
+    const lineage = new WorkspaceResearchMessageLineageStoreV1(workspace);
+    expect(await lineage.describe()).toMatchObject({ eventCount: expect.any(Number) });
+    expect((await lineage.describe()).eventCount).toBeGreaterThan(0);
+    await expect(lineage.search({ query: "central-supervisor-run" })).resolves.toMatchObject({
+      matches: expect.arrayContaining([expect.objectContaining({ type: "event" })]),
+    });
+    await expect(lineage.search({ query: v2Request.question })).resolves.toMatchObject({
+      matches: expect.arrayContaining([expect.objectContaining({ type: "event" })]),
+    });
   });
 
   test("rejects a duplicate graph-node dispatch before duplicate model work", async () => {
