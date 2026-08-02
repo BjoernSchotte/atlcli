@@ -3409,11 +3409,22 @@ Gate:
         retrieval checkpoint produce exactly one `waiting_steering` revision;
         the other request is fenced as `invalid-request`, starts no worker, and
         cannot disclose the user instruction through the resume catalog.
-- [ ] Required plan approval performs zero detail, subagent, or model research
+- [x] Required plan approval performs zero detail, subagent, or model research
       calls before the exact revision is approved.
-- [ ] A pending scope expansion performs zero content calls against the
+
+  - [x] Packed MV3: preparing a required initial plan leaves the durable turn
+        proposed with no key write, worker start, fetch, task, packet, or
+        artifact. Approving its exact revision changes only the graph state;
+        the captured event stream remains free of model and content calls (31
+        packed tests, 2026-08-02).
+- [x] A pending scope expansion performs zero content calls against the
       candidate entity/project/space before the exact proposal revision is
       approved. Metadata discovery remains independently budgeted.
+
+  - [x] Packed MV3: a synthetic `waiting_scope_approval` turn exposes only its
+        bounded review projection. Scope and replacement-plan approvals update
+        only durable scope/graph state; no report exists and the captured
+        stream contains no content fetch (31 packed tests, 2026-08-02).
 - [ ] An in-envelope dynamic replan continues only at a checkpoint and remains
       visible in the plan diff; changing brief/coverage content, adding an
       unapproved role/capability, or raising scope, effort, budget, depth,
