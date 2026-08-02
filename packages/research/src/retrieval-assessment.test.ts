@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
+import {
+  assessResearchRetrievalV1,
+  parseResearchRetrievalAssessmentV1,
+} from "./retrieval-assessment.js";
 
 function input(overrides: Partial<Parameters<typeof assessResearchRetrievalV1>[0]> = {}) {
   return {
@@ -93,5 +96,19 @@ describe("deterministic retrieval assessment", () => {
     expect(() => assessResearchRetrievalV1(input({
       products: [{ ...input().products[0]!, searchAttempted: false }],
     }))).toThrow("cannot be complete");
+  });
+
+  test("persists only a canonical body-free assessment projection", () => {
+    const assessment = assessResearchRetrievalV1(input());
+
+    expect(parseResearchRetrievalAssessmentV1(assessment)).toEqual(assessment);
+    expect(() => parseResearchRetrievalAssessmentV1({
+      ...assessment,
+      sourceId: "jira:private-1",
+    })).toThrow("invalid");
+    expect(() => parseResearchRetrievalAssessmentV1({
+      ...assessment,
+      action: "stop",
+    })).toThrow("inconsistent");
   });
 });

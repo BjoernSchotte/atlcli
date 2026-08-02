@@ -2106,6 +2106,20 @@ async function runResearchAgentWithBindings(
         : undefined;
     if (assessedProducts === undefined || assessedProducts.length > 0) {
       const assessment = broker.retrievalAssessment(assessedProducts);
+      if (durableDispatchJournal && acceptedGraph) {
+        const recorded = await durableDispatchJournal.recordRetrievalAssessment({
+          graphRevision: acceptedGraph.revision,
+          assessment,
+        });
+        if (recorded.graphRevision !== acceptedGraph.revision ||
+            recorded.assessment.action !== assessment.action ||
+            recorded.assessment.reason !== assessment.reason) {
+          throw new ResearchContractError(
+            "invalid-request",
+            "Durable retrieval assessment did not preserve the host decision.",
+          );
+        }
+      }
       emitEvent({
         kind: "retrieval",
         graphRevision: acceptedGraph?.revision ?? input.researchGraph?.revision ?? 1,

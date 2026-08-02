@@ -1,7 +1,9 @@
 import { ResearchContractError } from "./contracts.js";
 import type { ResearchGraphProposalV1, ResearchGraphV1 } from "./graph.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
+import type { ResearchRetrievalAssessmentV1 } from "./retrieval-assessment.js";
 import type {
+  ResearchSessionRetrievalAssessmentV1,
   ResearchSessionRepairAuthorizationV1,
   ResearchSessionTurnV1,
   ResearchSessionUpdateV1,
@@ -250,6 +252,29 @@ export class ResearchSessionDispatchJournalV1 {
           graph: turn.graph,
           ...(turn.repairAuthorization ? { repairAuthorization: turn.repairAuthorization } : {}),
         };
+      });
+    });
+  }
+
+  /** Record the body-free retrieval decision before a later wave or terminal render. */
+  recordRetrievalAssessment(input: {
+    graphRevision: number;
+    assessment: ResearchRetrievalAssessmentV1;
+  }): Promise<ResearchSessionRetrievalAssessmentV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      return this.#commit(session, {
+        kind: "record_retrieval_assessment",
+        graphRevision: input.graphRevision,
+        assessment: input.assessment,
+      }, (next) => {
+        const record = (activeTurn(next, this.#turnId).retrievalAssessments ?? []).find((candidate) =>
+          candidate.graphRevision === input.graphRevision,
+        );
+        if (!record) invalid("Research durable dispatch did not retain its retrieval assessment.");
+        return record;
       });
     });
   }

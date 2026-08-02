@@ -4,6 +4,7 @@ import {
   composeResearchGraphV1,
   type ResearchGraphProposalV1,
 } from "./graph.js";
+import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
 import {
   createResearchSessionV1,
   reduceResearchSessionV1,
@@ -107,6 +108,35 @@ describe("durable host-neutral research session reducer", () => {
     expect(turn.brief?.objective).toContain("Jira work item");
     expect(turn.graph).toMatchObject({ status: "approved", approvalEnvelope: { status: "approved" } });
     expect(turn.graph?.nodes.some((node) => node.status === "ready")).toBe(true);
+  });
+
+  test("upgrades a legacy running turn when it records its first retrieval assessment", () => {
+    let current = readyToRun();
+    delete current.turns[0]!.retrievalAssessments;
+    const graphRevision = current.turns[0]!.graph!.revision;
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: [],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 0,
+      httpAttemptsRemaining: 0,
+    });
+
+    current = update(current, {
+      kind: "record_retrieval_assessment",
+      graphRevision,
+      assessment,
+    }, "2026-08-01T09:00:05.000Z");
+
+    expect(current.turns[0]!.retrievalAssessments!).toEqual([
+      expect.objectContaining({ graphRevision, assessment }),
+    ]);
   });
 
   test("accepts a packet atomically with its task and graph node", () => {

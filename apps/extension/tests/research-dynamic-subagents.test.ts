@@ -2264,6 +2264,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         reasonCode: "packet_accepted",
       }),
     ]);
+    const retrievalEvents = events.filter((event) => event.kind === "retrieval");
+    expect(retrievalEvents).toHaveLength(1);
     const durableSession = await durableStore.read(graph.sessionId);
     const durableTurn = durableSession!.turns.find((turn) => turn.id === graph.turnId)!;
     expect(durableSession?.status).toBe("complete");
@@ -2272,6 +2274,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(durableTurn.tasks.every((task) => task.dispatchState === "result_committed")).toBe(true);
     expect(durableTurn.acceptedPackets).toHaveLength(6);
     expect(durableTurn.reconciliationDispositions).toHaveLength(1);
+    expect(durableTurn.retrievalAssessments).toEqual([
+      expect.objectContaining({
+        graphRevision: retrievalEvents[0]!.graphRevision,
+        assessment: expect.objectContaining({
+          action: retrievalEvents[0]!.action,
+          reason: retrievalEvents[0]!.reason,
+        }),
+      }),
+    ]);
     expect(durableTurn.repairAuthorization).toMatchObject({
       nodeId: repair.id,
       followUp: { id: "follow-up:synthetic-coverage" },
@@ -2293,6 +2304,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(recoveredCheckpoint?.checkpoint.channel_values.messages).toBeArray();
     expect((await durableStore.events(graph.sessionId)).map((event) => event.kind)).toContain(
       "record_reconciliation",
+    );
+    expect((await durableStore.events(graph.sessionId)).map((event) => event.kind)).toContain(
+      "record_retrieval_assessment",
     );
   });
 

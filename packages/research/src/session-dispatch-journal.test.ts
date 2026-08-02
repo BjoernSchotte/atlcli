@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createResearchBriefV1 } from "./brief.js";
 import { composeResearchGraphV1, type ResearchGraphProposalV1 } from "./graph.js";
+import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
 import { initializeResearchSessionTurnV1 } from "./session-runtime.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
@@ -198,6 +199,43 @@ describe("durable research task dispatch journal", () => {
     await expect(journal.fail()).resolves.toMatchObject({ status: "failed" });
     expect((await store.read(sessionId))?.turns[0]?.failureReason)
       .toBe("Research execution ended before report validation.");
+  });
+
+  test("records exactly one body-free retrieval assessment for a settled graph revision", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 0,
+      httpAttemptsRemaining: 0,
+    });
+
+    await expect(journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+    })).resolves.toMatchObject({
+      graphRevision: graph.revision,
+      assessment: { action: assessment.action, reason: assessment.reason },
+    });
+    await expect(journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+    })).rejects.toThrow("duplicated");
+
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.retrievalAssessments).toEqual([expect.objectContaining({
+      graphRevision: graph.revision,
+      assessment,
+    })]);
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_retrieval_assessment");
   });
 
   test("commits every reconciliation disposition and the optional repair activation in one CAS event", async () => {

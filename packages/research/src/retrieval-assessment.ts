@@ -22,6 +22,25 @@ export type ResearchRetrievalAssessmentReasonV1 =
   | "no_ranked_candidates"
   | "ranked_candidates_exhausted";
 
+const RETRIEVAL_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[] = [
+  "continue",
+  "replan",
+  "stop",
+];
+
+const RETRIEVAL_REASONS_V1: readonly ResearchRetrievalAssessmentReasonV1[] = [
+  "unread_ranked_candidates",
+  "search_not_terminal",
+  "coverage_gap",
+  "unresolved_contradiction",
+  "capability_budget_exhausted",
+  "detail_budget_exhausted",
+  "search_budget_exhausted",
+  "marginal_evidence",
+  "no_ranked_candidates",
+  "ranked_candidates_exhausted",
+];
+
 export interface ResearchRetrievalProductAssessmentInputV1 {
   product: ResearchProduct;
   /** A host-issued ranked candidate can be read only through its opaque ref. */
@@ -83,6 +102,136 @@ function sourceIds(value: unknown, label: string, maximum: number): string[] {
 function nonNegative(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) invalid(`${label} is invalid.`);
   return value as number;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+/**
+ * Parse the persisted/session-crossing projection. The original assessment
+ * contains only counts and enum decisions; this parser deliberately has no
+ * slot for source IDs, search terms, URLs, or model-generated rationale.
+ */
+export function parseResearchRetrievalAssessmentV1(
+  value: unknown,
+): ResearchRetrievalAssessmentV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid("Retrieval assessment is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (!hasOnlyKeys(record, [
+    "schema",
+    "action",
+    "reason",
+    "products",
+    "newDetailSourceCount",
+    "duplicateDetailReadCount",
+    "unresolvedCoverageTargetCount",
+    "unresolvedContradictionCount",
+  ]) ||
+      record.schema !== RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1 ||
+      !RETRIEVAL_ACTIONS_V1.includes(record.action as ResearchRetrievalAssessmentActionV1) ||
+      !RETRIEVAL_REASONS_V1.includes(record.reason as ResearchRetrievalAssessmentReasonV1) ||
+      !Array.isArray(record.products) || record.products.length < 1 || record.products.length > 2) {
+    invalid("Retrieval assessment is invalid.");
+  }
+  const seenProducts = new Set<ResearchProduct>();
+  const products = record.products.map((value): ResearchRetrievalProductAssessmentV1 => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      invalid("Retrieval assessment product is invalid.");
+    }
+    const product = value as Record<string, unknown>;
+    if (!hasOnlyKeys(product, [
+      "product",
+      "rankedCandidateCount",
+      "detailReadCount",
+      "uniqueDetailSourceCount",
+      "unreadRankedCandidateCount",
+      "searchAttempted",
+      "searchComplete",
+      "canSearchMore",
+      "canReadMoreDetails",
+    ]) ||
+        (product.product !== "jira" && product.product !== "confluence") ||
+        seenProducts.has(product.product) ||
+        typeof product.searchAttempted !== "boolean" ||
+        typeof product.searchComplete !== "boolean" ||
+        typeof product.canSearchMore !== "boolean" ||
+        typeof product.canReadMoreDetails !== "boolean") {
+      invalid("Retrieval assessment product is invalid.");
+    }
+    seenProducts.add(product.product);
+    const rankedCandidateCount = nonNegative(product.rankedCandidateCount, "Retrieval ranked candidate count");
+    const detailReadCount = nonNegative(product.detailReadCount, "Retrieval detail read count");
+    const uniqueDetailSourceCount = nonNegative(product.uniqueDetailSourceCount, "Retrieval unique detail source count");
+    const unreadRankedCandidateCount = nonNegative(product.unreadRankedCandidateCount, "Retrieval unread ranked candidate count");
+    if ((!product.searchAttempted && product.searchComplete) ||
+        uniqueDetailSourceCount > detailReadCount ||
+        unreadRankedCandidateCount > rankedCandidateCount) {
+      invalid("Retrieval assessment product counters are inconsistent.");
+    }
+    return {
+      product: product.product,
+      rankedCandidateCount,
+      detailReadCount,
+      uniqueDetailSourceCount,
+      unreadRankedCandidateCount,
+      searchAttempted: product.searchAttempted,
+      searchComplete: product.searchComplete,
+      canSearchMore: product.canSearchMore,
+      canReadMoreDetails: product.canReadMoreDetails,
+    };
+  }).sort((left, right) => left.product.localeCompare(right.product));
+  const expectedOrder = record.products.map((product) =>
+    (product as { product: ResearchProduct }).product,
+  ).join(",");
+  if (products.map((product) => product.product).join(",") !== expectedOrder) {
+    invalid("Retrieval assessment products are not canonical.");
+  }
+  const action = record.action as ResearchRetrievalAssessmentActionV1;
+  const reason = record.reason as ResearchRetrievalAssessmentReasonV1;
+  const expectedAction = reason === "unread_ranked_candidates" || reason === "search_not_terminal"
+    ? "continue"
+    : reason === "coverage_gap" || reason === "unresolved_contradiction"
+      ? "replan"
+      : "stop";
+  if (action !== expectedAction) invalid("Retrieval assessment action and reason are inconsistent.");
+  const newDetailSourceCount = nonNegative(record.newDetailSourceCount, "Retrieval new detail source count");
+  const duplicateDetailReadCount = nonNegative(record.duplicateDetailReadCount, "Retrieval duplicate detail read count");
+  const uniqueDetailSourceCount = products.reduce(
+    (total, product) => total + product.uniqueDetailSourceCount,
+    0,
+  );
+  const minimumDuplicateDetailReadCount = products.reduce(
+    (total, product) => total + product.detailReadCount - product.uniqueDetailSourceCount,
+    0,
+  );
+  const totalDetailReadCount = products.reduce(
+    (total, product) => total + product.detailReadCount,
+    0,
+  );
+  if (newDetailSourceCount > uniqueDetailSourceCount ||
+      duplicateDetailReadCount < minimumDuplicateDetailReadCount ||
+      duplicateDetailReadCount > totalDetailReadCount) {
+    invalid("Retrieval assessment aggregate counters are inconsistent.");
+  }
+  return {
+    schema: RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
+    action,
+    reason,
+    products,
+    newDetailSourceCount,
+    duplicateDetailReadCount,
+    unresolvedCoverageTargetCount: nonNegative(
+      record.unresolvedCoverageTargetCount,
+      "Retrieval unresolved coverage target count",
+    ),
+    unresolvedContradictionCount: nonNegative(
+      record.unresolvedContradictionCount,
+      "Retrieval unresolved contradiction count",
+    ),
+  };
 }
 
 /**

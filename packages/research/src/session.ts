@@ -18,6 +18,10 @@ import {
   reduceResearchTaskAttemptV1,
 } from "./task-ledger.js";
 import {
+  parseResearchRetrievalAssessmentV1,
+  type ResearchRetrievalAssessmentV1,
+} from "./retrieval-assessment.js";
+import {
   parseResearchReconciliationDispositionV1,
   type ResearchAcceptedPacketV1,
   type ResearchReconciliationFollowUpProposalV1,
@@ -35,6 +39,8 @@ import {
 export const RESEARCH_SESSION_SCHEMA_V1 = "atlcli.research-session/v1" as const;
 export const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1 =
   "atlcli.research-session-checkpoint/v1" as const;
+export const RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 =
+  "atlcli.research-session-retrieval-assessment/v1" as const;
 
 export type ResearchSessionStatusV1 =
   | "idle"
@@ -114,6 +120,18 @@ export interface ResearchSessionRepairAuthorizationV1 {
   authorizedAt: string;
 }
 
+/**
+ * A durable, body-free record of the host's retrieval decision after a graph
+ * state has settled. It is deliberately insufficient to recreate source
+ * content, search terms, or model reasoning.
+ */
+export interface ResearchSessionRetrievalAssessmentV1 {
+  schema: typeof RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
+  graphRevision: number;
+  assessment: ResearchRetrievalAssessmentV1;
+  recordedAt: string;
+}
+
 export interface ResearchSessionTurnV1 {
   id: string;
   revision: number;
@@ -141,6 +159,8 @@ export interface ResearchSessionTurnV1 {
   acceptedPackets: ResearchAcceptedPacketV1[];
   reconciliationDispositions: ResearchReconciliationDispositionV1[];
   reconciliationCommittedAt?: string;
+  /** Undefined is a pre-assessment legacy turn; new turns always initialize it. */
+  retrievalAssessments?: ResearchSessionRetrievalAssessmentV1[];
   checkpoints: ResearchSessionCheckpointV1[];
   pauseRequestedAt?: string;
   pausedAt?: string;
@@ -229,6 +249,11 @@ export type ResearchSessionUpdateV1 =
         reconciliationTaskId: string;
         followUpId: string;
       };
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      kind: "record_retrieval_assessment";
+      graphRevision: number;
+      assessment: unknown;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "record_checkpoint"; checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision"> })
   | (ResearchSessionFencedUpdateV1 & { kind: "resume" })
@@ -341,6 +366,23 @@ function validateSession(session: ResearchSessionV1): void {
   if (Date.parse(session.lease.expiresAt) <= Date.parse(session.lease.heartbeatAt)) invalid("Research session lease expiry must follow heartbeat.");
   if (session.turns.length > 64 || new Set(session.turns.map((candidate) => candidate.id)).size !== session.turns.length) invalid("Research session turns are invalid.");
   if (session.activeTurnId && !session.turns.some((candidate) => candidate.id === session.activeTurnId)) invalid("Research session active turn is invalid.");
+  for (const candidate of session.turns) {
+    if (candidate.retrievalAssessments === undefined) continue;
+    if (!Array.isArray(candidate.retrievalAssessments) || candidate.retrievalAssessments.length > 64) {
+      invalid("Research session retrieval assessments are invalid.");
+    }
+    const graphRevisions = new Set<number>();
+    for (const assessment of candidate.retrievalAssessments) {
+      if (assessment.schema !== RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 ||
+          !Number.isSafeInteger(assessment.graphRevision) || assessment.graphRevision < 1 ||
+          graphRevisions.has(assessment.graphRevision)) {
+        invalid("Research session retrieval assessment is invalid or duplicated.");
+      }
+      graphRevisions.add(assessment.graphRevision);
+      timestamp(assessment.recordedAt, "Research session retrieval assessment timestamp");
+      parseResearchRetrievalAssessmentV1(assessment.assessment);
+    }
+  }
   if (session.status === "deleted" && session.retention.state !== "deleted") invalid("A deleted research session must have deleted retention.");
 }
 
@@ -396,7 +438,7 @@ export function reduceResearchSessionV1(
       id: update.turnId,
       revision: 1,
       createdAt: update.at,
-      scopeCandidates: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], checkpoints: [],
+      scopeCandidates: [], scopeBindings: [], scopeResolutions: [], scopeExpansionProposals: [], clarifications: [], assumptionDecisions: [], steering: [], tasks: [], acceptedPackets: [], reconciliationDispositions: [], retrievalAssessments: [], checkpoints: [],
     };
     return withNext(session, update, { status: "planning", activeTurnId: update.turnId, turns: [...session.turns, nextTurn] });
   }
@@ -671,6 +713,30 @@ export function reduceResearchSessionV1(
       } : {}),
     };
     return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
+  }
+
+  if (update.kind === "record_retrieval_assessment") {
+    const current = ensureActive(session, ["running"]);
+    const graph = requireGraph(current, update.graphRevision);
+    const retrievalAssessments = current.retrievalAssessments ?? [];
+    if (retrievalAssessments.some((candidate) => candidate.graphRevision === graph.revision) ||
+        current.tasks.some((task) => task.graphRevision === graph.revision &&
+          (task.status === "running" || task.status === "outcome_unknown"))) {
+      invalid("Research retrieval assessment is duplicated or has unresolved work.");
+    }
+    const record: ResearchSessionRetrievalAssessmentV1 = {
+      schema: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
+      graphRevision: graph.revision,
+      assessment: parseResearchRetrievalAssessmentV1(update.assessment),
+      recordedAt: update.at,
+    };
+    return withNext(session, update, {
+      status: "running",
+      turns: replaceTurn(session, {
+        ...current,
+        retrievalAssessments: [...retrievalAssessments, record],
+      }),
+    });
   }
 
   if (update.kind === "record_checkpoint") {
