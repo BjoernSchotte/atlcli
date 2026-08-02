@@ -471,6 +471,47 @@ describe("durable research task dispatch journal", () => {
     expect((await store.events(sessionId)).filter((event) => event.kind === "dispatch_started")).toHaveLength(2);
   });
 
+  test("persists a session-wide provider reservation before the next provider call", async () => {
+    const { store, sessionId, journal } = await initializedJournal();
+    const budgetState = {
+      schema: "atlcli.research-model-budget/v1" as const,
+      limits: {
+        maxModelCalls: 16,
+        maxTotalModelInputTokens: 80_000,
+        maxTotalModelOutputTokens: 64_000,
+        maxModelCostMicros: 2_000_000,
+      },
+      snapshot: {
+        calls: 1,
+        inputTokens: 2_000,
+        outputTokens: 8_000,
+        costMicros: 196_000,
+      },
+    };
+
+    await expect(journal.recordModelBudget(budgetState)).resolves.toEqual(budgetState);
+    expect((await store.read(sessionId))?.modelBudgetState).toEqual(budgetState);
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_model_budget");
+  });
+
+  test("releases an authentication wait without clearing the provider budget", async () => {
+    const { store, sessionId, journal } = await initializedJournal();
+    const budgetState = {
+      schema: "atlcli.research-model-budget/v1" as const,
+      limits: {
+        maxModelCalls: 16,
+        maxTotalModelInputTokens: 80_000,
+        maxTotalModelOutputTokens: 64_000,
+        maxModelCostMicros: 2_000_000,
+      },
+      snapshot: { calls: 1, inputTokens: 2_000, outputTokens: 8_000, costMicros: 196_000 },
+    };
+    await journal.recordModelBudget(budgetState);
+    await expect(journal.waitForAuthentication()).resolves.toMatchObject({ status: "waiting_authentication" });
+    const waiting = await store.read(sessionId);
+    expect(waiting?.modelBudgetState).toEqual(budgetState);
+  });
+
   test("records an unknown provider outcome and then quarantines the active graph node", async () => {
     const { store, sessionId, journal, graph } = await initializedJournal();
     const node = graph.nodes.find((candidate) => candidate.status === "ready")!;

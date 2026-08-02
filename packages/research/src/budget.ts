@@ -33,6 +33,21 @@ export interface ResearchModelBudgetSnapshotV1 {
   costMicros: number;
 }
 
+/**
+ * Body-free model-spend checkpoint. It retains the immutable ceiling chosen
+ * when a durable session first dispatches a provider request, plus the
+ * pessimistic reservation/usage counters needed to continue safely after a
+ * process or service-worker restart.
+ */
+export interface ResearchModelBudgetStateV1 {
+  schema: "atlcli.research-model-budget/v1";
+  limits: Pick<
+    ResearchLimitsV1,
+    "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros"
+  >;
+  snapshot: ResearchModelBudgetSnapshotV1;
+}
+
 interface ResearchModelBudgetReservationV1 {
   id: number;
   inputTokens: number;
@@ -47,9 +62,17 @@ const CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN = 6;
 const CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN = 23;
 
 const RESEARCH_RUN_BUDGET_SCHEMA_V1 = "atlcli.research-run-budget/v1" as const;
+const RESEARCH_MODEL_BUDGET_SCHEMA_V1 = "atlcli.research-model-budget/v1" as const;
 
 function nonNegativeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new ResearchContractError("invalid-request", `${label} is invalid.`);
+  }
+  return value as number;
+}
+
+function positiveInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
     throw new ResearchContractError("invalid-request", `${label} is invalid.`);
   }
   return value as number;
@@ -105,6 +128,45 @@ export function parseResearchRunBudgetStateV1(
     throw new ResearchContractError("invalid-request", "Research run budget state exceeds this run's limits.");
   }
   return structuredClone(parsed);
+}
+
+/** Validate a portable, body-free provider-spend checkpoint. */
+export function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (record.schema !== RESEARCH_MODEL_BUDGET_SCHEMA_V1 ||
+      Object.keys(record).length !== 3 ||
+      !record.limits || typeof record.limits !== "object" || Array.isArray(record.limits) ||
+      !record.snapshot || typeof record.snapshot !== "object" || Array.isArray(record.snapshot)) {
+    throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
+  }
+  const limitsRecord = record.limits as Record<string, unknown>;
+  const snapshotRecord = record.snapshot as Record<string, unknown>;
+  if (Object.keys(limitsRecord).length !== 4 || Object.keys(snapshotRecord).length !== 4) {
+    throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
+  }
+  const limits = {
+    maxModelCalls: positiveInteger(limitsRecord.maxModelCalls, "Research model call limit"),
+    maxTotalModelInputTokens: positiveInteger(limitsRecord.maxTotalModelInputTokens, "Research model input-token limit"),
+    maxTotalModelOutputTokens: positiveInteger(limitsRecord.maxTotalModelOutputTokens, "Research model output-token limit"),
+    maxModelCostMicros: positiveInteger(limitsRecord.maxModelCostMicros, "Research model cost limit"),
+  };
+  const snapshot = {
+    calls: nonNegativeInteger(snapshotRecord.calls, "Research model call count"),
+    inputTokens: nonNegativeInteger(snapshotRecord.inputTokens, "Research model input-token count"),
+    outputTokens: nonNegativeInteger(snapshotRecord.outputTokens, "Research model output-token count"),
+    costMicros: nonNegativeInteger(snapshotRecord.costMicros, "Research model cost count"),
+  };
+  // A provider can report usage above a pessimistic pre-reservation. Retain
+  // that observed overage so a recovered host fails closed on the next call;
+  // rejecting it here would erase the only durable evidence of the spend.
+  return {
+    schema: RESEARCH_MODEL_BUDGET_SCHEMA_V1,
+    limits,
+    snapshot,
+  };
 }
 
 function encodedJsonBytes(value: unknown, label: string): number {
@@ -228,6 +290,50 @@ export class ResearchModelRunBudget {
     };
   }
 
+  exceedsLimits(): boolean {
+    return this.#calls > this.#limits.maxModelCalls ||
+      this.#inputTokens > this.#limits.maxTotalModelInputTokens ||
+      this.#outputTokens > this.#limits.maxTotalModelOutputTokens ||
+      this.#costMicros > this.#limits.maxModelCostMicros;
+  }
+
+  /** Persist the effective ceiling together with all pessimistic consumption. */
+  state(): ResearchModelBudgetStateV1 {
+    return {
+      schema: RESEARCH_MODEL_BUDGET_SCHEMA_V1,
+      limits: {
+        maxModelCalls: this.#limits.maxModelCalls,
+        maxTotalModelInputTokens: this.#limits.maxTotalModelInputTokens,
+        maxTotalModelOutputTokens: this.#limits.maxTotalModelOutputTokens,
+        maxModelCostMicros: this.#limits.maxModelCostMicros,
+      },
+      snapshot: this.snapshot(),
+    };
+  }
+
+  /**
+   * Restore a session checkpoint before any provider work. Outstanding
+   * reservations from a dead worker deliberately remain consumed: a fresh
+   * host has no evidence that the provider did not receive them.
+   */
+  restore(state: ResearchModelBudgetStateV1): void {
+    if (this.#calls !== 0 || this.#inputTokens !== 0 || this.#outputTokens !== 0 ||
+        this.#costMicros !== 0 || this.#reservations.size !== 0) {
+      throw new ResearchContractError("invalid-request", "Research model budget may be restored only before use.");
+    }
+    const parsed = parseResearchModelBudgetStateV1(state);
+    if (parsed.limits.maxModelCalls !== this.#limits.maxModelCalls ||
+        parsed.limits.maxTotalModelInputTokens !== this.#limits.maxTotalModelInputTokens ||
+        parsed.limits.maxTotalModelOutputTokens !== this.#limits.maxTotalModelOutputTokens ||
+        parsed.limits.maxModelCostMicros !== this.#limits.maxModelCostMicros) {
+      throw new ResearchContractError("invalid-request", "Research model budget checkpoint does not match its configured limits.");
+    }
+    this.#calls = parsed.snapshot.calls;
+    this.#inputTokens = parsed.snapshot.inputTokens;
+    this.#outputTokens = parsed.snapshot.outputTokens;
+    this.#costMicros = parsed.snapshot.costMicros;
+  }
+
   reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1 {
     if (!Number.isSafeInteger(maximumOutputTokens) || maximumOutputTokens < 1) {
       throw new ResearchContractError("invalid-request", "Research model output reservation is invalid.");
@@ -271,13 +377,6 @@ export class ResearchModelRunBudget {
     this.#inputTokens += usage.inputTokens - active.inputTokens;
     this.#outputTokens += usage.outputTokens - active.outputTokens;
     this.#costMicros += actualCostMicros - active.costMicros;
-    if (
-      this.#inputTokens > this.#limits.maxTotalModelInputTokens ||
-      this.#outputTokens > this.#limits.maxTotalModelOutputTokens ||
-      this.#costMicros > this.#limits.maxModelCostMicros
-    ) {
-      throw new ResearchContractError("limit-exceeded", "The model run budget was exhausted by the provider response.");
-    }
     return this.snapshot();
   }
 }

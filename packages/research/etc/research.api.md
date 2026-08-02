@@ -653,6 +653,9 @@ export declare function parseResearchGraphProposalV1(value: unknown): ResearchGr
 // export: parseResearchGraphRevisionProposalV1
 export declare function parseResearchGraphRevisionProposalV1(value: unknown): ResearchGraphRevisionProposalV1;
 
+// export: parseResearchModelBudgetStateV1
+export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -2488,11 +2491,21 @@ export interface ResearchModelBudgetSnapshotV1 {
     costMicros: number;
 }
 
+// export: ResearchModelBudgetStateV1
+export interface ResearchModelBudgetStateV1 {
+    schema: "atlcli.research-model-budget/v1";
+    limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
+    snapshot: ResearchModelBudgetSnapshotV1;
+}
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    exceedsLimits(): boolean;
+    state(): ResearchModelBudgetStateV1;
+    restore(state: ResearchModelBudgetStateV1): void;
     reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
@@ -3645,6 +3658,9 @@ export declare class ResearchSessionDispatchJournalV1 {
     #private;
     constructor(options: ResearchSessionDispatchJournalV1Options);
     commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1>;
+    waitForAuthentication(): Promise<ResearchSessionV1>;
+    waitForQuota(): Promise<ResearchSessionV1>;
     applyGraphRevision(input: {
         graph: ResearchGraphV1;
         evidenceIds: string[];
@@ -4199,6 +4215,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "acknowledge_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_model_budget";
+    budgetState: ResearchModelBudgetStateV1;
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "admit_tasks";
     graphRevision: number;
     tasks: ResearchTaskAttemptV1[];
@@ -4292,6 +4311,7 @@ export interface ResearchSessionV1 {
     lease: ResearchSessionLeaseV1;
     retention: ResearchSessionRetentionV1;
     scopeClarification?: ResearchSessionScopeClarificationV1;
+    modelBudgetState?: ResearchModelBudgetStateV1;
     activeTurnId?: string;
     turns: ResearchSessionTurnV1[];
     createdAt: string;
@@ -5445,6 +5465,9 @@ export declare function parseResearchGraphProposalV1(value: unknown): ResearchGr
 // export: parseResearchGraphRevisionProposalV1
 export declare function parseResearchGraphRevisionProposalV1(value: unknown): ResearchGraphRevisionProposalV1;
 
+// export: parseResearchModelBudgetStateV1
+export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -7280,11 +7303,21 @@ export interface ResearchModelBudgetSnapshotV1 {
     costMicros: number;
 }
 
+// export: ResearchModelBudgetStateV1
+export interface ResearchModelBudgetStateV1 {
+    schema: "atlcli.research-model-budget/v1";
+    limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
+    snapshot: ResearchModelBudgetSnapshotV1;
+}
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    exceedsLimits(): boolean;
+    state(): ResearchModelBudgetStateV1;
+    restore(state: ResearchModelBudgetStateV1): void;
     reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
@@ -8437,6 +8470,9 @@ export declare class ResearchSessionDispatchJournalV1 {
     #private;
     constructor(options: ResearchSessionDispatchJournalV1Options);
     commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1>;
+    waitForAuthentication(): Promise<ResearchSessionV1>;
+    waitForQuota(): Promise<ResearchSessionV1>;
     applyGraphRevision(input: {
         graph: ResearchGraphV1;
         evidenceIds: string[];
@@ -8991,6 +9027,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "acknowledge_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_model_budget";
+    budgetState: ResearchModelBudgetStateV1;
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "admit_tasks";
     graphRevision: number;
     tasks: ResearchTaskAttemptV1[];
@@ -9084,6 +9123,7 @@ export interface ResearchSessionV1 {
     lease: ResearchSessionLeaseV1;
     retention: ResearchSessionRetentionV1;
     scopeClarification?: ResearchSessionScopeClarificationV1;
+    modelBudgetState?: ResearchModelBudgetStateV1;
     activeTurnId?: string;
     turns: ResearchSessionTurnV1[];
     createdAt: string;
@@ -10235,6 +10275,9 @@ export declare function parseResearchGraphProposalV1(value: unknown): ResearchGr
 // export: parseResearchGraphRevisionProposalV1
 export declare function parseResearchGraphRevisionProposalV1(value: unknown): ResearchGraphRevisionProposalV1;
 
+// export: parseResearchModelBudgetStateV1
+export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -12070,11 +12113,21 @@ export interface ResearchModelBudgetSnapshotV1 {
     costMicros: number;
 }
 
+// export: ResearchModelBudgetStateV1
+export interface ResearchModelBudgetStateV1 {
+    schema: "atlcli.research-model-budget/v1";
+    limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
+    snapshot: ResearchModelBudgetSnapshotV1;
+}
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    exceedsLimits(): boolean;
+    state(): ResearchModelBudgetStateV1;
+    restore(state: ResearchModelBudgetStateV1): void;
     reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
@@ -13227,6 +13280,9 @@ export declare class ResearchSessionDispatchJournalV1 {
     #private;
     constructor(options: ResearchSessionDispatchJournalV1Options);
     commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1>;
+    waitForAuthentication(): Promise<ResearchSessionV1>;
+    waitForQuota(): Promise<ResearchSessionV1>;
     applyGraphRevision(input: {
         graph: ResearchGraphV1;
         evidenceIds: string[];
@@ -13781,6 +13837,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "acknowledge_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_model_budget";
+    budgetState: ResearchModelBudgetStateV1;
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "admit_tasks";
     graphRevision: number;
     tasks: ResearchTaskAttemptV1[];
@@ -13874,6 +13933,7 @@ export interface ResearchSessionV1 {
     lease: ResearchSessionLeaseV1;
     retention: ResearchSessionRetentionV1;
     scopeClarification?: ResearchSessionScopeClarificationV1;
+    modelBudgetState?: ResearchModelBudgetStateV1;
     activeTurnId?: string;
     turns: ResearchSessionTurnV1[];
     createdAt: string;
@@ -15210,6 +15270,9 @@ export declare function parseResearchGraphProposalV1(value: unknown): ResearchGr
 
 // export: parseResearchGraphRevisionProposalV1
 export declare function parseResearchGraphRevisionProposalV1(value: unknown): ResearchGraphRevisionProposalV1;
+
+// export: parseResearchModelBudgetStateV1
+export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
 
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
@@ -17114,11 +17177,21 @@ export interface ResearchModelBudgetSnapshotV1 {
     costMicros: number;
 }
 
+// export: ResearchModelBudgetStateV1
+export interface ResearchModelBudgetStateV1 {
+    schema: "atlcli.research-model-budget/v1";
+    limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
+    snapshot: ResearchModelBudgetSnapshotV1;
+}
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    exceedsLimits(): boolean;
+    state(): ResearchModelBudgetStateV1;
+    restore(state: ResearchModelBudgetStateV1): void;
     reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
@@ -18318,6 +18391,9 @@ export declare class ResearchSessionDispatchJournalV1 {
     #private;
     constructor(options: ResearchSessionDispatchJournalV1Options);
     commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1>;
+    waitForAuthentication(): Promise<ResearchSessionV1>;
+    waitForQuota(): Promise<ResearchSessionV1>;
     applyGraphRevision(input: {
         graph: ResearchGraphV1;
         evidenceIds: string[];
@@ -18872,6 +18948,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "acknowledge_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_model_budget";
+    budgetState: ResearchModelBudgetStateV1;
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "admit_tasks";
     graphRevision: number;
     tasks: ResearchTaskAttemptV1[];
@@ -18965,6 +19044,7 @@ export interface ResearchSessionV1 {
     lease: ResearchSessionLeaseV1;
     retention: ResearchSessionRetentionV1;
     scopeClarification?: ResearchSessionScopeClarificationV1;
+    modelBudgetState?: ResearchModelBudgetStateV1;
     activeTurnId?: string;
     turns: ResearchSessionTurnV1[];
     createdAt: string;
@@ -20391,6 +20471,9 @@ export declare function parseResearchGraphProposalV1(value: unknown): ResearchGr
 // export: parseResearchGraphRevisionProposalV1
 export declare function parseResearchGraphRevisionProposalV1(value: unknown): ResearchGraphRevisionProposalV1;
 
+// export: parseResearchModelBudgetStateV1
+export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -22294,11 +22377,21 @@ export interface ResearchModelBudgetSnapshotV1 {
     costMicros: number;
 }
 
+// export: ResearchModelBudgetStateV1
+export interface ResearchModelBudgetStateV1 {
+    schema: "atlcli.research-model-budget/v1";
+    limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
+    snapshot: ResearchModelBudgetSnapshotV1;
+}
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    exceedsLimits(): boolean;
+    state(): ResearchModelBudgetStateV1;
+    restore(state: ResearchModelBudgetStateV1): void;
     reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
@@ -23498,6 +23591,9 @@ export declare class ResearchSessionDispatchJournalV1 {
     #private;
     constructor(options: ResearchSessionDispatchJournalV1Options);
     commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1>;
+    waitForAuthentication(): Promise<ResearchSessionV1>;
+    waitForQuota(): Promise<ResearchSessionV1>;
     applyGraphRevision(input: {
         graph: ResearchGraphV1;
         evidenceIds: string[];
@@ -24063,6 +24159,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "acknowledge_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_model_budget";
+    budgetState: ResearchModelBudgetStateV1;
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "admit_tasks";
     graphRevision: number;
     tasks: ResearchTaskAttemptV1[];
@@ -24156,6 +24255,7 @@ export interface ResearchSessionV1 {
     lease: ResearchSessionLeaseV1;
     retention: ResearchSessionRetentionV1;
     scopeClarification?: ResearchSessionScopeClarificationV1;
+    modelBudgetState?: ResearchModelBudgetStateV1;
     activeTurnId?: string;
     turns: ResearchSessionTurnV1[];
     createdAt: string;
@@ -26809,6 +26909,9 @@ export declare function parseResearchGraphProposalV1(value: unknown): ResearchGr
 // export: parseResearchGraphRevisionProposalV1
 export declare function parseResearchGraphRevisionProposalV1(value: unknown): ResearchGraphRevisionProposalV1;
 
+// export: parseResearchModelBudgetStateV1
+export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -28712,11 +28815,21 @@ export interface ResearchModelBudgetSnapshotV1 {
     costMicros: number;
 }
 
+// export: ResearchModelBudgetStateV1
+export interface ResearchModelBudgetStateV1 {
+    schema: "atlcli.research-model-budget/v1";
+    limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
+    snapshot: ResearchModelBudgetSnapshotV1;
+}
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    exceedsLimits(): boolean;
+    state(): ResearchModelBudgetStateV1;
+    restore(state: ResearchModelBudgetStateV1): void;
     reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
@@ -29916,6 +30029,9 @@ export declare class ResearchSessionDispatchJournalV1 {
     #private;
     constructor(options: ResearchSessionDispatchJournalV1Options);
     commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1>;
+    waitForAuthentication(): Promise<ResearchSessionV1>;
+    waitForQuota(): Promise<ResearchSessionV1>;
     applyGraphRevision(input: {
         graph: ResearchGraphV1;
         evidenceIds: string[];
@@ -30481,6 +30597,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "acknowledge_pause";
 }) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_model_budget";
+    budgetState: ResearchModelBudgetStateV1;
+}) | (ResearchSessionFencedUpdateV1 & {
     kind: "admit_tasks";
     graphRevision: number;
     tasks: ResearchTaskAttemptV1[];
@@ -30574,6 +30693,7 @@ export interface ResearchSessionV1 {
     lease: ResearchSessionLeaseV1;
     retention: ResearchSessionRetentionV1;
     scopeClarification?: ResearchSessionScopeClarificationV1;
+    modelBudgetState?: ResearchModelBudgetStateV1;
     activeTurnId?: string;
     turns: ResearchSessionTurnV1[];
     createdAt: string;

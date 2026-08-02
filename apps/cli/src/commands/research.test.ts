@@ -1387,6 +1387,7 @@ describe("research CLI one-shot contract", () => {
     harness.dependencies.resolveProfile = async () => { throw new Error("must not resolve"); };
     await handleResearch([], { help: true }, { json: false }, harness.dependencies);
     expect(harness.stdout.join("")).toContain("atlcli research <question>");
+    expect(harness.stdout.join("")).toContain("including resumes");
   });
 
   test("fails before workspace creation for a missing profile and durably waits for a missing key", async () => {

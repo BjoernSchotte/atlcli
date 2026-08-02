@@ -2357,7 +2357,7 @@ Options:
   --as-of <date/time>    Add a fixed date or timezone-qualified timestamp
   --timezone <name>      Add an explicit timezone to the question
   --max-run-minutes <n>  Complete workflow deadline, 1-10 (default: 10)
-  --max-cost-usd <n>     Conservative Claude provider ceiling for a new run, $0 < n <= $25 (default: $2)
+  --max-cost-usd <n>     Immutable conservative Claude ceiling for a new durable session, including resumes, $0 < n <= $25 (default: $2)
   --effort <mode>         auto|lookup|analysis|deep (default: auto)
   --plan-approval <mode>  automatic; omitted deep plans stop for review
   --scope-expansion <m>   strict|ask|exact-linked (default: ask)

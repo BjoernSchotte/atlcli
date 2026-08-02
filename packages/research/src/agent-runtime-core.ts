@@ -21,7 +21,11 @@ import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
 } from "./broker.js";
-import { ResearchModelRunBudget, type ResearchRunBudget } from "./budget.js";
+import {
+  ResearchModelRunBudget,
+  type ResearchModelBudgetStateV1,
+  type ResearchRunBudget,
+} from "./budget.js";
 import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import {
   createResearchScopeDiscoveryV1,
@@ -2110,26 +2114,50 @@ function createResearchModelBudgetMiddleware(
   options: {
     name: string;
     maxOutputTokens: number;
-    onSnapshot: (snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>) => void;
+    onSnapshot: (
+      snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>,
+      state: ResearchModelBudgetStateV1,
+    ) => Promise<void>;
   },
 ): AgentMiddleware {
   return createMiddleware({
     name: options.name,
     wrapModelCall: async (request, handler) => {
       const reservation = budget.reserve(request, options.maxOutputTokens);
-      options.onSnapshot(budget.snapshot());
+      await options.onSnapshot(budget.snapshot(), budget.state());
+      let settled = false;
       try {
         const response = await handler(request);
-        options.onSnapshot(budget.settle(reservation, response));
+        const snapshot = budget.settle(reservation, response);
+        await options.onSnapshot(snapshot, budget.state());
+        settled = true;
+        if (budget.exceedsLimits()) {
+          throw new ResearchContractError(
+            "limit-exceeded",
+            "The model session budget was exhausted by the provider response.",
+          );
+        }
         return response;
       } catch (error) {
         // Retain an unsuccessful reservation: the provider may have received
         // the request, and a subsequent retry must not create unbounded cost.
-        options.onSnapshot(budget.snapshot());
+        if (!settled) await options.onSnapshot(budget.snapshot(), budget.state());
         throw error;
       }
     },
   });
+}
+
+function providerHttpStatus(error: unknown): number | undefined {
+  if (error && typeof error === "object") {
+    const status = (error as { status?: unknown }).status;
+    if (typeof status === "number" && Number.isSafeInteger(status) && status >= 400 && status <= 599) {
+      return status;
+    }
+  }
+  const message = error instanceof Error ? error.message : "";
+  const match = /\b(401|403|429)\b/.exec(message);
+  return match ? Number(match[1]) : undefined;
 }
 
 function collectUsage(messages: unknown): ResearchRunUsageV1 | undefined {
@@ -2503,9 +2531,12 @@ async function runResearchAgentWithBindings(
         coverageTargets: input.brief.coverageTargets,
       })
     : undefined;
+  const durableSessionState = input.durableSession
+    ? await input.durableSession.store.read(input.durableSession.sessionId)
+    : undefined;
   const durableTurn = input.durableSession
     ? await (async () => {
-        const session = await input.durableSession!.store.read(input.durableSession!.sessionId);
+        const session = durableSessionState;
         const turn = session?.activeTurnId === input.durableSession!.turnId
           ? session.turns.find((candidate) => candidate.id === input.durableSession!.turnId)
           : undefined;
@@ -2615,19 +2646,30 @@ async function runResearchAgentWithBindings(
   const modelsByRole = input.model
     ? undefined
     : createAnthropicSubagentModels(input.apiKey ?? "");
-  const modelRunBudget = input.model ? undefined : new ResearchModelRunBudget(input.request.limits);
-  const emitModelBudget = (snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>): void => {
+  const modelBudgetLimits = durableSessionState?.modelBudgetState?.limits ?? input.request.limits;
+  const modelRunBudget = input.model ? undefined : new ResearchModelRunBudget({
+    ...input.request.limits,
+    ...modelBudgetLimits,
+  });
+  if (modelRunBudget && durableSessionState?.modelBudgetState) {
+    modelRunBudget.restore(durableSessionState.modelBudgetState);
+  }
+  const emitModelBudget = async (
+    snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>,
+    state: ResearchModelBudgetStateV1,
+  ): Promise<void> => {
+    await durableDispatchJournal?.recordModelBudget(state);
     emitEvent({
       kind: "budget",
       metric: "tokens",
       consumed: snapshot.inputTokens + snapshot.outputTokens,
-      maximum: input.request.limits.maxTotalModelInputTokens + input.request.limits.maxTotalModelOutputTokens,
+      maximum: modelBudgetLimits.maxTotalModelInputTokens + modelBudgetLimits.maxTotalModelOutputTokens,
     });
     emitEvent({
       kind: "budget",
       metric: "cost_micros",
       consumed: snapshot.costMicros,
-      maximum: input.request.limits.maxModelCostMicros,
+      maximum: modelBudgetLimits.maxModelCostMicros,
     });
   };
   const supervisorModelBudgetMiddleware = modelRunBudget
@@ -4088,6 +4130,21 @@ async function runResearchAgentWithBindings(
       throw new ResearchContractError(
         "invalid-report",
         "A required research task did not return an accepted structured result.",
+      );
+    }
+    const providerStatus = providerHttpStatus(error);
+    if (providerStatus === 401 || providerStatus === 403) {
+      await durableDispatchJournal?.waitForAuthentication();
+      throw new ResearchContractError(
+        "invalid-key",
+        "The Anthropic provider rejected the configured key. Update it, then resume the retained research session.",
+      );
+    }
+    if (providerStatus === 429) {
+      await durableDispatchJournal?.waitForQuota();
+      throw new ResearchContractError(
+        "rate-limited",
+        "The Anthropic provider rate-limited this run. Resume the retained research session after the provider retry window.",
       );
     }
     if (broker.signal.aborted) {

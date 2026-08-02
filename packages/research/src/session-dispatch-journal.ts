@@ -26,7 +26,7 @@ import type {
   ResearchTaskAttemptV1,
   ResearchTaskUsageV1,
 } from "./workflow-contracts.js";
-import type { ResearchRunBudgetStateV1 } from "./budget.js";
+import type { ResearchModelBudgetStateV1, ResearchRunBudgetStateV1 } from "./budget.js";
 
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-request", message);
@@ -139,6 +139,38 @@ export class ResearchSessionDispatchJournalV1 {
       return this.#commit(session, { kind: "commit_graph_selection", proposal }, (next) =>
         activeTurn(next, this.#turnId).graph!,
       );
+    });
+  }
+
+  /**
+   * Persist the conservative provider-spend counters before dispatch and
+   * again after a response settles. The journal serializes sibling subagents,
+   * so their reservations cannot race the session's optimistic-concurrency
+   * fence.
+   */
+  recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "record_model_budget", budgetState }, (next) => {
+        if (!next.modelBudgetState) invalid("Research durable dispatch did not retain its model budget.");
+        return next.modelBudgetState;
+      });
+    });
+  }
+
+  /** Release a retryable provider-authentication wait without discarding the budget reservation. */
+  waitForAuthentication(): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "wait_authentication" }, (next) => next);
+    });
+  }
+
+  /** Release a retryable provider-quota wait without discarding the budget reservation. */
+  waitForQuota(): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "wait_quota" }, (next) => next);
     });
   }
 

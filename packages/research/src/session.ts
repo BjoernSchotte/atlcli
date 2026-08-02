@@ -63,7 +63,9 @@ import {
   type ResearchTaskUsageV1,
 } from "./workflow-contracts.js";
 import {
+  parseResearchModelBudgetStateV1,
   parseResearchRunBudgetStateV1,
+  type ResearchModelBudgetStateV1,
   type ResearchRunBudgetStateV1,
 } from "./budget.js";
 
@@ -378,6 +380,12 @@ export interface ResearchSessionV1 {
   retention: ResearchSessionRetentionV1;
   /** Present only for a durable natural-language scope preflight. */
   scopeClarification?: ResearchSessionScopeClarificationV1;
+  /**
+   * Session-wide, body-free provider-spend checkpoint. It is written before
+   * every provider request, so a resumed CLI or MV3 worker cannot reset its
+   * cost/token ceiling by starting another process.
+   */
+  modelBudgetState?: ResearchModelBudgetStateV1;
   activeTurnId?: string;
   turns: ResearchSessionTurnV1[];
   createdAt: string;
@@ -542,6 +550,10 @@ export type ResearchSessionUpdateV1 =
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "request_pause" })
   | (ResearchSessionFencedUpdateV1 & { kind: "acknowledge_pause" })
+  | (ResearchSessionFencedUpdateV1 & {
+      kind: "record_model_budget";
+      budgetState: ResearchModelBudgetStateV1;
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "admit_tasks"; graphRevision: number; tasks: ResearchTaskAttemptV1[] })
   | (ResearchSessionFencedUpdateV1 & { kind: "dispatch_started"; taskId: string; graphRevision: number; providerRequestId?: string })
   | (ResearchSessionFencedUpdateV1 & { kind: "outcome_unknown"; taskId: string; graphRevision: number })
@@ -836,6 +848,7 @@ function validateSession(session: ResearchSessionV1): void {
   } else if (session.status === "waiting_scope_clarification") {
     invalid("A scope-clarification wait requires its durable input.");
   }
+  if (session.modelBudgetState !== undefined) parseResearchModelBudgetStateV1(session.modelBudgetState);
   for (const candidate of session.turns) {
     if (candidate.budgetState !== undefined) parseResearchRunBudgetStateV1(candidate.budgetState);
     if (candidate.approvedGraphCatalog !== undefined) {
@@ -2280,6 +2293,23 @@ export function reduceResearchSessionV1(
     if (checkpoint.graphRevision !== undefined && checkpoint.graphRevision !== current.graph?.revision) invalid("Research checkpoint graph revision is stale.");
     const record: ResearchSessionCheckpointV1 = { schema: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1, ...clone(checkpoint), sessionRevision: session.revision + 1 };
     return withNext(session, update, { status: session.status, turns: replaceTurn(session, { ...current, checkpoints: [...current.checkpoints, record] }) });
+  }
+
+  if (update.kind === "record_model_budget") {
+    // A pause request may arrive while a provider call is in flight. Its
+    // settled usage must be durably accounted before the worker reaches the
+    // PTC checkpoint that acknowledges the pause.
+    ensureActive(session, ["running", "pause_requested"]);
+    const nextBudgetState = parseResearchModelBudgetStateV1(update.budgetState);
+    const currentBudgetState = session.modelBudgetState;
+    if (currentBudgetState &&
+        (currentBudgetState.limits.maxModelCalls !== nextBudgetState.limits.maxModelCalls ||
+          currentBudgetState.limits.maxTotalModelInputTokens !== nextBudgetState.limits.maxTotalModelInputTokens ||
+          currentBudgetState.limits.maxTotalModelOutputTokens !== nextBudgetState.limits.maxTotalModelOutputTokens ||
+          currentBudgetState.limits.maxModelCostMicros !== nextBudgetState.limits.maxModelCostMicros)) {
+      invalid("Research session model budget limits are immutable.");
+    }
+    return withNext(session, update, { status: session.status, modelBudgetState: nextBudgetState });
   }
 
   if (update.kind === "wait_authentication" || update.kind === "wait_quota") {

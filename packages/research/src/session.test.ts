@@ -200,6 +200,47 @@ function settledPausedSteeringCheckpoint(): {
 }
 
 describe("durable host-neutral research session reducer", () => {
+  test("keeps the first durable model ceiling immutable across later provider checkpoints", () => {
+    let current = readyToRun();
+    const budgetState = {
+      schema: "atlcli.research-model-budget/v1" as const,
+      limits: {
+        maxModelCalls: 16,
+        maxTotalModelInputTokens: 80_000,
+        maxTotalModelOutputTokens: 64_000,
+        maxModelCostMicros: 2_000_000,
+      },
+      snapshot: { calls: 1, inputTokens: 2_000, outputTokens: 8_000, costMicros: 196_000 },
+    };
+    current = update(current, { kind: "record_model_budget", budgetState }, "2026-08-01T09:00:03.500Z");
+    expect(current.modelBudgetState).toEqual(budgetState);
+
+    expect(() => update(current, {
+      kind: "record_model_budget",
+      budgetState: {
+        ...budgetState,
+        limits: { ...budgetState.limits, maxModelCostMicros: 3_000_000 },
+      },
+    }, "2026-08-01T09:00:03.600Z")).toThrow("model budget limits are immutable");
+  });
+
+  test("accounts an in-flight provider response after a pause request", () => {
+    let current = readyToRun();
+    current = update(current, { kind: "request_pause" }, "2026-08-01T09:00:03.500Z");
+    const budgetState = {
+      schema: "atlcli.research-model-budget/v1" as const,
+      limits: {
+        maxModelCalls: 16,
+        maxTotalModelInputTokens: 80_000,
+        maxTotalModelOutputTokens: 64_000,
+        maxModelCostMicros: 2_000_000,
+      },
+      snapshot: { calls: 1, inputTokens: 2_000, outputTokens: 8_000, costMicros: 196_000 },
+    };
+    current = update(current, { kind: "record_model_budget", budgetState }, "2026-08-01T09:00:03.600Z");
+    expect(current).toMatchObject({ status: "pause_requested", modelBudgetState: budgetState });
+  });
+
   test("persists a revision-fenced accepted turn and plan before any dispatch", () => {
     const running = readyToRun();
     const turn = running.turns[0]!;

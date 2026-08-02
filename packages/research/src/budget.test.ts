@@ -3,6 +3,7 @@ import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 import {
   ResearchModelRunBudget,
   ResearchRunBudget,
+  parseResearchModelBudgetStateV1,
   parseResearchRunBudgetStateV1,
 } from "./budget.js";
 
@@ -55,6 +56,28 @@ describe("durable research budget state", () => {
 });
 
 describe("model run budget", () => {
+  test("keeps enough default token headroom for the final structured turn while the $2 ceiling stays binding", () => {
+    expect(DEFAULT_RESEARCH_LIMITS_V1).toMatchObject({
+      maxTotalModelInputTokens: 160_000,
+      maxModelCostMicros: 2_000_000,
+    });
+
+    const budget = new ResearchModelRunBudget(DEFAULT_RESEARCH_LIMITS_V1);
+    const first = budget.reserve({ messages: [{ content: "Earlier bounded workflow context.".repeat(7_000) }] }, 8_000);
+    budget.settle(first, {
+      response_metadata: { usage: { input_tokens: 50_000, output_tokens: 19_000 } },
+    });
+
+    // A final response-format invocation can carry a large compacted
+    // transcript. It is admitted here because its conservative dollar
+    // reservation remains below $2; the monetary ceiling remains the
+    // authoritative limiter, not an arbitrary lower input-token total.
+    expect(() => budget.reserve({
+      messages: [{ content: "Final structured response context.".repeat(9_000) }],
+      responseFormat: { type: "json_schema" },
+    }, 8_000)).not.toThrow();
+  });
+
   test("reserves a conservative provider ceiling before concurrent model work starts", () => {
     const budget = new ResearchModelRunBudget({
       ...DEFAULT_RESEARCH_LIMITS_V1,
@@ -82,11 +105,53 @@ describe("model run budget", () => {
       maxModelCalls: 2,
       maxTotalModelInputTokens: 5_000,
       maxTotalModelOutputTokens: 1_000,
-      maxModelCostMicros: 100_000,
+      maxModelCostMicros: 40_000,
     });
     budget.reserve({ messages: [{ content: "First attempt." }] }, 1_000);
     expect(() => budget.reserve({ messages: [{ content: "Retry." }] }, 1))
       .toThrow("model run budget was exhausted before another provider call");
+  });
+
+  test("restores a persisted provider reservation without resetting its session ceiling", () => {
+    const limits = {
+      ...DEFAULT_RESEARCH_LIMITS_V1,
+      maxModelCalls: 2,
+      maxTotalModelInputTokens: 20_000,
+      maxTotalModelOutputTokens: 2_000,
+      maxModelCostMicros: 40_000,
+    };
+    const original = new ResearchModelRunBudget(limits);
+    original.reserve({ messages: [{ content: "A provider request may have reached the service." }] }, 1_000);
+    const state = original.state();
+    expect(parseResearchModelBudgetStateV1(state)).toEqual(state);
+
+    const resumed = new ResearchModelRunBudget(limits);
+    resumed.restore(state);
+    expect(resumed.snapshot()).toEqual(original.snapshot());
+    expect(() => resumed.reserve({ messages: [{ content: "A second call." }] }, 1_000))
+      .toThrow("model run budget was exhausted before another provider call");
+  });
+
+  test("retains an observed provider overage so a recovered session stays fail-closed", () => {
+    const limits = {
+      ...DEFAULT_RESEARCH_LIMITS_V1,
+      maxModelCalls: 2,
+      maxTotalModelInputTokens: 5_000,
+      maxTotalModelOutputTokens: 500,
+      maxModelCostMicros: 100_000,
+    };
+    const original = new ResearchModelRunBudget(limits);
+    const reservation = original.reserve({ messages: [{ content: "Bounded request." }] }, 500);
+    original.settle(reservation, {
+      response_metadata: { usage: { input_tokens: 500, output_tokens: 750 } },
+    });
+    expect(original.exceedsLimits()).toBe(true);
+    const state = parseResearchModelBudgetStateV1(original.state());
+    expect(state.snapshot.outputTokens).toBe(750);
+
+    const resumed = new ResearchModelRunBudget(limits);
+    resumed.restore(state);
+    expect(() => resumed.reserve({ messages: [] }, 1)).toThrow("model run budget was exhausted before another provider call");
   });
 
   test("estimates provider payloads without counting non-serialized schema internals", () => {
