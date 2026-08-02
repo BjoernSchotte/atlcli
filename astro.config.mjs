@@ -64,6 +64,7 @@ export default defineConfig({
             { label: 'Experience Adapter Authoring', link: '/publishing/adapter-authoring/' },
             { label: 'Search and Indexing', link: '/publishing/search/' },
             { label: 'Renderers and Charts', link: '/publishing/renderers/' },
+            { label: 'Confluence Charts', link: '/publishing/charts/' },
             { label: 'Security and Privacy', link: '/publishing/security/' },
             { label: 'Operations and Rollback', link: '/publishing/operations/' },
             { label: 'Troubleshooting', link: '/publishing/troubleshooting/' },

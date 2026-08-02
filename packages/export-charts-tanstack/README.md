@@ -9,6 +9,11 @@ Astro, DOCX, and PDF.
 - `createTanStackChartSceneV1` compiles the definition at explicit dimensions.
 - `renderTanStackChartSvgV1` returns deterministic, DOM-free accessible SVG.
 
+The adapter covers `pie`, `bar`, `line`, `area`, `xyArea`, `xyBar`, `xyLine`,
+`xyStep`, `xyStepArea`, `scatter`, `timeSeries`, and `gantt`. TanStack Charts is
+pinned to `0.3.1`; its pre-alpha API never leaks through the renderer-neutral
+`ChartModelV1` contract.
+
 Provider HTML, callbacks, URLs, and executable configuration never cross this
 package boundary. Document targets retain their semantic data tables; DOCX may
 derive a PNG compatibility rendition from the returned SVG.

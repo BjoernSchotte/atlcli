@@ -72,6 +72,13 @@ the exact output set, byte digests, links, anchors, assets, Pagefind/SEO files,
 CSP, analytics declaration, and edit-link origin. A successful build is a
 candidate; this package never reports remote deployment.
 
+The CLI exposes the selected content-addressed bundle and private inventory to
+that build as `ATLCLI_PUBLICATION_BUNDLE_PATH` and
+`ATLCLI_PUBLICATION_INVENTORY_PATH`. A project-owned `astro.config.mjs` should
+pass those exact values to `atlcliPublishingIntegration()` and fail closed when
+they are absent. They are local non-secret paths; the bounded build environment
+does not include Atlassian credentials.
+
 See the [web publishing guide](/publishing/) and the
 [ExportBlock Astro reference](/reference/export-blocks-astro/) for the public
 configuration and component contract.

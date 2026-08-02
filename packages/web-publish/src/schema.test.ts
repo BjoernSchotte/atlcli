@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import {
   PUBLICATION_BUNDLE_SCHEMA_V1,
   PUBLICATION_EXPERIENCE_SCHEMA_V1,
@@ -129,6 +131,16 @@ const project = {
   },
   retention: { bundles: 3, builds: 3, graceSeconds: 86_400 },
 } as const satisfies PublicationProjectV1;
+
+test("the downloadable Starlight project example stays schema-valid and private by default", async () => {
+  const path = resolve(import.meta.dir, "../../../public/examples/publish-starlight.json");
+  const documented = parsePublicationProjectV1(JSON.parse(await readFile(path, "utf8")));
+  expect(documented.visibility).toBe("internal");
+  expect(documented.completeness).toBe("strict");
+  expect(documented.analytics).toEqual({ provider: "none" });
+  expect(documented.editLink).toEqual({ provider: "none" });
+  expect(documented.renderers.allowedRendererIds).toContain("atlcli.chart");
+});
 
 const sourceSnapshot = {
   sourceDigest: "source-sha256",

@@ -110,4 +110,5 @@ Confluence access into this render kit.
 - [Publish with Astro](/publishing/)
 - [Experience adapter authoring](/publishing/adapter-authoring/)
 - [Renderers and charts](/publishing/renderers/)
+- [Confluence chart support](/publishing/charts/)
 - [Package consumption](/reference/package-consumption/)

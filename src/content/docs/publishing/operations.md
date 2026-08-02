@@ -3,8 +3,6 @@ title: "Web publishing operations"
 description: "Refresh, build, verify, retain, and roll back static publications"
 ---
 
-# Web publishing operations
-
 The local workspace is the operational source of truth for a publication. A
 successful build is a candidate; only verification establishes a publishable
 artifact, and no command claims remote deployment.
@@ -30,6 +28,11 @@ Astro output and its private inventory are staged under sibling paths. Build or
 verification failure restores the previous output byte-for-byte. Verification
 checks the manifest, output ownership, file hashes, links, anchors, assets,
 Pagefind, SEO, CSP, analytics, edit-link origins, and private URL markers.
+
+The build child receives only the active `ATLCLI_PUBLICATION_BUNDLE_PATH` and
+private `ATLCLI_PUBLICATION_INVENTORY_PATH` handoff plus a small safe process
+environment. The project-owned Astro config must consume those paths; no
+Atlassian credential crosses into the build.
 
 ## Rollback
 

@@ -128,6 +128,11 @@ PDF and Word files:
 - **Mermaid as a real diagram** — flowcharts, state, sequence, class, ER, and
   XY charts render as vector SVG. DOCX also embeds a high-resolution PNG
   fallback for older Word and LibreOffice versions.
+- **Confluence charts from their real data** — Pie, Bar, Line, Area, XY,
+  Scatter, Time Series, and Gantt Chart macros normalize from Cloud ADF or Data
+  Center Storage into one validated model. Astro, DOCX, and PDF share the same
+  TanStack vector geometry and retain the exact-value table; the proven Bar and
+  XY Bar Astro profiles add optional keyboard-accessible interaction.
 - **Draw.io and Gliffy support** — `drawio`, `inc-drawio`, `drawio-sketch`, and
   `gliffy` macros resolve their Confluence preview assets into the exported
   document.

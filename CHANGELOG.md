@@ -20,6 +20,15 @@ All notable changes to atlcli will be documented in this file.
 
 ### Features
 
+- **publish:** Add the `wiki publish plan|refresh|build|verify|run|status|prune`
+  lifecycle for immutable Confluence page, tree, and space bundles; verified
+  Astro 7.1/Starlight output; local Pagefind search; navigation, SEO, i18n/RTL,
+  privacy-safe analytics, and optional provider-validated edit links.
+- **charts:** Normalize all twelve Confluence Chart macro shapes from Cloud ADF
+  and Data Center Storage into a source-neutral model. Astro, DOCX, and PDF use
+  one pinned TanStack scene/SVG adapter, retain exact-value tables, and add
+  bounded keyboard-accessible Bar/XY Bar islands without making JavaScript a
+  content dependency.
 - **export:** Run DOCX and PDF through one durable, bounded job queue in the CLI
   and Chrome extension. Exports are recorded before the first source read,
   survive panel, service-worker, offscreen-document, and full browser restarts,
@@ -43,6 +52,10 @@ All notable changes to atlcli will be documented in this file.
 
 ### Documentation
 
+- Add the complete Web Publishing operator journey, schema-tested project
+  example, CLI/configuration reference, Starlight/adapter guide, chart
+  cross-output matrix, search, security/privacy, operations/rollback, and
+  troubleshooting documentation.
 - Document export-job lifecycle, monitoring, recovery, retention, storage
   limits, privacy boundaries, and browser/CLI operational procedures.
 

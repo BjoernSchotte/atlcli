@@ -3,8 +3,6 @@ title: "Publish Confluence as a static Astro site"
 description: "Build a verified, searchable Astro or Starlight site from Confluence page trees"
 ---
 
-# Publish Confluence as a static Astro site
-
 Web publishing creates a versioned build package from Confluence, renders its
 normalized `ExportBlock[]` documents through an Astro experience, and stops at
 a locally verified static output. Deployment is deliberately a separate
@@ -17,6 +15,7 @@ operator or hosting concern.
 - [Quick start](#quick-start)
 - [The four-stage lifecycle](#the-four-stage-lifecycle)
 - [Choose an experience](#choose-an-experience)
+- [Chart rendering](#chart-rendering)
 - [Examples](#examples)
 - [Boundaries](#boundaries)
 - [Troubleshooting](#troubleshooting)
@@ -102,6 +101,19 @@ client, ADF parser, router, search service, or deployment dependency.
 
 See [adapter authoring](./adapter-authoring.md) before adding another experience.
 
+## Chart rendering
+
+Confluence Chart macros are normalized into a source-neutral chart block and
+rendered through one shared TanStack scene/SVG adapter. Astro, DOCX, and PDF
+therefore use the same geometry rather than maintaining three chart engines.
+All twelve supported shapes have static SVG and exact-value table output; the
+proven Bar and XY Bar profiles can additionally hydrate an interactive Astro
+island without making JavaScript necessary for content or accessibility.
+
+See [Confluence charts across Astro, DOCX, and PDF](./charts.md) for the shape
+matrix, configuration, diagnostics, accessibility contract, and current island
+boundary.
+
 ## Examples
 
 ### Publish a page tree internally
@@ -163,6 +175,7 @@ No Confluence request is needed for this build/verify pair.
 - [Experience adapter authoring](./adapter-authoring.md)
 - [Search and indexing](./search.md)
 - [Renderers and charts](./renderers.md)
+- [Confluence charts across Astro, DOCX, and PDF](./charts.md)
 - [Security and privacy](./security.md)
 - [Operations, refresh, and rollback](./operations.md)
 - [Troubleshooting](./troubleshooting.md)

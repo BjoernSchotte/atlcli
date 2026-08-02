@@ -3,8 +3,6 @@ title: "Web publishing security and privacy"
 description: "Security boundaries for source data, assets, URLs, analytics, and static output"
 ---
 
-# Web publishing security and privacy
-
 Static publishing is a trust boundary. The acquisition side handles Atlassian
 authentication; the public output must not inherit credentials, private source
 URLs, raw HTML, or runtime access to Confluence.

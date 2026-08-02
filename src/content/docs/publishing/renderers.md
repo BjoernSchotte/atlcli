@@ -3,8 +3,6 @@ title: "Renderers, macros, and charts"
 description: "Understand ExportBlock rendering, macro fallbacks, and TanStack Charts"
 ---
 
-# Renderers, macros, and charts
-
 The renderer pipeline is intentionally layered:
 
 ```text
@@ -33,10 +31,12 @@ Chart macros now have a real source-neutral `ExportBlock` representation. The
 Cloud ADF and Data Center Storage decoders normalize the supported Chart macro
 data into the validated `atlcli.chart/1` model, preserving source order and
 diagnostics. Astro renders static semantic output for all twelve documented
-shape kinds, while DOCX/PDF use deterministic tabular projections. Attachment
-bytes still come through the normal asset pipeline; an unavailable attachment
-does not make an Astro component fetch Confluence at runtime. Mermaid remains a
-separate renderer capability and should not be inferred from chart support.
+shape kinds. DOCX embeds the shared SVG with a PNG compatibility fallback; PDF
+embeds the same vector SVG. Both document formats retain the exact-value table
+below the visual. Attachment bytes still come through the normal asset
+pipeline; an unavailable generated-chart attachment does not make an Astro
+component fetch Confluence at runtime. Mermaid remains a separate renderer
+capability and should not be inferred from Chart macro support.
 
 ## Block overrides
 
@@ -58,12 +58,16 @@ the semantic `data-atlcli-*` hooks and safe fallback behavior.
 `ChartBlock.astro` emits an accessible SVG/table fallback for every normalized
 chart kind. JavaScript failure or disablement leaves the static chart usable.
 The optional `@tanstack/charts` `0.3.1` island remains a bounded enhancement
-behind an explicit capability registry; unsupported shapes and data sizes use
-the static representation.
+behind an explicit capability registry; shapes outside the Bar/XY Bar island
+profile and data beyond island budgets use the complete static representation.
+
+The complete shape/output matrix, project limits, strict diagnostic policy,
+and troubleshooting steps are in the dedicated [chart guide](./charts.md).
 
 ## Related topics
 
 - [Experience adapter authoring](./adapter-authoring.md)
+- [Confluence charts across Astro, DOCX, and PDF](./charts.md)
 - [Security and privacy](./security.md)
 - [Confluence macro compatibility](/confluence/macro-compatibility/)
 - [ExportBlock Astro package reference](/reference/export-blocks-astro/)

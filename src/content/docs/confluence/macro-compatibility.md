@@ -86,7 +86,14 @@ and never make a network call.
 | `anchor` | Link target | Bookmark |
 | `multiexcerpt`, `multiexcerpt-macro` | Body rendered in place | Body rendered in place |
 | `toc` | Computed outline | Word `TOC` field |
+| `chart` | Shared TanStack vector SVG plus exact-value table | Shared TanStack SVG with PNG compatibility fallback plus exact-value table |
 | ```` ```mermaid ```` fences | Vector SVG; unsupported types degrade to source | Vector SVG with a PNG fallback; unsupported types degrade to source |
+
+The Confluence `chart` macro supports Pie, Bar, Line, Area, XY Area, XY Bar,
+XY Line, XY Step, XY Step Area, Scatter, Time Series, and Gantt from Cloud ADF
+or Data Center Storage. The table inside the macro is authoritative; a generated
+image attachment is only a cache hint. See the [cross-output chart guide](/publishing/charts/)
+for parameters, strict diagnostics, limits, and the Astro interaction profile.
 
 Mermaid support covers **flowchart, state, sequence, class, ER and XY chart**.
 Any other type, and any diagram that fails to render, becomes a readable source

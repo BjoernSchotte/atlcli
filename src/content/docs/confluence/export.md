@@ -16,6 +16,7 @@ the built-in PDF design.
 - [CLI: DOCX quick start](#quick-start)
 - [CLI: PDF export](#cli-pdf-export) and [document settings](#document-settings-are-not-cli-flags-yet)
 - [Syntax-highlighting themes](#syntax-highlighting-themes)
+- [Confluence Chart macros](#confluence-chart-macros) and [Mermaid diagrams](#mermaid-diagrams)
 - [ADF source selection and rollback](#adf-source-selection-and-rollback)
 - [Rendering runtime](#rendering-runtime) and [migrating from the Python exporter](#migrating-from-the-python-exporter)
 - [Export activity and recovery](#export-activity-and-recovery)
@@ -539,6 +540,25 @@ to source code blocks and the report says so in a note.
 
 Diagram theming follows the export's brand colors when configured; the default is a neutral
 light theme matching the code-block styling. Theme colors should be hex values (`#RRGGBB`).
+
+### Confluence Chart macros
+
+The native Confluence Chart macro is distinct from a Mermaid diagram. atlcli
+reads the macro's authored table and parameters into one source-neutral chart
+model, then uses the same deterministic TanStack scene for DOCX, PDF, and Astro
+publishing.
+
+All twelve normalized shapes are supported: **Pie, Bar, Line, Area, XY Area,
+XY Bar, XY Line, XY Step, XY Step Area, Scatter, Time Series, and Gantt**. DOCX
+embeds vector SVG with a high-resolution PNG compatibility fallback; PDF embeds
+the SVG as vector content. Both retain an exact-value table below the visual so
+the data remains accessible and copyable.
+
+Malformed data, locale/date parsing, skipped rows, unsupported kinds, and
+approximated options are recorded as chart diagnostics. The optional generated
+chart attachment is not the source of truth and a missing attachment does not
+erase valid table data. See [Confluence charts across Astro, DOCX, and PDF](/publishing/charts/)
+for the complete shape matrix, options, limits, and troubleshooting.
 
 ## Tree and space export
 
