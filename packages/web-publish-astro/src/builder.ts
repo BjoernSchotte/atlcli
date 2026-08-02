@@ -27,6 +27,8 @@ export interface AstroStaticPublicationBuilderOptionsV1 {
   signal?: AbortSignal;
   /** Negotiated trusted experience recorded in the final publication manifest. */
   experience: { id: string; version: string; digest: string };
+  /** Explicit non-secret values exposed only to the project-owned build. */
+  environment?: Readonly<Record<string, string>>;
 }
 
 function assertNonEmpty(value: string, name: string): void {
@@ -126,6 +128,7 @@ export function createAstroStaticPublicationBuilderV1(
         await runAstroBuildCommandV1({
           projectDirectory: request.project.builder.projectDir,
           command: request.project.builder.buildCommand,
+          environment: options.environment,
           signal: options.signal,
         });
         const inventory = await readFreshInventory(inventoryPath);

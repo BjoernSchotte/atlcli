@@ -104,6 +104,20 @@ function workspaceFor(project: PublicationProjectV1, flags: Flags): string {
   return resolve(nonEmptyFlag(flags, "workspace") ?? join(".atlcli", "publish", project.publicationKey));
 }
 
+/** The project-owned Astro build receives paths, never source credentials. */
+export function publicationBuildEnvironmentV1(
+  bundlePath: string,
+  inventoryPath: string,
+): Readonly<Record<string, string>> {
+  if (bundlePath.length === 0 || inventoryPath.length === 0) {
+    throw new TypeError("publication build handoff paths must be non-empty");
+  }
+  return Object.freeze({
+    ATLCLI_PUBLICATION_BUNDLE_PATH: resolve(bundlePath),
+    ATLCLI_PUBLICATION_INVENTORY_PATH: resolve(inventoryPath),
+  });
+}
+
 function requireExplicitPublicationChoices(project: PublicationProjectV1, flags: Flags): void {
   if (project.visibility === "public" && !hasFlag(flags, "confirm-public")) {
     throw new Error("Public publishing requires explicit --confirm-public.");
@@ -568,6 +582,10 @@ async function executeBuild(state: PublishProjectStateV1): Promise<Record<string
       astroVersion: "7.1.6",
       inventoryPath: join(state.workspaceDirectory, "build-inventory.json"),
       outputDirectory: resolve(state.project.builder.projectDir, "dist"),
+      environment: publicationBuildEnvironmentV1(
+        active.bundlePath,
+        join(state.workspaceDirectory, "build-inventory.json"),
+      ),
       signal: controller.signal,
       experience: { id: STARLIGHT_PUBLISHING_EXPERIENCE_V1.id, version: STARLIGHT_PUBLISHING_EXPERIENCE_V1.version, digest: experienceDigest },
     });

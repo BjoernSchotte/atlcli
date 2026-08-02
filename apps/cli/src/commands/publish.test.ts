@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   handlePublish,
   collectChartRenderDependenciesV1,
@@ -8,6 +8,7 @@ import {
   latestPublicationBuildNameV1,
   normalizePublicationLinksV1,
   normalizePublicationPositionV1,
+  publicationBuildEnvironmentV1,
   publishHelp,
   replaceMissingPublicationAssetsV1,
 } from "./publish.js";
@@ -68,6 +69,17 @@ test("publishing help documents the four-stage lifecycle and explicit safety fla
   expect(publishHelp()).toContain("plan      Acquire metadata");
   expect(publishHelp()).toContain("refresh   Acquire, validate");
   expect(publishHelp()).toContain("--confirm-public");
+});
+
+test("Astro build handoff exposes only the active bundle and private inventory paths", () => {
+  const environment = publicationBuildEnvironmentV1("./bundle/publication.json", "./private/inventory.json");
+  expect(Object.keys(environment).sort()).toEqual([
+    "ATLCLI_PUBLICATION_BUNDLE_PATH",
+    "ATLCLI_PUBLICATION_INVENTORY_PATH",
+  ]);
+  expect(environment.ATLCLI_PUBLICATION_BUNDLE_PATH).toBe(resolve("./bundle/publication.json"));
+  expect(environment.ATLCLI_PUBLICATION_INVENTORY_PATH).toBe(resolve("./private/inventory.json"));
+  expect(() => publicationBuildEnvironmentV1("", "inventory.json")).toThrow("non-empty");
 });
 
 test("publication positions replace provider non-finite ordering values deterministically", () => {

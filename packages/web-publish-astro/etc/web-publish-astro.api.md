@@ -83,6 +83,7 @@ export interface AstroStaticPublicationBuilderOptionsV1 {
         version: string;
         digest: string;
     };
+    environment?: Readonly<Record<string, string>>;
 }
 
 // export: AtlcliAstroPublicationLoaderV1
