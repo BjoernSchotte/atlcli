@@ -471,6 +471,16 @@ export default defineBackground({
    */
   const activeResearchRuns = new Map<string, { sessionId: string }>();
 
+  /**
+   * A resumed durable session must have exactly one owner in a live service
+   * worker. The IndexedDB revision/lease fence remains the cross-restart
+   * authority, but reserving before the first await prevents two same-worker
+   * resume messages from both reaching the worker host and turns the loser
+   * into a deterministic caller error rather than an incidental provider
+   * failure.
+   */
+  const pendingResearchResumes = new Map<string, string>();
+
   const runResearch = async (
     runId: string,
     sessionId: string,
@@ -536,8 +546,26 @@ export default defineBackground({
     sessionId: string,
     windowId: number,
   ) => {
-    const store = await IndexedDbResearchSessionStoreV1.open();
+    if (activeResearchRuns.has(runId)) {
+      throw new ResearchContractError("invalid-request", "Research run id is already active.");
+    }
+    if ([...activeResearchRuns.values()].some((active) => active.sessionId === sessionId)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "This durable research session is already active.",
+      );
+    }
+    if (pendingResearchResumes.has(sessionId)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "A resume attempt for this durable research session is already in progress.",
+      );
+    }
+    pendingResearchResumes.set(sessionId, runId);
+
+    let store: IndexedDbResearchSessionStoreV1 | undefined;
     try {
+      store = await IndexedDbResearchSessionStoreV1.open();
       const stored = await store.read(sessionId);
       if (!stored) {
         throw new ResearchContractError(
@@ -562,12 +590,6 @@ export default defineBackground({
         throw new ResearchContractError(
           "invalid-request",
           "The durable browser session is not at a safe resume checkpoint for this Atlassian site.",
-        );
-      }
-      if ([...activeResearchRuns.values()].some((active) => active.sessionId === sessionId)) {
-        throw new ResearchContractError(
-          "invalid-request",
-          "This durable research session is already active.",
         );
       }
       const turn = stored.turns.find((candidate) => candidate.id === resumable.turnId);
@@ -643,7 +665,10 @@ export default defineBackground({
         activeResearchRuns.delete(runId);
       }
     } finally {
-      store.close();
+      store?.close();
+      if (pendingResearchResumes.get(sessionId) === runId) {
+        pendingResearchResumes.delete(sessionId);
+      }
     }
   };
 

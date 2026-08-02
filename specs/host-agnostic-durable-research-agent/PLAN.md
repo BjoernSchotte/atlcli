@@ -3356,6 +3356,12 @@ an undispatched plan, a non-expired lease, and an interrupted task.
 - [ ] Prove service-worker suspension, offscreen recreation, dedicated-worker
       termination, browser restart, cancellation, and concurrent-resume
       fencing.
+
+  - [x] Packed MV3: two concurrent resumes of one paused retrieval checkpoint
+        reserve the session before the first asynchronous recovery step. Exactly
+        one fresh worker may consume the issued continuation and publish the
+        terminal artifact; the competing request receives `invalid-request`,
+        never a provider error.
 - [ ] Add complete idempotent session deletion, including retained V1 source
       bodies and artifacts.
 

@@ -1875,10 +1875,10 @@ function packedClarificationPlanningSession(): ResearchSessionV1 {
   }, "2026-08-01T15:00:03.000Z");
 }
 
-/** A synthetic durable checkpoint written before the first offscreen startup. */
-function packedExpiredRetrievalCheckpointSession(): ResearchSessionV1 {
-  const sessionId = "research-session:packed-startup-recovery";
-  const turnId = "research-turn:packed-startup-recovery";
+/** A synthetic durable checkpoint used to exercise host lifecycle boundaries. */
+function packedExpiredRetrievalCheckpointSession(identity = "packed-startup-recovery"): ResearchSessionV1 {
+  const sessionId = `research-session:${identity}`;
+  const turnId = `research-turn:${identity}`;
   const at = "2020-01-01T00:00:00.000Z";
   const request = hostParityRequest();
   const brief = createStandardResearchBriefV1(request.question, {
@@ -1928,7 +1928,7 @@ function packedExpiredRetrievalCheckpointSession(): ResearchSessionV1 {
   const node = graph.nodes.find((candidate) => candidate.status === "ready")!;
   const task: ResearchTaskAttemptV1 = {
     schema: "atlcli.research-task-attempt/v1",
-    taskId: "task:packed-startup-recovery",
+    taskId: `research-task:r1:${node.id.replace("research-node:", "")}:a1`,
     nodeId: node.id,
     graphRevision: graph.revision,
     attempt: 1,
@@ -3197,6 +3197,57 @@ test("recovers an expired retrieval checkpoint when the first offscreen document
       }),
     ]);
     expect(recovered.artifact).toBeUndefined();
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
+});
+
+test("fences concurrent packed resumes so only one fresh worker owns a checkpoint", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  const sourceRunId = "packed-resume-concurrent-source";
+  const sourceSessionId = `research-session:${sourceRunId}`;
+  const source = runPackedResearchInBackground(page, {
+    ...hostParityRequest(),
+    question: HOST_PARITY_QUESTION,
+  }, sourceRunId);
+  try {
+    await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+      event.kind === "packed-resume-checkpoint-reached"
+    ), { timeout: 30_000 }).toBe(true);
+    await expect(page.evaluate((runId) =>
+      chrome.runtime.sendMessage({ kind: "research:cancel", runId }),
+    sourceRunId)).resolves.toEqual({
+      kind: "research:cancel-result",
+      runId: sourceRunId,
+      cancelled: true,
+    });
+    await expect(source).resolves.toMatchObject({
+      kind: "research:run-result",
+      runId: sourceRunId,
+      ok: false,
+      code: "cancelled",
+    });
+    const outcomes = await Promise.all([
+      resumePackedResearchInBackground(page, sourceSessionId, "packed-resume-concurrent-a"),
+      resumePackedResearchInBackground(page, sourceSessionId, "packed-resume-concurrent-b"),
+    ]);
+    const successful = outcomes.filter((outcome) => outcome.ok);
+    const rejected = outcomes.filter((outcome) => !outcome.ok);
+    expect(successful).toHaveLength(1);
+    expect(rejected).toEqual([expect.objectContaining({ code: "invalid-request" })]);
+    expect((await harnessEvents(page)).filter((event) => event.kind === "worker-start")).toHaveLength(2);
+    const durable = await readPackedDurableResearchSession(
+      page,
+      sourceSessionId,
+      `artifact:report:research-turn:${sourceRunId}`,
+    );
+    expect(durable.session.state.status).toBe("complete");
+    expect(durable.session.state.turns[0]?.acceptedPackets).toHaveLength(6);
   } finally {
     await page.evaluate(async (key) => {
       await chrome.storage.session.remove(key);
