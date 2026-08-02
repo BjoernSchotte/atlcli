@@ -23,6 +23,7 @@ export interface ResearchSessionStoreConformanceFactoryV1 {
 export interface ResearchSessionStoreConformanceResultV1 {
   aggregateCommit: "passed";
   staleCas: "passed";
+  concurrentCas: "passed";
   failureAtomicity: "passed";
   packetPublicationAtomicity: "passed";
 }
@@ -194,6 +195,22 @@ export async function verifyResearchSessionStoreConformanceV1(
   const afterStale = await store.read(initial.sessionId);
   assert(afterStale?.revision === 2 && (await store.events(initial.sessionId)).length === 1, "stale write mutated session or journal");
 
+  const concurrentInitial = await store.create(session(`${prefix}-concurrent`));
+  const concurrentResults = await Promise.allSettled([
+    store.commit(concurrentInitial.sessionId, createTurnUpdate(concurrentInitial, "2026-08-01T11:00:03.000Z")),
+    store.commit(concurrentInitial.sessionId, createTurnUpdate(concurrentInitial, "2026-08-01T11:00:03.000Z")),
+  ]);
+  assert(
+    concurrentResults.filter((result) => result.status === "fulfilled").length === 1 &&
+      concurrentResults.filter((result) => result.status === "rejected").length === 1,
+    "concurrent compare-and-swap attempts did not produce exactly one winner",
+  );
+  const afterConcurrent = await store.read(concurrentInitial.sessionId);
+  assert(
+    afterConcurrent?.revision === 2 && (await store.events(concurrentInitial.sessionId)).length === 1,
+    "concurrent compare-and-swap attempts produced more than one aggregate revision or journal event",
+  );
+
   const failing = await factory.create({
     failureInjection: {
       onStage(stage) {
@@ -285,6 +302,7 @@ export async function verifyResearchSessionStoreConformanceV1(
   return {
     aggregateCommit: "passed",
     staleCas: "passed",
+    concurrentCas: "passed",
     failureAtomicity: "passed",
     packetPublicationAtomicity: "passed",
   };

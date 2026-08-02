@@ -50,6 +50,7 @@ describe("in-memory durable research session store", () => {
     })).resolves.toEqual({
       aggregateCommit: "passed",
       staleCas: "passed",
+      concurrentCas: "passed",
       failureAtomicity: "passed",
       packetPublicationAtomicity: "passed",
     });

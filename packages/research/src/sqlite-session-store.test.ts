@@ -58,6 +58,7 @@ describe("SQLite durable research session store", () => {
       }, "research-session:sqlite-conformance")).resolves.toEqual({
         aggregateCommit: "passed",
         staleCas: "passed",
+        concurrentCas: "passed",
         failureAtomicity: "passed",
         packetPublicationAtomicity: "passed",
       });

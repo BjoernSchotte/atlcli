@@ -3388,11 +3388,16 @@ Gate:
 
 - [x] The same store conformance suite passes for memory, SQLite/filesystem, and
       IndexedDB adapters. `verifyResearchSessionStoreConformanceV1` exercises
-      aggregate session/event publication, stale CAS rejection, and injected
-      pre-journal failure atomicity unchanged in all three adapters (17 focused
-      tests, 2026-08-02).
+      aggregate session/event publication, sequential and concurrent CAS
+      rejection, and injected pre-journal failure atomicity unchanged in all
+      three adapters (17 focused tests, 2026-08-02).
 - [ ] Forced-restart tests recover from every named checkpoint boundary.
-- [ ] Two concurrent attempts cannot both mutate the same session revision.
+- [x] Two concurrent attempts cannot both mutate the same session revision.
+
+  - [x] The shared conformance suite submits two `commit`s from the identical
+        revision and lease simultaneously against memory, SQLite/filesystem,
+        and IndexedDB. Exactly one succeeds; the aggregate advances once and
+        retains one matching journal event (17 focused tests, 2026-08-02).
 - [x] Two concurrent approvals or steering requests against the same graph
       revision produce one accepted revision and one explicit stale-revision
       result.

@@ -3726,6 +3726,7 @@ export interface ResearchSessionStoreConformanceFactoryV1 {
 export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
+    concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
 }
@@ -8122,6 +8123,7 @@ export interface ResearchSessionStoreConformanceFactoryV1 {
 export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
+    concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
 }
@@ -12516,6 +12518,7 @@ export interface ResearchSessionStoreConformanceFactoryV1 {
 export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
+    concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
 }
@@ -17179,6 +17182,7 @@ export interface ResearchSessionStoreConformanceFactoryV1 {
 export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
+    concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
 }
@@ -21942,6 +21946,7 @@ export interface ResearchSessionStoreConformanceFactoryV1 {
 export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
+    concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
 }
@@ -27928,6 +27933,7 @@ export interface ResearchSessionStoreConformanceFactoryV1 {
 export interface ResearchSessionStoreConformanceResultV1 {
     aggregateCommit: "passed";
     staleCas: "passed";
+    concurrentCas: "passed";
     failureAtomicity: "passed";
     packetPublicationAtomicity: "passed";
 }

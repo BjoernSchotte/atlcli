@@ -86,6 +86,7 @@ describe("IndexedDB durable research session store", () => {
     }, "research-session:indexeddb-conformance")).resolves.toEqual({
       aggregateCommit: "passed",
       staleCas: "passed",
+      concurrentCas: "passed",
       failureAtomicity: "passed",
       packetPublicationAtomicity: "passed",
     });
