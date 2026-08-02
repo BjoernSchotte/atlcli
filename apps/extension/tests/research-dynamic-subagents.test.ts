@@ -9,6 +9,7 @@ import {
   acceptResearchGraphProposalV1,
   composeResearchGraphV1,
   composeStandardResearchGraphV1,
+  reduceResearchGraphV1,
   type ResearchBriefV1,
   type ResearchGraphNodeV1,
   type ResearchGraphV1,
@@ -57,6 +58,7 @@ import {
   researchSubagentTypeForNodeV1,
   researchTaskIdForNodeV1,
   responseSchemaForResearchRole,
+  type ResearchReadyFrontierControllerV1,
 } from "@atlcli/research/browser/agent";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
@@ -2842,6 +2844,151 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       subagent_type: jiraTask.subagentType,
     })).resolves.toBeDefined();
     expect(invokes).toBe(1);
+  });
+
+  test("appends only the next durable ready frontier after the prior frontier settles", async () => {
+    const catalog = composeResearchGraphV1(graphBrief(
+      request.question,
+      ["jira", "confluence"],
+      "analysis",
+      "off",
+    ));
+    const selectedNodeIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:synthesizer",
+    ];
+    let activeGraph = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog, selectedNodeIds),
+    });
+    const jira = activeGraph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const wiki = activeGraph.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    const join = activeGraph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+    const synthesizer = activeGraph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+    let controller: ResearchReadyFrontierControllerV1 | undefined;
+    const dispatches: string[] = [];
+    const upstreamTask = tool(async (input: { subagent_type: string }) => {
+      dispatches.push(input.subagent_type);
+      if (input.subagent_type === researchSubagentTypeForNodeV1(synthesizer)) {
+        return {
+          title: "Synthetic frontier report",
+          executiveSummary: "The bounded frontier sequence completed.",
+          selectedClaimIds: [],
+          findings: [],
+          relationships: [],
+          limitations: [],
+        };
+      }
+      return {
+        schema: "atlcli.research-packet-body/v1",
+        answeredQuestion: "Bounded synthetic frontier result.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      };
+    }, {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      catalog,
+      compileDynamicResearchSubagents(catalog, {
+        model,
+        broker,
+        question: request.question,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [upstreamTask] })) as never,
+      },
+      {
+        activeGraph: () => activeGraph,
+        admissionMode: "ready_frontier",
+        onReadyFrontierController: (next) => { controller = next; },
+      },
+    );
+    const taskTool = middleware.tools![0]!;
+    const jiraTask = taskEnvelope(catalog, jira.id);
+    const wikiTask = taskEnvelope(catalog, wiki.id);
+    const joinTask = taskEnvelope(catalog, join.id);
+    const synthesisTask = taskEnvelope(catalog, synthesizer.id);
+
+    const jiraResult = await taskTool.invoke({
+      description: jiraTask.description,
+      subagent_type: jiraTask.subagentType,
+    });
+    expect(controller?.appendNextFrontier()).toEqual([]);
+    const wikiResult = await taskTool.invoke({
+      description: wikiTask.description,
+      subagent_type: wikiTask.subagentType,
+    });
+    activeGraph = reduceResearchGraphV1(activeGraph, {
+      kind: "start_node", expectedRevision: activeGraph.revision, nodeId: jira.id,
+    });
+    activeGraph = reduceResearchGraphV1(activeGraph, {
+      kind: "complete_node", expectedRevision: activeGraph.revision,
+      nodeId: jira.id, packetRef: "packet:frontier:jira",
+    });
+    activeGraph = reduceResearchGraphV1(activeGraph, {
+      kind: "start_node", expectedRevision: activeGraph.revision, nodeId: wiki.id,
+    });
+    activeGraph = reduceResearchGraphV1(activeGraph, {
+      kind: "complete_node", expectedRevision: activeGraph.revision,
+      nodeId: wiki.id, packetRef: "packet:frontier:wiki",
+    });
+
+    expect(controller?.appendNextFrontier().map((admission) => admission.taskId)).toEqual([
+      researchTaskIdForNodeV1(catalog, join),
+    ]);
+    const joinResult = await taskTool.invoke({
+      description: taskEnvelope(catalog, join.id, [
+        { taskId: researchTaskIdForNodeV1(catalog, jira), result: jiraResult },
+        { taskId: researchTaskIdForNodeV1(catalog, wiki), result: wikiResult },
+      ]).description,
+      subagent_type: joinTask.subagentType,
+    });
+    activeGraph = reduceResearchGraphV1(activeGraph, {
+      kind: "start_node", expectedRevision: activeGraph.revision, nodeId: join.id,
+    });
+    activeGraph = reduceResearchGraphV1(activeGraph, {
+      kind: "complete_node", expectedRevision: activeGraph.revision,
+      nodeId: join.id, packetRef: "packet:frontier:join",
+    });
+
+    expect(controller?.appendNextFrontier().map((admission) => admission.taskId)).toEqual([
+      researchTaskIdForNodeV1(catalog, synthesizer),
+    ]);
+    await taskTool.invoke({
+      description: taskEnvelope(catalog, synthesizer.id, synthesizer.dependencies.map((nodeId) => {
+        const node = activeGraph.nodes.find((candidate) => candidate.id === nodeId)!;
+        const result = nodeId === jira.id
+          ? jiraResult
+          : nodeId === wiki.id
+            ? wikiResult
+            : joinResult;
+        return { taskId: researchTaskIdForNodeV1(catalog, node), result };
+      })).description,
+      subagent_type: synthesisTask.subagentType,
+    });
+    expect(controller?.appendNextFrontier()).toEqual([]);
+    expect(dispatches).toEqual([
+      jiraTask.subagentType,
+      wikiTask.subagentType,
+      joinTask.subagentType,
+      synthesisTask.subagentType,
+    ]);
   });
 
   test("runs independent native task calls concurrently before critique and synthesis", async () => {

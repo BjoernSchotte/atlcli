@@ -607,6 +607,17 @@ export function compileDynamicResearchSubagents(
 }
 
 /**
+ * A host-selected frontier admits only nodes whose durable graph state is
+ * `ready`. It never exposes an arbitrary task ID to the supervisor.
+ */
+export interface ResearchReadyFrontierControllerV1 {
+  configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
+  appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
+}
+
+export type ResearchTaskAdmissionModeV1 = "whole_graph" | "ready_frontier";
+
+/**
  * Wrap DeepAgentsJS' public declarative subagent middleware with the
  * research-run admission contract. The upstream task tool still owns dynamic
  * responseSchema compilation; this wrapper only bounds and deduplicates
@@ -640,6 +651,13 @@ export function createBoundedResearchSubagentMiddleware(
     durableDispatchJournal?: ResearchSessionDispatchJournalV1;
     /** Keep host runtime state synchronized with durable node transitions. */
     onGraphUpdated?: (graph: ResearchGraphV1) => void;
+    /**
+     * `whole_graph` retains the T3 behaviour. `ready_frontier` is used by the
+     * iterative supervisor path: later nodes become callable only after a
+     * host checkpoint appends their ready frontier.
+     */
+    admissionMode?: ResearchTaskAdmissionModeV1;
+    onReadyFrontierController?: (controller: ResearchReadyFrontierControllerV1) => void;
     /** Body-free host index injected only into an admitted T3 reconciler task. */
     reconciliationInputContext?: () => ResearchReconciliationInputV1;
     /** Host-recorded dispositions injected only after the task envelope passes admission. */
@@ -833,6 +851,14 @@ export function createBoundedResearchSubagentMiddleware(
           maxDurationMs: node.budget.maxDurationMs,
         };
       });
+  };
+  const readyAdmissionsForGraph = (activeGraph: ResearchGraphV1): ResearchTaskAdmissionV1[] => {
+    const readyNodeIds = new Set(activeGraph.nodes
+      .filter((node) => node.status === "ready")
+      .map((node) => node.id));
+    return admissionsForGraph(activeGraph).filter((admission) =>
+      readyNodeIds.has(nodeByTaskId.get(admission.taskId)?.id ?? ""),
+    );
   };
   const admissions = admissionsForGraph(graph);
   const roleForDiagnostic = (diagnostic: ResearchDispatchDiagnosticV1): ResearchGraphRoleV1 | undefined =>
@@ -1136,17 +1162,65 @@ export function createBoundedResearchSubagentMiddleware(
     onDiagnostic: emitDispatchDiagnostic,
   });
 
-  let activeAdmissionsConfigured = options.activeGraph === undefined;
-  const ensureActiveAdmissions = (): void => {
-    if (activeAdmissionsConfigured) return;
-    const activeGraph = options.activeGraph?.();
+  const admissionMode = options.admissionMode ?? "whole_graph";
+  const admittedFrontierTaskIds = new Set<string>();
+  let readyFrontierConfigured = false;
+  const requireActiveGraph = (): ResearchGraphV1 => {
+    const activeGraph = options.activeGraph ? options.activeGraph() : graph;
     if (!activeGraph) {
       throw new ResearchDispatchError(
         "graph-proposal-required",
         "The central supervisor must obtain host acceptance for a graph proposal before task dispatch.",
       );
     }
-    adapter.replaceAdmissions(admissionsForGraph(activeGraph));
+    return activeGraph;
+  };
+  const readyFrontierController: ResearchReadyFrontierControllerV1 = {
+    configureInitialFrontier: (): readonly ResearchTaskAdmissionV1[] => {
+      if (readyFrontierConfigured) {
+        throw new ResearchDispatchError(
+          "admissions-locked",
+          "The initial research frontier is already configured.",
+        );
+      }
+      const initial = readyAdmissionsForGraph(requireActiveGraph());
+      if (initial.length === 0) {
+        throw new ResearchDispatchError(
+          "graph-proposal-required",
+          "The accepted research graph has no ready task frontier.",
+        );
+      }
+      adapter.replaceAdmissions(initial);
+      initial.forEach((admission) => admittedFrontierTaskIds.add(admission.taskId));
+      readyFrontierConfigured = true;
+      return initial;
+    },
+    appendNextFrontier: (): readonly ResearchTaskAdmissionV1[] => {
+      if (!readyFrontierConfigured) {
+        throw new ResearchDispatchError(
+          "admissions-locked",
+          "The initial research frontier must be configured before a later wave.",
+        );
+      }
+      const next = readyAdmissionsForGraph(requireActiveGraph()).filter((admission) =>
+        !admittedFrontierTaskIds.has(admission.taskId),
+      );
+      if (next.length === 0) return [];
+      adapter.appendAdmissions(next);
+      next.forEach((admission) => admittedFrontierTaskIds.add(admission.taskId));
+      return next;
+    },
+  };
+  options.onReadyFrontierController?.(readyFrontierController);
+
+  let activeAdmissionsConfigured = options.activeGraph === undefined && admissionMode === "whole_graph";
+  const ensureActiveAdmissions = (): void => {
+    if (activeAdmissionsConfigured) return;
+    if (admissionMode === "ready_frontier") {
+      readyFrontierController.configureInitialFrontier();
+    } else {
+      adapter.replaceAdmissions(admissionsForGraph(requireActiveGraph()));
+    }
     activeAdmissionsConfigured = true;
   };
 
