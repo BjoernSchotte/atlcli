@@ -357,6 +357,17 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
 
+// export: InitializeResearchSessionClarificationWaitInputV1
+export interface InitializeResearchSessionClarificationWaitInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    at: string;
+}
+
+// export: initializeResearchSessionClarificationWaitV1
+export declare function initializeResearchSessionClarificationWaitV1(input: InitializeResearchSessionClarificationWaitInputV1): Promise<ResearchSessionV1>;
+
 // export: InitializeResearchSessionTurnInputV1
 export interface InitializeResearchSessionTurnInputV1 {
     store: ResearchSessionStoreV1;
@@ -1245,6 +1256,7 @@ export type ResearchBriefPreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
+    brief: ResearchBriefV1;
     clarification: ResearchBriefClarificationRequiredV1;
 };
 
@@ -3277,6 +3289,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_graph";
     graph: ResearchGraphV1;
+    retainLeaseForImmediateApproval?: true;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
@@ -4128,6 +4141,17 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
 
+// export: InitializeResearchSessionClarificationWaitInputV1
+export interface InitializeResearchSessionClarificationWaitInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    at: string;
+}
+
+// export: initializeResearchSessionClarificationWaitV1
+export declare function initializeResearchSessionClarificationWaitV1(input: InitializeResearchSessionClarificationWaitInputV1): Promise<ResearchSessionV1>;
+
 // export: InitializeResearchSessionTurnInputV1
 export interface InitializeResearchSessionTurnInputV1 {
     store: ResearchSessionStoreV1;
@@ -5016,6 +5040,7 @@ export type ResearchBriefPreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
+    brief: ResearchBriefV1;
     clarification: ResearchBriefClarificationRequiredV1;
 };
 
@@ -7048,6 +7073,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_graph";
     graph: ResearchGraphV1;
+    retainLeaseForImmediateApproval?: true;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
@@ -7897,6 +7923,17 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
 
+// export: InitializeResearchSessionClarificationWaitInputV1
+export interface InitializeResearchSessionClarificationWaitInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    at: string;
+}
+
+// export: initializeResearchSessionClarificationWaitV1
+export declare function initializeResearchSessionClarificationWaitV1(input: InitializeResearchSessionClarificationWaitInputV1): Promise<ResearchSessionV1>;
+
 // export: InitializeResearchSessionTurnInputV1
 export interface InitializeResearchSessionTurnInputV1 {
     store: ResearchSessionStoreV1;
@@ -8785,6 +8822,7 @@ export type ResearchBriefPreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
+    brief: ResearchBriefV1;
     clarification: ResearchBriefClarificationRequiredV1;
 };
 
@@ -10817,6 +10855,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_graph";
     graph: ResearchGraphV1;
+    retainLeaseForImmediateApproval?: true;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
@@ -11842,6 +11881,17 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
 
+// export: InitializeResearchSessionClarificationWaitInputV1
+export interface InitializeResearchSessionClarificationWaitInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    at: string;
+}
+
+// export: initializeResearchSessionClarificationWaitV1
+export declare function initializeResearchSessionClarificationWaitV1(input: InitializeResearchSessionClarificationWaitInputV1): Promise<ResearchSessionV1>;
+
 // export: InitializeResearchSessionTurnInputV1
 export interface InitializeResearchSessionTurnInputV1 {
     store: ResearchSessionStoreV1;
@@ -12776,6 +12826,7 @@ export type ResearchBriefPreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
+    brief: ResearchBriefV1;
     clarification: ResearchBriefClarificationRequiredV1;
 };
 
@@ -14855,6 +14906,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_graph";
     graph: ResearchGraphV1;
+    retainLeaseForImmediateApproval?: true;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
@@ -15969,6 +16021,17 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
 
+// export: InitializeResearchSessionClarificationWaitInputV1
+export interface InitializeResearchSessionClarificationWaitInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    at: string;
+}
+
+// export: initializeResearchSessionClarificationWaitV1
+export declare function initializeResearchSessionClarificationWaitV1(input: InitializeResearchSessionClarificationWaitInputV1): Promise<ResearchSessionV1>;
+
 // export: InitializeResearchSessionTurnInputV1
 export interface InitializeResearchSessionTurnInputV1 {
     store: ResearchSessionStoreV1;
@@ -16903,6 +16966,7 @@ export type ResearchBriefPreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
+    brief: ResearchBriefV1;
     clarification: ResearchBriefClarificationRequiredV1;
 };
 
@@ -18993,6 +19057,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_graph";
     graph: ResearchGraphV1;
+    retainLeaseForImmediateApproval?: true;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
@@ -21212,6 +21277,17 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
 
+// export: InitializeResearchSessionClarificationWaitInputV1
+export interface InitializeResearchSessionClarificationWaitInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    at: string;
+}
+
+// export: initializeResearchSessionClarificationWaitV1
+export declare function initializeResearchSessionClarificationWaitV1(input: InitializeResearchSessionClarificationWaitInputV1): Promise<ResearchSessionV1>;
+
 // export: InitializeResearchSessionTurnInputV1
 export interface InitializeResearchSessionTurnInputV1 {
     store: ResearchSessionStoreV1;
@@ -22146,6 +22222,7 @@ export type ResearchBriefPreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
+    brief: ResearchBriefV1;
     clarification: ResearchBriefClarificationRequiredV1;
 };
 
@@ -24236,6 +24313,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "propose_graph";
     graph: ResearchGraphV1;
+    retainLeaseForImmediateApproval?: true;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;

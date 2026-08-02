@@ -1,4 +1,4 @@
-import type { ResearchBriefV1 } from "./brief.js";
+import { briefRequiresClarificationV1, type ResearchBriefV1 } from "./brief.js";
 import {
   stageResearchGraphForDurableSessionV1,
   type ResearchGraphV1,
@@ -18,6 +18,14 @@ export interface InitializeResearchSessionTurnInputV1 {
   graph: ResearchGraphV1;
   /** Host policy: an explicit automatic plan gets a separately journaled host approval. */
   approveAutomatically: boolean;
+  at: string;
+}
+
+export interface InitializeResearchSessionClarificationWaitInputV1 {
+  store: ResearchSessionStoreV1;
+  session: ResearchSessionV1;
+  /** The exact host-owned brief that contains the required questions/decisions. */
+  brief: ResearchBriefV1;
   at: string;
 }
 
@@ -106,6 +114,41 @@ export function projectResearchResumableSessionV1(
 }
 
 /**
+ * Persist a brief that requires user input before graph composition.  This is
+ * deliberately separate from the execution gate: no graph, workspace,
+ * provider, or model can be created until a later revision has resolved the
+ * recorded questions and decisions.
+ */
+export async function initializeResearchSessionClarificationWaitV1(
+  input: InitializeResearchSessionClarificationWaitInputV1,
+): Promise<ResearchSessionV1> {
+  if (input.brief.sessionId !== input.session.sessionId || !briefRequiresClarificationV1(input.brief)) {
+    throw new Error("Durable research clarification wait does not match a required brief.");
+  }
+  await input.store.create(input.session);
+  let current = await input.store.read(input.session.sessionId);
+  if (!current) throw new Error("Research clarification session was not created.");
+  current = (await input.store.commit(current.sessionId, {
+    kind: "create_turn",
+    turnId: input.brief.turnId,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+  const persisted = (await input.store.commit(current.sessionId, {
+    kind: "record_brief",
+    brief: input.brief,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+  if (persisted.status !== "waiting_clarification") {
+    throw new Error("Durable research clarification wait did not persist its required state.");
+  }
+  return persisted;
+}
+
+/**
  * The durable execution gate. It stores the turn, brief, and exact proposed
  * graph before any host may construct a workspace, provider, model, or agent.
  */
@@ -157,6 +200,7 @@ export async function appendResearchSessionTurnV1(
   current = (await input.store.commit(current.sessionId, {
     kind: "propose_graph",
     graph: staged,
+    ...(input.approveAutomatically ? { retainLeaseForImmediateApproval: true as const } : {}),
     expectedRevision: current.revision,
     expectedLeaseEpoch: current.lease.epoch,
     at: input.at,

@@ -1194,34 +1194,46 @@ describe("research CLI one-shot contract", () => {
     });
   });
 
-  test("stops on required brief clarification before graph, key, workspace, or agent work", async () => {
+  test("persists a released required brief clarification before graph, key, workspace, or agent work", async () => {
     const harness = cliHarness();
     let keyReads = 0;
     harness.dependencies.readApiKey = () => {
       keyReads += 1;
       return "sk-ant-must-not-be-read";
     };
-    harness.dependencies.prepareBrief = () => ({
-      schema: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
-      kind: "clarification_required",
-      clarification: {
-        schema: "atlcli.research-clarification-required/v1",
-        sessionId: "research-session:cli-brief",
-        turnId: "research-turn:cli-brief",
-        briefRevision: 3,
-        questions: [{
+    const prepareBrief = harness.dependencies.prepareBrief;
+    harness.dependencies.prepareBrief = (input) => {
+      const prepared = prepareBrief(input);
+      if (prepared.kind !== "ready") throw new Error("Expected a ready test brief before clarification.");
+      const brief = {
+        ...prepared.brief,
+        revision: 1,
+        clarificationQuestions: [{
           id: "clarification:time-window",
           prompt: "Which reporting window should be used?",
           required: true,
         }],
-        assumptionsRequiringDecision: [{
+        assumptions: [{
           id: "assumption:include-archived",
           text: "Archived content would be included.",
           requiresUserDecision: true,
-          status: "proposed",
+          status: "proposed" as const,
         }],
-      },
-    });
+      };
+      return {
+        schema: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
+        kind: "clarification_required" as const,
+        brief,
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1" as const,
+          sessionId: brief.sessionId,
+          turnId: brief.turnId,
+          briefRevision: brief.revision,
+          questions: [...brief.clarificationQuestions],
+          assumptionsRequiringDecision: [...brief.assumptions],
+        },
+      };
+    };
     await expect(handleResearch(
       ["Research the approved scopes."],
       { json: true },
@@ -1231,8 +1243,24 @@ describe("research CLI one-shot contract", () => {
     expect(keyReads).toBe(0);
     expect(harness.workspaces).toHaveLength(0);
     expect(harness.runInputs).toHaveLength(0);
+    const persisted = await harness.durableStore.read("research-session:cli-plan");
+    expect(persisted).toMatchObject({
+      status: "waiting_clarification",
+      revision: 3,
+      activeTurnId: "research-turn:cli-plan",
+      turns: [{
+        brief: {
+          revision: 1,
+          clarificationQuestions: [{ id: "clarification:time-window" }],
+          assumptions: [{ id: "assumption:include-archived" }],
+        },
+      }],
+    });
+    expect(Date.parse(persisted!.lease.expiresAt)).toBeLessThanOrEqual(Date.parse(persisted!.updatedAt) + 1);
+    expect((await harness.durableStore.events(persisted!.sessionId)).map((event) => event.kind))
+      .toEqual(["create_turn", "record_brief"]);
     expect(harness.stderr.join("")).toContain(
-      "stop_reason=clarification-required brief_revision=3 questions=1 assumptions=1",
+      "session=research-session:cli-plan status=waiting_clarification stop_reason=clarification-required brief_revision=1 questions=1 assumptions=1",
     );
     expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
       error: {
@@ -1241,10 +1269,14 @@ describe("research CLI one-shot contract", () => {
             schema: "atlcli.research-brief-preflight-outcome/v1",
             kind: "clarification_required",
             clarification: {
-              briefRevision: 3,
+              briefRevision: 1,
               questions: [{ id: "clarification:time-window" }],
               assumptionsRequiringDecision: [{ id: "assumption:include-archived" }],
             },
+          },
+          session: {
+            sessionId: "research-session:cli-plan",
+            status: "waiting_clarification",
           },
         },
       },

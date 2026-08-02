@@ -274,7 +274,12 @@ export type ResearchSessionUpdateV1 =
       scopeBindings?: ResearchScopeBindingV1[];
       scopeResolutions?: ResearchScopeResolutionV1[];
     })
-  | (ResearchSessionFencedUpdateV1 & { kind: "propose_graph"; graph: ResearchGraphV1 })
+  | (ResearchSessionFencedUpdateV1 & {
+      kind: "propose_graph";
+      graph: ResearchGraphV1;
+      /** Only the in-process automatic approval hand-off may retain the lease. */
+      retainLeaseForImmediateApproval?: true;
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "approve_graph"; graphRevision: number })
   | (ResearchSessionFencedUpdateV1 & {
       kind: "commit_graph_selection";
@@ -422,6 +427,30 @@ function withNext(
     ...patch,
     revision: session.revision + 1,
     updatedAt: update.at,
+  };
+}
+
+/**
+ * A durable user/host wait cannot depend on the process that created it.  The
+ * active owner is therefore immediately recoverable by a fresh host while the
+ * session revision and lease epoch remain the CAS fence for that recovery.
+ */
+function withReleasedDurableWait(
+  session: ResearchSessionV1,
+  update: ResearchSessionFencedUpdateV1,
+  patch: Parameters<typeof withNext>[2],
+): ResearchSessionV1 {
+  const next = withNext(session, update, patch);
+  const releasedAt = Math.max(
+    Date.parse(update.at),
+    Date.parse(session.lease.heartbeatAt) + 1,
+  );
+  return {
+    ...next,
+    lease: {
+      ...session.lease,
+      expiresAt: new Date(releasedAt).toISOString(),
+    },
   };
 }
 
@@ -611,7 +640,10 @@ export function reduceResearchSessionV1(
     const nextStatus: ResearchSessionStatusV1 = update.brief.clarificationQuestions.length > 0 || update.brief.assumptions.some((assumption) => assumption.requiresUserDecision && assumption.status === "proposed")
       ? "waiting_clarification"
       : "planning";
-    return withNext(session, update, { status: nextStatus, turns: replaceTurn(session, nextTurn) });
+    const patch = { status: nextStatus, turns: replaceTurn(session, nextTurn) };
+    return nextStatus === "waiting_clarification"
+      ? withReleasedDurableWait(session, update, patch)
+      : withNext(session, update, patch);
   }
 
   if (update.kind === "record_clarification") {
@@ -641,7 +673,13 @@ export function reduceResearchSessionV1(
     if (update.kind === "propose_graph" && current.graph) invalid("Research graph proposal already exists.");
     if (update.kind === "revise_graph" && (!current.graph || update.graph.revision <= current.graph.revision)) invalid("Research graph revision is invalid.");
     const nextTurn = { ...current, graph: clone(update.graph), revision: current.revision + 1 };
-    return withNext(session, update, { status: "waiting_plan_approval", turns: replaceTurn(session, nextTurn) });
+    const patch: Parameters<typeof withNext>[2] = {
+      status: "waiting_plan_approval",
+      turns: replaceTurn(session, nextTurn),
+    };
+    return update.kind === "propose_graph" && update.retainLeaseForImmediateApproval === true
+      ? withNext(session, update, patch)
+      : withReleasedDurableWait(session, update, patch);
   }
 
   if (update.kind === "apply_graph_revision") {
@@ -726,7 +764,7 @@ export function reduceResearchSessionV1(
     const current = ensureActive(session, ["waiting_plan_approval"]);
     requireGraph(current, update.graphRevision);
     if (!update.reason.trim() || update.reason.length > 1_000) invalid("Research plan rejection reason is invalid.");
-    return withNext(session, update, { status: "waiting_plan_revision" });
+    return withReleasedDurableWait(session, update, { status: "waiting_plan_revision" });
   }
 
   if (update.kind === "propose_scope_expansion") {
@@ -734,7 +772,10 @@ export function reduceResearchSessionV1(
     const graph = requireGraph(current);
     if (update.proposal.sessionId !== session.sessionId || update.proposal.turnId !== current.id || update.proposal.basedOnBriefRevision !== current.brief?.revision || update.proposal.basedOnGraphRevision !== graph.revision || update.proposal.status !== "proposed" || current.scopeExpansionProposals.some((proposal) => proposal.id === update.proposal.id)) invalid("Research scope expansion proposal is invalid or stale.");
     const nextTurn = { ...current, scopeExpansionProposals: [...current.scopeExpansionProposals, clone(update.proposal)] };
-    return withNext(session, update, { status: "waiting_scope_approval", turns: replaceTurn(session, nextTurn) });
+    return withReleasedDurableWait(session, update, {
+      status: "waiting_scope_approval",
+      turns: replaceTurn(session, nextTurn),
+    });
   }
 
   if (update.kind === "approve_scope_expansion" || update.kind === "reject_scope_expansion") {
@@ -758,7 +799,10 @@ export function reduceResearchSessionV1(
     const current = ensureActive(session, ["running"]);
     if (!/^steering:[A-Za-z0-9._-]{1,120}$/.test(update.steeringId) || !update.request.trim() || update.request.length > 2_000 || current.steering.some((steering) => steering.id === update.steeringId)) invalid("Research steering request is invalid or duplicated.");
     const nextTurn = { ...current, steering: [...current.steering, { id: update.steeringId, request: update.request.trim(), requestedAt: update.at }] };
-    return withNext(session, update, { status: "waiting_steering", turns: replaceTurn(session, nextTurn) });
+    return withReleasedDurableWait(session, update, {
+      status: "waiting_steering",
+      turns: replaceTurn(session, nextTurn),
+    });
   }
 
   if (update.kind === "acknowledge_steering") {
@@ -771,12 +815,18 @@ export function reduceResearchSessionV1(
 
   if (update.kind === "request_pause") {
     const current = ensureActive(session, ["running", "waiting_steering", "waiting_scope_approval", "waiting_authentication", "waiting_quota"]);
-    return withNext(session, update, { status: "pause_requested", turns: replaceTurn(session, { ...current, pauseRequestedAt: update.at }) });
+    return withReleasedDurableWait(session, update, {
+      status: "pause_requested",
+      turns: replaceTurn(session, { ...current, pauseRequestedAt: update.at }),
+    });
   }
 
   if (update.kind === "acknowledge_pause") {
     const current = ensureActive(session, ["pause_requested"]);
-    return withNext(session, update, { status: "paused", turns: replaceTurn(session, { ...current, pausedAt: update.at }) });
+    return withReleasedDurableWait(session, update, {
+      status: "paused",
+      turns: replaceTurn(session, { ...current, pausedAt: update.at }),
+    });
   }
 
   if (update.kind === "admit_tasks") {
@@ -1030,23 +1080,9 @@ export function reduceResearchSessionV1(
 
   if (update.kind === "wait_authentication" || update.kind === "wait_quota") {
     ensureActive(session, ["running"]);
-    // A durable wait has no living owner. Release the current lease at this
-    // checkpoint so a fresh CLI process, extension worker, or browser restart
-    // can recover it immediately with a new epoch instead of waiting for the
-    // former execution deadline to elapse.
-    const releasedAt = Math.max(
-      Date.parse(update.at),
-      Date.parse(session.lease.heartbeatAt) + 1,
-    );
-    return {
-      ...withNext(session, update, {
-        status: update.kind === "wait_authentication" ? "waiting_authentication" : "waiting_quota",
-      }),
-      lease: {
-        ...session.lease,
-        expiresAt: new Date(releasedAt).toISOString(),
-      },
-    };
+    return withReleasedDurableWait(session, update, {
+      status: update.kind === "wait_authentication" ? "waiting_authentication" : "waiting_quota",
+    });
   }
 
   if (update.kind === "release_lease") {

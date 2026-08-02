@@ -6,6 +6,7 @@ import {
 } from "./graph.js";
 import {
   appendResearchSessionTurnV1,
+  initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
@@ -35,6 +36,34 @@ function session() {
 }
 
 describe("durable research session execution gate", () => {
+  test("persists a required clarification as a released body-free wait before graph construction", async () => {
+    const requiredClarification = createResearchBriefV1({
+      ...brief("automatic"),
+      clarificationQuestions: [{
+        id: "clarification:scope",
+        prompt: "Which exact project should be searched?",
+        required: true,
+      }],
+    });
+    const store = new InMemoryResearchSessionStoreV1();
+    const result = await initializeResearchSessionClarificationWaitV1({
+      store,
+      session: session(),
+      brief: requiredClarification,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    expect(result).toMatchObject({
+      status: "waiting_clarification",
+      revision: 3,
+      lease: { expiresAt: "2026-08-01T15:00:01.000Z" },
+      turns: [{
+        brief: { revision: 1, clarificationQuestions: [{ id: "clarification:scope" }] },
+      }],
+    });
+    expect((await store.events(result.sessionId)).map((event) => event.kind))
+      .toEqual(["create_turn", "record_brief"]);
+  });
+
   test("persists an accepted turn, brief, exact proposed graph, and separate automatic approval before execution", async () => {
     const acceptedBrief = brief("automatic");
     const store = new InMemoryResearchSessionStoreV1();
@@ -62,7 +91,11 @@ describe("durable research session execution gate", () => {
       approveAutomatically: false,
       at: "2026-08-01T15:00:01.000Z",
     });
-    expect(result).toMatchObject({ status: "waiting_plan_approval", revision: 4 });
+    expect(result).toMatchObject({
+      status: "waiting_plan_approval",
+      revision: 4,
+      lease: { expiresAt: "2026-08-01T15:00:01.000Z" },
+    });
     expect((await store.events(result.sessionId)).map((event) => event.kind)).toEqual(["create_turn", "record_brief", "propose_graph"]);
   });
 

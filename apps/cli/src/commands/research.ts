@@ -59,6 +59,7 @@ import {
   type ResearchEvidenceRecordV1,
   type ResearchOutlineV1,
   appendResearchSessionTurnV1,
+  initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
   recoverResearchSessionForResumeV1,
 } from "@atlcli/research/node";
@@ -1432,15 +1433,40 @@ export async function handleResearch(
   });
   if (briefOutcome.kind === "clarification_required") {
     const clarification = briefOutcome.clarification;
+    const opened = await dependencies.openSessionStore();
+    let waiting: ResearchSessionV1 | undefined;
+    try {
+      const now = new Date().toISOString();
+      waiting = await initializeResearchSessionClarificationWaitV1({
+        store: opened.store,
+        session: createResearchSessionV1({
+          sessionId: durableSessionId,
+          ownerId: `owner:cli-${process.pid}`,
+          createdAt: now,
+          leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+        }),
+        brief: briefOutcome.brief,
+        at: now,
+      });
+    } finally {
+      opened.close();
+    }
     dependencies.writeStderr(
-      `[research] stop_reason=clarification-required brief_revision=${clarification.briefRevision} questions=${clarification.questions.length} assumptions=${clarification.assumptionsRequiringDecision.length}\n`,
+      `[research] session=${waiting!.sessionId} status=${waiting!.status} stop_reason=clarification-required brief_revision=${clarification.briefRevision} questions=${clarification.questions.length} assumptions=${clarification.assumptionsRequiringDecision.length}\n`,
     );
     dependencies.fail(
       opts,
       2,
       ERROR_CODES.VALIDATION,
-      "Research brief requires clarification. Clarify the required question or decision assumption and rerun the one-shot command.",
-      { outcome: briefOutcome },
+      "Research brief requires clarification. Inspect the retained session, then provide revision-fenced answers before research can continue.",
+      {
+        outcome: briefOutcome,
+        session: {
+          sessionId: waiting!.sessionId,
+          revision: waiting!.revision,
+          status: waiting!.status,
+        },
+      },
     );
   }
   const researchGraph = composeResearchGraphV1(briefOutcome.brief, {

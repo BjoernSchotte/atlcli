@@ -8,6 +8,7 @@ import {
   type ResearchGraphProposalV1,
 } from "./graph.js";
 import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
+import { createResearchScopeExpansionProposalV1 } from "./scope-discovery.js";
 import {
   createResearchSessionV1,
   reduceResearchSessionV1,
@@ -438,12 +439,91 @@ describe("durable host-neutral research session reducer", () => {
   test("persists a pause acknowledgement rather than treating sidebar loss as cancellation", () => {
     let current = readyToRun();
     current = update(current, { kind: "request_pause" }, "2026-08-01T09:00:05.000Z");
+    expect(current).toMatchObject({
+      status: "pause_requested",
+      lease: { expiresAt: "2026-08-01T09:00:05.000Z" },
+    });
     current = update(current, { kind: "acknowledge_pause" }, "2026-08-01T09:00:06.000Z");
-    expect(current).toMatchObject({ status: "paused" });
+    expect(current).toMatchObject({
+      status: "paused",
+      lease: { expiresAt: "2026-08-01T09:00:06.000Z" },
+    });
     expect(current.turns[0]!.pausedAt).toBe("2026-08-01T09:00:06.000Z");
   });
 
-  test("releases a durable authentication wait before a fresh owner recovers it", () => {
+  test("releases every persisted user wait without weakening its revision fence", () => {
+    const waitingBrief = createResearchBriefV1({
+      ...brief(),
+      clarificationQuestions: [{
+        id: "clarification:scope",
+        prompt: "Which exact project should be searched?",
+        required: true,
+      }],
+    });
+    let clarification = session();
+    clarification = update(clarification, { kind: "create_turn", turnId: waitingBrief.turnId }, "2026-08-01T09:00:01.000Z");
+    clarification = update(clarification, { kind: "record_brief", brief: waitingBrief }, "2026-08-01T09:00:02.000Z");
+    expect(clarification).toMatchObject({
+      status: "waiting_clarification",
+      revision: 3,
+      lease: { expiresAt: "2026-08-01T09:00:02.000Z" },
+    });
+    expect(() => reduceResearchSessionV1(clarification, {
+      kind: "cancel",
+      expectedRevision: 2,
+      expectedLeaseEpoch: clarification.lease.epoch,
+      at: "2026-08-01T09:00:03.000Z",
+    })).toThrow("revision is stale");
+
+    let plan = session();
+    plan = update(plan, { kind: "create_turn", turnId: "research-turn:one" }, "2026-08-01T09:00:01.000Z");
+    const acceptedBrief = brief();
+    plan = update(plan, { kind: "record_brief", brief: acceptedBrief }, "2026-08-01T09:00:02.000Z");
+    plan = update(plan, { kind: "propose_graph", graph: composeResearchGraphV1(acceptedBrief) }, "2026-08-01T09:00:03.000Z");
+    expect(plan).toMatchObject({
+      status: "waiting_plan_approval",
+      lease: { expiresAt: "2026-08-01T09:00:03.000Z" },
+    });
+    const graph = plan.turns[0]!.graph!;
+    plan = update(plan, { kind: "reject_plan", graphRevision: graph.revision, reason: "Needs scope review." }, "2026-08-01T09:00:04.000Z");
+    expect(plan).toMatchObject({
+      status: "waiting_plan_revision",
+      lease: { expiresAt: "2026-08-01T09:00:04.000Z" },
+    });
+
+    let steering = readyToRun();
+    steering = update(steering, {
+      kind: "request_steering",
+      steeringId: "steering:focus-links",
+      request: "Prioritize exact linked Jira and Confluence items.",
+    }, "2026-08-01T09:00:05.000Z");
+    expect(steering).toMatchObject({
+      status: "waiting_steering",
+      lease: { expiresAt: "2026-08-01T09:00:05.000Z" },
+    });
+    const steeringTurn = steering.turns[0]!;
+    steering = update(steering, {
+      kind: "propose_scope_expansion",
+      proposal: createResearchScopeExpansionProposalV1({
+        id: "scope-expansion:related-space",
+        sessionId: steering.sessionId,
+        turnId: steeringTurn.id,
+        basedOnBriefRevision: steeringTurn.brief!.revision,
+        basedOnGraphRevision: steeringTurn.graph!.revision,
+        candidateId: "research-scope-candidate:confluence-space-related",
+        expansionKind: "whole_scope",
+        reason: "A retained link targets a related approved space.",
+        provenanceRefs: ["source:wiki-related"],
+        status: "proposed",
+      }),
+    }, "2026-08-01T09:00:06.000Z");
+    expect(steering).toMatchObject({
+      status: "waiting_scope_approval",
+      lease: { expiresAt: "2026-08-01T09:00:06.000Z" },
+    });
+  });
+
+  test("releases durable authentication and quota waits before a fresh owner recovers it", () => {
     let current = readyToRun();
     current = update(current, { kind: "wait_authentication" }, "2026-08-01T09:00:05.000Z");
     expect(current).toMatchObject({
@@ -459,6 +539,13 @@ describe("durable host-neutral research session reducer", () => {
     expect(current).toMatchObject({
       status: "running",
       lease: { epoch: 2, ownerId: "owner:resumed" },
+    });
+
+    let quota = readyToRun();
+    quota = update(quota, { kind: "wait_quota" }, "2026-08-01T09:00:05.000Z");
+    expect(quota).toMatchObject({
+      status: "waiting_quota",
+      lease: { epoch: 1, expiresAt: "2026-08-01T09:00:05.000Z" },
     });
   });
 });

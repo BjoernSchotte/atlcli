@@ -3110,6 +3110,28 @@ provider capability to QuickJS.
 - [ ] Add durable wait states for clarification, plan approval, steering,
       rejected-plan revision, scope-expansion approval, pause, authentication,
       and quota; no wait state may require a living process.
+
+  - [x] Make all typed *session* wait transitions lease-releasing and
+        restart-observable, including brief clarification after a valid brief
+        was accepted.
+  - [ ] Persist unresolved scope-catalog clarification before a brief exists,
+        and expose the candidate-choice controls in both hosts.
+
+T4 durable-wait checkpoint (2026-08-02): the shared reducer records every
+named wait as a revision- and epoch-fenced state and immediately releases its
+lease. A fresh host can therefore inspect and act on the persisted state rather
+than needing the original CLI, side panel, offscreen document, or worker to
+survive. The one exception is the bounded in-process automatic plan hand-off:
+it retains its lease solely until its next atomic approval transition, while a
+crash still leaves the persisted proposed plan actionable. The durable brief
+preflight now returns the exact body-free brief on a required clarification;
+the shared initializer records its turn and brief before graph, workspace,
+provider, or model construction. The CLI invokes that initializer and returns
+only the safe session reference. Reducer/runtime/CLI tests cover the released
+session clarification, plan approval/rejection, steering, scope, pause,
+authentication, and quota mechanisms. Persisting catalog-discovery questions
+that arise before a brief exists, and the host controls that submit answers and
+decisions, remain the next CLI/browser work items.
 - [x] Persist `dispatch_started`, `result_committed`, and `outcome_unknown`.
       Reuse committed results; after an unknown outcome, apply an explicit
       bounded retry/abstain policy and record any possible duplicate external

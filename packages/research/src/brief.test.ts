@@ -114,6 +114,7 @@ describe("host-owned research brief", () => {
     expect(prepareResearchBriefPreflightV1(brief)).toEqual({
       schema: "atlcli.research-brief-preflight-outcome/v1",
       kind: "clarification_required",
+      brief,
       clarification: {
         schema: "atlcli.research-clarification-required/v1",
         sessionId: "research-session:test",

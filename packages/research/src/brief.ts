@@ -140,6 +140,8 @@ export type ResearchBriefPreflightOutcomeV1 =
   | {
       schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
       kind: "clarification_required";
+      /** The exact body-free accepted brief that a host must persist while waiting. */
+      brief: ResearchBriefV1;
       clarification: ResearchBriefClarificationRequiredV1;
     };
 
@@ -358,6 +360,7 @@ export function prepareResearchBriefPreflightV1(
   return {
     schema: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
     kind: "clarification_required",
+    brief: structuredClone(brief),
     clarification: {
       schema: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1,
       sessionId: brief.sessionId,
