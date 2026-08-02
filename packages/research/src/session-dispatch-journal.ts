@@ -176,7 +176,7 @@ export class ResearchSessionDispatchJournalV1 {
     usage: ResearchTaskUsageV1;
     availableSourceIds: string[];
     maximumResultBytes: number;
-  }): Promise<ResearchAcceptedPacketV1> {
+  }): Promise<ResearchAcceptedPacketV1 & { graph: ResearchGraphV1 }> {
     return this.#enqueue(async () => {
       const session = await this.#read();
       const turn = activeTurn(session, this.#turnId);
@@ -190,11 +190,14 @@ export class ResearchSessionDispatchJournalV1 {
         availableSourceIds: [...input.availableSourceIds],
         maximumResultBytes: input.maximumResultBytes,
       }, (next) => {
-        const packet = activeTurn(next, this.#turnId).acceptedPackets.find((candidate) =>
+        const nextTurn = activeTurn(next, this.#turnId);
+        const packet = nextTurn.acceptedPackets.find((candidate) =>
           candidate.taskId === input.taskId,
         );
-        if (!packet) invalid("Research durable dispatch did not retain its accepted packet.");
-        return packet;
+        if (!packet || !nextTurn.graph) {
+          invalid("Research durable dispatch did not retain its accepted packet.");
+        }
+        return { ...packet, graph: nextTurn.graph };
       });
     });
   }

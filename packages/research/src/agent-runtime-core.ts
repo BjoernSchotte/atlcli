@@ -1692,6 +1692,9 @@ async function runResearchAgentWithBindings(
         availableSourceIdsForNode,
         capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
         activeGraph: () => acceptedGraph,
+        onGraphUpdated: (graph) => {
+          acceptedGraph = graph;
+        },
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
         ...(durableDispatchJournal ? { durableDispatchJournal } : {}),

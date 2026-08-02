@@ -638,6 +638,8 @@ export function createBoundedResearchSubagentMiddleware(
     activeGraph?: () => ResearchGraphV1 | undefined;
     /** Optional durable owner. It commits lifecycle transitions before publication. */
     durableDispatchJournal?: ResearchSessionDispatchJournalV1;
+    /** Keep host runtime state synchronized with durable node transitions. */
+    onGraphUpdated?: (graph: ResearchGraphV1) => void;
     /** Body-free host index injected only into an admitted T3 reconciler task. */
     reconciliationInputContext?: () => ResearchReconciliationInputV1;
     /** Host-recorded dispositions injected only after the task envelope passes admission. */
@@ -1107,6 +1109,7 @@ export function createBoundedResearchSubagentMiddleware(
               durable.graphRevision !== preview.packet.graphRevision) {
             throw new Error("Durable research packet diverged from the local validated envelope.");
           }
+          options.onGraphUpdated?.(durable.graph);
           return acceptLocally();
         });
     },

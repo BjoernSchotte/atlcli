@@ -146,6 +146,7 @@ describe("durable research task dispatch journal", () => {
     const stored = await store.read(sessionId);
     const turn = stored!.turns.find((candidate) => candidate.id === turnId)!;
     expect(packet).toMatchObject({ taskId: attempt.taskId, packetRef: `packet:${attempt.taskId}:1` });
+    expect(packet.graph.nodes.find((candidate) => candidate.id === node.id)?.status).toBe("complete");
     expect(turn.tasks).toMatchObject([{ taskId: attempt.taskId, status: "complete", dispatchState: "result_committed" }]);
     expect(turn.acceptedPackets).toMatchObject([{ packetRef: packet.packetRef }]);
     expect(turn.graph?.nodes.find((candidate) => candidate.id === node.id)).toMatchObject({
