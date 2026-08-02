@@ -1,4 +1,5 @@
 import {
+  createNamespacedResearchWorkspace,
   normalizeResearchWorkspacePath,
   researchWorkspacePathMatchesPrefix,
   type ResearchWorkspace,
@@ -14,6 +15,12 @@ export const RESEARCH_DEEPAGENT_PLAN_PATH_V1 =
   `${RESEARCH_DEEPAGENT_WORKSPACE_ROUTE_V1}/plan.md` as const;
 export const RESEARCH_DEEPAGENT_SCRATCH_ROUTE_V1 =
   `${RESEARCH_DEEPAGENT_WORKSPACE_ROUTE_V1}/scratch` as const;
+/** Host-only durable storage used by DeepAgentsJS summarization middleware. */
+export const RESEARCH_DEEPAGENT_SUMMARIZATION_STORAGE_ROOT_V1 =
+  "/.atlcli/deepagents-summarization/v1" as const;
+/** The native middleware's own virtual path; it is not model-accessible. */
+export const RESEARCH_DEEPAGENT_SUMMARIZATION_HISTORY_PREFIX_V1 =
+  "/conversation_history" as const;
 
 const MAXIMUM_LISTED_FILES_V1 = 512;
 const MAXIMUM_GREP_MATCHES_V1 = 512;
@@ -277,4 +284,17 @@ export class ResearchDeepAgentWorkspaceBackendV1 {
       return { error: message(error) };
     }
   }
+}
+
+/**
+ * Native summarization uses a backend directly, not the model's composite
+ * filesystem route. Namespace it into private durable storage so its history
+ * survives host restart without making raw transcripts readable by the model.
+ */
+export function createResearchDeepAgentSummarizationBackendV1(
+  workspace: ResearchWorkspace,
+): ResearchDeepAgentWorkspaceBackendV1 {
+  return new ResearchDeepAgentWorkspaceBackendV1(
+    createNamespacedResearchWorkspace(workspace, RESEARCH_DEEPAGENT_SUMMARIZATION_STORAGE_ROOT_V1),
+  );
 }

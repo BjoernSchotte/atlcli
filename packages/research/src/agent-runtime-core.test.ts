@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { AIMessage, HumanMessage, RemoveMessage, ToolMessage } from "@langchain/core/messages";
 import { REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
 import { tool } from "@langchain/core/tools";
+import { fakeModel } from "@langchain/core/testing";
+import { createSummarizationMiddleware } from "deepagents/node";
 import { z } from "zod/v4";
 import {
   buildCheckpointedDynamicSupervisorPrompt,
   buildLegacyResearchSystemPromptV1,
+  createResearchDurableSummarizationMiddleware,
   createResearchCheckpointTranscriptCompactionMiddleware,
   createOneShotSupervisorEvalMiddleware,
   createResearchGraphProposalPtcTool,
@@ -34,6 +37,8 @@ import {
   createResearchScopeDiscoveryV1,
   createResearchScopeExpansionProposalV1,
 } from "./scope-discovery.js";
+import { WorkspaceResearchMessageLineageStoreV1 } from "./message-lineage.js";
+import { createMemoryResearchWorkspace } from "./workspace.js";
 
 const evalTool = tool(async () => "unused", {
   name: "eval",
@@ -356,6 +361,75 @@ describe("durable checkpoint transcript compaction", () => {
     expect((second as { messages: HumanMessage[] }).messages[1]?.text).toBe(
       "Next body-free host checkpoint.",
     );
+  });
+});
+
+describe("durable native DeepAgentsJS summarization", () => {
+  test("archives complete messages before native compaction and records a non-authoritative lineage summary", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const lineage = new WorkspaceResearchMessageLineageStoreV1(workspace);
+    const model = fakeModel().respond(new AIMessage("Synthetic operational summary."));
+    let archiveComplete = false;
+    let batch = 0;
+    const middleware = createResearchDurableSummarizationMiddleware(
+      { createSummarizationMiddleware },
+      {
+        workspace,
+        model,
+        archiveMessages: async (messages) => {
+          const records = await lineage.appendMessages({
+            batchId: `test-model-input:${++batch}`,
+            createdAt: "2026-08-02T10:00:00.000Z",
+            messages,
+          });
+          archiveComplete = true;
+          return records;
+        },
+        recordSummary: async ({ summary, sourceEventIds }) => {
+          const parent = await lineage.latestSummary();
+          await lineage.appendSummary({
+            kind: "turn",
+            createdAt: "2026-08-02T10:00:01.000Z",
+            author: "model",
+            summary,
+            sourceEventIds,
+            ...(parent ? { parentSummaryIds: [parent.id] } : {}),
+          });
+        },
+      },
+    );
+    const messages = Array.from(
+      { length: 49 },
+      (_, index) => new HumanMessage(`Complete raw message ${index + 1}.`),
+    );
+
+    const result = await middleware.wrapModelCall!(
+      {
+        messages,
+        state: {},
+        model,
+        systemMessage: undefined,
+        tools: [],
+      } as never,
+      async () => {
+        expect(archiveComplete).toBe(true);
+        return new AIMessage("Supervisor handler result.");
+      },
+    );
+
+    const activeSummary = (result as {
+      update?: { _summarizationEvent?: { summaryMessage?: { content?: unknown } } };
+    }).update?._summarizationEvent?.summaryMessage?.content;
+    expect(String(activeSummary)).not.toContain("/conversation_history/");
+    expect(String(activeSummary)).toContain("host-private conversation history");
+    await expect(lineage.describe()).resolves.toMatchObject({ eventCount: 49, summaryCount: 1 });
+    const summary = await lineage.latestSummary();
+    expect(summary).toMatchObject({
+      author: "model",
+      nonAuthoritative: true,
+      summary: "Synthetic operational summary.",
+    });
+    expect(summary?.sourceEventIds).toHaveLength(49);
   });
 });
 

@@ -97,6 +97,7 @@ export interface ResearchMessageLineageStoreV1 {
     newestEventAt?: string;
     newestSummaryAt?: string;
   }>;
+  latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
   search(input: {
     query: string;
     limit?: number;
@@ -697,6 +698,14 @@ export class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLi
         ...(this.#index.events.at(-1) ? { newestEventAt: this.#index.events.at(-1)!.createdAt } : {}),
         ...(this.#index.summaries.at(-1) ? { newestSummaryAt: this.#index.summaries.at(-1)!.createdAt } : {}),
       };
+    });
+  }
+
+  async latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined> {
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      const latest = this.#index.summaries.at(-1);
+      return latest ? clone(await this.#readSummary(latest.id)) : undefined;
     });
   }
 

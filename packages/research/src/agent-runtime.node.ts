@@ -4,6 +4,7 @@ import {
   createDeepAgent,
   createFilesystemMiddleware,
   createSubAgentMiddleware,
+  createSummarizationMiddleware,
   registerHarnessProfile,
 } from "deepagents/node";
 import { createResearchAgentRuntime } from "./agent-runtime-core.js";
@@ -14,6 +15,7 @@ const nodeRuntime = createResearchAgentRuntime({
   createDeepAgent,
   createFilesystemMiddleware,
   createSubAgentMiddleware,
+  createSummarizationMiddleware,
   registerHarnessProfile,
 });
 

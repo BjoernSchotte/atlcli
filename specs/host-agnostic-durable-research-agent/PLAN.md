@@ -3890,8 +3890,11 @@ Gate:
 Shared:
 
 - [x] Re-enable filesystem middleware against the injected composite backend.
-- [ ] Re-enable summarization only after complete original messages are stored
-      durably and can be searched from the session.
+- [x] Re-enable native DeepAgentsJS summarization only after complete original
+      messages are durably stored and can be searched from the session. Archive
+      each pre-compaction supervisor input in immutable lineage, keep native
+      history in a host-private durable namespace, and remove its otherwise
+      misleading model-visible history-file hint (2026-08-02).
 - [x] Treat `/workspace/plan.md` as a projection of the durable graph and
       regenerate it after every accepted graph revision.
 - [ ] Persist query intents, gap assessments, and report drafts as artifacts
@@ -3903,10 +3906,11 @@ Shared:
       session/closed-branch summaries, relevant claim/evidence references,
       unresolved tasks, and a recent raw tail; never replay all source bodies
       or child trajectories by default.
-- [ ] Provide bounded `describe`, `search`, and `expand` operations over summary
+- [x] Provide bounded `describe`, `search`, and `expand` operations over summary
       lineage so the supervisor or reconciler can recover exact prior state.
 - [ ] Mark model summaries as non-authoritative and regenerate them from durable
-      events/artifacts when missing.
+      events/artifacts when missing. The non-authoritative marker and exact
+      event lineage are implemented; deterministic regeneration remains open.
 - [ ] Add explicit context and storage compaction with retention of canonical
       evidence and accepted reports.
 - [ ] Compact only completed branches deeply; keep the active frontier and

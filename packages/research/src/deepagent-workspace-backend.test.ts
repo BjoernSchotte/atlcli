@@ -3,10 +3,15 @@ import {
   CompositeBackend,
   StateBackend,
   createFilesystemMiddleware,
+  createSummarizationMiddleware,
 } from "deepagents/node";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { fakeModel } from "@langchain/core/testing";
 import {
   RESEARCH_DEEPAGENT_PLAN_PATH_V1,
+  RESEARCH_DEEPAGENT_SUMMARIZATION_STORAGE_ROOT_V1,
   ResearchDeepAgentWorkspaceBackendV1,
+  createResearchDeepAgentSummarizationBackendV1,
 } from "./deepagent-workspace-backend.js";
 import { createMemoryResearchWorkspace } from "./workspace.js";
 
@@ -86,5 +91,39 @@ describe("DeepAgents durable research workspace backend", () => {
       content: "temporary",
     })).resolves.toMatchObject({ content: expect.stringContaining("Successfully wrote") });
     await expect(workspace.readFile("/workspace/scratch/working-notes.md")).resolves.toBe("temporary");
+  });
+
+  test("uses native summarization with host-private durable history, not a model-readable path", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const historyBackend = createResearchDeepAgentSummarizationBackendV1(workspace);
+    const mainBackend = new ResearchDeepAgentWorkspaceBackendV1(workspace);
+    const summarizationModel = fakeModel().respond(new AIMessage("Non-authoritative synthetic summary."));
+    const middleware = createSummarizationMiddleware({
+      backend: historyBackend,
+      model: summarizationModel,
+      trigger: { type: "messages", value: 2 },
+      keep: { type: "messages", value: 1 },
+      historyPathPrefix: "/conversation_history",
+    });
+    await middleware.wrapModelCall!(
+      {
+        messages: [
+          new HumanMessage("Early exact detail."),
+          new AIMessage("Intermediate model result."),
+          new HumanMessage("Continue with the retained tail."),
+        ],
+        state: {},
+        model: summarizationModel,
+        systemMessage: undefined,
+        tools: [],
+      } as never,
+      async () => new AIMessage("Handler result."),
+    );
+    const privatePaths = await workspace.list(RESEARCH_DEEPAGENT_SUMMARIZATION_STORAGE_ROOT_V1);
+    expect(privatePaths).toHaveLength(1);
+    expect(await workspace.readFile(privatePaths[0]!)).toContain("Early exact detail.");
+    await expect(mainBackend.ls("/")).resolves.toEqual({ files: [] });
+    await expect(mainBackend.read("/.atlcli/deepagents-summarization/v1/conversation_history/unknown.md"))
+      .resolves.toMatchObject({ error: expect.any(String) });
   });
 });

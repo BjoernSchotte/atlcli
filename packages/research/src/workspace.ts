@@ -32,6 +32,38 @@ export function researchWorkspacePathMatchesPrefix(path: string, prefix: string)
   return prefix === "/" || path === prefix || path.startsWith(`${prefix}/`);
 }
 
+/**
+ * Creates a private subtree view without exposing the parent workspace. It is
+ * used for host-owned DeepAgentsJS internals such as summarized conversation
+ * history: that data remains durable, but never becomes model filesystem data.
+ */
+export function createNamespacedResearchWorkspace(
+  parent: ResearchWorkspace,
+  root: string,
+): ResearchWorkspace {
+  const normalizedRoot = normalizeResearchWorkspacePath(root);
+  const absolutePath = (path: string): string => {
+    const normalized = normalizeResearchWorkspacePath(path);
+    return normalizedRoot === "/" || normalized === "/"
+      ? normalizedRoot === "/" ? normalized : normalizedRoot
+      : `${normalizedRoot}${normalized}`;
+  };
+  const relativePath = (path: string): string | undefined => {
+    if (!researchWorkspacePathMatchesPrefix(path, normalizedRoot)) return undefined;
+    const suffix = path.slice(normalizedRoot.length);
+    return suffix || "/";
+  };
+  return {
+    readFile: (path) => parent.readFile(absolutePath(path)),
+    writeFile: (path, contents) => parent.writeFile(absolutePath(path), contents),
+    remove: (path) => parent.remove(absolutePath(path)),
+    async list(prefix = "/") {
+      const paths = await parent.list(absolutePath(prefix));
+      return paths.map(relativePath).filter((path): path is string => path !== undefined).sort();
+    },
+  };
+}
+
 /** Small deterministic browser/test backend; hosts may replace it with IndexedDB. */
 export function createMemoryResearchWorkspace(): ResearchWorkspace {
   const files = new Map<string, string>();
