@@ -260,21 +260,28 @@ export class ResearchSessionDispatchJournalV1 {
   recordRetrievalAssessment(input: {
     graphRevision: number;
     assessment: ResearchRetrievalAssessmentV1;
-  }): Promise<ResearchSessionRetrievalAssessmentV1> {
+  }): Promise<ResearchSessionRetrievalAssessmentV1 & { graph: ResearchGraphV1 }> {
     return this.#enqueue(async () => {
       const session = await this.#read();
       const turn = activeTurn(session, this.#turnId);
       graphFor(turn, input.graphRevision);
+      const priorWaves = (turn.retrievalAssessments ?? [])
+        .filter((candidate) => candidate.graphRevision === input.graphRevision)
+        .map((candidate) => candidate.wave ?? 1);
+      const expectedWave = Math.max(turn.graph!.researchWavesCompleted, ...priorWaves) + 1;
       return this.#commit(session, {
         kind: "record_retrieval_assessment",
         graphRevision: input.graphRevision,
         assessment: input.assessment,
       }, (next) => {
-        const record = (activeTurn(next, this.#turnId).retrievalAssessments ?? []).find((candidate) =>
-          candidate.graphRevision === input.graphRevision,
+        const nextTurn = activeTurn(next, this.#turnId);
+        const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>
+          candidate.graphRevision === input.graphRevision && candidate.wave === expectedWave,
         );
-        if (!record) invalid("Research durable dispatch did not retain its retrieval assessment.");
-        return record;
+        if (!record || !nextTurn.graph) {
+          invalid("Research durable dispatch did not retain its retrieval assessment.");
+        }
+        return { ...record, graph: nextTurn.graph };
       });
     });
   }

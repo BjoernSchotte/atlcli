@@ -135,8 +135,62 @@ describe("durable host-neutral research session reducer", () => {
     }, "2026-08-01T09:00:05.000Z");
 
     expect(current.turns[0]!.retrievalAssessments!).toEqual([
-      expect.objectContaining({ graphRevision, assessment }),
+      expect.objectContaining({ graphRevision, wave: 1, assessment }),
     ]);
+    expect(current.turns[0]!.graph?.researchWavesCompleted).toBe(1);
+  });
+
+  test("records contiguous retrieval waves and stops after a terminal decision", () => {
+    let current = readyToRun();
+    const graphRevision = current.turns[0]!.graph!.revision;
+    const continueAssessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1"],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    const stopAssessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 0,
+      httpAttemptsRemaining: 0,
+    });
+
+    current = update(current, {
+      kind: "record_retrieval_assessment",
+      graphRevision,
+      assessment: continueAssessment,
+    }, "2026-08-01T09:00:05.000Z");
+    current = update(current, {
+      kind: "record_retrieval_assessment",
+      graphRevision,
+      assessment: stopAssessment,
+    }, "2026-08-01T09:00:06.000Z");
+
+    expect(current.turns[0]!.retrievalAssessments).toEqual([
+      expect.objectContaining({ wave: 1, assessment: continueAssessment }),
+      expect.objectContaining({ wave: 2, assessment: stopAssessment }),
+    ]);
+    expect(current.turns[0]!.graph?.researchWavesCompleted).toBe(2);
+    expect(() => update(current, {
+      kind: "record_retrieval_assessment",
+      graphRevision,
+      assessment: continueAssessment,
+    }, "2026-08-01T09:00:07.000Z")).toThrow("terminal decision");
   });
 
   test("accepts a packet atomically with its task and graph node", () => {

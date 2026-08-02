@@ -201,7 +201,7 @@ describe("durable research task dispatch journal", () => {
       .toBe("Research execution ended before report validation.");
   });
 
-  test("records exactly one body-free retrieval assessment for a settled graph revision", async () => {
+  test("records body-free retrieval assessments at contiguous settled-wave checkpoints", async () => {
     const { store, sessionId, turnId, journal, graph } = await initializedJournal();
     const assessment = assessResearchRetrievalV1({
       products: [{
@@ -222,19 +222,22 @@ describe("durable research task dispatch journal", () => {
       assessment,
     })).resolves.toMatchObject({
       graphRevision: graph.revision,
+      wave: 1,
       assessment: { action: assessment.action, reason: assessment.reason },
     });
-    await expect(journal.recordRetrievalAssessment({
-      graphRevision: graph.revision,
-      assessment,
-    })).rejects.toThrow("duplicated");
 
     const stored = await store.read(sessionId);
     const turn = stored!.turns.find((candidate) => candidate.id === turnId)!;
     expect(turn.retrievalAssessments).toEqual([expect.objectContaining({
       graphRevision: graph.revision,
+      wave: 1,
       assessment,
     })]);
+    expect(turn.graph?.researchWavesCompleted).toBe(1);
+    await expect(journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+    })).rejects.toThrow("terminal decision");
     expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_retrieval_assessment");
   });
 

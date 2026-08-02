@@ -1060,6 +1060,12 @@ export type ResearchGraphUpdateV1 =
       expectedRevision: number;
       repairNode: ResearchGraphNodeV1;
     }
+  /**
+   * The durable session records a host-derived retrieval assessment only after
+   * all admitted work in that wave has reached a terminal state. This counter
+   * is an execution checkpoint, not a graph-plan revision.
+   */
+  | { kind: "complete_research_wave"; expectedRevision: number; wave: number }
   | { kind: "start_node"; expectedRevision: number; nodeId: string }
   | { kind: "complete_node"; expectedRevision: number; nodeId: string; packetRef: string }
   | { kind: "fail_node"; expectedRevision: number; nodeId: string; stopReason: string }
@@ -1132,6 +1138,19 @@ export function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGr
     };
     validateResearchGraphV1(activated);
     return activated;
+  }
+  if (update.kind === "complete_research_wave") {
+    if (!Number.isSafeInteger(update.wave) ||
+        update.wave <= graph.researchWavesCompleted ||
+        update.wave > graph.maxResearchWaves) {
+      invalid("Research wave completion is stale or exceeds the approved envelope.");
+    }
+    const completed: ResearchGraphV1 = {
+      ...graph,
+      researchWavesCompleted: update.wave,
+    };
+    validateResearchGraphV1(completed);
+    return completed;
   }
   const index = graph.nodes.findIndex((node) => node.id === update.nodeId);
   if (index < 0) invalid("Research graph update references an unknown node.");

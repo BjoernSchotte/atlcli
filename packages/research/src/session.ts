@@ -128,6 +128,12 @@ export interface ResearchSessionRepairAuthorizationV1 {
 export interface ResearchSessionRetrievalAssessmentV1 {
   schema: typeof RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
   graphRevision: number;
+  /**
+   * Host-owned retrieval checkpoint within one immutable graph envelope.
+   * Undefined denotes an assessment written before multi-wave checkpoints;
+   * readers treat it as wave 1 and upgrade it on the next write.
+   */
+  wave?: number;
   assessment: ResearchRetrievalAssessmentV1;
   recordedAt: string;
 }
@@ -371,16 +377,27 @@ function validateSession(session: ResearchSessionV1): void {
     if (!Array.isArray(candidate.retrievalAssessments) || candidate.retrievalAssessments.length > 64) {
       invalid("Research session retrieval assessments are invalid.");
     }
-    const graphRevisions = new Set<number>();
+    const wavesByGraphRevision = new Map<number, Set<number>>();
     for (const assessment of candidate.retrievalAssessments) {
       if (assessment.schema !== RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1 ||
-          !Number.isSafeInteger(assessment.graphRevision) || assessment.graphRevision < 1 ||
-          graphRevisions.has(assessment.graphRevision)) {
+          !Number.isSafeInteger(assessment.graphRevision) || assessment.graphRevision < 1) {
         invalid("Research session retrieval assessment is invalid or duplicated.");
       }
-      graphRevisions.add(assessment.graphRevision);
+      const wave = assessment.wave ?? 1;
+      if (!Number.isSafeInteger(wave) || wave < 1) {
+        invalid("Research session retrieval assessment is invalid or duplicated.");
+      }
+      const waves = wavesByGraphRevision.get(assessment.graphRevision) ?? new Set<number>();
+      if (waves.has(wave)) invalid("Research session retrieval assessment is invalid or duplicated.");
+      waves.add(wave);
+      wavesByGraphRevision.set(assessment.graphRevision, waves);
       timestamp(assessment.recordedAt, "Research session retrieval assessment timestamp");
       parseResearchRetrievalAssessmentV1(assessment.assessment);
+    }
+    for (const waves of wavesByGraphRevision.values()) {
+      if (Math.max(...waves) !== waves.size) {
+        invalid("Research session retrieval assessment waves are not contiguous.");
+      }
     }
   }
   if (session.status === "deleted" && session.retention.state !== "deleted") invalid("A deleted research session must have deleted retention.");
@@ -718,15 +735,30 @@ export function reduceResearchSessionV1(
   if (update.kind === "record_retrieval_assessment") {
     const current = ensureActive(session, ["running"]);
     const graph = requireGraph(current, update.graphRevision);
-    const retrievalAssessments = current.retrievalAssessments ?? [];
-    if (retrievalAssessments.some((candidate) => candidate.graphRevision === graph.revision) ||
+    const retrievalAssessments = (current.retrievalAssessments ?? []).map((candidate) =>
+      candidate.wave === undefined ? { ...candidate, wave: 1 } : candidate,
+    );
+    const priorWaveRecords = retrievalAssessments.filter((candidate) =>
+      candidate.graphRevision === graph.revision,
+    );
+    if (priorWaveRecords.some((candidate) => candidate.assessment.action === "stop") ||
         current.tasks.some((task) => task.graphRevision === graph.revision &&
           (task.status === "running" || task.status === "outcome_unknown"))) {
-      invalid("Research retrieval assessment is duplicated or has unresolved work.");
+      invalid("Research retrieval assessment follows a terminal decision or has unresolved work.");
     }
+    const wave = Math.max(
+      graph.researchWavesCompleted,
+      ...priorWaveRecords.map((candidate) => candidate.wave!),
+    ) + 1;
+    const nextGraph = reduceResearchGraphV1(graph, {
+      kind: "complete_research_wave",
+      expectedRevision: graph.revision,
+      wave,
+    });
     const record: ResearchSessionRetrievalAssessmentV1 = {
       schema: RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
       graphRevision: graph.revision,
+      wave,
       assessment: parseResearchRetrievalAssessmentV1(update.assessment),
       recordedAt: update.at,
     };
@@ -734,6 +766,7 @@ export function reduceResearchSessionV1(
       status: "running",
       turns: replaceTurn(session, {
         ...current,
+        graph: nextGraph,
         retrievalAssessments: [...retrievalAssessments, record],
       }),
     });
