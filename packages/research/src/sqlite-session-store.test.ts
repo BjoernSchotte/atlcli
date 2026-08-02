@@ -62,6 +62,7 @@ describe("SQLite durable research session store", () => {
         failureAtomicity: "passed",
         packetPublicationAtomicity: "passed",
         clarificationIdentityFencing: "passed",
+        scopeCandidateIdentityFencing: "passed",
       });
     } finally {
       for (const store of stores) store.close();

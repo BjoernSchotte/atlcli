@@ -54,6 +54,7 @@ describe("in-memory durable research session store", () => {
       failureAtomicity: "passed",
       packetPublicationAtomicity: "passed",
       clarificationIdentityFencing: "passed",
+      scopeCandidateIdentityFencing: "passed",
     });
   });
 

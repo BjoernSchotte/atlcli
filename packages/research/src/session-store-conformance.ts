@@ -1,8 +1,13 @@
 import { createResearchBriefV1 } from "./brief.js";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+} from "./contracts.js";
 import { composeResearchGraphV1, type ResearchGraphProposalV1, type ResearchGraphV1 } from "./graph.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
 import {
   initializeResearchSessionClarificationWaitV1,
+  initializeResearchSessionScopeClarificationWaitV1,
   initializeResearchSessionTurnV1,
 } from "./session-runtime.js";
 import {
@@ -30,6 +35,7 @@ export interface ResearchSessionStoreConformanceResultV1 {
   failureAtomicity: "passed";
   packetPublicationAtomicity: "passed";
   clarificationIdentityFencing: "passed";
+  scopeCandidateIdentityFencing: "passed";
 }
 
 function assert(value: unknown, message: string): asserts value {
@@ -206,6 +212,51 @@ async function prepareClarificationIdentityFenceV1(input: {
     store: input.store,
     session: session(input.sessionId),
     brief,
+    at,
+  });
+}
+
+async function prepareScopeCandidateIdentityFenceV1(input: {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+}): Promise<ResearchSessionV1> {
+  const at = "2026-08-01T11:00:00.000Z";
+  const request = {
+    schema: "atlcli.research-request/v1" as const,
+    question: "Resolve the synthetic Account Management space.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: [],
+    },
+    limits: DEFAULT_RESEARCH_LIMITS_V1,
+    wikiProvider: "rest" as const,
+  };
+  const candidate = {
+    schema: "atlcli.research-scope-candidate/v1" as const,
+    id: "research-scope-candidate:account-management",
+    tenantOrigin: "https://example.atlassian.net",
+    product: "confluence" as const,
+    entityKind: "space" as const,
+    entityRef: "space:account-management",
+    key: "DOCS",
+    name: "Synthetic Account Management",
+    accessible: true as const,
+    providerFreshnessAt: at,
+  };
+  return initializeResearchSessionScopeClarificationWaitV1({
+    store: input.store,
+    session: session(input.sessionId),
+    request,
+    policy: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+    clarification: {
+      schema: "atlcli.research-clarification-required/v1",
+      reason: "ambiguous",
+      mentionId: "mention:scope",
+      candidateIds: [candidate.id],
+      rerunGuidance: ["Supply an exact synthetic Confluence space key."],
+    },
+    candidateChoices: [candidate],
     at,
   });
 }
@@ -402,6 +453,67 @@ export async function verifyResearchSessionStoreConformanceV1(
     );
   }
 
+  const scopeSessionId = `${prefix}-scope-candidate-identities`;
+  const scopeClarification = await prepareScopeCandidateIdentityFenceV1({
+    store,
+    sessionId: scopeSessionId,
+  });
+  const beforeScopeClarification = await store.read(scopeSessionId);
+  const beforeScopeClarificationEvents = await store.events(scopeSessionId);
+  assert(beforeScopeClarification, "scope candidate identity fence did not initialize a session");
+  const resolvedRequest = {
+    schema: "atlcli.research-request/v1" as const,
+    question: "Resolve the synthetic Account Management space.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: ["DOCS"],
+    },
+    limits: DEFAULT_RESEARCH_LIMITS_V1,
+    wikiProvider: "rest" as const,
+  };
+  const scopeAttempts: Array<ResearchSessionUpdateV1> = [
+    {
+      kind: "resolve_scope_clarification",
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope",
+        candidateId: "research-scope-candidate:unknown",
+      },
+      resolvedRequest,
+      expectedRevision: scopeClarification.revision,
+      expectedLeaseEpoch: scopeClarification.lease.epoch,
+      at: "2026-08-01T11:00:01.000Z",
+    },
+    {
+      kind: "resolve_scope_clarification",
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope",
+        candidateId: "research-scope-candidate:account-management",
+      },
+      resolvedRequest,
+      expectedRevision: scopeClarification.revision + 1,
+      expectedLeaseEpoch: scopeClarification.lease.epoch,
+      at: "2026-08-01T11:00:01.000Z",
+    },
+  ];
+  for (const update of scopeAttempts) {
+    let rejected = false;
+    try {
+      await store.commit(scopeSessionId, update);
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, "scope candidate control accepted an unknown or stale identity");
+    const after = await store.read(scopeSessionId);
+    assert(
+      JSON.stringify(after) === JSON.stringify(beforeScopeClarification) &&
+        JSON.stringify(await store.events(scopeSessionId)) === JSON.stringify(beforeScopeClarificationEvents),
+      "scope candidate control mutated durable state after rejection",
+    );
+  }
+
   return {
     aggregateCommit: "passed",
     staleCas: "passed",
@@ -409,5 +521,6 @@ export async function verifyResearchSessionStoreConformanceV1(
     failureAtomicity: "passed",
     packetPublicationAtomicity: "passed",
     clarificationIdentityFencing: "passed",
+    scopeCandidateIdentityFencing: "passed",
   };
 }

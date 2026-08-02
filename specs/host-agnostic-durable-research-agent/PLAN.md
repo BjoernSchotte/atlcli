@@ -3477,6 +3477,10 @@ Gate:
         and assumption IDs plus stale brief and session revisions without a
         session or journal change in memory, SQLite/filesystem, and IndexedDB
         (2026-08-02).
+  - [x] The same suite rejects an unknown scope-candidate selection and its
+        stale session revision without changing the pre-brief scope
+        clarification, request, candidate set, or journal in all three stores
+        (2026-08-02).
 - [x] A checkpoint/DB scan test finds no Anthropic key, Atlassian credential,
       cookie, raw provider cursor, or unsanitized error.
 
