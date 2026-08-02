@@ -3107,7 +3107,7 @@ set, and—when authorized—activates that exact repair node, blocks synthesis,
 and persists the bounded follow-up authorization in one aggregate CAS/event.
 The repair therefore survives restart without exposing a free-form graph or
 provider capability to QuickJS.
-- [ ] Add durable wait states for clarification, plan approval, steering,
+- [x] Add durable wait states for clarification, plan approval, steering,
       rejected-plan revision, scope-expansion approval, pause, authentication,
       and quota; no wait state may require a living process.
 
@@ -3221,7 +3221,7 @@ unknown-outcome retry/abstain remains a separate gate below.
 - [x] Add revision-fenced `sessions plan`, `approve`, and `reject-plan`.
       Approval persists only the exact plan revision; it starts no model work
       before durable dispatch is implemented.
-- [ ] Add revision-fenced `sessions revise-plan`, `approve-scope`, `reject-scope`,
+- [x] Add revision-fenced `sessions revise-plan`, `approve-scope`, `reject-scope`,
       `clarify`, `steer`, `pause`, `resume`, and `cancel` commands from the CLI
       contract.
 
@@ -3246,6 +3246,10 @@ unknown-outcome retry/abstain remains a separate gate below.
         the released pause, returns it to runnable state, and releases it for
         the established `--resume` execution path without constructing a
         workspace, provider, or model (57 CLI/session tests, 2026-08-02).
+  - [x] Add revision-fenced `steer`. The command records one bounded
+        focus/prioritization request only at a released retrieval checkpoint;
+        the existing central supervisor consumes it through exactly one
+        in-envelope graph revision during `--resume`.
 - [x] Show the sanitized brief, graph, selected roles, dependencies, budgets,
       approval envelope including optional role/capability grants,
       scope bindings/provenance/expansion policy, pending scope proposals,
@@ -3283,7 +3287,7 @@ releases the undispatched plan or records the same `request_pause` plus
 the one issued continuation for the existing explicit-resume path; it does not
 retry or infer a lost provider call. Core tests cover a safe checkpoint,
 an undispatched plan, a non-expired lease, and an interrupted task.
-- [ ] Persist plan-approval and steering waits before notifying the sidebar;
+- [x] Persist plan-approval and steering waits before notifying the sidebar;
       sidebar closure or browser restart must not auto-approve a plan.
 
   - [x] Persist an initial required browser plan before any Anthropic key write,
@@ -3292,6 +3296,13 @@ an undispatched plan, a non-expired lease, and an interrupted task.
         selected roles, and scope keys; its approval atomically creates the
         existing resumable-session handoff. Packed MV3 tests prove both the
         absent credential write and zero retrieval/worker activity.
+  - [x] Persist bounded browser steering at a released retrieval checkpoint.
+        The sidebar sends only session ID, session revision, and user text; the
+        service worker derives tenant and graph revision from durable state,
+        rejects active, foreign, stale, or unsafe sessions, and exposes no
+        steering text through its body-free resume projection. Packed MV3
+        proof covers concurrent stale fencing, no worker start, and no public
+        instruction disclosure (29/29, 2026-08-02).
 - [ ] Persist required clarification questions and responses by brief revision
       plus explicit assumption accept/reject decisions by assumption ID.
       Regenerate the graph only after the response transition commits.
@@ -3379,13 +3390,17 @@ Gate:
       IndexedDB adapters.
 - [ ] Forced-restart tests recover from every named checkpoint boundary.
 - [ ] Two concurrent attempts cannot both mutate the same session revision.
-- [ ] Two concurrent approvals or steering requests against the same graph
+- [x] Two concurrent approvals or steering requests against the same graph
       revision produce one accepted revision and one explicit stale-revision
       result.
 
   - [x] Packed MV3: two concurrent approvals of the same persisted initial
         plan produce exactly one approved graph revision; the other request is
         fenced as `invalid-request`, with no key write, worker, or retrieval.
+  - [x] Packed MV3: two concurrent steering requests against one paused
+        retrieval checkpoint produce exactly one `waiting_steering` revision;
+        the other request is fenced as `invalid-request`, starts no worker, and
+        cannot disclose the user instruction through the resume catalog.
 - [ ] Required plan approval performs zero detail, subagent, or model research
       calls before the exact revision is approved.
 - [ ] A pending scope expansion performs zero content calls against the

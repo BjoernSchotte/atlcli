@@ -3423,25 +3423,27 @@ test("recovers an expired retrieval checkpoint when the first offscreen document
   }
 });
 
-test("persists one bounded packed steering request without exposing it to the resume catalog", async () => {
+test("fences concurrent packed steering without exposing it to the resume catalog", async () => {
   await installEventCapture(page);
-  const checkpoint = packedPausedRetrievalCheckpointSession();
+  const checkpoint = packedPausedRetrievalCheckpointSession("packed-steering-concurrent");
   await writePackedDurableResearchSession(page, checkpoint);
 
-  const steered = await steerPackedResearchSession(page, checkpoint.sessionId, checkpoint.revision);
-  expect(steered).toEqual({
+  const results = await Promise.all([
+    steerPackedResearchSession(page, checkpoint.sessionId, checkpoint.revision),
+    steerPackedResearchSession(page, checkpoint.sessionId, checkpoint.revision),
+  ]);
+  expect(results.filter((result) => result.ok)).toEqual([{
     kind: "research:steer-session-result",
     ok: true,
     sessionId: checkpoint.sessionId,
     revision: checkpoint.revision + 1,
     status: "waiting_steering",
-  });
-  const stale = await steerPackedResearchSession(page, checkpoint.sessionId, checkpoint.revision);
-  expect(stale).toMatchObject({
+  }]);
+  expect(results.filter((result) => !result.ok)).toMatchObject([{
     kind: "research:steer-session-result",
     ok: false,
     code: "invalid-request",
-  });
+  }]);
 
   const resumable = await page.evaluate(async () => {
     const window = await chrome.windows.getCurrent();
