@@ -21,6 +21,7 @@ import type {
   ResearchOneShotPolicyV1,
 } from "./research/contracts.js";
 import type {
+  ResearchResumableSessionV1,
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
@@ -65,6 +66,9 @@ export interface RouterDeps {
     sessionId: string,
     windowId: number,
   ) => Promise<ResearchReport>;
+  listResumableResearchSessions?: (
+    windowId: number,
+  ) => Promise<ResearchResumableSessionV1[]>;
   resolveResearchScope?: (
     windowId: number,
     request: ResearchRequestV1,
@@ -204,6 +208,28 @@ export async function routeMessage(
         return {
           kind: "research:resume-result",
           runId: msg.runId,
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:list-resumable-sessions": {
+      if (!deps.listResumableResearchSessions) {
+        return {
+          kind: "research:list-resumable-sessions-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research session listing is not configured.",
+        };
+      }
+      try {
+        const sessions = await deps.listResumableResearchSessions(msg.windowId);
+        return { kind: "research:list-resumable-sessions-result", ok: true, sessions };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:list-resumable-sessions-result",
           ok: false,
           code: classified.code,
           error: classified.message,

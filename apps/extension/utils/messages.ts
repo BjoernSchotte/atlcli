@@ -25,6 +25,7 @@ import type {
   ResearchRequestV1,
 } from "./research/contracts.js";
 import type {
+  ResearchResumableSessionV1,
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
@@ -116,6 +117,7 @@ export type ExtRequest =
       sessionId: string;
       windowId: number;
     }
+  | { kind: "research:list-resumable-sessions"; windowId: number }
   | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
@@ -150,6 +152,17 @@ export type ExtResponse =
   | {
       kind: "research:resume-result";
       runId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:list-resumable-sessions-result";
+      ok: true;
+      sessions: ResearchResumableSessionV1[];
+    }
+  | {
+      kind: "research:list-resumable-sessions-result";
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -271,6 +284,7 @@ export interface ResponseMap {
   "research:resolve-scope": Extract<ExtResponse, { kind: "research:resolve-scope-result" }>;
   "research:run": Extract<ExtResponse, { kind: "research:run-result" }>;
   "research:resume": Extract<ExtResponse, { kind: "research:resume-result" }>;
+  "research:list-resumable-sessions": Extract<ExtResponse, { kind: "research:list-resumable-sessions-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
@@ -312,6 +326,9 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       isResearchRunId(resume.runId) &&
       isResearchSessionId(resume.sessionId) &&
       isWindowId(resume.windowId);
+  }
+  if (kind === "research:list-resumable-sessions") {
+    return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
   }
   if (kind === "research:resolve-scope") {
     const preflight = value as { windowId?: unknown; request?: unknown; options?: unknown };

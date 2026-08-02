@@ -29,6 +29,7 @@ import {
 } from "@atlcli/research";
 import type {
   ResearchBriefClarificationRequiredV1,
+  ResearchResumableSessionV1,
   ResearchScopeCandidateSelectionV1,
   ResearchScopeCandidateV1,
   ResearchScopeClarificationRequiredV1,
@@ -434,6 +435,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [submittedRequest, setSubmittedRequest] =
     useState<ResearchRequestV1 | null>(null);
   const [actionStatus, setActionStatus] = useState("");
+  const [resumableSessions, setResumableSessions] = useState<
+    ResearchResumableSessionV1[]
+  >([]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -446,6 +450,37 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current?.abort();
     };
   }, [port]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.listResumableSessions || !site) {
+      setResumableSessions([]);
+      return () => { active = false; };
+    }
+    void port.listResumableSessions()
+      .then((sessions) => {
+        if (active) setResumableSessions(sessions);
+      })
+      // Session discovery is an optional convenience, never a prerequisite
+      // for a new one-shot run. The host retains the detailed error on an
+      // explicit resume request instead of presenting it during mount.
+      .catch(() => {
+        if (active) setResumableSessions([]);
+      });
+    return () => { active = false; };
+  }, [port, site]);
+
+  async function refreshResumableSessions(): Promise<void> {
+    if (!port?.listResumableSessions || !site) {
+      setResumableSessions([]);
+      return;
+    }
+    try {
+      setResumableSessions(await port.listResumableSessions());
+    } catch {
+      setResumableSessions([]);
+    }
+  }
 
   if (!port) return <Alert tone="muted">{t("screen.unmet.capability.research")}</Alert>;
 
@@ -565,6 +600,46 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     } finally {
       abortRef.current = null;
       setRunning(false);
+      void refreshResumableSessions();
+    }
+  }
+
+  async function resume(session: ResearchResumableSessionV1): Promise<void> {
+    if (!port?.resume) return;
+    setError(null);
+    setPlanApprovalRequired(null);
+    setScopeClarification(null);
+    setBriefClarification(null);
+    setActionStatus("");
+    try {
+      if (apiKey.trim()) {
+        await port.setApiKey(apiKey);
+        setApiKey("");
+        setHasKey(true);
+      } else if (!hasKey) {
+        throw new ResearchContractError("missing-key", t("research.key.missing"));
+      }
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setRunning(true);
+      setProgress(t("research.running"));
+      setActivity([]);
+      setReport(null);
+      const result = await port.resume(session.sessionId, {
+        signal: controller.signal,
+        onProgress: (value) => setProgress(value.message),
+        onEvent: (event) => setActivity((current) =>
+          [...current, event].slice(-MAX_RESEARCH_ACTIVITY_EVENTS)
+        ),
+      });
+      setReport(result);
+      setProgress("");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      abortRef.current = null;
+      setRunning(false);
+      void refreshResumableSessions();
     }
   }
 
@@ -816,6 +891,41 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           )}
         </CardContent>
       </Card>
+
+      {resumableSessions.length > 0 && (
+        <Card data-testid="research-resumable-sessions">
+          <CardHeader>
+            <CardTitle>{t("research.resumableSessions")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {resumableSessions.map((session, index) => (
+              <div
+                key={session.sessionId}
+                className="rounded-md border p-2 text-xs"
+                data-testid={`research-resumable-session-${index}`}
+              >
+                <p className="m-0 font-medium">{session.question}</p>
+                <p className="mb-0 mt-1 text-muted-foreground">
+                  {t("research.resumeScope", {
+                    jira: session.scope.jiraProjectKeys.join(", ") || "—",
+                    confluence: session.scope.confluenceSpaceKeys.join(", ") || "—",
+                    status: session.status,
+                  })}
+                </p>
+                <Button
+                  className="mt-2"
+                  size="sm"
+                  disabled={running || !disclosed || (!hasKey && !apiKey.trim())}
+                  data-testid={`research-resume-${index}`}
+                  onClick={() => void resume(session)}
+                >
+                  {t("research.resume")}
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {error && (
         <Alert tone="danger" role="alert" data-testid="research-error">

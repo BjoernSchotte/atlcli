@@ -3,6 +3,7 @@ import {
   normalizeResearchOneShotPolicyV1,
   type ResearchPort,
 } from "../../../utils/research/contracts.js";
+import type { ResearchResumableSessionV1 } from "@atlcli/research";
 import {
   RESEARCH_ANTHROPIC_SESSION_KEY,
   normalizeAnthropicApiKey,
@@ -11,6 +12,8 @@ import {
   isResearchEvent,
   isResearchProgress,
 } from "../../../utils/messages.js";
+
+const MAX_RESEARCH_RESUME_MS = 10 * 60_000;
 
 function safeFilename(value: string): string {
   const normalized = value
@@ -80,6 +83,40 @@ export function chromeResearchPort(): ResearchPort {
       }
       if (!response.ok) throw new ResearchContractError(response.code, response.error);
       return response.outcome;
+    },
+
+    async listResumableSessions() {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:list-resumable-sessions",
+        windowId: window.id,
+      }) as
+        | {
+            kind: "research:list-resumable-sessions-result";
+            ok: true;
+            sessions: ResearchResumableSessionV1[];
+          }
+        | {
+            kind: "research:list-resumable-sessions-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:list-resumable-sessions-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research session host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.sessions;
     },
 
     async run(request, options) {
@@ -154,6 +191,86 @@ export function chromeResearchPort(): ResearchPort {
           throw new ResearchContractError(
             "provider-error",
             "The research host returned no correlated result."
+          );
+        }
+        if (!response.ok) {
+          throw new ResearchContractError(response.code, response.error);
+        }
+        return response.report;
+      } finally {
+        clearTimeout(timeoutId);
+        chrome.runtime.onMessage.removeListener(onProgress);
+        options?.signal?.removeEventListener("abort", cancel);
+        if (activeRunId === runId) activeRunId = null;
+      }
+    },
+
+    async resume(sessionId, options) {
+      if (activeRunId) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "A research run is already active.",
+        );
+      }
+      if (options?.signal?.aborted) {
+        throw new ResearchContractError("cancelled", "The research run was cancelled.");
+      }
+      const runId = crypto.randomUUID();
+      activeRunId = runId;
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        activeRunId = null;
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const onProgress = (message: unknown): void => {
+        if (isResearchProgress(message, runId)) {
+          options?.onProgress?.(message.progress);
+        }
+        if (isResearchEvent(message, runId)) {
+          options?.onEvent?.(message.event);
+        }
+      };
+      const cancel = (): void => {
+        void chrome.runtime.sendMessage({
+          kind: "research:cancel",
+          runId,
+        }).catch(() => undefined);
+      };
+      chrome.runtime.onMessage.addListener(onProgress);
+      options?.signal?.addEventListener("abort", cancel, { once: true });
+      const timeoutId = setTimeout(cancel, MAX_RESEARCH_RESUME_MS);
+      try {
+        const response = await chrome.runtime.sendMessage({
+          kind: "research:resume",
+          runId,
+          sessionId,
+          windowId: window.id,
+        }) as
+          | {
+              kind: "research:resume-result";
+              runId: string;
+              ok: true;
+              report: Awaited<ReturnType<ResearchPort["run"]>>;
+            }
+          | {
+              kind: "research:resume-result";
+              runId: string;
+              ok: false;
+              code: ConstructorParameters<typeof ResearchContractError>[0];
+              error: string;
+            }
+          | undefined;
+        if (
+          !response ||
+          response.kind !== "research:resume-result" ||
+          response.runId !== runId
+        ) {
+          throw new ResearchContractError(
+            "provider-error",
+            "The research host returned no correlated resume result.",
           );
         }
         if (!response.ok) {

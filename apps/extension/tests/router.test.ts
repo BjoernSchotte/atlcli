@@ -271,6 +271,32 @@ describe("routeMessage (pure router)", () => {
     expect(observed).toEqual(["run-resume", "research-session:resume", 7]);
   });
 
+  it("lists only host-projected resumable research sessions", async () => {
+    const sessions = [{
+      schema: "atlcli.research-resumable-session/v1" as const,
+      sessionId: "research-session:resume",
+      turnId: "research-turn:resume",
+      status: "paused" as const,
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      question: "Continue the durable research.",
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+    }];
+    expect(await routeMessage({
+      kind: "research:list-resumable-sessions",
+      windowId: 7,
+    }, {
+      ...okDeps,
+      listResumableResearchSessions: async (windowId) => {
+        expect(windowId).toBe(7);
+        return sessions;
+      },
+    })).toEqual({
+      kind: "research:list-resumable-sessions-result",
+      ok: true,
+      sessions,
+    });
+  });
+
   it("routes catalog-only research scope preflight without an Anthropic key", async () => {
     const request = {
       schema: "atlcli.research-request/v1",

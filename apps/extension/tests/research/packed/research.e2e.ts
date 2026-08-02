@@ -2258,6 +2258,34 @@ test("resumes a checkpointed packed session in a fresh dedicated worker without 
       code: "cancelled",
     });
 
+    const resumableSessions = await page.evaluate(async () => {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+      return chrome.runtime.sendMessage({
+        kind: "research:list-resumable-sessions",
+        windowId: window.id,
+      });
+    }) as {
+      kind: "research:list-resumable-sessions-result";
+      ok: boolean;
+      sessions?: Array<{
+        sessionId: string;
+        turnId: string;
+        question: string;
+        scope: { jiraProjectKeys: string[]; confluenceSpaceKeys: string[] };
+      }>;
+    };
+    expect(resumableSessions).toMatchObject({
+      kind: "research:list-resumable-sessions-result",
+      ok: true,
+      sessions: [{
+        sessionId,
+        turnId: `research-turn:${initialRunId}`,
+        question: HOST_PARITY_QUESTION,
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+      }],
+    });
+
     const resumed = await resumePackedResearchInBackground(
       page,
       sessionId,

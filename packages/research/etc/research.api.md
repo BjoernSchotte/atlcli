@@ -620,6 +620,12 @@ export declare function projectResearchReconciliationInputV1(input: {
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
+// export: projectResearchResumableSessionV1
+export declare function projectResearchResumableSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+    at: string;
+}): ResearchResumableSessionV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -986,6 +992,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
     "auto",
     "required"
 ];
+
+// export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
+export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -2295,7 +2304,9 @@ export interface ResearchPort {
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -2548,6 +2559,20 @@ export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto"
 
 // export: ResearchResolvedPlanApprovalV1
 export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchResumableSessionV1
+export interface ResearchResumableSessionV1 {
+    schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
 
 // export: ResearchRetrievalAssessmentActionV1
 export type ResearchRetrievalAssessmentActionV1 = "continue" | "replan" | "stop";
@@ -4366,6 +4391,12 @@ export declare function projectResearchReconciliationInputV1(input: {
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
+// export: projectResearchResumableSessionV1
+export declare function projectResearchResumableSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+    at: string;
+}): ResearchResumableSessionV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -4732,6 +4763,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
     "auto",
     "required"
 ];
+
+// export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
+export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -6041,7 +6075,9 @@ export interface ResearchPort {
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -6294,6 +6330,20 @@ export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto"
 
 // export: ResearchResolvedPlanApprovalV1
 export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchResumableSessionV1
+export interface ResearchResumableSessionV1 {
+    schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
 
 // export: ResearchRetrievalAssessmentActionV1
 export type ResearchRetrievalAssessmentActionV1 = "continue" | "replan" | "stop";
@@ -8110,6 +8160,12 @@ export declare function projectResearchReconciliationInputV1(input: {
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
+// export: projectResearchResumableSessionV1
+export declare function projectResearchResumableSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+    at: string;
+}): ResearchResumableSessionV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -8476,6 +8532,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
     "auto",
     "required"
 ];
+
+// export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
+export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -9785,7 +9844,9 @@ export interface ResearchPort {
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -10038,6 +10099,20 @@ export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto"
 
 // export: ResearchResolvedPlanApprovalV1
 export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchResumableSessionV1
+export interface ResearchResumableSessionV1 {
+    schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
 
 // export: ResearchRetrievalAssessmentActionV1
 export type ResearchRetrievalAssessmentActionV1 = "continue" | "replan" | "stop";
@@ -12030,6 +12105,12 @@ export declare function projectResearchReconciliationInputV1(input: {
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
+// export: projectResearchResumableSessionV1
+export declare function projectResearchResumableSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+    at: string;
+}): ResearchResumableSessionV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -12413,6 +12494,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
     "auto",
     "required"
 ];
+
+// export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
+export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -13751,7 +13835,9 @@ export interface ResearchPort {
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -14043,6 +14129,20 @@ export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto"
 
 // export: ResearchResolvedPlanApprovalV1
 export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchResumableSessionV1
+export interface ResearchResumableSessionV1 {
+    schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
 
 // export: ResearchRetrievalAssessmentActionV1
 export type ResearchRetrievalAssessmentActionV1 = "continue" | "replan" | "stop";
@@ -16132,6 +16232,12 @@ export declare function projectResearchReconciliationInputV1(input: {
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
+// export: projectResearchResumableSessionV1
+export declare function projectResearchResumableSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+    at: string;
+}): ResearchResumableSessionV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -16515,6 +16621,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
     "auto",
     "required"
 ];
+
+// export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
+export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -17853,7 +17962,9 @@ export interface ResearchPort {
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -18145,6 +18256,20 @@ export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto"
 
 // export: ResearchResolvedPlanApprovalV1
 export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchResumableSessionV1
+export interface ResearchResumableSessionV1 {
+    schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
 
 // export: ResearchRetrievalAssessmentActionV1
 export type ResearchRetrievalAssessmentActionV1 = "continue" | "replan" | "stop";
@@ -19993,7 +20118,9 @@ export interface ResearchPort {
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -21348,6 +21475,12 @@ export declare function projectResearchReconciliationInputV1(input: {
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
 
+// export: projectResearchResumableSessionV1
+export declare function projectResearchResumableSessionV1(session: ResearchSessionV1, input: {
+    tenantOrigin: string;
+    at: string;
+}): ResearchResumableSessionV1 | undefined;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -21731,6 +21864,9 @@ export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
     "auto",
     "required"
 ];
+
+// export: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1
+export declare const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1: "atlcli.research-resumable-session/v1";
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_ACTIONS_V1: readonly ResearchRetrievalAssessmentActionV1[];
@@ -23069,7 +23205,9 @@ export interface ResearchPort {
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
@@ -23361,6 +23499,20 @@ export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto"
 
 // export: ResearchResolvedPlanApprovalV1
 export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchResumableSessionV1
+export interface ResearchResumableSessionV1 {
+    schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    status: Extract<ResearchSessionStatusV1, "waiting_authentication" | "waiting_quota" | "paused" | "running">;
+    updatedAt: string;
+    question: string;
+    scope: {
+        jiraProjectKeys: string[];
+        confluenceSpaceKeys: string[];
+    };
+}
 
 // export: ResearchRetrievalAssessmentActionV1
 export type ResearchRetrievalAssessmentActionV1 = "continue" | "replan" | "stop";

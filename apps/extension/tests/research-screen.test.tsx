@@ -487,6 +487,65 @@ describe("portable Research screen", () => {
     expect(dom.find("research-raw-markdown").textContent).toBe(v2Report.markdown);
   });
 
+  it("lists a durable tenant-bound session and resumes it through the portable port", async () => {
+    const resumable = {
+      schema: "atlcli.research-resumable-session/v1" as const,
+      sessionId: "research-session:resume",
+      turnId: "research-turn:resume",
+      status: "waiting_authentication" as const,
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      question: "Continue the interrupted research.",
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+    };
+    const resumed: string[] = [];
+    let listingCount = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      listResumableSessions: async () => (++listingCount === 1 ? [resumable] : []),
+      run: async () => report,
+      resume: async (sessionId, options) => {
+        resumed.push(sessionId);
+        options?.onEvent?.({
+          kind: "phase",
+          seq: 1,
+          at: "2026-08-02T12:00:01.000Z",
+          phase: "researching",
+        });
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    expect(dom.find("research-resumable-sessions").textContent)
+      .toContain("Continue the interrupted research.");
+    expect((dom.find("research-resume-0") as HTMLButtonElement).disabled).toBe(true);
+    await dom.toggle("research-disclosure");
+    await dom.click("research-resume-0");
+    await dom.flush();
+
+    expect(resumed).toEqual(["research-session:resume"]);
+    expect(dom.find("research-activity").textContent)
+      .toContain("phase · researching");
+    expect(dom.find("research-formatted-report").textContent)
+      .toContain("The page explicitly links the issue.");
+  });
+
   it("shows the shared deep-plan stop before storing a key or calling the host", async () => {
     let keyWrites = 0;
     let runs = 0;

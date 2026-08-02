@@ -4,7 +4,12 @@ import {
   type ResearchGraphV1,
 } from "./graph.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
-import type { ResearchSessionV1 } from "./session.js";
+import {
+  RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
+  type ResearchResumableSessionV1,
+  type ResearchSessionTurnV1,
+  type ResearchSessionV1,
+} from "./session.js";
 
 export interface InitializeResearchSessionTurnInputV1 {
   store: ResearchSessionStoreV1;
@@ -32,6 +37,72 @@ export interface RecoverResearchSessionForResumeInputV1 {
   ownerId: string;
   leaseExpiresAt: string;
   at: string;
+}
+
+function activeTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefined {
+  return session.activeTurnId
+    ? session.turns.find((turn) => turn.id === session.activeTurnId)
+    : undefined;
+}
+
+function isResumableStatus(
+  status: ResearchSessionV1["status"],
+): status is ResearchResumableSessionV1["status"] {
+  return [
+    "waiting_authentication",
+    "waiting_quota",
+    "paused",
+    "running",
+  ].includes(status);
+}
+
+/**
+ * Projects the only durable states this initial recovery policy can resume.
+ * The same projection gates the browser's list and its resume endpoint, so a
+ * sidebar never advertises a session the host would reject or a foreign tenant
+ * session to the active tab.
+ */
+export function projectResearchResumableSessionV1(
+  session: ResearchSessionV1,
+  input: { tenantOrigin: string; at: string },
+): ResearchResumableSessionV1 | undefined {
+  if (!Number.isFinite(Date.parse(input.at))) return undefined;
+  const turn = activeTurn(session);
+  if (!turn?.brief || !turn.graph || turn.brief.scope.siteOrigin !== input.tenantOrigin) {
+    return undefined;
+  }
+  if (!isResumableStatus(session.status) ||
+      Date.parse(input.at) < Date.parse(session.lease.expiresAt)) {
+    return undefined;
+  }
+  const issuedContinuations = turn.retrievalAssessments?.filter((assessment) =>
+    assessment.graphRevision === turn.graph!.revision &&
+    assessment.continuation?.status === "issued",
+  ) ?? [];
+  const undispatched = turn.tasks.length === 0 &&
+    turn.acceptedPackets.length === 0 &&
+    turn.graphSelectionCommittedAt === undefined;
+  const checkpointResumable = issuedContinuations.length === 1 &&
+    turn.tasks.length > 0 &&
+    turn.acceptedPackets.length > 0 &&
+    turn.budgetState !== undefined;
+  if (!undispatched && !checkpointResumable) return undefined;
+  if (turn.graph.approvalEnvelope.status !== "approved" ||
+      (undispatched ? turn.graph.status !== "approved" : turn.graph.status !== "running")) {
+    return undefined;
+  }
+  return {
+    schema: RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
+    sessionId: session.sessionId,
+    turnId: turn.id,
+    status: session.status,
+    updatedAt: session.updatedAt,
+    question: turn.brief.objective,
+    scope: {
+      jiraProjectKeys: [...turn.brief.scope.jiraProjectKeys],
+      confluenceSpaceKeys: [...turn.brief.scope.confluenceSpaceKeys],
+    },
+  };
 }
 
 /**

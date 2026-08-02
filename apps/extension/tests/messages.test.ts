@@ -55,6 +55,15 @@ describe("message guards", () => {
       request: { mustNotCross: true },
     })).toBe(false);
     expect(isExtRequest({
+      kind: "research:list-resumable-sessions",
+      windowId: 7,
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:list-resumable-sessions",
+      windowId: 7,
+      sessionId: "must-not-cross",
+    })).toBe(false);
+    expect(isExtRequest({
       kind: "research:resolve-scope",
       windowId: 7,
       request: { schema: "atlcli.research-request/v1" },

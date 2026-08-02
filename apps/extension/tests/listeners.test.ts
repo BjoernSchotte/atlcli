@@ -124,6 +124,40 @@ describe("handleExtMessage (background listener adapter)", () => {
     expect(cap.values).toEqual([{ kind: "jobs:wake-result", claimedJobId: jobId }]);
   });
 
+  it("returns true and lists host-projected resumable research sessions", async () => {
+    const cap = captureResponse<ExtResponse>();
+    expect(handleExtMessage(
+      { kind: "research:list-resumable-sessions", windowId: 7 },
+      cap.sendResponse,
+      {
+        ...okRouterDeps,
+        listResumableResearchSessions: async () => [{
+          schema: "atlcli.research-resumable-session/v1",
+          sessionId: "research-session:resume",
+          turnId: "research-turn:resume",
+          status: "paused",
+          updatedAt: "2026-08-02T12:00:00.000Z",
+          question: "Continue the durable research.",
+          scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        }],
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{
+      kind: "research:list-resumable-sessions-result",
+      ok: true,
+      sessions: [{
+        schema: "atlcli.research-resumable-session/v1",
+        sessionId: "research-session:resume",
+        turnId: "research-turn:resume",
+        status: "paused",
+        updatedAt: "2026-08-02T12:00:00.000Z",
+        question: "Continue the durable research.",
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+      }],
+    }]);
+  });
+
   it("returns true and responds to DOCX runtime preparation", async () => {
     const cap = captureResponse<ExtResponse>();
     expect(handleExtMessage(

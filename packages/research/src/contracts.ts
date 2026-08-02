@@ -576,7 +576,18 @@ export interface ResearchPort {
     request: ResearchRequestV1,
     options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1,
   ): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+  /**
+   * An optional durable-session capability. One-shot-only hosts intentionally
+   * omit it until they implement their own tenant-bound session catalog.
+   */
+  listResumableSessions?(): Promise<
+    import("./session.js").ResearchResumableSessionV1[]
+  >;
   run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+  resume?(
+    sessionId: string,
+    options?: Omit<ResearchRunOptions, "policy">,
+  ): Promise<ResearchReport>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }

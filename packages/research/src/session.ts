@@ -51,6 +51,8 @@ export const RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1 =
   "atlcli.research-session-retrieval-continuation/v1" as const;
 export const RESEARCH_SESSION_GRAPH_REVISION_SCHEMA_V1 =
   "atlcli.research-session-graph-revision/v1" as const;
+export const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1 =
+  "atlcli.research-resumable-session/v1" as const;
 
 export type ResearchSessionStatusV1 =
   | "idle"
@@ -233,6 +235,27 @@ export interface ResearchSessionV1 {
   turns: ResearchSessionTurnV1[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A tenant-filtered, body-free projection that a host may show to its current
+ * user as a safe resume affordance. It deliberately omits source references,
+ * packets, prompts, events, credentials, and the tenant origin itself.
+ */
+export interface ResearchResumableSessionV1 {
+  schema: typeof RESEARCH_RESUMABLE_SESSION_SCHEMA_V1;
+  sessionId: string;
+  turnId: string;
+  status: Extract<
+    ResearchSessionStatusV1,
+    "waiting_authentication" | "waiting_quota" | "paused" | "running"
+  >;
+  updatedAt: string;
+  question: string;
+  scope: {
+    jiraProjectKeys: string[];
+    confluenceSpaceKeys: string[];
+  };
 }
 
 interface ResearchSessionFencedUpdateV1 {

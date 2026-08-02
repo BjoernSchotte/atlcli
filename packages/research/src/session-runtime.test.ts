@@ -7,6 +7,7 @@ import {
 import {
   appendResearchSessionTurnV1,
   initializeResearchSessionTurnV1,
+  projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
 } from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
@@ -180,5 +181,48 @@ describe("durable research session execution gate", () => {
     expect(resumed).toMatchObject({ status: "running", lease: { epoch: 2, ownerId: "owner:resumed" } });
     expect((await store.events(initialized.sessionId)).slice(-2).map((event) => event.kind))
       .toEqual(["recover", "resume"]);
+  });
+
+  test("projects only expired, tenant-bound durable resumes without source or provider data", async () => {
+    const acceptedBrief = brief("automatic");
+    const store = new InMemoryResearchSessionStoreV1();
+    const initialized = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: acceptedBrief,
+      graph: composeResearchGraphV1(acceptedBrief),
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const waiting = await store.commit(initialized.sessionId, {
+      kind: "wait_authentication",
+      expectedRevision: initialized.revision,
+      expectedLeaseEpoch: initialized.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    });
+
+    expect(projectResearchResumableSessionV1(waiting.session, {
+      tenantOrigin: "https://example.atlassian.net",
+      at: "2026-08-01T15:00:02.001Z",
+    })).toEqual({
+      schema: "atlcli.research-resumable-session/v1",
+      sessionId: initialized.sessionId,
+      turnId: "research-turn:runtime-test",
+      status: "waiting_authentication",
+      updatedAt: "2026-08-01T15:00:02.000Z",
+      question: "Find the related Jira work item.",
+      scope: {
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["DOCS"],
+      },
+    });
+    expect(projectResearchResumableSessionV1(waiting.session, {
+      tenantOrigin: "https://other.atlassian.net",
+      at: "2026-08-01T15:00:02.001Z",
+    })).toBeUndefined();
+    expect(projectResearchResumableSessionV1(initialized, {
+      tenantOrigin: "https://example.atlassian.net",
+      at: "2026-08-01T15:00:02.001Z",
+    })).toBeUndefined();
   });
 });
