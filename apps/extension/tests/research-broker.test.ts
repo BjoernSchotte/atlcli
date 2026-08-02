@@ -144,6 +144,18 @@ function fakeProviders(): ResearchReadProviders & {
   };
 }
 
+async function admitRankedCandidates(
+  broker: ResearchCapabilityBroker,
+  product: "jira" | "confluence",
+  items: readonly { entityRef: string }[],
+): Promise<void> {
+  await broker.invoke("research.candidate.rank", {
+    schema: RESEARCH_CAPABILITY_SCHEMAS["research.candidate.rank"].input,
+    product,
+    entityRefs: items.map((item) => item.entityRef),
+  });
+}
+
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -197,6 +209,7 @@ describe("research query builders", () => {
       "jira.issue.get": "jira_issue_get",
       "wiki.search": "wiki_search",
       "wiki.page.get": "wiki_page_get",
+      "research.candidate.rank": "research_candidate_rank",
     });
     expect(Object.values(RESEARCH_LANGCHAIN_TOOL_NAMES).every((name) => !name.includes(".")))
       .toBe(true);
@@ -217,6 +230,7 @@ describe("bounded research capability broker", () => {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
       query: {},
     }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "jira", page.items);
     await broker.invoke("jira.issue.get", {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
       entityRef: page.items[0]!.entityRef,
@@ -268,6 +282,7 @@ describe("bounded research capability broker", () => {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
       query: {},
     }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "jira", page.items);
     await broker.invoke("jira.issue.get", {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
       entityRef: page.items[0]!.entityRef,
@@ -335,6 +350,7 @@ describe("bounded research capability broker", () => {
       query: {},
     }) as ResearchSearchOutputV1;
     const entityRef = page.items[0]!.entityRef;
+    await admitRankedCandidates(broker, "jira", page.items);
     await broker.invoke("jira.issue.get", {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
       entityRef,
@@ -441,6 +457,15 @@ describe("bounded research capability broker", () => {
       query: {},
     })) as ResearchSearchOutputV1;
 
+    await expect(
+      broker.invoke("jira.issue.get", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+        entityRef: jira.items[0]!.entityRef,
+      }),
+    ).rejects.toThrow("candidate reference admitted by research.candidate.rank");
+    await admitRankedCandidates(broker, "jira", jira.items);
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+
     const jiraDetail = await broker.invoke("jira.issue.get", {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
       entityRef: jira.items[0]!.entityRef,
@@ -485,12 +510,62 @@ describe("bounded research capability broker", () => {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
       query: {},
     })) as ResearchSearchOutputV1;
+    await admitRankedCandidates(guarded, "jira", found.items);
     await expect(
       guarded.invoke("jira.issue.get", {
         schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
         entityRef: found.items[0]!.entityRef,
       })
     ).rejects.toThrow("outside the run scope");
+  });
+
+  it("ranks complete opaque candidate sets on the host before detail access", async () => {
+    const providers = fakeProviders();
+    providers.jira.searchPage = async () => ({
+      items: [
+        {
+          issueKey: "DEMO-1",
+          projectKey: "DEMO",
+          title: "Background discovery",
+          excerpt: "internal-only-excerpt-a",
+        },
+        {
+          issueKey: "DEMO-2",
+          projectKey: "DEMO",
+          title: "Open work delivery plan",
+          excerpt: "internal-only-excerpt-b",
+        },
+      ],
+    });
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(request(), providers, {
+      createEntityId: () => `rank-${++entityId}`,
+    });
+    const page = (await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    })) as ResearchSearchOutputV1;
+
+    const ranked = await broker.invoke("research.candidate.rank", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["research.candidate.rank"].input,
+      product: "jira",
+      entityRefs: [...page.items].reverse().map((item) => item.entityRef),
+    });
+
+    expect(ranked).toMatchObject({
+      schema: "atlcli.ptc/research.candidate.rank.output/v1",
+      items: [
+        { entityRef: page.items[1]!.entityRef, sourceId: "jira:DEMO-2", rank: 1 },
+        { entityRef: page.items[0]!.entityRef, sourceId: "jira:DEMO-1", rank: 2 },
+      ],
+    });
+    expect(JSON.stringify(ranked)).not.toContain("internal-only-excerpt");
+
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[1]!.entityRef,
+    });
+    expect(providers.calls.filter((call) => call.product === "jira-detail")).toHaveLength(1);
   });
 
   it("rejects raw query languages and terminates an incomplete pagination budget visibly", async () => {

@@ -190,8 +190,8 @@ describe("one-shot supervisor eval capability lifecycle", () => {
 describe("legacy bounded acquisition prompt", () => {
   test("uses the host-approved detail budget instead of a hidden three-item cap", () => {
     const prompt = buildLegacyResearchSystemPromptV1(8);
-    expect(prompt).toContain("jira.items.slice(0, 8)");
-    expect(prompt).toContain("wiki.items.slice(0, 8)");
+    expect(prompt).toContain("tools.researchCandidateRank");
+    expect(prompt).toContain("ranked.items.slice(0, 8)");
     expect(prompt).not.toContain("slice(0, 3)");
   });
 });

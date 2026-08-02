@@ -219,6 +219,7 @@ You have only one normal tool: eval. Inside eval, QuickJS exposes exactly:
 - tools.jiraIssueGet
 - tools.wikiSearch
 - tools.wikiPageGet
+- tools.researchCandidateRank
 
 Every bridged tool returns a JSON string: call JSON.parse. The host injects contract schema IDs; do not pass a schema field. QuickJS has no fetch, filesystem, process, require, chrome APIs or subagents.
 
@@ -247,19 +248,24 @@ async function readDetail(read, item) {
     };
   }
 }
+async function rankedDetails(product, items, read) {
+  const entityRefs = [...new Set(items.map((item) => item.entityRef))];
+  if (entityRefs.length === 0) return [];
+  const ranked = JSON.parse(await tools.researchCandidateRank({ product, entityRefs }));
+  return Promise.all(ranked.items.slice(0, ${detailLimit}).map((item) =>
+    readDetail(read, item)));
+}
 const [jira, wiki] = await Promise.all([
   collect(tools.jiraIssueSearch),
   collect(tools.wikiSearch)
 ]);
 const [jiraDetails, wikiDetails] = await Promise.all([
-  Promise.all(jira.items.slice(0, ${detailLimit}).map((item) =>
-    readDetail(tools.jiraIssueGet, item))),
-  Promise.all(wiki.items.slice(0, ${detailLimit}).map((item) =>
-    readDetail(tools.wikiPageGet, item)))
+  rankedDetails("jira", jira.items, tools.jiraIssueGet),
+  rankedDetails("confluence", wiki.items, tools.wikiPageGet)
 ]);
 ({ jira, wiki, jiraDetails, wikiDetails });
 
-Only opaque nextCursor values may continue a search. Only opaque entityRef values returned by search may request details. Never substitute visible Jira keys, page IDs, URLs, or invented values.
+Only opaque nextCursor values may continue a search. Only opaque entityRef values returned by search may be passed to tools.researchCandidateRank. Only opaque entityRef values returned by that host ranking may request details. Never substitute visible Jira keys, page IDs, URLs, or invented values.
 
 Return the required structured draft without Markdown syntax. Cite only sourceId values observed in tool results. Classify a relationship as verified only when detailed content explicitly names or links the Jira issue and Confluence page; otherwise classify it as hypothesis.
 Do not invent a relationship from update-time proximity or generic titles alone. Omit the relationship entirely unless the available titles or detailed content provide a concrete semantic signal.

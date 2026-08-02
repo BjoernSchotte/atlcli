@@ -18,6 +18,7 @@ const toolNames = [
   "jira_issue_get",
   "wiki_search",
   "wiki_page_get",
+  "research_candidate_rank",
 ] as const;
 
 function readTools() {
@@ -122,7 +123,7 @@ describe("QuickJS research sandbox", () => {
     }
   });
 
-  it("exposes exactly the four PTC reads and no host escape hatches", async () => {
+  it("exposes four PTC reads plus host candidate ranking and no host escape hatches", async () => {
     const session = new ReplSession("research-sandbox-contract", {
       tools: readTools(),
       maxPtcCalls: 4,
@@ -147,7 +148,7 @@ describe("QuickJS research sandbox", () => {
 
       expect(result.ok).toBe(true);
       expect(result.value).toEqual({
-        tools: ["jiraIssueGet", "jiraIssueSearch", "wikiPageGet", "wikiSearch"],
+        tools: ["jiraIssueGet", "jiraIssueSearch", "researchCandidateRank", "wikiPageGet", "wikiSearch"],
         fetch: "undefined",
         chrome: "undefined",
         process: "undefined",

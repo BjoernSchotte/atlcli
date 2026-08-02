@@ -77,6 +77,7 @@ const toolForCapability: Record<ResearchGraphCapabilityV1, string> = {
   "jira.issue.get": "jira_issue_get",
   "wiki.search": "wiki_search",
   "wiki.page.get": "wiki_page_get",
+  "research.candidate.rank": "research_candidate_rank",
   "jira.project.search": "jira_project_search",
   "wiki.space.search": "wiki_space_search",
   "atlassian.reference.resolve": "atlassian_reference_resolve",
@@ -87,6 +88,7 @@ const quickJsToolForCapability: Record<ResearchGraphCapabilityV1, string> = {
   "jira.issue.get": "tools.jiraIssueGet",
   "wiki.search": "tools.wikiSearch",
   "wiki.page.get": "tools.wikiPageGet",
+  "research.candidate.rank": "tools.researchCandidateRank",
   "jira.project.search": "tools.jiraProjectSearch",
   "wiki.space.search": "tools.wikiSpaceSearch",
   "atlassian.reference.resolve": "tools.atlassianReferenceResolve",
@@ -197,17 +199,17 @@ export function buildResearchAcquisitionProgram(
     : [];
   const search = isJira ? "tools.jiraIssueSearch" : "tools.wikiSearch";
   const detail = isJira ? "tools.jiraIssueGet" : "tools.wikiPageGet";
+  const rank = "tools.researchCandidateRank";
   const hasDetailGrant = node.grantedCapabilityIds.includes(
     isJira ? "jira.issue.get" : "wiki.page.get",
   );
+  const hasRankGrant = node.grantedCapabilityIds.includes("research.candidate.rank");
   const initialSearch = wikiTitleQueries.length > 0
     ? `await (async () => { const groups = []; let failures = 0; for (const text of [${wikiTitleQueries.join(", ")}]) { try { const page = JSON.parse(await search({ query: { text } })); groups.push({ text, items: page.items }); } catch { failures += 1; } } return { items: groups.flatMap((group) => group.items.map((item) => ({ ...item, queryText: group.text }))), page: { complete: failures === 0, termination: failures === 0 ? "title-query-set" : "partial-title-query-set" } }; })()`
     : "JSON.parse(await search({ query: {} }))";
   const detailLimit = Math.max(1, Math.min(Math.trunc(maxDetailItems), 50));
-  const detailSelection = wikiTitleQueries.length > 0
-    ? `const wantedTitles = ${JSON.stringify(quotedTerms)}; const detailItems = wantedTitles.flatMap((wanted) => { const matches = result.items.filter((item) => item.queryText === wanted); const exact = matches.find((item) => item.title.toLocaleLowerCase() === wanted.toLocaleLowerCase()); const chosen = exact ?? matches[0]; return chosen ? [chosen] : []; }).filter((item, index, items) => items.findIndex((candidate) => candidate.entityRef === item.entityRef) === index).slice(0, ${detailLimit});`
-    : `const detailItems = result.items.slice(0, ${detailLimit});`;
-  const detailProgram = hasDetailGrant
+  const detailSelection = `const entityRefs = [...new Set(result.items.map((item) => item.entityRef))]; const ranked = entityRefs.length === 0 ? { items: [] } : JSON.parse(await ${rank}({ product: ${JSON.stringify(isJira ? "jira" : "confluence")}, entityRefs })); const detailItems = ranked.items.slice(0, ${detailLimit});`;
+  const detailProgram = hasDetailGrant && hasRankGrant
     ? `${detailSelection}\nconst details = await Promise.all(detailItems.map((item) => readDetail(${detail}, item)));`
     : "const details = [];";
 
@@ -264,13 +266,13 @@ const textGroups = await Promise.all(boundedQueryTexts.map(async (text) => ({
 const candidateGroups = [...baselineGroups, ...textGroups];
 candidateGroups;
 
-Do not omit, rewrite, or reorder requiredQueryTexts. The textQueryLimit bound and four-call total are mandatory even if you brainstorm more terms. Do not retry, broaden, or replace a query when it returns zero items; an empty result is valid evidence about that search intent and you must preserve the remaining host budget. Inspect every returned candidate summary. Select only candidates that could materially answer the question, deduplicate them by sourceId, and rank them across all query groups. Search summaries are screening evidence only and must never support a published finding.
+Do not omit, rewrite, or reorder requiredQueryTexts. The textQueryLimit bound and four-call total are mandatory even if you brainstorm more terms. Do not retry, broaden, or replace a query when it returns zero items; an empty result is valid evidence about that search intent and you must preserve the remaining host budget. Inspect every returned candidate summary, deduplicate their opaque entityRef values, then give the complete deduplicated set to tools.researchCandidateRank with product: "jira". The host applies the question-bound deterministic ranking. Search summaries are screening evidence only and must never support a published finding.
 
-Stage 2 — read evidence. Make one final eval call that uses only opaque entityRef values observed in stage 1 and calls tools.jiraIssueGet for at most ${maxDetailItems} selected candidates with Promise.all. Never substitute visible Jira keys, URLs, or invented references. Return findings only from non-truncated detail results. If no candidate is relevant, skip stage 2 and return an empty evidence packet.
+Stage 2 — read evidence. Make one final eval call. First call tools.researchCandidateRank with every deduplicated opaque entityRef observed in stage 1 and product: "jira". Then call tools.jiraIssueGet only for the first at most ${maxDetailItems} entityRef values returned by that ranking, with Promise.all. Never substitute visible Jira keys, URLs, or invented references. Return findings only from non-truncated detail results. If no candidate is relevant, skip stage 2 and return an empty evidence packet.
 
 If every Jira search returns zero candidates, that is a valid completed acquisition. Do not fail and do not retry. ${emptyPacket}
 
-Do not make more than two eval calls, more than four search calls, or more than ${maxDetailItems} detail calls. Do not reuse a cursor or start an unscoped query. Only the host-bound allowlisted PTC functions may access sources.`;
+Do not make more than two eval calls, more than four search calls, one candidate-ranking call, or more than ${maxDetailItems} detail calls. Do not reuse a cursor or start an unscoped query. Only the host-bound allowlisted PTC functions may access sources.`;
   }
 
   return `Your only source-acquisition tool is eval. Inside eval, use exactly the granted PTC functions. Make exactly one eval call and run this bounded program, adapting neither its pagination nor its opaque references:

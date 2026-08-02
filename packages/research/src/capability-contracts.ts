@@ -24,6 +24,10 @@ export const RESEARCH_CAPABILITY_SCHEMAS = {
     input: "atlcli.ptc/wiki.page.get.input/v1",
     output: "atlcli.ptc/wiki.page.get.output/v1",
   },
+  "research.candidate.rank": {
+    input: "atlcli.ptc/research.candidate.rank.input/v1",
+    output: "atlcli.ptc/research.candidate.rank.output/v1",
+  },
 } as const;
 
 export const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string> = {
@@ -31,6 +35,7 @@ export const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string> = {
   "jira.issue.get": "jira_issue_get",
   "wiki.search": "wiki_search",
   "wiki.page.get": "wiki_page_get",
+  "research.candidate.rank": "research_candidate_rank",
 };
 
 export interface ResearchSearchQueryV1 {
@@ -102,6 +107,22 @@ export interface ResearchGetOutputV1 {
   schema: string;
   source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
   content: BoundedContentProjectionV1;
+  budget: ResearchBudgetSnapshotV1;
+}
+
+export interface ResearchCandidateRankInputV1 {
+  schema: string;
+  product: "jira" | "confluence";
+  entityRefs: string[];
+}
+
+export interface ResearchCandidateRankOutputV1 {
+  schema: string;
+  items: Array<{
+    entityRef: string;
+    sourceId: string;
+    rank: number;
+  }>;
   budget: ResearchBudgetSnapshotV1;
 }
 
@@ -192,4 +213,31 @@ export function decodeResearchGetInputV1(
     invalid("Entity reference is invalid.");
   }
   return { schema: expectedSchema, entityRef: value.entityRef };
+}
+
+export function decodeResearchCandidateRankInputV1(
+  value: unknown,
+  maximumEntities: number,
+): ResearchCandidateRankInputV1 {
+  const tool = "research.candidate.rank";
+  assertRecord(value, `${tool} input`);
+  assertExactKeys(value, ["schema", "product", "entityRefs"], `${tool} input`);
+  const expectedSchema = RESEARCH_CAPABILITY_SCHEMAS[tool].input;
+  if (value.schema !== expectedSchema) invalid(`Unsupported ${tool} input schema.`);
+  if (value.product !== "jira" && value.product !== "confluence") {
+    invalid("Candidate-rank product is invalid.");
+  }
+  if (!Array.isArray(value.entityRefs) || value.entityRefs.length < 1 || value.entityRefs.length > maximumEntities) {
+    invalid("Candidate-rank entity references are invalid.");
+  }
+  const entityRefs = value.entityRefs.map((entityRef) => {
+    if (typeof entityRef !== "string" || !/^research-entity:[A-Za-z0-9-]{1,200}$/.test(entityRef)) {
+      invalid("Candidate-rank entity reference is invalid.");
+    }
+    return entityRef;
+  });
+  if (new Set(entityRefs).size !== entityRefs.length) {
+    invalid("Candidate-rank entity references must be unique.");
+  }
+  return { schema: expectedSchema, product: value.product, entityRefs };
 }

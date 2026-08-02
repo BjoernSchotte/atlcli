@@ -232,7 +232,11 @@ async function collect() {
   return { items, page: page.page };
 }
 const result = await collect();
-const details = await Promise.all(result.items.slice(0, 2).map(async (item) => ({
+const entityRefs = [...new Set(result.items.map((item) => item.entityRef))];
+const ranked = entityRefs.length === 0
+  ? { items: [] }
+  : JSON.parse(await tools.researchCandidateRank({ product: "confluence", entityRefs }));
+const details = await Promise.all(ranked.items.slice(0, 2).map(async (item) => ({
   status: "available",
   value: JSON.parse(await tools.wikiPageGet({ entityRef: item.entityRef }))
 })));
@@ -251,7 +255,11 @@ async function collect() {
   return { items, page: page.page };
 }
 const result = await collect();
-const details = await Promise.all(result.items.slice(0, 2).map(async (item) => ({
+const entityRefs = [...new Set(result.items.map((item) => item.entityRef))];
+const ranked = entityRefs.length === 0
+  ? { items: [] }
+  : JSON.parse(await tools.researchCandidateRank({ product: "jira", entityRefs }));
+const details = await Promise.all(ranked.items.slice(0, 2).map(async (item) => ({
   status: "available",
   value: JSON.parse(await tools.jiraIssueGet({ entityRef: item.entityRef }))
 })));

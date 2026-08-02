@@ -135,7 +135,7 @@ describe("dynamic research graph composition", () => {
     expect(projectSelectedResearchRolesV1(lookup)).toEqual(["focused-researcher", "synthesizer"]);
     expect(lookup.nodes.filter((node) => node.roleId === "focused-researcher")).toHaveLength(1);
     expect(lookup.nodes.find((node) => node.id === "research-node:jira-lookup")?.grantedCapabilityIds)
-      .toEqual(["jira.issue.search", "jira.issue.get"]);
+      .toEqual(["jira.issue.search", "research.candidate.rank", "jira.issue.get"]);
     expect(projectSelectedResearchRolesV1(jiraOnly)).toEqual(["focused-researcher", "synthesizer"]);
     expect(projectSelectedResearchRolesV1(crossProduct)).toEqual([
       "focused-researcher",
@@ -223,7 +223,11 @@ describe("dynamic research graph composition", () => {
       { grants: { "focused-researcher": ["jira.issue.search"] } },
     );
     const jira = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
-    expect(jira.requestedCapabilityIds).toEqual(["jira.issue.search", "jira.issue.get"]);
+    expect(jira.requestedCapabilityIds).toEqual([
+      "jira.issue.search",
+      "research.candidate.rank",
+      "jira.issue.get",
+    ]);
     expect(jira.grantedCapabilityIds).toEqual(["jira.issue.search"]);
     expect(graph.approvalEnvelope.allowedCapabilityIds).toEqual(["jira.issue.search"]);
   });

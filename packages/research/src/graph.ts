@@ -58,6 +58,7 @@ export const RESEARCH_GRAPH_CAPABILITIES = [
   "jira.issue.get",
   "wiki.search",
   "wiki.page.get",
+  "research.candidate.rank",
   "jira.project.search",
   "wiki.space.search",
   "atlassian.reference.resolve",
@@ -393,11 +394,11 @@ function composeSeeds(brief: ResearchBriefV1, includeOutlinePlanner: boolean): N
   const seeds: NodeSeed[] = [];
 
   if (brief.resolvedEffort === "lookup") {
-    if (jira) seeds.push({ id: "research-node:jira-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
-    if (wiki) seeds.push({ id: "research-node:wiki-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["wiki.search", "wiki.page.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
+    if (jira) seeds.push({ id: "research-node:jira-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
+    if (wiki) seeds.push({ id: "research-node:wiki-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
   } else {
-    if (jira) seeds.push({ id: "research-node:jira-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the accepted objective.", requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
-    if (wiki) seeds.push({ id: "research-node:wiki-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the accepted objective.", requestedCapabilityIds: ["wiki.search", "wiki.page.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
+    if (jira) seeds.push({ id: "research-node:jira-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the accepted objective.", requestedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
+    if (wiki) seeds.push({ id: "research-node:wiki-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the accepted objective.", requestedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
   }
 
   const researchIds = seeds.map((seed) => seed.id);
@@ -438,8 +439,8 @@ function composeSeeds(brief: ResearchBriefV1, includeOutlinePlanner: boolean): N
       roleId: "contradiction-verifier",
       objective: "Execute at most one host-authorized reconciliation follow-up inside the approved Jira and Confluence scope.",
       requestedCapabilityIds: [
-        ...(jira ? ["jira.issue.search", "jira.issue.get"] as const : []),
-        ...(wiki ? ["wiki.search", "wiki.page.get"] as const : []),
+        ...(jira ? ["jira.issue.search", "research.candidate.rank", "jira.issue.get"] as const : []),
+        ...(wiki ? ["wiki.search", "research.candidate.rank", "wiki.page.get"] as const : []),
       ],
       dependencies: ["research-node:reconciler"],
       reasonCodes: ["coverage_gap"],

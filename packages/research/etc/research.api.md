@@ -228,6 +228,9 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeResearchCandidateRankInputV1
+export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -615,6 +618,12 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: rankResearchCandidatesV1
+export declare function rankResearchCandidatesV1(input: {
+    question: string;
+    candidates: readonly ResearchCandidateRankingInputV1[];
+}): ResearchRankedCandidateV1[];
+
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
@@ -725,6 +734,7 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -747,6 +757,10 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "wiki.page.get": {
         readonly input: "atlcli.ptc/wiki.page.get.input/v1";
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+    readonly "research.candidate.rank": {
+        readonly input: "atlcli.ptc/research.candidate.rank.input/v1";
+        readonly output: "atlcli.ptc/research.candidate.rank.output/v1";
     };
 };
 
@@ -829,6 +843,7 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -1103,7 +1118,8 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
-    "wiki.page.get"
+    "wiki.page.get",
+    "research.candidate.rank"
 ];
 
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
@@ -1225,6 +1241,32 @@ export interface ResearchBudgetSnapshotV1 {
     ptcRemaining: number;
     httpAttemptsRemaining: number;
     responseBytesRemaining: number;
+}
+
+// export: ResearchCandidateRankingInputV1
+export interface ResearchCandidateRankingInputV1 {
+    entityRef: string;
+    sourceId: string;
+    title: string;
+    excerpt?: string;
+}
+
+// export: ResearchCandidateRankInputV1
+export interface ResearchCandidateRankInputV1 {
+    schema: string;
+    product: "jira" | "confluence";
+    entityRefs: string[];
+}
+
+// export: ResearchCandidateRankOutputV1
+export interface ResearchCandidateRankOutputV1 {
+    schema: string;
+    items: Array<{
+        entityRef: string;
+        sourceId: string;
+        rank: number;
+    }>;
+    budget: ResearchBudgetSnapshotV1;
 }
 
 // export: ResearchCapabilityBroker
@@ -1586,7 +1628,7 @@ export type ResearchEventV1 = {
     at: string;
     callId: string;
     toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -2193,6 +2235,13 @@ export interface ResearchProviderPage<T> {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchRankedCandidateV1
+export interface ResearchRankedCandidateV1 {
+    entityRef: string;
+    sourceId: string;
+    rank: number;
+}
 
 // export: ResearchReadProviders
 export interface ResearchReadProviders {
@@ -3689,6 +3738,9 @@ export declare function createResearchSessionV1(input: {
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeResearchCandidateRankInputV1
+export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -4076,6 +4128,12 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: rankResearchCandidatesV1
+export declare function rankResearchCandidatesV1(input: {
+    question: string;
+    candidates: readonly ResearchCandidateRankingInputV1[];
+}): ResearchRankedCandidateV1[];
+
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
@@ -4186,6 +4244,7 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -4208,6 +4267,10 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "wiki.page.get": {
         readonly input: "atlcli.ptc/wiki.page.get.input/v1";
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+    readonly "research.candidate.rank": {
+        readonly input: "atlcli.ptc/research.candidate.rank.input/v1";
+        readonly output: "atlcli.ptc/research.candidate.rank.output/v1";
     };
 };
 
@@ -4290,6 +4353,7 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -4564,7 +4628,8 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
-    "wiki.page.get"
+    "wiki.page.get",
+    "research.candidate.rank"
 ];
 
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
@@ -4686,6 +4751,32 @@ export interface ResearchBudgetSnapshotV1 {
     ptcRemaining: number;
     httpAttemptsRemaining: number;
     responseBytesRemaining: number;
+}
+
+// export: ResearchCandidateRankingInputV1
+export interface ResearchCandidateRankingInputV1 {
+    entityRef: string;
+    sourceId: string;
+    title: string;
+    excerpt?: string;
+}
+
+// export: ResearchCandidateRankInputV1
+export interface ResearchCandidateRankInputV1 {
+    schema: string;
+    product: "jira" | "confluence";
+    entityRefs: string[];
+}
+
+// export: ResearchCandidateRankOutputV1
+export interface ResearchCandidateRankOutputV1 {
+    schema: string;
+    items: Array<{
+        entityRef: string;
+        sourceId: string;
+        rank: number;
+    }>;
+    budget: ResearchBudgetSnapshotV1;
 }
 
 // export: ResearchCapabilityBroker
@@ -5047,7 +5138,7 @@ export type ResearchEventV1 = {
     at: string;
     callId: string;
     toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -5654,6 +5745,13 @@ export interface ResearchProviderPage<T> {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchRankedCandidateV1
+export interface ResearchRankedCandidateV1 {
+    entityRef: string;
+    sourceId: string;
+    rank: number;
+}
 
 // export: ResearchReadProviders
 export interface ResearchReadProviders {
@@ -7148,6 +7246,9 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeResearchCandidateRankInputV1
+export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -7535,6 +7636,12 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: rankResearchCandidatesV1
+export declare function rankResearchCandidatesV1(input: {
+    question: string;
+    candidates: readonly ResearchCandidateRankingInputV1[];
+}): ResearchRankedCandidateV1[];
+
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
@@ -7645,6 +7752,7 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -7667,6 +7775,10 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "wiki.page.get": {
         readonly input: "atlcli.ptc/wiki.page.get.input/v1";
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+    readonly "research.candidate.rank": {
+        readonly input: "atlcli.ptc/research.candidate.rank.input/v1";
+        readonly output: "atlcli.ptc/research.candidate.rank.output/v1";
     };
 };
 
@@ -7749,6 +7861,7 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -8023,7 +8136,8 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
-    "wiki.page.get"
+    "wiki.page.get",
+    "research.candidate.rank"
 ];
 
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
@@ -8145,6 +8259,32 @@ export interface ResearchBudgetSnapshotV1 {
     ptcRemaining: number;
     httpAttemptsRemaining: number;
     responseBytesRemaining: number;
+}
+
+// export: ResearchCandidateRankingInputV1
+export interface ResearchCandidateRankingInputV1 {
+    entityRef: string;
+    sourceId: string;
+    title: string;
+    excerpt?: string;
+}
+
+// export: ResearchCandidateRankInputV1
+export interface ResearchCandidateRankInputV1 {
+    schema: string;
+    product: "jira" | "confluence";
+    entityRefs: string[];
+}
+
+// export: ResearchCandidateRankOutputV1
+export interface ResearchCandidateRankOutputV1 {
+    schema: string;
+    items: Array<{
+        entityRef: string;
+        sourceId: string;
+        rank: number;
+    }>;
+    budget: ResearchBudgetSnapshotV1;
 }
 
 // export: ResearchCapabilityBroker
@@ -8506,7 +8646,7 @@ export type ResearchEventV1 = {
     at: string;
     callId: string;
     toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -9113,6 +9253,13 @@ export interface ResearchProviderPage<T> {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchRankedCandidateV1
+export interface ResearchRankedCandidateV1 {
+    entityRef: string;
+    sourceId: string;
+    rank: number;
+}
 
 // export: ResearchReadProviders
 export interface ResearchReadProviders {
@@ -10739,6 +10886,9 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeResearchCandidateRankInputV1
+export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -11171,6 +11321,12 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
     [key: string]: unknown;
 };
 
+// export: rankResearchCandidatesV1
+export declare function rankResearchCandidatesV1(input: {
+    question: string;
+    candidates: readonly ResearchCandidateRankingInputV1[];
+}): ResearchRankedCandidateV1[];
+
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
@@ -11285,6 +11441,7 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -11307,6 +11464,10 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "wiki.page.get": {
         readonly input: "atlcli.ptc/wiki.page.get.input/v1";
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+    readonly "research.candidate.rank": {
+        readonly input: "atlcli.ptc/research.candidate.rank.input/v1";
+        readonly output: "atlcli.ptc/research.candidate.rank.output/v1";
     };
 };
 
@@ -11393,6 +11554,7 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -11680,7 +11842,8 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
-    "wiki.page.get"
+    "wiki.page.get",
+    "research.candidate.rank"
 ];
 
 // export: RESEARCH_WORKER_PACKET_SCHEMA_V1
@@ -11814,6 +11977,32 @@ export interface ResearchBudgetSnapshotV1 {
     ptcRemaining: number;
     httpAttemptsRemaining: number;
     responseBytesRemaining: number;
+}
+
+// export: ResearchCandidateRankingInputV1
+export interface ResearchCandidateRankingInputV1 {
+    entityRef: string;
+    sourceId: string;
+    title: string;
+    excerpt?: string;
+}
+
+// export: ResearchCandidateRankInputV1
+export interface ResearchCandidateRankInputV1 {
+    schema: string;
+    product: "jira" | "confluence";
+    entityRefs: string[];
+}
+
+// export: ResearchCandidateRankOutputV1
+export interface ResearchCandidateRankOutputV1 {
+    schema: string;
+    items: Array<{
+        entityRef: string;
+        sourceId: string;
+        rank: number;
+    }>;
+    budget: ResearchBudgetSnapshotV1;
 }
 
 // export: ResearchCapabilityBroker
@@ -12175,7 +12364,7 @@ export type ResearchEventV1 = {
     at: string;
     callId: string;
     toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -12784,7 +12973,7 @@ export interface ResearchProviderPage<T> {
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
     tool: ResearchGraphCapabilityV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     outcome: "started" | "success" | "error";
     durationMs?: number;
     itemCount?: number;
@@ -12809,6 +12998,13 @@ export interface ResearchPtcToolOptions {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchRankedCandidateV1
+export interface ResearchRankedCandidateV1 {
+    entityRef: string;
+    sourceId: string;
+    rank: number;
+}
 
 // export: ResearchReadProviders
 export interface ResearchReadProviders {
@@ -14517,6 +14713,9 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeResearchCandidateRankInputV1
+export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -14964,6 +15163,12 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
     [key: string]: unknown;
 };
 
+// export: rankResearchCandidatesV1
+export declare function rankResearchCandidatesV1(input: {
+    question: string;
+    candidates: readonly ResearchCandidateRankingInputV1[];
+}): ResearchRankedCandidateV1[];
+
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
@@ -15078,6 +15283,7 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -15100,6 +15306,10 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "wiki.page.get": {
         readonly input: "atlcli.ptc/wiki.page.get.input/v1";
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+    readonly "research.candidate.rank": {
+        readonly input: "atlcli.ptc/research.candidate.rank.input/v1";
+        readonly output: "atlcli.ptc/research.candidate.rank.output/v1";
     };
 };
 
@@ -15186,6 +15396,7 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -15473,7 +15684,8 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
-    "wiki.page.get"
+    "wiki.page.get",
+    "research.candidate.rank"
 ];
 
 // export: RESEARCH_WORKER_PACKET_SCHEMA_V1
@@ -15607,6 +15819,32 @@ export interface ResearchBudgetSnapshotV1 {
     ptcRemaining: number;
     httpAttemptsRemaining: number;
     responseBytesRemaining: number;
+}
+
+// export: ResearchCandidateRankingInputV1
+export interface ResearchCandidateRankingInputV1 {
+    entityRef: string;
+    sourceId: string;
+    title: string;
+    excerpt?: string;
+}
+
+// export: ResearchCandidateRankInputV1
+export interface ResearchCandidateRankInputV1 {
+    schema: string;
+    product: "jira" | "confluence";
+    entityRefs: string[];
+}
+
+// export: ResearchCandidateRankOutputV1
+export interface ResearchCandidateRankOutputV1 {
+    schema: string;
+    items: Array<{
+        entityRef: string;
+        sourceId: string;
+        rank: number;
+    }>;
+    budget: ResearchBudgetSnapshotV1;
 }
 
 // export: ResearchCapabilityBroker
@@ -15968,7 +16206,7 @@ export type ResearchEventV1 = {
     at: string;
     callId: string;
     toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -16577,7 +16815,7 @@ export interface ResearchProviderPage<T> {
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
     tool: ResearchGraphCapabilityV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     outcome: "started" | "success" | "error";
     durationMs?: number;
     itemCount?: number;
@@ -16602,6 +16840,13 @@ export interface ResearchPtcToolOptions {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchRankedCandidateV1
+export interface ResearchRankedCandidateV1 {
+    entityRef: string;
+    sourceId: string;
+    rank: number;
+}
 
 // export: ResearchReadProviders
 export interface ResearchReadProviders {
@@ -18011,6 +18256,9 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: decodeResearchCandidateRankInputV1
+export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -18035,6 +18283,10 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
         readonly input: "atlcli.ptc/wiki.page.get.input/v1";
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
     };
+    readonly "research.candidate.rank": {
+        readonly input: "atlcli.ptc/research.candidate.rank.input/v1";
+        readonly output: "atlcli.ptc/research.candidate.rank.output/v1";
+    };
 };
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
@@ -18045,6 +18297,24 @@ export interface ResearchBudgetSnapshotV1 {
     ptcRemaining: number;
     httpAttemptsRemaining: number;
     responseBytesRemaining: number;
+}
+
+// export: ResearchCandidateRankInputV1
+export interface ResearchCandidateRankInputV1 {
+    schema: string;
+    product: "jira" | "confluence";
+    entityRefs: string[];
+}
+
+// export: ResearchCandidateRankOutputV1
+export interface ResearchCandidateRankOutputV1 {
+    schema: string;
+    items: Array<{
+        entityRef: string;
+        sourceId: string;
+        rank: number;
+    }>;
+    budget: ResearchBudgetSnapshotV1;
 }
 
 // export: ResearchEntitySummaryV1
@@ -18147,6 +18417,7 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -18236,7 +18507,8 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
-    "wiki.page.get"
+    "wiki.page.get",
+    "research.candidate.rank"
 ];
 
 // export: ResearchCapabilityEventToolIdV1
@@ -18348,7 +18620,7 @@ export type ResearchEventV1 = {
     at: string;
     callId: string;
     toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -18777,6 +19049,7 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -19349,6 +19622,9 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeResearchCandidateRankInputV1
+export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -19796,6 +20072,12 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
     [key: string]: unknown;
 };
 
+// export: rankResearchCandidatesV1
+export declare function rankResearchCandidatesV1(input: {
+    question: string;
+    candidates: readonly ResearchCandidateRankingInputV1[];
+}): ResearchRankedCandidateV1[];
+
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
@@ -19910,6 +20192,7 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -19932,6 +20215,10 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "wiki.page.get": {
         readonly input: "atlcli.ptc/wiki.page.get.input/v1";
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+    readonly "research.candidate.rank": {
+        readonly input: "atlcli.ptc/research.candidate.rank.input/v1";
+        readonly output: "atlcli.ptc/research.candidate.rank.output/v1";
     };
 };
 
@@ -20018,6 +20305,7 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.get",
     "wiki.search",
     "wiki.page.get",
+    "research.candidate.rank",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -20305,7 +20593,8 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
-    "wiki.page.get"
+    "wiki.page.get",
+    "research.candidate.rank"
 ];
 
 // export: RESEARCH_WORKER_PACKET_SCHEMA_V1
@@ -20439,6 +20728,32 @@ export interface ResearchBudgetSnapshotV1 {
     ptcRemaining: number;
     httpAttemptsRemaining: number;
     responseBytesRemaining: number;
+}
+
+// export: ResearchCandidateRankingInputV1
+export interface ResearchCandidateRankingInputV1 {
+    entityRef: string;
+    sourceId: string;
+    title: string;
+    excerpt?: string;
+}
+
+// export: ResearchCandidateRankInputV1
+export interface ResearchCandidateRankInputV1 {
+    schema: string;
+    product: "jira" | "confluence";
+    entityRefs: string[];
+}
+
+// export: ResearchCandidateRankOutputV1
+export interface ResearchCandidateRankOutputV1 {
+    schema: string;
+    items: Array<{
+        entityRef: string;
+        sourceId: string;
+        rank: number;
+    }>;
+    budget: ResearchBudgetSnapshotV1;
 }
 
 // export: ResearchCapabilityBroker
@@ -20800,7 +21115,7 @@ export type ResearchEventV1 = {
     at: string;
     callId: string;
     toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -21409,7 +21724,7 @@ export interface ResearchProviderPage<T> {
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
     tool: ResearchGraphCapabilityV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
+    inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     outcome: "started" | "success" | "error";
     durationMs?: number;
     itemCount?: number;
@@ -21434,6 +21749,13 @@ export interface ResearchPtcToolOptions {
 
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchRankedCandidateV1
+export interface ResearchRankedCandidateV1 {
+    entityRef: string;
+    sourceId: string;
+    rank: number;
+}
 
 // export: ResearchReadProviders
 export interface ResearchReadProviders {

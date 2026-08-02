@@ -9,15 +9,18 @@ import {
 } from "./contracts.js";
 import {
   RESEARCH_CAPABILITY_SCHEMAS,
+  decodeResearchCandidateRankInputV1,
   decodeResearchGetInputV1,
   decodeResearchSearchInputV1,
   type BoundedContentProjectionV1,
+  type ResearchCandidateRankOutputV1,
   type ResearchEntitySummaryV1,
   type ResearchGetOutputV1,
   type ResearchSearchOutputV1,
   type ResearchSearchQueryV1,
   type ResearchTerminationCode,
 } from "./capability-contracts.js";
+import { rankResearchCandidatesV1 } from "./candidate-ranking.js";
 import { ResearchRunBudget } from "./budget.js";
 import { ResearchCursorVault } from "./cursor-vault.js";
 import { ResearchEntityVault } from "./entity-vault.js";
@@ -184,6 +187,7 @@ export class ResearchCapabilityBroker {
   readonly #gate: ConcurrencyGate;
   readonly #sources = new Map<string, ResearchSourceReferenceV1>();
   readonly #detailEvidence = new Map<string, ResearchDetailEvidenceV1>();
+  readonly #rankedEntityRefs = new Set<string>();
   readonly #evidence?: NonNullable<BrokerOptions["evidence"]>;
   readonly #controller = new AbortController();
   readonly #searchCompletion: Record<
@@ -226,6 +230,7 @@ export class ResearchCapabilityBroker {
     this.#entityVault.clear();
     this.#sources.clear();
     this.#detailEvidence.clear();
+    this.#rankedEntityRefs.clear();
   }
 
   sourceLedger(): ResearchSourceReferenceV1[] {
@@ -324,6 +329,8 @@ export class ResearchCapabilityBroker {
           return this.#searchWiki(input);
         case "wiki.page.get":
           return this.#getWiki(input);
+        case "research.candidate.rank":
+          return this.#rankCandidates(input);
       }
     });
     this.budget.completePtc(output);
@@ -534,9 +541,52 @@ export class ResearchCapabilityBroker {
     return source;
   }
 
+  #rankCandidates(input: unknown): ResearchCandidateRankOutputV1 {
+    const decoded = decodeResearchCandidateRankInputV1(
+      input,
+      this.#request.limits.maxItemsPerProduct,
+    );
+    const kind = decoded.product === "jira" ? "jira" : "wiki";
+    const candidates = decoded.entityRefs.map((entityRef) => {
+      const entity = this.#entityVault.resolve(kind, entityRef);
+      const sourceId = kind === "jira"
+        ? `jira:${entity.entityId}`
+        : `wiki:${entity.entityId}`;
+      const source = this.#sources.get(sourceId);
+      if (!source) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Candidate reference was not returned by a scoped search.",
+        );
+      }
+      return {
+        entityRef,
+        sourceId,
+        title: source.title,
+        ...(source.excerpt ? { excerpt: source.excerpt } : {}),
+      };
+    });
+    const ranked = rankResearchCandidatesV1({
+      question: this.#request.question,
+      candidates,
+    });
+    for (const candidate of ranked) this.#rankedEntityRefs.add(candidate.entityRef);
+    return {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["research.candidate.rank"].output,
+      items: ranked,
+      budget: this.budget.snapshot(),
+    };
+  }
+
   async #getJira(input: unknown): Promise<ResearchGetOutputV1> {
     const decoded = decodeResearchGetInputV1("jira.issue.get", input);
     const entity = this.#entityVault.resolve("jira", decoded.entityRef);
+    if (!this.#rankedEntityRefs.has(decoded.entityRef)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Jira detail requires a candidate reference admitted by research.candidate.rank.",
+      );
+    }
     this.budget.beginDetail("jira");
     const detail = await this.#providers.jira.getIssue({
       issueKey: entity.entityId,
@@ -562,6 +612,12 @@ export class ResearchCapabilityBroker {
   async #getWiki(input: unknown): Promise<ResearchGetOutputV1> {
     const decoded = decodeResearchGetInputV1("wiki.page.get", input);
     const entity = this.#entityVault.resolve("wiki", decoded.entityRef);
+    if (!this.#rankedEntityRefs.has(decoded.entityRef)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Confluence detail requires a candidate reference admitted by research.candidate.rank.",
+      );
+    }
     this.budget.beginDetail("confluence");
     const detail = await this.#providers.wiki.getPage({
       contentId: entity.entityId,

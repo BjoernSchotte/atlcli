@@ -106,16 +106,20 @@ const draft = {
 };
 
 const SINGLE_AGENT_PROGRAM = `
-const read = async (search, detail) => {
+const read = async (product, search, detail) => {
   const page = JSON.parse(await search({ query: {} }));
-  const details = await Promise.all(page.items.slice(0, 1).map(async (item) =>
+  const entityRefs = [...new Set(page.items.map((item) => item.entityRef))];
+  const ranked = entityRefs.length === 0
+    ? { items: [] }
+    : JSON.parse(await tools.researchCandidateRank({ product, entityRefs }));
+  const details = await Promise.all(ranked.items.slice(0, 1).map(async (item) =>
     JSON.parse(await detail({ entityRef: item.entityRef }))
   ));
   return { page, details };
 };
 const [jira, wiki] = await Promise.all([
-  read(tools.jiraIssueSearch, tools.jiraIssueGet),
-  read(tools.wikiSearch, tools.wikiPageGet)
+  read("jira", tools.jiraIssueSearch, tools.jiraIssueGet),
+  read("confluence", tools.wikiSearch, tools.wikiPageGet)
 ]);
 ({ jira, wiki });
 `.trim();
@@ -124,7 +128,12 @@ const WORKER_ACQUISITION_PROGRAM = `
 const search = tools.jiraIssueSearch ?? tools.wikiSearch;
 const detail = tools.jiraIssueGet ?? tools.wikiPageGet;
 const page = JSON.parse(await search({ query: {} }));
-const details = await Promise.all(page.items.slice(0, 1).map(async (item) =>
+const product = tools.jiraIssueSearch ? "jira" : "confluence";
+const entityRefs = [...new Set(page.items.map((item) => item.entityRef))];
+const ranked = entityRefs.length === 0
+  ? { items: [] }
+  : JSON.parse(await tools.researchCandidateRank({ product, entityRefs }));
+const details = await Promise.all(ranked.items.slice(0, 1).map(async (item) =>
   JSON.parse(await detail({ entityRef: item.entityRef }))
 ));
 ({ page, details });

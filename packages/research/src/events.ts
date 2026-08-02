@@ -126,7 +126,7 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1.includes(
         event.toolId as (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number],
       ) &&
-      ["search", "continuation", "detail", "reference"].includes(String(event.inputKind)) &&
+      ["search", "continuation", "detail", "reference", "ranking"].includes(String(event.inputKind)) &&
       ["started", "completed", "failed"].includes(String(event.status)) &&
       optionalNonNegativeInteger(event.itemCount) &&
       (event.complete === undefined || typeof event.complete === "boolean") &&

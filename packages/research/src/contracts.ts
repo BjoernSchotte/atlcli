@@ -79,6 +79,7 @@ export const RESEARCH_TOOL_IDS = [
   "jira.issue.get",
   "wiki.search",
   "wiki.page.get",
+  "research.candidate.rank",
 ] as const;
 
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
@@ -422,7 +423,7 @@ export type ResearchEventV1 =
       at: string;
       callId: string;
       toolId: ResearchCapabilityEventToolIdV1;
-      inputKind: "search" | "continuation" | "detail" | "reference";
+      inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
       status: string;
       itemCount?: number;
       complete?: boolean;

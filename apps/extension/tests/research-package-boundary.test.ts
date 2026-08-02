@@ -18,6 +18,7 @@ describe("@atlcli/research host-neutral boundary", () => {
       "jira.issue.get",
       "wiki.search",
       "wiki.page.get",
+      "research.candidate.rank",
     ]);
     expect(DEFAULT_RESEARCH_LIMITS_V1.maxPtcCalls).toBe(32);
   });

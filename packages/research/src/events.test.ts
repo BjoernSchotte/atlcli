@@ -32,6 +32,12 @@ describe("research one-shot events", () => {
       itemCount: undefined,
       complete: undefined,
     }))).toBe(true);
+    expect(isResearchOneShotEventV1(capabilityEvent({
+      toolId: "research.candidate.rank",
+      inputKind: "ranking",
+      itemCount: 2,
+      complete: undefined,
+    }))).toBe(true);
   });
 
   it("rejects unknown capability and input identifiers", () => {

@@ -175,7 +175,7 @@ describe("issue-138 V1 compatibility fixtures", () => {
     });
   });
 
-  it("freezes the four read capability schema pairs", () => {
+  it("freezes the bounded read and candidate-ranking capability schema pairs", () => {
     expect(RESEARCH_CAPABILITY_SCHEMAS).toEqual({
       "jira.issue.search": {
         input: "atlcli.ptc/jira.issue.search.input/v1",
@@ -192,6 +192,10 @@ describe("issue-138 V1 compatibility fixtures", () => {
       "wiki.page.get": {
         input: "atlcli.ptc/wiki.page.get.input/v1",
         output: "atlcli.ptc/wiki.page.get.output/v1",
+      },
+      "research.candidate.rank": {
+        input: "atlcli.ptc/research.candidate.rank.input/v1",
+        output: "atlcli.ptc/research.candidate.rank.output/v1",
       },
     });
   });

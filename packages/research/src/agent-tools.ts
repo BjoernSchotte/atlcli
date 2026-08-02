@@ -47,6 +47,12 @@ const getInputSchema = () =>
     })
     .strict();
 
+const candidateRankInputSchema = () =>
+  z.object({
+    product: z.enum(["jira", "confluence"]),
+    entityRefs: z.array(z.string().max(220)).min(1).max(100),
+  }).strict();
+
 function jsonResult(value: unknown): string {
   return JSON.stringify(value);
 }
@@ -54,7 +60,7 @@ function jsonResult(value: unknown): string {
 export interface ResearchPtcDiagnosticV1 {
   callId: string;
   tool: ResearchGraphCapabilityV1;
-  inputKind: "search" | "continuation" | "detail" | "reference";
+  inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
   outcome: "started" | "success" | "error";
   durationMs?: number;
   itemCount?: number;
@@ -87,6 +93,7 @@ function inputKind(
       return "continuation";
     }
     if ("entityRef" in input) return "detail";
+    if ("entityRefs" in input) return "ranking";
   }
   return "search";
 }
@@ -225,6 +232,12 @@ export function createResearchPtcTools(
         description:
           "Read one Confluence page previously returned by wikiSearch. Parse the returned JSON string. entityRef is opaque.",
         schema: getInputSchema(),
+      }),
+    tool(async (input) => invoke("research.candidate.rank", input), {
+        name: RESEARCH_LANGCHAIN_TOOL_NAMES["research.candidate.rank"],
+        description:
+          "Rank opaque Jira or Confluence candidates previously returned by a scoped search. Detail reads require a reference returned by this tool.",
+        schema: candidateRankInputSchema(),
       }),
   ];
 }

@@ -1128,7 +1128,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[0]?.systemPrompt).toContain("exactly two bounded stages");
     expect(specs[0]?.systemPrompt).toContain("Inspect every returned candidate summary");
     expect(specs[0]?.systemPrompt).toContain("Search summaries are screening evidence only");
-    expect(specs[0]?.systemPrompt).toContain("at most 8 selected candidates");
+    expect(specs[0]?.systemPrompt).toContain("tools.researchCandidateRank");
+    expect(specs[0]?.systemPrompt).toContain("first at most 8 entityRef values returned by that ranking");
     expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
     expect(specs[0]?.systemPrompt).toContain("<project-baseline>");
     expect(specs[0]?.systemPrompt).toContain("at most four times total");
@@ -1163,10 +1164,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(focused?.systemPrompt).toContain("catch { failures += 1; }");
     expect(focused?.systemPrompt).toContain('["One", "Two", "Three", "Four"]');
     expect(focused?.systemPrompt).toContain("queryText: group.text");
-    expect(focused?.systemPrompt).toContain("const chosen = exact ?? matches[0]");
-    expect(focused?.systemPrompt).toContain(
-      'const wantedTitles = ["One","Two","Three","Four"];'
-    );
+    expect(focused?.systemPrompt).toContain("tools.researchCandidateRank");
+    expect(focused?.systemPrompt).toContain("const entityRefs = [...new Set(result.items.map((item) => item.entityRef))]");
   });
 
   test("executes four named-page searches and reads one opaque detail per query", async () => {
@@ -1176,7 +1175,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const detailRefs: string[] = [];
     const session = new ReplSession("research-named-page-acquisition", {
       captureConsole: false,
-      maxPtcCalls: 8,
+      maxPtcCalls: 10,
       tools: [
         tool(async ({ query }) => JSON.stringify({
           items: [{
@@ -1197,6 +1196,17 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           name: "wiki_page_get",
           description: "Synthetic wiki detail",
           schema: z.object({ entityRef: z.string() }),
+        }),
+        tool(async ({ entityRefs }) => JSON.stringify({
+          items: entityRefs.map((entityRef: string, index: number) => ({
+            entityRef,
+            sourceId: `ranked:${index + 1}`,
+            rank: index + 1,
+          })),
+        }), {
+          name: "research_candidate_rank",
+          description: "Synthetic host candidate ranking",
+          schema: z.object({ product: z.enum(["jira", "confluence"]), entityRefs: z.array(z.string()) }),
         }),
       ],
     });
@@ -1235,7 +1245,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const detailRefs: string[] = [];
     const session = new ReplSession("research-budgeted-detail-acquisition", {
       captureConsole: false,
-      maxPtcCalls: 10,
+      maxPtcCalls: 12,
       tools: [
         tool(async ({ cursor }) => JSON.stringify({
           items: cursor ? summaries.slice(5) : summaries.slice(0, 5),
@@ -1257,6 +1267,17 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
           name: "wiki_page_get",
           description: "Synthetic wiki detail",
           schema: z.object({ entityRef: z.string() }),
+        }),
+        tool(async ({ entityRefs }) => JSON.stringify({
+          items: entityRefs.map((entityRef: string, index: number) => ({
+            entityRef,
+            sourceId: `ranked:${index + 1}`,
+            rank: index + 1,
+          })),
+        }), {
+          name: "research_candidate_rank",
+          description: "Synthetic host candidate ranking",
+          schema: z.object({ product: z.enum(["jira", "confluence"]), entityRefs: z.array(z.string()) }),
         }),
       ],
     });
