@@ -1,5 +1,6 @@
 export * from "./cache.js";
 export * from "./chart-diagnostics.js";
+export * from "./chart-budgets.js";
 export * from "./contracts.js";
 export * from "./digests.js";
 export * from "./experience.js";

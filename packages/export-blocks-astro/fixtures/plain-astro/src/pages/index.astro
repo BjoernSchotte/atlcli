@@ -16,6 +16,25 @@ const normalizedChartBlock = EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1.find((blo
 if (!normalizedChartBlock || normalizedChartBlock.type !== "chart") throw new TypeError("chart fixture missing");
 const WORLD_CLASS_CHART_BLOCKS_V1 = chartWorldClassBlocksV1();
 
+const STATIC_ONLY_CHART_CONTEXT_V1 = {
+  ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  chartPolicy: {
+    strict: true,
+    normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
+    static: { maxSvgNodes: 100_000, maxSvgBytes: 2_097_152, maxRenderMs: 2_000 },
+    island: { enabled: false, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536 },
+  },
+};
+
+const PARTIAL_BUDGET_FALLBACK_CONTEXT_V1 = {
+  ...STATIC_ONLY_CHART_CONTEXT_V1,
+  chartPolicy: {
+    ...STATIC_ONLY_CHART_CONTEXT_V1.chartPolicy,
+    strict: false,
+    static: { maxSvgNodes: 1, maxSvgBytes: 2_097_152, maxRenderMs: 2_000 },
+  },
+};
+
 const HOSTILE_RENDERER_CONTEXT_V1 = {
   ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
   assets: {
@@ -32,9 +51,9 @@ const HOSTILE_RENDERER_CONTEXT_V1 = {
 const HOSTILE_RENDERER_BLOCKS_V1 = [{
   type: "paragraph" as const,
   content: [
-    { type: "text" as const, text: '<img src=x onerror="alert(1)">', color: "red;background:url(https://evil.test/x)" },
-    { type: "link" as const, target: { kind: "external" as const, href: "java\tscript:alert(1)" }, content: [{ type: "text" as const, text: "unsafe link" }] },
-    { type: "smartCard" as const, card: { appearance: "inline" as const, source: "datasource" as const, title: "Datasource card", datasource: { secret: "opaque-datasource-secret" } } },
+    { type: "text" as const, text: 'Escaped literal: <img src=x onerror="alert(1)">', color: "red;background:url(https://evil.test/x)" },
+    { type: "link" as const, target: { kind: "external" as const, href: "java\tscript:alert(1)" }, content: [{ type: "text" as const, text: "Synthetic unsafe link (must remain inert)" }] },
+    { type: "smartCard" as const, card: { appearance: "inline" as const, source: "datasource" as const, title: "Synthetic datasource-card fallback", datasource: { secret: "opaque-datasource-secret" } } },
   ],
 }, {
   type: "image" as const,
@@ -83,7 +102,13 @@ const HOSTILE_RENDERER_BLOCKS_V1 = [{
       series: [{ name: "Pages", values: [12, 18, 21] }],
     }} />
     <InteractiveChart enabled block={normalizedChartBlock} context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1} />
-    <ExportDocument blocks={HOSTILE_RENDERER_BLOCKS_V1} context={HOSTILE_RENDERER_CONTEXT_V1} />
+    <InteractiveChart block={normalizedChartBlock} context={STATIC_ONLY_CHART_CONTEXT_V1} />
+    <ExportDocument blocks={[WORLD_CLASS_CHART_BLOCKS_V1[0]!]} context={PARTIAL_BUDGET_FALLBACK_CONTEXT_V1} />
+    <section data-fixture-security-proof aria-labelledby="fixture-security-proof-heading">
+      <h2 id="fixture-security-proof-heading">Synthetic security escaping proof</h2>
+      <p>These deliberately hostile values must remain inert text and safe fallbacks. They are not publication content.</p>
+      <ExportDocument blocks={HOSTILE_RENDERER_BLOCKS_V1} context={HOSTILE_RENDERER_CONTEXT_V1} />
+    </section>
     <ExportDocument
       blocks={EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1}
       context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, direction: "rtl" }}

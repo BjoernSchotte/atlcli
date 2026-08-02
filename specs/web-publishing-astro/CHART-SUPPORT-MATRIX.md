@@ -64,6 +64,13 @@ world-class semantic/visual gate is still open; — intentionally static.
   only categorical `bar` and provider-valid `xyBar` data, with explicit row,
   series, point, and payload limits. All other shapes remain JavaScript-off
   complete.
+- A frozen project-derived chart policy is part of the immutable publication
+  bundle. It independently bounds normalized rows/points/bytes, TanStack scene
+  nodes/SVG bytes/render time, and optional-island rows/series/points/payload.
+  Strict overrun rejects publication; explicit partial mode shows a diagnostic
+  and the complete table without mounting an unbounded visual. Acquisition
+  deadline/aggregate-memory accounting and an island runtime watchdog remain
+  open and therefore keep the overall resource-budget PLAN gate unchecked.
 
 ## Evidence
 
@@ -77,6 +84,10 @@ world-class semantic/visual gate is still open; — intentionally static.
   `packages/export-blocks/src/charts.test.ts` and `schema.test.ts`
 - Plain Astro all-shape static consumer test:
   `packages/export-blocks-astro/src/astro-renderer.test.ts`
+- Publication-policy, immutable-bundle, and render-budget tests:
+  `packages/web-publish/src/chart-budgets.test.ts`,
+  `packages/web-publish/src/node.test.ts`, and
+  `packages/export-charts-tanstack/src/index.test.ts`
 - DOCX/PDF all-shape and sparse-series projection tests:
   `packages/docx/src/serialize.test.ts` and
   `packages/pdf/src/serialize.test.ts`

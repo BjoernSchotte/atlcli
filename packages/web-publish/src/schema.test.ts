@@ -181,6 +181,12 @@ const bundle = {
   createdBy: { name: "atlcli", version: "0.17.2" },
   sourceSnapshot,
   sourcePolicyDigest: "policy-sha256",
+  chartPolicy: {
+    strict: true,
+    normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
+    static: { maxSvgNodes: 50_000, maxSvgBytes: 1_000_000, maxRenderMs: 1_000 },
+    island: { enabled: true, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536 },
+  },
   complete: true,
   rootIds: ["100"],
   pages: [{ sourceId: "100", path: "pages/100.json", pageDigest: "page-sha256" }],

@@ -37,7 +37,7 @@ export interface ChartExportBlockRendererAdapterV1 {
   readonly capability: "bounded-interactive-bar";
   readonly runtime: "client-only";
   readonly handles: readonly ["bar", "xyBar"];
-  validate(block: Extract<ExportBlock, { type: "chart" }>): NormalizedChartExportBlockV1;
+  validate(block: Extract<ExportBlock, { type: "chart" }>, limits?: Partial<InteractiveChartLimitsV1>): NormalizedChartExportBlockV1;
 }
 
 /** Closed set of build-selected renderer implementations. */
@@ -59,6 +59,33 @@ const MAX_INTERACTIVE_SERIES = 12;
 const MAX_INTERACTIVE_POINTS = 800;
 const MAX_INTERACTIVE_PAYLOAD_BYTES = 64 * 1024;
 
+export interface InteractiveChartLimitsV1 {
+  maxRows: number;
+  maxSeries: number;
+  maxPoints: number;
+  maxPayloadBytes: number;
+}
+
+export const INTERACTIVE_CHART_LIMITS_V1 = Object.freeze({
+  maxRows: MAX_INTERACTIVE_ROWS,
+  maxSeries: MAX_INTERACTIVE_SERIES,
+  maxPoints: MAX_INTERACTIVE_POINTS,
+  maxPayloadBytes: MAX_INTERACTIVE_PAYLOAD_BYTES,
+} satisfies InteractiveChartLimitsV1);
+
+function interactiveLimits(input: Partial<InteractiveChartLimitsV1> | undefined): InteractiveChartLimitsV1 {
+  const bounded = (value: number | undefined, maximum: number): number => {
+    if (value === undefined || !Number.isFinite(value)) return maximum;
+    return Math.max(1, Math.min(maximum, Math.floor(value)));
+  };
+  return {
+    maxRows: bounded(input?.maxRows, INTERACTIVE_CHART_LIMITS_V1.maxRows),
+    maxSeries: bounded(input?.maxSeries, INTERACTIVE_CHART_LIMITS_V1.maxSeries),
+    maxPoints: bounded(input?.maxPoints, INTERACTIVE_CHART_LIMITS_V1.maxPoints),
+    maxPayloadBytes: bounded(input?.maxPayloadBytes, INTERACTIVE_CHART_LIMITS_V1.maxPayloadBytes),
+  };
+}
+
 /**
  * Validate the new source-neutral chart block before it crosses into a client
  * island. V1 promotes categorical bars and the provider's XY-bar shape to the
@@ -67,7 +94,9 @@ const MAX_INTERACTIVE_PAYLOAD_BYTES = 64 * 1024;
  */
 export function validateInteractiveChartExportBlockV1(
   block: Extract<ExportBlock, { type: "chart" }>,
+  limitInput?: Partial<InteractiveChartLimitsV1>,
 ): NormalizedChartExportBlockV1 {
+  const limits = interactiveLimits(limitInput);
   const model = validateChartModelV1(block.chart);
   if (
     (model.kind !== "bar" && model.kind !== "xyBar") ||
@@ -83,7 +112,7 @@ export function validateInteractiveChartExportBlockV1(
   const rowCount = data.mode === "categories"
     ? data.labels.length
     : Math.max(...data.series.map((entry) => entry.points.length));
-  if (rowCount > MAX_INTERACTIVE_ROWS || data.series.length > MAX_INTERACTIVE_SERIES) {
+  if (rowCount > limits.maxRows || data.series.length > limits.maxSeries) {
     throw new StaticChartValidationErrorV1("interactive chart exceeds row, series, or point limits");
   }
   const rows: ChartExportBlockRowV1[] = data.mode === "categories"
@@ -100,10 +129,10 @@ export function validateInteractiveChartExportBlockV1(
   if (rows.some((row) => row.value < 0)) {
     throw new StaticChartValidationErrorV1("interactive bar charts require non-negative values");
   }
-  if (rows.length > MAX_INTERACTIVE_POINTS) {
+  if (rows.length > limits.maxPoints) {
     throw new StaticChartValidationErrorV1("interactive chart exceeds row, series, or point limits");
   }
-  if (new TextEncoder().encode(JSON.stringify({ kind: model.kind, title: model.title, data })).byteLength > MAX_INTERACTIVE_PAYLOAD_BYTES) {
+  if (new TextEncoder().encode(JSON.stringify({ kind: model.kind, title: model.title, data })).byteLength > limits.maxPayloadBytes) {
     throw new StaticChartValidationErrorV1("interactive chart exceeds payload byte limit");
   }
   return Object.freeze({

@@ -464,6 +464,15 @@ only and must be safe to include in a public site manifest.
       diagnostics.
 - [ ] Enforce resource/time/memory budgets separately for acquisition,
       normalization, static rendering, and islands.
+  - [x] Thread a frozen, project-derived chart policy through the immutable
+        publication bundle. Enforce normalization row/point/byte admission,
+        TanStack scene-node/SVG-byte/render-time limits, and stricter island
+        row/series/point/payload limits. Strict mode rejects admission/render
+        overruns; explicit partial mode renders a visible warning and complete
+        data table instead of an unbounded visual.
+  - [ ] Add acquisition deadlines/aggregate memory accounting and an island
+        runtime watchdog so each of the four phases has both structural and
+        runtime containment rather than relying on structural limits alone.
 - [x] Sanitize text/attributes and URLs using existing shared gates. The only
       chart `set:html` seam accepts validated, escaped output from the pinned
       TanStack adapter; raw provider HTML and macro parameters cannot reach it.
@@ -610,6 +619,11 @@ listed in the capability registry.
       scans.
 - [ ] Add independent acquisition/render resource budgets and cache invalidation
       for selected source-table changes.
+  - [x] Selected source-table content digests invalidate the cache, and the
+        immutable bundle now carries independent normalization, static-render,
+        and island structural limits plus the static render deadline.
+  - [ ] Complete acquisition deadline/aggregate-memory and island-runtime
+        containment, then exercise their cancellation/fallback paths end to end.
 
 ### T10 — End-to-end proof and documentation
 

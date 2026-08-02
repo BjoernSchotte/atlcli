@@ -61,6 +61,12 @@ const bundle = {
   createdBy: { name: "atlcli", version: "0.1.0" },
   sourceSnapshot: { sourceDigest: "source", complete: true, deletionAuthority: "complete-scan", rootIds: ["source"], pages: [] },
   sourcePolicyDigest: "policy",
+  chartPolicy: {
+    strict: true,
+    normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
+    static: { maxSvgNodes: 50_000, maxSvgBytes: 1_000_000, maxRenderMs: 1_000 },
+    island: { enabled: false, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536 },
+  },
   complete: true,
   rootIds: ["source"],
   pages: [],
@@ -94,6 +100,7 @@ test("resolves bundle page links, anchors, assets, and headings into the Astro c
     downloadName: "hero.png",
     mode: "verified-original",
   });
+  expect(context.chartPolicy).toEqual(bundle.chartPolicy);
 });
 
 test("rejects unsafe URL base, route, and asset paths", () => {

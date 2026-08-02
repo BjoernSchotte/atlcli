@@ -56,6 +56,33 @@ export interface RenderTanStackChartSvgOptionsV1 {
   idPrefix?: string;
   ariaLabel?: string;
   ariaDescription?: string;
+  budget?: Partial<TanStackChartRenderBudgetV1>;
+  /** Host clock seam for deterministic budget tests; source data never controls it. */
+  clock?: () => number;
+}
+
+export interface TanStackChartRenderBudgetV1 {
+  maxSceneNodes: number;
+  maxSvgBytes: number;
+  maxRenderMs: number;
+}
+
+export const TANSTACK_CHART_RENDER_BUDGET_V1 = Object.freeze({
+  maxSceneNodes: 100_000,
+  maxSvgBytes: 2 * 1024 * 1024,
+  maxRenderMs: 2_000,
+} satisfies TanStackChartRenderBudgetV1);
+
+export class TanStackChartRenderBudgetErrorV1 extends Error {
+  constructor(public readonly resource: "scene-nodes" | "svg-bytes" | "render-time") {
+    super(`TanStack chart ${resource} budget exceeded`);
+    this.name = "TanStackChartRenderBudgetErrorV1";
+  }
+}
+
+function boundedRenderBudget(value: number | undefined, hardMaximum: number): number {
+  if (value === undefined || !Number.isFinite(value)) return hardMaximum;
+  return Math.max(1, Math.min(hardMaximum, Math.floor(value)));
 }
 
 interface CategoryRow {
@@ -586,8 +613,20 @@ export function createTanStackChartSceneV1(input: ChartModelV1, options: Pick<Re
 }
 
 export function renderTanStackChartSvgV1(input: ChartModelV1, options: RenderTanStackChartSvgOptionsV1 = {}): string {
+  const budget: TanStackChartRenderBudgetV1 = {
+    maxSceneNodes: boundedRenderBudget(options.budget?.maxSceneNodes, TANSTACK_CHART_RENDER_BUDGET_V1.maxSceneNodes),
+    maxSvgBytes: boundedRenderBudget(options.budget?.maxSvgBytes, TANSTACK_CHART_RENDER_BUDGET_V1.maxSvgBytes),
+    maxRenderMs: boundedRenderBudget(options.budget?.maxRenderMs, TANSTACK_CHART_RENDER_BUDGET_V1.maxRenderMs),
+  };
+  const clock = options.clock ?? (() => performance.now());
+  const started = clock();
   const chart = validateChartModelV1(input);
   const scene = createTanStackChartSceneV1(chart, options);
+  const countNode = (node: SceneNode): number => node.kind === "group"
+    ? 1 + node.children.reduce((sum, child) => sum + countNode(child), 0)
+    : 1;
+  const sceneNodes = scene.nodes.reduce((sum, node) => sum + countNode(node), 0) + scene.gradients.length;
+  if (sceneNodes > budget.maxSceneNodes) throw new TanStackChartRenderBudgetErrorV1("scene-nodes");
   const render = scene.gradients.length > 0 ? renderChartSvgWithResources : renderChartSvg;
   const svg = render(scene, {
     ariaLabel: options.ariaLabel ?? chart.title ?? `${chart.kind} chart`,
@@ -598,7 +637,14 @@ export function renderTanStackChartSvgV1(input: ChartModelV1, options: RenderTan
   // TanStack's DOM-free renderer emits an HTML-compatible `<svg>` root. The
   // namespace is optional in HTML but mandatory for standalone consumers such
   // as resvg, Word's svgBlip part, and strict XML tooling.
-  return svg.includes('xmlns="http://www.w3.org/2000/svg"')
+  const standalone = svg.includes('xmlns="http://www.w3.org/2000/svg"')
     ? svg
     : svg.replace(/^<svg\b/u, '<svg xmlns="http://www.w3.org/2000/svg"');
+  if (new TextEncoder().encode(standalone).byteLength > budget.maxSvgBytes) {
+    throw new TanStackChartRenderBudgetErrorV1("svg-bytes");
+  }
+  if (Math.max(0, clock() - started) > budget.maxRenderMs) {
+    throw new TanStackChartRenderBudgetErrorV1("render-time");
+  }
+  return standalone;
 }

@@ -2067,6 +2067,12 @@ export type ImageEmbedOutcome = {
 // export: ImageEmbedSeam
 export interface ImageEmbedSeam {
     embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+    embedGeneratedSvg?(svg: string, options: {
+        name: string;
+        alt: string;
+        widthPx: number;
+        heightPx: number;
+    }): Promise<ImageEmbedOutcome>;
     embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
     prefetch?(block: ImageBlock): void;
     prefetchInline?(node: InlineImageNode): void;

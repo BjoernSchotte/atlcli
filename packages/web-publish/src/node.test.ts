@@ -123,6 +123,12 @@ async function publicationFixture(root: string) {
     refreshPlan,
     createdBy: { name: "atlcli" as const, version: "0.1.0-test" },
     sourcePolicyDigest: "a".repeat(64),
+    chartPolicy: {
+      strict: true,
+      normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
+      static: { maxSvgNodes: 100_000, maxSvgBytes: 2_097_152, maxRenderMs: 2_000 },
+      island: { enabled: true, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536 },
+    },
     rootIds: ["guide"],
     pages: [page],
     routes: [{ sourceId: "guide", route: "/guide/", state: "active" as const, assignedBy: "generated" as const, previousRoutes: [] }],
@@ -319,6 +325,7 @@ describe("@atlcli/web-publish/node immutable bundle activation", () => {
     expect(result.activated).toBe(true);
     expect(result.bundle.bundleDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(result.bundle.complete).toBe(true);
+    expect(result.bundle.chartPolicy).toEqual(request.chartPolicy);
     expect(result.bundle.pages).toEqual([{
       sourceId: "guide",
       path: `pages/${request.pages[0]!.pageDigest}.json`,

@@ -5,6 +5,7 @@ import {
   createTanStackChartDefinitionV1,
   createTanStackChartSceneV1,
   renderTanStackChartSvgV1,
+  TanStackChartRenderBudgetErrorV1,
 } from "./index.js";
 import type { SceneNode } from "@tanstack/charts";
 
@@ -229,4 +230,23 @@ test("escapes hostile labels in the DOM-free SVG renderer", () => {
   const svg = renderTanStackChartSvgV1(chart);
   expect(svg).not.toContain("<script>");
   expect(svg).toContain("&lt;script&gt;");
+});
+
+test("enforces independent TanStack scene, SVG byte, and render-time budgets", () => {
+  for (const [resource, options] of [
+    ["scene-nodes", { budget: { maxSceneNodes: 1 } }],
+    ["svg-bytes", { budget: { maxSvgBytes: 64 } }],
+    ["render-time", { budget: { maxRenderMs: 1 }, clock: (() => { let value = 0; return () => (value++ === 0 ? 0 : 2); })() }],
+  ] as const) {
+    try {
+      renderTanStackChartSvgV1(model("bar"), options);
+      throw new Error(`expected ${resource} budget failure`);
+    } catch (error) {
+      expect(error).toBeInstanceOf(TanStackChartRenderBudgetErrorV1);
+      expect((error as TanStackChartRenderBudgetErrorV1).resource).toBe(resource);
+    }
+  }
+  expect(() => renderTanStackChartSvgV1(model("bar"), {
+    budget: { maxSceneNodes: Number.NaN, maxSvgBytes: Number.POSITIVE_INFINITY, maxRenderMs: Number.NaN },
+  })).not.toThrow();
 });

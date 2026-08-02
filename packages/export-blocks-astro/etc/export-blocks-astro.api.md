@@ -21,11 +21,35 @@ export declare const ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1: readonly [
     "media-fallback",
     "blockquote",
     "smart-card",
-    "unknown"
+    "unknown",
+    "chart"
 ];
 
 // export: ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1
 export declare const ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1 = "data-atlcli-block";
+
+// export: AstroChartRenderPolicyV1
+export interface AstroChartRenderPolicyV1 {
+    strict: boolean;
+    normalization: {
+        maxRows: number;
+        maxSeries: number;
+        maxPoints: number;
+        maxBytes: number;
+    };
+    static: {
+        maxSvgNodes: number;
+        maxSvgBytes: number;
+        maxRenderMs: number;
+    };
+    island: {
+        enabled: boolean;
+        maxRows: number;
+        maxSeries: number;
+        maxPoints: number;
+        maxBytes: number;
+    };
+}
 
 // export: astroExportAssetKeyV1
 export declare function astroExportAssetKeyV1(source: ImageSource): string;
@@ -65,6 +89,7 @@ export interface AstroExportBlockRenderContextV1 {
     headingAnchors?: Readonly<Record<string, string>>;
     links: Readonly<Record<string, AstroResolvedLinkV1>>;
     assets: Readonly<Record<string, AstroResolvedAssetV1>>;
+    chartPolicy?: AstroChartRenderPolicyV1;
     notes: "inline" | "collect" | "omit-noncritical";
 }
 
@@ -109,6 +134,30 @@ export interface AstroResolvedLinkV1 {
     kind: "page" | "asset" | "external" | "unresolved";
 }
 
+// export: ChartExportBlockRendererAdapterIdV1
+export type ChartExportBlockRendererAdapterIdV1 = "tanstack-v0.3/bar";
+
+// export: ChartExportBlockRendererAdapterV1
+export interface ChartExportBlockRendererAdapterV1 {
+    readonly id: ChartExportBlockRendererAdapterIdV1;
+    readonly capability: "bounded-interactive-bar";
+    readonly runtime: "client-only";
+    readonly handles: readonly [
+        "bar",
+        "xyBar"
+    ];
+    validate(block: Extract<ExportBlock, {
+        type: "chart";
+    }>, limits?: Partial<InteractiveChartLimitsV1>): NormalizedChartExportBlockV1;
+}
+
+// export: ChartExportBlockRowV1
+export interface ChartExportBlockRowV1 {
+    label: string;
+    series: string;
+    value: number;
+}
+
 // export: ChartRendererAdapterIdV1
 export type ChartRendererAdapterIdV1 = "tanstack-v0.3";
 
@@ -123,6 +172,32 @@ export interface ChartRendererAdapterV1 {
 // export: createAstroExportBlockOverrideRegistryV1
 export declare function createAstroExportBlockOverrideRegistryV1(available: readonly AstroExportBlockOverrideDescriptorV1[], selection: AstroExportBlockOverrideSelectionV1): ReadonlyMap<AstroExportBlockOverrideSlotV1, AstroExportBlockOverrideDescriptorV1>;
 
+// export: INTERACTIVE_CHART_LIMITS_V1
+export declare const INTERACTIVE_CHART_LIMITS_V1: Readonly<{
+    maxRows: number;
+    maxSeries: number;
+    maxPoints: number;
+    maxPayloadBytes: number;
+}>;
+
+// export: InteractiveChartLimitsV1
+export interface InteractiveChartLimitsV1 {
+    maxRows: number;
+    maxSeries: number;
+    maxPoints: number;
+    maxPayloadBytes: number;
+}
+
+// export: NormalizedChartExportBlockV1
+export interface NormalizedChartExportBlockV1 {
+    block: Extract<ExportBlock, {
+        type: "chart";
+    }>;
+    model: ChartModelV1;
+    rows: readonly ChartExportBlockRowV1[];
+    maximum: number;
+}
+
 // export: NormalizedStaticChartV1
 export interface NormalizedStaticChartV1 extends StaticChartModelV1 {
     maximum: number;
@@ -130,6 +205,9 @@ export interface NormalizedStaticChartV1 extends StaticChartModelV1 {
 
 // export: normalizeStaticChartV1
 export declare function normalizeStaticChartV1(model: StaticChartModelV1): NormalizedStaticChartV1;
+
+// export: resolveChartExportBlockRendererAdapterV1
+export declare function resolveChartExportBlockRendererAdapterV1(id?: ChartExportBlockRendererAdapterIdV1): ChartExportBlockRendererAdapterV1;
 
 // export: resolveChartRendererAdapterV1
 export declare function resolveChartRendererAdapterV1(id?: ChartRendererAdapterIdV1): ChartRendererAdapterV1;
@@ -151,8 +229,16 @@ export interface StaticChartSeriesV1 {
 export declare class StaticChartValidationErrorV1 extends Error {
 }
 
+// export: TANSTACK_CHART_EXPORT_BLOCK_RENDERER_ADAPTER_V1
+export declare const TANSTACK_CHART_EXPORT_BLOCK_RENDERER_ADAPTER_V1: ChartExportBlockRendererAdapterV1;
+
 // export: TANSTACK_CHART_RENDERER_ADAPTER_V1
 export declare const TANSTACK_CHART_RENDERER_ADAPTER_V1: ChartRendererAdapterV1;
+
+// export: validateInteractiveChartExportBlockV1
+export declare function validateInteractiveChartExportBlockV1(block: Extract<ExportBlock, {
+    type: "chart";
+}>, limitInput?: Partial<InteractiveChartLimitsV1>): NormalizedChartExportBlockV1;
 
 // export: validateInteractiveChartV1
 export declare function validateInteractiveChartV1(model: StaticChartModelV1): NormalizedStaticChartV1;
@@ -163,6 +249,9 @@ export declare function validateInteractiveChartV1(model: StaticChartModelV1): N
 ```ts
 // export: EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1
 export declare const EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1: readonly ExportBlock[];
+
+// export: EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1
+export declare const EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1: readonly ExportBlock[];
 
 // export: EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1
 export declare const EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1: AstroExportBlockRenderContextV1;

@@ -49,7 +49,10 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
   expect(html).toContain('data-atlcli-link-unresolved');
   expect(html).toContain('data-atlcli-asset-unresolved');
-  expect(html).toContain("Datasource card");
+  expect(html).toContain("Synthetic security escaping proof");
+  expect(html).toContain("They are not publication content.");
+  expect(html).toContain("Synthetic datasource-card fallback");
+  expect(html).toContain("Synthetic unsafe link (must remain inert)");
   expect(html).not.toContain("javascript:alert(1)");
   expect(html).not.toContain("background:url(https://evil.test/x)");
   expect(html).not.toContain("data:image/svg+xml");
@@ -66,9 +69,13 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain("Published pages");
   expect(html).toContain('role="img"');
   expect(html).toContain('data-atlcli-chart-island="enabled"');
+  expect(html).toContain('data-atlcli-chart-island="static"');
   expect(html).toContain('data-atlcli-chart-renderer="tanstack-v0.3"');
   expect(html).toContain('data-atlcli-chart-capability="tanstack-v0.3/bar"');
   expect(html).toContain('data-atlcli-chart-diagnostics="true"');
+  expect(html).toContain('data-atlcli-chart-budget-fallback');
+  expect(html).toContain("Static chart visual unavailable within the configured resource budget.");
+  expect(html).toContain("The static chart exceeded its scene-nodes budget");
   expect(html).toContain("One malformed source row was skipped.");
   for (const kind of [
     "pie", "bar", "line", "area", "xyArea", "xyBar", "xyLine", "xyStep",

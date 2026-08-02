@@ -78,6 +78,33 @@ export interface PublicationRendererPolicyV1 {
   maxIslandBytes: number;
   maxChartRows: number;
   maxChartSeries: number;
+  maxChartPoints?: number;
+  maxChartSvgNodes?: number;
+  maxChartSvgBytes?: number;
+  maxChartRenderMs?: number;
+}
+
+/** Safe, public build-time chart policy derived from the private project. */
+export interface PublicationChartRenderPolicyV1 {
+  strict: boolean;
+  normalization: {
+    maxRows: number;
+    maxSeries: number;
+    maxPoints: number;
+    maxBytes: number;
+  };
+  static: {
+    maxSvgNodes: number;
+    maxSvgBytes: number;
+    maxRenderMs: number;
+  };
+  island: {
+    enabled: boolean;
+    maxRows: number;
+    maxSeries: number;
+    maxPoints: number;
+    maxBytes: number;
+  };
 }
 
 export type PublicationDesignTokenValueV1 = string | number | boolean;
@@ -372,6 +399,8 @@ export interface PublicationBundleV1 {
   createdBy: { name: "atlcli"; version: string };
   sourceSnapshot: PublicationSourceSnapshotV1;
   sourcePolicyDigest: string;
+  /** Frozen, ID-free chart admission/render limits for the selected build. */
+  chartPolicy?: PublicationChartRenderPolicyV1;
   complete: boolean;
   rootIds: readonly string[];
   pages: readonly PublicationPageEntryV1[];

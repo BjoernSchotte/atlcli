@@ -10,10 +10,10 @@
 
 ### Entry point `.` — stable
 
-- exported symbols (39): AttachmentLookupPort, AttachmentMeta, ConfluenceContentPort, ConfluenceSearchHit, ConfluenceSearchHits, DefaultRegistryDeps, ExportViewPort, ExternalAssetFetcher, ExternalAssetPolicy, ExtractMacroBodyDep, HtmlToExportBlocksDep, JiraIssuePort, JiraIssueRef, MACRO_DEGRADED, MACRO_RENDERED_VIA, MACRO_SKIPPED_BY_CONFIG, MacroExportContext, MacroInstance, MacroInstanceId, MacroPageScope, MacroRenderResult, MacroRenderer, MacroRendererRegistry, MacroResolutionBudget, MacroResolutionOptions, MacroResolutionTraceV1, MacroWebRenderModelDescriptorV1, MacroWebRenderModelKindV1, ParsePagePropertiesDep, PortError, PortErrorKind, StorageToBlocksDep, UnknownBlock, createRegistry, defaultRegistry, isAbortError, isPortError, portError, resolveMacroBlocks
-- same-package closure references: 27
+- exported symbols (40): AttachmentLookupPort, AttachmentMeta, ConfluenceContentPort, ConfluenceSearchHit, ConfluenceSearchHits, DefaultRegistryDeps, ExportViewPort, ExternalAssetFetcher, ExternalAssetPolicy, ExtractMacroBodyDep, HtmlToExportBlocksDep, JiraIssuePort, JiraIssueRef, MACRO_DEGRADED, MACRO_RENDERED_VIA, MACRO_SKIPPED_BY_CONFIG, MacroExportContext, MacroInstance, MacroInstanceId, MacroPageScope, MacroRenderResult, MacroRenderer, MacroRendererRegistry, MacroResolutionBudget, MacroResolutionOptions, MacroResolutionTraceV1, MacroWebRenderModelDescriptorV1, MacroWebRenderModelKindV1, NormalizeChartMacroDep, ParsePagePropertiesDep, PortError, PortErrorKind, StorageToBlocksDep, UnknownBlock, createRegistry, defaultRegistry, isAbortError, isPortError, portError, resolveMacroBlocks
+- same-package closure references: 28
 - reaches `@atlcli/confluence` (frozen): StorageToBlocksResult
-- reaches `@atlcli/export-blocks` (0.x — frozen-by-closure): AdfExtensionIdentity, ExportBlock, ExportNote, MacroParameter
+- reaches `@atlcli/export-blocks` (0.x — frozen-by-closure): AdfExtensionIdentity, ChartDiagnosticV1, ChartModelV1, ChartSourceKindV1, ExportBlock, ExportNote, MacroParameter
 - reachable-but-unexported gaps: none
 
 ### Entry point `./internal` — internal

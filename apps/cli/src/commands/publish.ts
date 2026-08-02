@@ -29,8 +29,10 @@ import { resolveConfluencePageGraphV1 } from "@atlcli/export-wiring/jobs";
 import type { ExportSourceV1 } from "@atlcli/export-jobs";
 import {
   canonicalPublicationJsonV1,
+  applyPublicationChartBudgetPolicyV1,
   applyPublicationChartDiagnosticPolicyV1,
   assertPublicationChartBuildPolicyV1,
+  createPublicationChartRenderPolicyV1,
   digestPublicationJsonV1,
   digestPublicationRefreshPlanV1,
   digestPublicationPageV1,
@@ -430,10 +432,15 @@ async function graphAndPlan(state: PublishProjectStateV1, profile: Profile, sign
     current: snapshot,
     currentRoutes: routePlan.routes,
   });
-  const refreshPlan = await applyPublicationChartDiagnosticPolicyV1(
+  const diagnosticRefreshPlan = await applyPublicationChartDiagnosticPolicyV1(
     state.project,
     pages,
     baseRefreshPlan,
+  );
+  const refreshPlan = await applyPublicationChartBudgetPolicyV1(
+    state.project,
+    pages,
+    diagnosticRefreshPlan,
   );
   const report: PublishPlanReportV1 = {
     schema: PUBLISH_PLAN_SCHEMA_V1,
@@ -518,6 +525,7 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
       refreshPlan,
       createdBy: { name: "atlcli", version: "0.17.2" },
       sourcePolicyDigest: await digestPublicationJsonV1(state.project.sourcePolicy),
+      chartPolicy: createPublicationChartRenderPolicyV1(state.project),
       rootIds: planned.snapshot.rootIds,
       pages,
       routes: planned.routes,

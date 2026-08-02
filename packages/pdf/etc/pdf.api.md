@@ -98,6 +98,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -800,7 +806,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
 }> | (Omit<Extract<ExportBlock, {
     type: "heading";
 }>, "content"> & {
@@ -846,7 +852,12 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
             content: PreparedPdfBlock[];
         }>;
     }>;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "chart";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    visualAssetPath?: string;
+}) | {
     type: "image";
     assetPath?: string;
     alt?: string;
@@ -1273,6 +1284,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -1975,7 +1992,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
 }> | (Omit<Extract<ExportBlock, {
     type: "heading";
 }>, "content"> & {
@@ -2021,7 +2038,12 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
             content: PreparedPdfBlock[];
         }>;
     }>;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "chart";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    visualAssetPath?: string;
+}) | {
     type: "image";
     assetPath?: string;
     alt?: string;
@@ -2448,6 +2470,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -3150,7 +3178,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
 }> | (Omit<Extract<ExportBlock, {
     type: "heading";
 }>, "content"> & {
@@ -3196,7 +3224,12 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
             content: PreparedPdfBlock[];
         }>;
     }>;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "chart";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    visualAssetPath?: string;
+}) | {
     type: "image";
     assetPath?: string;
     alt?: string;

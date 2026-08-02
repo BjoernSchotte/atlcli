@@ -60,6 +60,15 @@ test("the new TanStack adapter validates a chart ExportBlock and emits only boun
     { label: "Feb", series: "Pages", value: 7 },
   ] });
   expect(() => validateInteractiveChartExportBlockV1({ ...barBlock, chart: { ...barBlock.chart, kind: "line" } })).toThrow("categorical and XY");
+  expect(() => validateInteractiveChartExportBlockV1(barBlock, { maxRows: 1 })).toThrow("row, series, or point limits");
+  expect(() => validateInteractiveChartExportBlockV1(barBlock, { maxPoints: 1 })).toThrow("row, series, or point limits");
+  expect(() => validateInteractiveChartExportBlockV1(barBlock, { maxPayloadBytes: 32 })).toThrow("payload byte limit");
+  expect(() => validateInteractiveChartExportBlockV1(barBlock, {
+    maxRows: Number.NaN,
+    maxSeries: Number.POSITIVE_INFINITY,
+    maxPoints: Number.NaN,
+    maxPayloadBytes: Number.POSITIVE_INFINITY,
+  })).not.toThrow();
 });
 
 test("the provider-valid XY bar shape is normalized for the same bounded adapter", () => {

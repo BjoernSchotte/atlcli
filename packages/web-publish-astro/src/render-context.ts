@@ -249,6 +249,7 @@ export function createPublicationRenderContextV1(
     headingAnchors: collectHeadingAnchors(options.page.blocks),
     links,
     assets: resolvedAssets.assets,
+    ...(options.bundle.chartPolicy === undefined ? {} : { chartPolicy: options.bundle.chartPolicy }),
     notes: "inline",
   };
 }

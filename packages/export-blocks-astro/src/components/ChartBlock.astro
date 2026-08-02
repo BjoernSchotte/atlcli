@@ -6,6 +6,7 @@ import {
 } from "@atlcli/export-blocks";
 import {
   renderTanStackChartSvgV1,
+  TanStackChartRenderBudgetErrorV1,
   TANSTACK_CHART_ADAPTER_V1,
   TANSTACK_CHART_SIZE_V1,
 } from "@atlcli/export-charts-tanstack";
@@ -25,28 +26,41 @@ const digest = chartModelDigestV1(chart);
 const chartId = `atlcli-chart-${digest}`;
 const displayData = chart.display?.data ?? "hidden";
 const diagnostics = block.diagnostics ?? [];
-const diagnosticsText = diagnostics.map((diagnostic) => diagnostic.message).join(" ");
+const sourceDiagnosticsText = diagnostics.map((diagnostic) => diagnostic.message).join(" ");
 const description = chart.data.mode === "categories"
   ? chart.data.series.map((series) => `${series.label}: ${series.values.join(", ")}`).join("; ")
   : chart.data.mode === "points"
     ? chart.data.series.map((series) => `${series.label}: ${series.points.map((point) => `${point.x}=${point.y}`).join(", ")}`).join("; ")
     : chart.data.tasks.map((task) => `${task.label}: ${task.start} to ${task.end}`).join("; ");
-const accessibleDescription = diagnostics.length > 0
-  ? `${description} Chart notes: ${diagnosticsText}`
-  : description;
 const width = chart.display?.width ?? TANSTACK_CHART_SIZE_V1.width;
 const height = chart.display?.height ?? TANSTACK_CHART_SIZE_V1.height;
 
 // This is the only trusted markup seam in the chart component. The adapter
 // validates the closed ChartModelV1 and escapes every source-derived label
 // before returning deterministic SVG; provider HTML never reaches set:html.
-const svg = renderTanStackChartSvgV1(chart, {
-  width,
-  height,
-  idPrefix: chartId,
-  ariaLabel: title,
-  ariaDescription: accessibleDescription,
-});
+let svg: string | undefined;
+let budgetFallback: string | undefined;
+try {
+  svg = renderTanStackChartSvgV1(chart, {
+    width,
+    height,
+    idPrefix: chartId,
+    ariaLabel: title,
+    ariaDescription: description,
+    ...(context.chartPolicy === undefined ? {} : { budget: {
+      maxSceneNodes: context.chartPolicy.static.maxSvgNodes,
+      maxSvgBytes: context.chartPolicy.static.maxSvgBytes,
+      maxRenderMs: context.chartPolicy.static.maxRenderMs,
+    } }),
+  });
+} catch (error) {
+  if (!(error instanceof TanStackChartRenderBudgetErrorV1) || context.chartPolicy?.strict !== false) throw error;
+  budgetFallback = `The static chart exceeded its ${error.resource} budget; the complete data table remains available.`;
+}
+const diagnosticsText = [sourceDiagnosticsText, budgetFallback].filter(Boolean).join(" ");
+const hasDiagnostics = diagnosticsText.length > 0;
+const accessibleDescription = hasDiagnostics ? `${description} Chart notes: ${diagnosticsText}` : description;
+const effectiveDataDisplay = budgetFallback === undefined ? displayData : "after";
 const figureStyle = [
   chart.style?.backgroundColor ? `background:${chart.style.backgroundColor}` : "",
   chart.style?.borderColor ? `border:1px solid ${chart.style.borderColor}` : "",
@@ -60,7 +74,7 @@ const figureStyle = [
   data-atlcli-chart-orientation={chart.orientation}
   data-atlcli-chart-stacked={chart.stacked ? "true" : undefined}
   data-atlcli-chart-adapter={TANSTACK_CHART_ADAPTER_V1.id}
-  data-atlcli-chart-diagnostics={diagnostics.length > 0 ? "true" : undefined}
+  data-atlcli-chart-diagnostics={hasDiagnostics ? "true" : undefined}
   aria-describedby={`${chartId}-description`}
   style={figureStyle || undefined}
 >
@@ -69,21 +83,21 @@ const figureStyle = [
     {chart.subtitle && <p>{chart.subtitle}</p>}
   </header>
   <p id={`${chartId}-description`} class="atlcli-chart-description">{accessibleDescription}</p>
-  {diagnostics.length > 0 && <aside class="atlcli-chart-diagnostics" data-atlcli-chart-diagnostics role="status">
+  {hasDiagnostics && <aside class="atlcli-chart-diagnostics" data-atlcli-chart-diagnostics role="status">
     <strong>Chart data note:</strong> {diagnosticsText}
   </aside>}
-  {displayData === "before" && <ChartTable data={chart.data} title={title} />}
-  {displayData === "hidden" && <div class="atlcli-chart-data-visually-hidden" data-atlcli-chart-data-display="hidden">
+  {effectiveDataDisplay === "before" && <ChartTable data={chart.data} title={title} />}
+  {effectiveDataDisplay === "hidden" && <div class="atlcli-chart-data-visually-hidden" data-atlcli-chart-data-display="hidden">
     <ChartTable data={chart.data} title={title} />
   </div>}
-  <div
+  {svg !== undefined ? <div
     data-atlcli-chart-visual="tanstack-svg"
     data-atlcli-chart-legend={chart.legend ?? "top"}
     role="group"
     aria-label={`${title} scrollable chart visual`}
     tabindex="0"
     set:html={svg}
-  />
-  {displayData === "after" && <ChartTable data={chart.data} title={title} />}
+  /> : <aside data-atlcli-chart-budget-fallback role="status">Static chart visual unavailable within the configured resource budget.</aside>}
+  {effectiveDataDisplay === "after" && <ChartTable data={chart.data} title={title} />}
   {block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}
 </figure>

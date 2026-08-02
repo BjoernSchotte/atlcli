@@ -23,14 +23,21 @@ interface Props {
 }
 
 const { block, context, chart, renderer = "tanstack-v0.3" } = Astro.props;
-const enabled = Astro.props.enabled ?? block !== undefined;
+const requested = Astro.props.enabled ?? block !== undefined;
+const policyAllowsIslands = context?.chartPolicy?.island.enabled ?? Astro.props.enabled === true;
+const enabled = requested && policyAllowsIslands;
 if (block === undefined && chart === undefined) throw new TypeError("InteractiveChart requires a chart ExportBlock or legacy chart model");
 const legacyAdapter = resolveChartRendererAdapterV1(renderer);
 const blockAdapter = resolveChartExportBlockRendererAdapterV1();
 let interactive = enabled;
 if (enabled && block !== undefined) {
   try {
-    blockAdapter.validate(block);
+    blockAdapter.validate(block, context?.chartPolicy === undefined ? undefined : {
+      maxRows: context.chartPolicy.island.maxRows,
+      maxSeries: context.chartPolicy.island.maxSeries,
+      maxPoints: context.chartPolicy.island.maxPoints,
+      maxPayloadBytes: context.chartPolicy.island.maxBytes,
+    });
   } catch {
     interactive = false;
   }
