@@ -20,6 +20,8 @@ import {
   type PdfCompileHints,
   type ResearchClarificationPlanningActionRequest,
   type ResearchClarificationReviewActionRequest,
+  type ResearchScopeClarificationPlanningActionRequest,
+  type ResearchScopeClarificationReviewActionRequest,
   type ResearchScopePlanReviewActionRequest,
   type ResearchPlanReviewActionRequest,
   type ResearchScopeReviewActionRequest,
@@ -50,16 +52,21 @@ import {
   createRestScopeCatalogProviders,
   IndexedDbResearchSessionStoreV1,
   continueResearchSessionClarificationPlanningV1,
+  continueResearchSessionScopeClarificationV1,
   initializeResearchSessionTurnV1,
   initializeResearchSessionClarificationWaitV1,
+  initializeResearchSessionScopeClarificationWaitV1,
   prepareResearchBriefPreflightV1,
   prepareResearchScopePreflightV1,
   projectResearchSessionScopeReviewV1,
   projectResearchSessionClarificationReviewV1,
+  projectResearchSessionScopeClarificationReviewV1,
   projectResearchSessionPlanReviewV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
   resolveResearchSessionClarificationsV1,
+  resolveResearchSessionScopeClarificationV1,
+  refreshResearchSessionScopeClarificationV1,
   researchRequestFromBriefV1,
   type ResearchSessionV1,
   type ResearchScopePreflightOptionsV1,
@@ -959,6 +966,181 @@ export default defineBackground({
     }
   };
 
+  const projectScopeClarificationResolution = (
+    session: ResearchSessionV1,
+    tenantOrigin: string,
+    at: string,
+  ) => {
+    const scopeReview = projectResearchSessionScopeClarificationReviewV1(session, tenantOrigin);
+    if (scopeReview) return { kind: "scope_clarification" as const, review: scopeReview };
+    const clarificationReview = projectResearchSessionClarificationReviewV1(session, tenantOrigin);
+    if (clarificationReview) return { kind: "clarification_review" as const, review: clarificationReview };
+    return projectClarificationResolution(session, tenantOrigin, at);
+  };
+
+  const prepareResearchScopeClarificationReview = async (
+    windowId: number,
+    value: ResearchRequestV1,
+    policyValue: ResearchOneShotPolicyV1,
+  ) => {
+    const request = normalizeResearchRequestV1(value);
+    const policy = normalizeResearchOneShotPolicyV1(policyValue);
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    if (request.scope.siteOrigin !== tenantOrigin) {
+      throw new ResearchContractError(
+        "access-denied",
+        "The active Atlassian tab no longer matches the research site.",
+      );
+    }
+    const scopeOutcome = await resolveResearchScope(windowId, request);
+    if (scopeOutcome.kind !== "clarification_required") {
+      throw new ResearchContractError(
+        "invalid-request",
+        "This research scope no longer requires clarification.",
+      );
+    }
+    const now = new Date().toISOString();
+    const sessionId = `research-session:${crypto.randomUUID()}`;
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const session = await initializeResearchSessionScopeClarificationWaitV1({
+        store,
+        session: createResearchSessionV1({
+          sessionId,
+          ownerId: `owner:browser-scope-clarification-${sessionId.slice("research-session:".length)}`,
+          createdAt: now,
+          leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+        }),
+        request,
+        policy,
+        clarification: scopeOutcome.clarification,
+        candidateChoices: scopeOutcome.candidateChoices,
+        at: now,
+      });
+      const review = projectResearchSessionScopeClarificationReviewV1(session, tenantOrigin);
+      if (!review || review.stage !== "choice_required") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The durable research scope clarification could not be projected for the active site.",
+        );
+      }
+      return review;
+    } finally {
+      store.close();
+    }
+  };
+
+  const listResearchScopeClarificationReviews = async (windowId: number) => {
+    const tenantOrigin = await activeResearchTenantOrigin(windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const page = await store.list({ limit: 100 });
+      return page.sessions
+        .flatMap((session) => {
+          const review = projectResearchSessionScopeClarificationReviewV1(session, tenantOrigin);
+          return review ? [review] : [];
+        })
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    } finally {
+      store.close();
+    }
+  };
+
+  const resolveResearchScopeClarificationReview = async (input: {
+    windowId: number;
+    action: ResearchScopeClarificationReviewActionRequest;
+  }) => {
+    const tenantOrigin = await activeResearchTenantOrigin(input.windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(input.action.sessionId);
+      if (!stored) {
+        throw new ResearchContractError("invalid-request", "The durable research session no longer exists.");
+      }
+      const review = projectResearchSessionScopeClarificationReviewV1(stored, tenantOrigin);
+      if (!review || review.stage !== "choice_required" || review.revision !== input.action.revision ||
+          input.action.selection.mentionId !== review.clarification.mentionId) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The research scope clarification is stale. Refresh the sidebar before choosing it.",
+        );
+      }
+      if (!review.clarification.candidates.some((candidate) => candidate.id === input.action.selection.candidateId)) {
+        throw new ResearchContractError("invalid-request", "The selected research scope candidate is unavailable.");
+      }
+      const scopeClarification = stored.scopeClarification;
+      if (!scopeClarification) {
+        throw new ResearchContractError("invalid-request", "The durable research scope clarification is missing its request.");
+      }
+      const scopeOutcome = await resolveResearchScope(input.windowId, scopeClarification.request, {
+        candidateSelections: [input.action.selection],
+      });
+      const at = new Date().toISOString();
+      if (scopeOutcome.kind === "clarification_required") {
+        const refreshed = await refreshResearchSessionScopeClarificationV1({
+          store,
+          sessionId: stored.sessionId,
+          expectedRevision: input.action.revision,
+          expectedLeaseEpoch: stored.lease.epoch,
+          clarification: scopeOutcome.clarification,
+          candidateChoices: scopeOutcome.candidateChoices,
+          at,
+        });
+        const next = projectResearchSessionScopeClarificationReviewV1(refreshed, tenantOrigin);
+        if (!next) {
+          throw new ResearchContractError("provider-error", "The refreshed research scope clarification could not be projected.");
+        }
+        return { kind: "scope_clarification" as const, review: next };
+      }
+      const committed = await resolveResearchSessionScopeClarificationV1({
+        store,
+        sessionId: stored.sessionId,
+        expectedRevision: input.action.revision,
+        expectedLeaseEpoch: stored.lease.epoch,
+        selection: input.action.selection,
+        resolvedRequest: scopeOutcome.request,
+        releaseApprovedLease: true,
+        at,
+      });
+      return projectScopeClarificationResolution(committed, tenantOrigin, at);
+    } finally {
+      store.close();
+    }
+  };
+
+  const continueResearchScopeClarificationReview = async (input: {
+    windowId: number;
+    action: ResearchScopeClarificationPlanningActionRequest;
+  }) => {
+    const tenantOrigin = await activeResearchTenantOrigin(input.windowId);
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      const stored = await store.read(input.action.sessionId);
+      if (!stored) {
+        throw new ResearchContractError("invalid-request", "The durable research session no longer exists.");
+      }
+      const review = projectResearchSessionScopeClarificationReviewV1(stored, tenantOrigin);
+      if (!review || review.stage === "choice_required" || review.revision !== input.action.revision) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The recovered research scope clarification is stale. Refresh the sidebar before continuing it.",
+        );
+      }
+      const at = new Date().toISOString();
+      const committed = await continueResearchSessionScopeClarificationV1({
+        store,
+        sessionId: stored.sessionId,
+        expectedRevision: input.action.revision,
+        expectedLeaseEpoch: stored.lease.epoch,
+        releaseApprovedLease: true,
+        at,
+      });
+      return projectScopeClarificationResolution(committed, tenantOrigin, at);
+    } finally {
+      store.close();
+    }
+  };
+
   const scopeReviewForActiveTenant = async (input: {
     windowId: number;
     action: ResearchScopeReviewActionRequest;
@@ -1233,6 +1415,16 @@ export default defineBackground({
         action,
       }),
       continueResearchClarificationReview: (windowId, action) => continueResearchClarificationReview({
+        windowId,
+        action,
+      }),
+      prepareResearchScopeClarificationReview,
+      listResearchScopeClarificationReviews,
+      resolveResearchScopeClarificationReview: (windowId, action) => resolveResearchScopeClarificationReview({
+        windowId,
+        action,
+      }),
+      continueResearchScopeClarificationReview: (windowId, action) => continueResearchScopeClarificationReview({
         windowId,
         action,
       }),

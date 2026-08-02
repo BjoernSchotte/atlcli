@@ -1,12 +1,20 @@
 import {
   approveResearchBriefWholeScopeExpansionV1,
   briefRequiresClarificationV1,
+  prepareResearchBriefPreflightV1,
   type ResearchBriefAssumptionDecisionV1,
   type ResearchBriefClarificationResponseV1,
   type ResearchBriefV1,
 } from "./brief.js";
-import type { ResearchScopeBindingV1 } from "./contracts.js";
 import {
+  normalizeResearchOneShotPolicyV1,
+  normalizeResearchRequestV1,
+  type ResearchOneShotPolicyV1,
+  type ResearchRequestV1,
+  type ResearchScopeBindingV1,
+} from "./contracts.js";
+import {
+  createStandardResearchBriefV1,
   composeResearchGraphV1,
   stageResearchGraphForDurableSessionV1,
   type ResearchGraphCompositionOptionsV1,
@@ -19,10 +27,16 @@ import {
 import type { ResearchSessionStoreV1 } from "./session-store.js";
 import {
   RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
+  type ResearchSessionScopeClarificationV1,
   type ResearchResumableSessionV1,
   type ResearchSessionTurnV1,
   type ResearchSessionV1,
 } from "./session.js";
+import type {
+  ResearchScopeCandidateSelectionV1,
+  ResearchScopeClarificationRequiredV1,
+} from "./scope-resolution.js";
+import type { ResearchScopeCandidateV1 } from "./scope-discovery.js";
 
 export interface InitializeResearchSessionTurnInputV1 {
   store: ResearchSessionStoreV1;
@@ -93,6 +107,48 @@ export interface ContinueResearchSessionClarificationPlanningInputV1 {
   expectedLeaseEpoch: number;
   briefRevision: number;
   approveAutomatically: boolean;
+  releaseApprovedLease?: boolean;
+  at: string;
+}
+
+export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
+  store: ResearchSessionStoreV1;
+  session: ResearchSessionV1;
+  request: ResearchRequestV1;
+  policy: ResearchOneShotPolicyV1;
+  clarification: ResearchScopeClarificationRequiredV1;
+  candidateChoices: ResearchScopeCandidateV1[];
+  at: string;
+}
+
+export interface RefreshResearchSessionScopeClarificationInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  expectedRevision: number;
+  expectedLeaseEpoch: number;
+  clarification: ResearchScopeClarificationRequiredV1;
+  candidateChoices: ResearchScopeCandidateV1[];
+  at: string;
+}
+
+export interface ResolveResearchSessionScopeClarificationInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  expectedRevision: number;
+  expectedLeaseEpoch: number;
+  selection: ResearchScopeCandidateSelectionV1;
+  resolvedRequest: ResearchRequestV1;
+  packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
+  releaseApprovedLease?: boolean;
+  at: string;
+}
+
+export interface ContinueResearchSessionScopeClarificationInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  expectedRevision: number;
+  expectedLeaseEpoch: number;
+  packetOutputSchema?: ResearchGraphCompositionOptionsV1["packetOutputSchema"];
   releaseApprovedLease?: boolean;
   at: string;
 }
@@ -277,6 +333,151 @@ export async function continueResearchSessionClarificationPlanningV1(
     expectedRevision: current.revision,
     expectedLeaseEpoch: current.lease.epoch,
     approveAutomatically: input.approveAutomatically,
+    ...(input.releaseApprovedLease ? { releaseApprovedLease: true } : {}),
+    at: input.at,
+  });
+}
+
+/**
+ * Persist an ambiguous natural-language scope before a research brief, graph,
+ * workspace, provider, credential lookup, or model is constructed.
+ */
+export async function initializeResearchSessionScopeClarificationWaitV1(
+  input: InitializeResearchSessionScopeClarificationWaitInputV1,
+): Promise<ResearchSessionV1> {
+  const request = normalizeResearchRequestV1(input.request);
+  const policy = normalizeResearchOneShotPolicyV1(input.policy);
+  if (input.session.status !== "idle" || input.session.activeTurnId ||
+      input.session.scopeClarification !== undefined) {
+    throw new Error("New research session must not already contain scope clarification state.");
+  }
+  await input.store.create(input.session);
+  const current = await input.store.read(input.session.sessionId);
+  if (!current) throw new Error("Research scope clarification session was not created.");
+  const persisted = (await input.store.commit(current.sessionId, {
+    kind: "record_scope_clarification",
+    request,
+    policy,
+    clarification: input.clarification,
+    candidateChoices: input.candidateChoices,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+  if (persisted.status !== "waiting_scope_clarification" ||
+      persisted.scopeClarification?.state !== "waiting_choice") {
+    throw new Error("Durable research scope clarification wait did not persist its required state.");
+  }
+  return persisted;
+}
+
+/** Refresh only host-fetched catalog candidates at the existing choice fence. */
+export async function refreshResearchSessionScopeClarificationV1(
+  input: RefreshResearchSessionScopeClarificationInputV1,
+): Promise<ResearchSessionV1> {
+  const current = await input.store.read(input.sessionId);
+  if (!current || current.revision !== input.expectedRevision ||
+      current.lease.epoch !== input.expectedLeaseEpoch ||
+      current.status !== "waiting_scope_clarification" ||
+      current.scopeClarification?.state !== "waiting_choice") {
+    throw new Error("Research scope clarification revision or lease epoch is stale.");
+  }
+  return (await input.store.commit(input.sessionId, {
+    kind: "refresh_scope_clarification",
+    clarification: input.clarification,
+    candidateChoices: input.candidateChoices,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+}
+
+/**
+ * Commit a selection that the host has freshly validated through its catalog,
+ * then advance only from the persisted request/policy and exact resolution.
+ */
+export async function resolveResearchSessionScopeClarificationV1(
+  input: ResolveResearchSessionScopeClarificationInputV1,
+): Promise<ResearchSessionV1> {
+  const current = await input.store.read(input.sessionId);
+  if (!current || current.revision !== input.expectedRevision ||
+      current.lease.epoch !== input.expectedLeaseEpoch ||
+      current.status !== "waiting_scope_clarification" ||
+      current.scopeClarification?.state !== "waiting_choice") {
+    throw new Error("Research scope clarification revision or lease epoch is stale.");
+  }
+  const resolved = (await input.store.commit(input.sessionId, {
+    kind: "resolve_scope_clarification",
+    selection: input.selection,
+    resolvedRequest: normalizeResearchRequestV1(input.resolvedRequest),
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+  return continueResearchSessionScopeClarificationV1({
+    store: input.store,
+    sessionId: resolved.sessionId,
+    expectedRevision: resolved.revision,
+    expectedLeaseEpoch: resolved.lease.epoch,
+    ...(input.packetOutputSchema ? { packetOutputSchema: input.packetOutputSchema } : {}),
+    ...(input.releaseApprovedLease ? { releaseApprovedLease: true } : {}),
+    at: input.at,
+  });
+}
+
+/**
+ * Finish a persisted post-choice checkpoint without accepting a new request,
+ * scope, policy, candidate, brief, or graph from the caller.
+ */
+export async function continueResearchSessionScopeClarificationV1(
+  input: ContinueResearchSessionScopeClarificationInputV1,
+): Promise<ResearchSessionV1> {
+  let current = await input.store.read(input.sessionId);
+  if (!current || current.revision !== input.expectedRevision ||
+      current.lease.epoch !== input.expectedLeaseEpoch ||
+      current.scopeClarification?.state !== "choice_resolved") {
+    throw new Error("Research scope clarification continuation is stale.");
+  }
+  let active = activeTurn(current);
+  if (!active) {
+    if (current.status !== "idle" || !current.scopeClarification.resolvedRequest) {
+      throw new Error("Research scope clarification has no recoverable brief checkpoint.");
+    }
+    const request = normalizeResearchRequestV1(current.scopeClarification.resolvedRequest);
+    const turnId = `research-turn:${current.sessionId.slice("research-session:".length)}`;
+    const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(
+      request.question,
+      {
+        sessionId: current.sessionId,
+        turnId,
+        scope: request.scope,
+        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+        limits: request.limits,
+        asOf: input.at,
+        policy: current.scopeClarification.policy,
+      },
+    ));
+    current = (await input.store.commit(current.sessionId, {
+      kind: "initialize_scope_brief",
+      brief: briefOutcome.brief,
+      expectedRevision: current.revision,
+      expectedLeaseEpoch: current.lease.epoch,
+      at: input.at,
+    })).session;
+    active = activeTurn(current);
+  }
+  if (current.status === "waiting_clarification") return current;
+  if (current.status !== "planning" || !active?.brief || active.graph ||
+      briefRequiresClarificationV1(active.brief)) {
+    throw new Error("Research scope clarification has no recoverable plan checkpoint.");
+  }
+  return proposeResearchGraphForReadyBriefV1({
+    store: input.store,
+    sessionId: current.sessionId,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    ...(input.packetOutputSchema ? { packetOutputSchema: input.packetOutputSchema } : {}),
+    approveAutomatically: active.brief.resolvedPlanApproval === "automatic",
     ...(input.releaseApprovedLease ? { releaseApprovedLease: true } : {}),
     at: input.at,
   });

@@ -665,6 +665,26 @@ export interface ResearchPort {
     revision: number;
     briefRevision: number;
   }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
+  /** Persist a natural-language scope choice before the first brief exists. */
+  prepareScopeClarificationReview?(
+    request: ResearchRequestV1,
+    policy: ResearchOneShotPolicyV1,
+  ): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+  /** Tenant-bound discovery of pending scope-choice and post-choice checkpoints. */
+  listScopeClarificationReviews?(): Promise<
+    import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]
+  >;
+  /** Commits one exact persisted candidate choice after host catalog validation. */
+  resolveScopeClarificationReview?(input: {
+    sessionId: string;
+    revision: number;
+    selection: import("./scope-resolution.js").ResearchScopeCandidateSelectionV1;
+  }): Promise<import("./session-scope-clarification-review.js").ResearchScopeClarificationReviewResolutionV1>;
+  /** Finishes a post-choice brief or plan checkpoint without accepting new input. */
+  continueScopeClarificationReview?(input: {
+    sessionId: string;
+    revision: number;
+  }): Promise<import("./session-scope-clarification-review.js").ResearchScopeClarificationReviewResolutionV1>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }

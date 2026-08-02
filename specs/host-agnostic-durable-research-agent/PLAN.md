@@ -3122,6 +3122,15 @@ provider capability to QuickJS.
   - [ ] Persist unresolved scope-catalog clarification before a brief exists,
         and expose the candidate-choice controls in both hosts.
 
+    - [x] Browser: persist the tenant-bound original request, bounded catalog
+          candidates, policy, and exact candidate choice before a brief exists;
+          recover the committed choice into the first brief/graph without
+          accepting a new scope or policy. The packed MV3 suite proves the
+          ambiguity, IndexedDB wait, revision fence, no-key/no-worker boundary,
+          and automatic resumable handoff (21/21, 2026-08-02).
+    - [ ] CLI: expose the same pre-brief choice/recovery controls without
+          inventing a free-form scope or policy on resume.
+
 T4 durable-wait checkpoint (2026-08-02): the shared reducer records every
 named wait as a revision- and epoch-fenced state and immediately releases its
 lease. A fresh host can therefore inspect and act on the persisted state rather

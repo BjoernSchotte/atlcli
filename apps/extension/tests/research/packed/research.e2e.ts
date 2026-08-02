@@ -2016,6 +2016,10 @@ async function readPackedDurableResearchSession(
   session: {
     state: {
       status: string;
+      scopeClarification?: {
+        state?: string;
+        selection?: { candidateId?: string };
+      };
       turns: Array<{
         id: string;
         tasks: Array<{ taskId: string }>;
@@ -2738,6 +2742,115 @@ test("persists and resolves an initial packed clarification before key storage o
   });
 });
 
+test("persists and resolves a packed scope choice before key storage or worker start", async () => {
+  await installEventCapture(page);
+  const request = packedScopeRequest(
+    'Research "Common Alias" Confluence space.',
+    { currentProjectKey: "FALLBACK" },
+  );
+  const prepared = await page.evaluate(async ({ request, policy }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:prepare-scope-clarification-review",
+      windowId: window.id,
+      request,
+      policy,
+    });
+  }, { request, policy: HOST_PARITY_POLICY }) as {
+    kind: string;
+    ok: boolean;
+    review?: {
+      sessionId: string;
+      revision: number;
+      status: string;
+      stage: string;
+      clarification: {
+        mentionId: string;
+        candidates: Array<{ id: string; key?: string }>;
+      };
+    };
+  };
+  if (!prepared.ok || !prepared.review) throw new Error("Initial scope clarification preparation failed.");
+  expect(prepared).toMatchObject({
+    kind: "research:prepare-scope-clarification-review-result",
+    ok: true,
+    review: {
+      status: "waiting_scope_clarification",
+      stage: "choice_required",
+      clarification: {
+        mentionId: "mention:scope-1",
+        candidates: [
+          { id: "research-scope-candidate:confluence-space-common", key: "COMMON" },
+          { id: "research-scope-candidate:confluence-space-other", key: "OTHER" },
+        ],
+      },
+    },
+  });
+  expect(JSON.stringify(prepared)).not.toContain(request.question);
+  expect(JSON.stringify(prepared)).not.toContain("tenantOrigin");
+
+  const durableWait = await readPackedDurableResearchSession(
+    page,
+    prepared.review.sessionId,
+    "artifact:scope-clarification-wait",
+  );
+  expect(durableWait.session.state).toMatchObject({
+    status: "waiting_scope_clarification",
+    turns: [],
+  });
+  expect(durableWait.artifact).toBeUndefined();
+  expect((await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY)))
+    .not.toHaveProperty(RESEARCH_ANTHROPIC_SESSION_KEY);
+
+  const resolved = await page.evaluate(async (review) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:resolve-scope-clarification-review",
+      windowId: window.id,
+      sessionId: review.sessionId,
+      revision: review.revision,
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: review.clarification.mentionId,
+        candidateId: "research-scope-candidate:confluence-space-common",
+      },
+    });
+  }, prepared.review) as {
+    kind: string;
+    ok: boolean;
+    outcome?: { kind: string; session?: { sessionId: string; status: string } };
+  };
+  expect(resolved).toMatchObject({
+    kind: "research:resolve-scope-clarification-review-result",
+    ok: true,
+    outcome: { kind: "resumable", session: { sessionId: prepared.review.sessionId, status: "running" } },
+  });
+  const durableResolved = await readPackedDurableResearchSession(
+    page,
+    prepared.review.sessionId,
+    "artifact:scope-clarification-resolved",
+  );
+  expect(durableResolved.session.state).toMatchObject({
+    status: "running",
+    scopeClarification: {
+      state: "choice_resolved",
+      selection: { candidateId: "research-scope-candidate:confluence-space-common" },
+    },
+    turns: [{
+      brief: { scope: { jiraProjectKeys: ["FALLBACK"], confluenceSpaceKeys: ["COMMON"] } },
+      graph: { revision: 1, status: "approved" },
+      tasks: [],
+      acceptedPackets: [],
+    }],
+  });
+  const events = await harnessEvents(page);
+  expect(events.filter((event) => event.kind === "scope-catalog-fetch")).toHaveLength(4);
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+  expect(events.some((event) => event.kind === "fetch")).toBe(false);
+});
+
 test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
@@ -3330,15 +3443,15 @@ test("stops an archived Confluence key before key storage or agent work", async 
   );
   await page.getByTestId("research-run").click();
 
-  const clarification = page.getByTestId("research-scope-clarification-required");
+  const clarification = page.getByTestId("research-scope-clarification-reviews");
   await expect(clarification).toBeVisible();
   await expect(clarification).toContainText("archived_only");
   const events = await harnessEvents(page);
   const spaceCatalogFetches = events.filter((event) =>
     event.kind === "scope-catalog-fetch" && event.url?.includes("/wiki/api/v2/spaces")
   );
-  expect(spaceCatalogFetches).toHaveLength(4);
-  expect(spaceCatalogFetches.filter((event) => event.url?.includes("keys=LEGACY"))).toHaveLength(2);
+  expect(spaceCatalogFetches).toHaveLength(8);
+  expect(spaceCatalogFetches.filter((event) => event.url?.includes("keys=LEGACY"))).toHaveLength(4);
   expect(spaceCatalogFetches.some((event) => event.url?.includes("status=archived"))).toBe(true);
 
   const stored = await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY);
@@ -3364,12 +3477,12 @@ test("stops an inaccessible same-tenant Confluence link before key storage or ag
   );
   await page.getByTestId("research-run").click();
 
-  const clarification = page.getByTestId("research-scope-clarification-required");
+  const clarification = page.getByTestId("research-scope-clarification-reviews");
   await expect(clarification).toBeVisible();
   await expect(clarification).toContainText("incomplete");
   const events = await harnessEvents(page);
   const referenceFetches = events.filter((event) => event.kind === "scope-reference-fetch");
-  expect(referenceFetches).toHaveLength(1);
+  expect(referenceFetches).toHaveLength(2);
   expect(referenceFetches[0]?.url).toContain("/wiki/rest/api/space/PRIVATE");
 
   const stored = await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY);
@@ -3394,17 +3507,17 @@ test("stops a packed natural-name scope ambiguity before key storage or agent wo
   );
   await page.getByTestId("research-run").click();
 
-  const clarification = page.getByTestId("research-scope-clarification-required");
+  const clarification = page.getByTestId("research-scope-clarification-reviews");
   await expect(clarification).toBeVisible();
   await expect(clarification).toContainText("Scope clarification required");
   await expect(clarification).toContainText("Shared");
-  await expect(page.getByTestId("research-scope-candidate-picker").locator("option"))
+  await expect(page.getByTestId("research-scope-clarification-picker-0").locator("option"))
     .toHaveCount(3);
   const events = await harnessEvents(page);
   const catalogFetches = events.filter((event) => event.kind === "scope-catalog-fetch");
-  expect(catalogFetches).toHaveLength(1);
-  expect(catalogFetches[0]?.url).toContain("/rest/api/3/project/search");
-  expect(catalogFetches[0]?.url).toContain("query=Shared");
+  expect(catalogFetches).toHaveLength(2);
+  expect(catalogFetches.every((event) => event.url?.includes("/rest/api/3/project/search"))).toBe(true);
+  expect(catalogFetches.every((event) => event.url?.includes("query=Shared"))).toBe(true);
 
   const stored = await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY);
   expect(stored[RESEARCH_ANTHROPIC_SESSION_KEY]).toBeUndefined();

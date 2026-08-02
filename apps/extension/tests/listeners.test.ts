@@ -242,6 +242,27 @@ describe("handleExtMessage (background listener adapter)", () => {
     }]);
   });
 
+  it("returns true and lists tenant-bound pre-brief scope clarification reviews", async () => {
+    const cap = captureResponse<ExtResponse>();
+    expect(handleExtMessage(
+      { kind: "research:list-scope-clarification-reviews", windowId: 7 },
+      cap.sendResponse,
+      {
+        ...okRouterDeps,
+        listResearchScopeClarificationReviews: async (windowId) => {
+          expect(windowId).toBe(7);
+          return [];
+        },
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{
+      kind: "research:list-scope-clarification-reviews-result",
+      ok: true,
+      reviews: [],
+    }]);
+  });
+
   it("returns true and responds to DOCX runtime preparation", async () => {
     const cap = captureResponse<ExtResponse>();
     expect(handleExtMessage(

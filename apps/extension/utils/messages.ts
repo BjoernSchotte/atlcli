@@ -27,7 +27,9 @@ import type {
 import type {
   ResearchResumableSessionV1,
   ResearchClarificationReviewResolutionV1,
+  ResearchScopeClarificationReviewResolutionV1,
   ResearchSessionClarificationReviewV1,
+  ResearchSessionScopeClarificationReviewV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
@@ -128,6 +130,23 @@ export interface ResearchClarificationPlanningActionRequest {
   briefRevision: number;
 }
 
+/** Revision-fenced choice for a persisted, pre-brief scope clarification. */
+export interface ResearchScopeClarificationReviewActionRequest {
+  sessionId: string;
+  revision: number;
+  selection: {
+    schema: "atlcli.research-scope-candidate-selection/v1";
+    mentionId: string;
+    candidateId: string;
+  };
+}
+
+/** Revision fence for a post-choice brief/plan recovery checkpoint. */
+export interface ResearchScopeClarificationPlanningActionRequest {
+  sessionId: string;
+  revision: number;
+}
+
 /** Bounded timing/result projection for cross-realm DOCX runtime preparation. */
 export interface DocxRuntimePreparationMessage {
   totalMs: number;
@@ -190,6 +209,15 @@ export type ExtRequest =
   | { kind: "research:list-clarification-reviews"; windowId: number }
   | ({ kind: "research:resolve-clarification-review"; windowId: number } & ResearchClarificationReviewActionRequest)
   | ({ kind: "research:continue-clarification-review"; windowId: number } & ResearchClarificationPlanningActionRequest)
+  | {
+      kind: "research:prepare-scope-clarification-review";
+      windowId: number;
+      request: ResearchRequestV1;
+      policy: ResearchOneShotPolicyV1;
+    }
+  | { kind: "research:list-scope-clarification-reviews"; windowId: number }
+  | ({ kind: "research:resolve-scope-clarification-review"; windowId: number } & ResearchScopeClarificationReviewActionRequest)
+  | ({ kind: "research:continue-scope-clarification-review"; windowId: number } & ResearchScopeClarificationPlanningActionRequest)
   | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
@@ -371,6 +399,50 @@ export type ExtResponse =
       code: ResearchErrorCode;
       error: string;
     }
+  | {
+      kind: "research:prepare-scope-clarification-review-result";
+      ok: true;
+      review: ResearchSessionScopeClarificationReviewV1;
+    }
+  | {
+      kind: "research:prepare-scope-clarification-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:list-scope-clarification-reviews-result";
+      ok: true;
+      reviews: ResearchSessionScopeClarificationReviewV1[];
+    }
+  | {
+      kind: "research:list-scope-clarification-reviews-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:resolve-scope-clarification-review-result";
+      ok: true;
+      outcome: ResearchScopeClarificationReviewResolutionV1;
+    }
+  | {
+      kind: "research:resolve-scope-clarification-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "research:continue-scope-clarification-review-result";
+      ok: true;
+      outcome: ResearchScopeClarificationReviewResolutionV1;
+    }
+  | {
+      kind: "research:continue-scope-clarification-review-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
   | { kind: "research:cancel-result"; runId: string; cancelled: boolean };
 
 /**
@@ -501,6 +573,10 @@ export interface ResponseMap {
   "research:list-clarification-reviews": Extract<ExtResponse, { kind: "research:list-clarification-reviews-result" }>;
   "research:resolve-clarification-review": Extract<ExtResponse, { kind: "research:resolve-clarification-review-result" }>;
   "research:continue-clarification-review": Extract<ExtResponse, { kind: "research:continue-clarification-review-result" }>;
+  "research:prepare-scope-clarification-review": Extract<ExtResponse, { kind: "research:prepare-scope-clarification-review-result" }>;
+  "research:list-scope-clarification-reviews": Extract<ExtResponse, { kind: "research:list-scope-clarification-reviews-result" }>;
+  "research:resolve-scope-clarification-review": Extract<ExtResponse, { kind: "research:resolve-scope-clarification-review-result" }>;
+  "research:continue-scope-clarification-review": Extract<ExtResponse, { kind: "research:continue-scope-clarification-review-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
@@ -647,6 +723,31 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       isResearchSessionId(action.sessionId) &&
       isResearchRevision(action.revision) &&
       isResearchRevision(action.briefRevision);
+  }
+  if (kind === "research:prepare-scope-clarification-review") {
+    const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "request", "policy"]) &&
+      isWindowId(prepare.windowId) &&
+      typeof prepare.request === "object" && prepare.request !== null &&
+      typeof prepare.policy === "object" && prepare.policy !== null;
+  }
+  if (kind === "research:list-scope-clarification-reviews") {
+    return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  }
+  if (kind === "research:resolve-scope-clarification-review") {
+    const action = value as Partial<ResearchScopeClarificationReviewActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, ["kind", "windowId", "sessionId", "revision", "selection"]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision) &&
+      hasValidScopePreflightOptions({ candidateSelections: [action.selection] });
+  }
+  if (kind === "research:continue-scope-clarification-review") {
+    const action = value as Partial<ResearchScopeClarificationPlanningActionRequest & { windowId: unknown }>;
+    return hasOnlyKeys(value, ["kind", "windowId", "sessionId", "revision"]) &&
+      isWindowId(action.windowId) &&
+      isResearchSessionId(action.sessionId) &&
+      isResearchRevision(action.revision);
   }
   if (kind === "research:resolve-scope") {
     const preflight = value as { windowId?: unknown; request?: unknown; options?: unknown };

@@ -7,6 +7,8 @@ import type {
   ResearchResumableSessionV1,
   ResearchClarificationReviewResolutionV1,
   ResearchSessionClarificationReviewV1,
+  ResearchScopeClarificationReviewResolutionV1,
+  ResearchSessionScopeClarificationReviewV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
@@ -538,6 +540,122 @@ export function chromeResearchPort(): ResearchPort {
           "provider-error",
           "The research clarification-recovery host returned no result.",
         );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.outcome;
+    },
+
+    async prepareScopeClarificationReview(request, policy) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:prepare-scope-clarification-review",
+        windowId: window.id,
+        request,
+        policy,
+      }) as
+        | {
+            kind: "research:prepare-scope-clarification-review-result";
+            ok: true;
+            review: ResearchSessionScopeClarificationReviewV1;
+          }
+        | {
+            kind: "research:prepare-scope-clarification-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:prepare-scope-clarification-review-result") {
+        throw new ResearchContractError("provider-error", "The research scope-clarification host returned no result.");
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.review;
+    },
+
+    async listScopeClarificationReviews() {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:list-scope-clarification-reviews",
+        windowId: window.id,
+      }) as
+        | {
+            kind: "research:list-scope-clarification-reviews-result";
+            ok: true;
+            reviews: ResearchSessionScopeClarificationReviewV1[];
+          }
+        | {
+            kind: "research:list-scope-clarification-reviews-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:list-scope-clarification-reviews-result") {
+        throw new ResearchContractError("provider-error", "The research scope-clarification review host returned no result.");
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.reviews;
+    },
+
+    async resolveScopeClarificationReview(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:resolve-scope-clarification-review",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:resolve-scope-clarification-review-result";
+            ok: true;
+            outcome: ResearchScopeClarificationReviewResolutionV1;
+          }
+        | {
+            kind: "research:resolve-scope-clarification-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:resolve-scope-clarification-review-result") {
+        throw new ResearchContractError("provider-error", "The research scope-clarification resolution host returned no result.");
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.outcome;
+    },
+
+    async continueScopeClarificationReview(input) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:continue-scope-clarification-review",
+        windowId: window.id,
+        ...input,
+      }) as
+        | {
+            kind: "research:continue-scope-clarification-review-result";
+            ok: true;
+            outcome: ResearchScopeClarificationReviewResolutionV1;
+          }
+        | {
+            kind: "research:continue-scope-clarification-review-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:continue-scope-clarification-review-result") {
+        throw new ResearchContractError("provider-error", "The research scope-clarification recovery host returned no result.");
       }
       if (!response.ok) throw new ResearchContractError(response.code, response.error);
       return response.outcome;

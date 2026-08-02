@@ -31,6 +31,7 @@ import {
 import type {
   ResearchBriefClarificationRequiredV1,
   ResearchSessionClarificationReviewV1,
+  ResearchSessionScopeClarificationReviewV1,
   ResearchResumableSessionV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
@@ -452,12 +453,17 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [clarificationReviews, setClarificationReviews] = useState<
     ResearchSessionClarificationReviewV1[]
   >([]);
+  const [scopeClarificationReviews, setScopeClarificationReviews] = useState<
+    ResearchSessionScopeClarificationReviewV1[]
+  >([]);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
   const [clarificationDecisions, setClarificationDecisions] = useState<Record<string, "accepted" | "rejected" | "">>({});
+  const [scopeClarificationSelections, setScopeClarificationSelections] = useState<Record<string, string>>({});
   const [scopeReviewActionId, setScopeReviewActionId] = useState<string | null>(null);
   const [scopePlanReviewActionId, setScopePlanReviewActionId] = useState<string | null>(null);
   const [planReviewActionId, setPlanReviewActionId] = useState<string | null>(null);
   const [clarificationActionId, setClarificationActionId] = useState<string | null>(null);
+  const [scopeClarificationActionId, setScopeClarificationActionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const planReviewListingGeneration = useRef(0);
 
@@ -487,6 +493,22 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       // explicit resume request instead of presenting it during mount.
       .catch(() => {
         if (active) setResumableSessions([]);
+      });
+    return () => { active = false; };
+  }, [port, site]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.listScopeClarificationReviews || !site) {
+      setScopeClarificationReviews([]);
+      return () => { active = false; };
+    }
+    void port.listScopeClarificationReviews()
+      .then((reviews) => {
+        if (active) setScopeClarificationReviews(reviews);
+      })
+      .catch(() => {
+        if (active) setScopeClarificationReviews([]);
       });
     return () => { active = false; };
   }, [port, site]);
@@ -623,6 +645,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     }
   }
 
+  async function refreshScopeClarificationReviews(): Promise<void> {
+    if (!port?.listScopeClarificationReviews || !site) {
+      setScopeClarificationReviews([]);
+      return;
+    }
+    try {
+      setScopeClarificationReviews(await port.listScopeClarificationReviews());
+    } catch {
+      setScopeClarificationReviews([]);
+    }
+  }
+
   if (!port) return <Alert tone="muted">{t("screen.unmet.capability.research")}</Alert>;
 
   async function run(retry?: ScopePreflightRetry): Promise<void> {
@@ -663,11 +697,30 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           wikiProvider: "rest",
         });
       })();
+      const policy = normalizeResearchOneShotPolicyV1({
+        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+        requestedEffort: effort,
+        requestedPlanApproval: planApproval,
+        scopeExpansionMode: scopeExpansion,
+        requestedReconciliation: reconciliation,
+      });
       const scopeOutcome = await port!.resolveScope(
         initialRequest,
         retry ? { candidateSelections: [retry.selection] } : undefined,
       );
       if (scopeOutcome.kind === "clarification_required") {
+        if (port!.prepareScopeClarificationReview) {
+          const review = await port!.prepareScopeClarificationReview(initialRequest, policy);
+          setScopeClarificationReviews((current) => [
+            review,
+            ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
+          ]);
+          setActivity([]);
+          setReport(null);
+          setProgress("");
+          setActionStatus(t("research.clarificationReview.prepared"));
+          return;
+        }
         setScopeClarification({
           request: structuredClone(initialRequest),
           clarification: scopeOutcome.clarification,
@@ -681,13 +734,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       }
       const request = scopeOutcome.request;
       setSubmittedRequest(structuredClone(request));
-      const policy = normalizeResearchOneShotPolicyV1({
-        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
-        requestedEffort: effort,
-        requestedPlanApproval: planApproval,
-        scopeExpansionMode: scopeExpansion,
-        requestedReconciliation: reconciliation,
-      });
       const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
         scope: request.scope,
         scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
@@ -771,6 +817,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       void refreshScopePlanReviews();
       void refreshPlanReviews();
       void refreshClarificationReviews();
+      void refreshScopeClarificationReviews();
     }
   }
 
@@ -947,6 +994,107 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       ...current.filter((candidate) => candidate.sessionId !== outcome.session.sessionId),
     ]);
     setActionStatus(t("research.clarificationReview.resumable"));
+  }
+
+  function scopeClarificationSelectionKey(
+    review: ResearchSessionScopeClarificationReviewV1,
+  ): string {
+    return `${review.sessionId}:${review.revision}`;
+  }
+
+  function applyScopeClarificationOutcome(
+    review: ResearchSessionScopeClarificationReviewV1,
+    outcome: Awaited<ReturnType<NonNullable<ResearchPort["resolveScopeClarificationReview"]>>>,
+  ): void {
+    setScopeClarificationReviews((current) => current.filter((candidate) =>
+      candidate.sessionId !== review.sessionId,
+    ));
+    if (outcome.kind === "scope_clarification") {
+      setScopeClarificationReviews((current) => [
+        outcome.review,
+        ...current.filter((candidate) => candidate.sessionId !== outcome.review.sessionId),
+      ]);
+      setActionStatus(t("research.clarificationReview.prepared"));
+      return;
+    }
+    if (outcome.kind === "clarification_review") {
+      setClarificationReviews((current) => [
+        outcome.review,
+        ...current.filter((candidate) => candidate.sessionId !== outcome.review.sessionId),
+      ]);
+      setActionStatus(t("research.clarificationReview.prepared"));
+      return;
+    }
+    if (outcome.kind === "plan_review") {
+      setPlanReviews((current) => [
+        outcome.review,
+        ...current.filter((candidate) => candidate.sessionId !== outcome.review.sessionId),
+      ]);
+      setActionStatus(t("research.clarificationReview.planPrepared"));
+      return;
+    }
+    setResumableSessions((current) => [
+      outcome.session,
+      ...current.filter((candidate) => candidate.sessionId !== outcome.session.sessionId),
+    ]);
+    setActionStatus(t("research.clarificationReview.resumable"));
+  }
+
+  async function resolveScopeClarificationReview(
+    review: ResearchSessionScopeClarificationReviewV1,
+  ): Promise<void> {
+    if (!port?.resolveScopeClarificationReview || review.stage !== "choice_required") return;
+    const selectionKey = scopeClarificationSelectionKey(review);
+    const candidateId = scopeClarificationSelections[selectionKey];
+    if (!candidateId) return;
+    setError(null);
+    setActionStatus("");
+    setScopeClarificationActionId(selectionKey);
+    try {
+      const outcome = await port.resolveScopeClarificationReview({
+        sessionId: review.sessionId,
+        revision: review.revision,
+        selection: {
+          schema: "atlcli.research-scope-candidate-selection/v1",
+          mentionId: review.clarification.mentionId,
+          candidateId,
+        },
+      });
+      applyScopeClarificationOutcome(review, outcome);
+      await refreshScopeClarificationReviews();
+      void refreshClarificationReviews();
+      void refreshPlanReviews();
+      void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setScopeClarificationActionId(null);
+    }
+  }
+
+  async function continueScopeClarificationReview(
+    review: ResearchSessionScopeClarificationReviewV1,
+  ): Promise<void> {
+    if (!port?.continueScopeClarificationReview || review.stage === "choice_required") return;
+    const actionId = scopeClarificationSelectionKey(review);
+    setError(null);
+    setActionStatus("");
+    setScopeClarificationActionId(actionId);
+    try {
+      const outcome = await port.continueScopeClarificationReview({
+        sessionId: review.sessionId,
+        revision: review.revision,
+      });
+      applyScopeClarificationOutcome(review, outcome);
+      await refreshScopeClarificationReviews();
+      void refreshClarificationReviews();
+      void refreshPlanReviews();
+      void refreshResumableSessions();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    } finally {
+      setScopeClarificationActionId(null);
+    }
   }
 
   async function resolveClarificationReview(
@@ -1629,6 +1777,92 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             ))}
           </ul>
         </Alert>
+      )}
+
+      {scopeClarificationReviews.length > 0 && (
+        <Card data-testid="research-scope-clarification-reviews">
+          <CardHeader>
+            <CardTitle>{t("research.scopeClarification")}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {scopeClarificationReviews.map((review, index) => {
+              const actionId = scopeClarificationSelectionKey(review);
+              const deciding = scopeClarificationActionId === actionId;
+              const selectedCandidateId = scopeClarificationSelections[actionId] ?? "";
+              return (
+                <div
+                  key={review.sessionId}
+                  className="rounded-md border p-2 text-xs"
+                  data-testid={`research-scope-clarification-review-${index}`}
+                >
+                  <p className="m-0 text-muted-foreground">
+                    {t("research.scopeClarification.value", {
+                      reason: review.clarification.reason,
+                    })}
+                  </p>
+                  {review.stage === "choice_required" && review.clarification.candidates.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <Label htmlFor={`research-scope-clarification-picker-${index}`}>
+                        {t("research.scopeClarification.choose")}
+                      </Label>
+                      <Select
+                        id={`research-scope-clarification-picker-${index}`}
+                        data-testid={`research-scope-clarification-picker-${index}`}
+                        value={selectedCandidateId}
+                        disabled={running || deciding}
+                        onChange={(event) => setScopeClarificationSelections((current) => ({
+                          ...current,
+                          [actionId]: event.target.value,
+                        }))}
+                      >
+                        <option value="">{t("research.scopeClarification.placeholder")}</option>
+                        {review.clarification.candidates.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.product}: {candidate.name}
+                            {candidate.key ? ` (${candidate.key})` : ""}
+                            {candidate.status === "archived" ? " — archived" : ""}
+                          </option>
+                        ))}
+                      </Select>
+                      <Button
+                        size="sm"
+                        disabled={running || deciding || !selectedCandidateId}
+                        data-testid={`research-scope-clarification-resolve-${index}`}
+                        onClick={() => void resolveScopeClarificationReview(review)}
+                      >
+                        {deciding
+                          ? t("research.clarificationReview.deciding")
+                          : t("research.scopeClarification.continue")}
+                      </Button>
+                    </div>
+                  )}
+                  {review.stage !== "choice_required" && (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <p className="mb-0 text-muted-foreground">
+                        {t("research.clarificationReview.noRetrieval")}
+                      </p>
+                      <Button
+                        size="sm"
+                        disabled={running || deciding}
+                        data-testid={`research-scope-clarification-continue-${index}`}
+                        onClick={() => void continueScopeClarificationReview(review)}
+                      >
+                        {deciding
+                          ? t("research.clarificationReview.deciding")
+                          : t("research.scopeClarification.continue")}
+                      </Button>
+                    </div>
+                  )}
+                  <ul className="mb-0 mt-2 pl-5 text-muted-foreground">
+                    {review.clarification.rerunGuidance.map((guidance) => (
+                      <li key={guidance}>{guidance}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       )}
 
       {scopeClarification && (

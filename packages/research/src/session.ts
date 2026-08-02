@@ -1,4 +1,11 @@
-import { ResearchContractError, type ResearchScopeBindingV1 } from "./contracts.js";
+import {
+  ResearchContractError,
+  normalizeResearchOneShotPolicyV1,
+  normalizeResearchRequestV1,
+  type ResearchOneShotPolicyV1,
+  type ResearchRequestV1,
+  type ResearchScopeBindingV1,
+} from "./contracts.js";
 import {
   approveResearchBriefWholeScopeExpansionV1,
   reviseResearchBriefPlanV1,
@@ -22,6 +29,10 @@ import type {
   ResearchScopeExpansionProposalV1,
   ResearchScopeResolutionV1,
 } from "./scope-discovery.js";
+import type {
+  ResearchScopeCandidateSelectionV1,
+  ResearchScopeClarificationRequiredV1,
+} from "./scope-resolution.js";
 import {
   reduceResearchAcceptedPacketV1,
   reduceResearchTaskAttemptV1,
@@ -64,12 +75,15 @@ export const RESEARCH_SESSION_PLAN_REVISION_SCHEMA_V1 =
   "atlcli.research-session-plan-revision/v1" as const;
 export const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1 =
   "atlcli.research-session-scope-revision/v1" as const;
+export const RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1 =
+  "atlcli.research-session-scope-clarification/v1" as const;
 export const RESEARCH_RESUMABLE_SESSION_SCHEMA_V1 =
   "atlcli.research-resumable-session/v1" as const;
 
 export type ResearchSessionStatusV1 =
   | "idle"
   | "planning"
+  | "waiting_scope_clarification"
   | "waiting_clarification"
   | "waiting_plan_approval"
   | "waiting_plan_revision"
@@ -112,6 +126,22 @@ export interface ResearchSessionAssumptionDecisionV1 {
   assumptionId: string;
   decision: "accepted" | "rejected";
   decidedAt: string;
+}
+
+/**
+ * The tenant-bound, pre-brief state for an ambiguous natural-language scope.
+ * It retains the bounded user request and catalog candidates, never content
+ * bodies, credentials, provider cursors, prompts, or model trajectories.
+ */
+export interface ResearchSessionScopeClarificationV1 {
+  schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+  state: "waiting_choice" | "choice_resolved";
+  request: ResearchRequestV1;
+  policy: ResearchOneShotPolicyV1;
+  clarification: ResearchScopeClarificationRequiredV1;
+  candidateChoices: ResearchScopeCandidateV1[];
+  selection?: ResearchScopeCandidateSelectionV1;
+  resolvedRequest?: ResearchRequestV1;
 }
 
 export interface ResearchSessionSteeringV1 {
@@ -293,6 +323,8 @@ export interface ResearchSessionV1 {
   status: ResearchSessionStatusV1;
   lease: ResearchSessionLeaseV1;
   retention: ResearchSessionRetentionV1;
+  /** Present only for a durable natural-language scope preflight. */
+  scopeClarification?: ResearchSessionScopeClarificationV1;
   activeTurnId?: string;
   turns: ResearchSessionTurnV1[];
   createdAt: string;
@@ -329,6 +361,34 @@ interface ResearchSessionFencedUpdateV1 {
 /** A closed command union; stores must never accept ad-hoc mutation objects. */
 export type ResearchSessionUpdateV1 =
   | (ResearchSessionFencedUpdateV1 & { kind: "create_turn"; turnId: string })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Persist an unresolved natural-language scope before any brief exists. */
+      kind: "record_scope_clarification";
+      request: ResearchRequestV1;
+      policy: ResearchOneShotPolicyV1;
+      clarification: ResearchScopeClarificationRequiredV1;
+      candidateChoices: ResearchScopeCandidateV1[];
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Replace stale catalog candidates while preserving the original request. */
+      kind: "refresh_scope_clarification";
+      clarification: ResearchScopeClarificationRequiredV1;
+      candidateChoices: ResearchScopeCandidateV1[];
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Commit exactly one persisted candidate choice and its host-resolved scope. */
+      kind: "resolve_scope_clarification";
+      selection: ResearchScopeCandidateSelectionV1;
+      resolvedRequest: ResearchRequestV1;
+    })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** Atomically materialize the first brief only from a committed scope choice. */
+      kind: "initialize_scope_brief";
+      brief: ResearchBriefV1;
+      scopeCandidates?: ResearchScopeCandidateV1[];
+      scopeBindings?: ResearchScopeBindingV1[];
+      scopeResolutions?: ResearchScopeResolutionV1[];
+    })
   | (ResearchSessionFencedUpdateV1 & {
       kind: "record_brief";
       brief: ResearchBriefV1;
@@ -476,6 +536,89 @@ function validateBodyFreeReferenceIds(
   }
 }
 
+function sameScopeClarificationRequest(
+  original: ResearchRequestV1,
+  resolved: ResearchRequestV1,
+): boolean {
+  const includesAll = (required: readonly string[], actual: readonly string[]) =>
+    required.every((entry) => actual.includes(entry));
+  const originalSeeds = original.scopeSeeds ?? [];
+  const resolvedSeeds = resolved.scopeSeeds ?? [];
+  return original.question === resolved.question &&
+    original.scope.siteOrigin === resolved.scope.siteOrigin &&
+    original.wikiProvider === resolved.wikiProvider &&
+    JSON.stringify(original.limits) === JSON.stringify(resolved.limits) &&
+    JSON.stringify(original.scope.timeWindow ?? {}) === JSON.stringify(resolved.scope.timeWindow ?? {}) &&
+    includesAll(original.scope.jiraProjectKeys, resolved.scope.jiraProjectKeys) &&
+    includesAll(original.scope.confluenceSpaceKeys, resolved.scope.confluenceSpaceKeys) &&
+    originalSeeds.every((seed) => resolvedSeeds.some((candidate) =>
+      candidate.binding.id === seed.binding.id && JSON.stringify(candidate) === JSON.stringify(seed)
+    ));
+}
+
+function validateScopeClarification(
+  session: ResearchSessionV1,
+  value: ResearchSessionScopeClarificationV1,
+): void {
+  if (value.schema !== RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1 ||
+      (value.state !== "waiting_choice" && value.state !== "choice_resolved")) {
+    invalid("Research session scope clarification is invalid.");
+  }
+  let request: ResearchRequestV1;
+  try {
+    request = normalizeResearchRequestV1(value.request);
+    normalizeResearchOneShotPolicyV1(value.policy);
+  } catch (error) {
+    invalid(error instanceof Error ? error.message : "Research session scope clarification is invalid.");
+  }
+  const clarification = value.clarification;
+  if (clarification.schema !== "atlcli.research-clarification-required/v1" ||
+      !/^mention:[A-Za-z0-9._-]{1,120}$/.test(clarification.mentionId) ||
+      !["ambiguous", "weak_match", "archived_only", "unavailable", "incomplete", "not_found"].includes(clarification.reason) ||
+      !Array.isArray(clarification.candidateIds) || clarification.candidateIds.length > 8 ||
+      new Set(clarification.candidateIds).size !== clarification.candidateIds.length ||
+      clarification.candidateIds.some((id) => !/^research-scope-candidate:[A-Za-z0-9._-]{1,200}$/.test(id)) ||
+      !Array.isArray(clarification.rerunGuidance) || clarification.rerunGuidance.length > 8 ||
+      clarification.rerunGuidance.some((entry) => !entry.trim() || entry.length > 500)) {
+    invalid("Research session scope clarification is invalid.");
+  }
+  if (!Array.isArray(value.candidateChoices) || value.candidateChoices.length > 8 ||
+      new Set(value.candidateChoices.map((candidate) => candidate.id)).size !== value.candidateChoices.length ||
+      value.candidateChoices.some((candidate) =>
+        candidate.schema !== "atlcli.research-scope-candidate/v1" ||
+        !/^research-scope-candidate:[A-Za-z0-9._-]{1,200}$/.test(candidate.id) ||
+        candidate.tenantOrigin !== request.scope.siteOrigin ||
+        candidate.accessible !== true || !candidate.name.trim() || candidate.name.length > 500 ||
+        !Number.isFinite(Date.parse(candidate.providerFreshnessAt)) ||
+        !clarification.candidateIds.includes(candidate.id)
+      )) {
+    invalid("Research session scope clarification candidates are invalid.");
+  }
+  if (value.state === "waiting_choice") {
+    if (session.status !== "waiting_scope_clarification" || session.activeTurnId ||
+        value.selection !== undefined || value.resolvedRequest !== undefined) {
+      invalid("Research session scope clarification wait is invalid.");
+    }
+    return;
+  }
+  if (value.selection?.schema !== "atlcli.research-scope-candidate-selection/v1" ||
+      value.selection.mentionId !== clarification.mentionId ||
+      !clarification.candidateIds.includes(value.selection.candidateId) ||
+      !value.resolvedRequest) {
+    invalid("Research session scope clarification resolution is invalid.");
+  }
+  let resolved: ResearchRequestV1;
+  try {
+    resolved = normalizeResearchRequestV1(value.resolvedRequest);
+  } catch (error) {
+    invalid(error instanceof Error ? error.message : "Research session scope clarification resolution is invalid.");
+  }
+  if (!sameScopeClarificationRequest(request, resolved) ||
+      (!session.activeTurnId && session.status !== "idle")) {
+    invalid("Research session scope clarification resolution is invalid.");
+  }
+}
+
 function turn(session: ResearchSessionV1): ResearchSessionTurnV1 {
   if (!session.activeTurnId) invalid("Research session does not have an active turn.");
   const found = session.turns.find((candidate) => candidate.id === session.activeTurnId);
@@ -568,6 +711,11 @@ function validateSession(session: ResearchSessionV1): void {
   if (Date.parse(session.lease.expiresAt) <= Date.parse(session.lease.heartbeatAt)) invalid("Research session lease expiry must follow heartbeat.");
   if (session.turns.length > 64 || new Set(session.turns.map((candidate) => candidate.id)).size !== session.turns.length) invalid("Research session turns are invalid.");
   if (session.activeTurnId && !session.turns.some((candidate) => candidate.id === session.activeTurnId)) invalid("Research session active turn is invalid.");
+  if (session.scopeClarification !== undefined) {
+    validateScopeClarification(session, session.scopeClarification);
+  } else if (session.status === "waiting_scope_clarification") {
+    invalid("A scope-clarification wait requires its durable input.");
+  }
   for (const candidate of session.turns) {
     if (candidate.budgetState !== undefined) parseResearchRunBudgetStateV1(candidate.budgetState);
     if (candidate.planRevisions !== undefined) {
@@ -770,6 +918,123 @@ export function reduceResearchSessionV1(
       lease: { epoch: session.lease.epoch + 1, ownerId: update.ownerId, heartbeatAt: update.at, expiresAt: update.expiresAt },
       updatedAt: update.at,
     };
+  }
+
+  if (update.kind === "record_scope_clarification") {
+    if (session.status !== "idle" || session.activeTurnId || session.scopeClarification) {
+      invalid("Research session cannot record a scope clarification while active.");
+    }
+    const next: ResearchSessionScopeClarificationV1 = {
+      schema: RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1,
+      state: "waiting_choice",
+      request: clone(normalizeResearchRequestV1(update.request)),
+      policy: clone(normalizeResearchOneShotPolicyV1(update.policy)),
+      clarification: clone(update.clarification),
+      candidateChoices: clone(update.candidateChoices),
+    };
+    validateScopeClarification(
+      { ...session, status: "waiting_scope_clarification", scopeClarification: next },
+      next,
+    );
+    return withReleasedDurableWait(session, update, {
+      status: "waiting_scope_clarification",
+      scopeClarification: next,
+    });
+  }
+
+  if (update.kind === "refresh_scope_clarification") {
+    const current = session.scopeClarification;
+    if (session.status !== "waiting_scope_clarification" || session.activeTurnId ||
+        current?.state !== "waiting_choice") {
+      invalid("Research session is not awaiting a scope clarification choice.");
+    }
+    const next: ResearchSessionScopeClarificationV1 = {
+      ...current,
+      clarification: clone(update.clarification),
+      candidateChoices: clone(update.candidateChoices),
+    };
+    validateScopeClarification(
+      { ...session, status: "waiting_scope_clarification", scopeClarification: next },
+      next,
+    );
+    return withReleasedDurableWait(session, update, {
+      status: "waiting_scope_clarification",
+      scopeClarification: next,
+    });
+  }
+
+  if (update.kind === "resolve_scope_clarification") {
+    const current = session.scopeClarification;
+    if (session.status !== "waiting_scope_clarification" || session.activeTurnId ||
+        current?.state !== "waiting_choice" ||
+        update.selection.schema !== "atlcli.research-scope-candidate-selection/v1" ||
+        update.selection.mentionId !== current.clarification.mentionId ||
+        !current.clarification.candidateIds.includes(update.selection.candidateId)) {
+      invalid("Research session scope clarification choice is stale or invalid.");
+    }
+    const resolvedRequest = clone(normalizeResearchRequestV1(update.resolvedRequest));
+    const next: ResearchSessionScopeClarificationV1 = {
+      ...current,
+      state: "choice_resolved",
+      selection: clone(update.selection),
+      resolvedRequest,
+    };
+    validateScopeClarification(
+      { ...session, status: "idle", scopeClarification: next },
+      next,
+    );
+    return withReleasedDurableWait(session, update, {
+      status: "idle",
+      scopeClarification: next,
+    });
+  }
+
+  if (update.kind === "initialize_scope_brief") {
+    const scopeClarification = session.scopeClarification;
+    if (session.status !== "idle" || session.activeTurnId ||
+        scopeClarification?.state !== "choice_resolved" ||
+        !scopeClarification.resolvedRequest ||
+        update.brief.sessionId !== session.sessionId ||
+        update.brief.objective !== scopeClarification.resolvedRequest.question ||
+        JSON.stringify(update.brief.scope) !== JSON.stringify(scopeClarification.resolvedRequest.scope) ||
+        update.brief.turnId === "" ||
+        session.turns.some((candidate) => candidate.id === update.brief.turnId)) {
+      invalid("Research session scope clarification cannot initialize this brief.");
+    }
+    const nextTurn: ResearchSessionTurnV1 = {
+      id: update.brief.turnId,
+      revision: update.brief.revision,
+      createdAt: update.at,
+      brief: clone(update.brief),
+      scopeCandidates: clone(update.scopeCandidates ?? update.brief.scopeCandidates),
+      scopeBindings: clone(update.scopeBindings ?? update.brief.scopeBindings),
+      scopeResolutions: clone(update.scopeResolutions ?? update.brief.scopeResolutions),
+      scopeExpansionProposals: [],
+      clarifications: [],
+      assumptionDecisions: [],
+      planRevisions: [],
+      scopeRevisions: [],
+      steering: [],
+      tasks: [],
+      acceptedPackets: [],
+      reconciliationDispositions: [],
+      retrievalAssessments: [],
+      checkpoints: [],
+    };
+    const needsClarification = update.brief.clarificationQuestions.length > 0 ||
+      update.brief.assumptions.some((assumption) =>
+        assumption.requiresUserDecision && assumption.status === "proposed"
+      );
+    const patch = {
+      status: needsClarification ? "waiting_clarification" as const : "planning" as const,
+      activeTurnId: update.brief.turnId,
+      turns: [...session.turns, nextTurn],
+    };
+    const next = needsClarification
+      ? withReleasedDurableWait(session, update, patch)
+      : withNext(session, update, patch);
+    validateSession(next);
+    return next;
   }
 
   if (update.kind === "create_turn") {

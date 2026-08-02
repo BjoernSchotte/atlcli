@@ -16,6 +16,8 @@ import type {
   ResearchClarificationPlanningActionRequest,
   ResearchClarificationReviewActionRequest,
   ResearchPlanReviewActionRequest,
+  ResearchScopeClarificationPlanningActionRequest,
+  ResearchScopeClarificationReviewActionRequest,
   ResearchScopePlanReviewActionRequest,
   ResearchScopeReviewActionRequest,
 } from "./messages.js";
@@ -29,6 +31,8 @@ import type {
   ResearchResumableSessionV1,
   ResearchClarificationReviewResolutionV1,
   ResearchSessionClarificationReviewV1,
+  ResearchScopeClarificationReviewResolutionV1,
+  ResearchSessionScopeClarificationReviewV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
@@ -120,6 +124,22 @@ export interface RouterDeps {
     windowId: number,
     action: ResearchClarificationPlanningActionRequest,
   ) => Promise<ResearchClarificationReviewResolutionV1>;
+  prepareResearchScopeClarificationReview?: (
+    windowId: number,
+    request: ResearchRequestV1,
+    policy: ResearchOneShotPolicyV1,
+  ) => Promise<ResearchSessionScopeClarificationReviewV1>;
+  listResearchScopeClarificationReviews?: (
+    windowId: number,
+  ) => Promise<ResearchSessionScopeClarificationReviewV1[]>;
+  resolveResearchScopeClarificationReview?: (
+    windowId: number,
+    action: ResearchScopeClarificationReviewActionRequest,
+  ) => Promise<ResearchScopeClarificationReviewResolutionV1>;
+  continueResearchScopeClarificationReview?: (
+    windowId: number,
+    action: ResearchScopeClarificationPlanningActionRequest,
+  ) => Promise<ResearchScopeClarificationReviewResolutionV1>;
   rejectResearchScopeReview?: (
     windowId: number,
     action: ResearchScopeReviewActionRequest,
@@ -589,6 +609,105 @@ export async function routeMessage(
         const classified = classifyResearchError(error);
         return {
           kind: "research:continue-clarification-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:prepare-scope-clarification-review": {
+      if (!deps.prepareResearchScopeClarificationReview) {
+        return {
+          kind: "research:prepare-scope-clarification-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope clarification preparation is not configured.",
+        };
+      }
+      try {
+        const review = await deps.prepareResearchScopeClarificationReview(
+          msg.windowId,
+          msg.request,
+          msg.policy,
+        );
+        return { kind: "research:prepare-scope-clarification-review-result", ok: true, review };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:prepare-scope-clarification-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:list-scope-clarification-reviews": {
+      if (!deps.listResearchScopeClarificationReviews) {
+        return {
+          kind: "research:list-scope-clarification-reviews-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope clarification review is not configured.",
+        };
+      }
+      try {
+        const reviews = await deps.listResearchScopeClarificationReviews(msg.windowId);
+        return { kind: "research:list-scope-clarification-reviews-result", ok: true, reviews };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:list-scope-clarification-reviews-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:resolve-scope-clarification-review": {
+      if (!deps.resolveResearchScopeClarificationReview) {
+        return {
+          kind: "research:resolve-scope-clarification-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope clarification resolution is not configured.",
+        };
+      }
+      try {
+        const outcome = await deps.resolveResearchScopeClarificationReview(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+          selection: msg.selection,
+        });
+        return { kind: "research:resolve-scope-clarification-review-result", ok: true, outcome };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:resolve-scope-clarification-review-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:continue-scope-clarification-review": {
+      if (!deps.continueResearchScopeClarificationReview) {
+        return {
+          kind: "research:continue-scope-clarification-review-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope clarification recovery is not configured.",
+        };
+      }
+      try {
+        const outcome = await deps.continueResearchScopeClarificationReview(msg.windowId, {
+          sessionId: msg.sessionId,
+          revision: msg.revision,
+        });
+        return { kind: "research:continue-scope-clarification-review-result", ok: true, outcome };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:continue-scope-clarification-review-result",
           ok: false,
           code: classified.code,
           error: classified.message,

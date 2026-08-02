@@ -7,18 +7,75 @@ import {
 import {
   approveResearchScopeExpansionV1,
   appendResearchSessionTurnV1,
+  continueResearchSessionScopeClarificationV1,
   continueResearchSessionClarificationPlanningV1,
+  initializeResearchSessionScopeClarificationWaitV1,
   initializeResearchSessionClarificationWaitV1,
   initializeResearchSessionTurnV1,
   proposeResearchGraphForReadyBriefV1,
   projectResearchResumableSessionV1,
   recoverResearchSessionForResumeV1,
+  resolveResearchSessionScopeClarificationV1,
   resolveResearchSessionClarificationsV1,
 } from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
 import { createResearchScopeExpansionProposalV1 } from "./scope-discovery.js";
 import { RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+} from "./contracts.js";
+
+function scopeClarificationRequest() {
+  return {
+    schema: "atlcli.research-request/v1" as const,
+    question: "Research the Account Management space.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: [],
+    },
+    limits: DEFAULT_RESEARCH_LIMITS_V1,
+    wikiProvider: "rest" as const,
+  };
+}
+
+function scopeCandidate() {
+  return {
+    schema: "atlcli.research-scope-candidate/v1" as const,
+    id: "research-scope-candidate:account-management",
+    tenantOrigin: "https://example.atlassian.net",
+    product: "confluence" as const,
+    entityKind: "space" as const,
+    entityRef: "space:account-management",
+    key: "DOCS",
+    name: "Account Management",
+    accessible: true as const,
+    providerFreshnessAt: "2026-08-01T15:00:00.000Z",
+  };
+}
+
+function scopeClarification() {
+  return {
+    schema: "atlcli.research-clarification-required/v1" as const,
+    reason: "ambiguous" as const,
+    mentionId: "mention:scope-1",
+    candidateIds: [scopeCandidate().id],
+    rerunGuidance: ["Pass an exact Confluence space with --space <KEY>."],
+  };
+}
+
+function resolvedScopeRequest() {
+  return {
+    ...scopeClarificationRequest(),
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: ["DOCS"],
+    },
+  };
+}
 
 function brief(approval: "automatic" | "required", turnId = "research-turn:runtime-test") {
   return createResearchBriefV1({
@@ -42,6 +99,147 @@ function session() {
 }
 
 describe("durable research session execution gate", () => {
+  test("persists an initial scope choice before it creates a brief or graph", async () => {
+    const store = new InMemoryResearchSessionStoreV1();
+    const waiting = await initializeResearchSessionScopeClarificationWaitV1({
+      store,
+      session: session(),
+      request: scopeClarificationRequest(),
+      policy: { ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1, requestedPlanApproval: "required" },
+      clarification: scopeClarification(),
+      candidateChoices: [scopeCandidate()],
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    expect(waiting).toMatchObject({
+      status: "waiting_scope_clarification",
+      revision: 2,
+      lease: { expiresAt: "2026-08-01T15:00:01.000Z" },
+      turns: [],
+      scopeClarification: {
+        state: "waiting_choice",
+        clarification: { mentionId: "mention:scope-1" },
+      },
+    });
+    expect((await store.events(waiting.sessionId)).map((event) => event.kind))
+      .toEqual(["record_scope_clarification"]);
+  });
+
+  test("commits a validated scope selection before it materializes the first brief and plan", async () => {
+    const store = new InMemoryResearchSessionStoreV1();
+    const waiting = await initializeResearchSessionScopeClarificationWaitV1({
+      store,
+      session: session(),
+      request: scopeClarificationRequest(),
+      policy: { ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1, requestedPlanApproval: "required" },
+      clarification: scopeClarification(),
+      candidateChoices: [scopeCandidate()],
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const result = await resolveResearchSessionScopeClarificationV1({
+      store,
+      sessionId: waiting.sessionId,
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope-1",
+        candidateId: scopeCandidate().id,
+      },
+      resolvedRequest: resolvedScopeRequest(),
+      at: "2026-08-01T15:00:02.000Z",
+    });
+    expect(result).toMatchObject({
+      status: "waiting_plan_approval",
+      scopeClarification: {
+        state: "choice_resolved",
+        selection: { candidateId: scopeCandidate().id },
+      },
+      turns: [{
+        brief: { scope: { confluenceSpaceKeys: ["DOCS"] } },
+        graph: { status: "proposed" },
+      }],
+    });
+    expect((await store.events(result.sessionId)).map((event) => event.kind)).toEqual([
+      "record_scope_clarification",
+      "resolve_scope_clarification",
+      "initialize_scope_brief",
+      "propose_graph",
+    ]);
+  });
+
+  test("does not let a selected catalog candidate replace an existing scope or time window", async () => {
+    const store = new InMemoryResearchSessionStoreV1();
+    const request = {
+      ...scopeClarificationRequest(),
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["LOCKED"],
+        confluenceSpaceKeys: [],
+        timeWindow: { from: "2026-08-01", to: "2026-08-02" },
+      },
+    };
+    const waiting = await initializeResearchSessionScopeClarificationWaitV1({
+      store,
+      session: session(),
+      request,
+      policy: { ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1, requestedPlanApproval: "required" },
+      clarification: scopeClarification(),
+      candidateChoices: [scopeCandidate()],
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    await expect(resolveResearchSessionScopeClarificationV1({
+      store,
+      sessionId: waiting.sessionId,
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope-1",
+        candidateId: scopeCandidate().id,
+      },
+      resolvedRequest: resolvedScopeRequest(),
+      at: "2026-08-01T15:00:02.000Z",
+    })).rejects.toThrow("Research session scope clarification resolution is invalid.");
+    expect((await store.read(waiting.sessionId))?.revision).toBe(waiting.revision);
+  });
+
+  test("recovers a committed scope choice without accepting a new scope or policy", async () => {
+    const store = new InMemoryResearchSessionStoreV1();
+    const waiting = await initializeResearchSessionScopeClarificationWaitV1({
+      store,
+      session: session(),
+      request: scopeClarificationRequest(),
+      policy: { ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1, requestedPlanApproval: "required" },
+      clarification: scopeClarification(),
+      candidateChoices: [scopeCandidate()],
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const choiceCommitted = (await store.commit(waiting.sessionId, {
+      kind: "resolve_scope_clarification",
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope-1",
+        candidateId: scopeCandidate().id,
+      },
+      resolvedRequest: resolvedScopeRequest(),
+      expectedRevision: waiting.revision,
+      expectedLeaseEpoch: waiting.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    })).session;
+    expect(choiceCommitted).toMatchObject({ status: "idle", turns: [] });
+    const recovered = await continueResearchSessionScopeClarificationV1({
+      store,
+      sessionId: choiceCommitted.sessionId,
+      expectedRevision: choiceCommitted.revision,
+      expectedLeaseEpoch: choiceCommitted.lease.epoch,
+      at: "2026-08-01T15:00:03.000Z",
+    });
+    expect(recovered).toMatchObject({
+      status: "waiting_plan_approval",
+      turns: [{ graph: { status: "proposed" } }],
+    });
+  });
+
   test("persists a required clarification as a released body-free wait before graph construction", async () => {
     const requiredClarification = createResearchBriefV1({
       ...brief("automatic"),

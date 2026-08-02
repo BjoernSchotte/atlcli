@@ -668,4 +668,54 @@ describe("routeMessage (pure router)", () => {
     })).not.toContain("apiKey");
     expect(observedOptions).toEqual(options);
   });
+
+  it("routes a persisted scope choice with only its revision-fenced candidate selection", async () => {
+    const request = {
+      kind: "research:resolve-scope-clarification-review" as const,
+      windowId: 7,
+      sessionId: "research-session:scope-clarification-review",
+      revision: 2,
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1" as const,
+        mentionId: "mention:scope-1",
+        candidateId: "research-scope-candidate:account-management",
+      },
+    };
+    expect(await routeMessage(request, {
+      ...okDeps,
+      resolveResearchScopeClarificationReview: async (windowId, action) => {
+        expect({ windowId, action }).toEqual({
+          windowId: 7,
+          action: {
+            sessionId: request.sessionId,
+            revision: 2,
+            selection: request.selection,
+          },
+        });
+        return {
+          kind: "scope_clarification" as const,
+          review: {
+            schema: "atlcli.research-session-scope-clarification-review/v1" as const,
+            sessionId: request.sessionId,
+            revision: 3,
+            status: "waiting_scope_clarification" as const,
+            stage: "choice_required" as const,
+            updatedAt: "2026-08-02T12:00:00.000Z",
+            clarification: {
+              mentionId: "mention:scope-1",
+              reason: "ambiguous" as const,
+              rerunGuidance: ["Choose a scope."],
+              candidates: [],
+            },
+          },
+        };
+      },
+    })).toMatchObject({
+      kind: "research:resolve-scope-clarification-review-result",
+      ok: true,
+      outcome: { kind: "scope_clarification", review: { revision: 3 } },
+    });
+    expect(JSON.stringify(request)).not.toContain("tenantOrigin");
+    expect(JSON.stringify(request)).not.toContain("scope:");
+  });
 });

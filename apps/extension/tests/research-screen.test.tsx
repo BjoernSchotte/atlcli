@@ -16,6 +16,7 @@ import { I18nProvider } from "../utils/i18n/context.js";
 import type {
   ResearchBriefClarificationRequiredV1,
   ResearchSessionClarificationReviewV1,
+  ResearchSessionScopeClarificationReviewV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
@@ -1004,6 +1005,122 @@ describe("portable Research screen", () => {
     expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
     expect(dom.find("research-resumable-sessions").textContent)
       .toContain("Synthetic durable clarification question.");
+  });
+
+  it("persists a scope choice and resolves it without key storage or retrieval", async () => {
+    const review: ResearchSessionScopeClarificationReviewV1 = {
+      schema: "atlcli.research-session-scope-clarification-review/v1",
+      sessionId: "research-session:scope-choice-review",
+      revision: 2,
+      status: "waiting_scope_clarification",
+      stage: "choice_required",
+      updatedAt: "2026-08-02T12:00:00.000Z",
+      clarification: {
+        mentionId: "mention:scope-1",
+        reason: "ambiguous",
+        rerunGuidance: ["Choose the intended space."],
+        candidates: [{
+          id: "research-scope-candidate:account-management",
+          product: "confluence",
+          entityKind: "space",
+          key: "DOCS",
+          name: "Account Management",
+        }],
+      },
+    };
+    let prepared = false;
+    let resolved = false;
+    let keyWrites = 0;
+    let runs = 0;
+    const selections: unknown[] = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => { keyWrites += 1; },
+      clearApiKey: async () => undefined,
+      resolveScope: async () => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "clarification_required",
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1",
+          reason: "ambiguous",
+          mentionId: "mention:scope-1",
+          candidateIds: ["research-scope-candidate:account-management"],
+          rerunGuidance: ["Choose the intended space."],
+        },
+        candidateChoices: [],
+        mentions: [],
+        resolutions: [],
+      }),
+      prepareScopeClarificationReview: async () => {
+        prepared = true;
+        return review;
+      },
+      listScopeClarificationReviews: async () => (prepared && !resolved ? [review] : []),
+      listResumableSessions: async () => (resolved ? [{
+        schema: "atlcli.research-resumable-session/v1" as const,
+        sessionId: review.sessionId,
+        turnId: "research-turn:scope-choice-review",
+        status: "running" as const,
+        updatedAt: review.updatedAt,
+        question: "Synthetic durable scope-choice question.",
+        scope: { jiraProjectKeys: [], confluenceSpaceKeys: ["DOCS"] },
+      }] : []),
+      resolveScopeClarificationReview: async (input) => {
+        selections.push(input);
+        resolved = true;
+        return {
+          kind: "resumable" as const,
+          session: {
+            schema: "atlcli.research-resumable-session/v1" as const,
+            sessionId: review.sessionId,
+            turnId: "research-turn:scope-choice-review",
+            status: "running" as const,
+            updatedAt: review.updatedAt,
+            question: "Synthetic durable scope-choice question.",
+            scope: { jiraProjectKeys: [], confluenceSpaceKeys: ["DOCS"] },
+          },
+        };
+      },
+      run: async () => {
+        runs += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-key", "synthetic-key");
+    await dom.setValue("research-question", "Research the Account Management space.");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+    expect(dom.find("research-scope-clarification-reviews").textContent)
+      .toContain("Account Management");
+    await dom.setValue(
+      "research-scope-clarification-picker-0",
+      "research-scope-candidate:account-management",
+    );
+    await dom.click("research-scope-clarification-resolve-0");
+    await dom.flush();
+
+    expect(selections).toEqual([{
+      sessionId: review.sessionId,
+      revision: 2,
+      selection: {
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:scope-1",
+        candidateId: "research-scope-candidate:account-management",
+      },
+    }]);
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+    expect(dom.find("research-resumable-sessions").textContent)
+      .toContain("Synthetic durable scope-choice question.");
   });
 
   it("renders removable context chips and freezes the submitted scope across tab changes", async () => {
