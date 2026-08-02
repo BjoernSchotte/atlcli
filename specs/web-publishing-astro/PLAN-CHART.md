@@ -90,7 +90,7 @@ responsive and accessibility baseline; the full optional interaction and host
 matrix remain open. The maintained evidence matrix is in
 [`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
 
-### Proven milestone evidence (2026-08-01)
+### Proven milestone evidence (2026-08-02)
 
 - A tenant-free, IO-free proof runs the shared twelve-shape corpus through the
   real document export entry points. DOCX embeds the canonical standalone
@@ -101,6 +101,17 @@ matrix remain open. The maintained evidence matrix is in
   without clipped marks, title/legend collisions, duplicate tables, or broken
   Gantt/pie/step/time-series geometry. Generated proof files stay outside Git;
   `scripts/chart-rendered-proof.ts` makes the proof reproducible.
+- The shared TanStack scene now places `top`, `right`, `bottom`, and `left`
+  legends outside the plot with reserved margins, maps the documented category
+  rotations and date-period tick positions, offsets named pie sections and
+  their labels, and caps Gantt date ticks so adjacent labels remain readable.
+  Unit tests inspect scene coordinates rather than merely searching SVG text.
+- The refreshed tenant-free proof was rendered through the real document
+  engines after those changes. Original-resolution inspection confirms the
+  right-legend exploded pie, signed horizontal stack with bottom legend,
+  top/left/right legends, rotated category/date labels, sparse and stepped XY
+  shapes, and the dependency-linked Gantt all fit their pages in both DOCX and
+  PDF. The proof artifacts and rendered page images remain outside Git.
 - The production Astro 7.1.6 consumer renders the same twelve models through
   the shared TanStack server-SVG adapter. Desktop and 390px browser inspection
   confirms all shapes, one semantic table per chart, UTF-8 labels, strict CSP,

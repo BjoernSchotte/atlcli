@@ -13,8 +13,11 @@ import {
   rect,
   renderChartSvg,
   stack,
+  type ChartColorLegend,
   type ChartScene,
   type ChartValue,
+  type SceneGroup,
+  type SceneNode,
   type StaticChartDefinition,
 } from "@tanstack/charts";
 import { polar, radialArc, radialText } from "@tanstack/charts/polar";
@@ -38,7 +41,7 @@ export const TANSTACK_CHART_SIZE_V1 = Object.freeze({ width: 720, height: 400 })
 export type TanStackChartDefinitionV1 = StaticChartDefinition<unknown, ChartValue, ChartValue>;
 
 export interface TanStackChartApproximationV1 {
-  code: "flattened-3d" | "legend-position" | "pie-explode" | "axis-position";
+  code: "flattened-3d";
   message: string;
 }
 
@@ -172,28 +175,135 @@ function theme(chart: ChartModelV1) {
   };
 }
 
+function legendPosition(chart: ChartModelV1): Exclude<ChartModelV1["legend"], undefined> {
+  return chart.legend ?? "top";
+}
+
+function legendItemLabel(value: string, maxCharacters: number): string {
+  const characters = [...value];
+  return characters.length <= maxCharacters ? value : `${characters.slice(0, Math.max(1, maxCharacters - 1)).join("")}…`;
+}
+
+function positionedColorLegend(chart: ChartModelV1, itemCount: number): ChartColorLegend {
+  const position = legendPosition(chart);
+  const top = colorLegend({ itemWidth: 128 });
+  if (position === "top") return top;
+  return {
+    height: () => 0,
+    render: ({ colors: colorScale, chart: bounds, width }) => {
+      const children: SceneNode[] = [];
+      if (position === "left" || position === "right") {
+        const availableHeight = Math.max(19, bounds.height);
+        const rows = Math.max(1, Math.floor(availableHeight / 19));
+        const columns = Math.max(1, Math.ceil(itemCount / rows));
+        const availableWidth = position === "left" ? Math.max(72, bounds.x - 64) : Math.max(72, width - bounds.x - bounds.width - 20);
+        const itemWidth = availableWidth / columns;
+        const maxCharacters = Math.max(4, Math.floor((itemWidth - 22) / 6.4));
+        const startX = position === "left" ? 12 : bounds.x + bounds.width + 18;
+        colorScale.domain.forEach((value, index) => {
+          const column = Math.floor(index / rows);
+          const row = index % rows;
+          const x = startX + column * itemWidth;
+          const y = bounds.y + 10 + row * 19;
+          children.push(
+            { kind: "dot", key: `legend-dot:${String(value)}`, x: x + 4, y, radius: 4, style: { fill: colorScale.map(value) } },
+            { kind: "label", key: `legend-label:${String(value)}`, x: x + 13, y, text: legendItemLabel(String(value), maxCharacters), baseline: "middle", fontSize: 11, style: { fill: theme(chart).foreground, fillOpacity: 0.76 } },
+          );
+        });
+      } else {
+        const columns = Math.max(1, Math.floor(bounds.width / 128));
+        const itemWidth = bounds.width / Math.max(1, Math.min(columns, itemCount));
+        const startY = bounds.y + bounds.height + 48;
+        colorScale.domain.forEach((value, index) => {
+          const column = index % columns;
+          const row = Math.floor(index / columns);
+          const x = bounds.x + column * itemWidth;
+          const y = startY + row * 19;
+          children.push(
+            { kind: "dot", key: `legend-dot:${String(value)}`, x: x + 4, y, radius: 4, style: { fill: colorScale.map(value) } },
+            { kind: "label", key: `legend-label:${String(value)}`, x: x + 13, y, text: legendItemLabel(String(value), Math.max(4, Math.floor((itemWidth - 20) / 6.4))), baseline: "middle", fontSize: 11, style: { fill: theme(chart).foreground, fillOpacity: 0.76 } },
+          );
+        });
+      }
+      return { kind: "group", key: "legend", className: `ts-chart__legend ts-chart__legend--${position}`, ariaHidden: true, children };
+    },
+  };
+}
+
+function legendMargin(chart: ChartModelV1, domain: readonly string[]): Partial<{ top: number; right: number; bottom: number; left: number }> | undefined {
+  if (chart.legend === "none" || domain.length < 2 || legendPosition(chart) === "top") return undefined;
+  const width = Math.max(320, Math.min(1200, chart.display?.width ?? TANSTACK_CHART_SIZE_V1.width));
+  const height = Math.max(220, Math.min(800, chart.display?.height ?? TANSTACK_CHART_SIZE_V1.height));
+  const position = legendPosition(chart);
+  if (position === "bottom") {
+    const columns = Math.max(1, Math.floor(Math.max(1, width - 80) / 128));
+    const rows = Math.ceil(domain.length / columns);
+    return { bottom: Math.min(height * 0.42, 58 + rows * 19) };
+  }
+  const longest = Math.max(...domain.map((value) => [...value].length));
+  const legendWidth = Math.min(width * 0.34, Math.max(96, longest * 6.4 + 32));
+  return position === "left" ? { left: legendWidth + 64 } : { right: legendWidth + 16 };
+}
+
 function legend(chart: ChartModelV1, domain: readonly string[]) {
   return chart.legend === "none" || domain.length < 2 ? undefined : {
     domain,
     range: colors(chart),
-    legend: colorLegend({ itemWidth: 128 }),
+    legend: positionedColorLegend(chart, domain.length),
   };
 }
 
-function axisTickOptions(axis: ChartAxisV1 | undefined, values?: readonly number[], formatter?: (value: never) => string) {
+function axisTickOptions(axis: ChartAxisV1 | undefined, values?: readonly ChartValue[], formatter?: (value: never) => string) {
   const ticks = values ? { values } : undefined;
+  const categoryRotation = axis?.categoryLabelPosition === "up45" ? -45
+    : axis?.categoryLabelPosition === "up90" ? -90
+      : axis?.categoryLabelPosition === "down45" ? 45
+        : axis?.categoryLabelPosition === "down90" ? 90
+          : undefined;
   return {
     ...(ticks || formatter ? { ticks: { ...ticks, ...(formatter ? { format: formatter } : {}) } } : {}),
-    ...(axis?.labelAngle !== undefined ? { tickLabels: { rotate: axis.labelAngle } } : {}),
+    ...(axis?.labelAngle !== undefined || categoryRotation !== undefined ? { tickLabels: { rotate: axis?.labelAngle ?? categoryRotation } } : {}),
   };
+}
+
+function nextUtcPeriodStart(value: Date, period: NonNullable<ChartModelV1["locale"]>["timePeriod"]): Date {
+  const next = new Date(value.getTime());
+  switch (period) {
+    case "millisecond": next.setTime(next.getTime() + 1); break;
+    case "second": next.setUTCSeconds(next.getUTCSeconds() + 1); break;
+    case "minute": next.setUTCMinutes(next.getUTCMinutes() + 1); break;
+    case "hour": next.setUTCHours(next.getUTCHours() + 1); break;
+    case "week": next.setUTCDate(next.getUTCDate() + 7); break;
+    case "month": next.setUTCMonth(next.getUTCMonth() + 1); break;
+    case "quarter": next.setUTCMonth(next.getUTCMonth() + 3); break;
+    case "year": next.setUTCFullYear(next.getUTCFullYear() + 1); break;
+    case "day":
+    default: next.setUTCDate(next.getUTCDate() + 1); break;
+  }
+  return next;
+}
+
+function positionedDateTicks(chart: ChartModelV1, timestamps: readonly number[]): { values?: readonly Date[]; format: (value: Date) => string } {
+  const dateFormat = utcFormatter(chart.locale?.dateFormat);
+  const position = chart.axes?.x?.dateTickPosition;
+  if (!position) return { format: dateFormat };
+  const period = chart.locale?.timePeriod ?? "day";
+  const labels = new Map<number, Date>();
+  const values = [...new Set(timestamps)].sort((left, right) => left - right).map((timestamp) => {
+    const start = new Date(timestamp);
+    const next = nextUtcPeriodStart(start, period);
+    const positioned = position === "start" ? start
+      : position === "middle" ? new Date(start.getTime() + (next.getTime() - start.getTime()) / 2)
+        : new Date(next.getTime() - 1);
+    labels.set(positioned.getTime(), start);
+    return positioned;
+  });
+  return { values, format: (value) => dateFormat(labels.get(value.getTime()) ?? value) };
 }
 
 function approximations(chart: ChartModelV1): TanStackChartApproximationV1[] {
   const result: TanStackChartApproximationV1[] = [];
   if (chart.threeD) result.push({ code: "flattened-3d", message: "TanStack static output intentionally flattens Confluence 3D presentation." });
-  if (chart.legend && chart.legend !== "none" && chart.legend !== "top") result.push({ code: "legend-position", message: `TanStack 0.3.1 lays out the ${chart.legend} legend in its deterministic top legend region.` });
-  if ((chart.pie?.explode?.length ?? 0) > 0) result.push({ code: "pie-explode", message: "TanStack 0.3.1 preserves pie labels and values but does not offset exploded sections." });
-  if (chart.axes?.x?.categoryLabelPosition || chart.axes?.x?.dateTickPosition || chart.axes?.y?.categoryLabelPosition || chart.axes?.y?.dateTickPosition) result.push({ code: "axis-position", message: "TanStack 0.3.1 preserves ticks but the adapter still normalizes Confluence category rotation/date-period placement hints." });
   return result;
 }
 
@@ -257,7 +367,7 @@ function categoryDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
   const yAxis = chart.orientation === "horizontal" && chart.kind === "bar"
     ? { scale: band, grid: false, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y) } }
     : { scale: linear, grid: true, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y, tickValues(extent, chart.axes?.y?.tickUnit)) } };
-  return defineClosedChart({ marks, x: xAxis, y: yAxis, color: legend(chart, series), theme: theme(chart), clip: true });
+  return defineClosedChart({ marks, x: xAxis, y: yAxis, color: legend(chart, series), margin: legendMargin(chart, series), theme: theme(chart), clip: true });
 }
 
 function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
@@ -265,7 +375,9 @@ function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
   const series = chart.data.mode === "points" ? chart.data.series.map((entry) => entry.label) : [];
   const isTime = chart.kind === "timeSeries";
   const numericX = rows.map((row) => row.x instanceof Date ? row.x.getTime() : row.x);
-  const baseXExtent = numericExtent(numericX, chart.axes?.x, false);
+  const dateTicks = isTime ? positionedDateTicks(chart, numericX) : undefined;
+  const extentValues = dateTicks?.values ? [...numericX, ...dateTicks.values.map((value) => value.getTime())] : numericX;
+  const baseXExtent = numericExtent(extentValues, chart.axes?.x, false);
   const xExtent = chart.kind === "xyBar"
     ? paddedBarExtent(numericX, chart.axes?.x, baseXExtent)
     : baseXExtent;
@@ -282,15 +394,15 @@ function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
       : chart.kind === "xyArea" || chart.kind === "xyStepArea"
         ? [areaY(rows, { ...common, x: "x", y: "value", y1: 0, curve, fillOpacity: Math.min(0.3, chart.opacity ?? 0.3) }), lineY(rows, { ...common, x: "x", y: "value", curve, points: chart.showShapes === true, strokeWidth: 2.5, strokeOpacity: chart.opacity })]
         : [lineY(rows, { ...common, x: "x", y: "value", curve, points: chart.showShapes !== false && (chart.showShapes === true || chart.kind === "xyLine" || isTime), strokeWidth: 2.5, strokeOpacity: chart.opacity })];
-  const dateFormat = utcFormatter(chart.locale?.dateFormat);
   const xTickValues = chart.kind === "xyBar" && chart.axes?.x?.tickUnit === undefined
     ? [...new Set(numericX)].sort((left, right) => left - right)
     : tickValues(xExtent, chart.axes?.x?.tickUnit);
   return defineClosedChart({
     marks,
-    x: { scale: xScale, grid: false, axis: { label: chart.xLabel, ...axisTickOptions(chart.axes?.x, isTime ? undefined : xTickValues, isTime ? (value: never) => dateFormat(value as Date) : undefined) } },
+    x: { scale: xScale, grid: false, axis: { label: chart.xLabel, ...axisTickOptions(chart.axes?.x, isTime ? dateTicks?.values : xTickValues, isTime ? (value: never) => dateTicks!.format(value as Date) : undefined) } },
     y: { scale: yScale, grid: true, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y, tickValues(yExtent, chart.axes?.y?.tickUnit)) } },
     color: legend(chart, series),
+    margin: legendMargin(chart, series),
     theme: theme(chart),
     clip: true,
   });
@@ -322,7 +434,15 @@ function pieDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
     radius: { scale: scaleLinear().domain([0, 1]) },
     inset: 12,
   })];
-  return defineClosedChart({ marks, x: null, y: null, color: legend(chart, rows.map((row) => row.label)), theme: theme(chart), margin: 16 });
+  const domain = rows.map((row) => row.label);
+  return defineClosedChart({
+    marks,
+    x: null,
+    y: null,
+    color: legend(chart, domain),
+    theme: theme(chart),
+    margin: { right: 16, bottom: 16, left: 16, ...legendMargin(chart, domain) },
+  });
 }
 
 function ganttDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
@@ -347,14 +467,71 @@ function ganttDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
   const timestamps = tasks.flatMap((task) => [task.start.getTime(), task.end.getTime()]);
   const extent = numericExtent(timestamps, chart.axes?.x, false);
   const format = utcFormatter(chart.locale?.dateFormat);
+  const timeScale = scaleUtc().domain(extent.map((value) => new Date(value)) as [Date, Date]);
   return defineClosedChart({
     marks,
-    x: { scale: scaleUtc().domain(extent.map((value) => new Date(value)) as [Date, Date]), grid: true, axis: { label: chart.xLabel, ticks: { format } } },
+    x: { scale: timeScale, grid: true, axis: { label: chart.xLabel, ticks: { values: timeScale.ticks(5), format } } },
     y: { scale: scaleBand<string>().domain(tasks.map((task) => task.task)).padding(0.22), grid: false, axis: { label: chart.yLabel } },
     color: legend(chart, tasks.map((task) => task.task)),
+    margin: legendMargin(chart, tasks.map((task) => task.task)),
     theme: theme(chart),
     clip: false,
   });
+}
+
+function pieExplodeOffsets(chart: ChartModelV1, scene: ChartScene): ReadonlyMap<number, { x: number; y: number }> {
+  if (chart.kind !== "pie" || chart.data.mode !== "categories" || !chart.pie?.explode?.length) return new Map();
+  const exploded = new Set(chart.pie.explode);
+  const values = chart.data.labels.map((label, index) => ({ label, value: Math.max(0, chart.data.mode === "categories" ? chart.data.series[0]?.values[index] ?? 0 : 0) }));
+  const arcs = createPie<(typeof values)[number]>().sort(null).value((entry) => entry.value)(values);
+  const distance = Math.max(8, Math.min(14, Math.min(scene.chart.width, scene.chart.height) * 0.035));
+  return new Map(arcs.flatMap((arc, index) => {
+    if (!exploded.has(arc.data.label)) return [];
+    const angle = (arc.startAngle + arc.endAngle) / 2;
+    return [[index, { x: Math.sin(angle) * distance, y: -Math.cos(angle) * distance }] as const];
+  }));
+}
+
+function pieIndexFromKey(key: string): number | undefined {
+  const match = key.match(/:pie:(\d+)(?::dot)?$/u);
+  if (!match) return undefined;
+  const index = Number(match[1]);
+  return Number.isSafeInteger(index) ? index : undefined;
+}
+
+function explodePieScene(chart: ChartModelV1, scene: ChartScene): ChartScene {
+  const offsets = pieExplodeOffsets(chart, scene);
+  if (offsets.size === 0) return scene;
+  const movePoint = <T extends { key: string; x: number; y: number }>(point: T): T => {
+    const index = pieIndexFromKey(point.key);
+    const offset = index === undefined ? undefined : offsets.get(index);
+    return offset ? { ...point, x: point.x + offset.x, y: point.y + offset.y } : point;
+  };
+  const moveNode = (node: SceneNode): SceneNode => {
+    const mapped = node.kind === "group"
+      ? {
+          ...node,
+          children: node.children.map(moveNode),
+          ...(node.focus ? { focus: { ...node.focus, points: node.focus.points.map(movePoint) } } : {}),
+        } satisfies SceneGroup
+      : node;
+    const index = pieIndexFromKey(mapped.key);
+    const offset = index === undefined ? undefined : offsets.get(index);
+    if (!offset) return mapped;
+    return {
+      kind: "group",
+      key: `pie-explode:${mapped.key}`,
+      className: "ts-chart__pie-explode",
+      translateX: offset.x,
+      translateY: offset.y,
+      children: [mapped],
+    } satisfies SceneGroup;
+  };
+  return {
+    ...scene,
+    nodes: scene.nodes.map(moveNode),
+    points: scene.points.map(movePoint),
+  };
 }
 
 export function createTanStackChartDefinitionV1(input: ChartModelV1): TanStackChartAdapterResultV1 {
@@ -374,7 +551,7 @@ export function createTanStackChartSceneV1(input: ChartModelV1, options: Pick<Re
   const { definition } = createTanStackChartDefinitionV1(chart);
   const width = Math.max(320, Math.min(1200, Math.round(options.width ?? chart.display?.width ?? TANSTACK_CHART_SIZE_V1.width)));
   const height = Math.max(220, Math.min(800, Math.round(options.height ?? chart.display?.height ?? TANSTACK_CHART_SIZE_V1.height)));
-  return createChartScene(definition, { width, height });
+  return explodePieScene(chart, createChartScene(definition, { width, height }));
 }
 
 export function renderTanStackChartSvgV1(input: ChartModelV1, options: RenderTanStackChartSvgOptionsV1 = {}): string {

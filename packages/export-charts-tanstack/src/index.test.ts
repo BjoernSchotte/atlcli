@@ -6,6 +6,7 @@ import {
   createTanStackChartSceneV1,
   renderTanStackChartSvgV1,
 } from "./index.js";
+import type { SceneNode } from "@tanstack/charts";
 
 const source = { kind: "cloud-adf" as const, macroName: "chart" as const };
 
@@ -57,6 +58,10 @@ function model(kind: ChartKindV1): ChartModelV1 {
       { id: "two", label: "Two", values: [7, 14, -5] },
     ] },
   };
+}
+
+function sceneNodes(nodes: readonly SceneNode[]): SceneNode[] {
+  return nodes.flatMap((node) => node.kind === "group" ? [node, ...sceneNodes(node.children)] : [node]);
 }
 
 test("pins the single all-static TanStack adapter", () => {
@@ -120,9 +125,67 @@ test("pads continuous XY bar domains so grouped edge bars stay inside the scene"
   expect(scene.points.every((point) => point.x >= 0 && point.x <= scene.width)).toBe(true);
 });
 
-test("reports explicit approximations instead of silently emulating unsupported presentation", () => {
+test("reports only the intentional 3D approximation", () => {
   const { approximations } = createTanStackChartDefinitionV1({ ...model("pie"), threeD: true, legend: "right" });
-  expect(approximations.map((entry) => entry.code)).toEqual(["flattened-3d", "legend-position", "pie-explode"]);
+  expect(approximations.map((entry) => entry.code)).toEqual(["flattened-3d"]);
+});
+
+test("lays out every requested legend position outside the TanStack plot", () => {
+  for (const position of ["top", "right", "bottom", "left"] as const) {
+    const scene = createTanStackChartSceneV1({ ...model("line"), legend: position });
+    const legend = scene.nodes.find((node) => node.key === "legend");
+    expect(legend?.kind).toBe("group");
+    if (!legend || legend.kind !== "group") throw new Error("legend fixture drift");
+    const dots = legend.children.filter((node) => node.kind === "dot");
+    expect(dots).toHaveLength(2);
+    if (position === "top") expect(dots.every((node) => node.kind === "dot" && node.y < scene.chart.y)).toBeTrue();
+    if (position === "right") expect(dots.every((node) => node.kind === "dot" && node.x > scene.chart.x + scene.chart.width)).toBeTrue();
+    if (position === "bottom") expect(dots.every((node) => node.kind === "dot" && node.y > scene.chart.y + scene.chart.height)).toBeTrue();
+    if (position === "left") expect(dots.every((node) => node.kind === "dot" && node.x < scene.chart.x)).toBeTrue();
+  }
+});
+
+test("offsets named pie sections and their labels from the canonical TanStack scene", () => {
+  const exploded = createTanStackChartSceneV1(model("pie"));
+  const plain = createTanStackChartSceneV1({ ...model("pie"), pie: { sectionLabel: "name-value" } });
+  const explodedPoint = exploded.points.find((point) => point.groupLabel === "pie-arcs" && (point.datum as { data?: { label?: string } }).data?.label === "Run");
+  const plainPoint = plain.points.find((point) => point.groupLabel === "pie-arcs" && (point.datum as { data?: { label?: string } }).data?.label === "Run");
+  expect(explodedPoint).toBeTruthy();
+  expect(plainPoint).toBeTruthy();
+  expect(explodedPoint?.x).not.toBe(plainPoint?.x);
+  expect(explodedPoint?.y).not.toBe(plainPoint?.y);
+  const svg = renderTanStackChartSvgV1(model("pie"));
+  expect(svg).toContain("ts-chart__pie-explode");
+  expect(svg).toContain("translate(");
+});
+
+test("maps documented category rotations and time-period tick positions", () => {
+  const category = createTanStackChartSceneV1({ ...model("line"), axes: { x: { categoryLabelPosition: "up45" } } });
+  const categoryLabels = sceneNodes(category.nodes).filter((node) => node.kind === "label" && node.key.startsWith("x-tick-label:"));
+  expect(categoryLabels.some((node) => node.kind === "label" && node.rotate === -45)).toBeTrue();
+
+  const time = createTanStackChartSceneV1({ ...model("timeSeries"), axes: { x: { dateTickPosition: "middle" }, y: { min: -10, max: 40, tickUnit: 10 } } });
+  const firstPoint = time.points.filter((point) => point.markId === "chart-timeSeries").sort((left, right) => left.x - right.x)[0];
+  const firstTick = sceneNodes(time.nodes).filter((node) => node.kind === "label" && node.key.startsWith("x-tick-label:")).sort((left, right) => left.kind === "label" && right.kind === "label" ? left.x - right.x : 0)[0];
+  expect(firstPoint).toBeTruthy();
+  expect(firstTick?.kind).toBe("label");
+  if (firstTick?.kind === "label") expect(firstTick.x).toBeGreaterThan(firstPoint!.x);
+  expect(firstTick?.kind === "label" ? firstTick.text : "").toBe("01.01.2026");
+});
+
+test("bounds Gantt date ticks so adjacent provider dates cannot collide", () => {
+  const gantt = createTanStackChartSceneV1(model("gantt"));
+  const labels = sceneNodes(gantt.nodes)
+    .filter((node) => node.kind === "label" && node.key.startsWith("x-tick-label:"))
+    .sort((left, right) => left.kind === "label" && right.kind === "label" ? left.x - right.x : 0);
+  expect(labels.length).toBeGreaterThanOrEqual(3);
+  expect(labels.length).toBeLessThanOrEqual(6);
+  for (let index = 1; index < labels.length; index += 1) {
+    const previous = labels[index - 1];
+    const current = labels[index];
+    if (previous?.kind !== "label" || current?.kind !== "label") throw new Error("Gantt tick fixture drift");
+    expect(current.x - previous.x).toBeGreaterThan(48);
+  }
 });
 
 test("escapes hostile labels in the DOM-free SVG renderer", () => {
