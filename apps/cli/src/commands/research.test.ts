@@ -711,12 +711,41 @@ describe("research CLI one-shot contract", () => {
       planMutable: true,
       revision: created.sessionRevision,
       turn: {
-        brief: { objective: expect.any(String) },
-        graph: { status: "proposed", roles: expect.any(Array) },
+        brief: {
+          objective: expect.any(String),
+          scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] },
+          scopeBindings: expect.arrayContaining([
+            expect.objectContaining({ source: "profile_default", authority: "approved" }),
+          ]),
+          limits: expect.objectContaining({ maxPtcCalls: 32, maxHttpCalls: 40 }),
+        },
+        graph: {
+          status: "proposed",
+          roles: expect.any(Array),
+          nodes: expect.arrayContaining([
+            expect.objectContaining({
+              dependencies: expect.any(Array),
+              grantedCapabilityIds: expect.any(Array),
+              budget: expect.objectContaining({ maxCapabilityCalls: expect.any(Number) }),
+            }),
+          ]),
+          approvalEnvelope: expect.objectContaining({
+            scopeDiscoveryPolicy: expect.objectContaining({ expansionMode: "ask" }),
+            allowedRoleIds: expect.any(Array),
+            allowedCapabilityIds: expect.any(Array),
+          }),
+          reconciliationPolicy: expect.objectContaining({ mode: "auto" }),
+        },
+        scope: {
+          bindings: expect.any(Array),
+          expansionProposals: expect.any(Array),
+        },
       },
     });
     expect(JSON.stringify(projected)).not.toContain("acceptedPackets");
     expect(JSON.stringify(projected)).not.toContain("sourceRefs");
+    expect(JSON.stringify(projected)).not.toContain("taskPrompt");
+    expect(JSON.stringify(projected)).not.toContain("hiddenReasoning");
   });
 
   test("inspects retained V2 evidence, claims, outlines, and reconciliation metadata without accidental source disclosure", async () => {

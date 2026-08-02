@@ -3241,11 +3241,13 @@ unknown-outcome retry/abstain remains a separate gate below.
         project/space approval invokes the shared atomic replacement-graph
         transition and stops for the new explicit plan approval; an exact
         page/issue approval remains an entity binding and cannot widen scope.
-- [ ] Show the sanitized brief, graph, selected roles, dependencies, budgets,
+- [x] Show the sanitized brief, graph, selected roles, dependencies, budgets,
       approval envelope including optional role/capability grants,
       scope bindings/provenance/expansion policy, pending scope proposals,
       stop/reconciliation policy, and plan diff without printing source bodies,
-      task prompts, or hidden model reasoning.
+      task prompts, or hidden model reasoning. The `sessions show`/`plan`
+      projection and regression test cover the surface and exclude packets,
+      source references, task prompts, and hidden reasoning (2026-08-02).
 - [ ] Kill the CLI process after each durable boundary in tests and prove
       deterministic recovery without duplicate accepted turns, graph nodes,
       packets, or authoritative effects. Provider/model/source invocations
