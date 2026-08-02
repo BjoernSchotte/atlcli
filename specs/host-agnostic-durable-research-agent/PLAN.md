@@ -3725,8 +3725,13 @@ Gate:
 - [ ] Every factual claim in deterministic tests has valid supporting spans.
 - [ ] Unsupported, unknown, stale, truncated-negative, cross-scope, and
       cross-tenant claims are rejected.
-- [ ] Updating or deleting a fixture source invalidates dependent claims and
-      changes the report limitation deterministically.
+- [x] Updating or deleting a fixture source invalidates dependent claims and
+      changes the report limitation deterministically. The V2 integration
+      fixture starts with a span-validated factual claim and validated outline;
+      a host-observed updated detail invalidates that claim before the new
+      evidence publishes, while deletion is detected during finalization. Both
+      paths exclude the old claim, leave its coverage uncovered, and emit the
+      same deterministic currentness limitation (2026-08-02).
 - [ ] V1 completed reports remain readable; new turns use V2.
 - [ ] Reconciliation cannot make an unsupported claim pass, and disabling the
       reconciler does not change deterministic validation of identical claims.
