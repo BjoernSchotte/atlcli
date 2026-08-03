@@ -245,6 +245,27 @@ export function hostSearchCoverageLimitationsV1(
 }
 
 /**
+ * Candidate discovery is deliberately bounded to the vendors' native search
+ * indexes and to the fields exposed by the approved read capabilities.  These
+ * are report limitations, not failed completion: an exhausted native index
+ * can still be a complete traversal of that index.
+ */
+export function hostSearchFreshnessLimitationsV1(
+  graph: ResearchGraphV1 | undefined,
+): string[] {
+  const searchedProducts = selectedSearchProductsV1(graph) ?? ["jira", "confluence"];
+  if (searchedProducts.length === 0) return [];
+  const limitations = searchedProducts.map((product) => {
+    const label = product === "jira" ? "Jira" : "Confluence";
+    return `${label} candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.`;
+  });
+  limitations.push(
+    "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
+  );
+  return limitations;
+}
+
+/**
  * Bound LangGraph super-steps to the validated workflow envelope.
  *
  * DeepAgents subgraphs and structured-output repair consume graph super-steps
@@ -4137,6 +4158,7 @@ async function runResearchAgentWithBindings(
           limitations: [
             ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),
             ...hostSearchCoverageLimitationsV1(acceptedGraph, run),
+            ...hostSearchFreshnessLimitationsV1(acceptedGraph),
           ],
           run,
           checkedAt: new Date(completedAtMs).toISOString(),
@@ -4146,9 +4168,10 @@ async function runResearchAgentWithBindings(
           request: input.request,
           sources: broker.sourceLedger(),
           detailEvidence: broker.detailEvidenceLedger(),
-          ...(input.brief
-            ? { additionalLimitations: projectResearchProposedAssumptionLimitationsV1(input.brief) }
-            : {}),
+          additionalLimitations: [
+            ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),
+            ...hostSearchFreshnessLimitationsV1(undefined),
+          ],
           run,
         });
     emitEvent({

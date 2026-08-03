@@ -20,6 +20,7 @@ import {
   createResearchScopeDiscoveriesPtcTool,
   createResearchScopeDiscoveryDispositionsPtcTool,
   hostSearchCoverageLimitationsV1,
+  hostSearchFreshnessLimitationsV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
   type ResearchAgentRuntimeBindings,
 } from "./agent-runtime-core.js";
@@ -1229,6 +1230,40 @@ describe("host search-coverage limitations", () => {
       complete: false,
       counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 0 },
     })).toEqual([]);
+  });
+});
+
+describe("host search freshness limitations", () => {
+  test("states native-index and unavailable-field boundaries without treating an exhausted index as incomplete", () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:search-freshness",
+      turnId: "research-turn:search-freshness",
+      objective: "Find one Jira item.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["DOCS"],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const prunedWiki = structuredClone(graph);
+    const wiki = prunedWiki.nodes.find((node) => node.id === "research-node:wiki-research");
+    if (!wiki) throw new Error("Synthetic graph must include the wiki branch.");
+    wiki.status = "pruned";
+
+    expect(hostSearchFreshnessLimitationsV1(prunedWiki)).toEqual([
+      "Jira candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.",
+      "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
+    ]);
+    expect(hostSearchFreshnessLimitationsV1(undefined)).toEqual([
+      "Jira candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.",
+      "Confluence candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.",
+      "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
+    ]);
   });
 });
 

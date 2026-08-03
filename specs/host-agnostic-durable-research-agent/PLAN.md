@@ -3857,8 +3857,11 @@ Shared:
       deterministic, body-free source-authority section derived only from
       retained evidence records; historical V2 reports remain readable
       without it (2026-08-03).
-- [ ] Treat native search-index lag and unavailable fields as explicit
-      completeness/freshness limitations.
+- [x] Treat native search-index lag and unavailable fields as explicit
+      completeness/freshness limitations. Host-authored report limitations now
+      distinguish an exhausted native index from an exhaustive tenant result,
+      name index freshness for each admitted product, and state that unavailable
+      read-capability fields are not inferred (2026-08-03).
 - [ ] Preserve all existing call, byte, item, concurrency, interpreter, model,
       and wall-clock limits and add per-capability limits where needed.
 
