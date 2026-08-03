@@ -92,6 +92,37 @@ function jiraIssueUrl(siteOrigin: string, issueKey: string): string {
   return `${siteOrigin}/browse/${encodeURIComponent(issueKey)}`;
 }
 
+function sameTenantWikiUrl(value: string, siteOrigin: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(value, siteOrigin);
+  } catch {
+    return undefined;
+  }
+  if (
+    url.origin !== siteOrigin ||
+    !/^\/wiki\/spaces\/[^/]+\/pages\/\d+(?:\/.*)?$/i.test(url.pathname)
+  ) {
+    return undefined;
+  }
+  url.hash = "";
+  return url.href;
+}
+
+function jiraRemoteWikiLinks(
+  links: Awaited<ReturnType<JiraClient["getRemoteLinks"]>>,
+  siteOrigin: string,
+): BoundedRelationIds {
+  const values = [...new Set(links
+    .map((link) => sameTenantWikiUrl(link.object.url, siteOrigin))
+    .filter((url): url is string => url !== undefined))]
+    .sort((left, right) => left.localeCompare(right, "en-US"));
+  return {
+    values: values.slice(0, MAX_DETAIL_RELATION_IDS),
+    truncated: values.length > MAX_DETAIL_RELATION_IDS,
+  };
+}
+
 function jiraRelationKeys(issue: Awaited<ReturnType<JiraClient["getIssue"]>>): BoundedRelationIds {
   const keys = [
     issue.fields.parent?.key,
@@ -277,27 +308,31 @@ export function createRestResearchProviders(
         };
       },
       async getIssue(input) {
-        const issue = await jira.getIssue(input.issueKey, {
-          fields: [
-            "summary",
-            "description",
-            "project",
-            "status",
-            "updated",
-            "labels",
-            "parent",
-            "subtasks",
-            "issuelinks",
-            "comment",
-          ],
-          signal: input.signal,
-        });
+        const [issue, remoteLinks] = await Promise.all([
+          jira.getIssue(input.issueKey, {
+            fields: [
+              "summary",
+              "description",
+              "project",
+              "status",
+              "updated",
+              "labels",
+              "parent",
+              "subtasks",
+              "issuelinks",
+              "comment",
+            ],
+            signal: input.signal,
+          }),
+          jira.getRemoteLinks(input.issueKey, { signal: input.signal }),
+        ]);
         const description = projectJiraDescription(
           issue.fields.description,
           request.scope.siteOrigin,
           limits
         );
         const relations = jiraRelationKeys(issue);
+        const remoteWikiLinks = jiraRemoteWikiLinks(remoteLinks, request.scope.siteOrigin);
         const comments = projectJiraComments(issue, request.scope.siteOrigin, limits);
         const detailFields = detailPrefix({
           summary: issue.fields.summary ?? issue.key,
@@ -318,10 +353,13 @@ export function createRestResearchProviders(
               comments.projection,
               limits,
             ),
-            relations.values.map((issueKey) => jiraIssueUrl(request.scope.siteOrigin, issueKey)),
+            [
+              ...relations.values.map((issueKey) => jiraIssueUrl(request.scope.siteOrigin, issueKey)),
+              ...remoteWikiLinks.values,
+            ],
             request.scope.siteOrigin,
             limits,
-            relations.truncated,
+            relations.truncated || remoteWikiLinks.truncated,
           ),
         };
       },

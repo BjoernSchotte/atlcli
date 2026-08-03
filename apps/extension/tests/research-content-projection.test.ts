@@ -80,6 +80,28 @@ describe("bounded research content projection", () => {
     ]);
   });
 
+  it("projects Jira live-macro keys and query literals as scoped Jira references", () => {
+    const result = projectConfluenceStorage(
+      '<p>Tracked delivery.</p>' +
+      '<ac:structured-macro ac:name="jira">' +
+      '<ac:parameter ac:name="key">DEMO-1</ac:parameter>' +
+      '</ac:structured-macro>' +
+      '<ac:structured-macro ac:name="jira">' +
+      '<ac:parameter ac:name="jqlQuery">key in (DEMO-2, OTHER_1-3)</ac:parameter>' +
+      '</ac:structured-macro>',
+      "https://example.atlassian.net",
+      limits,
+    );
+
+    expect(result.text).toContain("Jira macro issue key: DEMO-1");
+    expect(result.text).toContain("Jira macro query: key in (DEMO-2, OTHER_1-3)");
+    expect(result.linkTargets).toEqual([
+      "https://example.atlassian.net/browse/DEMO-1",
+      "https://example.atlassian.net/browse/DEMO-2",
+      "https://example.atlassian.net/browse/OTHER_1-3",
+    ]);
+  });
+
   it("truncates on UTF-8 boundaries and marks the projection incomplete", () => {
     const result = projectJiraDescription(
       "äöü",

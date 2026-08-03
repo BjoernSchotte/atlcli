@@ -59,6 +59,15 @@ describe("REST research provider authentication boundary", () => {
     globalThis.fetch = mock((input: string | URL | Request) => {
       const url = String(input);
       calls.push(url);
+      if (url.includes("/rest/api/3/issue/DEMO-1/remotelink")) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 44,
+          object: {
+            url: "https://example.atlassian.net/wiki/spaces/KB/pages/1003",
+            title: "Remote knowledge page",
+          },
+        }]), { status: 200, headers: { "content-type": "application/json" } }));
+      }
       if (url.includes("/rest/api/3/issue/DEMO-1")) {
         return Promise.resolve(new Response(JSON.stringify({
           id: "1",
@@ -165,6 +174,7 @@ describe("REST research provider authentication boundary", () => {
       "https://example.atlassian.net/browse/DEMO-3",
       "https://example.atlassian.net/browse/DEMO-9",
       "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
+      "https://example.atlassian.net/wiki/spaces/KB/pages/1003",
     ]);
     expect(page.content.text).toContain("Labels: release");
     expect(page.content.text).toContain("Ancestor page IDs: 1000");
@@ -177,6 +187,7 @@ describe("REST research provider authentication boundary", () => {
     ]);
     expect(calls.find((url) => url.includes("/rest/api/3/issue/DEMO-1"))).toContain("issuelinks");
     expect(calls.find((url) => url.includes("/rest/api/3/issue/DEMO-1"))).toContain("comment");
+    expect(calls).toContainEqual(expect.stringContaining("/rest/api/3/issue/DEMO-1/remotelink"));
     expect(calls.find((url) => url.includes("/wiki/rest/api/content/1001"))).toContain("ancestors");
     expect(calls).toContainEqual(expect.stringContaining("/api/v2/pages/1001/inline-comments"));
   });

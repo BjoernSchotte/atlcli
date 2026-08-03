@@ -309,6 +309,53 @@ function walkInline(
   }
 }
 
+const JIRA_ISSUE_KEY_PATTERN = /\b[A-Z][A-Z0-9_]{0,31}-[1-9]\d{0,18}\b/gi;
+const MAXIMUM_JIRA_MACRO_QUERY_CHARS = 512;
+
+function jiraIssueKeys(value: string): string[] {
+  return [...new Set((value.match(JIRA_ISSUE_KEY_PATTERN) ?? [])
+    .map((key) => key.toLocaleUpperCase("en-US")))];
+}
+
+function projectJiraMacro(
+  record: Record<string, unknown>,
+  collector: ProjectionCollector,
+): void {
+  if (record.type !== "unknown" || typeof record.macroName !== "string" ||
+      record.macroName.toLocaleLowerCase("en-US") !== "jira" ||
+      !Array.isArray(record.params)) {
+    return;
+  }
+
+  const directKeys = new Set<string>();
+  const queryValues: string[] = [];
+  for (const param of record.params) {
+    if (!param || typeof param !== "object" || Array.isArray(param)) continue;
+    const candidate = param as { name?: unknown; text?: unknown };
+    if (typeof candidate.name !== "string" || typeof candidate.text !== "string") continue;
+    const name = candidate.name.toLocaleLowerCase("en-US");
+    if (name === "key" || name === "issuekey" || name === "issue") {
+      for (const key of jiraIssueKeys(candidate.text)) directKeys.add(key);
+    }
+    if (name === "jql" || name === "jqlquery") queryValues.push(candidate.text);
+  }
+
+  for (const key of [...directKeys].sort((left, right) => left.localeCompare(right, "en-US"))) {
+    collector.text(`Jira macro issue key: ${key}`);
+    collector.separator();
+    collector.link(`/browse/${encodeURIComponent(key)}`);
+  }
+  for (const query of queryValues) {
+    const normalized = query.replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
+    collector.text(`Jira macro query: ${normalized.slice(0, MAXIMUM_JIRA_MACRO_QUERY_CHARS)}`);
+    collector.separator();
+    for (const key of jiraIssueKeys(normalized)) {
+      collector.link(`/browse/${encodeURIComponent(key)}`);
+    }
+  }
+}
+
 function walkUnknownBlocks(
   value: unknown,
   collector: ProjectionCollector,
@@ -321,6 +368,7 @@ function walkUnknownBlocks(
   if (typeof value !== "object" || value === null || !collector.node(depth)) return;
   const record = value as Record<string, unknown>;
   const type = record.type;
+  projectJiraMacro(record, collector);
   if (type === "heading" || type === "paragraph") {
     for (const inline of (record.content as InlineNode[]) ?? []) {
       walkInline(inline, collector, depth + 1);

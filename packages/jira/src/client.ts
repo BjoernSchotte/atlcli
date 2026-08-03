@@ -1404,8 +1404,14 @@ export class JiraClient {
    *
    * GET /rest/api/3/issue/{issueIdOrKey}/remotelink
    */
-  async getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]> {
-    return this.request<JiraRemoteLink[]>(`/issue/${keyOrId}/remotelink`);
+  async getRemoteLinks(
+    keyOrId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JiraRemoteLink[]> {
+    return this.request<JiraRemoteLink[]>(`/issue/${keyOrId}/remotelink`, {
+      signal: options.signal,
+      logBody: "meta-only",
+    });
   }
 
   /**
