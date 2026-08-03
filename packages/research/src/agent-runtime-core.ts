@@ -2213,10 +2213,13 @@ function createAnthropicSubagentModels(
     // avoids spending the bounded per-node wall-clock budget on hidden
     // deliberation after all source reads have already completed.
     "focused-researcher": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["focused-researcher"], "low"),
-    "document-distiller": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["document-distiller"]),
+    // A distiller receives compact, host-projected packets and has no read
+    // tools. Low effort keeps a mechanical bounded join from spending its
+    // task window on repeated private deliberation.
+    "document-distiller": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["document-distiller"], "low"),
     "contradiction-verifier": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["contradiction-verifier"], "low"),
     "coverage-moderator": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["coverage-moderator"], "low"),
-    "outline-planner": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["outline-planner"]),
+    "outline-planner": createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["outline-planner"], "low"),
     reconciler: createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1.reconciler, "low"),
     synthesizer: createAnthropicModel(apiKey, RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1.synthesizer, "low"),
   };
