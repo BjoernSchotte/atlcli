@@ -856,7 +856,12 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 function standardClarificationQuestions(
   question: string,
   scope: ResearchScopeV1 | undefined,
+  requestedEffort: ResearchOneShotPolicyV1["requestedEffort"],
 ): import("./brief.js").ResearchClarificationQuestionV1[] {
+  // Chat/lookup turns should answer from the bounded current context without
+  // interrupting the conversation for a research-grade reporting window. A
+  // deep run keeps the stricter clarification gate below.
+  if (requestedEffort === "lookup") return [];
   const hasExplicitWindow = Boolean(scope?.timeWindow?.from || scope?.timeWindow?.to) ||
     /\b(?:last|past|previous)\s+\d+\s+(?:day|week|month|year)s?\b/i.test(question) ||
     /\b(?:letzten?|vergangenen?)\s+\d+\s+(?:tag(?:en)?|woche(?:n)?|monat(?:en)?|jahr(?:en)?)\b/i.test(question);
@@ -901,7 +906,11 @@ export function createStandardResearchBriefV1(
     requestedPlanApproval: policy.requestedPlanApproval,
     requestedReconciliation: policy.requestedReconciliation,
     ...(options.reportLanguage ? { reportLanguage: options.reportLanguage } : {}),
-    clarificationQuestions: standardClarificationQuestions(question, options.scope),
+    clarificationQuestions: standardClarificationQuestions(
+      question,
+      options.scope,
+      policy.requestedEffort,
+    ),
     ...(options.limits ? { limits: options.limits } : {}),
   });
 }

@@ -315,7 +315,12 @@ const PACKED_REPORT_INPUT = {
 const PACKED_JIRA_ONLY_REPORT_INPUT = {
   title: "Packed Jira-only report",
   executiveSummary: "The bounded Jira-only acquisition completed.",
-  findings: [],
+  findings: [{
+    classification: "fact",
+    summary: "DEMO-1 documents the packed research design location.",
+    detail: "The Jira issue was read in detail before this answer was composed.",
+    sourceIds: ["jira:DEMO-1"],
+  }],
   relationships: [],
   limitations: ["Synthetic packed Jira-only evidence only."],
 };
@@ -1294,6 +1299,27 @@ globalThis.fetch = async (input, init) => {
       );
     };
 
+    const packedJiraOnlyDirectChat =
+      serializedRequest.includes("packed-jira-only") &&
+      serializedRequest.includes("Answer directly. Use only the read-only tools needed");
+    if (packedJiraOnlyDirectChat) {
+      packedJiraOnlyRun = true;
+      if (!packedJiraOnlyAcquisitionRequested) {
+        packedJiraOnlyAcquisitionRequested = true;
+        return anthropicMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_direct_jira_eval",
+            name: "eval",
+            input: { code: ${JSON.stringify(JIRA_ACQUISITION_CODE)} },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      return structured(packedJiraOnlyReportInput);
+    }
+
     if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
       if (packedHostParityRun || packedSentinelRun) {
         return structured(parityPacketForResponse());
@@ -1574,6 +1600,19 @@ globalThis.fetch = async (input, init) => {
     });
   }
 
+  const jiraRemoteLinks = url.pathname.match(
+    /\/rest\/api\/3\/issue\/(DEMO-\d+)\/remotelink$/,
+  );
+  if (jiraRemoteLinks) {
+    channel.postMessage({
+      kind: "fetch",
+      workerId,
+      url: url.href,
+      method: request.method,
+    });
+    return json([]);
+  }
+
   if (url.pathname === "/wiki/rest/api/content/search") {
     const second = url.searchParams.get("cursor") === "wiki-next-1";
     channel.postMessage({
@@ -1760,7 +1799,10 @@ function isExtensionBackgroundWorker(worker: Worker): boolean {
 }
 
 async function openResearchScreen(page: Page): Promise<void> {
-  await page.getByTestId("nav-research").click();
+  if (!(await page.getByTestId("research-screen").isVisible().catch(() => false))) {
+    await page.getByTestId("area-menu-toggle").click();
+    await page.getByTestId("area-ai").click();
+  }
   await expect(page.getByTestId("research-screen")).toBeVisible();
   await expect(page.locator("#research-site")).toHaveValue(SITE_ORIGIN);
 }
@@ -1771,15 +1813,17 @@ async function fillResearchForm(
   options: { includeKey?: boolean; includeScope?: boolean } = {}
 ): Promise<void> {
   if (options.includeKey !== false) {
-    await page.getByTestId("research-key").fill(FAKE_KEY);
+    await page.getByTestId("area-menu-toggle").click();
+    await page.getByTestId("nav-settings").click();
+    await page.getByTestId("settings-ai-key").fill(FAKE_KEY);
+    await page.getByTestId("settings-ai-store-key").click();
+    await page.getByTestId("area-menu-toggle").click();
+    await page.getByTestId("area-ai").click();
   }
-  await page.getByTestId("research-question").fill(question);
+  await page.getByTestId("copilot-chat-textarea").fill(question);
   if (options.includeScope !== false) {
-    await page.locator("#research-jira").fill("DEMO");
-    await page.locator("#research-wiki").fill("KB");
+    await expect(page.getByTestId("research-context-chips")).toContainText("Packed research");
   }
-  await page.locator("#research-from").fill("2026-07-23");
-  await page.locator("#research-to").fill("2026-07-30");
   await page.getByTestId("research-disclosure").check();
 }
 
@@ -4901,7 +4945,7 @@ test("preserves a locked manual scope over a question-derived project key", asyn
 test("stops an archived Confluence key before key storage or agent work", async () => {
   await openResearchScreen(page);
   await installEventCapture(page);
-  await page.getByTestId("research-current-context").uncheck();
+  await page.getByTestId("research-current-context-remove").click();
   await fillResearchForm(
     page,
     "Research Confluence space LEGACY.",
@@ -5000,19 +5044,19 @@ test("stops a packed natural-name scope ambiguity before key storage or agent wo
 test("resolves a question-derived Jira scope and streams a Jira-only composition in the packed production bundle", async () => {
   await openResearchScreen(page);
   await installEventCapture(page);
-  await page.getByTestId("research-current-context").uncheck();
+  await page.getByTestId("research-current-context-remove").click();
   await fillResearchForm(
     page,
     "packed-jira-only: Find the exact Jira project DEMO work item.",
     { includeScope: false },
   );
-  await page.getByTestId("research-effort").selectOption("lookup");
+  await expect(page.getByTestId("research-mode-chat")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("research-run").click();
 
   try {
     await page.waitForFunction(
       () =>
-        document.querySelector('[data-testid="research-report"]') !== null ||
+        document.querySelector('[data-testid="research-chat-report"]') !== null ||
         document.querySelector('[data-testid="research-error"]') !== null,
       undefined,
       { timeout: 20_000 },
@@ -5037,11 +5081,20 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
       uiError: await errorLocator.textContent(),
     }, null, 2));
   }
-  await expect(page.getByTestId("research-report")).toBeVisible();
-  await expect(page.getByTestId("research-formatted-report")).toContainText("Jira-only");
+  await expect(page.getByTestId("research-chat-report")).toBeVisible();
+  const answer = await page.getByTestId("research-chat-answer").innerText();
+  if (!answer.includes("DEMO-1 documents the packed research design location.")) {
+    throw new Error(JSON.stringify({
+      answer,
+      events: await harnessEvents(page),
+    }, null, 2));
+  }
   const activity = await page.getByTestId("research-activity").innerText();
-  expect(activity).toContain("2 nodes in 2 waves");
-  expect(activity).toContain("task · research-task:r1:jira-lookup:a1");
+  expect(activity).toContain("Jira");
+  expect(activity).not.toContain("research-task:");
+  expect(activity).not.toContain("central-supervisor");
+  expect(activity).not.toContain("cost_micros");
+  expect(activity).not.toContain("tokens");
   expect(activity).not.toContain("wiki-research");
   if (process.env.ATLCI_RESEARCH_UI_DEMO_SCREENSHOT) {
     await page.screenshot({

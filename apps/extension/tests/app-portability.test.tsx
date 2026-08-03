@@ -36,6 +36,7 @@ import type {
   PageContext,
   PdfExportPort,
 } from "../utils/ports/index.js";
+import type { ResearchPort } from "../utils/research/contracts.js";
 
 // ---------------------------------------------------------------------------
 // DOM harness
@@ -382,8 +383,24 @@ function makePorts(
       uploadedAt: 1_700_000_000_000,
       bytes: new ArrayBuffer(8),
     }),
-    settings: memorySettingsStore(),
+    settings: memorySettingsStore({ locale: null, lastWorkspace: "publishing" }),
     ...overrides,
+  };
+}
+
+function fakeResearchPort(): ResearchPort {
+  return {
+    hasApiKey: async () => true,
+    setApiKey: async () => undefined,
+    clearApiKey: async () => undefined,
+    resolveScope: async () => {
+      throw new Error("Scope resolution is not part of workspace navigation.");
+    },
+    run: async () => {
+      throw new Error("Research execution is not part of workspace navigation.");
+    },
+    copyMarkdown: async () => undefined,
+    downloadMarkdown: async () => undefined,
   };
 }
 
@@ -543,6 +560,75 @@ describe("ExportApp without chrome (Phase 0 acceptance criterion)", () => {
 });
 
 describe("the shell renders from the registry", () => {
+  it("opens Kiteweave AI first and remembers a switch to Publishing", async () => {
+    const settings = memorySettingsStore();
+    await render(
+      <ExportApp
+        ports={makePorts(
+          newRecorder(),
+          { settings, research: fakeResearchPort() },
+          ["research", "settings-persistence"],
+        )}
+        localeCandidates={["en"]}
+      />,
+    );
+
+    expect(maybeFind("screen-research")).not.toBeNull();
+    expect(find("area-menu-toggle").textContent).toContain("Kiteweave AI");
+    expect(maybeFind("app-nav")).toBeNull();
+
+    await click("area-menu-toggle");
+    const workspaceItems = find("area-menu").querySelectorAll('[role="menuitem"]');
+    expect(workspaceItems[0]?.getAttribute("data-testid")).toBe("area-ai");
+    expect(workspaceItems[1]?.getAttribute("data-testid")).toBe("area-publishing");
+    await click("area-publishing");
+
+    expect(maybeFind("screen-export")).not.toBeNull();
+    expect(find("area-menu-toggle").textContent).toContain("Publishing");
+    expect((await settings.load()).lastWorkspace).toBe("publishing");
+  });
+
+  it("restores the last selected workspace when the sidebar opens again", async () => {
+    const settings = memorySettingsStore({ locale: null, lastWorkspace: "publishing" });
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings, research: fakeResearchPort() }, [
+          "pdf-export",
+          "docx-export",
+          "docx-template-store",
+          "research",
+        ])}
+        localeCandidates={["en"]}
+      />,
+    );
+
+    expect(maybeFind("screen-export")).not.toBeNull();
+    expect(find("area-menu-toggle").textContent).toContain("Publishing");
+  });
+
+  it("returns from Settings to the currently selected AI workspace", async () => {
+    const settings = memorySettingsStore({ locale: null, lastWorkspace: "ai" });
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings, research: fakeResearchPort() }, [
+          "research",
+          "settings-persistence",
+        ])}
+        localeCandidates={["en"]}
+      />,
+    );
+
+    expect(maybeFind("screen-research")).not.toBeNull();
+    await click("area-menu-toggle");
+    await click("nav-settings");
+    expect(maybeFind("screen-settings")).not.toBeNull();
+
+    await click("area-menu-toggle");
+    await click("area-ai");
+
+    expect(maybeFind("screen-research")).not.toBeNull();
+  });
+
   it("renders one nav entry per visible screen and opens the requested one", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
 
@@ -717,7 +803,7 @@ describe("i18n reaches the rendered app", () => {
     await click("nav-settings");
     await selectValue("settings-language", "de");
 
-    expect(await settings.load()).toEqual({ locale: "de" });
+    expect(await settings.load()).toEqual({ locale: "de", lastWorkspace: null });
   });
 });
 

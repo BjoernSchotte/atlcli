@@ -227,12 +227,13 @@ describe("routeMessage (pure router)", () => {
       sessionId: "research-session:run-1",
       turnId: "research-turn:run-1",
       windowId: 7,
+      mode: "chat",
       request,
       policy,
     }, {
       ...okDeps,
-      runResearch: async (_runId, _sessionId, _turnId, _windowId, _request, receivedPolicy) => {
-        observed.push(receivedPolicy);
+      runResearch: async (_runId, _sessionId, _turnId, _windowId, mode, _request, receivedPolicy) => {
+        observed.push(mode, receivedPolicy);
         return researchReport;
       },
     })).toEqual({
@@ -284,7 +285,7 @@ describe("routeMessage (pure router)", () => {
       request,
       policy,
     })).not.toContain("apiKey");
-    expect(observed).toEqual([policy]);
+    expect(observed).toEqual(["chat", policy]);
   });
 
   it("routes a durable research resume with opaque identifiers only", async () => {

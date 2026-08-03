@@ -47,6 +47,7 @@ export interface OffscreenListenerDeps {
     sessionId: string,
     turnId: string,
     apiKey: string,
+    mode: "chat" | "research",
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
   ) => Promise<ResearchReport>;
@@ -391,6 +392,7 @@ export function handleOffscreenMessage(
           message.sessionId,
           message.turnId,
           message.apiKey,
+          message.mode,
           message.request,
           message.policy,
         )

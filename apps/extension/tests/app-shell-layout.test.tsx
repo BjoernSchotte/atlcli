@@ -102,7 +102,9 @@ async function mountShell(layout?: "compact" | "full"): Promise<HTMLElement> {
           version="0.0.0"
           screens={[NOOP_SCREEN]}
           active={NOOP_SCREEN}
+          activeWorkspace="publishing"
           onNavigate={() => undefined}
+          onWorkspaceNavigate={() => undefined}
           screenProps={{} as unknown as ScreenProps}
           {...(layout ? { layout } : {})}
         />

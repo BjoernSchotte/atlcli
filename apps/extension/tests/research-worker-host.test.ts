@@ -70,6 +70,7 @@ describe("dedicated research worker host", () => {
         sessionId: "research-session:run-1",
         turnId: "research-turn:run-1",
         apiKey: "synthetic-key",
+        mode: "research",
         request,
         policy,
       },

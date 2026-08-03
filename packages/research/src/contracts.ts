@@ -607,8 +607,12 @@ export class ResearchContractError extends Error {
   }
 }
 
+export type ResearchRunModeV1 = "chat" | "research";
+
 export interface ResearchRunOptions {
   signal?: AbortSignal;
+  /** Selects a direct conversational turn or the dynamic research workflow. */
+  mode?: ResearchRunModeV1;
   policy?: ResearchOneShotPolicyV1;
   /**
    * The host owns durable session identity. Presenters may use this opaque

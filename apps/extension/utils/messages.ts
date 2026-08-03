@@ -198,6 +198,7 @@ export type ExtRequest =
       sessionId: string;
       turnId: string;
       windowId: number;
+      mode: "chat" | "research";
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
     }
@@ -594,6 +595,7 @@ export type OffscreenRequest =
       sessionId: string;
       turnId: string;
       apiKey: string;
+      mode: "chat" | "research";
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
     }
@@ -723,12 +725,13 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (kind === "research:run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; windowId?: unknown; request?: unknown; policy?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "windowId", "request", "policy"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; windowId?: unknown; mode?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "windowId", "mode", "request", "policy"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
       isWindowId(run.windowId) &&
+      (run.mode === "chat" || run.mode === "research") &&
       typeof run.request === "object" &&
       run.request !== null &&
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));
@@ -1023,12 +1026,13 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; request?: unknown; policy?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "request", "policy"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; mode?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "mode", "request", "policy"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
       isResearchApiKey(run.apiKey) &&
+      (run.mode === "chat" || run.mode === "research") &&
       typeof run.request === "object" &&
       run.request !== null &&
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));

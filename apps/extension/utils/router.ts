@@ -75,6 +75,7 @@ export interface RouterDeps {
     sessionId: string,
     turnId: string,
     windowId: number,
+    mode: "chat" | "research",
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
   ) => Promise<ResearchReport>;
@@ -278,6 +279,7 @@ export async function routeMessage(
           msg.sessionId,
           msg.turnId,
           msg.windowId,
+          msg.mode,
           msg.request,
           msg.policy,
         );

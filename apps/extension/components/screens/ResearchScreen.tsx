@@ -1,15 +1,27 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { FlaskConical, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronRight,
+  FileText,
+  FlaskConical,
+  MessageCircle,
+  Menu,
+  Pencil,
+  Plus,
+  Search,
+  Square,
+  Telescope,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   CopilotChatConfigurationProvider,
-  CopilotChatInput,
-} from "@copilotkit/react-core/v2";
+} from "@copilotkit/react-core/v2/headless";
 import type {
   ScreenDefinition,
   ScreenProps,
 } from "../../utils/screens/registry.js";
 import {
-  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
@@ -26,8 +38,10 @@ import {
   type ResearchScopeExpansionModeV1,
   type ResearchScopeSeedV1,
 } from "../../utils/research/contracts.js";
-import { formatResearchOneShotEventV1 } from "../../utils/research/events.js";
-import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
+import {
+  createResearchEntityScopeSeedV1,
+  createResearchKeyScopeSeedV1,
+} from "@atlcli/research/scope-discovery";
 import {
   prepareResearchBriefPreflightV1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
@@ -60,7 +74,6 @@ import {
   Input,
   Label,
   Select,
-  SectionHeading,
 } from "../ui/field.js";
 import { cn } from "../ui/utils.js";
 
@@ -71,6 +84,28 @@ const MIN_RESEARCH_MODEL_COST_USD = 0.01;
 const MAX_RESEARCH_MODEL_COST_USD = 25;
 const MIN_RESEARCH_RUN_MINUTES = 1;
 const MAX_RESEARCH_RUN_MINUTES = 10;
+
+type ResearchInteractionMode = "chat" | "deep";
+
+const RESEARCH_INTERACTION_MODE_POLICY = {
+  chat: {
+    requestedEffort: "lookup",
+    requestedPlanApproval: "automatic",
+    scopeExpansionMode: "ask",
+    requestedReconciliation: "off",
+  },
+  deep: {
+    requestedEffort: "deep",
+    requestedPlanApproval: "default",
+    scopeExpansionMode: "ask",
+    requestedReconciliation: "auto",
+  },
+} as const satisfies Record<ResearchInteractionMode, {
+  requestedEffort: ResearchRequestedEffortV1;
+  requestedPlanApproval: ResearchRequestedPlanApprovalV1;
+  scopeExpansionMode: ResearchScopeExpansionModeV1;
+  requestedReconciliation: ResearchRequestedReconciliationV1;
+}>;
 
 function modelCostMicrosFromUsdInput(value: string, invalidMessage: string): number {
   const usd = Number(value);
@@ -99,85 +134,152 @@ function splitScopeValues(value: string): string[] {
   )];
 }
 
-export function formatResearchActivityEvent(event: ResearchOneShotEventV1): string {
-  return formatResearchOneShotEventV1(event);
+type ResearchTimelineStepKind =
+  | "thinking"
+  | "planning"
+  | "confluence-search"
+  | "confluence-read"
+  | "jira-search"
+  | "jira-read"
+  | "ranking"
+  | "relationships"
+  | "researching"
+  | "checking"
+  | "synthesizing"
+  | "complete";
+
+interface ResearchTimelineStep {
+  id: string;
+  kind: ResearchTimelineStepKind;
+  events: ResearchOneShotEventV1[];
+}
+
+function researchActivityDetailMessages(
+  events: readonly ResearchOneShotEventV1[],
+  t: ReturnType<typeof useT>,
+): string[] {
+  const messages = events.flatMap((event): string[] => {
+    if (event.kind === "capability") {
+      if (event.status === "failed") return [t("research.chat.detail.readFailed")];
+      if (event.status !== "completed") return [];
+      const count = String(event.itemCount ?? 0);
+      if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
+        return [t("research.chat.detail.confluenceFound", { count })];
+      }
+      if (event.toolId === "wiki.page.get") {
+        return [t("research.chat.detail.confluenceRead")];
+      }
+      if (event.toolId === "jira.issue.search" || event.toolId === "jira.project.search") {
+        return [t("research.chat.detail.jiraFound", { count })];
+      }
+      if (event.toolId === "jira.issue.get") {
+        return [t("research.chat.detail.jiraRead")];
+      }
+      if (event.toolId === "research.candidate.rank") {
+        return [t("research.chat.detail.selected", { count })];
+      }
+      return [];
+    }
+    if (event.kind === "retrieval" && event.detailReadCount > 0) {
+      return [t("research.chat.detail.sourcesRead", { count: String(event.detailReadCount) })];
+    }
+    if (event.kind === "reconciliation" && event.status === "completed") {
+      return [t("research.chat.detail.checked")];
+    }
+    if (event.kind === "steering") {
+      return [t("research.chat.detail.steeringApplied")];
+    }
+    return [];
+  });
+  return [...new Set(messages)];
+}
+
+function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKind | null {
+  if (event.kind === "phase") {
+    if (event.phase === "preparing") return "planning";
+    if (event.phase === "rendering") return "synthesizing";
+    if (event.phase === "complete") return "complete";
+    return "researching";
+  }
+  if (event.kind === "brief" || event.kind === "plan") return "planning";
+  if (event.kind === "capability") {
+    if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
+      return "confluence-search";
+    }
+    if (event.toolId === "wiki.page.get") return "confluence-read";
+    if (event.toolId === "jira.issue.search" || event.toolId === "jira.project.search") {
+      return "jira-search";
+    }
+    if (event.toolId === "jira.issue.get") return "jira-read";
+    if (event.toolId === "research.candidate.rank") return "ranking";
+    return "relationships";
+  }
+  if (event.kind === "subagent" || event.kind === "task") {
+    const roleId = event.roleId ?? "";
+    if (roleId.includes("synthesizer")) return "synthesizing";
+    if (roleId.includes("reconciler") || roleId.includes("critic")) return "checking";
+    if (roleId.includes("relationship") || roleId.includes("join")) return "relationships";
+    return "researching";
+  }
+  if (event.kind === "reconciliation" || event.kind === "reconciliation_disposition") {
+    return "checking";
+  }
+  if (event.kind === "retrieval") return "checking";
+  if (event.kind === "artifact") return "complete";
+  if (event.kind === "decision") {
+    if (event.decisionId === "direct-chat-agent-run") return "thinking";
+    return event.reasonCode.includes("validat") ? "checking" : "planning";
+  }
+  return null;
 }
 
 /**
- * The activity panel may expose only the cross-host, body-free event contract.
- * In particular this is not a model transcript, a provider payload, or hidden
- * chain-of-thought. It gives a user enough operational detail to inspect the
- * tool and subagent work while keeping the actual evidence in the report.
+ * Compress the body-free operator stream into a chat-sized sequence. Repeated
+ * counters, budgets and start/finish pairs remain inspectable on the step that
+ * owns them; they are not presented as dozens of apparent conversation turns.
  */
-export function researchActivityDetailRows(
-  event: ResearchOneShotEventV1,
-): Array<{ label: string; value: string }> {
-  const value = (candidate: unknown): string =>
-    Array.isArray(candidate)
-      ? candidate.join(", ") || "—"
-      : String(candidate);
-  return Object.entries(event)
-    .filter(([key]) => !["kind", "seq", "at"].includes(key))
-    .map(([key, candidate]) => ({
-      label: key.replaceAll("_", " "),
-      value: value(candidate),
-    }));
-}
-
-function ResearchActivityEvent({
-  event,
-}: {
-  event: ResearchOneShotEventV1;
-}): React.JSX.Element {
-  const t = useT();
-  const rows = researchActivityDetailRows(event);
-  const isDecision = event.kind === "decision";
-  return (
-    <li data-event-kind={event.kind} data-testid={`research-activity-event-${event.seq}`}>
-      <details className="rounded-md bg-muted/70 px-2 py-1" data-testid={`research-activity-detail-${event.seq}`}>
-        <summary className="cursor-pointer list-none text-foreground marker:content-none">
-          <span className="mr-1 text-muted-foreground">#{event.seq}</span>
-          <code>{formatResearchActivityEvent(event)}</code>
-        </summary>
-        <div className="mt-2 border-t border-border/60 pt-2 text-muted-foreground">
-          {isDecision && (
-            <p className="m-0 mb-2">
-              <strong className="font-medium text-foreground">{t("research.activity.safeRationale")}: </strong>
-              {formatResearchActivityEvent(event)}
-            </p>
-          )}
-          <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
-            {rows.map((row) => (
-              <React.Fragment key={row.label}>
-                <dt className="font-medium text-foreground">{row.label}</dt>
-                <dd className="m-0 break-words">{row.value}</dd>
-              </React.Fragment>
-            ))}
-          </dl>
-        </div>
-      </details>
-    </li>
-  );
-}
-
-type ResearchBudgetEventV1 = Extract<ResearchOneShotEventV1, { kind: "budget" }>;
-
-/** Latest body-free counters supplied by the host-owned activity stream. */
-export function latestResearchBudgetEvents(
+export function researchTimelineSteps(
   events: readonly ResearchOneShotEventV1[],
-): Partial<Record<ResearchBudgetEventV1["metric"], ResearchBudgetEventV1>> {
-  return events.reduce<Partial<Record<ResearchBudgetEventV1["metric"], ResearchBudgetEventV1>>>(
-    (latest, event) => event.kind === "budget"
-      ? { ...latest, [event.metric]: event }
-      : latest,
-    {},
-  );
+  running: boolean,
+): ResearchTimelineStep[] {
+  const steps: ResearchTimelineStep[] = [];
+  for (const event of events) {
+    const kind = timelineStepKind(event);
+    const current = steps.at(-1);
+    if (kind === null) {
+      if (current) current.events.push(event);
+      continue;
+    }
+    if (current?.kind === kind) {
+      current.events.push(event);
+      continue;
+    }
+    steps.push({ id: `research-step:${event.seq}`, kind, events: [event] });
+  }
+  if (running && steps.length === 0) {
+    steps.push({ id: "research-step:thinking", kind: "thinking", events: [] });
+  }
+  return steps;
 }
 
-function formatResearchBudgetUsd(micros: number | undefined): string {
-  if (micros === undefined) return "—";
-  const usd = micros / MICROS_PER_USD;
-  return usd > 0 && usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
+function KiteActivityMark(): React.JSX.Element {
+  return (
+    <svg
+      className="kiteweave-agent-kite size-5 shrink-0 overflow-visible"
+      viewBox="0 0 48 54"
+      aria-hidden="true"
+      data-testid="research-active-kite"
+    >
+      <path className="fill-primary" d="M24 3 6 24l18 20V3Z" />
+      <path className="fill-success" d="m24 3 18 21-18 20V3Z" />
+      <path
+        className="fill-none stroke-background"
+        d="M6 24h36M24 44c5 3 1 6 5 8"
+        strokeLinecap="round"
+        strokeWidth="2"
+      />
+    </svg>
+  );
 }
 
 export function inferResearchScope(input: {
@@ -191,6 +293,12 @@ export function inferResearchScope(input: {
   confluenceSpaces: string;
   activeSpaceKey?: string;
   activeProjectKey?: string;
+  activeEntity?: {
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    key: string;
+    name: string;
+  };
 }): {
   jiraProjectKeys: string[];
   confluenceSpaceKeys: string[];
@@ -232,6 +340,14 @@ export function inferResearchScope(input: {
     scopeSeeds: [
       ...seeds("jira", manualProjects, currentProjects),
       ...seeds("confluence", manualSpaces, currentSpaces),
+      ...(input.activeEntity
+        ? [createResearchEntityScopeSeedV1({
+            tenantOrigin: input.siteOrigin,
+            ...input.activeEntity,
+            source: "current_context",
+            authority: "approved",
+          })]
+        : []),
     ],
   };
 }
@@ -290,6 +406,14 @@ function currentSite(page: ScreenProps["page"]): {
   origin: string;
   activeSpaceKey?: string;
   activeProjectKey?: string;
+  contextLabel?: string;
+  contextProduct?: "Confluence" | "Jira";
+  activeEntity?: {
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    key: string;
+    name: string;
+  };
 } | null {
   const url =
     page.status === "loaded" || page.status === "loading" || page.status === "error"
@@ -311,10 +435,48 @@ function currentSite(page: ScreenProps["page"]): {
         ? page.page.details.spaceKey
         : undefined;
     const activeProjectKey = entity?.product === "jira" ? entity.projectKey : undefined;
+    const contextLabel = page.status === "loaded"
+      ? page.page.details.title
+      : entity?.product === "jira" && entity.type === "issue"
+        ? entity.issueKey
+        : entity?.product === "jira"
+          ? entity.projectKey
+          : entity?.product === "confluence" && "spaceKey" in entity
+            ? entity.spaceKey
+            : undefined;
+    const activeEntity = page.status === "loaded"
+      ? {
+          product: "confluence" as const,
+          entityKind: "page" as const,
+          key: page.page.details.id,
+          name: page.page.details.title,
+        }
+      : entity?.product === "confluence" && entity.type === "page"
+        ? {
+            product: "confluence" as const,
+            entityKind: "page" as const,
+            key: entity.pageId,
+            name: contextLabel ?? entity.pageId,
+          }
+        : entity?.product === "jira" && entity.type === "issue"
+          ? {
+              product: "jira" as const,
+              entityKind: "issue" as const,
+              key: entity.issueKey,
+              name: contextLabel ?? entity.issueKey,
+            }
+          : undefined;
     return {
       origin: parsed.origin,
       ...(activeSpaceKey ? { activeSpaceKey } : {}),
       ...(activeProjectKey ? { activeProjectKey } : {}),
+      ...(contextLabel ? { contextLabel } : {}),
+      ...(activeEntity ? { activeEntity } : {}),
+      ...(entity?.product === "confluence"
+        ? { contextProduct: "Confluence" as const }
+        : entity?.product === "jira"
+          ? { contextProduct: "Jira" as const }
+          : {}),
     };
   } catch {
     return null;
@@ -508,6 +670,43 @@ function FormattedReport({ report }: { report: ResearchReport }): React.JSX.Elem
     : <V1FormattedReport report={report} />;
 }
 
+function ChatAnswer({ report }: { report: ResearchReport }): React.JSX.Element {
+  const t = useT();
+  const statements = report.schema === "atlcli.research-report/v2"
+    ? report.executiveSummaryClaimIds
+      .map((claimId) => report.claims.find((claim) => claim.id === claimId)?.statement)
+      .filter((statement): statement is string => Boolean(statement))
+    : report.findings.length > 0 || report.relationships.length > 0
+      ? [report.executiveSummary].filter(Boolean)
+      : [];
+  const fallback = report.limitations[0] ?? t("research.chat.answerUnavailable");
+  return (
+    <article className="space-y-3 text-sm leading-6" data-testid="research-chat-answer">
+      <div className="space-y-2">
+        {(statements.length > 0 ? statements : [fallback]).map((statement) => (
+          <p className="m-0" key={statement}>{statement}</p>
+        ))}
+      </div>
+      {report.sources.length > 0 && (
+        <details className="rounded-lg border border-border/70 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+            {t("research.chat.sources", { count: report.sources.length })}
+          </summary>
+          <ol className="mb-0 mt-2 space-y-1 pl-5 text-xs">
+            {report.sources.map((source) => (
+              <li key={source.id}>
+                <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
+                  {source.title}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+    </article>
+  );
+}
+
 function ResearchStreamingTurn({
   activity,
   progress,
@@ -519,26 +718,76 @@ function ResearchStreamingTurn({
 }): React.JSX.Element | null {
   const t = useT();
   if (!running && activity.length === 0) return null;
+  const steps = researchTimelineSteps(activity, running);
+  const label = (kind: ResearchTimelineStepKind): string => {
+    switch (kind) {
+      case "thinking": return t("research.chat.phase.thinking");
+      case "planning": return t("research.chat.phase.planning");
+      case "confluence-search": return t("research.chat.phase.confluenceSearch");
+      case "confluence-read": return t("research.chat.phase.confluenceRead");
+      case "jira-search": return t("research.chat.phase.jiraSearch");
+      case "jira-read": return t("research.chat.phase.jiraRead");
+      case "ranking": return t("research.chat.phase.ranking");
+      case "relationships": return t("research.chat.phase.relationships");
+      case "researching": return t("research.chat.phase.researching");
+      case "checking": return t("research.chat.phase.checking");
+      case "synthesizing": return t("research.chat.phase.synthesizing");
+      case "complete": return t("research.chat.phase.complete");
+    }
+  };
   return (
     <section
-      className="rounded-lg border border-border/70 bg-muted/45 px-3 py-2 text-xs"
+      className="space-y-1 py-1 text-sm"
       aria-live="polite"
       data-testid="research-streaming-turn"
     >
-      <p className="m-0 font-medium text-foreground">
-        {running ? t("research.running") : t("research.activity")}
-      </p>
-      {progress && <p className="mb-0 mt-1 text-muted-foreground">{progress}</p>}
-      {activity.length > 0 && (
-        <details className="mt-2" open={running} data-testid="research-activity">
-          <summary className="cursor-pointer text-muted-foreground">
-            {t("research.activity")}: {activity.length}
-          </summary>
-          <ol className="m-0 mt-2 max-h-64 space-y-1 overflow-auto pl-0 text-muted-foreground">
-            {activity.map((event) => <ResearchActivityEvent key={event.seq} event={event} />)}
-          </ol>
-        </details>
-      )}
+      <div className="space-y-1" data-testid="research-activity">
+        {steps.map((step, index) => {
+          const active = running && index === steps.length - 1;
+          const details = researchActivityDetailMessages(step.events, t);
+          const summary = (
+            <span className={cn(
+              "flex min-h-9 items-center gap-2.5 rounded-lg px-2 py-1.5",
+              active ? "font-medium text-foreground" : "text-muted-foreground",
+            )}>
+              {active ? <KiteActivityMark /> : <span className="size-5 shrink-0" aria-hidden="true" />}
+              <span className="min-w-0 flex-1">{label(step.kind)}</span>
+              {details.length > 0 && (
+                <ChevronRight
+                  className="size-4 shrink-0 transition-transform group-open:rotate-90"
+                  aria-hidden="true"
+                />
+              )}
+              {active && (
+                <span className="sr-only">{t("research.chat.phase.inProgress")}</span>
+              )}
+            </span>
+          );
+          if (details.length === 0) {
+            return <div key={step.id}>{summary}</div>;
+          }
+          return (
+            <details
+              key={step.id}
+              className="group rounded-lg"
+              data-testid={`research-timeline-step-${index}`}
+            >
+              <summary
+                className="cursor-pointer list-none rounded-lg marker:content-none hover:bg-muted/70"
+                aria-label={`${label(step.kind)}. ${t("research.chat.phase.showDetails")}`}
+              >
+                {summary}
+              </summary>
+              <ol className="m-0 ml-9 mt-1 max-h-64 space-y-1 overflow-auto pl-0 text-xs text-muted-foreground">
+                {details.map((detail) => (
+                  <li className="rounded-md bg-muted/70 px-2 py-1" key={detail}>{detail}</li>
+                ))}
+              </ol>
+            </details>
+          );
+        })}
+      </div>
+      {progress && <span className="sr-only">{progress}</span>}
     </section>
   );
 }
@@ -555,7 +804,11 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     content: string;
     state: "sent" | "queued" | "steering";
   }>>([]);
-  const [queuedChatMessages, setQueuedChatMessages] = useState<Array<{ id: string; content: string }>>([]);
+  const [queuedChatMessages, setQueuedChatMessages] = useState<Array<{
+    id: string;
+    content: string;
+    baseQuestion?: string;
+  }>>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [immediateSteering, setImmediateSteering] = useState<{
     instruction: string;
@@ -564,6 +817,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [queuedTurnBeingEdited, setQueuedTurnBeingEdited] = useState<string | null>(null);
   const [queuedTurnDraft, setQueuedTurnDraft] = useState("");
   const [composerAddMenuOpen, setComposerAddMenuOpen] = useState(false);
+  const [conversationMenuOpen, setConversationMenuOpen] = useState(false);
+  const [interactionMode, setInteractionMode] = useState<ResearchInteractionMode>("chat");
   const [jiraProjects, setJiraProjects] = useState("");
   const [confluenceSpaces, setConfluenceSpaces] = useState("");
   const [includeCurrentContext, setIncludeCurrentContext] = useState(true);
@@ -576,16 +831,16 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     String(Math.ceil(DEFAULT_RESEARCH_LIMITS_V1.maxRunMs / 60_000)),
   );
   const [effort, setEffort] = useState<ResearchRequestedEffortV1>(
-    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedEffort,
+    RESEARCH_INTERACTION_MODE_POLICY.chat.requestedEffort,
   );
   const [planApproval, setPlanApproval] = useState<ResearchRequestedPlanApprovalV1>(
-    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedPlanApproval,
+    RESEARCH_INTERACTION_MODE_POLICY.chat.requestedPlanApproval,
   );
   const [scopeExpansion, setScopeExpansion] = useState<ResearchScopeExpansionModeV1>(
-    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.scopeExpansionMode,
+    RESEARCH_INTERACTION_MODE_POLICY.chat.scopeExpansionMode,
   );
   const [reconciliation, setReconciliation] = useState<ResearchRequestedReconciliationV1>(
-    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedReconciliation,
+    RESEARCH_INTERACTION_MODE_POLICY.chat.requestedReconciliation,
   );
   const [disclosed, setDisclosed] = useState(false);
   const [running, setRunning] = useState(false);
@@ -640,8 +895,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const activeSessionIdRef = useRef<string | null>(null);
   const queueDrainInFlight = useRef(false);
   const failedQueuedTurnId = useRef<string | null>(null);
+  const expectedDirectSteeringAbort = useRef(false);
   const planReviewListingGeneration = useRef(0);
-  const liveBudget = useMemo(() => latestResearchBudgetEvents(activity), [activity]);
 
   useEffect(() => {
     let active = true;
@@ -876,7 +1131,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   async function run(
     retry?: ScopePreflightRetry,
     questionOverride?: string,
-  ): Promise<void> {
+    existingTurnId?: string,
+  ): Promise<boolean> {
     setError(null);
     setPlanApprovalRequired(null);
     setScopeClarification(null);
@@ -905,6 +1161,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           confluenceSpaces,
           activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
           activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
+          activeEntity: includeCurrentContext ? site.activeEntity : undefined,
         });
         return normalizeResearchRequestV1({
           schema: RESEARCH_REQUEST_SCHEMA_V1,
@@ -928,7 +1185,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           wikiProvider: "rest",
         });
       })();
-      if (!retry) {
+      if (!retry && !existingTurnId) {
         chatTurnSequence.current += 1;
         setChatTurns((current) => [...current, {
           id: `research-user-turn:${chatTurnSequence.current}`,
@@ -958,7 +1215,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           setReport(null);
           setProgress("");
           setActionStatus(t("research.clarificationReview.prepared"));
-          return;
+          return true;
         }
         setScopeClarification({
           request: structuredClone(initialRequest),
@@ -969,59 +1226,61 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         setActivity([]);
         setReport(null);
         setProgress("");
-        return;
+        return true;
       }
       const request = scopeOutcome.request;
       setSubmittedRequest(structuredClone(request));
-      const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
-        scope: request.scope,
-        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
-        limits: request.limits,
-        asOf: new Date().toISOString(),
-        policy,
-      }));
-      if (briefOutcome.kind === "clarification_required") {
-        if (port!.prepareClarificationReview) {
-          const review = await port!.prepareClarificationReview(request, policy);
-          setClarificationReviews((current) => [
-            review,
-            ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
-          ]);
+      if (interactionMode === "deep") {
+        const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
+          scope: request.scope,
+          scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+          limits: request.limits,
+          asOf: new Date().toISOString(),
+          policy,
+        }));
+        if (briefOutcome.kind === "clarification_required") {
+          if (port!.prepareClarificationReview) {
+            const review = await port!.prepareClarificationReview(request, policy);
+            setClarificationReviews((current) => [
+              review,
+              ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
+            ]);
+            setActivity([]);
+            setReport(null);
+            setProgress("");
+            setActionStatus(t("research.clarificationReview.prepared"));
+            return true;
+          }
+          setBriefClarification(briefOutcome.clarification);
           setActivity([]);
           setReport(null);
           setProgress("");
-          setActionStatus(t("research.clarificationReview.prepared"));
-          return;
+          return true;
         }
-        setBriefClarification(briefOutcome.clarification);
-        setActivity([]);
-        setReport(null);
-        setProgress("");
-        return;
-      }
-      const graph = composeResearchGraphV1(briefOutcome.brief, {
-        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
-      });
-      const approvalRequired = researchPlanApprovalRequiredV1(graph);
-      if (approvalRequired) {
-        if (port!.preparePlanReview) {
-          const review = await port!.preparePlanReview(request, policy);
-          ++planReviewListingGeneration.current;
-          setPlanReviews((current) => [
-            review,
-            ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
-          ]);
+        const graph = composeResearchGraphV1(briefOutcome.brief, {
+          packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+        });
+        const approvalRequired = researchPlanApprovalRequiredV1(graph);
+        if (approvalRequired) {
+          if (port!.preparePlanReview) {
+            const review = await port!.preparePlanReview(request, policy);
+            ++planReviewListingGeneration.current;
+            setPlanReviews((current) => [
+              review,
+              ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
+            ]);
+            setActivity([]);
+            setReport(null);
+            setProgress("");
+            setActionStatus(t("research.planReview.prepared"));
+            return true;
+          }
+          setPlanApprovalRequired(approvalRequired);
           setActivity([]);
           setReport(null);
           setProgress("");
-          setActionStatus(t("research.planReview.prepared"));
-          return;
+          return true;
         }
-        setPlanApprovalRequired(approvalRequired);
-        setActivity([]);
-        setReport(null);
-        setProgress("");
-        return;
       }
       if (!hasKey) {
         throw new ResearchContractError("missing-key", t("research.key.missing"));
@@ -1035,6 +1294,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setReport(null);
       const result = await port!.run(request, {
         signal: controller.signal,
+        mode: interactionMode === "chat" ? "chat" : "research",
         policy,
         onSessionStart: (session) => trackActiveSession(session.sessionId),
         onProgress: (value) => setProgress(value.message),
@@ -1044,19 +1304,24 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       });
       setReport(result);
       setProgress("");
+      return true;
     } catch (value) {
-      if (value instanceof ResearchContractError &&
+      if (expectedDirectSteeringAbort.current) {
+        setProgress("");
+      } else if (value instanceof ResearchContractError &&
         (value.code === "paused" || value.code === "scope-approval-required")) {
         setActionStatus(t(value.code === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
         setProgress("");
       } else {
         setError(value instanceof Error ? value.message : t("research.error"));
       }
+      return false;
     } finally {
       abortRef.current = null;
       clearStaleRetainedSession();
       setRunning(false);
       setPauseRequested(false);
+      expectedDirectSteeringAbort.current = false;
       void refreshResumableSessions();
       void refreshRetainedSessions();
       void refreshScopeReviews();
@@ -1141,6 +1406,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       const queued = {
         id: `research-user-turn:${chatTurnSequence.current}`,
         content,
+        ...(interactionMode === "chat" && submittedRequest?.question
+          ? { baseQuestion: submittedRequest.question }
+          : {}),
       };
       setQueuedChatMessages((current) => [...current, queued]);
       setChatTurns((current) => [...current, { ...queued, state: "queued" }]);
@@ -1148,7 +1416,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       return;
     }
     setQuestion(content);
-    await run(undefined, content);
+    const accepted = await run(undefined, content);
+    if (!accepted) setQuestion(content);
   }
 
   async function submitImmediateSteering(value: string): Promise<void> {
@@ -1156,6 +1425,20 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     if (!content) return;
     if (!running) {
       await submitChatMessage(content);
+      return;
+    }
+    if (interactionMode === "chat") {
+      chatTurnSequence.current += 1;
+      const queued = {
+        id: `research-steering-turn:${chatTurnSequence.current}`,
+        content,
+        ...(submittedRequest?.question ? { baseQuestion: submittedRequest.question } : {}),
+      };
+      setQueuedChatMessages((current) => [queued, ...current]);
+      setChatTurns((current) => [...current, { id: queued.id, content, state: "steering" }]);
+      expectedDirectSteeringAbort.current = true;
+      abortRef.current?.abort();
+      setActionStatus(t("research.chat.steeringCheckpoint"));
       return;
     }
     if (!activeSessionId) {
@@ -1245,14 +1528,36 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     const session = activeSessionId
       ? retainedSessions.find((candidate) => candidate.sessionId === activeSessionId)
       : undefined;
-    if (
-      running ||
-      !queued ||
-      !session ||
-      !port?.prepareFollowUpTurn ||
-      queueDrainInFlight.current ||
-      failedQueuedTurnId.current === queued.id
-    ) return;
+    if (running || !queued || queueDrainInFlight.current || failedQueuedTurnId.current === queued.id) return;
+
+    if (interactionMode === "chat" && !session) {
+      queueDrainInFlight.current = true;
+      void (async () => {
+        const priorAnswer = report?.schema === "atlcli.research-report/v1"
+          ? report.executiveSummary
+          : report?.executiveSummaryClaimIds
+            .map((claimId) => report.claims.find((claim) => claim.id === claimId)?.statement)
+            .filter(Boolean)
+            .join("\n");
+        const requestContent = queued.baseQuestion
+          ? `${queued.baseQuestion}\n\n${priorAnswer ? `Previous answer:\n${priorAnswer}\n\n` : ""}User follow-up or steering:\n${queued.content}`
+          : queued.content;
+        const accepted = await run(undefined, requestContent, queued.id);
+        if (!accepted) {
+          failedQueuedTurnId.current = queued.id;
+          return;
+        }
+        setQueuedChatMessages((current) => current.filter((candidate) => candidate.id !== queued.id));
+        setChatTurns((current) => current.map((turn) =>
+          turn.id === queued.id ? { ...turn, state: "sent" } : turn
+        ));
+      })().finally(() => {
+        queueDrainInFlight.current = false;
+      });
+      return;
+    }
+
+    if (!session || !port?.prepareFollowUpTurn) return;
 
     let cancelled = false;
     queueDrainInFlight.current = true;
@@ -1304,8 +1609,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     return () => { cancelled = true; };
   }, [
     activeSessionId,
+    interactionMode,
     port,
     queuedChatMessages,
+    report,
     retainedSessions,
     running,
     t,
@@ -1699,8 +2006,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         jiraProjects,
         confluenceSpaces,
         activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
-        activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
-      })
+      activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
+      activeEntity: includeCurrentContext ? site.activeEntity : undefined,
+    })
     : null;
   const removableScopeSeeds = (previewScope?.scopeSeeds ?? []).filter(
     (seed) => seed.binding.source === "ui_added" || seed.binding.source === "current_context",
@@ -1719,11 +2027,35 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     else setConfluenceSpaces(next);
   }
 
+  function selectInteractionMode(mode: ResearchInteractionMode): void {
+    const policy = RESEARCH_INTERACTION_MODE_POLICY[mode];
+    setInteractionMode(mode);
+    setEffort(policy.requestedEffort);
+    setPlanApproval(policy.requestedPlanApproval);
+    setScopeExpansion(policy.scopeExpansionMode);
+    setReconciliation(policy.requestedReconciliation);
+  }
+
+  function startNewConversation(): void {
+    if (running) return;
+    setQuestion("");
+    setChatTurns([]);
+    setQueuedChatMessages([]);
+    setActiveSessionId(null);
+    setImmediateSteering(null);
+    setSubmittedRequest(null);
+    setReport(null);
+    setError(null);
+    setActivity([]);
+    setProgress("");
+    setActionStatus("");
+    setConversationMenuOpen(false);
+  }
+
   /**
-   * CopilotKit owns the textarea, send/stop behavior and keyboard semantics.
-   * The extension owns the add-menu state so it can remain intentionally empty
-   * until an approved capability is available. This avoids presenting a menu
-   * of inactive product promises or silently enabling an unreviewed tool.
+   * CopilotKit owns the chat configuration contract. The host renders the
+   * compact composer shell itself because the full message-renderer barrel
+   * includes dynamic code renderers that are forbidden by MV3 CSP.
    */
   function ComposerAddMenuButton({
     className: _className,
@@ -1751,7 +2083,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           {...props}
           size="icon"
           variant={composerAddMenuOpen ? "outline" : "ghost"}
-          className="size-10 rounded-md"
+          className="size-9 rounded-md"
           aria-label={t(
             composerAddMenuOpen
               ? "research.chat.addMenu.close"
@@ -1764,18 +2096,171 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             if (!event.defaultPrevented) setComposerAddMenuOpen((open) => !open);
           }}
         >
-          {composerAddMenuOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
+          {composerAddMenuOpen
+            ? <X className="size-4" aria-hidden="true" />
+            : <Plus className="size-4" aria-hidden="true" />}
         </Button>
       </div>
     );
   }
 
+  function ComposerSendButton({
+    className: _className,
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
+    return (
+      <Button
+        {...props}
+        size="icon"
+        className="size-9 shrink-0 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+        aria-label={running ? t("research.pause") : t("research.run")}
+        data-testid="research-run"
+      >
+        {children ?? (running
+          ? <Square className="size-3.5 fill-current" aria-hidden="true" />
+          : <ArrowUp className="size-4" aria-hidden="true" />)}
+      </Button>
+    );
+  }
+
+  const hasConversation = chatTurns.length > 0 || running || Boolean(report) || Boolean(error);
+  const currentContextLabel = site?.contextLabel;
+  const displayScopeKeys = (
+    keys: readonly string[],
+    product: "jira" | "confluence",
+  ): string => keys.map((key) => {
+    if (product !== "confluence" || !key.startsWith("~")) return key;
+    if (key === site?.activeSpaceKey && currentContextLabel) return currentContextLabel;
+    return t("research.chat.personalSpace");
+  }).join(", ") || "—";
+
   return (
-    <div className="flex flex-col gap-4" data-testid="research-screen">
-      <header>
-        <SectionHeading>{t("research.title")}</SectionHeading>
-        <p className="mb-0 mt-1 text-xs text-muted-foreground">{t("research.description")}</p>
+    <div className="relative flex flex-col gap-3" data-testid="research-screen">
+      <header className="flex items-center gap-1.5 px-0.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="-ml-2 size-9 shrink-0"
+            aria-label={conversationMenuOpen
+              ? t("research.chat.history.close")
+              : t("research.chat.history.open")}
+            aria-expanded={conversationMenuOpen}
+            data-testid="research-conversation-menu-toggle"
+            onClick={() => setConversationMenuOpen((open) => !open)}
+          >
+            {conversationMenuOpen
+              ? <X className="size-4.5" aria-hidden="true" />
+              : <Menu className="size-4.5" aria-hidden="true" />}
+          </Button>
+          <div className="min-w-0">
+          <h1 className="m-0 text-lg font-semibold tracking-tight text-foreground">
+            {interactionMode === "deep"
+              ? t("research.chat.mode.deep")
+              : t("research.chat.title")}
+          </h1>
+          </div>
+        </div>
       </header>
+
+      {conversationMenuOpen && (
+        <section
+          className="absolute inset-x-0 top-12 z-40 max-h-[calc(100vh-5rem)] overflow-auto rounded-xl border bg-background p-3 shadow-xl"
+          aria-label={t("research.chat.history.title")}
+          data-testid="research-conversation-menu"
+        >
+          <Button
+            className="w-full justify-start"
+            variant="ghost"
+            disabled={running}
+            onClick={startNewConversation}
+            data-testid="research-new-conversation"
+          >
+            <Pencil className="size-4" aria-hidden="true" />
+            {t("research.chat.history.new")}
+          </Button>
+          <div className="my-2 border-t" />
+          <h2 className="m-0 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("research.chat.history.title")}
+          </h2>
+          {resumableSessions.length === 0 && retainedSessions.length === 0 && (
+            <p className="mb-0 mt-2 px-2 text-sm text-muted-foreground">
+              {t("research.chat.history.empty")}
+            </p>
+          )}
+          {resumableSessions.length > 0 && (
+            <div className="mt-2 space-y-1" data-testid="research-resumable-sessions">
+              {resumableSessions.map((session, index) => (
+                <div className="rounded-lg border p-2 text-xs" key={session.sessionId} data-testid={`research-resumable-session-${index}`}>
+                  <p className="m-0 font-medium">{session.question}</p>
+                  <p className="mb-0 mt-1 text-muted-foreground">
+                    {t("research.resumeScope", {
+                      jira: displayScopeKeys(session.scope.jiraProjectKeys, "jira"),
+                      confluence: displayScopeKeys(session.scope.confluenceSpaceKeys, "confluence"),
+                      status: session.status,
+                    })}
+                  </p>
+                  <Button className="mt-2" size="sm" disabled={running || !disclosed || !hasKey} data-testid={`research-resume-${index}`} onClick={() => void resume(session)}>
+                    {t("research.resume")}
+                  </Button>
+                  {port?.requestSteering && session.status === "paused" && (
+                    <div className="mt-2 flex gap-2">
+                      <Input
+                        value={steeringInstructions[session.sessionId] ?? ""}
+                        onChange={(event) => setSteeringInstructions((current) => ({ ...current, [session.sessionId]: event.target.value }))}
+                        placeholder={t("research.steering.placeholder")}
+                        disabled={running}
+                        data-testid={`research-steering-input-${index}`}
+                      />
+                      <Button size="sm" variant="outline" disabled={running || !(steeringInstructions[session.sessionId] ?? "").trim()} data-testid={`research-steering-submit-${index}`} onClick={() => void requestSteering(session)}>
+                        {t("research.steering.submit")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {retainedSessions.length > 0 && (
+            <div className="mt-2 space-y-1" data-testid="research-retained-sessions">
+              {retainedSessions.map((session, index) => {
+                const preparing = followUpActionId === session.sessionId;
+                const followUpQuestion = followUpQuestions[session.sessionId] ?? "";
+                return (
+                  <details className="rounded-lg border p-2 text-xs" key={session.sessionId} data-testid={`research-retained-session-${index}`}>
+                    <summary className="cursor-pointer font-medium">{session.question}</summary>
+                    <p className="mb-0 mt-1 text-muted-foreground">
+                      {t("research.resumeScope", {
+                        jira: displayScopeKeys(session.scope.jiraProjectKeys, "jira"),
+                        confluence: displayScopeKeys(session.scope.confluenceSpaceKeys, "confluence"),
+                        status: session.status,
+                      })}
+                    </p>
+                    <Label className="mt-2 block" htmlFor={`research-follow-up-question-${index}`}>
+                      {t("research.followUp.question")}
+                    </Label>
+                    <textarea
+                      id={`research-follow-up-question-${index}`}
+                      className="mt-1 w-full rounded-md border bg-background p-2 text-xs"
+                      rows={3}
+                      maxLength={10_000}
+                      disabled={running || followUpActionId !== null}
+                      data-testid={`research-follow-up-question-${index}`}
+                      placeholder={t("research.followUp.placeholder")}
+                      value={followUpQuestion}
+                      onChange={(event) => setFollowUpQuestions((current) => ({ ...current, [session.sessionId]: event.target.value }))}
+                    />
+                    <Button className="mt-2" size="sm" disabled={running || followUpActionId !== null || !followUpQuestion.trim()} data-testid={`research-follow-up-prepare-${index}`} onClick={() => void prepareFollowUpTurn(session)}>
+                      {preparing ? t("research.followUp.preparing") : t("research.followUp.prepare")}
+                    </Button>
+                  </details>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       <CopilotChatConfigurationProvider
         labels={{
@@ -1784,16 +2269,54 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           chatInputToolbarToolsButtonLabel: t("research.chat.settings"),
         }}
       >
-        <section className="flex min-h-80 flex-col gap-3" data-testid="research-chat">
-          <div className="flex min-h-52 flex-col gap-3 overflow-auto rounded-xl border bg-background p-3">
-            {chatTurns.length === 0 && (
-              <div className="max-w-[92%] rounded-lg bg-muted px-3 py-2 text-sm text-foreground" data-testid="research-chat-welcome">
-                {t("research.chat.welcome")}
+        <section className="flex min-h-[28rem] flex-col gap-3" data-testid="research-chat">
+          <div className="flex flex-1 flex-col gap-3 overflow-auto px-0.5" data-testid="research-chat-timeline">
+            {!hasConversation && (
+              <div className="py-2" data-testid="research-chat-welcome">
+                <p className="m-0 text-sm leading-6 text-muted-foreground">
+                  {t("research.chat.welcome")}
+                </p>
+                <div className="my-4 border-t border-border/70" aria-hidden="true" />
+                <div className="flex flex-col gap-1" data-testid="research-chat-suggestions">
+                  <button
+                    type="button"
+                    className="group flex min-h-11 items-center gap-3 rounded-xl px-2.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => setQuestion(t("research.chat.suggestion.summarizePrompt"))}
+                  >
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground group-hover:text-foreground">
+                      <FileText className="size-4.5" aria-hidden="true" />
+                    </span>
+                    <span>{t("research.chat.suggestion.summarize")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="group flex min-h-11 items-center gap-3 rounded-xl px-2.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => {
+                      selectInteractionMode("deep");
+                      setQuestion(t("research.chat.suggestion.connectionsPrompt"));
+                    }}
+                  >
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground group-hover:text-foreground">
+                      <Search className="size-4.5" aria-hidden="true" />
+                    </span>
+                    <span>{t("research.chat.suggestion.connections")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="group flex min-h-11 items-center gap-3 rounded-xl px-2.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => setQuestion(t("research.chat.suggestion.changesPrompt"))}
+                  >
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground group-hover:text-foreground">
+                      <MessageCircle className="size-4.5" aria-hidden="true" />
+                    </span>
+                    <span>{t("research.chat.suggestion.changes")}</span>
+                  </button>
+                </div>
               </div>
             )}
             {chatTurns.map((turn) => (
               <div key={turn.id} className="flex flex-col gap-1">
-                {turn.state === "queued" && queuedTurnBeingEdited === turn.id ? (
+                {turn.state !== "sent" && queuedTurnBeingEdited === turn.id ? (
                   <div className="max-w-[92%] self-end rounded-lg border bg-muted p-2">
                     <textarea
                       className="min-h-20 w-full resize-y rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
@@ -1839,29 +2362,29 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                         ? t("research.chat.queued")
                         : t("research.chat.steeringCheckpoint")}
                     </span>
-                    {turn.state === "queued" && queuedTurnBeingEdited !== turn.id && (
+                    {queuedTurnBeingEdited !== turn.id && (
                       <>
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="size-8"
+                          className="size-7"
                           aria-label={t("research.chat.editQueued")}
                           title={t("research.chat.editQueued")}
                           onClick={() => beginQueuedTurnEdit(turn)}
                           data-testid={`research-queued-edit-${turn.id}`}
                         >
-                          <Pencil aria-hidden="true" />
+                          <Pencil className="size-3.5" aria-hidden="true" />
                         </Button>
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="size-8 text-destructive hover:text-destructive"
+                          className="size-7 text-destructive hover:text-destructive"
                           aria-label={t("research.chat.removeQueued")}
                           title={t("research.chat.removeQueued")}
                           onClick={() => removeQueuedTurn(turn.id)}
                           data-testid={`research-queued-remove-${turn.id}`}
                         >
-                          <Trash2 aria-hidden="true" />
+                          <Trash2 className="size-3.5" aria-hidden="true" />
                         </Button>
                       </>
                     )}
@@ -1878,7 +2401,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             )}
             {report && (
               <div className="rounded-lg border border-border/70 bg-card px-3 py-2" data-testid="research-chat-report">
-                <FormattedReport report={report} />
+                {interactionMode === "chat"
+                  ? <ChatAnswer report={report} />
+                  : <FormattedReport report={report} />}
                 <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
                   <Button
                     size="sm"
@@ -1900,56 +2425,137 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               </div>
             )}
           </div>
-          {previewScope?.scopeSeeds.length ? (
-            <div className="flex flex-wrap gap-1" data-testid="research-context-chips">
-              {previewScope.scopeSeeds.map((seed) => (
-                <span key={seed.binding.id} className="rounded-full border bg-muted px-2 py-1 text-xs text-foreground">
-                  {seed.binding.product}: {seed.binding.key ?? seed.binding.name}
-                </span>
-              ))}
+          {includeCurrentContext && currentContextLabel ? (
+            <div
+              className="flex min-h-11 items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs"
+              data-testid="research-context-chips"
+            >
+              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="shrink-0 font-medium text-muted-foreground">{t("research.chat.context")}</span>
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={currentContextLabel}>
+                {currentContextLabel}
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 shrink-0 rounded-lg text-muted-foreground"
+                aria-label={t("research.chat.context.remove")}
+                onClick={() => setIncludeCurrentContext(false)}
+                data-testid="research-current-context-remove"
+              >
+                <X aria-hidden="true" />
+              </Button>
             </div>
           ) : null}
-          {!disclosed && (
-            <CheckboxField
-              checked={disclosed}
-              onChange={(event) => setDisclosed(event.target.checked)}
-              disabled={running}
-              label={t("research.disclosure")}
-              data-testid="research-disclosure"
-            />
-          )}
-          <CopilotChatInput
-            value={question}
-            onChange={setQuestion}
-            onSubmitMessage={(value) => void submitChatMessage(value)}
-            onStop={() => void requestPause()}
-            isRunning={running}
-            addMenuButton={ComposerAddMenuButton}
-            textArea={{
-              onKeyDown: (event) => {
-                if (event.key !== "Enter") return;
-                const value = (event.currentTarget as HTMLTextAreaElement).value;
-                if (event.metaKey && event.shiftKey) {
-                  event.preventDefault();
-                  setQuestion("");
-                  void submitImmediateSteering(value);
-                  return;
-                }
-                if (!event.shiftKey) {
-                  event.preventDefault();
-                  setQuestion("");
-                  void submitChatMessage(value);
-                }
-              },
-            }}
+          <div
+            data-copilotkit="true"
+            className="w-full"
             data-testid="research-chat-composer"
-          />
-          <p className="m-0 text-center text-[11px] text-muted-foreground">{t("research.chat.composerHelp")}</p>
+          >
+            <div
+              className="overflow-visible rounded-[22px] border border-input bg-card transition-colors focus-within:border-ring"
+              data-testid="research-chat-composer-shell"
+            >
+              <textarea
+                data-testid="copilot-chat-textarea"
+                value={question}
+                onChange={(event) => setQuestion(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                  const value = event.currentTarget.value;
+                  if (event.metaKey && event.shiftKey) {
+                    event.preventDefault();
+                    setQuestion("");
+                    void submitImmediateSteering(value);
+                    return;
+                  }
+                  if (!event.shiftKey) {
+                    event.preventDefault();
+                    setQuestion("");
+                    void submitChatMessage(value);
+                  }
+                }}
+                placeholder={t("research.chat.placeholder")}
+                className="min-h-24 w-full resize-none border-0 bg-transparent px-4 pb-2 pt-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none"
+                aria-label={t("research.chat.placeholder")}
+              />
+              <div className="flex items-center gap-1.5 border-t border-border/70 px-2.5 py-2">
+                <ComposerAddMenuButton />
+                <div
+                  className="flex min-w-0 items-center rounded-lg bg-muted p-0.5"
+                  role="group"
+                  aria-label={t("research.chat.mode.label")}
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+                      interactionMode === "chat"
+                        ? "bg-background text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-pressed={interactionMode === "chat"}
+                    onClick={() => selectInteractionMode("chat")}
+                    data-testid="research-mode-chat"
+                  >
+                    <MessageCircle className="size-3.5" aria-hidden="true" />
+                    {t("research.chat.mode.chat")}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+                      interactionMode === "deep"
+                        ? "bg-background text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-pressed={interactionMode === "deep"}
+                    onClick={() => selectInteractionMode("deep")}
+                    data-testid="research-mode-deep"
+                  >
+                    <Telescope className="size-3.5" aria-hidden="true" />
+                    {t("research.chat.mode.deepShort")}
+                  </button>
+                </div>
+                <div className="ml-auto">
+                  <ComposerSendButton
+                    disabled={running ? false : question.trim().length === 0}
+                    onClick={() => {
+                      if (running && question.trim().length === 0) {
+                        void requestPause();
+                        return;
+                      }
+                      const value = question;
+                      setQuestion("");
+                      void submitChatMessage(value);
+                    }}
+                  />
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-start gap-2 border-t border-border/60 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
+                  checked={disclosed}
+                  onChange={(event) => setDisclosed(event.target.checked)}
+                  disabled={running}
+                  data-testid="research-disclosure"
+                />
+                <span>{t("research.disclosure")}</span>
+              </label>
+            </div>
+          </div>
+          <p className="m-0 px-1 text-center text-[11px] text-muted-foreground">
+            {running
+              ? t("research.chat.composerHelp.running")
+              : t("research.chat.composerHelp.idle")}
+          </p>
         </section>
       </CopilotChatConfigurationProvider>
 
       <details
-        className="rounded-lg border bg-muted/20"
+        className="hidden"
+        aria-hidden="true"
         data-testid="research-settings"
       >
         <summary className="cursor-pointer px-3 py-2 text-sm font-medium">{t("research.chat.settings")}</summary>
@@ -2136,19 +2742,12 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               {t("research.maxRuntime.value", { minutes: maxRunMinutes || "—" })}
             </p>
           </Alert>
-          <CheckboxField
-            checked={disclosed}
-            onChange={(event) => setDisclosed(event.target.checked)}
-            disabled={running}
-            label={t("research.disclosure")}
-            data-testid="research-disclosure"
-          />
           <div className="flex gap-2">
             <Button
               className="flex-1"
               onClick={() => void run()}
               disabled={running || !site}
-              data-testid="research-run"
+              data-testid="research-run-advanced"
             >
               {running ? t("research.running") : t("research.run")}
             </Button>
@@ -2172,87 +2771,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             </Button>
           </div>
           {progress && <p role="status" className="m-0 text-xs text-muted-foreground">{progress}</p>}
-          {(liveBudget.cost_micros || liveBudget.tokens || liveBudget.duration_ms) && (
-            <p className="m-0 text-xs text-muted-foreground" data-testid="research-live-budget">
-              {t("research.liveBudget", {
-                cost: formatResearchBudgetUsd(liveBudget.cost_micros?.consumed),
-                costMaximum: formatResearchBudgetUsd(liveBudget.cost_micros?.maximum),
-                tokens: String(liveBudget.tokens?.consumed ?? "—"),
-                tokensMaximum: String(liveBudget.tokens?.maximum ?? "—"),
-                duration: String(liveBudget.duration_ms?.consumed ?? "—"),
-                durationMaximum: String(liveBudget.duration_ms?.maximum ?? "—"),
-              })}
-            </p>
-          )}
-          {activity.length > 0 && (
-            <details open aria-live="polite" data-testid="research-activity">
-              <summary className="mt-2 cursor-pointer text-xs font-medium">{t("research.activity")}</summary>
-              <ol className="m-0 mt-1 max-h-64 space-y-1 overflow-auto pl-0 text-xs text-muted-foreground">
-                {activity.map((event) => <ResearchActivityEvent key={event.seq} event={event} />)}
-              </ol>
-            </details>
-          )}
         </CardContent>
       </Card>
       </details>
-
-      {resumableSessions.length > 0 && (
-        <Card data-testid="research-resumable-sessions">
-          <CardHeader>
-            <CardTitle>{t("research.resumableSessions")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {resumableSessions.map((session, index) => (
-              <div
-                key={session.sessionId}
-                className="rounded-md border p-2 text-xs"
-                data-testid={`research-resumable-session-${index}`}
-              >
-                <p className="m-0 font-medium">{session.question}</p>
-                <p className="mb-0 mt-1 text-muted-foreground">
-                  {t("research.resumeScope", {
-                    jira: session.scope.jiraProjectKeys.join(", ") || "—",
-                    confluence: session.scope.confluenceSpaceKeys.join(", ") || "—",
-                    status: session.status,
-                  })}
-                </p>
-                <Button
-                  className="mt-2"
-                  size="sm"
-                  disabled={running || !disclosed || !hasKey}
-                  data-testid={`research-resume-${index}`}
-                  onClick={() => void resume(session)}
-                >
-                  {t("research.resume")}
-                </Button>
-                {port?.requestSteering && session.status === "paused" && (
-                  <div className="mt-2 flex gap-2">
-                    <Input
-                      value={steeringInstructions[session.sessionId] ?? ""}
-                      onChange={(event) => setSteeringInstructions((current) => ({
-                        ...current,
-                        [session.sessionId]: event.target.value,
-                      }))}
-                      placeholder={t("research.steering.placeholder")}
-                      disabled={running}
-                      data-testid={`research-steering-input-${index}`}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={running || !(steeringInstructions[session.sessionId] ?? "").trim()}
-                      data-testid={`research-steering-submit-${index}`}
-                      onClick={() => void requestSteering(session)}
-                    >
-                      {t("research.steering.submit")}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
 
       {scopeReviews.length > 0 && (
         <Card data-testid="research-scope-reviews">
@@ -2386,7 +2907,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         </Card>
       )}
 
-      {clarificationReviews.length > 0 && (
+      {interactionMode === "deep" && clarificationReviews.length > 0 && (
         <Card data-testid="research-clarification-reviews">
           <CardHeader>
             <CardTitle>{t("research.clarificationReview.title")}</CardTitle>
@@ -2416,8 +2937,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   </p>
                   <p className="mb-0 mt-1 text-muted-foreground">
                     {t("research.clarificationReview.scope", {
-                      jira: review.turn.scope.jiraProjectKeys.join(", ") || "—",
-                      confluence: review.turn.scope.confluenceSpaceKeys.join(", ") || "—",
+                      jira: displayScopeKeys(review.turn.scope.jiraProjectKeys, "jira"),
+                      confluence: displayScopeKeys(review.turn.scope.confluenceSpaceKeys, "confluence"),
                     })}
                   </p>
                   {review.stage === "answer_required" ? (
@@ -2506,7 +3027,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         </Card>
       )}
 
-      {planReviews.length > 0 && (
+      {interactionMode === "deep" && planReviews.length > 0 && (
         <Card data-testid="research-plan-reviews">
           <CardHeader>
             <CardTitle>{t("research.planReview.title")}</CardTitle>
@@ -2544,8 +3065,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   </p>
                   <p className="mb-0 mt-1 text-muted-foreground">
                     {t("research.planReview.scope", {
-                      jira: review.turn.scope.jiraProjectKeys.join(", ") || "—",
-                      confluence: review.turn.scope.confluenceSpaceKeys.join(", ") || "—",
+                      jira: displayScopeKeys(review.turn.scope.jiraProjectKeys, "jira"),
+                      confluence: displayScopeKeys(review.turn.scope.confluenceSpaceKeys, "confluence"),
                     })}
                   </p>
                   {timeWindow && (
@@ -2629,62 +3150,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                       {deciding ? t("research.planReview.deciding") : t("research.planReview.revise")}
                     </Button>
                   </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {retainedSessions.length > 0 && (
-        <Card data-testid="research-retained-sessions">
-          <CardHeader>
-            <CardTitle>{t("research.retainedSessions")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {retainedSessions.map((session, index) => {
-              const preparing = followUpActionId === session.sessionId;
-              const followUpQuestion = followUpQuestions[session.sessionId] ?? "";
-              return (
-                <div
-                  key={session.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-retained-session-${index}`}
-                >
-                  <p className="m-0 font-medium">{session.question}</p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.resumeScope", {
-                      jira: session.scope.jiraProjectKeys.join(", ") || "—",
-                      confluence: session.scope.confluenceSpaceKeys.join(", ") || "—",
-                      status: session.status,
-                    })}
-                  </p>
-                  <Label className="mt-2 block" htmlFor={`research-follow-up-question-${index}`}>
-                    {t("research.followUp.question")}
-                  </Label>
-                  <textarea
-                    id={`research-follow-up-question-${index}`}
-                    className="mt-1 w-full rounded-md border bg-background p-2 text-xs"
-                    rows={3}
-                    maxLength={10_000}
-                    disabled={running || followUpActionId !== null}
-                    data-testid={`research-follow-up-question-${index}`}
-                    placeholder={t("research.followUp.placeholder")}
-                    value={followUpQuestion}
-                    onChange={(event) => setFollowUpQuestions((current) => ({
-                      ...current,
-                      [session.sessionId]: event.target.value,
-                    }))}
-                  />
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    disabled={running || followUpActionId !== null || !followUpQuestion.trim()}
-                    data-testid={`research-follow-up-prepare-${index}`}
-                    onClick={() => void prepareFollowUpTurn(session)}
-                  >
-                    {preparing ? t("research.followUp.preparing") : t("research.followUp.prepare")}
-                  </Button>
                 </div>
               );
             })}
@@ -2945,7 +3410,8 @@ export const researchScreenDefinition: ScreenDefinition = {
   descriptionKey: "screen.research.description",
   icon: FlaskConical,
   component: ResearchScreen,
-  order: 35,
+  order: 1,
   navigation: "primary",
+  workspace: "ai",
   requirements: [{ kind: "capability", capability: "research" }],
 };

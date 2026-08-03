@@ -491,6 +491,7 @@ export default defineBackground({
     sessionId: string,
     turnId: string,
     windowId: number,
+    mode: "chat" | "research",
     value: ResearchRequestV1,
     policyValue?: ResearchOneShotPolicyV1,
   ) => {
@@ -523,6 +524,7 @@ export default defineBackground({
         sessionId,
         turnId,
         apiKey,
+        mode,
         request,
         policy,
       })) as OffscreenResponse | undefined;

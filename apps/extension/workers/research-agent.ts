@@ -57,6 +57,43 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   const resume = message.resume === true;
   void (async () => {
     try {
+      if (!resume && "mode" in message && message.mode === "chat") {
+        if (!("request" in message)) {
+          throw new ResearchContractError("invalid-request", "A direct chat run requires a request.");
+        }
+        const request = normalizeResearchRequestV1(message.request);
+        const policy = normalizeResearchOneShotPolicyV1(message.policy);
+        const profile: Profile = {
+          name: "chat-session",
+          baseUrl: request.scope.siteOrigin,
+          deploymentType: "cloud",
+          auth: { type: "session" },
+        };
+        const budget = new ResearchRunBudget(request.limits);
+        const providers = createRestResearchProviders(profile, request, budget);
+        const scopeCatalog = {
+          tenantOrigin: request.scope.siteOrigin,
+          broker: new ResearchScopeCatalogBroker({
+            tenantOrigin: request.scope.siteOrigin,
+            providers: createRestScopeCatalogProviders(profile, request.scope.siteOrigin),
+          }),
+        };
+        const onProgress = (progress: ResearchProgressV1): void =>
+          post({ kind: "research-worker:progress", runId, progress });
+        const onEvent = (event: ResearchOneShotEventV1): void =>
+          post({ kind: "research-worker:event", runId, event });
+        const report = await runResearchAgent({
+          apiKey,
+          request,
+          providers,
+          budget,
+          scopeCatalog,
+          runId,
+          options: { mode: "chat", onProgress, onEvent, policy },
+        });
+        post({ kind: "research-worker:complete", runId, report });
+        return;
+      }
       const store = await IndexedDbResearchSessionStoreV1.open();
       try {
         let request: ResearchRequestV1;

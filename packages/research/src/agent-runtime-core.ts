@@ -316,6 +316,32 @@ export function hostSearchCoverageLimitationsV1(
 }
 
 /**
+ * Direct chat must never turn search-only candidates into a content answer.
+ * The host replaces the model draft when no detail evidence crossed the read
+ * boundary; UI shapes can then render the limitation without a pseudo-report.
+ */
+export function enforceDirectChatDetailBoundaryV1(
+  draft: unknown,
+  detailEvidenceCount: number,
+  language: ResearchRequestV1["reportLanguage"],
+): unknown {
+  if (detailEvidenceCount > 0) return draft;
+  return {
+    title: language === "de"
+      ? "Quelle konnte nicht vollständig abgerufen werden"
+      : "Source could not be retrieved in detail",
+    executiveSummary: language === "de"
+      ? "Ohne vollständig abgerufene Quelle wird keine inhaltliche Antwort erzeugt."
+      : "No content answer is produced without a fully retrieved source.",
+    findings: [],
+    relationships: [],
+    limitations: [language === "de"
+      ? "Ich konnte keinen relevanten Jira- oder Confluence-Inhalt vollständig abrufen. Deshalb gebe ich keine inhaltliche Antwort ohne Beleg."
+      : "No relevant Jira or Confluence item could be retrieved in detail, so no unsupported content answer is provided."],
+  };
+}
+
+/**
  * State the detail-retrieval boundary from host ledgers. Search summaries may
  * screen candidates, but only retrieved details can support published claims.
  * This makes a bounded acquisition visibly non-exhaustive without turning the
@@ -2823,6 +2849,17 @@ export interface RunResearchAgentInput {
 }
 
 /**
+ * Production deep research must always execute an approved graph. A direct
+ * chat turn is the single explicit graphless production shape; characterization
+ * callers may still inject a model without claiming to be a production run.
+ */
+export function validatedResearchGraphRequiredV1(
+  input: Pick<RunResearchAgentInput, "model" | "researchGraph" | "options">,
+): boolean {
+  return !input.model && !input.researchGraph && input.options?.mode !== "chat";
+}
+
+/**
  * Recreate an evaluator input from the only state allowed to cross a durable
  * retrieval checkpoint. This is deliberately host-neutral: the same store
  * contract is backed by the CLI filesystem and browser IndexedDB.
@@ -2926,7 +2963,7 @@ async function runResearchAgentWithBindings(
   input: RunResearchAgentInput,
   runtime: ResearchAgentRuntimeBindings,
 ): Promise<ResearchReport> {
-  if (!input.model && !input.researchGraph) {
+  if (validatedResearchGraphRequiredV1(input)) {
     throw new ResearchContractError(
       "invalid-request",
       "A validated research graph is required for a production model run.",
@@ -4857,7 +4894,7 @@ async function runResearchAgentWithBindings(
   const agent = runtime.createDeepAgent({
     name: isDynamic
       ? "atlcli-read-only-research-supervisor"
-      : "atlcli-read-only-research",
+      : "atlcli-read-only-chat",
     model,
     backend: deepAgentBackend,
     ...(checkpointer ? { checkpointer } : {}),
@@ -5050,9 +5087,11 @@ async function runResearchAgentWithBindings(
     });
     emitEvent({
       kind: "decision",
-      decisionId: "central-supervisor-run",
+      decisionId: isDynamic ? "central-supervisor-run" : "direct-chat-agent-run",
       status: "started",
-      reasonCode: "generate-and-orchestrate-workflow",
+      reasonCode: isDynamic
+        ? "generate-and-orchestrate-workflow"
+        : "answer-directly-with-read-tools",
     });
     supervisorActive = true;
     let result = await agent.invoke(
@@ -5060,7 +5099,9 @@ async function runResearchAgentWithBindings(
         messages: [
           {
             role: "user",
-            content: `${input.request.question}\n\nBound scope: Jira projects ${input.request.scope.jiraProjectKeys.join(", ")}; Confluence spaces ${input.request.scope.confluenceSpaceKeys.join(", ")}. Run this as a workflow.`,
+            content: isDynamic
+              ? `${input.request.question}\n\nBound scope: Jira projects ${input.request.scope.jiraProjectKeys.join(", ")}; Confluence spaces ${input.request.scope.confluenceSpaceKeys.join(", ")}. Run this as a workflow.`
+              : `${input.request.question}\n\nBound scope: Jira projects ${input.request.scope.jiraProjectKeys.join(", ")}; Confluence spaces ${input.request.scope.confluenceSpaceKeys.join(", ")}. Answer directly. Use only the read-only tools needed for this question. Read at least one relevant item in detail before making content claims; if no item can be read in detail, return a concise limitation instead of a report-like answer.`,
           },
         ],
       },
@@ -5122,9 +5163,11 @@ async function runResearchAgentWithBindings(
     }
     emitEvent({
       kind: "decision",
-      decisionId: "central-supervisor-run",
+      decisionId: isDynamic ? "central-supervisor-run" : "direct-chat-agent-run",
       status: "completed",
-      reasonCode: "workflow-returned-for-validation",
+      reasonCode: isDynamic
+        ? "workflow-returned-for-validation"
+        : "direct-answer-returned-for-validation",
     });
     supervisorActive = false;
     broker.signal.throwIfAborted();
@@ -5306,9 +5349,17 @@ async function runResearchAgentWithBindings(
     const returnedDraft = isDynamic
       ? parseDirectSupervisorDraftV1(result.messages, true)
       : result.structuredResponse;
+    const directDetailEvidence = isDynamic ? undefined : broker.detailEvidenceLedger();
+    const validatedDraftInput = directDetailEvidence
+      ? enforceDirectChatDetailBoundaryV1(
+          returnedDraft,
+          directDetailEvidence.length,
+          input.request.reportLanguage,
+        )
+      : returnedDraft;
     const synthesizerDraft = isDynamic
       ? parseResearchDynamicAgentDraftV1(returnedDraft)
-      : parseResearchAgentDraftV1(returnedDraft);
+      : parseResearchAgentDraftV1(validatedDraftInput);
     if (input.durableSession) {
       await persistSessionArtifact(
         projectResearchReportDraftArtifactV1({
@@ -5380,7 +5431,7 @@ async function runResearchAgentWithBindings(
             checkedAt: new Date(completedAtMs).toISOString(),
           })
         : finalizeResearchAgentDraftV1({
-            draft: returnedDraft,
+            draft: validatedDraftInput,
             request: input.request,
             sources: broker.sourceLedger(),
             detailEvidence: broker.detailEvidenceLedger(),

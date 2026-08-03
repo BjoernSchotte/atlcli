@@ -163,13 +163,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       });
     },
     runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
-    runResearch: async (runId, sessionId, turnId, key, request, policy) => {
+    runResearch: async (runId, sessionId, turnId, key, mode, request, policy) => {
       const apiKey = normalizeAnthropicApiKey(key);
       return researchHost.run({
         runId,
         sessionId,
         turnId,
         apiKey,
+        mode,
         request,
         policy,
         onProgress: (progress) => {

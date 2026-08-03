@@ -21,6 +21,7 @@ import type { ComponentType } from "react";
 import type { MessageKey } from "../i18n/messages.js";
 import type { AppPorts, HostCapability } from "../ports/index.js";
 import type { PanelState } from "../panel-state.js";
+import type { AppWorkspace } from "../ports/settings.js";
 
 /** Props every screen component receives. */
 export interface ScreenProps {
@@ -76,6 +77,8 @@ export interface ScreenDefinition {
   order?: number;
   /** Placement in a scalable product shell. Defaults to the area's primary nav. */
   navigation?: "primary" | "utility" | "hidden";
+  /** Primary workspace that owns this screen. Utility screens remain global. */
+  workspace?: AppWorkspace;
 }
 
 /** What the shell knows about the world when it resolves the registry. */

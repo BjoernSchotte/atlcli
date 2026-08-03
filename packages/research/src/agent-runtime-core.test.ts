@@ -20,10 +20,12 @@ import {
   createResearchScopeDiscoveriesPtcTool,
   createResearchScopeDiscoveryDispositionsPtcTool,
   acceptedSourceIdsForRetrievalAssessmentV1,
+  enforceDirectChatDetailBoundaryV1,
   hostDetailCoverageLimitationsV1,
   hostSearchCoverageLimitationsV1,
   hostSearchFreshnessLimitationsV1,
   rehydrateResearchCheckpointRunInputV1,
+  validatedResearchGraphRequiredV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
   type ResearchAgentRuntimeBindings,
 } from "./agent-runtime-core.js";
@@ -56,6 +58,38 @@ const draftTool = tool(async () => "unused", {
   name: "AtlcliResearchAgentDraftV1",
   description: "Synthetic structured response.",
   schema: z.object({ title: z.string() }),
+});
+
+test("replaces a direct chat draft when no source was read in detail", () => {
+  const unsafeSearchOnlyDraft = {
+    title: "Search-only answer",
+    executiveSummary: "Three candidates appear to say something important.",
+    findings: [{
+      classification: "fact",
+      summary: "Unsupported claim.",
+      sourceIds: ["wiki:1001"],
+    }],
+    relationships: [],
+    limitations: ["0 of 3 candidates were read."],
+  };
+  expect(enforceDirectChatDetailBoundaryV1(unsafeSearchOnlyDraft, 0, "de")).toEqual({
+    title: "Quelle konnte nicht vollständig abgerufen werden",
+    executiveSummary: "Ohne vollständig abgerufene Quelle wird keine inhaltliche Antwort erzeugt.",
+    findings: [],
+    relationships: [],
+    limitations: [
+      "Ich konnte keinen relevanten Jira- oder Confluence-Inhalt vollständig abrufen. Deshalb gebe ich keine inhaltliche Antwort ohne Beleg.",
+    ],
+  });
+  expect(enforceDirectChatDetailBoundaryV1(unsafeSearchOnlyDraft, 1, "de"))
+    .toBe(unsafeSearchOnlyDraft);
+});
+
+test("permits only explicitly selected direct chat to run without a production graph", () => {
+  expect(validatedResearchGraphRequiredV1({ options: { mode: "chat" } })).toBe(false);
+  expect(validatedResearchGraphRequiredV1({ options: { mode: "research" } })).toBe(true);
+  expect(validatedResearchGraphRequiredV1({})).toBe(true);
+  expect(validatedResearchGraphRequiredV1({ model: fakeModel() })).toBe(false);
 });
 
 test("projects a body-free novelty baseline from accepted V1 and V2 packets", () => {

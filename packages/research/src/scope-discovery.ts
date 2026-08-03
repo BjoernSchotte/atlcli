@@ -524,6 +524,49 @@ export function createResearchKeyScopeSeedV1(input: {
   };
 }
 
+/** Build a deterministic exact-entity seed for the page or issue a host is showing. */
+export function createResearchEntityScopeSeedV1(input: {
+  tenantOrigin: string;
+  product: "jira" | "confluence";
+  entityKind: "issue" | "page";
+  key: string;
+  name: string;
+  source: ResearchScopeSourceV1;
+  authority: "approved" | "locked";
+}): ResearchScopeSeedV1 {
+  const expectedKind = input.product === "jira" ? "issue" : "page";
+  if (input.entityKind !== expectedKind) {
+    invalidMention("Research entity scope product and kind do not match.");
+  }
+  const key = input.product === "jira" ? input.key.trim().toUpperCase() : input.key.trim();
+  if (
+    (input.product === "jira" && !/^[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}$/.test(key)) ||
+    (input.product === "confluence" && !/^[1-9][0-9]{0,127}$/.test(key))
+  ) {
+    invalidMention("Research entity scope key is invalid.");
+  }
+  const name = input.name.trim();
+  if (name.length === 0 || name.length > 255) {
+    invalidMention("Research entity scope name is invalid.");
+  }
+  const stableRef = `${input.product}-${input.entityKind}-${key}`;
+  return {
+    binding: {
+      schema: RESEARCH_SCOPE_BINDING_SCHEMA_V1,
+      id: `scope-binding:${input.source}:${stableRef}`,
+      tenantOrigin: input.tenantOrigin,
+      product: input.product,
+      entityKind: input.entityKind,
+      entityRef: `research-scope-entity:${stableRef}`,
+      key,
+      name,
+      source: input.source,
+      authority: input.authority,
+    },
+    precedence: scopeSourcePrecedence(input.source),
+  };
+}
+
 export function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[] {
   const selected = new Map<string, ResearchScopeSeedV1[]>();
   for (const seed of seeds) {

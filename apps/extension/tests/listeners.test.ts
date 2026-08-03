@@ -382,14 +382,15 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         sessionId: "research-session:run-1",
         turnId: "research-turn:run-1",
         apiKey: "sk-ant-test-listener",
+        mode: "chat",
         request,
         policy,
       },
       cap.sendResponse,
       {
         ...okOffscreenDeps,
-        runResearch: async (runId, sessionId, turnId, apiKey, receivedRequest, receivedPolicy) => {
-          received.push(runId, sessionId, turnId, apiKey, receivedRequest, receivedPolicy);
+        runResearch: async (runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy) => {
+          received.push(runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy);
           return report;
         },
       },
@@ -400,6 +401,7 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       "research-session:run-1",
       "research-turn:run-1",
       "sk-ant-test-listener",
+      "chat",
       request,
       policy,
     ]);

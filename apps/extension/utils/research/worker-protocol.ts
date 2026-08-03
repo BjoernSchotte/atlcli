@@ -14,6 +14,7 @@ export type ResearchWorkerRequestV1 =
       sessionId: string;
       turnId: string;
       apiKey: string;
+      mode?: "chat" | "research";
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
       resume?: false;

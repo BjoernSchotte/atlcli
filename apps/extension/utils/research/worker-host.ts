@@ -37,6 +37,7 @@ export class ResearchAgentWorkerHost {
     sessionId: string;
     turnId: string;
     apiKey: string;
+    mode?: "chat" | "research";
     request?: ResearchRequestV1;
     policy?: ResearchOneShotPolicyV1;
     resume?: true;
@@ -94,6 +95,7 @@ export class ResearchAgentWorkerHost {
         sessionId: input.sessionId,
         turnId: input.turnId,
         apiKey: input.apiKey,
+        mode: input.mode ?? "research",
         request: input.request,
         ...(input.policy ? { policy: input.policy } : {}),
       });

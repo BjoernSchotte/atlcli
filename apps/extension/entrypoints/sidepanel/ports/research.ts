@@ -838,6 +838,7 @@ export function chromeResearchPort(): ResearchPort {
           sessionId,
           turnId,
           windowId: window.id,
+          mode: options?.mode ?? "research",
           request,
           policy,
         })) as

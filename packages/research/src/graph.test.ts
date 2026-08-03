@@ -162,6 +162,29 @@ describe("dynamic research graph composition", () => {
     expect(bounded.clarificationQuestions).toEqual([]);
   });
 
+  test("does not interrupt a lookup chat for a research reporting window", () => {
+    const chatBrief = createStandardResearchBriefV1(
+      "Give me a summary of the current page.",
+      {
+        scope: {
+          siteOrigin: "https://example.atlassian.net",
+          jiraProjectKeys: [],
+          confluenceSpaceKeys: ["DOCS"],
+        },
+        policy: {
+          schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+          requestedEffort: "lookup",
+          requestedPlanApproval: "automatic",
+          scopeExpansionMode: "ask",
+          requestedReconciliation: "off",
+        },
+      },
+    );
+
+    expect(chatBrief.clarificationQuestions).toEqual([]);
+    expect(() => composeResearchGraphV1(chatBrief)).not.toThrow();
+  });
+
   test("binds productive graph budgets and scope to the normalized host request", () => {
     const graph = composeStandardResearchGraphV1(
       "Which Confluence pages are related to Jira work items?",
