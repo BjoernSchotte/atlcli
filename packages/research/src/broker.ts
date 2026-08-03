@@ -106,6 +106,18 @@ export interface ResearchDetailEvidenceV1 {
   evidenceId?: string;
 }
 
+/** Body-free outcome of host-side freshness checks before report finalization. */
+export interface ResearchEvidenceRevalidationOutcomeV1 {
+  /** Retained records inspected for possible reuse. */
+  considered: number;
+  /** Records still inside the configured freshness interval. */
+  fresh: number;
+  /** Older records successfully re-read through the scoped provider. */
+  revalidated: number;
+  /** Records whose dependent claims were excluded because revalidation failed. */
+  invalidated: number;
+}
+
 interface BrokerOptions {
   createCursorId?: () => string;
   createEntityId?: () => string;
@@ -341,6 +353,96 @@ export class ResearchCapabilityBroker {
   }
 
   /**
+   * Re-read retained evidence that would otherwise outlive the configured
+   * freshness interval. This is host-only: it uses the original approved
+   * provider/scope path, never creates a PTC capability, and never returns a
+   * source body. A failed revalidation invalidates dependent claims so the
+   * deterministic report finalizer excludes them rather than treating an old
+   * body as current.
+   */
+  async revalidateRetainedEvidence(input: {
+    evidenceIds: readonly string[];
+    checkedAt: string;
+  }): Promise<ResearchEvidenceRevalidationOutcomeV1> {
+    if (!this.#evidence?.claimLedger) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Retained evidence revalidation requires a durable evidence and claim store.",
+      );
+    }
+    const checkedAtMs = Date.parse(input.checkedAt);
+    if (!Number.isFinite(checkedAtMs)) {
+      throw new ResearchContractError("invalid-request", "Evidence revalidation time is invalid.");
+    }
+    const evidenceIds = [...new Set(input.evidenceIds)].sort();
+    const outcome: ResearchEvidenceRevalidationOutcomeV1 = {
+      considered: 0,
+      fresh: 0,
+      revalidated: 0,
+      invalidated: 0,
+    };
+    for (const evidenceId of evidenceIds) {
+      const retained = await this.#evidence.store.get(evidenceId);
+      if (!retained) {
+        await this.#evidence.claimLedger.invalidateByEvidenceIds({
+          evidenceIds: [evidenceId],
+          at: input.checkedAt,
+          reason: "evidence_missing",
+        });
+        outcome.invalidated += 1;
+        continue;
+      }
+      outcome.considered += 1;
+      const capturedAtMs = Date.parse(retained.version.capturedAt);
+      if (checkedAtMs - capturedAtMs <= this.#request.limits.maxEvidenceAgeMs) {
+        outcome.fresh += 1;
+        continue;
+      }
+
+      try {
+        await this.#gate.run(this.signal, async () => {
+          this.budget.beginDetail(retained.identity.product);
+          if (retained.identity.product === "jira") {
+            const issueKey = retained.identity.entityId;
+            const detail = await this.#providers.jira.getIssue({ issueKey, signal: this.signal });
+            if (detail.issueKey !== issueKey) {
+              throw new ResearchContractError("provider-error", "Jira revalidation returned a different issue.");
+            }
+            const source = this.#jiraSource(detail);
+            if (source.id !== retained.source.id) {
+              throw new ResearchContractError("provider-error", "Jira revalidation source identity changed.");
+            }
+            await this.#recordDetailEvidence(source, detail.content, retained.retrieval);
+            return;
+          }
+
+          const contentId = retained.identity.entityId;
+          const detail = await this.#providers.wiki.getPage({ contentId, signal: this.signal });
+          if (detail.contentId !== contentId) {
+            throw new ResearchContractError("provider-error", "Confluence revalidation returned a different page.");
+          }
+          const source = this.#wikiSource(detail);
+          if (source.id !== retained.source.id) {
+            throw new ResearchContractError("provider-error", "Confluence revalidation source identity changed.");
+          }
+          await this.#recordDetailEvidence(source, detail.content, retained.retrieval);
+        });
+        outcome.revalidated += 1;
+      } catch (error) {
+        await this.#evidence.claimLedger.invalidateByEvidenceIds({
+          evidenceIds: [retained.id],
+          at: input.checkedAt,
+          reason: error instanceof ResearchContractError && error.code === "access-denied"
+            ? "scope_revoked"
+            : "provider_unavailable",
+        });
+        outcome.invalidated += 1;
+      }
+    }
+    return outcome;
+  }
+
+  /**
    * Host-only signal for the next retrieval wave. It contains no source body,
    * title, query, URL, or opaque entity ref, so callers can persist or stream
    * the decision without turning it into an additional data-access surface.
@@ -390,7 +492,7 @@ export class ResearchCapabilityBroker {
   async #recordDetailEvidence(
     source: ResearchSourceReferenceV1,
     content: BoundedContentProjectionV1,
-    retrieval: ResearchEvidenceRetrievalV1,
+    retrieval: ResearchEvidenceRetrievalV1 | undefined,
   ): Promise<void> {
     let evidenceId: string | undefined;
     if (this.#evidence) {
@@ -427,7 +529,7 @@ export class ResearchCapabilityBroker {
         ...content,
         linkTargets: [...content.linkTargets],
       },
-      retrieval: { ...retrieval },
+      ...(retrieval ? { retrieval: { ...retrieval } } : {}),
       ...(evidenceId === undefined ? {} : { evidenceId }),
     });
     this.#successfulDetailReads.push({ product: source.product, sourceId: source.id });

@@ -179,6 +179,7 @@ describe("issue-138 research request contract", () => {
         maxModelInputTokens: 1,
         maxModelOutputTokens: 999_999,
         maxReportChars: 1,
+        maxEvidenceAgeMs: 1,
         maxRunMs: Number.MAX_SAFE_INTEGER,
       })
     ).toEqual({
@@ -202,6 +203,7 @@ describe("issue-138 research request contract", () => {
       maxModelInputTokens: 1_000,
       maxModelOutputTokens: 32_000,
       maxReportChars: 1_000,
+      maxEvidenceAgeMs: 60_000,
       maxRunMs: 600_000,
     });
   });

@@ -169,6 +169,122 @@ async function finalize(input: Awaited<ReturnType<typeof seedCurrentV2Support>>)
 }
 
 describe("V2 report evidence invalidation", () => {
+  test("revalidates retained evidence that exceeded the configured freshness interval without a model-visible tool call", async () => {
+    const fixture = await seedCurrentV2Support();
+    let providerReads = 0;
+    const broker = new ResearchCapabilityBroker(REQUEST, {
+      jira: {
+        async searchPage() { throw new Error("Freshness revalidation must not search Jira."); },
+        async getIssue() {
+          providerReads += 1;
+          return {
+            issueKey: "ATLCLI-42",
+            projectKey: "ATLCLI",
+            title: "Bounded currentness fixture",
+            updatedAt: "2026-08-02T17:00:00.000Z",
+            content: {
+              text: ORIGINAL_TEXT,
+              linkTargets: [],
+              truncated: false,
+              inputBytes: new TextEncoder().encode(ORIGINAL_TEXT).byteLength,
+            },
+          };
+        },
+      },
+      wiki: {
+        async searchPage() { throw new Error("The Jira-only fixture must not search Confluence."); },
+        async getPage() { throw new Error("The Jira-only fixture must not read Confluence."); },
+      },
+    }, {
+      evidence: {
+        store: fixture.evidence,
+        claimLedger: fixture.claims,
+        scopeBindings: [BINDING],
+        capturedAt: () => "2026-08-02T17:20:00.000Z",
+      },
+    });
+
+    await expect(broker.revalidateRetainedEvidence({
+      evidenceIds: [fixture.record.id],
+      checkedAt: "2026-08-02T17:20:00.000Z",
+    })).resolves.toEqual({ considered: 1, fresh: 0, revalidated: 1, invalidated: 0 });
+    expect(providerReads).toBe(1);
+    expect(broker.budget.counts()).toMatchObject({ ptcCalls: 0, httpCalls: 0 });
+    await expect(fixture.claims.refresh(fixture.claim.id, "2026-08-02T17:20:00.000Z"))
+      .resolves.toMatchObject({ freshness: "current", freshnessCheckedAt: "2026-08-02T17:20:00.000Z" });
+  });
+
+  test("excludes a claim when an expired retained source can no longer be re-read in scope", async () => {
+    const fixture = await seedCurrentV2Support();
+    const broker = new ResearchCapabilityBroker(REQUEST, {
+      jira: {
+        async searchPage() { throw new Error("Freshness revalidation must not search Jira."); },
+        async getIssue() {
+          return {
+            issueKey: "ATLCLI-42",
+            projectKey: "OTHER",
+            title: "Moved outside approved scope",
+            updatedAt: "2026-08-02T17:20:00.000Z",
+            content: {
+              text: UPDATED_TEXT,
+              linkTargets: [],
+              truncated: false,
+              inputBytes: new TextEncoder().encode(UPDATED_TEXT).byteLength,
+            },
+          };
+        },
+      },
+      wiki: {
+        async searchPage() { throw new Error("The Jira-only fixture must not search Confluence."); },
+        async getPage() { throw new Error("The Jira-only fixture must not read Confluence."); },
+      },
+    }, {
+      evidence: {
+        store: fixture.evidence,
+        claimLedger: fixture.claims,
+        scopeBindings: [BINDING],
+      },
+    });
+
+    await expect(broker.revalidateRetainedEvidence({
+      evidenceIds: [fixture.record.id],
+      checkedAt: "2026-08-02T17:20:00.000Z",
+    })).resolves.toEqual({ considered: 1, fresh: 0, revalidated: 0, invalidated: 1 });
+    await expect(fixture.claims.get(fixture.claim.id)).resolves.toMatchObject({
+      freshness: "invalidated",
+      invalidationReason: "scope_revoked",
+    });
+  });
+
+  test("excludes a claim when an expired retained source is no longer readable", async () => {
+    const fixture = await seedCurrentV2Support();
+    const broker = new ResearchCapabilityBroker(REQUEST, {
+      jira: {
+        async searchPage() { throw new Error("Freshness revalidation must not search Jira."); },
+        async getIssue() { throw new Error("Provider denied this retained detail read."); },
+      },
+      wiki: {
+        async searchPage() { throw new Error("The Jira-only fixture must not search Confluence."); },
+        async getPage() { throw new Error("The Jira-only fixture must not read Confluence."); },
+      },
+    }, {
+      evidence: {
+        store: fixture.evidence,
+        claimLedger: fixture.claims,
+        scopeBindings: [BINDING],
+      },
+    });
+
+    await expect(broker.revalidateRetainedEvidence({
+      evidenceIds: [fixture.record.id],
+      checkedAt: "2026-08-02T17:20:00.000Z",
+    })).resolves.toEqual({ considered: 1, fresh: 0, revalidated: 0, invalidated: 1 });
+    await expect(fixture.claims.get(fixture.claim.id)).resolves.toMatchObject({
+      freshness: "invalidated",
+      invalidationReason: "provider_unavailable",
+    });
+  });
+
   test("turns an updated provider detail into a deterministic excluded-claim limitation", async () => {
     const fixture = await seedCurrentV2Support();
     await expect(finalize(fixture)).resolves.toMatchObject({

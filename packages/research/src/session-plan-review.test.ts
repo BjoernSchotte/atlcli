@@ -107,7 +107,7 @@ describe("projectResearchSessionPlanReviewV1", () => {
           maxTotalModelInputTokens: 160_000,
           maxTotalModelOutputTokens: 64_000,
           maxModelCostMicros: 2_000_000,
-          maxRunMs: 120_000,
+          maxRunMs: 10 * 60_000,
         },
       },
     });

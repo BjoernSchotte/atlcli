@@ -59,6 +59,7 @@ function request(input: Partial<ResearchRequestV1> = {}): ResearchRequestV1 {
       maxModelInputTokens: 160_000,
       maxModelOutputTokens: 4_096,
       maxReportChars: 50_000,
+      maxEvidenceAgeMs: 15 * 60_000,
       maxRunMs: 600_000,
     },
     wikiProvider: "rest",

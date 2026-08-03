@@ -3685,9 +3685,21 @@ proposals before the resulting outline passes the same store validation.
       completed issue-138 reports.
 - [x] Generate Markdown solely from validated V2 claims, coverage, limitations,
       and source references.
-- [ ] Revalidate evidence before reuse after the configured freshness interval.
-- [ ] Invalidate claims transitively when evidence changes, disappears, or is
+- [x] Revalidate evidence before reuse after the configured freshness interval.
+- [x] Invalidate claims transitively when evidence changes, disappears, or is
       no longer readable or its authorizing scope binding is revoked.
+
+T5 retained-evidence revalidation checkpoint (2026-08-03):
+`maxEvidenceAgeMs` defaults to 15 minutes and is normalized as a bounded
+request limit. Before a durable V2 report reuses accepted claims, the host
+re-reads only their expired retained evidence through the original scoped
+provider path; this adds no model call and exposes neither a PTC tool nor a
+source body. Revalidation consumes the existing provider/detail budget. A
+changed source invalidates its prior evidence before the new version publishes;
+a missing, inaccessible, or out-of-scope source invalidates every dependent
+claim, which the finalizer excludes with a limitation. Focused tests prove an
+unchanged reread, changed/deleted detail, unavailable provider read, and scope
+revocation.
 
 CLI:
 

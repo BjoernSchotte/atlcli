@@ -185,6 +185,11 @@ export interface ResearchLimitsV1 {
   maxModelInputTokens: number;
   maxModelOutputTokens: number;
   maxReportChars: number;
+  /**
+   * Maximum age of retained evidence before a resumed run must re-read it
+   * through the host provider before using a dependent claim in a report.
+   */
+  maxEvidenceAgeMs: number;
   maxRunMs: number;
 }
 
@@ -212,6 +217,9 @@ export const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1> = {
   maxModelInputTokens: 80_000,
   maxModelOutputTokens: 8_000,
   maxReportChars: 24_000,
+  // A normal ten-minute run does not re-fetch its own source bodies. A later
+  // continuation cannot silently treat an old retained body as current.
+  maxEvidenceAgeMs: 15 * 60_000,
   // CLI and browser use the same durable default. A two-minute browser
   // deadline cut off a normal bounded deep-research workflow before its
   // second retrieval/reconciliation wave could complete.
@@ -794,6 +802,7 @@ const LIMIT_BOUNDS: {
   maxModelInputTokens: [1_000, 200_000],
   maxModelOutputTokens: [1_000, 32_000],
   maxReportChars: [1_000, 100_000],
+  maxEvidenceAgeMs: [60_000, 7 * 24 * 60 * 60_000],
   maxRunMs: [5_000, 10 * 60_000],
 };
 

@@ -62,6 +62,7 @@ const request = normalizeResearchRequestV1({
     maxModelInputTokens: 20_000,
     maxModelOutputTokens: 4_000,
     maxReportChars: 20_000,
+    maxEvidenceAgeMs: 15 * 60_000,
     maxRunMs: 60_000,
   },
   wikiProvider: "rest",

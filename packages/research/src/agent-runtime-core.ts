@@ -4041,8 +4041,7 @@ async function runResearchAgentWithBindings(
     });
     supervisorActive = false;
     broker.signal.throwIfAborted();
-    const completedAtMs = now();
-    const counts = broker.budget.counts();
+    const initialCounts = broker.budget.counts();
     const selectedProducts = isDynamic ? selectedSearchProductsV1(acceptedGraph) : undefined;
     const completion = broker.completionStatus(selectedProducts);
     const assessedProducts = selectedProducts && selectedProducts.length > 0
@@ -4079,7 +4078,7 @@ async function runResearchAgentWithBindings(
     emitProgress({
       phase: "rendering",
       message: "Validating evidence and rendering Markdown.",
-      completedCalls: counts.ptcCalls,
+      completedCalls: initialCounts.ptcCalls,
       maxCalls: input.request.limits.maxPtcCalls,
     });
     emitEvent({
@@ -4088,6 +4087,44 @@ async function runResearchAgentWithBindings(
       status: "started",
       reasonCode: "validate-before-render",
     });
+    const acceptedV2Bodies = [...acceptedPacketsByTaskId.values()]
+      .map((packet) => isResearchPacketBodyV2(packet.body) ? packet.body : undefined)
+      .filter((body): body is ResearchPacketBodyV2 => body !== undefined);
+    const v2ClaimIds = [...new Set(acceptedV2Bodies.flatMap((body) => [
+      ...body.claims.map((claim) => claim.claimId),
+      ...body.referencedClaimIds,
+    ]))];
+    const revalidationLimitations: string[] = [];
+    if (durableEvidence && durableClaims && v2ClaimIds.length > 0) {
+      const claims = await Promise.all(v2ClaimIds.map((claimId) => durableClaims.get(claimId)));
+      const evidenceIds = [...new Set(claims.flatMap((claim) => claim?.evidenceIds ?? []))].sort();
+      if (evidenceIds.length > 0) {
+        emitEvent({
+          kind: "decision",
+          decisionId: "retained-evidence-revalidation",
+          status: "started",
+          reasonCode: "check-before-reuse",
+        });
+        const outcome = await broker.revalidateRetainedEvidence({
+          evidenceIds,
+          checkedAt: new Date(now()).toISOString(),
+        });
+        emitEvent({
+          kind: "decision",
+          decisionId: "retained-evidence-revalidation",
+          status: "completed",
+          reasonCode: outcome.invalidated === 0 ? "all-required-evidence-current" : "some-evidence-unavailable",
+        });
+        if (outcome.invalidated > 0) {
+          const intervalMinutes = Math.round(input.request.limits.maxEvidenceAgeMs / 60_000);
+          revalidationLimitations.push(
+            `${outcome.invalidated} retained source record(s) exceeded the ${intervalMinutes}-minute freshness interval and could not be revalidated; dependent claims were excluded.`,
+          );
+        }
+      }
+    }
+    const completedAtMs = now();
+    const counts = broker.budget.counts();
     const run = {
       model: RESEARCH_MODEL_ID,
       wikiProvider: input.request.wikiProvider,
@@ -4099,13 +4136,6 @@ async function runResearchAgentWithBindings(
       ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
       warnings: completion.warnings,
     };
-    const acceptedV2Bodies = [...acceptedPacketsByTaskId.values()]
-      .map((packet) => isResearchPacketBodyV2(packet.body) ? packet.body : undefined)
-      .filter((body): body is ResearchPacketBodyV2 => body !== undefined);
-    const v2ClaimIds = [...new Set(acceptedV2Bodies.flatMap((body) => [
-      ...body.claims.map((claim) => claim.claimId),
-      ...body.referencedClaimIds,
-    ]))];
     let outline: ResearchOutlineV1 | undefined;
     if (durableOutline && durableEvidence && durableClaims && input.brief && acceptedV2Bodies.length > 0) {
       const brief = input.brief;
@@ -4192,6 +4222,7 @@ async function runResearchAgentWithBindings(
             ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),
             ...hostSearchCoverageLimitationsV1(acceptedGraph, run),
             ...hostSearchFreshnessLimitationsV1(acceptedGraph),
+            ...revalidationLimitations,
           ],
           run,
           checkedAt: new Date(completedAtMs).toISOString(),
