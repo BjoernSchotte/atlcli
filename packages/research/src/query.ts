@@ -105,6 +105,7 @@ export function buildResearchCql(
     clauses.push(`label = "${escapeResearchCqlLiteral(label)}"`);
   }
   if (query.ancestorId) clauses.push(`ancestor = ${query.ancestorId}`);
+  if (query.parentId) clauses.push(`parent = ${query.parentId}`);
   if (query.text) {
     const phrase = `\\"${escapeResearchCqlLiteral(query.text)}\\"`;
     clauses.push(`(title ~ "${phrase}" OR text ~ "${phrase}")`);

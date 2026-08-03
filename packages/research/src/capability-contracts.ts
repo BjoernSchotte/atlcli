@@ -51,6 +51,13 @@ export interface ResearchSearchQueryV1 {
    * meaningful for Jira and is rejected for the Jira capability.
    */
   ancestorId?: string;
+  /**
+   * A Confluence page ID whose direct children may be searched. It is mutually
+   * exclusive with ancestorId so the model cannot create ambiguous traversal
+   * semantics; the host keeps the original space and time bounds in either
+   * case.
+   */
+  parentId?: string;
 }
 
 export type ResearchSearchInputV1 =
@@ -188,10 +195,10 @@ function decodeLabels(value: unknown): string[] | undefined {
   return labels.sort((left, right) => left.localeCompare(right, "en-US"));
 }
 
-function decodeAncestorId(value: unknown): string | undefined {
+function decodeConfluencePageId(value: unknown, label: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !/^[1-9][0-9]{0,127}$/.test(value)) {
-    invalid("Confluence ancestor ID is invalid.");
+    invalid(`Confluence ${label} is invalid.`);
   }
   return value;
 }
@@ -220,14 +227,20 @@ export function decodeResearchSearchInputV1(
   assertRecord(value.query, `${tool} query`);
   assertExactKeys(
     value.query,
-    tool === "jira.issue.search" ? ["text", "labels"] : ["text", "labels", "ancestorId"],
+    tool === "jira.issue.search" ? ["text", "labels"] : ["text", "labels", "ancestorId", "parentId"],
     `${tool} query`,
   );
   const text = decodeText(value.query.text);
   const labels = decodeLabels(value.query.labels);
   const ancestorId = tool === "wiki.search"
-    ? decodeAncestorId(value.query.ancestorId)
+    ? decodeConfluencePageId(value.query.ancestorId, "ancestor ID")
     : undefined;
+  const parentId = tool === "wiki.search"
+    ? decodeConfluencePageId(value.query.parentId, "parent ID")
+    : undefined;
+  if (ancestorId && parentId) {
+    invalid("Confluence ancestor and parent filters are mutually exclusive.");
+  }
   let pageSize: number | undefined;
   if (value.pageSize !== undefined) {
     if (
@@ -245,6 +258,7 @@ export function decodeResearchSearchInputV1(
       ...(text ? { text } : {}),
       ...(labels ? { labels } : {}),
       ...(ancestorId ? { ancestorId } : {}),
+      ...(parentId ? { parentId } : {}),
     },
     ...(pageSize !== undefined ? { pageSize } : {}),
   };

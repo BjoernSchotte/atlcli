@@ -3802,13 +3802,14 @@ Shared:
 T6 typed-intent checkpoint (2026-08-03): the read-only search capabilities
 accept only closed model-facing query objects: bounded text, up to eight exact
 conjunctive labels for both products, and a positive numeric `ancestorId` for
-Confluence only. The host sorts and fingerprints those fields, restores them
+Confluence descendants or a mutually exclusive positive numeric `parentId` for
+direct children. The host sorts and fingerprints those fields, restores them
 only from its opaque cursor vault, and compiles them alongside the existing
-tenant, project/space, and time bounds. Raw JQL/CQL and Jira `ancestorId` are
-rejected before any provider call; browser-facing tools expose the same simple
-arguments and never a client or transport object. Focused broker/QuickJS and
-browser-boundary tests, complete type checks, privacy, and browser-build gates
-passed (2026-08-03).
+tenant, project/space, and time bounds. Raw JQL/CQL, Jira hierarchy keys, and
+ambiguous ancestor-plus-parent requests are rejected before any provider call;
+browser-facing tools expose the same simple arguments and never a client or
+transport object. Focused broker/QuickJS and browser-boundary tests, complete
+type checks, privacy, and browser-build gates passed (2026-08-03).
 
 T6 detail-relation checkpoint (2026-08-03): one already-ranked detail read
 now contributes its own bounded relation metadata: Jira labels plus

@@ -203,7 +203,7 @@ describe("research query builders", () => {
     );
   });
 
-  it("compiles closed typed labels and a Confluence ancestor into the already-clamped host query", () => {
+  it("compiles closed typed labels and Confluence hierarchy filters into the already-clamped host query", () => {
     const scope = request().scope;
     expect(buildResearchJql(scope, {
       labels: ["release", "agentic-ai"],
@@ -215,6 +215,9 @@ describe("research query builders", () => {
       ancestorId: "1001",
     })).toBe(
       'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND label = "agentic-ai" AND label = "release" AND ancestor = 1001 ORDER BY lastmodified DESC',
+    );
+    expect(buildResearchCql(scope, { parentId: "1001" })).toBe(
+      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND parent = 1001 ORDER BY lastmodified DESC',
     );
   });
 
@@ -897,6 +900,12 @@ describe("bounded research capability broker", () => {
         query: { ancestorId: "1001 OR space = OTHER" },
       }),
     ).rejects.toThrow("ancestor ID");
+    await expect(
+      broker.invoke("wiki.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+        query: { ancestorId: "1001", parentId: "1001" },
+      }),
+    ).rejects.toThrow("mutually exclusive");
 
     const result = (await broker.invoke("wiki.search", {
       schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,

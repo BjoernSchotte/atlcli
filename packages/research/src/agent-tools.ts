@@ -17,7 +17,10 @@ const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") =>
             text: z.string().max(500).optional(),
             labels: z.array(z.string().max(255)).min(1).max(8).optional(),
             ...(toolId === "wiki.search"
-              ? { ancestorId: z.string().max(128).optional() }
+              ? {
+                  ancestorId: z.string().max(128).optional(),
+                  parentId: z.string().max(128).optional(),
+                }
               : {}),
           })
           .strict(),
@@ -238,7 +241,7 @@ export function createResearchPtcTools(
     tool(async (input) => invoke("wiki.search", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["wiki.search"],
         description:
-          "Search Confluence pages inside the host-bound space and date scope. query supports text, exact conjunctive labels, and one numeric ancestorId; it never accepts raw CQL. Parse the returned JSON string. Continue only with page.nextCursor.",
+          "Search Confluence pages inside the host-bound space and date scope. query supports text, exact conjunctive labels, one numeric ancestorId (descendants), or one numeric parentId (direct children); it never accepts raw CQL. Parse the returned JSON string. Continue only with page.nextCursor.",
         schema: searchInputSchema("wiki.search"),
       }),
     tool(async (input) => invoke("wiki.page.get", input), {
