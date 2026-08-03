@@ -32,7 +32,7 @@ import {
   projectResearchReconciliationInputV1,
   ResearchPostCommitResultError,
   ResearchSessionDispatchJournalV1,
-  researchCheckpointConfigV1,
+  researchSupervisorThreadIdForSessionV1,
   type ResearchAcceptedPacketV1,
   type ResearchOneShotEventV1,
 } from "@atlcli/research";
@@ -70,6 +70,7 @@ import {
   type ResearchReadyFrontierControllerV1,
 } from "@atlcli/research/browser/agent";
 import {
+  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
   normalizeResearchRequestV1,
@@ -296,6 +297,7 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
 
   invokes = 0;
   fatal = undefined;
+  const uncommittedOutcomes: Array<{ taskId: string; role: string; reason: string }> = [];
   const alwaysFailingTask = tool(async () => {
     invokes += 1;
     throw new Error("Failed to parse structured output for response schema.");
@@ -319,7 +321,16 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
         tools: [alwaysFailingTask],
       })) as never,
     },
-    { onFatal: (error) => { fatal = error; } },
+    {
+      onFatal: (error) => { fatal = error; },
+      onUncommittedTaskOutcome: (outcome) => {
+        uncommittedOutcomes.push({
+          taskId: outcome.taskId,
+          role: outcome.role,
+          reason: outcome.reason,
+        });
+      },
+    },
   );
   await expect(failing.tools![0]!.invoke({
     description: synthesisTask.description,
@@ -327,6 +338,14 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
   })).rejects.toThrow("structured output");
   expect(invokes).toBe(2);
   expect(fatal).toBeInstanceOf(Error);
+  expect(uncommittedOutcomes).toEqual([{
+    taskId: researchTaskIdForNodeV1(
+      graph,
+      graph.nodes.find((node) => node.id === "research-node:synthesizer")!,
+    ),
+    role: "synthesizer",
+    reason: "upstream-error",
+  }]);
 });
 
 test("repairs one researcher packet schema failure without reopening source access", async () => {
@@ -906,7 +925,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     let modelCalls = 0;
     const proposed = composeStandardResearchGraphV1(
       "Perform exhaustive contradiction analysis across Jira and Confluence.",
-      { scope: request.scope, limits: request.limits },
+      {
+        scope: request.scope,
+        limits: request.limits,
+        policy: {
+          ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+          requestedEffort: "deep",
+          requestedPlanApproval: "required",
+        },
+      },
     );
     const guardedModel = {
       invoke: async () => {
@@ -1223,22 +1250,22 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "synthesizer",
     ]);
     expect(specs.every((spec) => spec.tools?.length === 0)).toBe(true);
-    expect(specs[0]?.middleware).toHaveLength(2);
-    expect(specs[1]?.middleware).toHaveLength(2);
+    expect(specs[0]?.middleware).toHaveLength(3);
+    expect(specs[1]?.middleware).toHaveLength(3);
     expect(specs[2]?.middleware).toHaveLength(0);
     expect(specs[3]?.middleware).toHaveLength(0);
     expect(specs[4]?.middleware).toHaveLength(0);
-    expect(specs[5]?.middleware).toHaveLength(2);
+    expect(specs[5]?.middleware).toHaveLength(3);
     expect(specs[6]?.middleware).toHaveLength(0);
     expect(specs.every((spec) => !("responseFormat" in spec))).toBe(true);
-    expect(specs[0]?.systemPrompt).toContain("exactly two bounded stages");
-    expect(specs[0]?.systemPrompt).toContain("Inspect every returned candidate summary");
-    expect(specs[0]?.systemPrompt).toContain("Search summaries are screening evidence only");
+    expect(specs[0]?.systemPrompt).toContain("single host-generated bounded program");
+    expect(specs[0]?.systemPrompt).toContain("Do not call eval a second time");
+    expect(specs[0]?.systemPrompt).toContain("Never cite a search-only candidate");
     expect(specs[0]?.systemPrompt).toContain("tools.researchCandidateRank");
-    expect(specs[0]?.systemPrompt).toContain("first at most 5 entityRef values returned by that ranking");
+    expect(specs[0]?.systemPrompt).toContain("ranked.items.slice(0, 1)");
     expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
-    expect(specs[0]?.systemPrompt).toContain("<project-baseline>");
-    expect(specs[0]?.systemPrompt).toContain("at most 2 times total");
+    expect(specs[0]?.systemPrompt).toContain("query: {}");
+    expect(specs[0]?.systemPrompt).toContain("searchCalls < 2");
     expect(specs[0]?.systemPrompt).toContain(
       "both its Jira issue key and its Confluence content ID are non-empty identifiers",
     );
@@ -1269,11 +1296,11 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const jira = specs.find((spec) => spec.name === "focused-researcher-jira-research");
     const repair = specs.find((spec) => spec.name === "contradiction-verifier-reconciliation-repair");
 
-    expect(jira?.systemPrompt).toContain("at most 2 times total");
-    expect(jira?.systemPrompt).toContain("first at most 5 entityRef values returned by that ranking");
-    expect(repair?.systemPrompt).toContain("at most 2 search calls total");
+    expect(jira?.systemPrompt).toContain("searchCalls < 2");
+    expect(jira?.systemPrompt).toContain("ranked.items.slice(0, 1)");
+    expect(repair?.systemPrompt).toContain("at most 1 search calls total");
     expect(repair?.systemPrompt).toContain("at most 2 candidate-ranking calls total");
-    expect(repair?.systemPrompt).toContain("at most 4 detail calls total");
+    expect(repair?.systemPrompt).toContain("at most 1 detail calls total");
   });
 
   test("preserves successful named-page searches when a later bounded query fails", () => {
@@ -1294,7 +1321,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
     expect(focused?.systemPrompt).toContain("partial-title-query-set");
     expect(focused?.systemPrompt).toContain("catch { failures += 1; }");
-    expect(focused?.systemPrompt).toContain('["One", "Two", "Three", "Four"]');
+    expect(focused?.systemPrompt).toContain('["One", "Two"]');
     expect(focused?.systemPrompt).toContain("queryText: group.text");
     expect(focused?.systemPrompt).toContain("tools.researchCandidateRank");
     expect(focused?.systemPrompt).toContain("const entityRefs = [...new Set(result.items.map((item) => item.entityRef))]");
@@ -1347,10 +1374,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       const result = await session.eval(buildResearchAcquisitionProgram(wikiNode, question, 4), 5_000);
       expect(result.ok).toBe(true);
       const value = result.value as {
-        result: { items: Array<{ queryText: string }> };
+        candidates: Array<{ sourceId: string }>;
         details: unknown[];
       };
-      expect(value.result.items.map((item) => item.queryText)).toEqual(["One", "Two", "Three", "Four"]);
+      expect(value.candidates.map((item) => item.sourceId)).toEqual([
+        "wiki:One",
+        "wiki:Two",
+        "wiki:Three",
+        "wiki:Four",
+      ]);
       expect(detailRefs).toEqual([
         "opaque:One",
         "opaque:Two",
@@ -1424,7 +1456,10 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         Array.from({ length: 8 }, (_, index) => `opaque:${index + 1}`),
       );
       expect((result.value as { details: unknown[] }).details).toHaveLength(8);
-      expect((result.value as { result: { page: { complete: boolean; termination?: string } } }).result.page).toEqual({
+      expect((result.value as {
+        search: { candidateCount: number; complete: boolean; termination?: string };
+      }).search).toEqual({
+        candidateCount: 10,
         complete: false,
         termination: "local-search-cap",
       });
@@ -1452,7 +1487,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("Those returned entries, not the candidate catalog, are the only dispatch authority");
     expect(prompt).toContain("tasks deliberately excludes the final synthesizer");
     expect(prompt).toContain("Never include synthesizerTask in a generic wave loop");
-    expect(prompt).toContain("The only allowed envelope keys are schema, taskId, objective, and dependencyResults");
+    expect(prompt).toContain("The only allowed envelope keys are schema, taskId, and objective");
     expect(prompt).toContain("Execute every entry in returned tasks exactly once");
     expect(prompt).toContain("two focused-researcher nodes are never interchangeable");
     expect(prompt).toContain("atlcli.research-task-dispatch/v1");
@@ -1475,7 +1510,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("Console APIs are intentionally unavailable");
     expect(prompt).toContain("Never call console.log");
     expect(prompt).toContain("dispatch synthesizerTask exactly once as the final task");
-    expect(prompt).toContain("copy that object unchanged");
+    expect(prompt).toContain("injects the exact accepted compact dependency results");
     expect(prompt).toContain("Promise.then result-mapping callback only inside an awaited Promise.all pipeline");
     expect(prompt).toContain("Do not execute a fixed all-roles pipeline");
     expect(prompt).not.toContain("paste verbatim");
@@ -1888,7 +1923,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(traceEvents.filter((event) => event.kind === "budget").map(
       (event) => event.metric,
     )).toEqual(["tokens", "bytes", "duration_ms"]);
-    expect(dynamicModel.callCount).toBe(3);
+    expect(dynamicModel.callCount).toBe(2);
     expect(dynamicModel.calls[0]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Write exactly one typed final report draft"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(false);
@@ -2126,7 +2161,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       },
     });
     const events: ResearchOneShotEventV1[] = [];
-    await expect(runResearchAgent({
+    const scopeRun = runResearchAgent({
       model: dynamicModel,
       request,
       providers: {
@@ -2139,7 +2174,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       scopeCatalog: { broker: scopeCatalog, tenantOrigin: request.scope.siteOrigin },
       runId: "dynamic-scope-approval",
       options: { onEvent: (event) => events.push(event) },
-    })).rejects.toMatchObject({ code: "scope-approval-required" });
+    });
+    await expect(scopeRun).rejects.toMatchObject({ code: "scope-approval-required" });
 
     const session = await durableStore.read(graph.sessionId);
     const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
@@ -2221,8 +2257,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
           taskId: finalTask.taskId,
-          objective: finalTask.objective,
-          dependencyResults: finalTask.dependencyResults
+          objective: finalTask.objective
         }),
         subagentType: finalTask.subagentType,
         responseSchema: responseSchemas[finalTask.outputSchema]
@@ -2281,7 +2316,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         async resolveReference() { return undefined; },
       },
     });
-    await expect(runResearchAgent({
+    const scopeRun = runResearchAgent({
       model: dynamicModel,
       request,
       providers: {
@@ -2293,7 +2328,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
       scopeCatalog: { broker: scopeCatalog, tenantOrigin: request.scope.siteOrigin },
       runId: "deep-scope-approval",
-    })).rejects.toMatchObject({ code: "scope-approval-required" });
+    });
+    await expect(scopeRun).rejects.toMatchObject({ code: "scope-approval-required" });
 
     const session = await durableStore.read(graph.sessionId);
     const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
@@ -2375,8 +2411,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
           taskId: analysisTask.taskId,
-          objective: analysisTask.objective,
-          dependencyResults: analysisTask.dependencyResults
+          objective: analysisTask.objective
         }),
         subagentType: analysisTask.subagentType,
         responseSchema: responseSchemas[analysisTask.outputSchema]
@@ -2387,8 +2422,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
           taskId: finalTask.taskId,
-          objective: finalTask.objective,
-          dependencyResults: finalTask.dependencyResults
+          objective: finalTask.objective
         }),
         subagentType: finalTask.subagentType,
         responseSchema: responseSchemas[finalTask.outputSchema]
@@ -2435,7 +2469,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(6);
+    // The final evaluator result ends the fresh supervisor generation directly;
+    // the host does not spend a sixth model turn restating the typed draft.
+    expect(dynamicModel.callCount).toBe(5);
     expect(events.filter((event) => event.kind === "retrieval")).toEqual([
       expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),
     ]);
@@ -2561,8 +2597,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
           taskId: analysisTask.taskId,
-          objective: analysisTask.objective,
-          dependencyResults: analysisTask.dependencyResults
+          objective: analysisTask.objective
         }),
         subagentType: analysisTask.subagentType,
         responseSchema: responseSchemas[analysisTask.outputSchema]
@@ -2576,8 +2611,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         wave: 2,
         continuationId: "research-continuation:2.2"
       }));
-      if (continuation.action !== "stop" || continuation.reason !== "marginal_evidence") {
-        throw new Error("Expected a terminal marginal-evidence checkpoint.");
+      if (continuation.action !== "stop") {
+        throw new Error("Expected a host-derived terminal checkpoint.");
       }
       const responseSchemas = ${JSON.stringify(responseSchemas)};
       const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
@@ -2586,8 +2621,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
           taskId: finalTask.taskId,
-          objective: finalTask.objective,
-          dependencyResults: finalTask.dependencyResults
+          objective: finalTask.objective
         }),
         subagentType: finalTask.subagentType,
         responseSchema: responseSchemas[finalTask.outputSchema]
@@ -2651,7 +2685,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       options: { onEvent: (event) => events.push(event) },
     });
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(8);
+    // Every checkpoint starts a fresh evaluator; direct evaluator completion
+    // avoids a final parent restatement after the synthesizer task.
+    expect(dynamicModel.callCount).toBe(7);
     const coverageCall = dynamicModel.calls.find((call) => call.messages.some((message) =>
       message.text.includes("Host-validated coverage moderation context"),
     ));
@@ -2820,8 +2856,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
           taskId: finalTask.taskId,
-          objective: finalTask.objective,
-          dependencyResults: finalTask.dependencyResults
+          objective: finalTask.objective
         }),
         subagentType: finalTask.subagentType,
         responseSchema: responseSchemas[finalTask.outputSchema]
@@ -2850,7 +2885,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
     expect(report.title).toBe(draft.title);
     expect(report.run.counts.ptcCalls).toBe(1);
-    expect(resumedModel.callCount).toBe(3);
+    expect(resumedModel.callCount).toBe(2);
     const resumedTurn = (await store.read(graph.sessionId))!.turns.find((turn) =>
       turn.id === graph.turnId,
     )!;
@@ -2955,7 +2990,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(5);
+    expect(dynamicModel.callCount).toBe(4);
     expect(events.filter((event) => event.kind === "plan")).toEqual([
       expect.objectContaining({ status: "approved-envelope", nodeCount: 5 }),
       expect.objectContaining({
@@ -3024,16 +3059,14 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       researchGraph: graph,
       runId: "dynamic-second-supervisor-eval",
       options: { onEvent: (event) => decisions.push(event) },
-    })).rejects.toThrow("another QuickJS workflow");
+    })).resolves.toMatchObject({ title: draft.title });
 
-    expect(decisions).toContainEqual(expect.objectContaining({
-      kind: "decision",
+    // `returnDirect` closes the parent turn at the first valid evaluator
+    // result, so a queued second evaluator is never admitted or executed.
+    expect(decisions).not.toContainEqual(expect.objectContaining({
       decisionId: "central-supervisor-eval:a2",
-      status: "failed",
-      reasonCode: "multiple-eval-attempt",
-      errorCode: "eval-retry-after-success",
     }));
-    expect(dynamicModel.callCount).toBe(3);
+    expect(dynamicModel.callCount).toBe(2);
   });
 
   test("permits one supervisor code repair before any subagent starts", async () => {
@@ -3088,7 +3121,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       status: "completed",
       reasonCode: "pre-dispatch-eval-repaired",
     }));
-    expect(dynamicModel.callCount).toBe(4);
+    expect(dynamicModel.callCount).toBe(3);
   });
 
   test("authorizes at most one post-critique repair before the sole synthesizer", async () => {
@@ -3286,7 +3319,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(9);
+    expect(dynamicModel.callCount).toBe(8);
     const reconciliationCall = dynamicModel.calls.find((call) => call.messages.some((message) =>
       message.text.includes("Host-validated reconciliation input")
     ));
@@ -3376,8 +3409,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const durableWorkspace = await durableStore.workspace(graph.sessionId);
     expect(await durableWorkspace.list("/.atlcli/langgraph-checkpoints/v1"))
       .not.toHaveLength(0);
-    const recoveredCheckpoint = await new ResearchSessionWorkspaceCheckpointerV1(graph.sessionId, durableWorkspace)
-      .getTuple(researchCheckpointConfigV1({ sessionId: graph.sessionId }));
+    const recoveredCheckpoint = await new ResearchSessionWorkspaceCheckpointerV1(
+      graph.sessionId,
+      durableWorkspace,
+      { supervisorPhaseId: "initial" },
+    ).getTuple({
+      configurable: {
+        thread_id: researchSupervisorThreadIdForSessionV1(graph.sessionId, "initial"),
+      },
+    });
     expect(recoveredCheckpoint?.checkpoint.channel_values.messages).toBeArray();
     expect((await durableStore.events(graph.sessionId)).map((event) => event.kind)).toContain(
       "record_reconciliation",
@@ -3613,7 +3653,6 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
     });
     const researcher = graph.nodes.find((node) => node.roleId === "focused-researcher")!;
-    const planner = graph.nodes.find((node) => node.roleId === "outline-planner")!;
     const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer")!;
     const researcherTaskId = researchTaskIdForNodeV1(graph, researcher);
     const rawQuote = "The detail confirms the durable evidence-backed implementation fact.";
@@ -3659,31 +3698,18 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       });
     };
     const code = `
-      ${graphProposalPrelude(graph, [researcher.id, planner.id, synthesizer.id])}
+      ${graphProposalPrelude(graph, [researcher.id, synthesizer.id])}
       const acquired = await task({
         description: ${JSON.stringify(taskEnvelope(graph, researcher.id).description)},
         subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(researcher))},
         responseSchema: ${JSON.stringify(responseSchemaForResearchRole("focused-researcher", researcher.outputSchema))}
-      });
-      const planned = await task({
-        description: JSON.stringify({
-          schema: "atlcli.research-task-dispatch/v1",
-          taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, planner))},
-          objective: ${JSON.stringify(planner.objective)},
-          dependencyResults: [{ taskId: ${JSON.stringify(researcherTaskId)}, result: acquired }]
-        }),
-        subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(planner))},
-        responseSchema: ${JSON.stringify(responseSchemaForResearchRole("outline-planner", planner.outputSchema))}
       });
       const finalDraft = await task({
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
           taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, synthesizer))},
           objective: ${JSON.stringify(synthesizer.objective)},
-          dependencyResults: [
-            { taskId: ${JSON.stringify(researcherTaskId)}, result: acquired },
-            { taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, planner))}, result: planned }
-          ]
+          dependencyResults: [{ taskId: ${JSON.stringify(researcherTaskId)}, result: acquired }]
         }),
         subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizer))},
         responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
@@ -3696,17 +3722,6 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         code: buildResearchAcquisitionProgram(researcher, v2Request.question, 1),
       } }])
       .respondWithTools([{ name: "ResearchPacketModelBodyV2", args: packet }])
-      .respondWithTools([{ name: "ResearchPacketReferenceModelBodyV2", args: {
-        schema: "atlcli.research-packet-reference-model/v2",
-        claimIds: [],
-        contradictions: [],
-        outlineProposals: [],
-        gaps: [],
-        proposedFollowUps: [],
-        coverageLimits: ["The planner abstained from changing the deterministic outline."],
-        abstentionReason: "The one retained claim does not require a different report structure.",
-      } }])
-      .respond(selectValidatedClaim)
       .respond(selectValidatedClaim);
     const durableStore = new InMemoryResearchSessionStoreV1();
     const events: ResearchOneShotEventV1[] = [];
@@ -3769,10 +3784,11 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       claimIds: [report.claims[0]!.id],
       coverageTargetIds: ["coverage:primary-question"],
     })]);
-    const hostOutlineDecision = events.find((event) =>
+    // Lookup-only workflows do not allocate an outline-planning node. The
+    // host creates the deterministic fallback outline directly from claims.
+    expect(events.some((event) =>
       event.kind === "decision" && event.decisionId === "host-outline-proposal",
-    );
-    expect(hostOutlineDecision).toMatchObject({ status: "completed", reasonCode: "no-proposals" });
+    )).toBe(false);
     expect(report.coverage).toEqual([expect.objectContaining({
       targetId: "coverage:primary-question",
       status: "covered",

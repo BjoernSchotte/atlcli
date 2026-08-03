@@ -11,6 +11,7 @@ import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer
 import { createMemoryResearchWorkspace } from "./workspace.js";
 import {
   researchCheckpointConfigV1,
+  researchSupervisorThreadIdForSessionV1,
   researchThreadIdForSessionV1,
 } from "./checkpoint-identity.js";
 
@@ -86,6 +87,48 @@ describe("research LangGraph checkpointer adapter", () => {
       pendingWrites: [["task:durable", "durable_write", { revision: 2 }]],
     });
     expect(await workspace.list("/.atlcli/langgraph-checkpoints/v1")).not.toHaveLength(0);
+  });
+
+  test("isolates and replays one host-authorized supervisor phase", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const phaseId = "continuation:research-continuation:1.1";
+    const threadId = researchSupervisorThreadIdForSessionV1(sessionId, phaseId);
+    const config: RunnableConfig = { configurable: { thread_id: threadId } };
+    const firstHost = new ResearchSessionWorkspaceCheckpointerV1(
+      sessionId,
+      workspace,
+      { supervisorPhaseId: phaseId },
+    );
+    const saved = await firstHost.put(config, {
+      v: 4,
+      id: "checkpoint:supervisor-phase",
+      ts: "2026-08-03T12:00:00.000Z",
+      channel_values: { evaluator: { stage: "continuation" } },
+      channel_versions: { evaluator: 1 },
+      versions_seen: {},
+    }, { source: "input", step: -1, parents: {} });
+
+    const resumedHost = new ResearchSessionWorkspaceCheckpointerV1(
+      sessionId,
+      workspace,
+      { supervisorPhaseId: phaseId },
+    );
+    await expect(resumedHost.getTuple(saved)).resolves.toMatchObject({
+      checkpoint: {
+        id: "checkpoint:supervisor-phase",
+        channel_values: { evaluator: { stage: "continuation" } },
+      },
+    });
+    const initialHost = new ResearchSessionWorkspaceCheckpointerV1(
+      sessionId,
+      workspace,
+      { supervisorPhaseId: "initial" },
+    );
+    await expect(initialHost.getTuple({
+      configurable: {
+        thread_id: researchSupervisorThreadIdForSessionV1(sessionId, "initial"),
+      },
+    })).resolves.toBeUndefined();
   });
 
   test("compacts completed checkpoint history without losing the newest restart point", async () => {

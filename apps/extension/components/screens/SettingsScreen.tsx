@@ -6,14 +6,15 @@
  * language selector is a *requirement* of the design, not a nice-to-have, and
  * retrofitting would have touched every component.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { ScreenProps } from "../../utils/screens/registry.js";
 import { useI18n } from "../../utils/i18n/context.js";
 import { isLocale, LOCALES } from "../../utils/i18n/messages.js";
 import { useAppSettings } from "../app/settings-context.js";
 import { Alert } from "../ui/alert.js";
 import { Card, CardContent } from "../ui/card.js";
-import { FieldHelp, Label, Select, SectionHeading } from "../ui/field.js";
+import { Button } from "../ui/button.js";
+import { FieldHelp, Input, Label, Select, SectionHeading } from "../ui/field.js";
 
 const LOCALE_LABEL_KEYS = {
   en: "settings.language.en",
@@ -22,10 +23,55 @@ const LOCALE_LABEL_KEYS = {
 
 export const SETTINGS_SCREEN_ID = "settings";
 
-export function SettingsScreen(_props: ScreenProps): React.JSX.Element {
+export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
   const { t } = useI18n();
   const { settings, update } = useAppSettings();
   const [failed, setFailed] = useState(false);
+  const research = ports.research;
+  const [apiKey, setApiKey] = useState("");
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!research) {
+      setHasApiKey(false);
+      return () => { cancelled = true; };
+    }
+    void research.hasApiKey()
+      .then((present) => {
+        if (!cancelled) setHasApiKey(present);
+      })
+      .catch(() => {
+        if (!cancelled) setHasApiKey(false);
+      });
+    return () => { cancelled = true; };
+  }, [research]);
+
+  async function storeApiKey(): Promise<void> {
+    const candidate = apiKey.trim();
+    if (!research || !candidate) return;
+    setAiError(null);
+    try {
+      await research.setApiKey(candidate);
+      setApiKey("");
+      setHasApiKey(true);
+    } catch (value) {
+      setAiError(value instanceof Error ? value.message : t("settings.ai.saveFailed"));
+    }
+  }
+
+  async function forgetApiKey(): Promise<void> {
+    if (!research) return;
+    setAiError(null);
+    try {
+      await research.clearApiKey();
+      setApiKey("");
+      setHasApiKey(false);
+    } catch (value) {
+      setAiError(value instanceof Error ? value.message : t("settings.ai.saveFailed"));
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,6 +98,64 @@ export function SettingsScreen(_props: ScreenProps): React.JSX.Element {
             ))}
           </Select>
           <FieldHelp>{t("settings.language.help")}</FieldHelp>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="settings-ai">
+        <CardContent className="flex flex-col gap-1.5 p-3">
+          <p className="m-0 text-sm font-medium">{t("settings.ai.title")}</p>
+          <p className="m-0 text-xs text-muted-foreground">{t("settings.ai.provider.anthropic")}</p>
+          <Label htmlFor="settings-ai-key">{t("research.key")}</Label>
+          <Input
+            id="settings-ai-key"
+            data-testid="settings-ai-key"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={apiKey}
+            placeholder={t("research.key.placeholder")}
+            onChange={(event) => setApiKey(event.target.value)}
+            disabled={!research}
+          />
+          <FieldHelp>
+            {!research
+              ? t("settings.ai.unavailable")
+              : hasApiKey
+                ? t("research.key.stored")
+                : apiKey.trim()
+                  ? t("research.key.pending")
+                  : t("research.key.missing")}
+          </FieldHelp>
+          {(apiKey.trim() || hasApiKey) && research && (
+            <div className="flex gap-2">
+              {apiKey.trim() && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void storeApiKey()}
+                  data-testid="settings-ai-store-key"
+                >
+                  {t("research.key.store")}
+                </Button>
+              )}
+              {hasApiKey && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void forgetApiKey()}
+                  data-testid="settings-ai-forget-key"
+                >
+                  {t("research.key.forget")}
+                </Button>
+              )}
+            </div>
+          )}
+          <FieldHelp>{t("settings.ai.futureLocal")}</FieldHelp>
+          {aiError && (
+            <Alert role="alert" tone="danger" data-testid="settings-ai-error">
+              {aiError}
+            </Alert>
+          )}
         </CardContent>
       </Card>
 

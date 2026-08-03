@@ -69,6 +69,48 @@ describe("Jira focused-researcher acquisition", () => {
     expect(program.match(/tools\.researchCandidateRank/g)).toHaveLength(1);
   });
 
+  test("fairly splits the shared acquisition ceiling across Jira and Confluence branches", () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:fair-acquisition",
+      turnId: "research-turn:fair-acquisition",
+      objective: "Relate the current Jira work to Confluence documentation.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["DOCS"],
+      },
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+      limits: { ...DEFAULT_RESEARCH_LIMITS_V1, maxPtcCalls: 80 },
+    });
+    const graph = composeResearchGraphV1(brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const subagents = compileDynamicResearchSubagents(graph, {
+      model: fakeModel(),
+      broker: {} as ResearchCapabilityBroker,
+      question: brief.objective,
+      maxInterpreterMs: DEFAULT_RESEARCH_LIMITS_V1.maxInterpreterMs,
+      maxInterpreterMemoryBytes: DEFAULT_RESEARCH_LIMITS_V1.maxInterpreterMemoryBytes,
+      maxPtcCalls: 80,
+      maxSearchPagesPerProduct: 10,
+      maxDetailItemsPerProduct: 50,
+      maxPacketChars: DEFAULT_RESEARCH_LIMITS_V1.maxPtcOutputBytes,
+    });
+    const jira = subagents.find((subagent) => subagent.name.includes("jira-research"));
+    const wiki = subagents.find((subagent) => subagent.name.includes("wiki-research"));
+
+    // The 80-call run ceiling is divided across the two workers before their
+    // host-generated programs reserve ranking and serial detail reads.
+    expect(jira?.systemPrompt).toContain("searchCalls < 4");
+    expect(jira?.systemPrompt).toContain("ranked.items.slice(0, 35)");
+    expect(wiki?.systemPrompt).toContain("searchCalls < 10");
+    expect(wiki?.systemPrompt).toContain("ranked.items.slice(0, 29)");
+  });
+
   test("reads every ranked detail serially while returning a bounded projection to the model", async () => {
     const brief = createResearchBriefV1({
       sessionId: "research-session:projection",

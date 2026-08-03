@@ -266,6 +266,13 @@ export function createResearchDispatchInterceptionAdapter(options: {
   admissions: readonly ResearchTaskAdmissionV1[];
   maxTasks: number;
   maxConcurrency: number;
+  /**
+   * Let this host-owned adapter attach completed dependency projections after
+   * it has admitted the immutable task identity. This keeps the supervisor
+   * from serializing large, mutable child results into its next task call.
+   * Callers that do not opt in retain the explicit-envelope contract.
+   */
+  allowHostDependencyHydration?: boolean;
   signal?: AbortSignal;
   invokeUpstream(
     input: ResearchTaskToolInputV1,
@@ -495,7 +502,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
       );
     }
     const expectedDependencies = [...(admission.dependsOnTaskIds ?? [])];
-    const suppliedDependencies = description.dependencyResults ?? [];
+    const suppliedDependencies = description.dependencyResults;
     if (expectedDependencies.some((dependencyTaskId) => taskStatuses.get(dependencyTaskId) !== "completed")) {
       reject(
         "dependency-not-ready",
@@ -503,23 +510,45 @@ export function createResearchDispatchInterceptionAdapter(options: {
         taskId,
       );
     }
-    if (suppliedDependencies.length !== expectedDependencies.length ||
-      suppliedDependencies.some((dependency) => !expectedDependencies.includes(dependency.taskId))) {
+    if (suppliedDependencies === undefined && expectedDependencies.length > 0 &&
+        !options.allowHostDependencyHydration) {
       reject(
         "dependency-result-mismatch",
         `Research task ${taskId} did not supply the exact admitted dependency set.`,
         taskId,
       );
     }
-    for (const dependency of suppliedDependencies) {
-      if (canonicalJson(dependency.result) !== canonicalJson(completedResults.get(dependency.taskId))) {
+    if (suppliedDependencies !== undefined && !options.allowHostDependencyHydration) {
+      if (suppliedDependencies.length !== expectedDependencies.length ||
+        suppliedDependencies.some((dependency) => !expectedDependencies.includes(dependency.taskId))) {
         reject(
           "dependency-result-mismatch",
-          `Research task ${taskId} supplied a modified dependency result.`,
+          `Research task ${taskId} did not supply the exact admitted dependency set.`,
           taskId,
         );
       }
+      for (const dependency of suppliedDependencies) {
+        if (canonicalJson(dependency.result) !== canonicalJson(completedResults.get(dependency.taskId))) {
+          reject(
+            "dependency-result-mismatch",
+            `Research task ${taskId} supplied a modified dependency result.`,
+            taskId,
+          );
+        }
+      }
     }
+    const canonicalDependencies = expectedDependencies.map((dependencyTaskId) => ({
+      taskId: dependencyTaskId,
+      result: structuredClone(completedResults.get(dependencyTaskId)),
+    }));
+    const canonicalizedInput: ResearchTaskToolInputV1 = {
+      ...input,
+      description: encodeResearchTaskDescriptionV1({
+        taskId,
+        objective: description.objective,
+        ...(canonicalDependencies.length ? { dependencyResults: canonicalDependencies } : {}),
+      }),
+    };
     if (input.subagent_type !== admission.subagentType) {
       reject(
         "subagent-type-mismatch",
@@ -613,7 +642,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
     };
 
     const upstreamOutcome: Promise<InvocationOutcome> = Promise.resolve()
-      .then(() => options.invokeUpstream(input, upstreamConfig))
+      .then(() => options.invokeUpstream(canonicalizedInput, upstreamConfig))
       .then(
         (value): InvocationOutcome => ({ kind: "result", value }),
         (error): InvocationOutcome => ({ kind: "error", error }),

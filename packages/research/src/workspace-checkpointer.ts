@@ -10,7 +10,10 @@ import {
   type PendingWrite,
 } from "@langchain/langgraph-checkpoint";
 import { ResearchContractError } from "./contracts.js";
-import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
+import {
+  researchSupervisorThreadIdForSessionV1,
+  researchThreadIdForSessionV1,
+} from "./checkpoint-identity.js";
 import type { ResearchWorkspace } from "./workspace.js";
 
 /**
@@ -19,7 +22,6 @@ import type { ResearchWorkspace } from "./workspace.js";
  * workspace files.
  */
 const ROOT_PATH = "/.atlcli/langgraph-checkpoints/v1";
-const INDEX_PATH = `${ROOT_PATH}/index.json`;
 const SCHEMA = "atlcli.research-langgraph-workspace-checkpoints/v1" as const;
 const MAXIMUM_OPERATIONS = 2_000;
 const MAXIMUM_PAYLOAD_BYTES = 64_000_000;
@@ -214,15 +216,30 @@ function rejectForeignThread(config: RunnableConfig, expectedThreadId: string): 
 export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
   readonly #threadId: string;
   readonly #workspace: ResearchWorkspace;
+  readonly #rootPath: string;
+  readonly #indexPath: string;
   #index: PersistedIndexV1;
   #loaded = false;
   #tail: Promise<void> = Promise.resolve();
   #writeFailure: unknown;
 
-  constructor(sessionId: string, workspace: ResearchWorkspace) {
+  constructor(
+    sessionId: string,
+    workspace: ResearchWorkspace,
+    options?: { supervisorPhaseId?: string },
+  ) {
     super();
-    this.#threadId = researchThreadIdForSessionV1(sessionId);
+    this.#threadId = options?.supervisorPhaseId === undefined
+      ? researchThreadIdForSessionV1(sessionId)
+      : researchSupervisorThreadIdForSessionV1(
+          sessionId,
+          options.supervisorPhaseId,
+        );
     this.#workspace = workspace;
+    this.#rootPath = options?.supervisorPhaseId === undefined
+      ? ROOT_PATH
+      : `${ROOT_PATH}/supervisor/${options.supervisorPhaseId}`;
+    this.#indexPath = `${this.#rootPath}/index.json`;
     this.#index = { schema: SCHEMA, threadId: this.#threadId, payloadBytes: 0, operations: [] };
   }
 
@@ -242,7 +259,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
   }
 
   #operationPath(operationId: string, label: string, chunk: number): string {
-    return `${ROOT_PATH}/${operationId}/${label}-${String(chunk).padStart(4, "0")}.hex`;
+    return `${this.#rootPath}/${operationId}/${label}-${String(chunk).padStart(4, "0")}.hex`;
   }
 
   async #writeBlob(operationId: string, label: string, value: Uint8Array): Promise<PersistedBlobV1> {
@@ -274,7 +291,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
     if (new TextEncoder().encode(contents).byteLength > 2_000_000) {
       throw new ResearchContractError("limit-exceeded", "Research LangGraph checkpoint index is too large.");
     }
-    await this.#workspace.writeFile(INDEX_PATH, contents);
+    await this.#workspace.writeFile(this.#indexPath, contents);
   }
 
   #nextOperationId(): string {
@@ -377,7 +394,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
         retainedParentCheckpointId,
       ];
       assertCompactedCapacity(entry.stored[0].byteLength + entry.stored[1].byteLength);
-      await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+      await this.#workspace.remove(`${this.#rootPath}/${operationId}`);
       const checkpoint = await this.#writeBlob(operationId, "checkpoint", entry.stored[0]);
       const metadata = await this.#writeBlob(operationId, "metadata", entry.stored[1]);
       operations.push({
@@ -397,7 +414,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
       assertCompactedCapacity(Object.values(writes).reduce((total, [, , value]) => total + value.byteLength, 0));
       const writesOperationId = nextOperationId();
       newOperationIds.add(writesOperationId);
-      await this.#workspace.remove(`${ROOT_PATH}/${writesOperationId}`);
+      await this.#workspace.remove(`${this.#rootPath}/${writesOperationId}`);
       const persistedWrites: PersistedWriteV1[] = [];
       for (const [index, [key, [taskId, channel, value]]] of Object.entries(writes).entries()) {
         persistedWrites.push({
@@ -430,7 +447,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
     for (const operationId of priorOperationIds) {
       if (newOperationIds.has(operationId)) continue;
       try {
-        await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+        await this.#workspace.remove(`${this.#rootPath}/${operationId}`);
       } catch {
         // The new index no longer references this completed-branch data. A
         // later compaction can retry cleanup without risking a valid resume.
@@ -448,7 +465,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
 
   async #hydrate(): Promise<void> {
     if (this.#loaded) return;
-    const contents = await this.#workspace.readFile(INDEX_PATH);
+    const contents = await this.#workspace.readFile(this.#indexPath);
     if (contents === undefined) {
       this.#loaded = true;
       return;
@@ -527,7 +544,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
         const compacted = await this.#ensureAppendCapacity(stored[0].byteLength + stored[1].byteLength);
         if (!compacted) {
           const operationId = this.#nextOperationId();
-          await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+          await this.#workspace.remove(`${this.#rootPath}/${operationId}`);
           const checkpointBlob = await this.#writeBlob(operationId, "checkpoint", stored[0]);
           const metadataBlob = await this.#writeBlob(operationId, "metadata", stored[1]);
           await this.#append({
@@ -565,7 +582,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
         const compacted = await this.#ensureAppendCapacity(payloadBytes);
         if (!compacted) {
           const operationId = this.#nextOperationId();
-          await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+          await this.#workspace.remove(`${this.#rootPath}/${operationId}`);
           const persistedWrites: PersistedWriteV1[] = [];
           for (let index = 0; index < added.length; index += 1) {
             const [writeKey, [storedTaskId, channel, value]] = added[index]!;
@@ -599,7 +616,7 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
     return this.#exclusive(async () => {
       await this.#hydrate();
       try {
-        await this.#workspace.remove(ROOT_PATH);
+        await this.#workspace.remove(this.#rootPath);
         await super.deleteThread(threadId);
         this.#index = { schema: SCHEMA, threadId: this.#threadId, payloadBytes: 0, operations: [] };
         this.#loaded = true;

@@ -34,6 +34,23 @@ import { createReactHarness } from "./react-harness.js";
 
 const dom = createReactHarness();
 
+async function pressComposerKey(
+  key: string,
+  options: { metaKey?: boolean; shiftKey?: boolean } = {},
+): Promise<void> {
+  const { act } = await import("react");
+  const element = dom.find("copilot-chat-textarea");
+  await act(async () => {
+    element.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key,
+      ...options,
+    }));
+  });
+  await dom.flush();
+}
+
 beforeEach(() => dom.setup());
 afterEach(() => dom.teardown());
 afterAll(() => {
@@ -263,19 +280,232 @@ describe("research brief clarification presentation", () => {
 });
 
 describe("portable Research screen", () => {
-  it("stores the key through the port, infers scope, runs, and renders safe structured output", async () => {
-    let stored = false;
+  it("opens an intentionally empty add menu from the lower-left composer control", async () => {
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async () => {
+        throw new Error("not needed for composer controls");
+      },
+      run: async () => {
+        throw new Error("not needed for composer controls");
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+
+    expect(dom.maybeFind("research-composer-add-menu")).toBeNull();
+    expect(dom.find("research-composer-add-menu-toggle").getAttribute("aria-expanded")).toBe("false");
+
+    await dom.click("research-composer-add-menu-toggle");
+    expect(dom.find("research-composer-add-menu").textContent).toContain(
+      "Additional context options will appear here.",
+    );
+    expect(dom.find("research-composer-add-menu-toggle").getAttribute("aria-expanded")).toBe("true");
+
+    await dom.click("research-composer-add-menu-toggle");
+    expect(dom.maybeFind("research-composer-add-menu")).toBeNull();
+  });
+
+  it("uses the CopilotKit composer for queued follow-ups and checkpointed steering", async () => {
+    let releaseRun: ((value: ResearchReportV1) => void) | undefined;
+    let pauseCalls = 0;
+    let runCalls = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (_request, options) => {
+        runCalls += 1;
+        options?.onSessionStart?.({ sessionId: "research-session:chat" });
+        return await new Promise<ResearchReportV1>((resolve) => {
+          releaseRun = resolve;
+        });
+      },
+      pauseActiveRun: async () => {
+        pauseCalls += 1;
+        return "pause_requested";
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+
+    expect((dom.find("research-settings") as HTMLDetailsElement).open).toBe(false);
+    expect(dom.find("research-chat-welcome").textContent).toContain("Ask a research question");
+    await dom.setValue("research-effort", "lookup");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "How are DEMO-1 and KB related?");
+    await dom.click("copilot-send-button");
+    await dom.flush();
+    expect(runCalls).toBe(1);
+
+    await dom.setValue("copilot-chat-textarea", "Queue a source check after this report.");
+    await pressComposerKey("Enter");
+    expect(dom.find("research-chat").textContent).toContain("Queued for the current research session.");
+    expect(runCalls).toBe(1);
+
+    await dom.setValue("copilot-chat-textarea", "Prioritize linked evidence before synthesis.");
+    await pressComposerKey("Enter", { metaKey: true, shiftKey: true });
+    expect(pauseCalls).toBe(1);
+    expect(dom.find("research-chat").textContent).toContain("Steering will be applied at the next safe checkpoint.");
+
+    releaseRun?.(report);
+    await dom.flush();
+  });
+
+  it("drains an ordinary queued chat message through the retained session", async () => {
+    const retained = {
+      schema: "atlcli.research-retained-session/v1" as const,
+      sessionId: "research-session:chat-queue",
+      revision: 6,
+      turnId: "research-turn:initial",
+      status: "complete" as const,
+      updatedAt: "2026-08-03T10:00:00.000Z",
+      question: "How are DEMO-1 and KB related?",
+      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+    };
+    const resumable = {
+      schema: "atlcli.research-resumable-session/v1" as const,
+      sessionId: retained.sessionId,
+      revision: 8,
+      turnId: "research-turn:follow-up",
+      status: "running" as const,
+      updatedAt: "2026-08-03T10:01:00.000Z",
+      question: "Which source needs another check?",
+      scope: retained.scope,
+    };
+    let releaseInitial: ((value: ResearchReportV1) => void) | undefined;
+    let complete = false;
+    let resumed = 0;
+    const prepared: Array<{ sessionId: string; revision: number; question: string }> = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      listRetainedSessions: async () => complete ? [retained] : [],
+      prepareFollowUpTurn: async (input) => {
+        prepared.push(input);
+        return { kind: "resumable", session: resumable };
+      },
+      run: async (_request, options) => {
+        options?.onSessionStart?.({ sessionId: retained.sessionId });
+        return await new Promise<ResearchReportV1>((resolve) => {
+          releaseInitial = (value) => {
+            complete = true;
+            resolve(value);
+          };
+        });
+      },
+      resume: async (sessionId) => {
+        expect(sessionId).toBe(retained.sessionId);
+        resumed += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-effort", "lookup");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", retained.question);
+    await dom.click("copilot-send-button");
+    await dom.setValue("copilot-chat-textarea", resumable.question);
+    await pressComposerKey("Enter");
+
+    releaseInitial?.(report);
+    await dom.flush(12);
+
+    expect(prepared).toEqual([{
+      sessionId: retained.sessionId,
+      revision: retained.revision,
+      question: resumable.question,
+    }]);
+    expect(resumed).toBe(1);
+    expect(dom.find("research-chat").textContent).not.toContain("Queued for the current research session.");
+  });
+
+  it("lets a queued follow-up be edited or removed without touching the live turn", async () => {
+    let releaseRun: ((value: ResearchReportV1) => void) | undefined;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (_request, options) => {
+        options?.onSessionStart?.({ sessionId: "research-session:queued-turn" });
+        return await new Promise<ResearchReportV1>((resolve) => { releaseRun = resolve; });
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-effort", "lookup");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "How are DEMO-1 and KB related?");
+    await dom.click("copilot-send-button");
+    await dom.setValue("copilot-chat-textarea", "Check source one after the report.");
+    await pressComposerKey("Enter");
+
+    await dom.click("research-queued-edit-research-user-turn:2");
+    await dom.setValue("research-queued-edit-research-user-turn:2", "Check source two after the report.");
+    await dom.click("research-queued-save-research-user-turn:2");
+    expect(dom.find("research-chat").textContent).toContain("Check source two after the report.");
+
+    await dom.click("research-queued-remove-research-user-turn:2");
+    expect(dom.find("research-chat").textContent).not.toContain("Check source two after the report.");
+
+    releaseRun?.(report);
+    await dom.flush();
+  });
+
+  it("uses the configured key, infers scope, runs, and renders safe structured output", async () => {
+    const stored = true;
     const preflightInputs: ResearchRequestV1[] = [];
     const observed: ResearchRequestV1[] = [];
     const observedPolicies: unknown[] = [];
     const port: ResearchPort = {
       hasApiKey: async () => stored,
-      setApiKey: async () => {
-        stored = true;
-      },
-      clearApiKey: async () => {
-        stored = false;
-      },
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
       resolveScope: async (request) => {
         preflightInputs.push(request);
         return {
@@ -410,7 +640,6 @@ describe("portable Research screen", () => {
       </I18nProvider>
     );
     expect((dom.find("research-max-run-minutes") as HTMLInputElement).value).toBe("10");
-    await dom.setValue("research-key", "synthetic-key");
     await dom.setValue(
       "research-question",
       "Nutze Jira Projektkey DEMO und Confluence Spacekey KB: Wie hängen DEMO-1 und Seite 1001 zusammen?"
@@ -474,6 +703,11 @@ describe("portable Research screen", () => {
     );
     expect(dom.find("research-activity").textContent).toContain(
       "budget · capability_calls · 1/32"
+    );
+    const toolStep = dom.find("research-activity-detail-4");
+    expect(toolStep.className).toContain("bg-muted");
+    expect(dom.find("research-activity-detail-4").textContent).toContain(
+      "resultBytes2048",
     );
     await dom.toggle("research-current-context");
     await dom.click("research-run");
@@ -1031,12 +1265,12 @@ describe("portable Research screen", () => {
     expect(dom.html()).toContain("Replacement plan approved.");
   });
 
-  it("shows the shared deep-plan stop before storing a key or calling the host", async () => {
+  it("shows the shared deep-plan stop before calling the provider", async () => {
     let keyWrites = 0;
     let runs = 0;
     const policies: unknown[] = [];
     const port: ResearchPort = {
-      hasApiKey: async () => false,
+      hasApiKey: async () => true,
       setApiKey: async () => { keyWrites += 1; },
       clearApiKey: async () => undefined,
       resolveScope: async (request) => ({
@@ -1059,7 +1293,6 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>,
     );
-    await dom.setValue("research-key", "synthetic-key");
     await dom.setValue(
       "research-question",
       "Perform exhaustive contradiction analysis for Jira project DEMO and Confluence space KB.",
@@ -1080,7 +1313,7 @@ describe("portable Research screen", () => {
     await dom.setValue("research-plan-approval", "automatic");
     await dom.click("research-run");
     await dom.flush();
-    expect({ keyWrites, runs }).toEqual({ keyWrites: 1, runs: 1 });
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 1 });
     expect(policies[0]).toMatchObject({
       requestedEffort: "deep",
       requestedPlanApproval: "automatic",
@@ -1090,7 +1323,7 @@ describe("portable Research screen", () => {
     );
   });
 
-  it("persists an initial deep plan for review before key storage or retrieval", async () => {
+  it("persists an initial deep plan for review before retrieval", async () => {
     const review: ResearchSessionPlanReviewV1 = {
       schema: "atlcli.research-session-plan-review/v1",
       sessionId: "research-session:initial-plan-review",
@@ -1199,7 +1432,6 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>,
     );
-    await dom.setValue("research-key", "synthetic-key");
     await dom.setValue(
       "research-question",
       "Perform exhaustive contradiction analysis for Jira project DEMO and Confluence space KB.",
@@ -1222,7 +1454,6 @@ describe("portable Research screen", () => {
       .toContain("coverage:primary [jira/confluence; ≥2]");
     expect(dom.find("research-plan-review-replan-envelope-0").textContent)
       .toContain("coverage-moderator");
-    expect(dom.find("research-plan-reviews").textContent).toContain("does not store a key");
     await dom.click("research-plan-review-approve-0");
     await dom.flush();
 
@@ -1322,7 +1553,7 @@ describe("portable Research screen", () => {
       .toContain("Correction saved");
   });
 
-  it("persists and resolves an initial clarification before key storage or retrieval", async () => {
+  it("persists and resolves an initial clarification before retrieval", async () => {
     const review: ResearchSessionClarificationReviewV1 = {
       schema: "atlcli.research-session-clarification-review/v1",
       sessionId: "research-session:initial-clarification-review",
@@ -1401,7 +1632,6 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>,
     );
-    await dom.setValue("research-key", "synthetic-key");
     await dom.setValue(
       "research-question",
       "How is the current Jira work in DEMO related to Confluence space KB?",
@@ -1411,8 +1641,6 @@ describe("portable Research screen", () => {
     await dom.flush();
 
     expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
-    expect(dom.find("research-clarification-reviews").textContent)
-      .toContain("does not store a key");
     await dom.setValue(
       "research-clarification-answer-0-clarification:time-window",
       "Use the last seven days.",
@@ -1432,7 +1660,7 @@ describe("portable Research screen", () => {
       .toContain("Synthetic durable clarification question.");
   });
 
-  it("persists a scope choice and resolves it without key storage or retrieval", async () => {
+  it("persists a scope choice and resolves it without retrieval", async () => {
     const review: ResearchSessionScopeClarificationReviewV1 = {
       schema: "atlcli.research-session-scope-clarification-review/v1",
       sessionId: "research-session:scope-choice-review",
@@ -1520,7 +1748,6 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>,
     );
-    await dom.setValue("research-key", "synthetic-key");
     await dom.setValue("research-question", "Research the Account Management space.");
     await dom.toggle("research-disclosure");
     await dom.click("research-run");
@@ -1603,7 +1830,7 @@ describe("portable Research screen", () => {
     expect(observedRequest?.scope.confluenceSpaceKeys).toEqual(["KB"]);
   });
 
-  it("shows typed scope clarification before storing the key or starting research", async () => {
+  it("shows typed scope clarification before starting research", async () => {
     let keyWrites = 0;
     let runs = 0;
     let selectedCandidateId: string | undefined;
@@ -1634,7 +1861,7 @@ describe("portable Research screen", () => {
       },
     ];
     const port: ResearchPort = {
-      hasApiKey: async () => false,
+      hasApiKey: async () => true,
       setApiKey: async () => { keyWrites += 1; },
       clearApiKey: async () => undefined,
       resolveScope: async (request, options) => {
@@ -1682,7 +1909,6 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>,
     );
-    await dom.setValue("research-key", "synthetic-key");
     await dom.setValue(
       "research-question",
       "Research Jira projectkey DEMO and the Account Management space.",
@@ -1707,7 +1933,7 @@ describe("portable Research screen", () => {
     expect(selectedCandidateId).toBe(
       "research-scope-candidate:confluence-space-account-2",
     );
-    expect({ keyWrites, runs }).toEqual({ keyWrites: 1, runs: 1 });
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 1 });
     expect(dom.find("research-submitted-scope").textContent).toContain(
       "confluence:ACCOUNT2",
     );

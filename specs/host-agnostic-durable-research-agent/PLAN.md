@@ -368,6 +368,32 @@ closed. It promises durable state and correct resumption.
 - Every store has bounded list operations, quotas, retention, and idempotent
   deletion.
 
+### Operational transparency, root budgets, and scratch state
+
+- A single root budget owns all model, PTC, provider, byte, wall-clock, and
+  cost reservations. Concurrent child work receives an atomic fair share of
+  the remaining root budget; fan-out can never multiply a run's approved
+  maximum. Per-role ceilings remain additional limits, not separate spending
+  pools.
+- Every durable event has a stable sequence, run/turn correlation, closed
+  event kind, lifecycle state, and bounded safe attributes. Hosts can resume a
+  subscriber from a cursor and replay the same activity history without
+  replaying work.
+- CLI/TUI and browser presenters project the same safe events: phase, graph
+  revision, task/subagent lifecycle, selected capability, aggregate result
+  shape/count/bytes, budget use, checkpoint, and recovery outcome. They never
+  expose hidden reasoning, raw prompts, source bodies, credentials, or child
+  trajectories. Expandable UI detail is a safe event projection, not a chain-
+  of-thought surface.
+- Durable research state (brief, graph, task ledger, evidence, claims,
+  artifacts, checkpoints) is distinct from writable scratch. CLI uses a
+  session-rooted real directory; browser uses a namespaced IndexedDB/OPFS
+  adapter. Scratch is non-authoritative, quota-bounded, removable, and may
+  never become evidence merely because it persists.
+- Generated QuickJS is never installed as a host extension, browser extension,
+  or trusted tool. The only executable authority is the reviewed, host-owned
+  capability broker and its static read-only operation catalogue.
+
 ### Accuracy
 
 - Conversation summaries are navigation aids, never evidence.
@@ -3999,6 +4025,10 @@ filter, caps, comment partiality, and browser session boundary (2026-08-03).
       `--max-cost-usd` and `--max-run-minutes` are bounded and immutable across
       a resumed session. Contract, budget, durable-journal, CLI, and extension
       boundary tests verify the chain (2026-08-03).
+- [ ] Prove fair root-budget allocation under concurrent subagent waves: every
+      reservation derives from one remaining root balance, an over-budget
+      sibling is rejected before a provider/model call, and recovery preserves
+      the same aggregate ceiling in CLI and packed MV3 hosts.
 
 CLI:
 
@@ -4157,6 +4187,10 @@ CLI:
       rejection, plan revision, steering, pause, cancel, and resume commands.
 - [ ] Add a `ResearchEventSubscriber` boundary that a later interactive TUI can
       consume without changing the runtime.
+- [ ] Add cursor-resumable, bounded safe activity replay for CLI/TUI and
+      extension observers. Verify the presentation can disclose task/tool/
+      budget/checkpoint detail without source bodies, prompt text, credentials,
+      hidden reasoning, or raw child trajectories.
 - [ ] Perform a separate TUI-library spike for Bun compatibility, accessibility,
       resize handling, non-TTY fallback, and testability.
 - [ ] Do not make TUI mode the only interactive path; positional one-shot
@@ -4177,6 +4211,9 @@ Extension/browser:
       UI-port presentations.
 - [ ] Preserve an accessible, inspectable history of user steering and graph
       revisions without presenting internal model reasoning.
+- [ ] Render the safe activity event projection as compact, muted expandable
+      rows in the sidebar; preserve the same event identities and details in a
+      non-TTY-safe CLI trace without terminal control sequences.
 - [ ] Add quota, expired-auth, stale-evidence, interrupted-session, and
       incomplete-report recovery UX.
 - [ ] Preserve the explicit data-disclosure acknowledgement before the first

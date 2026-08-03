@@ -340,6 +340,50 @@ export class ResearchCapabilityBroker {
     this.#successfulDetailReads.length = 0;
   }
 
+  /**
+   * Rehydrate only host-observed detail identities for a fresh evaluator after
+   * a durable checkpoint. This deliberately restores neither source bodies nor
+   * entity references, so it cannot create another read capability; it only
+   * keeps the host's marginal-evidence decision cumulative across generations.
+   */
+  restoreDetailedSourceObservations(
+    observations: readonly { product: ResearchProduct; sourceId: string }[],
+  ): void {
+    if (this.#successfulDetailReads.length > 0) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Historical detail observations must be restored before new reads.",
+      );
+    }
+    const restored = new Map<string, { product: ResearchProduct; sourceId: string }>();
+    for (const observation of observations) {
+      if (
+        !observation ||
+        (observation.product !== "jira" && observation.product !== "confluence") ||
+        typeof observation.sourceId !== "string" ||
+        observation.sourceId.length === 0 ||
+        observation.sourceId.length > 256 ||
+        observation.sourceId.includes("\u0000")
+      ) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Historical detail observation is invalid.",
+        );
+      }
+      restored.set(`${observation.product}:${observation.sourceId}`, {
+        product: observation.product,
+        sourceId: observation.sourceId,
+      });
+    }
+    this.#successfulDetailReads.push(
+      ...[...restored.values()].sort((left, right) =>
+        `${left.product}:${left.sourceId}`.localeCompare(
+          `${right.product}:${right.sourceId}`,
+        ),
+      ),
+    );
+  }
+
   sourceLedger(): ResearchSourceReferenceV1[] {
     return [...this.#sources.values()].map((source) => ({ ...source }));
   }

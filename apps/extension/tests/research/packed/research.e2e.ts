@@ -438,6 +438,11 @@ const finalDraft = await task({
 finalDraft;
 `.trim();
 
+/**
+ * Lookup is a compact workflow: one evaluator proposes the bounded graph,
+ * dispatches its one admitted reader, and hands the final task back directly.
+ * Checkpointed continuation is deliberately reserved for deep research.
+ */
 const PACKED_JIRA_ONLY_WORKFLOW_CODE = `
 const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
   basedOnBriefRevision: 1,
@@ -450,20 +455,32 @@ const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
 if (acceptedGraph.schema !== "atlcli.accepted-research-graph/v1") {
   throw new Error("Packed Jira-only graph proposal was not accepted.");
 }
-const jira = await task({
-  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:jira-lookup:a1", objective: "Acquire detail-backed Jira evidence for the exact bounded lookup intent." }),
-  subagentType: "focused-researcher-jira-lookup",
-  responseSchema: ${JSON.stringify(RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2)}
+const responseSchemas = ${JSON.stringify({
+  "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
+  "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+})};
+const researchTask = acceptedGraph.tasks[0];
+if (!researchTask || acceptedGraph.tasks.length !== 1) {
+  throw new Error("Packed Jira-only lookup expected exactly one admitted task.");
+}
+await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: researchTask.taskId,
+    objective: researchTask.objective
+  }),
+  subagentType: researchTask.subagentType,
+  responseSchema: responseSchemas[researchTask.outputSchema]
 });
+const finalTask = acceptedGraph.synthesizerTask;
 const finalDraft = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
-    taskId: "research-task:r1:synthesizer:a1",
-    objective: "Write exactly one typed final report draft from accepted packets and dispositions.",
-    dependencyResults: [{ taskId: "research-task:r1:jira-lookup:a1", result: jira }]
+    taskId: finalTask.taskId,
+    objective: finalTask.objective
   }),
-  subagentType: "synthesizer",
-  responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
+  subagentType: finalTask.subagentType,
+  responseSchema: responseSchemas[finalTask.outputSchema]
 });
 finalDraft;
 `.trim();
@@ -955,6 +972,7 @@ const channel = new BroadcastChannel("atlcli-packed-research-v1");
 const workerId = crypto.randomUUID();
 let modelCalls = 0;
 let packedJiraOnlyRun = false;
+let packedJiraOnlyAcquisitionRequested = false;
 let packedHostParityRun = false;
 let packedSentinelRun = false;
 let packedResumeRun = false;
@@ -1302,6 +1320,28 @@ globalThis.fetch = async (input, init) => {
       if (packedHostParityRun || packedSentinelRun) {
         return structured(parityPacketForResponse());
       }
+      // The lookup fixture intentionally models one bounded acquisition eval
+      // followed by its native structured response. The real subagent
+      // middleware removes eval after that ToolMessage; depending on the
+      // provider serializer for this packed-browser test made the fixture
+      // reissue the same acquisition indefinitely instead of exercising the
+      // responseSchema hand-off.
+      if (packedJiraOnlyRun) {
+        if (!packedJiraOnlyAcquisitionRequested) {
+          packedJiraOnlyAcquisitionRequested = true;
+          return anthropicMessage(
+            [{
+              type: "tool_use",
+              id: "toolu_packed_jira_eval",
+              name: "eval",
+              input: { code: ${JSON.stringify(JIRA_ACQUISITION_CODE)} },
+            }],
+            "tool_use",
+            modelCalls,
+          );
+        }
+        return structured(jiraOnlyModelPacket);
+      }
       if (!serializedMessages.includes("atlcli.ptc/jira.issue.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -1314,7 +1354,7 @@ globalThis.fetch = async (input, init) => {
           modelCalls,
         );
       }
-      return structured(packedJiraOnlyRun ? jiraOnlyModelPacket : packedJiraModelPacket);
+      return structured(packedJiraModelPacket);
     }
 
     if (serializedRequest.includes("You are the reconciler specialist")) {
@@ -1365,7 +1405,12 @@ globalThis.fetch = async (input, init) => {
       });
     }
 
-    if (!supervisorWorkflowStarted) {
+    if (
+      !supervisorWorkflowStarted ||
+      (packedJiraOnlyRun &&
+        toolNames.includes("eval") &&
+        serializedRequest.includes("RESUMED CONTINUATION"))
+    ) {
       supervisorWorkflowStarted = true;
       packedJiraOnlyRun = serializedRequest.includes("packed-jira-only");
       packedHostParityRun = serializedRequest.includes("packed-host-parity");
@@ -4961,6 +5006,7 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
     "packed-jira-only: Find the exact Jira project DEMO work item.",
     { includeScope: false },
   );
+  await page.getByTestId("research-effort").selectOption("lookup");
   await page.getByTestId("research-run").click();
 
   try {
@@ -4997,6 +5043,12 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
   expect(activity).toContain("2 nodes in 2 waves");
   expect(activity).toContain("task · research-task:r1:jira-lookup:a1");
   expect(activity).not.toContain("wiki-research");
+  if (process.env.ATLCI_RESEARCH_UI_DEMO_SCREENSHOT) {
+    await page.screenshot({
+      path: process.env.ATLCI_RESEARCH_UI_DEMO_SCREENSHOT,
+      fullPage: true,
+    });
+  }
 
   const events = await harnessEvents(page);
   const catalogFetches = events.filter((event) => event.kind === "scope-catalog-fetch");

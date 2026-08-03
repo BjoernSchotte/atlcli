@@ -988,11 +988,11 @@ function validateSession(session: ResearchSessionV1): void {
             !RESEARCH_GRAPH_REVISION_REASONS_V1.includes(revision.reason) ||
             (revision.reason === "user_steering" &&
               (revision.steeringId === undefined || revision.planDiff === undefined)) ||
-            ((revision.steeringId !== undefined || revision.planDiff !== undefined) &&
-              (revision.steeringId === undefined || revision.planDiff === undefined ||
-                revision.reason !== "user_steering" ||
-                !/^steering:[A-Za-z0-9._-]{1,120}$/.test(revision.steeringId) ||
-                revision.planDiff.schema !== "atlcli.research-plan-diff/v1" ||
+            (revision.reason !== "user_steering" && revision.steeringId !== undefined) ||
+            (revision.steeringId !== undefined &&
+              !/^steering:[A-Za-z0-9._-]{1,120}$/.test(revision.steeringId)) ||
+            (revision.planDiff !== undefined &&
+              (revision.planDiff.schema !== "atlcli.research-plan-diff/v1" ||
                 revision.planDiff.fromRevision !== revision.graph.revision - 1 ||
                 revision.planDiff.toRevision !== revision.graph.revision))) {
           invalid("Research session graph revision is invalid.");

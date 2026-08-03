@@ -215,32 +215,29 @@ export const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeD
   maxScopeExpansionProposals: 4,
 };
 
-function hasAny(value: string, terms: readonly string[]): boolean {
-  const lower = value.toLocaleLowerCase("en-US");
-  return terms.some((term) => lower.includes(term));
-}
-
 export function resolveResearchEffortV1(input: {
   requested: ResearchRequestedEffortV1;
   objective: string;
   sourceClasses: readonly ResearchProduct[];
 }): ResearchResolvedEffortV1 {
   if (input.requested !== "auto") return input.requested;
-  const crossProduct = input.sourceClasses.includes("jira") && input.sourceClasses.includes("confluence");
-  if (hasAny(input.objective, ["contradict", "widerspruch", "exhaustive", "vollständig", "deep research", "hierarchy", "historical trend"])) {
-    return "deep";
-  }
-  if (crossProduct || hasAny(input.objective, ["compare", "relate", "relationship", "analyse", "analyze", "mapping", "zuord", "gehören"])) {
-    return "analysis";
-  }
-  return "lookup";
+  // Auto is a capability envelope, not an instruction to run every role.
+  // The central supervisor receives the bounded deep-research catalog and
+  // selects the minimal useful task composition for this turn. This preserves
+  // the ability to extend retrieval at a durable checkpoint when host-observed
+  // coverage is incomplete, without a keyword heuristic freezing a simple
+  // question into a one-shot lookup before the agent can assess it.
+  return "deep";
 }
 
 export function resolveResearchPlanApprovalV1(input: {
   requested: ResearchRequestedPlanApprovalV1;
   resolvedEffort: ResearchResolvedEffortV1;
+  /** An automatic envelope remains runnable unless the caller asks for review. */
+  requestedEffort?: ResearchRequestedEffortV1;
 }): ResearchResolvedPlanApprovalV1 {
   if (input.requested === "automatic" || input.requested === "required") return input.requested;
+  if (input.requestedEffort === "auto") return "automatic";
   return input.resolvedEffort === "deep" ? "required" : "automatic";
 }
 
@@ -319,7 +316,11 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
   const requestedEffort = input.requestedEffort ?? "auto";
   const resolvedEffort = resolveResearchEffortV1({ requested: requestedEffort, objective, sourceClasses });
   const requestedPlanApproval = input.requestedPlanApproval ?? "default";
-  const resolvedPlanApproval = resolveResearchPlanApprovalV1({ requested: requestedPlanApproval, resolvedEffort });
+  const resolvedPlanApproval = resolveResearchPlanApprovalV1({
+    requested: requestedPlanApproval,
+    resolvedEffort,
+    requestedEffort,
+  });
   const expectedSections = boundedUnique(
     input.expectedSections ?? ["Executive summary", "Findings", "Relationships", "Limitations", "Sources"],
     12,

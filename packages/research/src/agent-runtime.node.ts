@@ -22,6 +22,7 @@ const nodeRuntime = createResearchAgentRuntime({
 export const runResearchAgent = nodeRuntime.runResearchAgent;
 export {
   RESEARCH_MODEL_ID,
+  ResearchCheckpointReadyError,
   buildDynamicSupervisorPrompt,
   createResearchGraphProposalPtcTool,
   createResearchReconciliationDispositionPtcTool,

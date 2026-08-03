@@ -762,6 +762,58 @@ describe("research-owned native task dispatch interception", () => {
       .rejects.toMatchObject({ code: "dependency-result-mismatch" });
   });
 
+  test("hydrates accepted dependencies in the host when the supervisor omits them", async () => {
+    const firstResult = { taskId: "first", answer: "accepted packet" };
+    const descriptions: Array<Record<string, unknown>> = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [
+        admission("first", [], { objective: "Research first" }),
+        admission("dependent", [], {
+          objective: "Research dependent",
+          dependsOnTaskIds: ["first"],
+        }),
+        admission("tampered", [], {
+          objective: "Research tampered",
+          dependsOnTaskIds: ["first"],
+        }),
+      ],
+      maxTasks: 3,
+      maxConcurrency: 1,
+      allowHostDependencyHydration: true,
+      async invokeUpstream(input, config) {
+        const taskId = String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]);
+        descriptions.push(JSON.parse(input.description) as Record<string, unknown>);
+        return taskId === "first" ? firstResult : { taskId, answer: "bounded" };
+      },
+    });
+    const invoke = (taskId: string, dependencyResults?: Array<{ taskId: string; result: unknown }>) =>
+      adapter.invoke({
+        description: encodeResearchTaskDescriptionV1({
+          taskId,
+          objective: `Research ${taskId}`,
+          ...(dependencyResults ? { dependencyResults } : {}),
+        }),
+        subagent_type: "focused-researcher",
+      }, { configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA } });
+
+    await expect(invoke("first")).resolves.toEqual(firstResult);
+    await expect(invoke("dependent")).resolves.toEqual({ taskId: "dependent", answer: "bounded" });
+    expect(descriptions[1]).toEqual({
+      schema: "atlcli.research-task-dispatch/v1",
+      taskId: "dependent",
+      objective: "Research dependent",
+      dependencyResults: [{ taskId: "first", result: firstResult }],
+    });
+    await expect(invoke("tampered", [{ taskId: "first", result: { ...firstResult, answer: "changed" } }]))
+      .resolves.toEqual({ taskId: "tampered", answer: "bounded" });
+    expect(descriptions[2]).toEqual({
+      schema: "atlcli.research-task-dispatch/v1",
+      taskId: "tampered",
+      objective: "Research tampered",
+      dependencyResults: [{ taskId: "first", result: firstResult }],
+    });
+  });
+
   test("returns only the host-projected dependency record to the QuickJS caller", async () => {
     const rawResult = {
       taskId: "first",

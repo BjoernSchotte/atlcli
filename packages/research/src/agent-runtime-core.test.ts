@@ -23,6 +23,7 @@ import {
   hostDetailCoverageLimitationsV1,
   hostSearchCoverageLimitationsV1,
   hostSearchFreshnessLimitationsV1,
+  rehydrateResearchCheckpointRunInputV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
   type ResearchAgentRuntimeBindings,
 } from "./agent-runtime-core.js";
@@ -78,6 +79,66 @@ test("projects a body-free novelty baseline from accepted V1 and V2 packets", ()
     packets,
     new Map([[v2TaskId, ["confluence:42", "jira:DEMO-2"]]]),
   )).toEqual(["confluence:42", "jira:DEMO-1", "jira:DEMO-2"]);
+});
+
+test("rehydrates a checkpoint continuation only from the matching durable host record", async () => {
+  const brief = createResearchBriefV1({
+    sessionId: "research-session:runtime-checkpoint",
+    turnId: "research-turn:runtime-checkpoint",
+    objective: "Research the current bounded Jira process.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["DOCS"],
+    },
+    asOf: "2026-08-03T10:00:00.000Z",
+    timezone: "UTC",
+    requestedPlanApproval: "automatic",
+    requestedReconciliation: "off",
+  });
+  const graph = composeResearchGraphV1(brief);
+  const checkpoint = {
+    schema: "atlcli.research-retrieval-checkpoint/v1" as const,
+    graphRevision: graph.revision,
+    wave: 1,
+    action: "stop" as const,
+    reason: "search_budget_exhausted" as const,
+    continuationId: "research-continuation:1.1",
+  };
+  const store = {
+    read: async () => ({
+      status: "running",
+      turns: [{
+        id: brief.turnId,
+        brief,
+        graph,
+        retrievalAssessments: [{
+          graphRevision: checkpoint.graphRevision,
+          wave: checkpoint.wave,
+          assessment: { action: checkpoint.action, reason: checkpoint.reason },
+          continuation: { id: checkpoint.continuationId, status: "issued" },
+        }],
+      }],
+    }),
+  };
+  const input = {
+    request: { question: "stale question" },
+    durableSession: {
+      store,
+      sessionId: brief.sessionId,
+      turnId: brief.turnId,
+    },
+  } as unknown as import("./agent-runtime-core.js").RunResearchAgentInput;
+
+  const resumed = await rehydrateResearchCheckpointRunInputV1(input, checkpoint);
+
+  expect(resumed.request.question).toBe(brief.objective);
+  expect(resumed.researchGraph).toEqual(graph);
+  expect(resumed.brief).toEqual(brief);
+  await expect(rehydrateResearchCheckpointRunInputV1(input, {
+    ...checkpoint,
+    reason: "no_ranked_candidates",
+  })).rejects.toMatchObject({ code: "invalid-request" });
 });
 
 const validWorkflowCode = `
@@ -730,7 +791,6 @@ describe("ready frontier PTC", () => {
         subagentType: researchSubagentTypeForNodeV1(node),
         outputSchema: node.outputSchema,
         objective: node.objective,
-        dependencyResults: [],
       }],
     });
 
@@ -740,7 +800,6 @@ describe("ready frontier PTC", () => {
       graphRevision: graph.revision,
       tasks: [expect.objectContaining({
         taskId: researchTaskIdForNodeV1(graph, node),
-        dependencyResults: [],
       })],
     });
     await expect(createResearchReadyFrontierPtcTool({

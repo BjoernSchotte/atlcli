@@ -17,6 +17,27 @@ export function researchThreadIdForSessionV1(sessionId: string): string {
   return `atlcli:research:${sessionId}`;
 }
 
+/**
+ * One durable research session can contain several host-authorized supervisor
+ * phases. Each phase gets an isolated LangGraph thread so a direct return from
+ * a completed phase cannot be mistaken for the next checkpoint continuation.
+ */
+export function researchSupervisorThreadIdForSessionV1(
+  sessionId: string,
+  phaseId: string,
+): string {
+  if (
+    typeof phaseId !== "string" ||
+    !/^[A-Za-z0-9._:-]{1,180}$/.test(phaseId)
+  ) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research supervisor checkpoint phase is invalid.",
+    );
+  }
+  return `${researchThreadIdForSessionV1(sessionId)}:supervisor:${phaseId}`;
+}
+
 export function researchCheckpointConfigV1(input: {
   sessionId: string;
   checkpointNamespace?: string;

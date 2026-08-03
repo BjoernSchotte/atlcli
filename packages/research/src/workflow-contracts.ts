@@ -203,10 +203,10 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
       "atlassian.reference.resolve",
     ],
     supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2, RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2],
-    // A focused branch may need to inspect every bounded candidate: five
-    // search pages, one host ranking, and up to thirty sequential detail
-    // reads. The shared run budget remains the binding cross-branch ceiling.
-    maxBudget: { maxCapabilityCalls: 40 },
+    // A focused single-product branch may need ten screening pages, one host
+    // ranking, and up to fifty serial detail reads. Cross-product runs divide
+    // the shared PTC ceiling between acquisition branches before dispatch.
+    maxBudget: { maxCapabilityCalls: 64 },
     mayProposeFollowUps: true,
   }),
   "document-distiller": role({

@@ -472,8 +472,7 @@ async function createResumedRuntimeInput() {
       description: JSON.stringify({
         schema: "atlcli.research-task-dispatch/v1",
         taskId: joinTask.taskId,
-        objective: joinTask.objective,
-        dependencyResults: joinTask.dependencyResults
+        objective: joinTask.objective
       }),
       subagentType: joinTask.subagentType,
       responseSchema: responseSchemas[joinTask.outputSchema]
@@ -484,8 +483,7 @@ async function createResumedRuntimeInput() {
       description: JSON.stringify({
         schema: "atlcli.research-task-dispatch/v1",
         taskId: coverageTask.taskId,
-        objective: coverageTask.objective,
-        dependencyResults: coverageTask.dependencyResults
+        objective: coverageTask.objective
       }),
       subagentType: coverageTask.subagentType,
       responseSchema: responseSchemas[coverageTask.outputSchema]
@@ -496,8 +494,7 @@ async function createResumedRuntimeInput() {
       description: JSON.stringify({
         schema: "atlcli.research-task-dispatch/v1",
         taskId: critiqueTask.taskId,
-        objective: critiqueTask.objective,
-        dependencyResults: critiqueTask.dependencyResults
+        objective: critiqueTask.objective
       }),
       subagentType: critiqueTask.subagentType,
       responseSchema: responseSchemas[critiqueTask.outputSchema]
@@ -517,8 +514,7 @@ async function createResumedRuntimeInput() {
       description: JSON.stringify({
         schema: "atlcli.research-task-dispatch/v1",
         taskId: synthesisTask.taskId,
-        objective: synthesisTask.objective,
-        dependencyResults: synthesisTask.dependencyResults
+        objective: synthesisTask.objective
       }),
       subagentType: synthesisTask.subagentType,
       responseSchema: responseSchemas[synthesisTask.outputSchema]

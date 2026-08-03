@@ -610,6 +610,12 @@ export class ResearchContractError extends Error {
 export interface ResearchRunOptions {
   signal?: AbortSignal;
   policy?: ResearchOneShotPolicyV1;
+  /**
+   * The host owns durable session identity. Presenters may use this opaque
+   * reference to associate a streamed user turn with its later continuation,
+   * but cannot use it to bypass the revision-fenced session controls.
+   */
+  onSessionStart?: (session: { sessionId: string; turnId?: string }) => void;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
 }

@@ -158,7 +158,14 @@ const T2_VALUE_FLAGS = [
 const T2_SINGLE_VALUE_FLAGS = T2_VALUE_FLAGS.filter(
   (key) => key !== "project" && key !== "space",
 );
-const T2_BOOLEAN_FLAGS = ["keep-session", "plan-only", "json", "no-log", "help", "h"] as const;
+const T2_BOOLEAN_FLAGS = [
+  "keep-session",
+  "plan-only",
+  "json",
+  "no-log",
+  "help",
+  "h",
+] as const;
 const RESEARCH_SESSION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/;
 
 export interface ResearchCliWorkspace extends ResearchWorkspace {
@@ -231,33 +238,54 @@ export interface ResearchCliDependencies {
 }
 
 export function researchArtifactPath(now = new Date()): string {
-  const timestamp = now.toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
-  return join(homedir(), "Documents", "atlcli", "artefacts", `research-${timestamp}`, "report.md");
+  const timestamp = now
+    .toISOString()
+    .replace(/[T:.Z]/g, "-")
+    .replace(/-+$/, "");
+  return join(
+    homedir(),
+    "Documents",
+    "atlcli",
+    "artefacts",
+    `research-${timestamp}`,
+    "report.md",
+  );
 }
 
 function uniqueKeys(values: string[], uppercase = true): string[] {
-  return [...new Set(
-    values
-      .flatMap((value) => value.split(","))
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .map((value) => uppercase ? value.toUpperCase() : value),
-  )];
+  return [
+    ...new Set(
+      values
+        .flatMap((value) => value.split(","))
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => (uppercase ? value.toUpperCase() : value)),
+    ),
+  ];
 }
 
 function normalizeAsOf(value: string | undefined): string | undefined {
   if (!value) return undefined;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const parsed = new Date(`${value}T00:00:00.000Z`);
-    if (!Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value) {
+    if (
+      !Number.isNaN(parsed.valueOf()) &&
+      parsed.toISOString().slice(0, 10) === value
+    ) {
       return value;
     }
   }
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+  if (
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      value,
+    )
+  ) {
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.valueOf())) return parsed.toISOString();
   }
-  throw new Error("--as-of must use YYYY-MM-DD or an ISO 8601 timestamp with timezone.");
+  throw new Error(
+    "--as-of must use YYYY-MM-DD or an ISO 8601 timestamp with timezone.",
+  );
 }
 
 function normalizeTimezone(value: string | undefined): string | undefined {
@@ -288,24 +316,37 @@ export function parseResearchCliInput(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
 ): ResearchCliInput {
-  const secretFlags = ["api-key", "apikey", "anthropic-key", "key"].filter((key) => hasFlag(flags, key));
+  const secretFlags = ["api-key", "apikey", "anthropic-key", "key"].filter(
+    (key) => hasFlag(flags, key),
+  );
   if (secretFlags.length > 0) {
-    throw new Error("Anthropic API keys are never accepted as command-line flags. Set ANTHROPIC_API_KEY in the process environment.");
+    throw new Error(
+      "Anthropic API keys are never accepted as command-line flags. Set ANTHROPIC_API_KEY in the process environment.",
+    );
   }
-  const unknown = Object.keys(flags).filter((key) => !T2_RESEARCH_FLAGS.has(key));
+  const unknown = Object.keys(flags).filter(
+    (key) => !T2_RESEARCH_FLAGS.has(key),
+  );
   if (unknown.length > 0) {
-    throw new Error(`Unknown research option${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}. Run \`atlcli research --help\`.`);
+    throw new Error(
+      `Unknown research option${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}. Run \`atlcli research --help\`.`,
+    );
   }
   for (const key of T2_VALUE_FLAGS) {
     if (!hasFlag(flags, key)) continue;
     const value = flags[key];
-    const values = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
-    if (values.length === 0 || values.some((entry) => entry.trim().length === 0)) {
+    const values =
+      typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+    if (
+      values.length === 0 ||
+      values.some((entry) => entry.trim().length === 0)
+    ) {
       throw new Error(`--${key} requires a value.`);
     }
   }
   for (const key of T2_SINGLE_VALUE_FLAGS) {
-    if (Array.isArray(flags[key])) throw new Error(`--${key} may be specified only once.`);
+    if (Array.isArray(flags[key]))
+      throw new Error(`--${key} may be specified only once.`);
   }
   for (const key of T2_BOOLEAN_FLAGS) {
     if (flags[key] !== undefined && flags[key] !== true) {
@@ -316,20 +357,36 @@ export function parseResearchCliInput(
   if (resumeSessionId !== undefined) {
     requireSessionId(resumeSessionId);
     if (args.length > 0) {
-      throw new Error("--resume does not accept a new research question. Start a new turn after durable multi-turn support is available.");
+      throw new Error(
+        "--resume does not accept a new research question. Start a new turn after durable multi-turn support is available.",
+      );
     }
-    const incompatible = Object.keys(flags).filter((key) => ![
-      "resume", "profile", "output", "keep-session", "json", "no-log", "help", "h",
-    ].includes(key));
+    const incompatible = Object.keys(flags).filter(
+      (key) =>
+        ![
+          "resume",
+          "profile",
+          "output",
+          "keep-session",
+          "json",
+          "no-log",
+          "help",
+          "h",
+        ].includes(key),
+    );
     if (incompatible.length > 0) {
-      throw new Error(`--resume cannot change persisted scope, policy, or deadline: ${incompatible.map((key) => `--${key}`).join(", ")}.`);
+      throw new Error(
+        `--resume cannot change persisted scope, policy, or deadline: ${incompatible.map((key) => `--${key}`).join(", ")}.`,
+      );
     }
     return {
       question: "",
       profile: getFlag(flags, "profile"),
       projectKeys: [],
       spaceKeys: [],
-      ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
+      ...(getFlag(flags, "output")
+        ? { outputPath: getFlag(flags, "output") }
+        : {}),
       maxRunMinutes: DEFAULT_MAX_RUN_MINUTES,
       reportLanguage: "en",
       keepSession: hasFlag(flags, "keep-session"),
@@ -342,19 +399,34 @@ export function parseResearchCliInput(
   if (newTurnSessionId !== undefined) {
     requireSessionId(newTurnSessionId);
     const question = args.join(" ").trim();
-    if (!question) throw new Error("A new research question is required with --session.");
-    const incompatible = Object.keys(flags).filter((key) => ![
-      "session", "profile", "output", "keep-session", "json", "no-log", "help", "h",
-    ].includes(key));
+    if (!question)
+      throw new Error("A new research question is required with --session.");
+    const incompatible = Object.keys(flags).filter(
+      (key) =>
+        ![
+          "session",
+          "profile",
+          "output",
+          "keep-session",
+          "json",
+          "no-log",
+          "help",
+          "h",
+        ].includes(key),
+    );
     if (incompatible.length > 0) {
-      throw new Error(`--session preserves the existing scope, policy, and deadline: ${incompatible.map((key) => `--${key}`).join(", ")}.`);
+      throw new Error(
+        `--session preserves the existing scope, policy, and deadline: ${incompatible.map((key) => `--${key}`).join(", ")}.`,
+      );
     }
     return {
       question,
       profile: getFlag(flags, "profile"),
       projectKeys: [],
       spaceKeys: [],
-      ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
+      ...(getFlag(flags, "output")
+        ? { outputPath: getFlag(flags, "output") }
+        : {}),
       maxRunMinutes: DEFAULT_MAX_RUN_MINUTES,
       reportLanguage: "en",
       keepSession: hasFlag(flags, "keep-session"),
@@ -364,27 +436,54 @@ export function parseResearchCliInput(
     };
   }
   const question = args.join(" ").trim();
-  if (!question) throw new Error("A research question is required. Example: atlcli research \"Which Jira and Confluence items are related?\"");
+  if (!question)
+    throw new Error(
+      'A research question is required. Example: atlcli research "Which Jira and Confluence items are related?"',
+    );
   const from = getFlag(flags, "from");
   const to = getFlag(flags, "to");
   const asOf = normalizeAsOf(getFlag(flags, "as-of"));
   const timezone = normalizeTimezone(getFlag(flags, "timezone"));
-  const reportLanguage = enumFlag(flags, "language", RESEARCH_REPORT_LANGUAGES_V1, "en");
+  const reportLanguage = enumFlag(
+    flags,
+    "language",
+    RESEARCH_REPORT_LANGUAGES_V1,
+    "en",
+  );
   const maxRunMinutesFlag = getFlag(flags, "max-run-minutes");
-  const maxRunMinutes = maxRunMinutesFlag === undefined
-    ? DEFAULT_MAX_RUN_MINUTES
-    : Number(maxRunMinutesFlag);
-  if (!Number.isSafeInteger(maxRunMinutes) || maxRunMinutes < 1 || maxRunMinutes > MAX_MAX_RUN_MINUTES) {
-    throw new Error(`--max-run-minutes must be an integer between 1 and ${MAX_MAX_RUN_MINUTES}.`);
+  const maxRunMinutes =
+    maxRunMinutesFlag === undefined
+      ? DEFAULT_MAX_RUN_MINUTES
+      : Number(maxRunMinutesFlag);
+  if (
+    !Number.isSafeInteger(maxRunMinutes) ||
+    maxRunMinutes < 1 ||
+    maxRunMinutes > MAX_MAX_RUN_MINUTES
+  ) {
+    throw new Error(
+      `--max-run-minutes must be an integer between 1 and ${MAX_MAX_RUN_MINUTES}.`,
+    );
   }
   const maxCostUsdFlag = getFlag(flags, "max-cost-usd");
-  const maxCostUsd = maxCostUsdFlag === undefined ? undefined : Number(maxCostUsdFlag);
-  if (maxCostUsd !== undefined && (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0 || maxCostUsd > MAX_MODEL_COST_USD)) {
-    throw new Error(`--max-cost-usd must be a number greater than 0 and at most ${MAX_MODEL_COST_USD}.`);
+  const maxCostUsd =
+    maxCostUsdFlag === undefined ? undefined : Number(maxCostUsdFlag);
+  if (
+    maxCostUsd !== undefined &&
+    (!Number.isFinite(maxCostUsd) ||
+      maxCostUsd <= 0 ||
+      maxCostUsd > MAX_MODEL_COST_USD)
+  ) {
+    throw new Error(
+      `--max-cost-usd must be a number greater than 0 and at most ${MAX_MODEL_COST_USD}.`,
+    );
   }
-  const requestedPlanApproval = getFlag(flags, "plan-approval") ??
+  const requestedPlanApproval =
+    getFlag(flags, "plan-approval") ??
     DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedPlanApproval;
-  if (requestedPlanApproval !== "default" && requestedPlanApproval !== "automatic") {
+  if (
+    requestedPlanApproval !== "default" &&
+    requestedPlanApproval !== "automatic"
+  ) {
     throw new Error(
       "--plan-approval supports only automatic in the one-shot path; durable required approval arrives in T4.",
     );
@@ -414,9 +513,19 @@ export function parseResearchCliInput(
   return {
     question: [
       question,
-      asOf ? reportLanguage === "de" ? `Stichtag: ${asOf}.` : `As-of date: ${asOf}.` : "",
-      timezone ? reportLanguage === "de" ? `Zeitzone: ${timezone}.` : `Timezone: ${timezone}.` : "",
-    ].filter(Boolean).join("\n\n"),
+      asOf
+        ? reportLanguage === "de"
+          ? `Stichtag: ${asOf}.`
+          : `As-of date: ${asOf}.`
+        : "",
+      timezone
+        ? reportLanguage === "de"
+          ? `Zeitzone: ${timezone}.`
+          : `Timezone: ${timezone}.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
     profile: getFlag(flags, "profile"),
     projectKeys: uniqueKeys(getFlags(flags, "project")),
     spaceKeys: uniqueKeys(getFlags(flags, "space"), false),
@@ -425,7 +534,9 @@ export function parseResearchCliInput(
     ...(asOf ? { asOf } : {}),
     ...(timezone ? { timezone } : {}),
     reportLanguage,
-    ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
+    ...(getFlag(flags, "output")
+      ? { outputPath: getFlag(flags, "output") }
+      : {}),
     maxRunMinutes,
     ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
     keepSession: hasFlag(flags, "keep-session"),
@@ -451,7 +562,8 @@ function singleSessionFlag(
     if (required) throw new Error(`--${key} requires a value.`);
     return undefined;
   }
-  if (typeof value !== "string" || !value.trim()) throw new Error(`--${key} requires a value.`);
+  if (typeof value !== "string" || !value.trim())
+    throw new Error(`--${key} requires a value.`);
   return value.trim();
 }
 
@@ -472,18 +584,29 @@ function assertSessionFlags(
   ]);
   const unknown = Object.keys(flags).filter((key) => !permitted.has(key));
   if (unknown.length > 0) {
-    throw new Error(`Unknown research session option${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}.`);
+    throw new Error(
+      `Unknown research session option${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}.`,
+    );
   }
   for (const key of ["json", "no-log", "help", "h", ...allowedBooleans]) {
-    if (flags[key] !== undefined && flags[key] !== true) throw new Error(`--${key} does not accept a value.`);
+    if (flags[key] !== undefined && flags[key] !== true)
+      throw new Error(`--${key} does not accept a value.`);
   }
   for (const key of allowedValues) {
-    if (flags[key] !== undefined && (typeof flags[key] !== "string" || Array.isArray(flags[key]) || !flags[key])) {
+    if (
+      flags[key] !== undefined &&
+      (typeof flags[key] !== "string" ||
+        Array.isArray(flags[key]) ||
+        !flags[key])
+    ) {
       throw new Error(`--${key} requires a value.`);
     }
   }
   for (const key of repeatableValues) {
-    if (flags[key] !== undefined && getFlags(flags, key).some((value) => !value.trim())) {
+    if (
+      flags[key] !== undefined &&
+      getFlags(flags, key).some((value) => !value.trim())
+    ) {
       throw new Error(`--${key} requires a value.`);
     }
     if (flags[key] !== undefined && getFlags(flags, key).length === 0) {
@@ -504,7 +627,8 @@ function boundedSessionLimit(value: string | undefined): number | undefined {
 function expectedSessionRevision(value: string | undefined): number {
   if (value === undefined) throw new Error("--revision requires a value.");
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error("--revision must be a positive integer.");
+  if (!Number.isSafeInteger(parsed) || parsed < 1)
+    throw new Error("--revision must be a positive integer.");
   return parsed;
 }
 
@@ -518,7 +642,10 @@ interface ResearchAssumptionDecisionInputV1 {
   decision: "accepted" | "rejected";
 }
 
-function splitResearchSessionAssignment(value: string, option: string): [string, string] {
+function splitResearchSessionAssignment(
+  value: string,
+  option: string,
+): [string, string] {
   const separator = value.indexOf("=");
   if (separator <= 0 || separator === value.length - 1) {
     throw new Error(`${option} must use <id>=<value>.`);
@@ -530,14 +657,24 @@ function clarificationAnswersFromSessionFlags(
   flags: Record<string, string | boolean | string[]>,
 ): ResearchClarificationAnswerInputV1[] {
   const answers = getFlags(flags, "answer").map((value) => {
-    const [questionId, response] = splitResearchSessionAssignment(value, "--answer");
-    if (!/^clarification:[A-Za-z0-9._-]{1,120}$/.test(questionId) ||
-        !response || response.length > 2_000) {
-      throw new Error("--answer must use a valid clarification ID and a response of at most 2000 characters.");
+    const [questionId, response] = splitResearchSessionAssignment(
+      value,
+      "--answer",
+    );
+    if (
+      !/^clarification:[A-Za-z0-9._-]{1,120}$/.test(questionId) ||
+      !response ||
+      response.length > 2_000
+    ) {
+      throw new Error(
+        "--answer must use a valid clarification ID and a response of at most 2000 characters.",
+      );
     }
     return { questionId, response };
   });
-  if (new Set(answers.map((answer) => answer.questionId)).size !== answers.length) {
+  if (
+    new Set(answers.map((answer) => answer.questionId)).size !== answers.length
+  ) {
     throw new Error("--answer cannot repeat a clarification ID.");
   }
   return answers;
@@ -547,14 +684,24 @@ function assumptionDecisionsFromSessionFlags(
   flags: Record<string, string | boolean | string[]>,
 ): ResearchAssumptionDecisionInputV1[] {
   const decisions = getFlags(flags, "assumption").map((value) => {
-    const [assumptionId, decision] = splitResearchSessionAssignment(value, "--assumption");
-    if (!/^assumption:[A-Za-z0-9._-]{1,120}$/.test(assumptionId) ||
-        (decision !== "accepted" && decision !== "rejected")) {
-      throw new Error("--assumption must use <assumption-id>=accepted|rejected.");
+    const [assumptionId, decision] = splitResearchSessionAssignment(
+      value,
+      "--assumption",
+    );
+    if (
+      !/^assumption:[A-Za-z0-9._-]{1,120}$/.test(assumptionId) ||
+      (decision !== "accepted" && decision !== "rejected")
+    ) {
+      throw new Error(
+        "--assumption must use <assumption-id>=accepted|rejected.",
+      );
     }
     return { assumptionId, decision } as const;
   });
-  if (new Set(decisions.map((decision) => decision.assumptionId)).size !== decisions.length) {
+  if (
+    new Set(decisions.map((decision) => decision.assumptionId)).size !==
+    decisions.length
+  ) {
     throw new Error("--assumption cannot repeat an assumption ID.");
   }
   return decisions;
@@ -593,8 +740,13 @@ function requiredEvidenceId(value: string | undefined): string {
   return value;
 }
 
-function activeSessionTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefined {
-  return session.turns.find((turn) => turn.id === session.activeTurnId) ?? session.turns.at(-1);
+function activeSessionTurn(
+  session: ResearchSessionV1,
+): ResearchSessionTurnV1 | undefined {
+  return (
+    session.turns.find((turn) => turn.id === session.activeTurnId) ??
+    session.turns.at(-1)
+  );
 }
 
 async function scopeClarificationReviewForCliSession(input: {
@@ -619,7 +771,9 @@ async function scopeClarificationReviewForCliSession(input: {
     tenantOrigin,
   );
   if (!review) {
-    throw new Error("The selected profile cannot access a pending research scope clarification for this session.");
+    throw new Error(
+      "The selected profile cannot access a pending research scope clarification for this session.",
+    );
   }
   return { profile, tenantOrigin, review };
 }
@@ -629,13 +783,21 @@ function scopeApprovalBindingV1(input: {
   proposalId: string;
   approvedAt: string;
 }): ResearchScopeBindingV1 {
-  const proposal = input.turn.scopeExpansionProposals.find((candidate) => candidate.id === input.proposalId);
+  const proposal = input.turn.scopeExpansionProposals.find(
+    (candidate) => candidate.id === input.proposalId,
+  );
   if (!proposal || proposal.status !== "proposed") {
-    throw new Error("Research scope expansion proposal is stale, unknown, or already resolved.");
+    throw new Error(
+      "Research scope expansion proposal is stale, unknown, or already resolved.",
+    );
   }
-  const candidate = input.turn.scopeCandidates.find((entry) => entry.id === proposal.candidateId);
+  const candidate = input.turn.scopeCandidates.find(
+    (entry) => entry.id === proposal.candidateId,
+  );
   if (!candidate) {
-    throw new Error("Research scope expansion candidate is no longer available.");
+    throw new Error(
+      "Research scope expansion candidate is no longer available.",
+    );
   }
   return {
     schema: "atlcli.research-scope-binding/v1",
@@ -653,7 +815,9 @@ function scopeApprovalBindingV1(input: {
   };
 }
 
-function projectSessionGraph(graph: ResearchGraphV1 | undefined): Record<string, unknown> | undefined {
+function projectSessionGraph(
+  graph: ResearchGraphV1 | undefined,
+): Record<string, unknown> | undefined {
   if (!graph) return undefined;
   return {
     revision: graph.revision,
@@ -674,10 +838,13 @@ function projectSessionGraph(graph: ResearchGraphV1 | undefined): Record<string,
 }
 
 /** Excludes source bodies, task prompts, provider data, packet bodies, and hidden reasoning. */
-function projectResearchSessionV1(session: ResearchSessionV1): Record<string, unknown> {
+function projectResearchSessionV1(
+  session: ResearchSessionV1,
+): Record<string, unknown> {
   const turn = activeSessionTurn(session);
   const taskStatusCounts: Record<string, number> = {};
-  for (const task of turn?.tasks ?? []) taskStatusCounts[task.status] = (taskStatusCounts[task.status] ?? 0) + 1;
+  for (const task of turn?.tasks ?? [])
+    taskStatusCounts[task.status] = (taskStatusCounts[task.status] ?? 0) + 1;
   return {
     schema: "atlcli.research-session-view/v1",
     sessionId: session.sessionId,
@@ -697,9 +864,17 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
         scope: turn.brief.scope,
         scopeBindings: turn.scopeBindings,
         limits: turn.brief.limits,
-        clarificationQuestionIds: turn.brief.clarificationQuestions.map((question) => question.id),
+        clarificationQuestionIds: turn.brief.clarificationQuestions.map(
+          (question) => question.id,
+        ),
         unresolvedAssumptionIds: turn.brief.assumptions
-          .filter((assumption) => assumption.requiresUserDecision && !turn.assumptionDecisions.some((decision) => decision.assumptionId === assumption.id))
+          .filter(
+            (assumption) =>
+              assumption.requiresUserDecision &&
+              !turn.assumptionDecisions.some(
+                (decision) => decision.assumptionId === assumption.id,
+              ),
+          )
           .map((assumption) => assumption.id),
       },
       graph: projectSessionGraph(turn.graph),
@@ -728,11 +903,15 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
         basedOnGraphRevision: control.basedOnGraphRevision,
         requestedAt: control.requestedAt,
         state: control.state,
-        ...(control.appliedAt === undefined ? {} : { appliedAt: control.appliedAt }),
+        ...(control.appliedAt === undefined
+          ? {}
+          : { appliedAt: control.appliedAt }),
         ...(control.appliedGraphRevision === undefined
           ? {}
           : { appliedGraphRevision: control.appliedGraphRevision }),
-        ...(control.planDiff === undefined ? {} : { planDiff: control.planDiff }),
+        ...(control.planDiff === undefined
+          ? {}
+          : { planDiff: control.planDiff }),
       })),
       scope: {
         candidates: turn.scopeCandidates.map((candidate) => ({
@@ -741,7 +920,9 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
           entityKind: candidate.entityKind,
           ...(candidate.key ? { key: candidate.key } : {}),
           name: candidate.name,
-          ...(candidate.canonicalUrl ? { canonicalUrl: candidate.canonicalUrl } : {}),
+          ...(candidate.canonicalUrl
+            ? { canonicalUrl: candidate.canonicalUrl }
+            : {}),
           ...(candidate.status ? { status: candidate.status } : {}),
           ...(candidate.match ? { match: candidate.match } : {}),
         })),
@@ -755,7 +936,9 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
           basedOnGraphRevision: proposal.basedOnGraphRevision,
           reason: proposal.reason,
           status: proposal.status,
-          ...(proposal.approvedBindingId ? { approvedBindingId: proposal.approvedBindingId } : {}),
+          ...(proposal.approvedBindingId
+            ? { approvedBindingId: proposal.approvedBindingId }
+            : {}),
         })),
       },
       work: {
@@ -770,11 +953,14 @@ function projectResearchSessionV1(session: ResearchSessionV1): Record<string, un
   };
 }
 
-function projectResearchSessionPlanV1(session: ResearchSessionV1): Record<string, unknown> {
+function projectResearchSessionPlanV1(
+  session: ResearchSessionV1,
+): Record<string, unknown> {
   const turn = activeSessionTurn(session);
   const latestPlanRevision = turn?.planRevisions?.at(-1);
   const latestScopeRevision = turn?.scopeRevisions?.at(-1);
-  const planDiff = latestScopeRevision?.planDiff ?? latestPlanRevision?.planDiff;
+  const planDiff =
+    latestScopeRevision?.planDiff ?? latestPlanRevision?.planDiff;
   return {
     ...projectResearchSessionV1(session),
     kind: "plan",
@@ -788,7 +974,9 @@ function projectResearchSessionPlanV1(session: ResearchSessionV1): Record<string
  * text requires the separate, explicit `sessions evidence --include-text`
  * command so ordinary session inspection cannot accidentally disclose it.
  */
-function projectResearchEvidenceMetadataV1(record: ResearchEvidenceRecordV1): Record<string, unknown> {
+function projectResearchEvidenceMetadataV1(
+  record: ResearchEvidenceRecordV1,
+): Record<string, unknown> {
   return {
     id: record.id,
     identity: record.identity,
@@ -801,7 +989,9 @@ function projectResearchEvidenceMetadataV1(record: ResearchEvidenceRecordV1): Re
   };
 }
 
-function projectResearchClaimMetadataV1(claim: ResearchClaimV1): Record<string, unknown> {
+function projectResearchClaimMetadataV1(
+  claim: ResearchClaimV1,
+): Record<string, unknown> {
   return {
     id: claim.id,
     classification: claim.classification,
@@ -812,17 +1002,25 @@ function projectResearchClaimMetadataV1(claim: ResearchClaimV1): Record<string, 
     freshness: claim.freshness,
     createdAt: claim.createdAt,
     freshnessCheckedAt: claim.freshnessCheckedAt,
-    ...(claim.invalidatedAt === undefined ? {} : { invalidatedAt: claim.invalidatedAt }),
-    ...(claim.invalidationReason === undefined ? {} : { invalidationReason: claim.invalidationReason }),
+    ...(claim.invalidatedAt === undefined
+      ? {}
+      : { invalidatedAt: claim.invalidatedAt }),
+    ...(claim.invalidationReason === undefined
+      ? {}
+      : { invalidationReason: claim.invalidationReason }),
   };
 }
 
-function projectResearchOutlineMetadataV1(outline: ResearchOutlineV1): Record<string, unknown> {
+function projectResearchOutlineMetadataV1(
+  outline: ResearchOutlineV1,
+): Record<string, unknown> {
   return {
     id: outline.id,
     revision: outline.revision,
     basedOnBriefRevision: outline.basedOnBriefRevision,
-    ...(outline.supersedesOutlineId === undefined ? {} : { supersedesOutlineId: outline.supersedesOutlineId }),
+    ...(outline.supersedesOutlineId === undefined
+      ? {}
+      : { supersedesOutlineId: outline.supersedesOutlineId }),
     createdAt: outline.createdAt,
     sections: outline.sections.map((section) => ({
       id: section.id,
@@ -840,21 +1038,30 @@ function projectResearchOutlineMetadataV1(outline: ResearchOutlineV1): Record<st
       evidenceIds: contradiction.evidenceIds,
       status: contradiction.status,
       detectedAt: contradiction.detectedAt,
-      ...(contradiction.resolvedAt === undefined ? {} : { resolvedAt: contradiction.resolvedAt }),
+      ...(contradiction.resolvedAt === undefined
+        ? {}
+        : { resolvedAt: contradiction.resolvedAt }),
     })),
     coverage: outline.coverage,
   };
 }
 
-type ResearchSessionInspectionKindV1 = "evidence" | "claims" | "outline" | "reconciliation";
+type ResearchSessionInspectionKindV1 =
+  | "evidence"
+  | "claims"
+  | "outline"
+  | "reconciliation";
 
 function selectedResearchSessionInspectionV1(
   flags: Record<string, string | boolean | string[]>,
 ): ResearchSessionInspectionKindV1 | undefined {
-  const selected = (["evidence", "claims", "outline", "reconciliation"] as const)
-    .filter((kind) => flags[kind] === true);
+  const selected = (
+    ["evidence", "claims", "outline", "reconciliation"] as const
+  ).filter((kind) => flags[kind] === true);
   if (selected.length > 1) {
-    throw new Error("Select at most one research session inspection view at a time.");
+    throw new Error(
+      "Select at most one research session inspection view at a time.",
+    );
   }
   return selected[0];
 }
@@ -900,7 +1107,10 @@ async function projectResearchSessionInspectionV1(input: {
       coverageTargets: turn.brief.coverageTargets,
     });
     const current = await outlines.current();
-    return { ...base, outline: current ? projectResearchOutlineMetadataV1(current) : undefined };
+    return {
+      ...base,
+      outline: current ? projectResearchOutlineMetadataV1(current) : undefined,
+    };
   }
   return {
     ...base,
@@ -944,56 +1154,94 @@ export async function handleResearchSessions(
     return;
   }
   if (command === "list") {
-    if (args.length !== 1) throw new Error("Usage: atlcli research sessions list [--limit <1-100>] [--cursor <session-id>].");
+    if (args.length !== 1)
+      throw new Error(
+        "Usage: atlcli research sessions list [--limit <1-100>] [--cursor <session-id>].",
+      );
     assertSessionFlags(flags, ["limit", "cursor"]);
     const limit = boundedSessionLimit(singleSessionFlag(flags, "limit"));
     const cursor = singleSessionFlag(flags, "cursor");
     if (cursor !== undefined) requireSessionId(cursor);
     const opened = await dependencies.openSessionStore();
     try {
-      const page = await opened.store.list({ ...(limit === undefined ? {} : { limit }), ...(cursor === undefined ? {} : { cursor }) });
-      dependencies.emitOutput({
-        schema: "atlcli.research-session-list/v1",
-        sessions: page.sessions.map(projectResearchSessionV1),
-        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-      }, opts);
+      const page = await opened.store.list({
+        ...(limit === undefined ? {} : { limit }),
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      dependencies.emitOutput(
+        {
+          schema: "atlcli.research-session-list/v1",
+          sessions: page.sessions.map(projectResearchSessionV1),
+          ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+        },
+        opts,
+      );
     } finally {
       opened.close();
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "evidence" &&
-      command !== "scope-clarification" && command !== "choose-scope" &&
-      command !== "continue-scope-clarification" && command !== "clarify" &&
-      command !== "approve" && command !== "reject-plan" && command !== "revise-plan" &&
-      command !== "approve-scope" && command !== "reject-scope" && command !== "cancel" &&
-      command !== "pause" && command !== "steer" && command !== "resume" &&
-      command !== "delete") {
-    throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
+  if (
+    command !== "show" &&
+    command !== "plan" &&
+    command !== "evidence" &&
+    command !== "scope-clarification" &&
+    command !== "choose-scope" &&
+    command !== "continue-scope-clarification" &&
+    command !== "clarify" &&
+    command !== "approve" &&
+    command !== "reject-plan" &&
+    command !== "revise-plan" &&
+    command !== "approve-scope" &&
+    command !== "reject-scope" &&
+    command !== "cancel" &&
+    command !== "pause" &&
+    command !== "steer" &&
+    command !== "resume" &&
+    command !== "delete"
+  ) {
+    throw new Error(
+      `Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`,
+    );
   }
   const sessionId = requireSessionId(sessionArg);
   if (command === "show" || command === "plan") {
-    if (args.length !== 2) throw new Error(`Usage: atlcli research sessions ${command} <session-id>.`);
+    if (args.length !== 2)
+      throw new Error(
+        `Usage: atlcli research sessions ${command} <session-id>.`,
+      );
     assertSessionFlags(
       flags,
       command === "show" ? ["limit"] : [],
-      command === "show" ? ["evidence", "claims", "outline", "reconciliation"] : [],
+      command === "show"
+        ? ["evidence", "claims", "outline", "reconciliation"]
+        : [],
     );
-    const inspection = command === "show" ? selectedResearchSessionInspectionV1(flags) : undefined;
-    const limit = command === "show" ? boundedSessionLimit(singleSessionFlag(flags, "limit")) : undefined;
+    const inspection =
+      command === "show"
+        ? selectedResearchSessionInspectionV1(flags)
+        : undefined;
+    const limit =
+      command === "show"
+        ? boundedSessionLimit(singleSessionFlag(flags, "limit"))
+        : undefined;
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
-      const view = command === "plan"
-        ? projectResearchSessionPlanV1(session)
-        : inspection
-          ? await projectResearchSessionInspectionV1({
-              store: opened.store,
-              session,
-              kind: inspection,
-              ...(limit === undefined ? {} : { limit }),
-            })
-          : projectResearchSessionV1(session);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
+      const view =
+        command === "plan"
+          ? projectResearchSessionPlanV1(session)
+          : inspection
+            ? await projectResearchSessionInspectionV1({
+                store: opened.store,
+                session,
+                kind: inspection,
+                ...(limit === undefined ? {} : { limit }),
+              })
+            : projectResearchSessionV1(session);
       dependencies.emitOutput(view, opts);
     } finally {
       opened.close();
@@ -1001,49 +1249,76 @@ export async function handleResearchSessions(
     return;
   }
   if (command === "evidence") {
-    if (args.length !== 2) throw new Error("Usage: atlcli research sessions evidence <session-id> --id <evidence-id> [--include-text].");
+    if (args.length !== 2)
+      throw new Error(
+        "Usage: atlcli research sessions evidence <session-id> --id <evidence-id> [--include-text].",
+      );
     assertSessionFlags(flags, ["id"], ["include-text"]);
     const evidenceId = requiredEvidenceId(singleSessionFlag(flags, "id", true));
     const includeText = flags["include-text"] === true;
     const opened = await dependencies.openSessionStore();
     try {
       await requireStoredResearchSession(opened.store, sessionId);
-      const evidence = new WorkspaceResearchEvidenceStoreV1(await opened.store.workspace(sessionId));
+      const evidence = new WorkspaceResearchEvidenceStoreV1(
+        await opened.store.workspace(sessionId),
+      );
       const record = await evidence.get(evidenceId);
       if (!record) throw new Error("Retained research evidence was not found.");
       const chunks = includeText ? await evidence.chunks(record.id) : undefined;
-      dependencies.emitOutput({
-        schema: "atlcli.research-session-evidence-view/v1",
-        sessionId,
-        evidence: projectResearchEvidenceMetadataV1(record),
-        ...(chunks === undefined ? {} : { sourceText: chunks.map((chunk) => chunk.text).join("") }),
-      }, opts);
+      dependencies.emitOutput(
+        {
+          schema: "atlcli.research-session-evidence-view/v1",
+          sessionId,
+          evidence: projectResearchEvidenceMetadataV1(record),
+          ...(chunks === undefined
+            ? {}
+            : { sourceText: chunks.map((chunk) => chunk.text).join("") }),
+        },
+        opts,
+      );
     } finally {
       opened.close();
     }
     return;
   }
   if (command === "pause") {
-    if (args.length !== 2) throw new Error("Usage: atlcli research sessions pause <session-id> --revision <session-revision>.");
+    if (args.length !== 2)
+      throw new Error(
+        "Usage: atlcli research sessions pause <session-id> --revision <session-revision>.",
+      );
     assertSessionFlags(flags, ["revision"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       if (session.revision !== revision) {
-        throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+        throw new Error(
+          "Research session revision is stale; inspect the current session and retry with its exact revision.",
+        );
       }
-      let paused = (await opened.store.commit(sessionId, {
-        kind: "request_pause",
-        expectedRevision: session.revision,
-        expectedLeaseEpoch: session.lease.epoch,
-        at: new Date().toISOString(),
-      })).session;
+      let paused = (
+        await opened.store.commit(sessionId, {
+          kind: "request_pause",
+          expectedRevision: session.revision,
+          expectedLeaseEpoch: session.lease.epoch,
+          at: new Date().toISOString(),
+        })
+      ).session;
       const turn = activeSessionTurn(paused);
-      const hasUnsettledDispatch = turn?.tasks.some((task) =>
-        task.status === "ready" || task.status === "running" || task.status === "outcome_unknown",
-      ) ?? false;
-      const canAcknowledgeLocally = !hasUnsettledDispatch &&
+      const hasUnsettledDispatch =
+        turn?.tasks.some(
+          (task) =>
+            task.status === "ready" ||
+            task.status === "running" ||
+            task.status === "outcome_unknown",
+        ) ?? false;
+      const canAcknowledgeLocally =
+        !hasUnsettledDispatch &&
         (turn?.tasks.length ?? 0) === 0 &&
         (turn?.acceptedPackets.length ?? 0) === 0 &&
         turn?.graphSelectionCommittedAt === undefined;
@@ -1052,14 +1327,18 @@ export async function handleResearchSessions(
       // its own pause; otherwise the retained runner must observe the request
       // and checkpoint it without this command guessing a result.
       if (canAcknowledgeLocally) {
-        paused = (await opened.store.commit(sessionId, {
-          kind: "acknowledge_pause",
-          expectedRevision: paused.revision,
-          expectedLeaseEpoch: paused.lease.epoch,
-          at: new Date().toISOString(),
-        })).session;
+        paused = (
+          await opened.store.commit(sessionId, {
+            kind: "acknowledge_pause",
+            expectedRevision: paused.revision,
+            expectedLeaseEpoch: paused.lease.epoch,
+            at: new Date().toISOString(),
+          })
+        ).session;
       }
-      dependencies.writeStderr(`[research] session=${sessionId} action=pause revision=${paused.revision} status=${paused.status}${canAcknowledgeLocally ? " checkpoint=acknowledged" : " checkpoint=pending"}\n`);
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=pause revision=${paused.revision} status=${paused.status}${canAcknowledgeLocally ? " checkpoint=acknowledged" : " checkpoint=pending"}\n`,
+      );
       dependencies.emitOutput(projectResearchSessionV1(paused), opts);
     } finally {
       opened.close();
@@ -1068,28 +1347,41 @@ export async function handleResearchSessions(
   }
   if (command === "steer") {
     if (args.length !== 2) {
-      throw new Error("Usage: atlcli research sessions steer <session-id> --revision <session-revision> --graph-revision <graph-revision> --instruction <focus-or-priority>.");
+      throw new Error(
+        "Usage: atlcli research sessions steer <session-id> --revision <session-revision> --graph-revision <graph-revision> --instruction <focus-or-priority>.",
+      );
     }
     assertSessionFlags(flags, ["revision", "graph-revision", "instruction"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
-    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
+    const graphRevision = expectedSessionRevision(
+      singleSessionFlag(flags, "graph-revision", true),
+    );
     const instruction = singleSessionFlag(flags, "instruction", true);
     if (!instruction) throw new Error("--instruction requires a value.");
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       if (session.revision !== revision) {
-        throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+        throw new Error(
+          "Research session revision is stale; inspect the current session and retry with its exact revision.",
+        );
       }
-      const steered = (await opened.store.commit(sessionId, {
-        kind: "request_steering",
-        steeringId: `steering:${randomUUID()}`,
-        basedOnGraphRevision: graphRevision,
-        request: instruction,
-        expectedRevision: session.revision,
-        expectedLeaseEpoch: session.lease.epoch,
-        at: new Date().toISOString(),
-      })).session;
+      const steered = (
+        await opened.store.commit(sessionId, {
+          kind: "request_steering",
+          steeringId: `steering:${randomUUID()}`,
+          basedOnGraphRevision: graphRevision,
+          request: instruction,
+          expectedRevision: session.revision,
+          expectedLeaseEpoch: session.lease.epoch,
+          at: new Date().toISOString(),
+        })
+      ).session;
       dependencies.writeStderr(
         `[research] session=${sessionId} action=steer revision=${steered.revision} status=${steered.status} graph_revision=${graphRevision}\n`,
       );
@@ -1100,41 +1392,66 @@ export async function handleResearchSessions(
     return;
   }
   if (command === "resume") {
-    if (args.length !== 2) throw new Error("Usage: atlcli research sessions resume <session-id> --revision <session-revision>.");
+    if (args.length !== 2)
+      throw new Error(
+        "Usage: atlcli research sessions resume <session-id> --revision <session-revision>.",
+      );
     assertSessionFlags(flags, ["revision"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       if (session.revision !== revision) {
-        throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+        throw new Error(
+          "Research session revision is stale; inspect the current session and retry with its exact revision.",
+        );
       }
       const turn = activeSessionTurn(session);
-      if (session.status !== "paused" || !turn?.brief || turn.tasks.length > 0 ||
-          turn.acceptedPackets.length > 0 || turn.graphSelectionCommittedAt !== undefined) {
-        throw new Error("Only an acknowledged paused research session can be resumed by this control command.");
+      if (
+        session.status !== "paused" ||
+        !turn?.brief ||
+        turn.tasks.length > 0 ||
+        turn.acceptedPackets.length > 0 ||
+        turn.graphSelectionCommittedAt !== undefined
+      ) {
+        throw new Error(
+          "Only an acknowledged paused research session can be resumed by this control command.",
+        );
       }
       const at = new Date().toISOString();
       const resumed = await recoverResearchSessionForResumeV1({
         store: opened.store,
         sessionId,
         ownerId: `owner:cli-resume-control-${process.pid}`,
-        leaseExpiresAt: new Date(Date.parse(at) + turn.brief.limits.maxRunMs).toISOString(),
+        leaseExpiresAt: new Date(
+          Date.parse(at) + turn.brief.limits.maxRunMs,
+        ).toISOString(),
         at,
       });
       if (resumed.status !== "running") {
-        throw new Error("Research session resume did not reach its runnable state.");
+        throw new Error(
+          "Research session resume did not reach its runnable state.",
+        );
       }
       // This control action deliberately does not construct a workspace,
       // provider, or model. Release the freshly claimed lease so the public
       // `atlcli research --resume <id>` execution path can reclaim it.
-      const released = (await opened.store.commit(sessionId, {
-        kind: "release_lease",
-        expectedRevision: resumed.revision,
-        expectedLeaseEpoch: resumed.lease.epoch,
-        at,
-      })).session;
-      dependencies.writeStderr(`[research] session=${sessionId} action=resume revision=${released.revision} status=${released.status} dispatch=deferred\n`);
+      const released = (
+        await opened.store.commit(sessionId, {
+          kind: "release_lease",
+          expectedRevision: resumed.revision,
+          expectedLeaseEpoch: resumed.lease.epoch,
+          at,
+        })
+      ).session;
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=resume revision=${released.revision} status=${released.status} dispatch=deferred\n`,
+      );
       dependencies.emitOutput(projectResearchSessionV1(released), opts);
     } finally {
       opened.close();
@@ -1143,13 +1460,18 @@ export async function handleResearchSessions(
   }
   if (command === "scope-clarification") {
     if (args.length !== 2) {
-      throw new Error("Usage: atlcli research sessions scope-clarification <session-id> [--profile <name>].");
+      throw new Error(
+        "Usage: atlcli research sessions scope-clarification <session-id> [--profile <name>].",
+      );
     }
     assertSessionFlags(flags, ["profile"]);
     const profileName = singleSessionFlag(flags, "profile");
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       const { review } = await scopeClarificationReviewForCliSession({
         session,
         profileName,
@@ -1164,33 +1486,56 @@ export async function handleResearchSessions(
   }
   if (command === "choose-scope") {
     if (args.length !== 2) {
-      throw new Error("Usage: atlcli research sessions choose-scope <session-id> --revision <session-revision> --mention <scope-mention-id> --candidate <scope-candidate-id> [--profile <name>].");
+      throw new Error(
+        "Usage: atlcli research sessions choose-scope <session-id> --revision <session-revision> --mention <scope-mention-id> --candidate <scope-candidate-id> [--profile <name>].",
+      );
     }
     assertSessionFlags(flags, ["revision", "mention", "candidate", "profile"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
     const selection = scopeClarificationSelectionFromSessionFlags(flags);
     const profileName = singleSessionFlag(flags, "profile");
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       if (session.revision !== revision) {
-        throw new Error("Research session revision is stale; inspect the current scope clarification and retry with its exact revision.");
+        throw new Error(
+          "Research session revision is stale; inspect the current scope clarification and retry with its exact revision.",
+        );
       }
-      const { profile, tenantOrigin, review } = await scopeClarificationReviewForCliSession({
-        session,
-        profileName,
-        opts,
-        dependencies,
-      });
-      if (review.stage !== "choice_required" || selection.mentionId !== review.clarification.mentionId) {
-        throw new Error("Research scope clarification is stale; inspect the current candidate choice and retry.");
+      const { profile, tenantOrigin, review } =
+        await scopeClarificationReviewForCliSession({
+          session,
+          profileName,
+          opts,
+          dependencies,
+        });
+      if (
+        review.stage !== "choice_required" ||
+        selection.mentionId !== review.clarification.mentionId
+      ) {
+        throw new Error(
+          "Research scope clarification is stale; inspect the current candidate choice and retry.",
+        );
       }
-      if (!review.clarification.candidates.some((candidate) => candidate.id === selection.candidateId)) {
-        throw new Error("The selected research scope candidate is unavailable.");
+      if (
+        !review.clarification.candidates.some(
+          (candidate) => candidate.id === selection.candidateId,
+        )
+      ) {
+        throw new Error(
+          "The selected research scope candidate is unavailable.",
+        );
       }
       const scopeClarification = session.scopeClarification;
       if (!scopeClarification) {
-        throw new Error("The durable research scope clarification is missing its original request.");
+        throw new Error(
+          "The durable research scope clarification is missing its original request.",
+        );
       }
       // This fresh catalog pass is intentionally the only provider activity in
       // this command. The caller submits a candidate ID; the host retains the
@@ -1211,9 +1556,17 @@ export async function handleResearchSessions(
           candidateChoices: scopeOutcome.candidateChoices,
           at,
         });
-        const nextReview = projectResearchSessionScopeClarificationReviewV1(refreshed, tenantOrigin);
-        if (!nextReview) throw new Error("The refreshed research scope clarification could not be projected.");
-        dependencies.writeStderr(`[research] session=${sessionId} action=choose-scope status=${refreshed.status} refreshed=true\n`);
+        const nextReview = projectResearchSessionScopeClarificationReviewV1(
+          refreshed,
+          tenantOrigin,
+        );
+        if (!nextReview)
+          throw new Error(
+            "The refreshed research scope clarification could not be projected.",
+          );
+        dependencies.writeStderr(
+          `[research] session=${sessionId} action=choose-scope status=${refreshed.status} refreshed=true\n`,
+        );
         dependencies.emitOutput(nextReview, opts);
         return;
       }
@@ -1228,14 +1581,25 @@ export async function handleResearchSessions(
         releaseApprovedLease: true,
         at,
       });
-      const nextReview = projectResearchSessionScopeClarificationReviewV1(committed, tenantOrigin);
-      dependencies.writeStderr(`[research] session=${sessionId} action=choose-scope revision=${committed.revision} status=${committed.status}\n`);
-      dependencies.emitOutput({
-        schema: "atlcli.research-scope-clarification-resolution/v1",
-        ...(nextReview === undefined
-          ? { stage: "resolved", session: projectResearchSessionV1(committed) }
-          : { stage: "recovery_required", review: nextReview }),
-      }, opts);
+      const nextReview = projectResearchSessionScopeClarificationReviewV1(
+        committed,
+        tenantOrigin,
+      );
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=choose-scope revision=${committed.revision} status=${committed.status}\n`,
+      );
+      dependencies.emitOutput(
+        {
+          schema: "atlcli.research-scope-clarification-resolution/v1",
+          ...(nextReview === undefined
+            ? {
+                stage: "resolved",
+                session: projectResearchSessionV1(committed),
+              }
+            : { stage: "recovery_required", review: nextReview }),
+        },
+        opts,
+      );
     } finally {
       opened.close();
     }
@@ -1243,25 +1607,37 @@ export async function handleResearchSessions(
   }
   if (command === "continue-scope-clarification") {
     if (args.length !== 2) {
-      throw new Error("Usage: atlcli research sessions continue-scope-clarification <session-id> --revision <session-revision> [--profile <name>].");
+      throw new Error(
+        "Usage: atlcli research sessions continue-scope-clarification <session-id> --revision <session-revision> [--profile <name>].",
+      );
     }
     assertSessionFlags(flags, ["revision", "profile"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
     const profileName = singleSessionFlag(flags, "profile");
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       if (session.revision !== revision) {
-        throw new Error("Research session revision is stale; inspect the current scope clarification and retry with its exact revision.");
+        throw new Error(
+          "Research session revision is stale; inspect the current scope clarification and retry with its exact revision.",
+        );
       }
-      const { tenantOrigin, review } = await scopeClarificationReviewForCliSession({
-        session,
-        profileName,
-        opts,
-        dependencies,
-      });
+      const { tenantOrigin, review } =
+        await scopeClarificationReviewForCliSession({
+          session,
+          profileName,
+          opts,
+          dependencies,
+        });
       if (review.stage === "choice_required") {
-        throw new Error("Research scope clarification still requires a candidate choice.");
+        throw new Error(
+          "Research scope clarification still requires a candidate choice.",
+        );
       }
       const committed = await continueResearchSessionScopeClarificationV1({
         store: opened.store,
@@ -1272,69 +1648,115 @@ export async function handleResearchSessions(
         releaseApprovedLease: true,
         at: new Date().toISOString(),
       });
-      const nextReview = projectResearchSessionScopeClarificationReviewV1(committed, tenantOrigin);
-      dependencies.writeStderr(`[research] session=${sessionId} action=continue-scope-clarification revision=${committed.revision} status=${committed.status}\n`);
-      dependencies.emitOutput({
-        schema: "atlcli.research-scope-clarification-resolution/v1",
-        ...(nextReview === undefined
-          ? { stage: "resolved", session: projectResearchSessionV1(committed) }
-          : { stage: "recovery_required", review: nextReview }),
-      }, opts);
+      const nextReview = projectResearchSessionScopeClarificationReviewV1(
+        committed,
+        tenantOrigin,
+      );
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=continue-scope-clarification revision=${committed.revision} status=${committed.status}\n`,
+      );
+      dependencies.emitOutput(
+        {
+          schema: "atlcli.research-scope-clarification-resolution/v1",
+          ...(nextReview === undefined
+            ? {
+                stage: "resolved",
+                session: projectResearchSessionV1(committed),
+              }
+            : { stage: "recovery_required", review: nextReview }),
+        },
+        opts,
+      );
     } finally {
       opened.close();
     }
     return;
   }
   if (command === "delete") {
-    if (args.length !== 2) throw new Error("Usage: atlcli research sessions delete <session-id> --revision <session-revision>.");
+    if (args.length !== 2)
+      throw new Error(
+        "Usage: atlcli research sessions delete <session-id> --revision <session-revision>.",
+      );
     assertSessionFlags(flags, ["revision"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
     const opened = await dependencies.openSessionStore();
     try {
       let session = await requireStoredResearchSession(opened.store, sessionId);
-      if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
-      session = (await opened.store.commit(sessionId, {
-        kind: "request_deletion",
-        expectedRevision: session.revision,
-        expectedLeaseEpoch: session.lease.epoch,
-        at: new Date().toISOString(),
-      })).session;
-      session = (await opened.store.commit(sessionId, {
-        kind: "delete",
-        expectedRevision: session.revision,
-        expectedLeaseEpoch: session.lease.epoch,
-        at: new Date().toISOString(),
-      })).session;
-      if (!await opened.store.eraseDeleted(session.sessionId)) {
-        throw new Error("Research session deletion did not remove the owned data.");
+      if (session.revision !== revision)
+        throw new Error(
+          "Research session revision is stale; inspect the current session and retry with its exact revision.",
+        );
+      session = (
+        await opened.store.commit(sessionId, {
+          kind: "request_deletion",
+          expectedRevision: session.revision,
+          expectedLeaseEpoch: session.lease.epoch,
+          at: new Date().toISOString(),
+        })
+      ).session;
+      session = (
+        await opened.store.commit(sessionId, {
+          kind: "delete",
+          expectedRevision: session.revision,
+          expectedLeaseEpoch: session.lease.epoch,
+          at: new Date().toISOString(),
+        })
+      ).session;
+      if (!(await opened.store.eraseDeleted(session.sessionId))) {
+        throw new Error(
+          "Research session deletion did not remove the owned data.",
+        );
       }
-      dependencies.writeStderr(`[research] session=${sessionId} action=delete erased=true\n`);
-      dependencies.emitOutput({
-        schema: "atlcli.research-session-deletion/v1",
-        sessionId,
-        deleted: true,
-      }, opts);
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=delete erased=true\n`,
+      );
+      dependencies.emitOutput(
+        {
+          schema: "atlcli.research-session-deletion/v1",
+          sessionId,
+          deleted: true,
+        },
+        opts,
+      );
     } finally {
       opened.close();
     }
     return;
   }
   if (command === "cancel") {
-    if (args.length !== 2) throw new Error("Usage: atlcli research sessions cancel <session-id> --revision <session-revision>.");
+    if (args.length !== 2)
+      throw new Error(
+        "Usage: atlcli research sessions cancel <session-id> --revision <session-revision>.",
+      );
     assertSessionFlags(flags, ["revision"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
-      if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
+      if (session.revision !== revision)
+        throw new Error(
+          "Research session revision is stale; inspect the current session and retry with its exact revision.",
+        );
       const cancelled = await opened.store.commit(sessionId, {
         kind: "cancel",
         expectedRevision: session.revision,
         expectedLeaseEpoch: session.lease.epoch,
         at: new Date().toISOString(),
       });
-      dependencies.writeStderr(`[research] session=${sessionId} action=cancel revision=${cancelled.session.revision} status=${cancelled.session.status}\n`);
-      dependencies.emitOutput(projectResearchSessionV1(cancelled.session), opts);
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=cancel revision=${cancelled.session.revision} status=${cancelled.session.status}\n`,
+      );
+      dependencies.emitOutput(
+        projectResearchSessionV1(cancelled.session),
+        opts,
+      );
     } finally {
       opened.close();
     }
@@ -1342,36 +1764,63 @@ export async function handleResearchSessions(
   }
   if (command === "clarify") {
     if (args.length !== 2) {
-      throw new Error("Usage: atlcli research sessions clarify <session-id> --revision <session-revision> --brief-revision <brief-revision> [--answer <question-id>=<response>] [--assumption <assumption-id>=accepted|rejected].");
+      throw new Error(
+        "Usage: atlcli research sessions clarify <session-id> --revision <session-revision> --brief-revision <brief-revision> [--answer <question-id>=<response>] [--assumption <assumption-id>=accepted|rejected].",
+      );
     }
-    assertSessionFlags(flags, ["revision", "brief-revision"], [], ["answer", "assumption"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
-    const briefRevision = expectedSessionRevision(singleSessionFlag(flags, "brief-revision", true));
+    assertSessionFlags(
+      flags,
+      ["revision", "brief-revision"],
+      [],
+      ["answer", "assumption"],
+    );
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
+    const briefRevision = expectedSessionRevision(
+      singleSessionFlag(flags, "brief-revision", true),
+    );
     const answers = clarificationAnswersFromSessionFlags(flags);
     const assumptionDecisions = assumptionDecisionsFromSessionFlags(flags);
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       if (session.revision !== revision) {
-        throw new Error("Research session revision is stale; inspect the current clarification and retry with its exact revision.");
+        throw new Error(
+          "Research session revision is stale; inspect the current clarification and retry with its exact revision.",
+        );
       }
       const turn = activeSessionTurn(session);
-      if (!turn?.brief) throw new Error("Research session has no active brief to clarify.");
+      if (!turn?.brief)
+        throw new Error("Research session has no active brief to clarify.");
       if (turn.brief.revision !== briefRevision) {
-        throw new Error("Research brief revision is stale; inspect the current clarification and retry with its exact brief revision.");
+        throw new Error(
+          "Research brief revision is stale; inspect the current clarification and retry with its exact brief revision.",
+        );
       }
-      const resolved = (await opened.store.commit(sessionId, {
-        kind: "resolve_clarifications",
-        briefRevision,
-        answers,
-        assumptionDecisions,
-        expectedRevision: session.revision,
-        expectedLeaseEpoch: session.lease.epoch,
-        at: new Date().toISOString(),
-      })).session;
+      const resolved = (
+        await opened.store.commit(sessionId, {
+          kind: "resolve_clarifications",
+          briefRevision,
+          answers,
+          assumptionDecisions,
+          expectedRevision: session.revision,
+          expectedLeaseEpoch: session.lease.epoch,
+          at: new Date().toISOString(),
+        })
+      ).session;
       const resolvedTurn = activeSessionTurn(resolved);
-      if (!resolvedTurn?.brief || resolvedTurn.graph || resolved.status !== "planning") {
-        throw new Error("Research clarification did not produce a graph-ready durable brief.");
+      if (
+        !resolvedTurn?.brief ||
+        resolvedTurn.graph ||
+        resolved.status !== "planning"
+      ) {
+        throw new Error(
+          "Research clarification did not produce a graph-ready durable brief.",
+        );
       }
       const planned = await proposeResearchGraphForReadyBriefV1({
         store: opened.store,
@@ -1379,11 +1828,14 @@ export async function handleResearchSessions(
         expectedRevision: resolved.revision,
         expectedLeaseEpoch: resolved.lease.epoch,
         packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
-        approveAutomatically: resolvedTurn.brief.resolvedPlanApproval === "automatic",
+        approveAutomatically:
+          resolvedTurn.brief.resolvedPlanApproval === "automatic",
         releaseApprovedLease: true,
         at: new Date().toISOString(),
       });
-      dependencies.writeStderr(`[research] session=${sessionId} action=clarify revision=${planned.revision} brief_revision=${resolvedTurn.brief.revision} status=${planned.status}\n`);
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=clarify revision=${planned.revision} brief_revision=${resolvedTurn.brief.revision} status=${planned.status}\n`,
+      );
       dependencies.emitOutput(projectResearchSessionPlanV1(planned), opts);
     } finally {
       opened.close();
@@ -1392,36 +1844,64 @@ export async function handleResearchSessions(
   }
   if (command === "revise-plan") {
     if (args.length !== 2) {
-      throw new Error("Usage: atlcli research sessions revise-plan <session-id> --revision <session-revision> --graph-revision <graph-revision> [--instruction <correction>].");
+      throw new Error(
+        "Usage: atlcli research sessions revise-plan <session-id> --revision <session-revision> --graph-revision <graph-revision> [--instruction <correction>].",
+      );
     }
     assertSessionFlags(flags, ["revision", "graph-revision", "instruction"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
-    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
+    const graphRevision = expectedSessionRevision(
+      singleSessionFlag(flags, "graph-revision", true),
+    );
     const instruction = singleSessionFlag(flags, "instruction");
     const opened = await dependencies.openSessionStore();
     try {
       let current = await requireStoredResearchSession(opened.store, sessionId);
-      if (current.revision !== revision) throw new Error("Research session revision is stale; inspect the current plan and retry with its exact revision.");
+      if (current.revision !== revision)
+        throw new Error(
+          "Research session revision is stale; inspect the current plan and retry with its exact revision.",
+        );
       const currentTurn = activeSessionTurn(current);
       const currentGraph = currentTurn?.graph;
-      if (!currentTurn?.brief || !currentGraph || currentGraph.revision !== graphRevision) {
-        throw new Error("Research graph revision is stale; inspect the current plan and retry with its exact graph revision.");
+      if (
+        !currentTurn?.brief ||
+        !currentGraph ||
+        currentGraph.revision !== graphRevision
+      ) {
+        throw new Error(
+          "Research graph revision is stale; inspect the current plan and retry with its exact graph revision.",
+        );
       }
       if (current.status === "waiting_plan_revision") {
-        if (!instruction) throw new Error("--instruction is required while a rejected plan is waiting for a revision.");
-        current = (await opened.store.commit(sessionId, {
-          kind: "request_plan_revision",
-          graphRevision,
-          instruction,
-          expectedRevision: current.revision,
-          expectedLeaseEpoch: current.lease.epoch,
-          at: new Date().toISOString(),
-        })).session;
+        if (!instruction)
+          throw new Error(
+            "--instruction is required while a rejected plan is waiting for a revision.",
+          );
+        current = (
+          await opened.store.commit(sessionId, {
+            kind: "request_plan_revision",
+            graphRevision,
+            instruction,
+            expectedRevision: current.revision,
+            expectedLeaseEpoch: current.lease.epoch,
+            at: new Date().toISOString(),
+          })
+        ).session;
       } else if (current.status === "planning") {
-        if (instruction) throw new Error("A plan revision is already being composed; retry without --instruction to recover the durable boundary.");
+        if (instruction)
+          throw new Error(
+            "A plan revision is already being composed; retry without --instruction to recover the durable boundary.",
+          );
         const pending = activeSessionTurn(current)?.planRevisions?.at(-1);
-        if (pending?.state !== "revision_requested" || pending.basedOnGraphRevision !== graphRevision) {
-          throw new Error("Research session is not waiting for a durable plan revision.");
+        if (
+          pending?.state !== "revision_requested" ||
+          pending.basedOnGraphRevision !== graphRevision
+        ) {
+          throw new Error(
+            "Research session is not waiting for a durable plan revision.",
+          );
         }
       } else {
         throw new Error("Research session is not waiting for a plan revision.");
@@ -1437,8 +1917,14 @@ export async function handleResearchSessions(
       });
       const revisedTurn = activeSessionTurn(planned);
       const revisionRecord = revisedTurn?.planRevisions?.at(-1);
-      if (!revisedTurn?.brief || !revisedTurn.graph || !revisionRecord?.planDiff) {
-        throw new Error("Research plan revision did not produce a durable review diff.");
+      if (
+        !revisedTurn?.brief ||
+        !revisedTurn.graph ||
+        !revisionRecord?.planDiff
+      ) {
+        throw new Error(
+          "Research plan revision did not produce a durable review diff.",
+        );
       }
       // Recalculate from the immutable snapshots as a defensive check that a
       // store implementation did not substitute the persisted review surface.
@@ -1448,10 +1934,16 @@ export async function handleResearchSessions(
         toBrief: revisedTurn.brief,
         toGraph: revisedTurn.graph,
       });
-      if (JSON.stringify(planDiff) !== JSON.stringify(revisionRecord.planDiff)) {
-        throw new Error("Research plan revision diff does not match its durable plan snapshots.");
+      if (
+        JSON.stringify(planDiff) !== JSON.stringify(revisionRecord.planDiff)
+      ) {
+        throw new Error(
+          "Research plan revision diff does not match its durable plan snapshots.",
+        );
       }
-      dependencies.writeStderr(`[research] session=${sessionId} action=revise-plan revision=${planned.revision} graph_revision=${revisedTurn.graph.revision} status=${planned.status}\n`);
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=revise-plan revision=${planned.revision} graph_revision=${revisedTurn.graph.revision} status=${planned.status}\n`,
+      );
       dependencies.emitOutput(projectResearchSessionPlanV1(planned), opts);
     } finally {
       opened.close();
@@ -1460,45 +1952,79 @@ export async function handleResearchSessions(
   }
   if (command === "approve-scope" || command === "reject-scope") {
     if (args.length !== 2) {
-      throw new Error(`Usage: atlcli research sessions ${command} <session-id> --revision <session-revision> --brief-revision <brief-revision> --graph-revision <graph-revision> --proposal <scope-expansion-id>.`);
+      throw new Error(
+        `Usage: atlcli research sessions ${command} <session-id> --revision <session-revision> --brief-revision <brief-revision> --graph-revision <graph-revision> --proposal <scope-expansion-id>.`,
+      );
     }
-    assertSessionFlags(flags, ["revision", "brief-revision", "graph-revision", "proposal"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
-    const briefRevision = expectedSessionRevision(singleSessionFlag(flags, "brief-revision", true));
-    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
+    assertSessionFlags(flags, [
+      "revision",
+      "brief-revision",
+      "graph-revision",
+      "proposal",
+    ]);
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
+    const briefRevision = expectedSessionRevision(
+      singleSessionFlag(flags, "brief-revision", true),
+    );
+    const graphRevision = expectedSessionRevision(
+      singleSessionFlag(flags, "graph-revision", true),
+    );
     const proposalId = singleSessionFlag(flags, "proposal", true)!;
     if (!/^scope-expansion:[A-Za-z0-9._-]{1,120}$/.test(proposalId)) {
       throw new Error("--proposal requires a valid scope expansion ID.");
     }
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
       if (session.revision !== revision) {
-        throw new Error("Research session revision is stale; inspect the current scope proposal and retry with its exact revision.");
+        throw new Error(
+          "Research session revision is stale; inspect the current scope proposal and retry with its exact revision.",
+        );
       }
       const turn = activeSessionTurn(session);
-      if (!turn?.brief || !turn.graph || turn.brief.revision !== briefRevision || turn.graph.revision !== graphRevision) {
-        throw new Error("Research brief or graph revision is stale; inspect the current scope proposal and retry with its exact revisions.");
+      if (
+        !turn?.brief ||
+        !turn.graph ||
+        turn.brief.revision !== briefRevision ||
+        turn.graph.revision !== graphRevision
+      ) {
+        throw new Error(
+          "Research brief or graph revision is stale; inspect the current scope proposal and retry with its exact revisions.",
+        );
       }
       const at = new Date().toISOString();
-      const committed = command === "approve-scope"
-        ? await approveResearchScopeExpansionV1({
-            store: opened.store,
-            sessionId,
-            proposalId,
-            binding: scopeApprovalBindingV1({ turn, proposalId, approvedAt: at }),
-            expectedRevision: session.revision,
-            expectedLeaseEpoch: session.lease.epoch,
-            at,
-          })
-        : (await opened.store.commit(sessionId, {
-            kind: "reject_scope_expansion",
-            proposalId,
-            expectedRevision: session.revision,
-            expectedLeaseEpoch: session.lease.epoch,
-            at,
-          })).session;
-      dependencies.writeStderr(`[research] session=${sessionId} action=${command} revision=${committed.revision} status=${committed.status}\n`);
+      const committed =
+        command === "approve-scope"
+          ? await approveResearchScopeExpansionV1({
+              store: opened.store,
+              sessionId,
+              proposalId,
+              binding: scopeApprovalBindingV1({
+                turn,
+                proposalId,
+                approvedAt: at,
+              }),
+              expectedRevision: session.revision,
+              expectedLeaseEpoch: session.lease.epoch,
+              at,
+            })
+          : (
+              await opened.store.commit(sessionId, {
+                kind: "reject_scope_expansion",
+                proposalId,
+                expectedRevision: session.revision,
+                expectedLeaseEpoch: session.lease.epoch,
+                at,
+              })
+            ).session;
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=${command} revision=${committed.revision} status=${committed.status}\n`,
+      );
       dependencies.emitOutput(projectResearchSessionPlanV1(committed), opts);
     } finally {
       opened.close();
@@ -1506,41 +2032,72 @@ export async function handleResearchSessions(
     return;
   }
   if (command === "approve" || command === "reject-plan") {
-    if (args.length !== 2) throw new Error(`Usage: atlcli research sessions ${command} <session-id> --revision <session-revision> --graph-revision <graph-revision>${command === "reject-plan" ? " --instruction <correction>" : ""}.`);
-    assertSessionFlags(flags, command === "approve" ? ["revision", "graph-revision"] : ["revision", "graph-revision", "instruction"]);
-    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
-    const graphRevision = expectedSessionRevision(singleSessionFlag(flags, "graph-revision", true));
-    const instruction = command === "reject-plan" ? singleSessionFlag(flags, "instruction", true) : undefined;
+    if (args.length !== 2)
+      throw new Error(
+        `Usage: atlcli research sessions ${command} <session-id> --revision <session-revision> --graph-revision <graph-revision>${command === "reject-plan" ? " --instruction <correction>" : ""}.`,
+      );
+    assertSessionFlags(
+      flags,
+      command === "approve"
+        ? ["revision", "graph-revision"]
+        : ["revision", "graph-revision", "instruction"],
+    );
+    const revision = expectedSessionRevision(
+      singleSessionFlag(flags, "revision", true),
+    );
+    const graphRevision = expectedSessionRevision(
+      singleSessionFlag(flags, "graph-revision", true),
+    );
+    const instruction =
+      command === "reject-plan"
+        ? singleSessionFlag(flags, "instruction", true)
+        : undefined;
     const opened = await dependencies.openSessionStore();
     try {
-      const session = await requireStoredResearchSession(opened.store, sessionId);
-      if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current plan and retry with its exact revision.");
+      const session = await requireStoredResearchSession(
+        opened.store,
+        sessionId,
+      );
+      if (session.revision !== revision)
+        throw new Error(
+          "Research session revision is stale; inspect the current plan and retry with its exact revision.",
+        );
       const turn = activeSessionTurn(session);
       const graph = turn?.graph;
-      if (!turn?.brief || !graph || graph.revision !== graphRevision) throw new Error("Research graph revision is stale; inspect the current plan and retry with its exact graph revision.");
-      let committedSession = (await opened.store.commit(sessionId, command === "approve"
-        ? {
-            kind: "approve_graph",
-            graphRevision,
-            expectedRevision: session.revision,
-            expectedLeaseEpoch: session.lease.epoch,
-            at: new Date().toISOString(),
-          }
-        : {
-            kind: "reject_plan",
-            graphRevision,
-            reason: instruction!,
-            expectedRevision: session.revision,
-            expectedLeaseEpoch: session.lease.epoch,
-            at: new Date().toISOString(),
-          })).session;
+      if (!turn?.brief || !graph || graph.revision !== graphRevision)
+        throw new Error(
+          "Research graph revision is stale; inspect the current plan and retry with its exact graph revision.",
+        );
+      let committedSession = (
+        await opened.store.commit(
+          sessionId,
+          command === "approve"
+            ? {
+                kind: "approve_graph",
+                graphRevision,
+                expectedRevision: session.revision,
+                expectedLeaseEpoch: session.lease.epoch,
+                at: new Date().toISOString(),
+              }
+            : {
+                kind: "reject_plan",
+                graphRevision,
+                reason: instruction!,
+                expectedRevision: session.revision,
+                expectedLeaseEpoch: session.lease.epoch,
+                at: new Date().toISOString(),
+              },
+        )
+      ).session;
       if (command === "approve") {
-        committedSession = (await opened.store.commit(sessionId, {
-          kind: "release_lease",
-          expectedRevision: committedSession.revision,
-          expectedLeaseEpoch: committedSession.lease.epoch,
-          at: new Date().toISOString(),
-        })).session;
+        committedSession = (
+          await opened.store.commit(sessionId, {
+            kind: "release_lease",
+            expectedRevision: committedSession.revision,
+            expectedLeaseEpoch: committedSession.lease.epoch,
+            at: new Date().toISOString(),
+          })
+        ).session;
       } else {
         const requested = await opened.store.commit(sessionId, {
           kind: "request_plan_revision",
@@ -1561,8 +2118,14 @@ export async function handleResearchSessions(
         });
         const revisedTurn = activeSessionTurn(committedSession);
         const revisionRecord = revisedTurn?.planRevisions?.at(-1);
-        if (!revisedTurn?.brief || !revisedTurn.graph || !revisionRecord?.planDiff) {
-          throw new Error("Research plan rejection did not produce a durable review diff.");
+        if (
+          !revisedTurn?.brief ||
+          !revisedTurn.graph ||
+          !revisionRecord?.planDiff
+        ) {
+          throw new Error(
+            "Research plan rejection did not produce a durable review diff.",
+          );
         }
         const planDiff = diffResearchPlansV1({
           fromBrief: revisionRecord.rejectedBrief,
@@ -1570,12 +2133,21 @@ export async function handleResearchSessions(
           toBrief: revisedTurn.brief,
           toGraph: revisedTurn.graph,
         });
-        if (JSON.stringify(planDiff) !== JSON.stringify(revisionRecord.planDiff)) {
-          throw new Error("Research plan revision diff does not match its durable plan snapshots.");
+        if (
+          JSON.stringify(planDiff) !== JSON.stringify(revisionRecord.planDiff)
+        ) {
+          throw new Error(
+            "Research plan revision diff does not match its durable plan snapshots.",
+          );
         }
       }
-      dependencies.writeStderr(`[research] session=${sessionId} action=${command} revision=${committedSession.revision} status=${committedSession.status}\n`);
-      dependencies.emitOutput(projectResearchSessionPlanV1(committedSession), opts);
+      dependencies.writeStderr(
+        `[research] session=${sessionId} action=${command} revision=${committedSession.revision} status=${committedSession.status}\n`,
+      );
+      dependencies.emitOutput(
+        projectResearchSessionPlanV1(committedSession),
+        opts,
+      );
     } finally {
       opened.close();
     }
@@ -1583,26 +2155,42 @@ export async function handleResearchSessions(
   }
 }
 
-export function buildResearchRequest(input: ResearchCliInput, profile: Profile): ResearchRequestV1 {
-  const defaults = resolveDefaults({ profiles: {}, currentProfile: undefined }, profile);
-  const projectKeys = input.projectKeys.length > 0 ? input.projectKeys : uniqueKeys(defaults.project ? [defaults.project] : []);
-  const spaceKeys = input.spaceKeys.length > 0 ? input.spaceKeys : uniqueKeys(defaults.space ? [defaults.space] : [], false);
+export function buildResearchRequest(
+  input: ResearchCliInput,
+  profile: Profile,
+): ResearchRequestV1 {
+  const defaults = resolveDefaults(
+    { profiles: {}, currentProfile: undefined },
+    profile,
+  );
+  const projectKeys =
+    input.projectKeys.length > 0
+      ? input.projectKeys
+      : uniqueKeys(defaults.project ? [defaults.project] : []);
+  const spaceKeys =
+    input.spaceKeys.length > 0
+      ? input.spaceKeys
+      : uniqueKeys(defaults.space ? [defaults.space] : [], false);
   const siteOrigin = new URL(profile.baseUrl).origin;
   const scopeSeeds: ResearchScopeSeedV1[] = [
-    ...projectKeys.map((key) => createResearchKeyScopeSeedV1({
-      tenantOrigin: siteOrigin,
-      product: "jira",
-      key,
-      source: input.projectKeys.length > 0 ? "cli_flag" : "profile_default",
-      authority: input.projectKeys.length > 0 ? "locked" : "approved",
-    })),
-    ...spaceKeys.map((key) => createResearchKeyScopeSeedV1({
-      tenantOrigin: siteOrigin,
-      product: "confluence",
-      key,
-      source: input.spaceKeys.length > 0 ? "cli_flag" : "profile_default",
-      authority: input.spaceKeys.length > 0 ? "locked" : "approved",
-    })),
+    ...projectKeys.map((key) =>
+      createResearchKeyScopeSeedV1({
+        tenantOrigin: siteOrigin,
+        product: "jira",
+        key,
+        source: input.projectKeys.length > 0 ? "cli_flag" : "profile_default",
+        authority: input.projectKeys.length > 0 ? "locked" : "approved",
+      }),
+    ),
+    ...spaceKeys.map((key) =>
+      createResearchKeyScopeSeedV1({
+        tenantOrigin: siteOrigin,
+        product: "confluence",
+        key,
+        source: input.spaceKeys.length > 0 ? "cli_flag" : "profile_default",
+        authority: input.spaceKeys.length > 0 ? "locked" : "approved",
+      }),
+    ),
   ];
   return normalizeResearchRequestV1({
     schema: RESEARCH_REQUEST_SCHEMA_V1,
@@ -1611,23 +2199,26 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
       siteOrigin,
       jiraProjectKeys: projectKeys,
       confluenceSpaceKeys: spaceKeys,
-      ...((input.from || input.to) ? {
-        timeWindow: {
-          ...(input.from ? { from: input.from } : {}),
-          ...(input.to ? { to: input.to } : {}),
-        },
-      } : {}),
+      ...(input.from || input.to
+        ? {
+            timeWindow: {
+              ...(input.from ? { from: input.from } : {}),
+              ...(input.to ? { to: input.to } : {}),
+            },
+          }
+        : {}),
     },
     scopeSeeds,
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
       pageSize: 10,
-      // A focused worker reads every discovered candidate in the host-bounded
-      // 30-item set, serially.  The wider run ceilings still make a failed or
-      // unexpectedly large search visible rather than silently partial.
-      maxSearchPagesPerProduct: 5,
-      maxItemsPerProduct: 30,
-      maxDetailItemsPerProduct: 30,
+      // Auto research uses the contract's practical bounded maximum. A
+      // single-product worker can search ten pages and read fifty ranked
+      // details; cross-product runs split the shared PTC ceiling fairly.
+      // Anything beyond this envelope remains a visible coverage limitation.
+      maxSearchPagesPerProduct: 10,
+      maxItemsPerProduct: 100,
+      maxDetailItemsPerProduct: 50,
       // Research claims may only cite complete detail projections. Keep the
       // contract maximum so ordinary long-form Confluence pages are not
       // silently reduced to excerpts before synthesis.
@@ -1650,11 +2241,18 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
   });
 }
 
-export async function writeResearchMarkdownAtomic(path: string, contents: string): Promise<void> {
+export async function writeResearchMarkdownAtomic(
+  path: string,
+  contents: string,
+): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.tmp-${randomUUID()}`;
   try {
-    await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await writeFile(temporary, contents, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
     await rename(temporary, path);
   } finally {
     await unlink(temporary).catch(() => undefined);
@@ -1689,17 +2287,21 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
     });
   },
   prepareBrief(input) {
-    return prepareResearchBriefPreflightV1(createStandardResearchBriefV1(input.request.question, {
-      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-      ...(input.turnId ? { turnId: input.turnId } : {}),
-      scope: input.request.scope,
-      scopeBindings: input.scopeBindings ?? input.request.scopeSeeds?.map((seed) => seed.binding),
-      limits: input.request.limits,
-      asOf: input.asOf,
-      timezone: input.timezone,
-      policy: input.policy,
-      reportLanguage: input.request.reportLanguage,
-    }));
+    return prepareResearchBriefPreflightV1(
+      createStandardResearchBriefV1(input.request.question, {
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.turnId ? { turnId: input.turnId } : {}),
+        scope: input.request.scope,
+        scopeBindings:
+          input.scopeBindings ??
+          input.request.scopeSeeds?.map((seed) => seed.binding),
+        limits: input.request.limits,
+        asOf: input.asOf,
+        timezone: input.timezone,
+        policy: input.policy,
+        reportLanguage: input.request.reportLanguage,
+      }),
+    );
   },
   readApiKey: () => process.env.ANTHROPIC_API_KEY,
   createWorkspace: () => FileSystemResearchWorkspace.createTemporary(),
@@ -1760,7 +2362,8 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
   emitOutput: output,
   fail,
   scheduleAbort: (callback, milliseconds) => setTimeout(callback, milliseconds),
-  cancelScheduledAbort: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  cancelScheduledAbort: (handle) =>
+    clearTimeout(handle as ReturnType<typeof setTimeout>),
   listenForInterrupt(callback) {
     process.once("SIGINT", callback);
     return () => process.removeListener("SIGINT", callback);
@@ -1790,89 +2393,113 @@ async function runEstablishedResearchCliSession(
     () => controller.abort(new Error("Research run timed out.")),
     input.request.limits.maxRunMs,
   );
-  const removeInterruptListener = input.dependencies.listenForInterrupt(
-    () => controller.abort(new Error("Research run cancelled.")),
+  const removeInterruptListener = input.dependencies.listenForInterrupt(() =>
+    controller.abort(new Error("Research run cancelled.")),
   );
   try {
     input.dependencies.writeStderr(
       `[research] model=${RESEARCH_MODEL_ID} profile=${input.profile.name} project=${input.request.scope.jiraProjectKeys.join(",")} space=${input.request.scope.confluenceSpaceKeys.join(",")}\n`,
     );
     if (input.input.keepSession) {
-      const root = "root" in input.workspace && typeof input.workspace.root === "string"
-        ? input.workspace.root
-        : "host-owned";
-      input.dependencies.writeStderr(`[research] session=${input.sessionId} workspace=${root}\n`);
+      const root =
+        "root" in input.workspace && typeof input.workspace.root === "string"
+          ? input.workspace.root
+          : "host-owned";
+      input.dependencies.writeStderr(
+        `[research] session=${input.sessionId} workspace=${root}\n`,
+      );
     }
     const report = await input.dependencies.runAgent({
-      apiKey: input.apiKey,
-      profile: input.profile,
-      request: input.request,
-      workspace: input.workspace,
-      sessionId: input.sessionId,
-      durableSession: {
-        store: input.store,
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-      },
-      researchGraph: input.researchGraph,
-      brief: input.brief,
-      signal: controller.signal,
-      writeDiagnostic: (message) => input.dependencies.writeStderr(`[research] ${message}\n`),
-      onEvent: (event) => {
-        if (event.kind === "phase") {
-          input.dependencies.writeStderr(`[research] phase=${event.phase}\n`);
-        } else if (event.kind === "progress") {
-          input.dependencies.writeStderr(`[research] calls=${event.completed}/${event.maximum}\n`);
-        } else if (event.kind === "brief") {
-          input.dependencies.writeStderr(`[research] brief_revision=${event.revision}\n`);
-        } else if (event.kind === "plan") {
-          input.dependencies.writeStderr(
-            `[research] graph_revision=${event.revision} graph_status=${event.status} effort=${event.resolvedEffort} nodes=${event.nodeCount} waves=${event.waveCount} max_parallel=${event.maxParallelNodes} roles=${event.selectedRoleIds.join(",") || "none"}\n`,
-          );
-        } else if (event.kind === "capability") {
-          input.dependencies.writeStderr(
-            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.inputKeys === undefined ? "" : ` input_keys=${event.inputKeys.join(",") || "none"}`}${event.queryKeys === undefined ? "" : ` query_keys=${event.queryKeys.join(",") || "none"}`}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.complete === undefined ? "" : ` complete=${event.complete}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
-          );
-        } else if (event.kind === "subagent") {
-          input.dependencies.writeStderr(
-            `[research] subagent=${event.roleId} task=${event.taskId} status=${event.status}${event.attempt === undefined ? "" : ` attempt=${event.attempt}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
-          );
-        } else if (event.kind === "task") {
-          input.dependencies.writeStderr(
-            `[research] task=${event.taskId} status=${event.status}${event.roleId === undefined ? "" : ` role=${event.roleId}`}${event.wave === undefined ? "" : ` wave=${event.wave}`}${event.dependencyTaskIds === undefined ? "" : ` dependencies=${event.dependencyTaskIds.length}`}${event.grantedCapabilityIds === undefined ? "" : ` grants=${event.grantedCapabilityIds.join(",") || "none"}`}${event.sourceCount === undefined ? "" : ` sources=${event.sourceCount}`}${event.findingCount === undefined ? "" : ` findings=${event.findingCount}`}${event.relationshipCount === undefined ? "" : ` relationships=${event.relationshipCount}`}${event.gapCount === undefined ? "" : ` gaps=${event.gapCount}`}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.inputTokens === undefined ? "" : ` input_tokens=${event.inputTokens}`}${event.outputTokens === undefined ? "" : ` output_tokens=${event.outputTokens}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}\n`,
-          );
-        } else if (event.kind === "decision") {
-          input.dependencies.writeStderr(
-            `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}${event.codeBytes === undefined ? "" : ` code_bytes=${event.codeBytes}`}${event.codeHash === undefined ? "" : ` code_hash=${event.codeHash}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
-          );
-        } else if (event.kind === "reconciliation") {
-          input.dependencies.writeStderr(
-            `[research] reconciliation=${event.taskId} status=${event.status}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.proposedFollowUpCount === undefined ? "" : ` follow_ups=${event.proposedFollowUpCount}`}\n`,
-          );
-        } else if (event.kind === "retrieval") {
-          input.dependencies.writeStderr(
-            `[research] retrieval graph_revision=${event.graphRevision} action=${event.action} reason=${event.reason} ranked=${event.rankedCandidateCount} detail_reads=${event.detailReadCount} new_sources=${event.newDetailSourceCount} duplicates=${event.duplicateDetailReadCount} coverage_gaps=${event.unresolvedCoverageTargetCount} contradictions=${event.unresolvedContradictionCount}\n`,
-          );
-        } else if (event.kind === "budget") {
-          input.dependencies.writeStderr(
-            `[research] budget=${event.metric} consumed=${event.consumed} maximum=${event.maximum}\n`,
-          );
-        } else if (event.kind === "artifact") {
-          input.dependencies.writeStderr(`[research] workspace_artifact=${event.path}\n`);
-        } else {
-          input.dependencies.writeStderr(`[research] trace=${formatResearchOneShotEventV1(event)}\n`);
-        }
-      },
-    });
+          apiKey: input.apiKey,
+          profile: input.profile,
+          request: input.request,
+          workspace: input.workspace,
+          sessionId: input.sessionId,
+          durableSession: {
+            store: input.store,
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+          },
+          researchGraph: input.researchGraph,
+          brief: input.brief,
+          signal: controller.signal,
+          writeDiagnostic: (message) =>
+            input.dependencies.writeStderr(`[research] ${message}\n`),
+          onEvent: (event) => {
+            if (event.kind === "phase") {
+              input.dependencies.writeStderr(
+                `[research] phase=${event.phase}\n`,
+              );
+            } else if (event.kind === "progress") {
+              input.dependencies.writeStderr(
+                `[research] calls=${event.completed}/${event.maximum}\n`,
+              );
+            } else if (event.kind === "brief") {
+              input.dependencies.writeStderr(
+                `[research] brief_revision=${event.revision}\n`,
+              );
+            } else if (event.kind === "plan") {
+              input.dependencies.writeStderr(
+                `[research] graph_revision=${event.revision} graph_status=${event.status} effort=${event.resolvedEffort} nodes=${event.nodeCount} waves=${event.waveCount} max_parallel=${event.maxParallelNodes} roles=${event.selectedRoleIds.join(",") || "none"}\n`,
+              );
+            } else if (event.kind === "capability") {
+              input.dependencies.writeStderr(
+                `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.inputKeys === undefined ? "" : ` input_keys=${event.inputKeys.join(",") || "none"}`}${event.queryKeys === undefined ? "" : ` query_keys=${event.queryKeys.join(",") || "none"}`}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.complete === undefined ? "" : ` complete=${event.complete}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+              );
+            } else if (event.kind === "subagent") {
+              input.dependencies.writeStderr(
+                `[research] subagent=${event.roleId} task=${event.taskId} status=${event.status}${event.attempt === undefined ? "" : ` attempt=${event.attempt}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+              );
+            } else if (event.kind === "task") {
+              input.dependencies.writeStderr(
+                `[research] task=${event.taskId} status=${event.status}${event.roleId === undefined ? "" : ` role=${event.roleId}`}${event.wave === undefined ? "" : ` wave=${event.wave}`}${event.dependencyTaskIds === undefined ? "" : ` dependencies=${event.dependencyTaskIds.length}`}${event.grantedCapabilityIds === undefined ? "" : ` grants=${event.grantedCapabilityIds.join(",") || "none"}`}${event.sourceCount === undefined ? "" : ` sources=${event.sourceCount}`}${event.findingCount === undefined ? "" : ` findings=${event.findingCount}`}${event.relationshipCount === undefined ? "" : ` relationships=${event.relationshipCount}`}${event.gapCount === undefined ? "" : ` gaps=${event.gapCount}`}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.inputTokens === undefined ? "" : ` input_tokens=${event.inputTokens}`}${event.outputTokens === undefined ? "" : ` output_tokens=${event.outputTokens}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}\n`,
+              );
+            } else if (event.kind === "decision") {
+              input.dependencies.writeStderr(
+                `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}${event.codeBytes === undefined ? "" : ` code_bytes=${event.codeBytes}`}${event.codeHash === undefined ? "" : ` code_hash=${event.codeHash}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+              );
+            } else if (event.kind === "reconciliation") {
+              input.dependencies.writeStderr(
+                `[research] reconciliation=${event.taskId} status=${event.status}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.proposedFollowUpCount === undefined ? "" : ` follow_ups=${event.proposedFollowUpCount}`}\n`,
+              );
+            } else if (event.kind === "retrieval") {
+              input.dependencies.writeStderr(
+                `[research] retrieval graph_revision=${event.graphRevision} action=${event.action} reason=${event.reason} ranked=${event.rankedCandidateCount} detail_reads=${event.detailReadCount} new_sources=${event.newDetailSourceCount} duplicates=${event.duplicateDetailReadCount} coverage_gaps=${event.unresolvedCoverageTargetCount} contradictions=${event.unresolvedContradictionCount}\n`,
+              );
+            } else if (event.kind === "budget") {
+              input.dependencies.writeStderr(
+                `[research] budget=${event.metric} consumed=${event.consumed} maximum=${event.maximum}\n`,
+              );
+            } else if (event.kind === "artifact") {
+              input.dependencies.writeStderr(
+                `[research] workspace_artifact=${event.path}\n`,
+              );
+            } else {
+              input.dependencies.writeStderr(
+                `[research] trace=${formatResearchOneShotEventV1(event)}\n`,
+              );
+            }
+          },
+        });
     const artifactPath = input.dependencies.artifactPath();
     try {
       await input.dependencies.writeAtomic(artifactPath, report.markdown);
       input.dependencies.writeStderr(`[research] artifact=${artifactPath}\n`);
     } catch (error) {
-      input.dependencies.writeStderr(`[research] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`);
+      input.dependencies.writeStderr(
+        `[research] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`,
+      );
     }
-    if (input.input.outputPath) await input.dependencies.writeAtomic(input.input.outputPath, report.markdown);
-    if (input.opts.json) input.dependencies.emitOutput({ sessionId: input.sessionId, artifactPath, report }, input.opts);
+    if (input.input.outputPath)
+      await input.dependencies.writeAtomic(
+        input.input.outputPath,
+        report.markdown,
+      );
+    if (input.opts.json)
+      input.dependencies.emitOutput(
+        { sessionId: input.sessionId, artifactPath, report },
+        input.opts,
+      );
     else input.dependencies.writeStdout(report.markdown);
   } finally {
     input.dependencies.cancelScheduledAbort(timeout);
@@ -1886,23 +2513,44 @@ async function startNewResearchCliSessionTurn(
   dependencies: ResearchCliDependencies,
 ): Promise<void> {
   const sessionId = input.newTurnSessionId;
-  if (!sessionId) throw new Error("A durable research session ID is required for a new turn.");
+  if (!sessionId)
+    throw new Error(
+      "A durable research session ID is required for a new turn.",
+    );
   const profile = await dependencies.resolveProfile(input.profile);
   if (!profile) {
-    dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
+    dependencies.fail(
+      opts,
+      1,
+      ERROR_CODES.AUTH,
+      "No active profile found. Run `atlcli auth login` or select --profile.",
+      { profile: input.profile },
+    );
   }
   const opened = await dependencies.openSessionStore();
   let disposeWorkspace: (() => Promise<void>) | undefined;
   try {
     const stored = await requireStoredResearchSession(opened.store, sessionId);
-    if (!["complete", "cancelled", "failed"].includes(stored.status) ||
-        stored.retention.state === "deletion_requested" || stored.retention.state === "deleted") {
-      throw new Error("A new research turn requires a retained terminal session.");
+    if (
+      !["complete", "cancelled", "failed"].includes(stored.status) ||
+      stored.retention.state === "deletion_requested" ||
+      stored.retention.state === "deleted"
+    ) {
+      throw new Error(
+        "A new research turn requires a retained terminal session.",
+      );
     }
     const previousTurn = activeSessionTurn(stored);
-    if (!previousTurn?.brief) throw new Error("The retained research session has no prior brief to preserve.");
-    if (new URL(profile.baseUrl).origin !== previousTurn.brief.scope.siteOrigin) {
-      throw new Error("The selected profile belongs to a different Atlassian tenant than the retained research session.");
+    if (!previousTurn?.brief)
+      throw new Error(
+        "The retained research session has no prior brief to preserve.",
+      );
+    if (
+      new URL(profile.baseUrl).origin !== previousTurn.brief.scope.siteOrigin
+    ) {
+      throw new Error(
+        "The selected profile belongs to a different Atlassian tenant than the retained research session.",
+      );
     }
     const turnId = dependencies.createDurableTurnId();
     const request = normalizeResearchRequestV1({
@@ -1938,12 +2586,19 @@ async function startNewResearchCliSessionTurn(
       sessionId,
       brief: briefOutcome.brief,
       graph: researchGraph,
-      approveAutomatically: briefOutcome.brief.resolvedPlanApproval === "automatic",
+      approveAutomatically:
+        briefOutcome.brief.resolvedPlanApproval === "automatic",
       at: new Date().toISOString(),
     });
     const appendedTurn = activeSessionTurn(appended);
-    if (!appendedTurn?.brief || !appendedTurn.graph || appendedTurn.id !== turnId) {
-      throw new Error("The retained research session did not persist its new turn.");
+    if (
+      !appendedTurn?.brief ||
+      !appendedTurn.graph ||
+      appendedTurn.id !== turnId
+    ) {
+      throw new Error(
+        "The retained research session did not persist its new turn.",
+      );
     }
     dependencies.writeStderr(
       `[research] session=${sessionId} turn=${turnId} status=${appended.status} new_turn=true\n`,
@@ -1952,7 +2607,8 @@ async function startNewResearchCliSessionTurn(
       dependencies.emitOutput(projectResearchSessionPlanV1(appended), opts);
       return;
     }
-    if (appended.status !== "running") throw new Error("The new durable research turn is not runnable.");
+    if (appended.status !== "running")
+      throw new Error("The new durable research turn is not runnable.");
     const apiKey = readApiKey(dependencies);
     if (!apiKey) {
       const waiting = await opened.store.commit(sessionId, {
@@ -1964,12 +2620,15 @@ async function startNewResearchCliSessionTurn(
       dependencies.writeStderr(
         `[research] session=${waiting.session.sessionId} status=${waiting.session.status} stop_reason=authentication-required\n`,
       );
-      throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
+      throw new Error(
+        "ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.",
+      );
     }
     const workspace = opened.workspace
       ? await opened.workspace(sessionId)
       : await dependencies.createWorkspace();
-    if (!opened.workspace) disposeWorkspace = () => (workspace as ResearchCliWorkspace).dispose();
+    if (!opened.workspace)
+      disposeWorkspace = () => (workspace as ResearchCliWorkspace).dispose();
     await runEstablishedResearchCliSession({
       input,
       opts,
@@ -1996,38 +2655,78 @@ async function resumeAuthenticationWaitingResearchSession(
   dependencies: ResearchCliDependencies,
 ): Promise<void> {
   const sessionId = input.resumeSessionId;
-  if (!sessionId) throw new Error("A durable research session ID is required to resume.");
+  if (!sessionId)
+    throw new Error("A durable research session ID is required to resume.");
   const profile = await dependencies.resolveProfile(input.profile);
   if (!profile) {
-    dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
+    dependencies.fail(
+      opts,
+      1,
+      ERROR_CODES.AUTH,
+      "No active profile found. Run `atlcli auth login` or select --profile.",
+      { profile: input.profile },
+    );
   }
   const opened = await dependencies.openSessionStore();
   let disposeWorkspace: (() => Promise<void>) | undefined;
   try {
     const stored = await requireStoredResearchSession(opened.store, sessionId);
     const turn = activeSessionTurn(stored);
-    if (!turn?.brief || !turn.graph || !["waiting_authentication", "waiting_quota", "waiting_steering", "paused", "running"].includes(stored.status)) {
-      throw new Error("Only a released durable research turn can be resumed by this command.");
+    if (
+      !turn?.brief ||
+      !turn.graph ||
+      ![
+        "waiting_authentication",
+        "waiting_quota",
+        "waiting_steering",
+        "paused",
+        "running",
+      ].includes(stored.status)
+    ) {
+      throw new Error(
+        "Only a released durable research turn can be resumed by this command.",
+      );
     }
-    const issuedContinuations = turn.retrievalAssessments?.filter((assessment) =>
-      assessment.graphRevision === turn.graph!.revision &&
-      assessment.continuation?.status === "issued",
-    ) ?? [];
-    const undispatched = turn.tasks.length === 0 && turn.acceptedPackets.length === 0 &&
+    const issuedContinuations =
+      turn.retrievalAssessments?.filter(
+        (assessment) =>
+          assessment.graphRevision === turn.graph!.revision &&
+          assessment.continuation?.status === "issued",
+      ) ?? [];
+    const undispatched =
+      turn.tasks.length === 0 &&
+      turn.acceptedPackets.length === 0 &&
       turn.graphSelectionCommittedAt === undefined;
-    const checkpointResumable = issuedContinuations.length === 1 &&
-      turn.tasks.length > 0 && turn.acceptedPackets.length > 0 &&
+    const checkpointResumable =
+      issuedContinuations.length === 1 &&
+      turn.tasks.length > 0 &&
+      turn.acceptedPackets.length > 0 &&
       turn.budgetState !== undefined;
-    const consumedContinuationRecoverable = isRecoverableConsumedRetrievalContinuationV1(turn);
-    if (!undispatched && !checkpointResumable && !consumedContinuationRecoverable) {
-      throw new Error("This durable session has dispatch state without one safe issued retrieval continuation.");
+    const consumedContinuationRecoverable =
+      isRecoverableConsumedRetrievalContinuationV1(turn);
+    if (
+      !undispatched &&
+      !checkpointResumable &&
+      !consumedContinuationRecoverable
+    ) {
+      throw new Error(
+        "This durable session has dispatch state without one safe issued retrieval continuation.",
+      );
     }
-    if (turn.graph.approvalEnvelope.status !== "approved" ||
-        (undispatched ? turn.graph.status !== "approved" : turn.graph.status !== "running")) {
-      throw new Error("The durable research graph is not in the required approved checkpoint state for resume.");
+    if (
+      turn.graph.approvalEnvelope.status !== "approved" ||
+      (undispatched
+        ? turn.graph.status !== "approved"
+        : turn.graph.status !== "running")
+    ) {
+      throw new Error(
+        "The durable research graph is not in the required approved checkpoint state for resume.",
+      );
     }
     if (new URL(profile.baseUrl).origin !== turn.brief.scope.siteOrigin) {
-      throw new Error("The selected profile belongs to a different Atlassian tenant than the durable research session.");
+      throw new Error(
+        "The selected profile belongs to a different Atlassian tenant than the durable research session.",
+      );
     }
     const apiKey = readApiKey(dependencies);
     if (!apiKey) {
@@ -2042,7 +2741,9 @@ async function resumeAuthenticationWaitingResearchSession(
       dependencies.writeStderr(
         `[research] session=${stored.sessionId} status=${stored.status} stop_reason=authentication-required\n`,
       );
-      throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
+      throw new Error(
+        "ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.",
+      );
     }
     const request = researchRequestFromBriefV1(turn.brief);
     const now = new Date().toISOString();
@@ -2050,12 +2751,20 @@ async function resumeAuthenticationWaitingResearchSession(
       store: opened.store,
       sessionId: stored.sessionId,
       ownerId: `owner:cli-${process.pid}`,
-      leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+      leaseExpiresAt: new Date(
+        Date.parse(now) + request.limits.maxRunMs,
+      ).toISOString(),
       at: now,
     });
     const resumedTurn = activeSessionTurn(resumed);
-    if (!resumedTurn?.brief || !resumedTurn.graph || resumedTurn.id !== turn.id) {
-      throw new Error("Recovered research session no longer has its accepted turn and graph.");
+    if (
+      !resumedTurn?.brief ||
+      !resumedTurn.graph ||
+      resumedTurn.id !== turn.id
+    ) {
+      throw new Error(
+        "Recovered research session no longer has its accepted turn and graph.",
+      );
     }
     const workspace = opened.workspace
       ? await opened.workspace(resumed.sessionId)
@@ -2112,7 +2821,13 @@ export async function handleResearch(
   }
   const profile = await dependencies.resolveProfile(input.profile);
   if (!profile) {
-    dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
+    dependencies.fail(
+      opts,
+      1,
+      ERROR_CODES.AUTH,
+      "No active profile found. Run `atlcli auth login` or select --profile.",
+      { profile: input.profile },
+    );
   }
   const initialRequest = buildResearchRequest(input, profile);
   const scopeOutcome = await dependencies.resolveScope({
@@ -2123,7 +2838,9 @@ export async function handleResearch(
     const clarification = scopeOutcome.clarification;
     const opened = await dependencies.openSessionStore();
     let waiting: ResearchSessionV1 | undefined;
-    let review: ReturnType<typeof projectResearchSessionScopeClarificationReviewV1>;
+    let review: ReturnType<
+      typeof projectResearchSessionScopeClarificationReviewV1
+    >;
     try {
       const now = new Date().toISOString();
       waiting = await initializeResearchSessionScopeClarificationWaitV1({
@@ -2132,7 +2849,9 @@ export async function handleResearch(
           sessionId: dependencies.createDurableSessionId(),
           ownerId: `owner:cli-scope-clarification-${process.pid}`,
           createdAt: now,
-          leaseExpiresAt: new Date(Date.parse(now) + initialRequest.limits.maxRunMs).toISOString(),
+          leaseExpiresAt: new Date(
+            Date.parse(now) + initialRequest.limits.maxRunMs,
+          ).toISOString(),
         }),
         request: initialRequest,
         policy: input.policy,
@@ -2145,7 +2864,9 @@ export async function handleResearch(
         initialRequest.scope.siteOrigin,
       );
       if (!review || review.stage !== "choice_required") {
-        throw new Error("The durable research scope clarification could not be projected.");
+        throw new Error(
+          "The durable research scope clarification could not be projected.",
+        );
       }
     } finally {
       opened.close();
@@ -2191,7 +2912,9 @@ export async function handleResearch(
           sessionId: durableSessionId,
           ownerId: `owner:cli-${process.pid}`,
           createdAt: now,
-          leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+          leaseExpiresAt: new Date(
+            Date.parse(now) + request.limits.maxRunMs,
+          ).toISOString(),
         }),
         brief: briefOutcome.brief,
         at: now,
@@ -2240,22 +2963,29 @@ export async function handleResearch(
           sessionId: durableSessionId!,
           ownerId: `owner:cli-${process.pid}`,
           createdAt: now,
-          leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+          leaseExpiresAt: new Date(
+            Date.parse(now) + request.limits.maxRunMs,
+          ).toISOString(),
         }),
         brief: briefOutcome.brief,
         graph: researchGraph,
-        approveAutomatically: briefOutcome.brief.resolvedPlanApproval === "automatic",
+        approveAutomatically:
+          briefOutcome.brief.resolvedPlanApproval === "automatic",
         at: now,
       });
       if (session.status === "running") {
-        session = (await opened.store.commit(session.sessionId, {
-          kind: "release_lease",
-          expectedRevision: session.revision,
-          expectedLeaseEpoch: session.lease.epoch,
-          at: new Date().toISOString(),
-        })).session;
+        session = (
+          await opened.store.commit(session.sessionId, {
+            kind: "release_lease",
+            expectedRevision: session.revision,
+            expectedLeaseEpoch: session.lease.epoch,
+            at: new Date().toISOString(),
+          })
+        ).session;
       }
-      const graph = session.turns.find((turn) => turn.id === durableTurnId)?.graph;
+      const graph = session.turns.find(
+        (turn) => turn.id === durableTurnId,
+      )?.graph;
       const plan = {
         sessionId: session.sessionId,
         sessionRevision: session.revision,
@@ -2281,7 +3011,9 @@ export async function handleResearch(
           approvalEnvelope: graph.approvalEnvelope,
         },
       };
-      dependencies.writeStderr(`[research] session=${session.sessionId} status=${session.status} plan_only=true\n`);
+      dependencies.writeStderr(
+        `[research] session=${session.sessionId} status=${session.status} plan_only=true\n`,
+      );
       dependencies.emitOutput(plan, opts);
       return;
     } finally {
@@ -2310,7 +3042,9 @@ export async function handleResearch(
         sessionId: durableSessionId,
         ownerId: `owner:cli-${process.pid}`,
         createdAt: now,
-        leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+        leaseExpiresAt: new Date(
+          Date.parse(now) + request.limits.maxRunMs,
+        ).toISOString(),
       }),
       brief: briefOutcome.brief,
       graph: researchGraph,
@@ -2329,7 +3063,9 @@ export async function handleResearch(
       dependencies.writeStderr(
         `[research] session=${waiting.session.sessionId} status=${waiting.session.status} stop_reason=authentication-required\n`,
       );
-      throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
+      throw new Error(
+        "ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.",
+      );
     }
     if (opened.workspace) {
       workspace = await opened.workspace(durableSession.sessionId);

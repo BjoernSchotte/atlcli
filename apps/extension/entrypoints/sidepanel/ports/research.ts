@@ -805,6 +805,7 @@ export function chromeResearchPort(): ResearchPort {
       const turnId = `research-turn:${crypto.randomUUID()}`;
       const policy = normalizeResearchOneShotPolicyV1(options?.policy);
       activeRunId = runId;
+      options?.onSessionStart?.({ sessionId, turnId });
       const window = await chrome.windows.getCurrent();
       if (window.id === undefined) {
         activeRunId = null;
@@ -888,6 +889,7 @@ export function chromeResearchPort(): ResearchPort {
       }
       const runId = crypto.randomUUID();
       activeRunId = runId;
+      options?.onSessionStart?.({ sessionId });
       const window = await chrome.windows.getCurrent();
       if (window.id === undefined) {
         activeRunId = null;

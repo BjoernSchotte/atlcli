@@ -60,6 +60,7 @@ import {
   type ResearchDispatchDiagnosticV1,
   type ResearchTaskAdmissionV1,
   type ResearchTaskDependencyResultV1,
+  type ResearchUncommittedOutcomeReasonV1,
 } from "./dispatch-adapter.js";
 
 /** @deprecated Use RESEARCH_PACKET_BODY_JSON_SCHEMA_V1. */
@@ -697,6 +698,15 @@ export function compileDynamicResearchSubagents(
   options: DynamicResearchSubagentOptions,
 ): SubAgent[] {
   validateResearchGraphV1(graph);
+  const acquisitionNodeCount = graph.nodes.filter((node) =>
+    node.executor === "subagent" && node.kind !== "repair" && node.status !== "pruned" &&
+    node.grantedCapabilityIds.some((capability) =>
+      capability === "jira.issue.search" || capability === "wiki.search"
+    )
+  ).length;
+  const maxPtcCallsPerAcquisitionNode = acquisitionNodeCount === 0
+    ? options.maxPtcCalls
+    : Math.max(1, Math.floor(options.maxPtcCalls / acquisitionNodeCount));
   return graph.nodes
     .filter((node): node is ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 } =>
       node.executor === "subagent" && node.status !== "pruned" && Boolean(node.roleId)
@@ -718,7 +728,12 @@ export function compileDynamicResearchSubagents(
       (tool, result, callId) => options.onNodePtcResult?.(node.id, tool, result, callId),
       options.now,
     );
-    const acquisitionBudget = researchNodeAcquisitionBudgetV1(node, options);
+    const acquisitionBudget = researchNodeAcquisitionBudgetV1(node, {
+      ...options,
+      maxPtcCalls: node.grantedCapabilityIds.some((capability) =>
+        capability === "jira.issue.search" || capability === "wiki.search"
+      ) ? maxPtcCallsPerAcquisitionNode : options.maxPtcCalls,
+    });
     if (ptc.length > 0 && node.budget.maxCapabilityCalls < 1) {
       throw new Error(`Research node ${node.id} grants tools without a capability-call budget.`);
     }
@@ -781,10 +796,18 @@ export function compileDynamicResearchSubagents(
               memoryLimitBytes: options.maxInterpreterMemoryBytes,
               maxStackSizeBytes: 320 * 1024,
               executionTimeoutMs: options.maxInterpreterMs,
-              maxPtcCalls: Math.min(
-                options.maxPtcCalls,
-                node.budget.maxCapabilityCalls,
-                acquisitionBudget.maxPtcCalls,
+              // QuickJS requires a positive local cap even when the fair
+              // per-node envelope leaves this optional acquisition node with
+              // no source-call allowance. The authoritative shared broker
+              // still enforces the global cap; the generated zero-call
+              // program cannot spend this local minimum by itself.
+              maxPtcCalls: Math.max(
+                1,
+                Math.min(
+                  options.maxPtcCalls,
+                  node.budget.maxCapabilityCalls,
+                  acquisitionBudget.maxPtcCalls,
+                ),
               ),
               maxResultChars: options.maxPacketChars,
               captureConsole: false,
@@ -894,6 +917,17 @@ export function createBoundedResearchSubagentMiddleware(
       role: ResearchGraphRoleV1;
       candidate: unknown;
       validatorIssue: string;
+    }) => void | Promise<void>;
+    /**
+     * Emits a bounded, host-owned diagnostic for an invocation whose provider
+     * outcome could not be accepted. Callers must treat the error as opaque
+     * data and never use it as research evidence or task instructions.
+     */
+    onUncommittedTaskOutcome?: (input: {
+      taskId: string;
+      role: ResearchGraphRoleV1;
+      reason: ResearchUncommittedOutcomeReasonV1;
+      error?: unknown;
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
     /** Accepted supervisor selection. When present, no task is admitted before it resolves. */
@@ -1278,6 +1312,7 @@ export function createBoundedResearchSubagentMiddleware(
     admissions: recoveredDependencies?.admissions ?? (options.activeGraph ? [] : admissions),
     maxTasks: executableNodes.length,
     maxConcurrency: Math.min(MAX_CONCURRENT_SUBAGENT_TASKS, graph.maxParallelNodes),
+    allowHostDependencyHydration: true,
     projectDependencyResult: (taskId, result) => projectDependencyResult(taskId, result),
     async invokeUpstream(input, config) {
       const node = nodeBySubagentType.get(input.subagent_type);
@@ -1534,6 +1569,20 @@ export function createBoundedResearchSubagentMiddleware(
         });
     },
     onUncommittedOutcome: async ({ taskId, reason, error }) => {
+      const node = nodeForTaskId(taskId);
+      if (node?.roleId) {
+        try {
+          await options.onUncommittedTaskOutcome?.({
+            taskId,
+            role: node.roleId,
+            reason,
+            ...(error === undefined ? {} : { error }),
+          });
+        } catch {
+          // The durable task outcome below is authoritative. A disconnected
+          // observer cannot reclassify a provider attempt.
+        }
+      }
       if (!durableDispatchJournal) return;
       const executionGraph = options.activeGraph?.() ?? graph;
       const structuredOutputRejected = error instanceof ResearchDispatchError &&

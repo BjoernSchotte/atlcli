@@ -32,12 +32,12 @@ function create(overrides: Partial<Parameters<typeof createResearchBriefV1>[0]> 
 }
 
 describe("host-owned research brief", () => {
-  test("resolves cross-product auto effort without losing the default approval intent", () => {
+  test("uses a runnable deep capability envelope for auto composition", () => {
     expect(create()).toMatchObject({
       schema: "atlcli.research-brief/v1",
       revision: 1,
       requestedEffort: "auto",
-      resolvedEffort: "analysis",
+      resolvedEffort: "deep",
       requestedPlanApproval: "default",
       resolvedPlanApproval: "automatic",
       requestedReconciliation: "auto",
@@ -46,13 +46,18 @@ describe("host-owned research brief", () => {
     });
   });
 
-  test("requires approval when auto resolves deep but preserves explicit automatic approval", () => {
+  test("keeps explicit deep work reviewable while auto remains runnable", () => {
     expect(resolveResearchEffortV1({
       requested: "auto",
       objective: "Perform exhaustive contradiction analysis.",
       sourceClasses: ["jira", "confluence"],
     })).toBe("deep");
     expect(resolveResearchPlanApprovalV1({ requested: "default", resolvedEffort: "deep" })).toBe("required");
+    expect(resolveResearchPlanApprovalV1({
+      requested: "default",
+      requestedEffort: "auto",
+      resolvedEffort: "deep",
+    })).toBe("automatic");
     expect(resolveResearchPlanApprovalV1({ requested: "automatic", resolvedEffort: "deep" })).toBe("automatic");
     expect(create({
       objective: "Perform exhaustive contradiction analysis.",
