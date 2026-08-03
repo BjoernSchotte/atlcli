@@ -211,6 +211,40 @@ export function prependBoundedDetailText(
 }
 
 /**
+ * Append a second bounded projection to a detail body without treating either
+ * projection as unbounded source text. This is used for data returned by the
+ * same allowed detail read, such as Jira's embedded comment field.
+ */
+export function appendBoundedDetailProjection(
+  projection: BoundedContentProjectionV1,
+  addition: BoundedContentProjectionV1,
+  limits: ContentProjectionLimits,
+): BoundedContentProjectionV1 {
+  const combined = [projection.text, addition.text].filter(Boolean).join("\n\n");
+  const bounded = truncateUtf8(
+    combined,
+    limits.maxTextChars,
+    limits.maxTextBytes,
+  );
+  const links = new Set(projection.linkTargets);
+  let linksTruncated = false;
+  for (const target of addition.linkTargets) {
+    if (links.has(target)) continue;
+    if (links.size >= limits.maxLinks) {
+      linksTruncated = true;
+      break;
+    }
+    links.add(target);
+  }
+  return {
+    text: bounded.value,
+    linkTargets: [...links].sort(),
+    truncated: projection.truncated || addition.truncated || bounded.truncated || linksTruncated,
+    inputBytes: projection.inputBytes + addition.inputBytes,
+  };
+}
+
+/**
  * Add host-derived same-tenant relation targets to an already bounded detail
  * projection. The source text budget is unaffected; only the fixed link list
  * budget applies. This is deliberately not a generic URL passthrough.

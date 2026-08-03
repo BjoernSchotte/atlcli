@@ -3816,11 +3816,15 @@ now contributes its own bounded relation metadata: Jira labels plus
 parent/subtask/issue-link keys, and Confluence labels plus ancestor page IDs.
 The adapter converts only valid same-tenant identities into the existing
 bounded `linkTargets` projection; invalid or foreign targets are discarded and
-an over-cap relation list makes the detail visibly truncated. This creates no
-additional content call, provider/client exposure, binding, or scope expansion.
-Comments and child enumeration remain separate, explicitly unimplemented
-capabilities. Mocked REST-adapter and projection tests cover the exact fields,
-same-tenant filter, caps, and browser session boundary (2026-08-03).
+an over-cap relation list makes the detail visibly truncated. Jira's existing
+bounded `comment` detail field is projected in the same allowed read: comment
+text and safe exact links become retained evidence, while a partial comment
+page is visibly truncated. This creates no additional content call,
+provider/client exposure, binding, or scope expansion. Direct-child
+enumeration is available through the separately bounded `parentId` intent;
+Confluence comment traversal remains an explicitly unimplemented capability.
+Mocked REST-adapter and projection tests cover the exact fields, same-tenant
+filter, caps, comment partiality, and browser session boundary (2026-08-03).
 
   - [x] Resolve an exact, current-tenant Jira issue or Confluence page URL to
         one opaque, read-only candidate through the existing reference

@@ -22,6 +22,7 @@ import {
   projectConfluenceStorage,
   projectJiraDescription,
   appendBoundedDetailLinks,
+  appendBoundedDetailProjection,
   prependBoundedDetailText,
   type ContentProjectionLimits,
 } from "./content-projection.js";
@@ -75,6 +76,7 @@ function boundedMetadataValues(values: readonly string[] | undefined): string[] 
 }
 
 const MAX_DETAIL_RELATION_IDS = 100;
+const MAX_DETAIL_COMMENTS = 20;
 
 interface BoundedRelationIds {
   values: string[];
@@ -116,12 +118,44 @@ function wikiAncestorIds(page: Awaited<ReturnType<ConfluenceClient["getPageDetai
   };
 }
 
+function projectJiraComments(
+  issue: Awaited<ReturnType<JiraClient["getIssue"]>>,
+  siteOrigin: string,
+  limits: ContentProjectionLimits,
+) {
+  const available = issue.fields.comment?.comments ?? [];
+  const selected = available.slice(0, MAX_DETAIL_COMMENTS);
+  const total = issue.fields.comment?.total ?? available.length;
+  const capturedCount = selected.length;
+  let projection = projectJiraDescription(undefined, siteOrigin, limits);
+  for (const [index, comment] of selected.entries()) {
+    const body = projectJiraDescription(comment.body, siteOrigin, limits);
+    projection = appendBoundedDetailProjection(
+      projection,
+      prependBoundedDetailText(body, `Comment ${index + 1}:`, limits),
+      limits,
+    );
+  }
+  return {
+    projection: {
+      ...projection,
+      truncated: projection.truncated || total > capturedCount || available.length > capturedCount,
+    },
+    summary: capturedCount > 0
+      ? total > capturedCount
+        ? `Comments: ${capturedCount} of ${total} captured`
+        : `Comments: ${capturedCount} captured`
+      : undefined,
+  };
+}
+
 function detailPrefix(input: {
   summary?: string;
   status?: string;
   labels?: readonly string[];
   relationLabel?: string;
   relationIds?: readonly string[];
+  commentSummary?: string;
 }): string {
   return [
     input.summary ? `Summary: ${input.summary}` : undefined,
@@ -132,6 +166,7 @@ function detailPrefix(input: {
     input.relationLabel && input.relationIds && input.relationIds.length > 0
       ? `${input.relationLabel}: ${input.relationIds.join(", ")}`
       : undefined,
+    input.commentSummary,
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
@@ -216,6 +251,7 @@ export function createRestResearchProviders(
             "parent",
             "subtasks",
             "issuelinks",
+            "comment",
           ],
           signal: input.signal,
         });
@@ -225,12 +261,14 @@ export function createRestResearchProviders(
           limits
         );
         const relations = jiraRelationKeys(issue);
+        const comments = projectJiraComments(issue, request.scope.siteOrigin, limits);
         const detailFields = detailPrefix({
           summary: issue.fields.summary ?? issue.key,
           status: issue.fields.status?.name,
           labels: issue.fields.labels,
           relationLabel: "Related issue keys",
           relationIds: relations.values,
+          commentSummary: comments.summary,
         });
         return {
           issueKey: issue.key,
@@ -238,7 +276,11 @@ export function createRestResearchProviders(
           title: issue.fields.summary ?? issue.key,
           ...(issue.fields.updated ? { updatedAt: issue.fields.updated } : {}),
           content: appendBoundedDetailLinks(
-            prependBoundedDetailText(description, detailFields, limits),
+            appendBoundedDetailProjection(
+              prependBoundedDetailText(description, detailFields, limits),
+              comments.projection,
+              limits,
+            ),
             relations.values.map((issueKey) => jiraIssueUrl(request.scope.siteOrigin, issueKey)),
             request.scope.siteOrigin,
             limits,

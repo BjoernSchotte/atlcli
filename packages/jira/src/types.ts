@@ -207,6 +207,16 @@ export interface JiraIssueFields {
   subtasks?: JiraIssueRef[];
   /** Issue links */
   issuelinks?: JiraIssueLink[];
+  /**
+   * Bounded comment field returned with an issue detail read. Jira may return
+   * only the first page; `total` makes that limitation explicit to callers.
+   */
+  comment?: {
+    comments?: JiraComment[];
+    startAt?: number;
+    maxResults?: number;
+    total?: number;
+  };
   /** Time tracking */
   timetracking?: {
     originalEstimate?: string;

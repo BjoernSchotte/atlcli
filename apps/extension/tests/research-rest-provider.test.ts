@@ -77,6 +77,32 @@ describe("REST research provider authentication boundary", () => {
               type: { id: "1", name: "Blocks", inward: "is blocked by", outward: "blocks" },
               outwardIssue: { id: "3", key: "DEMO-3" },
             }],
+            comment: {
+              total: 2,
+              comments: [
+                {
+                  id: "comment-1",
+                  author: { accountId: "account-1", displayName: "Synthetic" },
+                  created: "2026-08-01T12:00:00.000Z",
+                  updated: "2026-08-01T12:00:00.000Z",
+                  body: {
+                    type: "doc",
+                    version: 1,
+                    content: [{
+                      type: "paragraph",
+                      content: [{
+                        type: "text",
+                        text: "Comment links the knowledge page.",
+                        marks: [{
+                          type: "link",
+                          attrs: { href: "/wiki/spaces/KB/pages/1001" },
+                        }],
+                      }],
+                    }],
+                  },
+                },
+              ],
+            },
           },
         }), { status: 200, headers: { "content-type": "application/json" } }));
       }
@@ -109,10 +135,15 @@ describe("REST research provider authentication boundary", () => {
 
     expect(issue.content.text).toContain("Labels: agentic-ai, release");
     expect(issue.content.text).toContain("Related issue keys: DEMO-2, DEMO-3, DEMO-9");
+    expect(issue.content.text).toContain("Comments: 1 of 2 captured");
+    expect(issue.content.text).toContain("Comment 1:");
+    expect(issue.content.text).toContain("Comment links the knowledge page.");
+    expect(issue.content.truncated).toBe(true);
     expect(issue.content.linkTargets).toEqual([
       "https://example.atlassian.net/browse/DEMO-2",
       "https://example.atlassian.net/browse/DEMO-3",
       "https://example.atlassian.net/browse/DEMO-9",
+      "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
     ]);
     expect(page.content.text).toContain("Labels: release");
     expect(page.content.text).toContain("Ancestor page IDs: 1000");
@@ -120,6 +151,7 @@ describe("REST research provider authentication boundary", () => {
       "https://example.atlassian.net/wiki/spaces/KB/pages/1000",
     ]);
     expect(calls.find((url) => url.includes("/rest/api/3/issue/DEMO-1"))).toContain("issuelinks");
+    expect(calls.find((url) => url.includes("/rest/api/3/issue/DEMO-1"))).toContain("comment");
     expect(calls.find((url) => url.includes("/wiki/rest/api/content/1001"))).toContain("ancestors");
   });
 });
