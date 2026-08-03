@@ -36,6 +36,7 @@ export const RESEARCH_REQUESTED_RECONCILIATIONS_V1 = [
   "auto",
   "required",
 ] as const;
+export const RESEARCH_REPORT_LANGUAGES_V1 = ["en", "de"] as const;
 
 export type ResearchRequestedEffortV1 =
   (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number];
@@ -50,6 +51,8 @@ export type ResearchScopeExpansionModeV1 =
   (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
 export type ResearchRequestedReconciliationV1 =
   (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
+/** Language selected by the host for deterministic report copy and model output. */
+export type ResearchReportLanguageV1 = (typeof RESEARCH_REPORT_LANGUAGES_V1)[number];
 
 /**
  * Host-neutral controls for the equal CLI/browser one-shot surface.
@@ -237,6 +240,8 @@ export interface ResearchRequestV1 {
   scope: ResearchScopeV1;
   limits: ResearchLimitsV1;
   wikiProvider: ResearchProvider;
+  /** Host-selected report language. Omitted V1 requests retain English output. */
+  reportLanguage?: ResearchReportLanguageV1;
   /** Ordered host-originated scope provenance; omitted by legacy V1 callers. */
   scopeSeeds?: ResearchScopeSeedV1[];
 }
@@ -1156,6 +1161,12 @@ export function normalizeResearchRequestV1(value: unknown): ResearchRequestV1 {
   if (request.wikiProvider !== "rest" && request.wikiProvider !== "agg") {
     throw new ResearchContractError("invalid-request", "Unknown Confluence read provider.");
   }
+  if (
+    request.reportLanguage !== undefined &&
+    !RESEARCH_REPORT_LANGUAGES_V1.includes(request.reportLanguage as ResearchReportLanguageV1)
+  ) {
+    throw new ResearchContractError("invalid-request", "Research report language is invalid.");
+  }
   const scope = normalizeResearchScopeV1(request.scope);
   const scopeSeeds = normalizeResearchScopeSeedsV1(request.scopeSeeds, scope);
   return {
@@ -1164,6 +1175,9 @@ export function normalizeResearchRequestV1(value: unknown): ResearchRequestV1 {
     scope,
     limits: normalizeResearchLimitsV1(request.limits),
     wikiProvider: request.wikiProvider,
+    ...(request.reportLanguage === undefined
+      ? {}
+      : { reportLanguage: request.reportLanguage as ResearchReportLanguageV1 }),
     ...(scopeSeeds ? { scopeSeeds } : {}),
   };
 }

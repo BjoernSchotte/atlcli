@@ -5,6 +5,7 @@ import {
   type ResearchLimitsV1,
   type ResearchOneShotPolicyV1,
   type ResearchProduct,
+  type ResearchReportLanguageV1,
   type ResearchRequestV1,
   type ResearchRequestedEffortV1,
   type ResearchRequestedPlanApprovalV1,
@@ -119,6 +120,8 @@ export interface ResearchBriefV1 {
   requestedPlanApproval: ResearchRequestedPlanApprovalV1;
   resolvedPlanApproval: ResearchResolvedPlanApprovalV1;
   requestedReconciliation: ResearchRequestedReconciliationV1;
+  /** Optional for V1 session compatibility; new hosts preserve the chosen language. */
+  reportLanguage?: ResearchReportLanguageV1;
   expectedSections: string[];
   coverageTargets: ResearchCoverageTargetV1[];
   sourceClasses: ResearchProduct[];
@@ -141,6 +144,7 @@ export function researchRequestFromBriefV1(brief: ResearchBriefV1): ResearchRequ
     scope: structuredClone(brief.scope),
     limits: structuredClone(brief.limits),
     wikiProvider: "rest",
+    ...(brief.reportLanguage ? { reportLanguage: brief.reportLanguage } : {}),
   };
 }
 
@@ -290,6 +294,7 @@ export interface CreateResearchBriefInputV1 {
   requestedEffort?: ResearchRequestedEffortV1;
   requestedPlanApproval?: ResearchRequestedPlanApprovalV1;
   requestedReconciliation?: ResearchRequestedReconciliationV1;
+  reportLanguage?: ResearchReportLanguageV1;
   sourceClasses?: readonly ResearchProduct[];
   limits?: ResearchLimitsV1;
   audience?: string;
@@ -391,6 +396,7 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
     requestedPlanApproval,
     resolvedPlanApproval,
     requestedReconciliation: input.requestedReconciliation ?? "auto",
+    ...(input.reportLanguage ? { reportLanguage: input.reportLanguage } : {}),
     expectedSections,
     coverageTargets: [...coverageTargets],
     sourceClasses,

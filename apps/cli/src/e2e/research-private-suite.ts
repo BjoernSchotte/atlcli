@@ -21,6 +21,7 @@ export interface ResearchPrivateSuiteV1 {
   profile: string;
   asOf: string;
   timezone: string;
+  reportLanguage: "en" | "de";
   effort: "lookup" | "deep";
   reconciliation: "off" | "auto" | "required";
   scopeExpansion: "strict" | "ask" | "exact-linked";
@@ -115,6 +116,7 @@ export function parseResearchPrivateSuiteV1(value: unknown): ResearchPrivateSuit
   const suite = value as Partial<ResearchPrivateSuiteV1>;
   if (suite.schema !== SUITE_SCHEMA || typeof suite.profile !== "string" || suite.profile.length === 0 || suite.profile.length > 120 ||
       !validDate(suite.asOf) || typeof suite.timezone !== "string" || suite.timezone.length === 0 || suite.timezone.length > 80 ||
+      (suite.reportLanguage !== undefined && suite.reportLanguage !== "en" && suite.reportLanguage !== "de") ||
       (suite.effort !== "lookup" && suite.effort !== "deep") ||
       (suite.reconciliation !== "off" && suite.reconciliation !== "auto" && suite.reconciliation !== "required") ||
       (suite.scopeExpansion !== "strict" && suite.scopeExpansion !== "ask" && suite.scopeExpansion !== "exact-linked") ||
@@ -142,6 +144,7 @@ export function parseResearchPrivateSuiteV1(value: unknown): ResearchPrivateSuit
     profile: suite.profile,
     asOf: suite.asOf,
     timezone: suite.timezone,
+    reportLanguage: suite.reportLanguage ?? "en",
     effort: suite.effort,
     reconciliation: suite.reconciliation,
     scopeExpansion: suite.scopeExpansion,
@@ -209,6 +212,7 @@ export function buildResearchPrivateSuiteCommand(
     ...entry.spaceKeys.flatMap((key) => ["--space", key]),
     "--as-of", suite.asOf,
     "--timezone", suite.timezone,
+    "--language", suite.reportLanguage,
     "--effort", suite.effort,
     "--reconciliation", suite.reconciliation,
     "--scope-expansion", suite.scopeExpansion,

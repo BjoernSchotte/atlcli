@@ -575,6 +575,7 @@ export async function continueResearchSessionScopeClarificationV1(
         limits: request.limits,
         asOf: input.at,
         policy: current.scopeClarification.policy,
+        reportLanguage: request.reportLanguage,
       },
     ));
     current = (await input.store.commit(current.sessionId, {

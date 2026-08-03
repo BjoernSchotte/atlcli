@@ -24,6 +24,7 @@ import {
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
   RESEARCH_REQUESTED_EFFORTS_V1,
   RESEARCH_REQUESTED_RECONCILIATIONS_V1,
+  RESEARCH_REPORT_LANGUAGES_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
   RESEARCH_SCOPE_EXPANSION_MODES_V1,
   ResearchScopeCatalogBroker,
@@ -49,6 +50,7 @@ import {
   type ResearchBriefV1,
   type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
+  type ResearchReportLanguageV1,
   type ResearchOneShotEventV1,
   type ResearchReport,
   type ResearchScopePreflightOptionsV1,
@@ -92,6 +94,7 @@ export interface ResearchCliInput {
   to?: string;
   asOf?: string;
   timezone?: string;
+  reportLanguage?: ResearchReportLanguageV1;
   outputPath?: string;
   maxRunMinutes: number;
   /** Conservative provider-cost ceiling for a new durable session, in USD. */
@@ -116,6 +119,7 @@ const T2_RESEARCH_FLAGS = new Set([
   "to",
   "as-of",
   "timezone",
+  "language",
   "max-run-minutes",
   "max-cost-usd",
   "output",
@@ -140,6 +144,7 @@ const T2_VALUE_FLAGS = [
   "to",
   "as-of",
   "timezone",
+  "language",
   "max-run-minutes",
   "max-cost-usd",
   "output",
@@ -326,6 +331,7 @@ export function parseResearchCliInput(
       spaceKeys: [],
       ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
       maxRunMinutes: DEFAULT_MAX_RUN_MINUTES,
+      reportLanguage: "en",
       keepSession: hasFlag(flags, "keep-session"),
       planOnly: false,
       resumeSessionId,
@@ -350,6 +356,7 @@ export function parseResearchCliInput(
       spaceKeys: [],
       ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
       maxRunMinutes: DEFAULT_MAX_RUN_MINUTES,
+      reportLanguage: "en",
       keepSession: hasFlag(flags, "keep-session"),
       planOnly: false,
       newTurnSessionId,
@@ -362,6 +369,7 @@ export function parseResearchCliInput(
   const to = getFlag(flags, "to");
   const asOf = normalizeAsOf(getFlag(flags, "as-of"));
   const timezone = normalizeTimezone(getFlag(flags, "timezone"));
+  const reportLanguage = enumFlag(flags, "language", RESEARCH_REPORT_LANGUAGES_V1, "en");
   const maxRunMinutesFlag = getFlag(flags, "max-run-minutes");
   const maxRunMinutes = maxRunMinutesFlag === undefined
     ? DEFAULT_MAX_RUN_MINUTES
@@ -404,7 +412,11 @@ export function parseResearchCliInput(
     ),
   });
   return {
-    question: [question, asOf ? `As-of date: ${asOf}.` : "", timezone ? `Timezone: ${timezone}.` : ""].filter(Boolean).join("\n\n"),
+    question: [
+      question,
+      asOf ? reportLanguage === "de" ? `Stichtag: ${asOf}.` : `As-of date: ${asOf}.` : "",
+      timezone ? reportLanguage === "de" ? `Zeitzone: ${timezone}.` : `Timezone: ${timezone}.` : "",
+    ].filter(Boolean).join("\n\n"),
     profile: getFlag(flags, "profile"),
     projectKeys: uniqueKeys(getFlags(flags, "project")),
     spaceKeys: uniqueKeys(getFlags(flags, "space"), false),
@@ -412,6 +424,7 @@ export function parseResearchCliInput(
     ...(to ? { to } : {}),
     ...(asOf ? { asOf } : {}),
     ...(timezone ? { timezone } : {}),
+    reportLanguage,
     ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
     maxRunMinutes,
     ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
@@ -1633,6 +1646,7 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
       maxRunMs: input.maxRunMinutes * 60_000,
     },
     wikiProvider: "rest",
+    reportLanguage: input.reportLanguage ?? "en",
   });
 }
 
@@ -1684,6 +1698,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       asOf: input.asOf,
       timezone: input.timezone,
       policy: input.policy,
+      reportLanguage: input.request.reportLanguage,
     }));
   },
   readApiKey: () => process.env.ANTHROPIC_API_KEY,
@@ -2359,6 +2374,7 @@ Options:
   --to <YYYY-MM-DD>      Inclusive upper date bound
   --as-of <date/time>    Add a fixed date or timezone-qualified timestamp
   --timezone <name>      Add an explicit timezone to the question
+  --language <en|de>     Language for model prose and deterministic Markdown copy (default: en)
   --max-run-minutes <n>  Complete workflow deadline, 1-10 (default: 10)
   --max-cost-usd <n>     Immutable conservative Claude ceiling for a new durable session, including resumes, $0 < n <= $25 (default: $2)
   --effort <mode>         auto|lookup|analysis|deep (default: auto)

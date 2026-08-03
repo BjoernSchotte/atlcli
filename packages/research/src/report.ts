@@ -5,11 +5,17 @@ import {
   normalizeResearchScopeV1,
   type AtlassianRelationshipV1,
   type ResearchFindingV1,
+  type ResearchReportLanguageV1,
   type ResearchReportV1,
   type ResearchRunSummaryV1,
   type ResearchScopeV1,
   type ResearchSourceReferenceV1,
 } from "./contracts.js";
+import {
+  localizeResearchSectionQuestionV1,
+  localizeResearchSectionTitleV1,
+  researchReportCopyV1,
+} from "./report-locale.js";
 
 function assertString(value: unknown, label: string, maximum = 100_000): asserts value is string {
   if (typeof value !== "string" || value.trim() === "" || value.length > maximum) {
@@ -336,10 +342,12 @@ function renderFindings(
   title: string,
   findings: readonly ResearchFindingV1[],
   sources: Map<string, ResearchSourceReferenceV1>,
-  siteOrigin: string
+  siteOrigin: string,
+  language?: ResearchReportLanguageV1,
 ): string[] {
+  const copy = researchReportCopyV1(language);
   const lines = [`## ${title}`, ""];
-  if (findings.length === 0) return [...lines, "_None._", ""];
+  if (findings.length === 0) return [...lines, copy.none, ""];
   for (const [index, finding] of findings.entries()) {
     lines.push(
       `### ${index + 1}. ${linkedMarkdownText(finding.summary, sources, siteOrigin)}`,
@@ -348,7 +356,7 @@ function renderFindings(
     if (finding.detail) {
       lines.push(linkedMarkdownParagraph(finding.detail, sources, siteOrigin), "");
     }
-    lines.push(`Sources: ${sourceLinks(finding.sourceIds, sources, siteOrigin)}`, "");
+    lines.push(`${copy.sourceLabel}: ${sourceLinks(finding.sourceIds, sources, siteOrigin)}`, "");
   }
   return lines;
 }
@@ -366,15 +374,17 @@ export function renderResearchFindingSectionsMarkdown(
   }[],
   sources: readonly ResearchSourceReferenceV1[],
   siteOrigin: string,
+  language?: ResearchReportLanguageV1,
 ): string[] {
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
   return sections.flatMap((section) => {
-    const lines = renderFindings(section.title, section.findings, sourcesById, siteOrigin);
+    const title = localizeResearchSectionTitleV1(language, section.title);
+    const lines = renderFindings(title, section.findings, sourcesById, siteOrigin, language);
     if (!section.question) return lines;
     return [
-      `## ${markdownText(section.title)}`,
+      `## ${markdownText(title)}`,
       "",
-      `> Focus: ${markdownText(section.question)}`,
+      `> ${researchReportCopyV1(language).focus}: ${markdownText(localizeResearchSectionQuestionV1(language, section.question))}`,
       "",
       ...lines.slice(2),
     ];
@@ -385,17 +395,19 @@ function renderResearchReportTail(
   input: Pick<ResearchReportV1, "limitations" | "sources" | "run">,
   sources: Map<string, ResearchSourceReferenceV1>,
   siteOrigin: string,
+  language?: ResearchReportLanguageV1,
 ): string[] {
+  const copy = researchReportCopyV1(language);
   return [
-    "## Limitations",
+    `## ${copy.limitations}`,
     "",
     ...(input.limitations.length > 0
       ? input.limitations.map(
           (limitation) => `- ${linkedMarkdownText(limitation, sources, siteOrigin)}`
         )
-      : ["_None reported._"]),
+      : [copy.none]),
     "",
-    "## Sources",
+    `## ${copy.sources}`,
     "",
     ...input.sources.map((source, index) => {
       const identifier = source.issueKey ?? source.contentId ?? source.id;
@@ -405,22 +417,22 @@ function renderResearchReportTail(
       )}) — ${markdownText(source.product)} \`${markdownText(identifier)}\``;
     }),
     "",
-    "## Run",
+    `## ${copy.run}`,
     "",
-    `- Model: \`${markdownText(input.run.model)}\``,
-    `- Confluence provider: \`${input.run.wikiProvider}\``,
-    `- Complete: ${input.run.complete ? "yes" : "no"}`,
-    `- Duration: ${input.run.durationMs} ms`,
-    `- Calls: ${input.run.counts.ptcCalls} PTC / ${input.run.counts.httpCalls} HTTP`,
-    `- Items: ${input.run.counts.jiraItems} Jira / ${input.run.counts.confluenceItems} Confluence`,
+    `- ${copy.model}: \`${markdownText(input.run.model)}\``,
+    `- ${copy.confluenceProvider}: \`${input.run.wikiProvider}\``,
+    `- ${copy.complete}: ${input.run.complete ? copy.yes : copy.no}`,
+    `- ${copy.duration}: ${input.run.durationMs} ms`,
+    `- ${copy.calls}: ${input.run.counts.ptcCalls} PTC / ${input.run.counts.httpCalls} HTTP`,
+    `- ${copy.items}: ${input.run.counts.jiraItems} Jira / ${input.run.counts.confluenceItems} Confluence`,
     ...(input.run.usage?.inputTokens !== undefined
-      ? [`- Input tokens: ${input.run.usage.inputTokens}`]
+      ? [`- ${copy.inputTokens}: ${input.run.usage.inputTokens}`]
       : []),
     ...(input.run.usage?.outputTokens !== undefined
-      ? [`- Output tokens: ${input.run.usage.outputTokens}`]
+      ? [`- ${copy.outputTokens}: ${input.run.usage.outputTokens}`]
       : []),
     ...(input.run.warnings.length > 0
-      ? ["", "### Warnings", "", ...input.run.warnings.map((warning) => `- ${markdownText(warning)}`)]
+      ? ["", `### ${copy.warnings}`, "", ...input.run.warnings.map((warning) => `- ${markdownText(warning)}`)]
       : []),
     "",
   ];
@@ -441,20 +453,22 @@ export function renderResearchReportWithFindingSectionsMarkdown(
       question?: string;
       findings: readonly ResearchFindingV1[];
     }[];
+    language?: ResearchReportLanguageV1;
   },
 ): string {
+  const copy = researchReportCopyV1(input.language);
   const sources = new Map(input.sources.map((source) => [source.id, source]));
   return [
     `# ${markdownText(input.title)}`,
     "",
-    `> Question: ${markdownText(input.question)}`,
+    `> ${copy.question}: ${markdownText(input.question)}`,
     "",
-    "## Executive summary",
+    `## ${copy.executiveSummary}`,
     "",
     linkedMarkdownParagraph(input.executiveSummary, sources, input.scope.siteOrigin),
     "",
-    ...renderResearchFindingSectionsMarkdown(input.sections, input.sources, input.scope.siteOrigin),
-    ...renderResearchReportTail(input, sources, input.scope.siteOrigin),
+    ...renderResearchFindingSectionsMarkdown(input.sections, input.sources, input.scope.siteOrigin, input.language),
+    ...renderResearchReportTail(input, sources, input.scope.siteOrigin, input.language),
   ].join("\n");
 }
 

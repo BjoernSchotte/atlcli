@@ -184,6 +184,34 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("`jira:ATLCLI-42`: whole scope.");
   });
 
+  test("renders deterministic report copy and host limitations in the selected German language", async () => {
+    const current = claim(CURRENT_CLAIM, EVIDENCE, "current");
+    const germanRequest = normalizeResearchRequestV1({ ...request, reportLanguage: "de" });
+    const report = await finalizeResearchReportV2({
+      request: germanRequest,
+      ...ports({ claims: [current], records: [record(EVIDENCE, "jira:ATLCLI-42")] }),
+      claimIds: [CURRENT_CLAIM],
+      limitations: [
+        "Jira candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.",
+        "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
+      ],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+
+    expect(report.markdown).toContain("> Frage: Which implementation facts are currently supported?");
+    expect(report.markdown).toContain("## Zusammenfassung");
+    expect(report.markdown).toContain("## Direkt belegte Befunde");
+    expect(report.markdown).toContain("> Fokus: Was belegen die derzeit validierten Befunde?");
+    expect(report.markdown).toContain("Quellen: [Validated implementation item]");
+    expect(report.markdown).toContain("## Einschränkungen");
+    expect(report.markdown).toContain("Die Kandidatensuche in Jira verwendet den nativen Suchindex");
+    expect(report.markdown).toContain("Es wurden nur Felder der erlaubten, schreibgeschützten Fähigkeiten ausgewertet");
+    expect(report.markdown).toContain("## Laufdaten");
+    expect(report.markdown).toContain("## Zugriffsbereich der Quellen");
+    expect(report.markdown).toContain("`jira:ATLCLI-42`: vollständiger Bereich.");
+  });
+
   test("retains exact-entity authority independently of source display metadata", async () => {
     const current = claim(CURRENT_CLAIM, EVIDENCE, "current");
     const exactRecord = {

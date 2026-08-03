@@ -46,7 +46,7 @@ import {
   researchPlanApprovalRequiredV1,
   type ResearchPlanApprovalRequiredV1,
 } from "@atlcli/research/graph";
-import { useT } from "../../utils/i18n/context.js";
+import { useI18n, useT } from "../../utils/i18n/context.js";
 import { Alert, AlertTitle } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -449,6 +449,7 @@ function FormattedReport({ report }: { report: ResearchReport }): React.JSX.Elem
 
 export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element {
   const t = useT();
+  const { locale } = useI18n();
   const port = ports.research;
   const site = useMemo(() => currentSite(page), [page]);
   const [apiKey, setApiKey] = useState("");
@@ -790,6 +791,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             },
           },
           scopeSeeds: scope.scopeSeeds,
+          reportLanguage: locale,
           limits: {
             ...DEFAULT_RESEARCH_LIMITS_V1,
             maxModelCostMicros,

@@ -4,6 +4,7 @@ import {
   normalizeResearchOneShotPolicyV1,
   type ResearchLimitsV1,
   type ResearchOneShotPolicyV1,
+  type ResearchReportLanguageV1,
   type ResearchScopeBindingV1,
   type ResearchScopeV1,
 } from "./contracts.js";
@@ -812,6 +813,7 @@ export interface ComposeStandardResearchGraphOptionsV1 {
   asOf?: string;
   timezone?: string;
   policy?: ResearchOneShotPolicyV1;
+  reportLanguage?: ResearchReportLanguageV1;
 }
 
 function standardClarificationQuestions(
@@ -861,6 +863,7 @@ export function createStandardResearchBriefV1(
     requestedEffort: policy.requestedEffort,
     requestedPlanApproval: policy.requestedPlanApproval,
     requestedReconciliation: policy.requestedReconciliation,
+    ...(options.reportLanguage ? { reportLanguage: options.reportLanguage } : {}),
     clarificationQuestions: standardClarificationQuestions(question, options.scope),
     ...(options.limits ? { limits: options.limits } : {}),
   });

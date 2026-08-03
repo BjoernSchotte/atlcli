@@ -771,6 +771,7 @@ export default defineBackground({
           limits: request.limits,
           asOf: now,
           policy: researchPolicyFromBriefV1(previousTurn.brief),
+          reportLanguage: request.reportLanguage,
         },
       ));
       if (briefOutcome.kind !== "ready") {
@@ -960,6 +961,7 @@ export default defineBackground({
         limits: request.limits,
         asOf: now,
         policy,
+        reportLanguage: request.reportLanguage,
       },
     ));
     if (briefOutcome.kind !== "ready") {
@@ -1171,6 +1173,7 @@ export default defineBackground({
         limits: request.limits,
         asOf: now,
         policy,
+        reportLanguage: request.reportLanguage,
       },
     ));
     if (briefOutcome.kind !== "clarification_required") {

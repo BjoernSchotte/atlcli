@@ -20,6 +20,10 @@ import type {
   ResearchReconciliationDispositionV1,
 } from "./workflow-contracts.js";
 import { finalizeResearchReportV1, renderResearchReportWithFindingSectionsMarkdown } from "./report.js";
+import {
+  localizeResearchLimitationV1,
+  researchReportCopyV1,
+} from "./report-locale.js";
 
 const CLAIM_ID = /^claim:[a-f0-9]{48}$/;
 const MAXIMUM_REPORT_CLAIMS = 96;
@@ -97,10 +101,11 @@ function sectionsFor(
   return sections;
 }
 
-function coverageMarkdown(report: ResearchReportV2): string[] {
+function coverageMarkdown(report: ResearchReportV2, language: ResearchRequestV1["reportLanguage"]): string[] {
   if (report.coverage.length === 0) return [];
+  const copy = researchReportCopyV1(language);
   return [
-    "## Evidence coverage",
+    `## ${copy.evidenceCoverage}`,
     "",
     ...report.coverage.map((entry) =>
       `- \`${entry.targetId}\`: ${entry.status}; ${entry.distinctSourceCount} distinct retained ${entry.distinctSourceCount === 1 ? "source" : "sources"}.`,
@@ -111,12 +116,13 @@ function coverageMarkdown(report: ResearchReportV2): string[] {
 
 function incompleteCoverageLimitations(
   coverage: readonly Pick<ResearchReportV2["coverage"][number], "targetId" | "status" | "distinctSourceCount">[],
+  language: ResearchRequestV1["reportLanguage"],
 ): string[] {
   return coverage
     .filter((entry) => entry.status !== "covered")
-    .map((entry) =>
-      `Evidence coverage for ${entry.targetId} is ${entry.status} (${entry.distinctSourceCount} distinct retained ${entry.distinctSourceCount === 1 ? "source" : "sources"}); the report is not exhaustive for this target.`,
-    );
+    .map((entry) => language === "de"
+      ? `Die Evidenzabdeckung für ${entry.targetId} ist ${entry.status} (${entry.distinctSourceCount} unterschiedliche erhaltene ${entry.distinctSourceCount === 1 ? "Quelle" : "Quellen"}); der Bericht ist für dieses Ziel nicht erschöpfend.`
+      : `Evidence coverage for ${entry.targetId} is ${entry.status} (${entry.distinctSourceCount} distinct retained ${entry.distinctSourceCount === 1 ? "source" : "sources"}); the report is not exhaustive for this target.`);
 }
 
 function markdownText(value: string): string {
@@ -128,11 +134,12 @@ function markdownText(value: string): string {
     .trim();
 }
 
-function reconciliationMarkdown(report: ResearchReportV2): string[] {
+function reconciliationMarkdown(report: ResearchReportV2, language: ResearchRequestV1["reportLanguage"]): string[] {
   const outcomes = report.reconciliation ?? [];
   if (outcomes.length === 0) return [];
+  const copy = researchReportCopyV1(language);
   return [
-    "## Reconciliation decisions",
+    `## ${copy.reconciliationDecisions}`,
     "",
     ...outcomes.map((entry) =>
       `- ${markdownText(entry.target.kind)} ${markdownText(entry.target.id)}: ${entry.decision} (${entry.reasonCode}).`,
@@ -141,21 +148,25 @@ function reconciliationMarkdown(report: ResearchReportV2): string[] {
   ];
 }
 
-function sourceAuthorityMarkdown(report: ResearchReportV2): string[] {
+function sourceAuthorityMarkdown(report: ResearchReportV2, language: ResearchRequestV1["reportLanguage"]): string[] {
   if (!report.sourceAuthorities || report.sourceAuthorities.length === 0) return [];
+  const copy = researchReportCopyV1(language);
   return [
-    "## Source access authority",
+    `## ${copy.sourceAccessAuthority}`,
     "",
     ...report.sourceAuthorities.map((entry) =>
       `- \`${markdownText(entry.sourceId)}\`: ${entry.authorityClasses
-        .map((authority) => authority === "exact_entity" ? "exact entity" : "whole scope")
+        .map((authority) => authority === "exact_entity" ? copy.exactEntity : copy.wholeScope)
         .join(", ")}.`,
     ),
     "",
   ];
 }
 
-function renderMarkdown(report: Omit<ResearchReportV2, "markdown">): string {
+function renderMarkdown(
+  report: Omit<ResearchReportV2, "markdown">,
+  language: ResearchRequestV1["reportLanguage"],
+): string {
   const claimsById = new Map(report.claims.map((claim) => [claim.id, claim]));
   const sections = report.sections.map((section) => ({
     title: section.title,
@@ -196,10 +207,11 @@ function renderMarkdown(report: Omit<ResearchReportV2, "markdown">): string {
     ...renderResearchReportWithFindingSectionsMarkdown({
       ...legacy,
       sections,
+      language,
     }).trimEnd().split("\n"),
-    ...coverageMarkdown({ ...report, markdown: "" }),
-    ...reconciliationMarkdown({ ...report, markdown: "" }),
-    ...sourceAuthorityMarkdown({ ...report, markdown: "" }),
+    ...coverageMarkdown({ ...report, markdown: "" }, language),
+    ...reconciliationMarkdown({ ...report, markdown: "" }, language),
+    ...sourceAuthorityMarkdown({ ...report, markdown: "" }, language),
   ].join("\n");
 }
 
@@ -499,17 +511,20 @@ export async function finalizeResearchReportV2(
       }))
       .sort((left, right) => left.sourceId.localeCompare(right.sourceId)),
     limitations: [...new Set([
-      ...(input.limitations ?? []).map((value) => boundedText(value, "V2 report limitation", 700)),
+      ...(input.limitations ?? []).map((value) => localizeResearchLimitationV1(
+        input.request.reportLanguage,
+        boundedText(value, "V2 report limitation", 700),
+      )),
       ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),
-      ...staleLimitations,
-      ...incompleteCoverageLimitations(coverage),
+      ...staleLimitations.map((value) => localizeResearchLimitationV1(input.request.reportLanguage, value)),
+      ...incompleteCoverageLimitations(coverage, input.request.reportLanguage),
     ])].slice(0, 12),
     sources: [...new Set(reportClaims.flatMap((claim) => claim.sourceIds))]
       .map((sourceId) => sources.get(sourceId)!)
       .sort((left, right) => left.id.localeCompare(right.id)),
     run: structuredClone(input.run),
   } satisfies Omit<ResearchReportV2, "markdown">;
-  const finalized: ResearchReportV2 = { ...report, markdown: renderMarkdown(report) };
+  const finalized: ResearchReportV2 = { ...report, markdown: renderMarkdown(report, input.request.reportLanguage) };
   assertResearchReportV2(finalized);
   return finalized;
 }

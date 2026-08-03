@@ -3165,6 +3165,7 @@ async function runResearchAgentWithBindings(
         broker,
         ...(input.scopeCatalog ? { scopeCatalog: input.scopeCatalog } : {}),
         question: input.request.question,
+        reportLanguage: input.request.reportLanguage,
         maxInterpreterMs: input.request.limits.maxInterpreterMs,
         maxInterpreterMemoryBytes: input.request.limits.maxInterpreterMemoryBytes,
         maxPtcCalls: input.request.limits.maxPtcCalls,

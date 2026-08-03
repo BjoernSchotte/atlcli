@@ -1289,6 +1289,18 @@ describe("research CLI one-shot contract", () => {
     expect(input.question).toContain("Timezone: Europe/Berlin.");
   });
 
+  test("preserves a German report language across the CLI request and fixed-date context", () => {
+    const input = parseResearchCliInput(
+      ["Welche", "Elemente", "sind", "verbunden?"],
+      { language: "de", "as-of": "2026-08-03", timezone: "Europe/Berlin" },
+    );
+    const request = buildResearchRequest(input, profile);
+    expect(input.question).toContain("Stichtag: 2026-08-03.");
+    expect(input.question).toContain("Zeitzone: Europe/Berlin.");
+    expect(request.reportLanguage).toBe("de");
+    expect(() => parseResearchCliInput(["Frage"], { language: "fr" })).toThrow("--language must be one of");
+  });
+
   test("accepts a bounded workflow deadline override", () => {
     const input = parseResearchCliInput(["Find related content"], { "max-run-minutes": "7" });
     const request = buildResearchRequest(input, profile);
@@ -1404,6 +1416,7 @@ describe("research CLI one-shot contract", () => {
     harness.dependencies.resolveProfile = async () => { throw new Error("must not resolve"); };
     await handleResearch([], { help: true }, { json: false }, harness.dependencies);
     expect(harness.stdout.join("")).toContain("atlcli research <question>");
+    expect(harness.stdout.join("")).toContain("--language <en|de>");
     expect(harness.stdout.join("")).toContain("including resumes");
   });
 

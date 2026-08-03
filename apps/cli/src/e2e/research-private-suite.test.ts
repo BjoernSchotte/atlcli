@@ -20,6 +20,7 @@ const suite = parseResearchPrivateSuiteV1({
   profile: "operator-profile",
   asOf: "2026-08-03",
   timezone: "Europe/Berlin",
+  reportLanguage: "de",
   effort: "lookup",
   reconciliation: "off",
   scopeExpansion: "strict",
@@ -55,6 +56,8 @@ describe("research CLI private suite harness", () => {
     const command = buildResearchPrivateSuiteCommand(input, suite, suite.cases[0]!, "/repo");
     expect(command).toContain("--as-of");
     expect(command).toContain("2026-08-03");
+    expect(command).toContain("--language");
+    expect(command).toContain("de");
     expect(command).toContain("--scope-expansion");
     expect(command).toContain("strict");
     expect(command).toContain("--reconciliation");
