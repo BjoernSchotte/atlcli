@@ -2251,6 +2251,28 @@ type ResearchOneShotEventInputV1 = ResearchOneShotEventV1 extends infer Event
   : never;
 
 /**
+ * Project only source identities from packets accepted before a fresh
+ * retrieval frontier. V2 packet bodies deliberately do not retain source
+ * IDs, so the host-projected dependency source set is the sole authority for
+ * those packets. The resulting snapshot is body-free and can safely drive the
+ * deterministic marginal-evidence stop rule after a later frontier settles.
+ */
+export function acceptedSourceIdsForRetrievalAssessmentV1(
+  packets: Iterable<Pick<ResearchAcceptedPacketV1, "taskId" | "body">>,
+  normalizedV2SourceIdsByTaskId: ReadonlyMap<string, readonly string[]>,
+): string[] {
+  return [...new Set(
+    [...packets].flatMap((packet) => {
+      if (isResearchPacketBodyV1(packet.body)) return packet.body.sourceIds;
+      if (isResearchPacketBodyV2(packet.body)) {
+        return normalizedV2SourceIdsByTaskId.get(packet.taskId) ?? [];
+      }
+      return [];
+    }),
+  )].sort();
+}
+
+/**
  * Internal control-flow signal: unlike cancellation, a pause has already
  * persisted a resumable checkpoint and must never be converted into failure.
  */
@@ -2362,6 +2384,10 @@ async function runResearchAgentWithBindings(
    * pass exactly the same validated result through native task().
    */
   const normalizedV2DependencyResultsByTaskId = new Map<string, unknown>();
+  // Snapshot the accepted-source frontier before dispatch. A later checkpoint
+  // compares only newly detailed sources with this stable, body-free baseline;
+  // it must not compare a frontier's result against itself.
+  let acceptedSourceIdsBeforeCurrentFrontier: string[] = [];
   let reconciliationDispositions: ResearchReconciliationDispositionV1[] | undefined;
   let repairAuthorization: ResearchRepairAuthorizationV1 | undefined;
   let acceptedRepairPacket: ResearchAcceptedPacketV1 | undefined;
@@ -3670,6 +3696,10 @@ async function runResearchAgentWithBindings(
               "The host has no newly admitted ready research frontier.",
             );
           }
+          acceptedSourceIdsBeforeCurrentFrontier = acceptedSourceIdsForRetrievalAssessmentV1(
+            acceptedPacketsByTaskId.values(),
+            normalizedV2SourceIdsByTaskId,
+          );
           checkpointFrontierTaskIds.clear();
           admissions.forEach((admission) => checkpointFrontierTaskIds.add(admission.taskId));
           readyFrontierIssuedInCurrentEvaluator = true;
@@ -3721,7 +3751,7 @@ async function runResearchAgentWithBindings(
         },
         assess: () => broker.retrievalAssessment(
           selectedSearchProductsV1(acceptedGraph) ?? [],
-          [],
+          acceptedSourceIdsBeforeCurrentFrontier,
           { unresolvedCoverageTargetIds: unresolvedCoverageTargetIds() },
         ),
           record: async ({ graphRevision, assessment, issueContinuation }) => {
@@ -4021,7 +4051,10 @@ async function runResearchAgentWithBindings(
         ? []
         : undefined;
     if (!retrievalAssessmentRecorded && (assessedProducts === undefined || assessedProducts.length > 0)) {
-      const assessment = broker.retrievalAssessment(assessedProducts);
+      const assessment = broker.retrievalAssessment(
+        assessedProducts,
+        acceptedSourceIdsBeforeCurrentFrontier,
+      );
       if (durableDispatchJournal && acceptedGraph) {
         const recorded = await durableDispatchJournal.recordRetrievalAssessment({
           graphRevision: acceptedGraph.revision,

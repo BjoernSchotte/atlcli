@@ -19,6 +19,7 @@ import {
   createResearchReadyFrontierPtcTool,
   createResearchScopeDiscoveriesPtcTool,
   createResearchScopeDiscoveryDispositionsPtcTool,
+  acceptedSourceIdsForRetrievalAssessmentV1,
   hostSearchCoverageLimitationsV1,
   hostSearchFreshnessLimitationsV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
@@ -36,6 +37,7 @@ import {
   RESEARCH_SESSION_RETRIEVAL_ASSESSMENT_SCHEMA_V1,
   RESEARCH_SESSION_RETRIEVAL_CONTINUATION_SCHEMA_V1,
 } from "./session.js";
+import type { ResearchAcceptedPacketV1 } from "./workflow-contracts.js";
 import {
   createResearchScopeDiscoveryDispositionV1,
   createResearchScopeDiscoveryV1,
@@ -52,6 +54,29 @@ const draftTool = tool(async () => "unused", {
   name: "AtlcliResearchAgentDraftV1",
   description: "Synthetic structured response.",
   schema: z.object({ title: z.string() }),
+});
+
+test("projects a body-free novelty baseline from accepted V1 and V2 packets", () => {
+  const v1TaskId = "research-task:run-1:jira-research:a1";
+  const v2TaskId = "research-task:run-1:wiki-research:a1";
+  const packets = [
+    {
+      taskId: v1TaskId,
+      body: {
+        schema: "atlcli.research-packet-body/v1",
+        sourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+      },
+    },
+    {
+      taskId: v2TaskId,
+      body: { schema: "atlcli.research-packet-body/v2" },
+    },
+  ] as unknown as ResearchAcceptedPacketV1[];
+
+  expect(acceptedSourceIdsForRetrievalAssessmentV1(
+    packets,
+    new Map([[v2TaskId, ["confluence:42", "jira:DEMO-2"]]]),
+  )).toEqual(["confluence:42", "jira:DEMO-1", "jira:DEMO-2"]);
 });
 
 const validWorkflowCode = `

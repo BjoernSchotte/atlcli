@@ -243,10 +243,11 @@ describe("bounded research capability broker", () => {
   });
 
   it("assesses only host-observed ranked retrieval state before another wave", async () => {
+    let entityId = 0;
     const broker = new ResearchCapabilityBroker(
-      request({ maxSearchPagesPerProduct: 1, maxDetailItemsPerProduct: 1 }),
+      request({ maxSearchPagesPerProduct: 2, maxDetailItemsPerProduct: 1 }),
       fakeProviders(),
-      { createEntityId: () => "assessment-entity" },
+      { createEntityId: () => `assessment-entity-${++entityId}` },
     );
     const page = await broker.invoke("jira.issue.search", {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
@@ -264,9 +265,20 @@ describe("bounded research capability broker", () => {
       entityRef: page.items[0]!.entityRef,
     });
     expect(broker.retrievalAssessment(["jira"])).toMatchObject({
-      action: "stop",
-      reason: "search_budget_exhausted",
+      action: "continue",
+      reason: "search_not_terminal",
       newDetailSourceCount: 1,
+    });
+    await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      cursor: page.page.nextCursor,
+    });
+    const detailedSourceId = broker.detailEvidenceLedger()[0]!.source.id;
+    expect(broker.retrievalAssessment(["jira"], [detailedSourceId])).toMatchObject({
+      action: "stop",
+      reason: "marginal_evidence",
+      newDetailSourceCount: 0,
+      duplicateDetailReadCount: 0,
     });
     const gapBroker = new ResearchCapabilityBroker(
       request({ maxSearchPagesPerProduct: 1, maxDetailItemsPerProduct: 1 }),

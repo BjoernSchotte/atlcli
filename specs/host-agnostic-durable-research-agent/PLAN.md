@@ -3835,8 +3835,11 @@ Shared:
       persists new-detail, duplicate-detail, unresolved-coverage, and
       unresolved-contradiction counters beside a closed retrieval action/reason;
       unread ranked candidates, exhausted detail/search/capability budgets, and
-      marginal evidence select the terminal outcome deterministically. Model
-      confidence has no control-flow input (2026-08-03).
+      marginal evidence select the terminal outcome deterministically. Each
+      fresh ready frontier snapshots accepted V1/V2 source identities before
+      dispatch, so a later settled frontier compares its details to prior
+      accepted evidence rather than to an empty set. Model confidence has no
+      control-flow input (2026-08-03).
 - [x] Allow repeated bounded QuickJS calls, but make each call replayable and
       disposable. The host compacts the completed supervisor/tool transcript
       only at a persisted retrieval checkpoint into one body-free continuation
