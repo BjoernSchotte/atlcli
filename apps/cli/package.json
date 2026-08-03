@@ -33,7 +33,8 @@
     "build": "bun run build.ts",
     "build:minify": "bun run build.ts --minify",
     "research:e2e:source": "bun --env-file=../../.env --conditions=development src/e2e/research-live.ts --mode source",
-    "research:e2e:built": "bun --env-file=../../.env --conditions=development src/e2e/research-live.ts --mode built"
+    "research:e2e:built": "bun --env-file=../../.env --conditions=development src/e2e/research-live.ts --mode built",
+    "research:e2e:multi-turn": "bun --env-file=../../.env --conditions=development src/e2e/research-multi-turn.ts --mode source"
   },
   "devDependencies": {
     "@atlcli/export-fixtures": "workspace:*",

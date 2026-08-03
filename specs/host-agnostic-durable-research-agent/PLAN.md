@@ -3916,7 +3916,10 @@ Shared:
 
 CLI:
 
-- [ ] Add a scripted multi-turn harness over one retained session.
+- [x] Add a scripted multi-turn harness over one retained session. Its first
+      process fixes the full $ cost ceiling; each later process uses only
+      `--session`, verifies a complete Markdown artifact, and fails closed if
+      the durable session identity changes (2026-08-03).
 - [ ] Prove interruption and resume while compaction or summarization is in
       progress.
 
