@@ -409,6 +409,7 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>
     );
+    expect((dom.find("research-max-run-minutes") as HTMLInputElement).value).toBe("10");
     await dom.setValue("research-key", "synthetic-key");
     await dom.setValue(
       "research-question",

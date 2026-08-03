@@ -184,7 +184,7 @@ async function main(): Promise<void> {
       maxPtcCalls: 16,
       maxHttpCalls: 16,
       maxModelOutputTokens: 8_000,
-      maxRunMs: 120_000,
+      maxRunMs: 10 * 60_000,
     },
     wikiProvider: "rest",
   });

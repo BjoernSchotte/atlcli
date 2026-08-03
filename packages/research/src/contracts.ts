@@ -212,7 +212,10 @@ export const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1> = {
   maxModelInputTokens: 80_000,
   maxModelOutputTokens: 8_000,
   maxReportChars: 24_000,
-  maxRunMs: 120_000,
+  // CLI and browser use the same durable default. A two-minute browser
+  // deadline cut off a normal bounded deep-research workflow before its
+  // second retrieval/reconciliation wave could complete.
+  maxRunMs: 10 * 60_000,
 };
 
 export interface ResearchRequestV1 {

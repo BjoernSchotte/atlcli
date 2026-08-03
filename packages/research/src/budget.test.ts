@@ -60,6 +60,7 @@ describe("model run budget", () => {
     expect(DEFAULT_RESEARCH_LIMITS_V1).toMatchObject({
       maxTotalModelInputTokens: 160_000,
       maxModelCostMicros: 2_000_000,
+      maxRunMs: 10 * 60_000,
     });
 
     const budget = new ResearchModelRunBudget(DEFAULT_RESEARCH_LIMITS_V1);

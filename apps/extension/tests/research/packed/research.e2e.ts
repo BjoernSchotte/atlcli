@@ -513,7 +513,7 @@ const coverage = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
     taskId: "research-task:r1:coverage-moderation:a1",
-    objective: "Assess whether accepted packets cover every required target.",
+    objective: "Assess whether accepted packets and the advisory outline cover every required target.",
     dependencyResults: [
       { taskId: "research-task:r1:jira-research:a1", result: jira },
       { taskId: "research-task:r1:wiki-research:a1", result: wiki },
@@ -3061,7 +3061,7 @@ test("persists and approves an initial packed plan before key storage or retriev
           maxTotalModelInputTokens: 1_000_000,
           maxTotalModelOutputTokens: 128_000,
           maxModelCostMicros: 100_000_000,
-          maxRunMs: 120_000,
+          maxRunMs: 10 * 60_000,
         },
       },
     },
