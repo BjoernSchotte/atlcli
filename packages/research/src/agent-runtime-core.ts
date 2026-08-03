@@ -162,6 +162,26 @@ const LEGACY_RESEARCH_RECURSION_LIMIT_V1 = 24;
 const MIN_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1 = 32;
 const MAX_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1 = 96;
 
+/**
+ * The supervisor needs schemas only for output contracts admitted by this
+ * graph. Keeping unrelated role schemas out of every evaluator prompt lowers
+ * fixed context cost without letting the model select a new schema.
+ */
+function responseSchemasForGraph(graph: ResearchGraphV1): string {
+  const knownSchemas: Record<ResearchTaskOutputSchemaV1, unknown> = {
+    "atlcli.research-packet-body/v1": RESEARCH_WORKER_PACKET_SCHEMA_V1,
+    "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
+    "atlcli.research-packet-reference-model/v2": RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
+    "atlcli.reconciliation-body/v1": RESEARCH_CRITIQUE_SCHEMA_V1,
+    "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+  };
+  const admittedSchemas = [...new Set(graph.nodes.map((node) => node.outputSchema))];
+  return JSON.stringify(Object.fromEntries(admittedSchemas.map((schema) => [
+    schema,
+    knownSchemas[schema],
+  ])));
+}
+
 function scopeCandidatesFromCatalogResultV1(result: unknown): ResearchScopeCandidateV1[] {
   if (!result || typeof result !== "object") return [];
   const record = result as { candidates?: unknown; candidate?: unknown };
@@ -381,15 +401,7 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
       ).join(",") || "none"}`,
     ].join("; "))
     .join("\n");
-  const responseSchemas = JSON.stringify({
-    "atlcli.research-packet-body/v1": RESEARCH_WORKER_PACKET_SCHEMA_V1,
-    "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
-    "atlcli.research-packet-reference-model/v2": RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
-    "atlcli.reconciliation-body/v1": RESEARCH_CRITIQUE_SCHEMA_V1,
-    // Dynamic synthesis requires selected claim IDs even though the durable
-    // task-envelope identifier remains V1 for backward-compatible journals.
-    "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
-  });
+  const responseSchemas = responseSchemasForGraph(graph);
   return [
     "You are the central supervisor for a bounded, read-only Jira and Confluence deep-research workflow.",
     "",
@@ -481,13 +493,7 @@ export function buildCheckpointedDynamicSupervisorPrompt(
       ).join(",") || "none"}`,
     ].join("; "))
     .join("\n");
-  const responseSchemas = JSON.stringify({
-    "atlcli.research-packet-body/v1": RESEARCH_WORKER_PACKET_SCHEMA_V1,
-    "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
-    "atlcli.research-packet-reference-model/v2": RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
-    "atlcli.reconciliation-body/v1": RESEARCH_CRITIQUE_SCHEMA_V1,
-    "atlcli.research-agent-draft/v1": RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
-  });
+  const responseSchemas = responseSchemasForGraph(graph);
   const resumed = options.resumeContinuation;
   const steering = options.steering;
   const workflowInstructions = resumed

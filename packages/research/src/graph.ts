@@ -923,7 +923,13 @@ export function composeResearchGraphV1(
   const automatic = brief.resolvedPlanApproval === "automatic";
   const seeds = composeSeeds(
     brief,
-    options.packetOutputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2,
+    // A lookup is intentionally the smallest evidence-preserving graph: its
+    // retrieval workers, any necessary join, and the synthesizer already
+    // have a direct bounded path. An outline cannot improve that direct
+    // answer, but it costs an extra model turn and lengthens the critical
+    // path. Analysis and deep runs retain the advisory V2 outline.
+    options.packetOutputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2 &&
+      brief.resolvedEffort !== "lookup",
   );
   const nodes = seeds.map((seed) => nodeFromSeed(
     seed,

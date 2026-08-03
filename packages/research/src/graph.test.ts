@@ -236,6 +236,25 @@ describe("dynamic research graph composition", () => {
     expect(() => validateResearchGraphV1(invalid)).toThrow("output schema");
   });
 
+  test("keeps a V2 lookup to retrieval, an optional join, and synthesis", () => {
+    const graph = composeResearchGraphV1(
+      brief("Which Jira and Confluence items explicitly link to each other?", ["jira", "confluence"], "off", "lookup"),
+      { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+    );
+    validateResearchGraphV1(graph);
+    expect(projectSelectedResearchRolesV1(graph)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "synthesizer",
+    ]);
+    expect(graph.nodes.map((node) => node.id)).toEqual([
+      "research-node:jira-lookup",
+      "research-node:wiki-lookup",
+      "research-node:cross-product-join",
+      "research-node:synthesizer",
+    ]);
+  });
+
   test("offers an optional T5 outline planner only to V2 graphs and fences it before critique", () => {
     const graph = composeResearchGraphV1(
       brief(
