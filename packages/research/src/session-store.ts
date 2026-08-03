@@ -23,7 +23,9 @@ const MAXIMUM_CHECKPOINTS_PER_TURN_V1 = 256;
 const MAXIMUM_TURNS_PER_SESSION_V1 = 64;
 const MAXIMUM_TASKS_PER_TURN_V1 = 512;
 const MAXIMUM_PACKETS_PER_TURN_V1 = 512;
-const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 64;
+// A retained session may contain one canonical Markdown report per allowed
+// turn, plus the bounded latest query/gap/draft operating projections.
+const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 72;
 const MAXIMUM_SOURCE_REFS_PER_SESSION_V1 = 4_096;
 
 export interface ResearchSessionEventV1 {

@@ -42,7 +42,8 @@ const CLAIMS_WORKSPACE = "claimsWorkspace";
 const OUTLINE_WORKSPACE = "outlineWorkspace";
 const MAXIMUM_SESSIONS_V1 = 128;
 const MAXIMUM_EVENTS_PER_SESSION_V1 = 2_000;
-const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 64;
+// Match the host-neutral store: 64 retained reports plus current operating projections.
+const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 72;
 const MAXIMUM_SOURCE_REFS_PER_SESSION_V1 = 4_096;
 export const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1 = 48 * 1024 * 1024;
 export const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1 = 8 * 1024 * 1024;

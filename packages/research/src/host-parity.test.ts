@@ -3,6 +3,9 @@ import { fakeModel } from "@langchain/core/testing";
 import {
   RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
   RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+  RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1,
+  RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1,
+  RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1,
   ResearchSessionDispatchJournalV1,
   InMemoryResearchSessionStoreV1,
   assessResearchRetrievalV1,
@@ -604,6 +607,43 @@ describe("research durable recovery host parity", () => {
       await expect(runtime.store.workspace(runtime.sessionId).then((workspace) =>
         workspace.readFile("/artifacts/report.md"),
       )).resolves.toBe(nodeReport.markdown);
+      expect(await runtime.store.listArtifacts(runtime.sessionId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: `artifact:report:${runtime.turnId}`,
+            path: "/artifacts/report.md",
+          }),
+          expect.objectContaining({
+            id: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1,
+            path: "/artifacts/query-intents.json",
+          }),
+          expect.objectContaining({
+            id: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1,
+            path: "/artifacts/gap-assessment.json",
+          }),
+          expect.objectContaining({
+            id: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1,
+            path: "/artifacts/report-draft.json",
+          }),
+        ]),
+      );
+      const [intents, gaps, draftArtifact] = await Promise.all([
+        runtime.store.artifact(runtime.sessionId, RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1),
+        runtime.store.artifact(runtime.sessionId, RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1),
+        runtime.store.artifact(runtime.sessionId, RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1),
+      ]);
+      expect(JSON.parse(intents!.contents)).toMatchObject({
+        turnId: runtime.turnId,
+        graphRevision: turn!.graph!.revision,
+      });
+      expect(JSON.parse(gaps!.contents)).toMatchObject({
+        turnId: runtime.turnId,
+        packets: expect.any(Array),
+      });
+      expect(JSON.parse(draftArtifact!.contents)).toMatchObject({
+        turnId: runtime.turnId,
+        draft: { title: resumedDraft.title },
+      });
     }
   });
 });

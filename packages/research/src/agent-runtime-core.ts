@@ -61,6 +61,13 @@ import {
   hasResearchSessionDataWorkspaceStoreV1,
   type ResearchSessionStoreV1,
 } from "./session-store.js";
+import {
+  prepareResearchSessionArtifactWriteV1,
+  projectResearchGapAssessmentArtifactV1,
+  projectResearchQueryIntentsArtifactV1,
+  projectResearchReportDraftArtifactV1,
+  type ResearchSessionArtifactDocumentV1,
+} from "./session-artifacts.js";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
 import { WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
 import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
@@ -2356,6 +2363,49 @@ async function runResearchAgentWithBindings(
     instruction: string;
     basedOnGraphRevision: number;
   } | undefined;
+  // Keep durable operating projections serialized. Parallel subagents may
+  // finish in a different order, so an older snapshot must never overwrite a
+  // newer accepted-packet projection in IndexedDB or the CLI session store.
+  let durableArtifactWriteTail: Promise<void> = Promise.resolve();
+  const persistSessionArtifact = (
+    document: ResearchSessionArtifactDocumentV1,
+  ): Promise<void> => {
+    const durableSession = input.durableSession;
+    if (!durableSession) return Promise.resolve();
+    const write = durableArtifactWriteTail.then(async () => {
+      const prepared = prepareResearchSessionArtifactWriteV1(document);
+      // Store adapters own artifact metadata; also write the canonical virtual
+      // path so every host can inspect the same latest projection directly.
+      await workspace.writeFile(prepared.metadata.path, prepared.contents);
+      await durableSession.store.writeArtifact(
+        durableSession.sessionId,
+        prepared.metadata,
+        prepared.contents,
+      );
+    });
+    // Preserve queue progress after a failed write while returning the failure
+    // to the dispatch/finalization caller that made it authoritative.
+    durableArtifactWriteTail = write.catch(() => undefined);
+    return write;
+  };
+  const persistQueryIntentsArtifact = (graph: ResearchGraphV1): Promise<void> =>
+    persistSessionArtifact(projectResearchQueryIntentsArtifactV1({
+      graph,
+      updatedAt: new Date(now()).toISOString(),
+    }));
+  const persistGapAssessmentArtifact = (
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1,
+  ): Promise<void> => {
+    const graph = acceptedGraph ?? input.researchGraph;
+    if (!graph) return Promise.resolve();
+    return persistSessionArtifact(projectResearchGapAssessmentArtifactV1({
+      turnId: graph.turnId,
+      graphRevision: graph.revision,
+      packets: acceptedPacketsByTaskId.values(),
+      updatedAt: new Date(now()).toISOString(),
+      ...(latestRetrievalAssessment ? { latestRetrievalAssessment } : {}),
+    }));
+  };
   const usesCheckpointedSupervisor = Boolean(
     input.researchGraph && durableDispatchJournal && input.researchGraph.resolvedEffort === "deep",
   );
@@ -2505,8 +2555,10 @@ async function runResearchAgentWithBindings(
       grantedCapabilityIds: [...node.grantedCapabilityIds],
     }));
   };
-  const persistResearchWorkspacePlan = (graph: ResearchGraphV1): Promise<void> =>
-    workspace.writeFile(RESEARCH_DEEPAGENT_PLAN_PATH_V1, renderResearchWorkspacePlanV1(graph));
+  const persistResearchWorkspacePlan = async (graph: ResearchGraphV1): Promise<void> => {
+    await workspace.writeFile(RESEARCH_DEEPAGENT_PLAN_PATH_V1, renderResearchWorkspacePlanV1(graph));
+    await persistQueryIntentsArtifact(graph);
+  };
   if (input.researchGraph) {
     const graph = input.researchGraph;
     emitEvent({ kind: "brief", revision: graph.basedOnBriefRevision });
@@ -3178,7 +3230,7 @@ async function runResearchAgentWithBindings(
               followUp: repairAuthorization.followUp,
             }
           : undefined,
-        onAcceptedPacket: (packet) => {
+        onAcceptedPacket: async (packet) => {
           if (!durableDispatchJournal && acceptedGraph &&
               acceptedGraph.nodes.every((node) => node.executor === "subagent")) {
             const node = acceptedGraph.nodes.find((candidate) =>
@@ -3199,6 +3251,10 @@ async function runResearchAgentWithBindings(
             }
           }
           acceptedPacketsByTaskId.set(packet.taskId, packet);
+          // The non-durable adapter calls this observer synchronously. Do not
+          // introduce a microtask boundary into its dependency publication;
+          // only durable sessions wait for their required artifact write.
+          if (input.durableSession) await persistGapAssessmentArtifact();
           if (repairAuthorization?.taskId === packet.taskId) {
             acceptedRepairPacket = packet;
             emitEvent({
@@ -3648,6 +3704,7 @@ async function runResearchAgentWithBindings(
           acceptedGraph = recorded.graph;
           retrievalAssessmentRecorded = true;
           checkpointRecordedForCurrentFrontier = true;
+          await persistGapAssessmentArtifact(assessment);
           emitRetrievalAssessment(assessment, graphRevision);
           return recorded;
         },
@@ -3950,6 +4007,7 @@ async function runResearchAgentWithBindings(
           );
         }
       }
+      await persistGapAssessmentArtifact(assessment);
       emitRetrievalAssessment(
         assessment,
         acceptedGraph?.revision ?? input.researchGraph?.revision ?? 1,
@@ -4029,6 +4087,14 @@ async function runResearchAgentWithBindings(
     const synthesizerDraft = isDynamic
       ? parseResearchDynamicAgentDraftV1(result.structuredResponse)
       : parseResearchAgentDraftV1(result.structuredResponse);
+    if (input.durableSession) {
+      await persistSessionArtifact(projectResearchReportDraftArtifactV1({
+        turnId: input.durableSession.turnId,
+        ...(acceptedGraph?.revision === undefined ? {} : { graphRevision: acceptedGraph.revision }),
+        draft: synthesizerDraft,
+        updatedAt: new Date(now()).toISOString(),
+      }));
+    }
     const selectedV2ClaimIds = isDynamic && durableEvidence && durableClaims && acceptedV2Bodies.length > 0
       ? synthesizerDraft.selectedClaimIds
       : undefined;

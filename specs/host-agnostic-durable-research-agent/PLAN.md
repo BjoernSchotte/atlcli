@@ -3896,8 +3896,11 @@ Shared:
       parallel host transcript or summary DAG is active at runtime (2026-08-02).
 - [x] Treat `/workspace/plan.md` as a projection of the durable graph and
       regenerate it after every accepted graph revision.
-- [ ] Persist query intents, gap assessments, and report drafts as artifacts
-      rather than growing the live prompt.
+- [x] Persist query intents, gap assessments, and schema-validated report
+      drafts as bounded current-state artifacts rather than growing the live
+      prompt. Concurrent subagent completions serialize their artifact writes;
+      the shared, SQLite, and IndexedDB stores retain capacity for 64 reports
+      plus the three current operating projections (2026-08-03).
 - [ ] Add cross-turn memory only when a real user workflow requires it. It must
       be explicitly user-namespaced, read-only by default, and must not retain
       raw Atlassian content. It is not part of the MVP.

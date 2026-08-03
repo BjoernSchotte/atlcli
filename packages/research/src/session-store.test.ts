@@ -125,6 +125,35 @@ describe("in-memory durable research session store", () => {
     expect(await workspace.readFile("/workspace/notes.txt")).toBe("host-owned scratch state");
   });
 
+  test("reserves artifact capacity for retained turn reports and current operating projections", async () => {
+    const store = new InMemoryResearchSessionStoreV1();
+    const current = await store.create(session("research-session:artifact-capacity"));
+    const contents = "# Synthetic report\n";
+    for (let index = 1; index <= 64; index += 1) {
+      await store.writeArtifact(current.sessionId, {
+        schema: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+        id: `artifact:report:research-turn:${index}`,
+        path: `/artifacts/reports/${index}.md`,
+        contentType: "text/markdown",
+        bytes: new TextEncoder().encode(contents).byteLength,
+        createdAt: "2026-08-03T12:00:00.000Z",
+      }, contents);
+    }
+    for (const id of ["artifact:query-intents", "artifact:gap-assessment", "artifact:report-draft"]) {
+      const json = "{}\n";
+      await store.writeArtifact(current.sessionId, {
+        schema: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+        id,
+        path: `/artifacts/${id.slice("artifact:".length)}.json`,
+        contentType: "application/json",
+        bytes: new TextEncoder().encode(json).byteLength,
+        createdAt: "2026-08-03T12:00:00.000Z",
+      }, json);
+    }
+
+    expect(await store.listArtifacts(current.sessionId)).toHaveLength(67);
+  });
+
   test("pages a bounded catalog without exposing internal maps", async () => {
     const store = new InMemoryResearchSessionStoreV1();
     await store.create(session("research-session:store-a"));

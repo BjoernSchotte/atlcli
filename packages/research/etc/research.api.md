@@ -702,6 +702,9 @@ export declare function prepareResearchScopePreflightV1(input: {
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
+// export: prepareResearchSessionArtifactWriteV1
+export declare function prepareResearchSessionArtifactWriteV1(document: ResearchSessionArtifactDocumentV1): ResearchSessionArtifactWriteV1;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -714,8 +717,23 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: projectResearchGapAssessmentArtifactV1
+export declare function projectResearchGapAssessmentArtifactV1(input: {
+    turnId: string;
+    graphRevision: number;
+    packets: Iterable<ResearchAcceptedPacketV1>;
+    updatedAt: string;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}): ResearchGapAssessmentArtifactV1;
+
 // export: projectResearchProposedAssumptionLimitationsV1
 export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
+
+// export: projectResearchQueryIntentsArtifactV1
+export declare function projectResearchQueryIntentsArtifactV1(input: {
+    graph: ResearchGraphV1;
+    updatedAt: string;
+}): ResearchQueryIntentsArtifactV1;
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -726,6 +744,14 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportDraftArtifactV1
+export declare function projectResearchReportDraftArtifactV1(input: {
+    turnId: string;
+    graphRevision?: number;
+    draft: ResearchAgentDraftV1;
+    updatedAt: string;
+}): ResearchReportDraftArtifactV1;
 
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
@@ -1026,6 +1052,15 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
 
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-assessment.json";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -1109,6 +1144,15 @@ export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_PLAN_DIFF_SCHEMA_V1
 export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
 
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1: "artifact:query-intents";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1: "/artifacts/query-intents.json";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1: "atlcli.research-query-intents-artifact/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -1143,6 +1187,15 @@ export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1: "artifact:report-draft";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1: "/artifacts/report-draft.json";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1: "atlcli.research-report-draft-artifact/v1";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
@@ -2185,6 +2238,24 @@ export interface ResearchFollowUpProposalV1 {
     sourceIds: string[];
 }
 
+// export: ResearchGapAssessmentArtifactV1
+export interface ResearchGapAssessmentArtifactV1 {
+    schema: typeof RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    packets: Array<{
+        taskId: string;
+        packetRef: string;
+        roleId?: string;
+        gaps: ResearchGapV1[];
+        coverageLimits: string[];
+        proposedFollowUpIds: string[];
+        abstentionReason?: string;
+    }>;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}
+
 // export: ResearchGapV1
 export interface ResearchGapV1 {
     id: string;
@@ -2880,6 +2951,25 @@ export interface ResearchProviderPage<T> {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: ResearchQueryIntentsArtifactV1
+export interface ResearchQueryIntentsArtifactV1 {
+    schema: typeof RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    intents: Array<{
+        nodeId: string;
+        kind: ResearchGraphV1["nodes"][number]["kind"];
+        roleId?: string;
+        objective: string;
+        typedIntentRefs: string[];
+        grantedCapabilityIds: string[];
+        dependencyNodeIds: string[];
+        coverageTargetIds: string[];
+        reasonCodes: string[];
+    }>;
+}
+
 // export: researchQuestionFromBriefV1
 export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
@@ -3018,6 +3108,15 @@ export interface ResearchReportClaimV2 {
     freshness: "current";
     evidenceIds: string[];
     sourceIds: string[];
+}
+
+// export: ResearchReportDraftArtifactV1
+export interface ResearchReportDraftArtifactV1 {
+    schema: typeof RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision?: number;
+    updatedAt: string;
+    draft: ResearchAgentDraftV1;
 }
 
 // export: ResearchReportReconciliationV2
@@ -3607,6 +3706,9 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactDocumentV1
+export type ResearchSessionArtifactDocumentV1 = ResearchQueryIntentsArtifactV1 | ResearchGapAssessmentArtifactV1 | ResearchReportDraftArtifactV1;
+
 // export: ResearchSessionArtifactV1
 export interface ResearchSessionArtifactV1 {
     schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
@@ -3615,6 +3717,12 @@ export interface ResearchSessionArtifactV1 {
     contentType: "text/markdown" | "application/json";
     bytes: number;
     createdAt: string;
+}
+
+// export: ResearchSessionArtifactWriteV1
+export interface ResearchSessionArtifactWriteV1 {
+    metadata: ResearchSessionArtifactV1;
+    contents: string;
 }
 
 // export: ResearchSessionAssumptionDecisionV1
@@ -5557,6 +5665,9 @@ export declare function prepareResearchScopePreflightV1(input: {
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
+// export: prepareResearchSessionArtifactWriteV1
+export declare function prepareResearchSessionArtifactWriteV1(document: ResearchSessionArtifactDocumentV1): ResearchSessionArtifactWriteV1;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -5569,8 +5680,23 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: projectResearchGapAssessmentArtifactV1
+export declare function projectResearchGapAssessmentArtifactV1(input: {
+    turnId: string;
+    graphRevision: number;
+    packets: Iterable<ResearchAcceptedPacketV1>;
+    updatedAt: string;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}): ResearchGapAssessmentArtifactV1;
+
 // export: projectResearchProposedAssumptionLimitationsV1
 export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
+
+// export: projectResearchQueryIntentsArtifactV1
+export declare function projectResearchQueryIntentsArtifactV1(input: {
+    graph: ResearchGraphV1;
+    updatedAt: string;
+}): ResearchQueryIntentsArtifactV1;
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -5581,6 +5707,14 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportDraftArtifactV1
+export declare function projectResearchReportDraftArtifactV1(input: {
+    turnId: string;
+    graphRevision?: number;
+    draft: ResearchAgentDraftV1;
+    updatedAt: string;
+}): ResearchReportDraftArtifactV1;
 
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
@@ -5881,6 +6015,15 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
 
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-assessment.json";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -5964,6 +6107,15 @@ export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_PLAN_DIFF_SCHEMA_V1
 export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
 
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1: "artifact:query-intents";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1: "/artifacts/query-intents.json";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1: "atlcli.research-query-intents-artifact/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -5998,6 +6150,15 @@ export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1: "artifact:report-draft";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1: "/artifacts/report-draft.json";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1: "atlcli.research-report-draft-artifact/v1";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
@@ -7040,6 +7201,24 @@ export interface ResearchFollowUpProposalV1 {
     sourceIds: string[];
 }
 
+// export: ResearchGapAssessmentArtifactV1
+export interface ResearchGapAssessmentArtifactV1 {
+    schema: typeof RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    packets: Array<{
+        taskId: string;
+        packetRef: string;
+        roleId?: string;
+        gaps: ResearchGapV1[];
+        coverageLimits: string[];
+        proposedFollowUpIds: string[];
+        abstentionReason?: string;
+    }>;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}
+
 // export: ResearchGapV1
 export interface ResearchGapV1 {
     id: string;
@@ -7735,6 +7914,25 @@ export interface ResearchProviderPage<T> {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: ResearchQueryIntentsArtifactV1
+export interface ResearchQueryIntentsArtifactV1 {
+    schema: typeof RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    intents: Array<{
+        nodeId: string;
+        kind: ResearchGraphV1["nodes"][number]["kind"];
+        roleId?: string;
+        objective: string;
+        typedIntentRefs: string[];
+        grantedCapabilityIds: string[];
+        dependencyNodeIds: string[];
+        coverageTargetIds: string[];
+        reasonCodes: string[];
+    }>;
+}
+
 // export: researchQuestionFromBriefV1
 export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
@@ -7873,6 +8071,15 @@ export interface ResearchReportClaimV2 {
     freshness: "current";
     evidenceIds: string[];
     sourceIds: string[];
+}
+
+// export: ResearchReportDraftArtifactV1
+export interface ResearchReportDraftArtifactV1 {
+    schema: typeof RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision?: number;
+    updatedAt: string;
+    draft: ResearchAgentDraftV1;
 }
 
 // export: ResearchReportReconciliationV2
@@ -8462,6 +8669,9 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactDocumentV1
+export type ResearchSessionArtifactDocumentV1 = ResearchQueryIntentsArtifactV1 | ResearchGapAssessmentArtifactV1 | ResearchReportDraftArtifactV1;
+
 // export: ResearchSessionArtifactV1
 export interface ResearchSessionArtifactV1 {
     schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
@@ -8470,6 +8680,12 @@ export interface ResearchSessionArtifactV1 {
     contentType: "text/markdown" | "application/json";
     bytes: number;
     createdAt: string;
+}
+
+// export: ResearchSessionArtifactWriteV1
+export interface ResearchSessionArtifactWriteV1 {
+    metadata: ResearchSessionArtifactV1;
+    contents: string;
 }
 
 // export: ResearchSessionAssumptionDecisionV1
@@ -10410,6 +10626,9 @@ export declare function prepareResearchScopePreflightV1(input: {
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
+// export: prepareResearchSessionArtifactWriteV1
+export declare function prepareResearchSessionArtifactWriteV1(document: ResearchSessionArtifactDocumentV1): ResearchSessionArtifactWriteV1;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -10422,8 +10641,23 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: projectResearchGapAssessmentArtifactV1
+export declare function projectResearchGapAssessmentArtifactV1(input: {
+    turnId: string;
+    graphRevision: number;
+    packets: Iterable<ResearchAcceptedPacketV1>;
+    updatedAt: string;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}): ResearchGapAssessmentArtifactV1;
+
 // export: projectResearchProposedAssumptionLimitationsV1
 export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
+
+// export: projectResearchQueryIntentsArtifactV1
+export declare function projectResearchQueryIntentsArtifactV1(input: {
+    graph: ResearchGraphV1;
+    updatedAt: string;
+}): ResearchQueryIntentsArtifactV1;
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -10434,6 +10668,14 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportDraftArtifactV1
+export declare function projectResearchReportDraftArtifactV1(input: {
+    turnId: string;
+    graphRevision?: number;
+    draft: ResearchAgentDraftV1;
+    updatedAt: string;
+}): ResearchReportDraftArtifactV1;
 
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
@@ -10734,6 +10976,15 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
 
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-assessment.json";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -10817,6 +11068,15 @@ export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_PLAN_DIFF_SCHEMA_V1
 export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
 
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1: "artifact:query-intents";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1: "/artifacts/query-intents.json";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1: "atlcli.research-query-intents-artifact/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -10851,6 +11111,15 @@ export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1: "artifact:report-draft";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1: "/artifacts/report-draft.json";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1: "atlcli.research-report-draft-artifact/v1";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
@@ -11893,6 +12162,24 @@ export interface ResearchFollowUpProposalV1 {
     sourceIds: string[];
 }
 
+// export: ResearchGapAssessmentArtifactV1
+export interface ResearchGapAssessmentArtifactV1 {
+    schema: typeof RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    packets: Array<{
+        taskId: string;
+        packetRef: string;
+        roleId?: string;
+        gaps: ResearchGapV1[];
+        coverageLimits: string[];
+        proposedFollowUpIds: string[];
+        abstentionReason?: string;
+    }>;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}
+
 // export: ResearchGapV1
 export interface ResearchGapV1 {
     id: string;
@@ -12588,6 +12875,25 @@ export interface ResearchProviderPage<T> {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: ResearchQueryIntentsArtifactV1
+export interface ResearchQueryIntentsArtifactV1 {
+    schema: typeof RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    intents: Array<{
+        nodeId: string;
+        kind: ResearchGraphV1["nodes"][number]["kind"];
+        roleId?: string;
+        objective: string;
+        typedIntentRefs: string[];
+        grantedCapabilityIds: string[];
+        dependencyNodeIds: string[];
+        coverageTargetIds: string[];
+        reasonCodes: string[];
+    }>;
+}
+
 // export: researchQuestionFromBriefV1
 export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
@@ -12726,6 +13032,15 @@ export interface ResearchReportClaimV2 {
     freshness: "current";
     evidenceIds: string[];
     sourceIds: string[];
+}
+
+// export: ResearchReportDraftArtifactV1
+export interface ResearchReportDraftArtifactV1 {
+    schema: typeof RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision?: number;
+    updatedAt: string;
+    draft: ResearchAgentDraftV1;
 }
 
 // export: ResearchReportReconciliationV2
@@ -13315,6 +13630,9 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactDocumentV1
+export type ResearchSessionArtifactDocumentV1 = ResearchQueryIntentsArtifactV1 | ResearchGapAssessmentArtifactV1 | ResearchReportDraftArtifactV1;
+
 // export: ResearchSessionArtifactV1
 export interface ResearchSessionArtifactV1 {
     schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
@@ -13323,6 +13641,12 @@ export interface ResearchSessionArtifactV1 {
     contentType: "text/markdown" | "application/json";
     bytes: number;
     createdAt: string;
+}
+
+// export: ResearchSessionArtifactWriteV1
+export interface ResearchSessionArtifactWriteV1 {
+    metadata: ResearchSessionArtifactV1;
+    contents: string;
 }
 
 // export: ResearchSessionAssumptionDecisionV1
@@ -15449,6 +15773,9 @@ export declare function prepareResearchScopePreflightV1(input: {
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
+// export: prepareResearchSessionArtifactWriteV1
+export declare function prepareResearchSessionArtifactWriteV1(document: ResearchSessionArtifactDocumentV1): ResearchSessionArtifactWriteV1;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -15461,8 +15788,23 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: projectResearchGapAssessmentArtifactV1
+export declare function projectResearchGapAssessmentArtifactV1(input: {
+    turnId: string;
+    graphRevision: number;
+    packets: Iterable<ResearchAcceptedPacketV1>;
+    updatedAt: string;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}): ResearchGapAssessmentArtifactV1;
+
 // export: projectResearchProposedAssumptionLimitationsV1
 export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
+
+// export: projectResearchQueryIntentsArtifactV1
+export declare function projectResearchQueryIntentsArtifactV1(input: {
+    graph: ResearchGraphV1;
+    updatedAt: string;
+}): ResearchQueryIntentsArtifactV1;
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -15473,6 +15815,14 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportDraftArtifactV1
+export declare function projectResearchReportDraftArtifactV1(input: {
+    turnId: string;
+    graphRevision?: number;
+    draft: ResearchAgentDraftV1;
+    updatedAt: string;
+}): ResearchReportDraftArtifactV1;
 
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
@@ -15790,6 +16140,15 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
 
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-assessment.json";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -15876,6 +16235,15 @@ export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_PLAN_DIFF_SCHEMA_V1
 export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
 
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1: "artifact:query-intents";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1: "/artifacts/query-intents.json";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1: "atlcli.research-query-intents-artifact/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -15910,6 +16278,15 @@ export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1: "artifact:report-draft";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1: "/artifacts/report-draft.json";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1: "atlcli.research-report-draft-artifact/v1";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
@@ -17000,6 +17377,24 @@ export interface ResearchFollowUpProposalV1 {
     sourceIds: string[];
 }
 
+// export: ResearchGapAssessmentArtifactV1
+export interface ResearchGapAssessmentArtifactV1 {
+    schema: typeof RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    packets: Array<{
+        taskId: string;
+        packetRef: string;
+        roleId?: string;
+        gaps: ResearchGapV1[];
+        coverageLimits: string[];
+        proposedFollowUpIds: string[];
+        abstentionReason?: string;
+    }>;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}
+
 // export: ResearchGapV1
 export interface ResearchGapV1 {
     id: string;
@@ -17722,6 +18117,25 @@ export interface ResearchPtcToolOptions {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: ResearchQueryIntentsArtifactV1
+export interface ResearchQueryIntentsArtifactV1 {
+    schema: typeof RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    intents: Array<{
+        nodeId: string;
+        kind: ResearchGraphV1["nodes"][number]["kind"];
+        roleId?: string;
+        objective: string;
+        typedIntentRefs: string[];
+        grantedCapabilityIds: string[];
+        dependencyNodeIds: string[];
+        coverageTargetIds: string[];
+        reasonCodes: string[];
+    }>;
+}
+
 // export: researchQuestionFromBriefV1
 export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
@@ -17872,6 +18286,15 @@ export interface ResearchReportClaimV2 {
     freshness: "current";
     evidenceIds: string[];
     sourceIds: string[];
+}
+
+// export: ResearchReportDraftArtifactV1
+export interface ResearchReportDraftArtifactV1 {
+    schema: typeof RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision?: number;
+    updatedAt: string;
+    draft: ResearchAgentDraftV1;
 }
 
 // export: ResearchReportReconciliationV2
@@ -18469,6 +18892,9 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactDocumentV1
+export type ResearchSessionArtifactDocumentV1 = ResearchQueryIntentsArtifactV1 | ResearchGapAssessmentArtifactV1 | ResearchReportDraftArtifactV1;
+
 // export: ResearchSessionArtifactV1
 export interface ResearchSessionArtifactV1 {
     schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
@@ -18477,6 +18903,12 @@ export interface ResearchSessionArtifactV1 {
     contentType: "text/markdown" | "application/json";
     bytes: number;
     createdAt: string;
+}
+
+// export: ResearchSessionArtifactWriteV1
+export interface ResearchSessionArtifactWriteV1 {
+    metadata: ResearchSessionArtifactV1;
+    contents: string;
 }
 
 // export: ResearchSessionAssumptionDecisionV1
@@ -20692,6 +21124,9 @@ export declare function prepareResearchScopePreflightV1(input: {
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
+// export: prepareResearchSessionArtifactWriteV1
+export declare function prepareResearchSessionArtifactWriteV1(document: ResearchSessionArtifactDocumentV1): ResearchSessionArtifactWriteV1;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -20704,8 +21139,23 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: projectResearchGapAssessmentArtifactV1
+export declare function projectResearchGapAssessmentArtifactV1(input: {
+    turnId: string;
+    graphRevision: number;
+    packets: Iterable<ResearchAcceptedPacketV1>;
+    updatedAt: string;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}): ResearchGapAssessmentArtifactV1;
+
 // export: projectResearchProposedAssumptionLimitationsV1
 export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
+
+// export: projectResearchQueryIntentsArtifactV1
+export declare function projectResearchQueryIntentsArtifactV1(input: {
+    graph: ResearchGraphV1;
+    updatedAt: string;
+}): ResearchQueryIntentsArtifactV1;
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -20716,6 +21166,14 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportDraftArtifactV1
+export declare function projectResearchReportDraftArtifactV1(input: {
+    turnId: string;
+    graphRevision?: number;
+    draft: ResearchAgentDraftV1;
+    updatedAt: string;
+}): ResearchReportDraftArtifactV1;
 
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
@@ -21033,6 +21491,15 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
 
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-assessment.json";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -21119,6 +21586,15 @@ export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_PLAN_DIFF_SCHEMA_V1
 export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
 
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1: "artifact:query-intents";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1: "/artifacts/query-intents.json";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1: "atlcli.research-query-intents-artifact/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -21153,6 +21629,15 @@ export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1: "artifact:report-draft";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1: "/artifacts/report-draft.json";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1: "atlcli.research-report-draft-artifact/v1";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
@@ -22243,6 +22728,24 @@ export interface ResearchFollowUpProposalV1 {
     sourceIds: string[];
 }
 
+// export: ResearchGapAssessmentArtifactV1
+export interface ResearchGapAssessmentArtifactV1 {
+    schema: typeof RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    packets: Array<{
+        taskId: string;
+        packetRef: string;
+        roleId?: string;
+        gaps: ResearchGapV1[];
+        coverageLimits: string[];
+        proposedFollowUpIds: string[];
+        abstentionReason?: string;
+    }>;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}
+
 // export: ResearchGapV1
 export interface ResearchGapV1 {
     id: string;
@@ -22965,6 +23468,25 @@ export interface ResearchPtcToolOptions {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: ResearchQueryIntentsArtifactV1
+export interface ResearchQueryIntentsArtifactV1 {
+    schema: typeof RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    intents: Array<{
+        nodeId: string;
+        kind: ResearchGraphV1["nodes"][number]["kind"];
+        roleId?: string;
+        objective: string;
+        typedIntentRefs: string[];
+        grantedCapabilityIds: string[];
+        dependencyNodeIds: string[];
+        coverageTargetIds: string[];
+        reasonCodes: string[];
+    }>;
+}
+
 // export: researchQuestionFromBriefV1
 export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
@@ -23115,6 +23637,15 @@ export interface ResearchReportClaimV2 {
     freshness: "current";
     evidenceIds: string[];
     sourceIds: string[];
+}
+
+// export: ResearchReportDraftArtifactV1
+export interface ResearchReportDraftArtifactV1 {
+    schema: typeof RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision?: number;
+    updatedAt: string;
+    draft: ResearchAgentDraftV1;
 }
 
 // export: ResearchReportReconciliationV2
@@ -23712,6 +24243,9 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactDocumentV1
+export type ResearchSessionArtifactDocumentV1 = ResearchQueryIntentsArtifactV1 | ResearchGapAssessmentArtifactV1 | ResearchReportDraftArtifactV1;
+
 // export: ResearchSessionArtifactV1
 export interface ResearchSessionArtifactV1 {
     schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
@@ -23720,6 +24254,12 @@ export interface ResearchSessionArtifactV1 {
     contentType: "text/markdown" | "application/json";
     bytes: number;
     createdAt: string;
+}
+
+// export: ResearchSessionArtifactWriteV1
+export interface ResearchSessionArtifactWriteV1 {
+    metadata: ResearchSessionArtifactV1;
+    contents: string;
 }
 
 // export: ResearchSessionAssumptionDecisionV1
@@ -27185,6 +27725,9 @@ export declare function prepareResearchScopePreflightV1(input: {
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
+// export: prepareResearchSessionArtifactWriteV1
+export declare function prepareResearchSessionArtifactWriteV1(document: ResearchSessionArtifactDocumentV1): ResearchSessionArtifactWriteV1;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -27197,8 +27740,23 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: projectResearchGapAssessmentArtifactV1
+export declare function projectResearchGapAssessmentArtifactV1(input: {
+    turnId: string;
+    graphRevision: number;
+    packets: Iterable<ResearchAcceptedPacketV1>;
+    updatedAt: string;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}): ResearchGapAssessmentArtifactV1;
+
 // export: projectResearchProposedAssumptionLimitationsV1
 export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
+
+// export: projectResearchQueryIntentsArtifactV1
+export declare function projectResearchQueryIntentsArtifactV1(input: {
+    graph: ResearchGraphV1;
+    updatedAt: string;
+}): ResearchQueryIntentsArtifactV1;
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -27209,6 +27767,14 @@ export declare function projectResearchReconciliationInputV1(input: {
     nodeIds: readonly string[];
     acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1;
+
+// export: projectResearchReportDraftArtifactV1
+export declare function projectResearchReportDraftArtifactV1(input: {
+    turnId: string;
+    graphRevision?: number;
+    draft: ResearchAgentDraftV1;
+    updatedAt: string;
+}): ResearchReportDraftArtifactV1;
 
 // export: projectResearchReportReconciliationV2
 export declare function projectResearchReportReconciliationV2(defects: readonly ResearchReconciliationDefectV1[], dispositions: readonly ResearchReconciliationDispositionV1[]): ResearchReportReconciliationV2[];
@@ -27526,6 +28092,15 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
 
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-assessment.json";
+
+// export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -27612,6 +28187,15 @@ export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_PLAN_DIFF_SCHEMA_V1
 export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
 
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1: "artifact:query-intents";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_PATH_V1: "/artifacts/query-intents.json";
+
+// export: RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1: "atlcli.research-query-intents-artifact/v1";
+
 // export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -27646,6 +28230,15 @@ export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1: "artifact:report-draft";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1: "/artifacts/report-draft.json";
+
+// export: RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1: "atlcli.research-report-draft-artifact/v1";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
@@ -28736,6 +29329,24 @@ export interface ResearchFollowUpProposalV1 {
     sourceIds: string[];
 }
 
+// export: ResearchGapAssessmentArtifactV1
+export interface ResearchGapAssessmentArtifactV1 {
+    schema: typeof RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    packets: Array<{
+        taskId: string;
+        packetRef: string;
+        roleId?: string;
+        gaps: ResearchGapV1[];
+        coverageLimits: string[];
+        proposedFollowUpIds: string[];
+        abstentionReason?: string;
+    }>;
+    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+}
+
 // export: ResearchGapV1
 export interface ResearchGapV1 {
     id: string;
@@ -29458,6 +30069,25 @@ export interface ResearchPtcToolOptions {
 // export: researchQueryFingerprint
 export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
 
+// export: ResearchQueryIntentsArtifactV1
+export interface ResearchQueryIntentsArtifactV1 {
+    schema: typeof RESEARCH_QUERY_INTENTS_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision: number;
+    updatedAt: string;
+    intents: Array<{
+        nodeId: string;
+        kind: ResearchGraphV1["nodes"][number]["kind"];
+        roleId?: string;
+        objective: string;
+        typedIntentRefs: string[];
+        grantedCapabilityIds: string[];
+        dependencyNodeIds: string[];
+        coverageTargetIds: string[];
+        reasonCodes: string[];
+    }>;
+}
+
 // export: researchQuestionFromBriefV1
 export declare function researchQuestionFromBriefV1(brief: ResearchBriefV1): string;
 
@@ -29608,6 +30238,15 @@ export interface ResearchReportClaimV2 {
     freshness: "current";
     evidenceIds: string[];
     sourceIds: string[];
+}
+
+// export: ResearchReportDraftArtifactV1
+export interface ResearchReportDraftArtifactV1 {
+    schema: typeof RESEARCH_REPORT_DRAFT_ARTIFACT_SCHEMA_V1;
+    turnId: string;
+    graphRevision?: number;
+    updatedAt: string;
+    draft: ResearchAgentDraftV1;
 }
 
 // export: ResearchReportReconciliationV2
@@ -30205,6 +30844,9 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactDocumentV1
+export type ResearchSessionArtifactDocumentV1 = ResearchQueryIntentsArtifactV1 | ResearchGapAssessmentArtifactV1 | ResearchReportDraftArtifactV1;
+
 // export: ResearchSessionArtifactV1
 export interface ResearchSessionArtifactV1 {
     schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
@@ -30213,6 +30855,12 @@ export interface ResearchSessionArtifactV1 {
     contentType: "text/markdown" | "application/json";
     bytes: number;
     createdAt: string;
+}
+
+// export: ResearchSessionArtifactWriteV1
+export interface ResearchSessionArtifactWriteV1 {
+    metadata: ResearchSessionArtifactV1;
+    contents: string;
 }
 
 // export: ResearchSessionAssumptionDecisionV1

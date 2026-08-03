@@ -3991,6 +3991,36 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
     }),
     contents: node.report.markdown,
   }));
+  const [intents, gaps, draft] = await Promise.all([
+    readPackedDurableResearchSession(
+      page,
+      "research-session:packed-host-parity",
+      "artifact:query-intents",
+    ),
+    readPackedDurableResearchSession(
+      page,
+      "research-session:packed-host-parity",
+      "artifact:gap-assessment",
+    ),
+    readPackedDurableResearchSession(
+      page,
+      "research-session:packed-host-parity",
+      "artifact:report-draft",
+    ),
+  ]);
+  expect(JSON.parse(intents.artifact!.contents)).toMatchObject({
+    turnId: "research-turn:packed-host-parity",
+    graphRevision: expect.any(Number),
+    intents: expect.any(Array),
+  });
+  expect(JSON.parse(gaps.artifact!.contents)).toMatchObject({
+    turnId: "research-turn:packed-host-parity",
+    packets: expect.any(Array),
+  });
+  expect(JSON.parse(draft.artifact!.contents)).toMatchObject({
+    turnId: "research-turn:packed-host-parity",
+    draft: { title: HOST_PARITY_DRAFT.title },
+  });
 
   const events = await harnessEvents(page);
   const packedEvents = events.flatMap((event) => event.researchEvent ? [event.researchEvent] : []);
@@ -4073,7 +4103,7 @@ test("erases a terminal packed session and all owned durable data idempotently",
     expect(before.sessions).toBe(1);
     expect(before.events).toBeGreaterThan(0);
     expect(before.sourceRefs).toBeGreaterThan(0);
-    expect(before.artifacts).toBe(1);
+    expect(before.artifacts).toBe(4);
     expect(before.workspace).toBeGreaterThan(0);
     expect(before.evidenceWorkspace).toBeGreaterThan(0);
     expect(before.claimsWorkspace).toBeGreaterThan(0);
