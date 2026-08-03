@@ -293,9 +293,7 @@ export function buildResearchAcquisitionProgram(
     .map((match) => match[1]?.trim())
     .filter((term): term is string => Boolean(term))
     .slice(0, Math.min(MAX_QUOTED_TITLE_QUERIES, boundedSearchCalls));
-  const wikiTitleQueries = isWiki && quotedTerms.length > 0
-    ? quotedTerms.map((term) => JSON.stringify(term))
-    : [];
+  const titleQueries = quotedTerms.map((term) => JSON.stringify(term));
   const search = isJira ? "tools.jiraIssueSearch" : "tools.wikiSearch";
   const detail = isJira ? "tools.jiraIssueGet" : "tools.wikiPageGet";
   const rank = "tools.researchCandidateRank";
@@ -303,8 +301,8 @@ export function buildResearchAcquisitionProgram(
     isJira ? "jira.issue.get" : "wiki.page.get",
   );
   const hasRankGrant = node.grantedCapabilityIds.includes("research.candidate.rank");
-  const initialSearch = wikiTitleQueries.length > 0
-    ? `await (async () => { const groups = []; let failures = 0; for (const text of [${wikiTitleQueries.join(", ")}]) { try { const page = JSON.parse(await search({ query: { text } })); groups.push({ text, items: page.items }); } catch { failures += 1; } } return { items: groups.flatMap((group) => group.items.map((item) => ({ ...item, queryText: group.text }))), page: { complete: failures === 0, termination: failures === 0 ? "title-query-set" : "partial-title-query-set" } }; })()`
+  const initialSearch = titleQueries.length > 0
+    ? `await (async () => { const groups = []; let failures = 0; for (const text of [${titleQueries.join(", ")}]) { try { const page = JSON.parse(await search({ query: { text }${isJira ? ", pageSize: 8" : ""} })); groups.push({ text, items: page.items }); } catch { failures += 1; } } return { items: groups.flatMap((group) => group.items.map((item) => ({ ...item, queryText: group.text }))), page: { complete: failures === 0, termination: failures === 0 ? "title-query-set" : "partial-title-query-set" } }; })()`
     : "JSON.parse(await search({ query: {} }))";
   const detailLimit = Math.max(0, Math.min(Math.trunc(maxDetailItems), 50));
   const detailSelection = `const entityRefs = [...new Set(result.items.map((item) => item.entityRef))]; const ranked = entityRefs.length === 0 ? { items: [] } : JSON.parse(await ${rank}({ product: ${JSON.stringify(isJira ? "jira" : "confluence")}, entityRefs })); const detailItems = ranked.items.slice(0, ${detailLimit});`;
@@ -312,7 +310,7 @@ export function buildResearchAcquisitionProgram(
     ? `${detailSelection}\nconst details = await Promise.all(detailItems.map((item) => readDetail(${detail}, item)));`
     : "const details = [];";
 
-  return `async function collect(search) { const items = []; try { let page = ${initialSearch}; let searchCalls = ${wikiTitleQueries.length > 0 ? wikiTitleQueries.length : 1}; items.push(...page.items); while (page.page.nextCursor && searchCalls < ${boundedSearchCalls}) { page = JSON.parse(await search({ cursor: page.page.nextCursor })); searchCalls += 1; items.push(...page.items); } const terminalPage = page.page.nextCursor ? { complete: false, termination: "local-search-cap" } : page.page; return { items, page: terminalPage }; } catch { return { items, page: { complete: false, termination: "provider-error" } }; } }
+  return `async function collect(search) { const items = []; try { let page = ${initialSearch}; let searchCalls = ${titleQueries.length > 0 ? titleQueries.length : 1}; items.push(...page.items); while (page.page.nextCursor && searchCalls < ${boundedSearchCalls}) { page = JSON.parse(await search({ cursor: page.page.nextCursor })); searchCalls += 1; items.push(...page.items); } const terminalPage = page.page.nextCursor ? { complete: false, termination: "local-search-cap" } : page.page; return { items, page: terminalPage }; } catch { return { items, page: { complete: false, termination: "provider-error" } }; } }
 async function readDetail(read, item) { try { return { status: "available", value: JSON.parse(await read({ entityRef: item.entityRef })) }; } catch { return { status: "unavailable", sourceId: item.sourceId }; } }
 const search = ${search};
 const result = await collect(search);
@@ -342,37 +340,9 @@ function acquisitionInstructions(
     if (!node.grantedCapabilityIds.includes("jira.issue.get")) {
       return `Your only source-acquisition tool is eval. Make exactly one bounded eval call with 1 to ${maxSearchCalls} distinct, concise query texts derived from the host-bound question and any dependency packets. Call tools.jiraIssueSearch once per query text, with pageSize 8, and do not paginate. Inspect every returned candidate summary, but treat all search results as screening evidence only. Because the host did not grant Jira detail access, return no source-backed findings and state the missing detail capability in limitations. Do not make more than ${maxSearchCalls} search calls or reuse a cursor.`;
     }
-    const requiredQueryTexts = [...question.matchAll(/[“"]([^”"]+)[”"]/g)]
-      .map((match) => match[1]?.trim())
-      .filter((term): term is string => Boolean(term))
-      .slice(0, Math.min(MAX_QUOTED_TITLE_QUERIES, maxSearchCalls));
-    return `Your only source-acquisition tool is eval. Use it in exactly two bounded stages so candidate selection is based on the actual question and any supplied Confluence dependency packet.
-
-Stage 1 — search candidates. Make one eval call with exactly the bounded search construction below. Unless the host supplied ${maxSearchCalls} quoted titles, begin with one unfiltered project-baseline search so a relationship question cannot miss every issue merely because generated keywords differ from Jira wording. Use the remaining calls for distinct, concise query texts. Start with every host-required quoted title shown below, in order. Only when fewer than the available text-query slots exist may you append additional concepts derived from the question or a dependency packet. Do not use generic words such as Jira, ticket, page, or Confluence. Call tools.jiraIssueSearch at most ${maxSearchCalls} times total, with pageSize 8, and do not paginate. Preserve each candidate's sourceId, title, excerpt, and opaque entityRef. Use this shape:
-const requiredQueryTexts = ${JSON.stringify(requiredQueryTexts)};
-const includeProjectBaseline = requiredQueryTexts.length < ${maxSearchCalls};
-const textQueryLimit = includeProjectBaseline ? ${Math.max(0, maxSearchCalls - 1)} : ${maxSearchCalls};
-const additionalQueryTexts = [/* only enough specific concepts to fill textQueryLimit */];
-const queryTexts = [...requiredQueryTexts, ...additionalQueryTexts];
-const boundedQueryTexts = [...new Set(queryTexts)].slice(0, textQueryLimit);
-const baselineGroups = includeProjectBaseline ? [{
-  text: "<project-baseline>",
-  result: JSON.parse(await tools.jiraIssueSearch({ query: {}, pageSize: 8 }))
-}] : [];
-const textGroups = await Promise.all(boundedQueryTexts.map(async (text) => ({
-  text,
-  result: JSON.parse(await tools.jiraIssueSearch({ query: { text }, pageSize: 8 }))
-})));
-const candidateGroups = [...baselineGroups, ...textGroups];
-candidateGroups;
-
-Do not omit, rewrite, or reorder requiredQueryTexts. The textQueryLimit bound and ${maxSearchCalls}-call total are mandatory even if you brainstorm more terms. Do not retry, broaden, or replace a query when it returns zero items; an empty result is valid evidence about that search intent and you must preserve the remaining host budget. Inspect every returned candidate summary and retain the complete deduplicated opaque entityRef set for stage 2. Search summaries are screening evidence only and must never support a published finding.
-
-Stage 2 — read evidence. Make one final eval call. Call tools.researchCandidateRank exactly once with every deduplicated opaque entityRef observed in stage 1 and product: "jira". Then call tools.jiraIssueGet only for the first at most ${maxDetailItems} entityRef values returned by that ranking, with Promise.all. Never substitute visible Jira keys, URLs, or invented references. Return findings only from non-truncated detail results. If no candidate is relevant, skip stage 2 and return an empty evidence packet.
-
-If every Jira search returns zero candidates, that is a valid completed acquisition. Do not fail and do not retry. ${emptyPacket}
-
-Do not make more than two eval calls, more than ${maxSearchCalls} search calls, one candidate-ranking call, or more than ${maxDetailItems} detail calls. Do not reuse a cursor or start an unscoped query. Only the host-bound allowlisted PTC functions may access sources.`;
+    return `Your only source-acquisition tool is eval. Inside eval, run this single host-generated bounded program without changing its search set, pagination, ranking, detail limit, or opaque references:
+${buildResearchAcquisitionProgram(node, question, maxDetailItems, maxSearchCalls)}
+Do not call eval a second time. If every bounded Jira search returns zero candidates, return a schema-valid abstaining packet rather than retrying. ${emptyPacket} Only opaque nextCursor and entityRef values returned by the host may be reused.`;
   }
 
   return `Your only source-acquisition tool is eval. Inside eval, use exactly the granted PTC functions. Make exactly one eval call and run this bounded program, adapting neither its pagination nor its opaque references:
@@ -516,7 +486,7 @@ Do not broaden scope, invent another follow-up, call a subagent, or retry an emp
 
   switch (node.roleId) {
     case "focused-researcher":
-      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, acquisitionBudget.maxDetailCalls, acquisitionBudget.maxSearchCalls)}${relatedScopeDiscoveryInstructions(node, acquisitionBudget.maxCatalogCalls)}\n\nReturn schema ${node.outputSchema}. Your packet must summarize detailed evidence, not merely the search result list. ${v2Packet ? "Select at most 8 claimCandidates: prioritize one decision-relevant claim per detailed source. Every factual candidate needs one or more exact detail quotes; never cite a search-only candidate, an empty detail body, or a truncated detail result as support." : "Select at most 12 findingCandidates that materially answer the question. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support."} Represent acquisition failures as typed gaps and coverageLimits.`;
+      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, acquisitionBudget.maxDetailCalls, acquisitionBudget.maxSearchCalls)}${relatedScopeDiscoveryInstructions(node, acquisitionBudget.maxCatalogCalls)}\n\nReturn schema ${node.outputSchema}. Your packet must summarize detailed evidence, not merely the search result list. ${v2Packet ? "Select at most 4 claimCandidates: prioritize the four claims that most directly answer the question, rather than repeating every fetched item. Every factual candidate needs one or more exact detail quotes of at most 280 characters; never cite a search-only candidate, an empty detail body, or a truncated detail result as support." : "Select at most 12 findingCandidates that materially answer the question. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support."} Represent acquisition failures as typed gaps and coverageLimits.`;
     case "document-distiller":
       return `${shared}\n\nCompare the supplied Jira and Confluence packets. Return at most 8 non-overlapping relationship findings. A verified relationship requires explicit detailed content or a link; title or time similarity alone is only a hypothesis. Do not perform new reads.`;
     case "contradiction-verifier":
@@ -561,11 +531,37 @@ export function createResearchNodePtcToolsV1(
       })
     : [];
   const allowed = new Set(researchPtcToolNamesForNodeV1(node));
-  // The interpreter enforces a fresh per-eval call limit and the broker owns
-  // the run-wide budget. Do not close over a per-role counter here: declarative
-  // subagent specs are intentionally reusable for parallel task instances.
-  return [...contentTools, ...catalogTools]
+  const selected = [...contentTools, ...catalogTools]
     .filter((candidate) => allowed.has(candidate.name)) as DynamicStructuredTool[];
+  return boundResearchNodePtcToolsV1(selected, node.budget.maxCapabilityCalls, node.id);
+}
+
+/**
+ * A QuickJS interpreter's per-eval limit is a second line of defence, not a
+ * substitute for the graph node's contract. This wrapper reserves the node
+ * slot before invoking an async tool, so a Promise.all burst cannot overshoot
+ * `maxCapabilityCalls` and later invalidate an otherwise useful packet.
+ */
+export function boundResearchNodePtcToolsV1(
+  candidates: readonly DynamicStructuredTool[],
+  maxCapabilityCalls: number,
+  nodeId: string,
+): DynamicStructuredTool[] {
+  let calls = 0;
+  return candidates.map((candidate) => tool(async (input) => {
+    if (calls >= maxCapabilityCalls) {
+      throw new ResearchContractError(
+        "limit-exceeded",
+        `Research node ${nodeId} exhausted its capability-call budget.`,
+      );
+    }
+    calls += 1;
+    return candidate.invoke(input);
+  }, {
+    name: candidate.name,
+    description: candidate.description,
+    schema: candidate.schema,
+  }) as DynamicStructuredTool);
 }
 
 export interface DynamicResearchSubagentOptions {
@@ -725,6 +721,27 @@ export function compileDynamicResearchSubagents(
                 });
               },
             }),
+            // Acquisition is one bounded host-owned QuickJS program. Once its
+            // ToolMessage is in the child trajectory, the next model turn must
+            // produce the native responseSchema result rather than repeating
+            // search/ranking/detail work in a second eval call.
+            createMiddleware({
+              name: "ResearchCompletedEvalNoPtcMiddleware",
+              wrapModelCall: async (request, handler) => {
+                if (!hasCompletedResearchEval(request.messages)) return handler(request);
+                const responseToolNames = request.tools
+                  .filter((candidate) => candidate.name !== "eval")
+                  .map((candidate) => candidate.name)
+                  .join(", ");
+                return handler({
+                  ...request,
+                  tools: request.tools.filter((candidate) => candidate.name !== "eval"),
+                  systemMessage: request.systemMessage.concat(
+                    `The one permitted acquisition eval has completed. Source reads are now unavailable. Do not write prose or call eval. Call exactly one remaining host response tool (${responseToolNames}) with the schema-valid result derived solely from the completed acquisition.`,
+                  ),
+                });
+              },
+            }),
             // Stateful tool-call counters are deliberately not installed on
             // reusable declarative specs: parallel instances of one role must
             // not merge or share LangGraph LastValue counter state.
@@ -774,6 +791,22 @@ function jsonStructuredCandidate(value: unknown): unknown | undefined {
   } catch {
     return undefined;
   }
+}
+
+function hasCompletedResearchEval(messages: readonly unknown[]): boolean {
+  return messages.some((message) => {
+    if (!message || typeof message !== "object") return false;
+    const candidate = message as {
+      name?: unknown;
+      getType?: unknown;
+      type?: unknown;
+    };
+    if (candidate.name !== "eval") return false;
+    const type = typeof candidate.getType === "function"
+      ? candidate.getType()
+      : candidate.type;
+    return type === "tool" || type === undefined;
+  });
 }
 
 /**
