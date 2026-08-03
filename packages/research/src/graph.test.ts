@@ -70,13 +70,20 @@ function proposalFor(
           ? selected.filter((candidate) =>
               candidate.id !== node.id && candidate.roleId !== "synthesizer"
             ).map((candidate) => candidate.id)
-        : node.roleId === "document-distiller" ||
-              node.roleId === "contradiction-verifier" ||
-              node.roleId === "coverage-moderator"
+        : node.roleId === "coverage-moderator"
+            ? selected.filter((candidate) =>
+                candidate.id !== node.id &&
+                candidate.roleId !== "coverage-moderator" &&
+                candidate.roleId !== "reconciler" &&
+                candidate.roleId !== "synthesizer"
+              ).map((candidate) => candidate.id)
+          : node.roleId === "document-distiller" ||
+              node.roleId === "contradiction-verifier"
             ? acquisitions
             : node.roleId === "outline-planner"
               ? selected.filter((candidate) =>
                   candidate.id !== node.id &&
+                  candidate.roleId !== "coverage-moderator" &&
                   candidate.roleId !== "reconciler" &&
                   candidate.roleId !== "synthesizer"
                 ).map((candidate) => candidate.id)
@@ -254,15 +261,22 @@ describe("dynamic research graph composition", () => {
       .filter((node) => node.kind !== "repair")
       .map((node) => node.id);
     const accepted = acceptResearchGraphProposalV1(graph, proposalFor(graph, selected));
-    expect(accepted.maxResearchWaves).toBe(3);
+    expect(accepted.maxResearchWaves).toBe(4);
     const acceptedPlanner = accepted.nodes.find((node) => node.id === planner.id)!;
     expect(acceptedPlanner.dependencies).toEqual([
       "research-node:jira-research",
       "research-node:wiki-research",
       "research-node:cross-product-join",
       "research-node:contradiction-verification",
-      "research-node:coverage-moderation",
     ]);
+    expect(accepted.nodes.find((node) => node.roleId === "coverage-moderator")?.dependencies)
+      .toEqual([
+        "research-node:jira-research",
+        "research-node:wiki-research",
+        "research-node:cross-product-join",
+        "research-node:contradiction-verification",
+        "research-node:outline-planning",
+      ]);
     expect(accepted.nodes.find((node) => node.roleId === "reconciler")?.dependencies)
       .toContain(planner.id);
   });

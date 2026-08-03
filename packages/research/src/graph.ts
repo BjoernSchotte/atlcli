@@ -636,9 +636,6 @@ function composeSeeds(brief: ResearchBriefV1, includeOutlinePlanner: boolean): N
   if (contradiction) {
     seeds.push({ id: "research-node:contradiction-verification", kind: "verify", executor: "subagent", roleId: "contradiction-verifier", objective: "Challenge contradiction candidates against accepted packets.", requestedCapabilityIds: [], dependencies: joinId ? [joinId] : [...researchIds], reasonCodes: ["contradiction"], priority: 70 });
   }
-  if (deep) {
-    seeds.push({ id: "research-node:coverage-moderation", kind: "moderate", executor: "subagent", roleId: "coverage-moderator", objective: "Assess whether accepted packets cover every required target.", requestedCapabilityIds: [], dependencies: [...seeds.filter((seed) => seed.executor !== "ptc" || seed.kind === "search").map((seed) => seed.id)], reasonCodes: ["coverage_gap"], priority: 60 });
-  }
   if (includeOutlinePlanner) {
     seeds.push({
       id: "research-node:outline-planning",
@@ -651,6 +648,13 @@ function composeSeeds(brief: ResearchBriefV1, includeOutlinePlanner: boolean): N
       reasonCodes: ["user_requested"],
       priority: 50,
     });
+  }
+  if (deep) {
+    // A V2 outline is an advisory, claim-linked projection, not report prose.
+    // Making coverage moderation depend on it gives the moderator the whole
+    // host-projected evidence set plus the claims the outline left unassigned.
+    // V1 graphs have no outline-planner, so this preserves their T3 topology.
+    seeds.push({ id: "research-node:coverage-moderation", kind: "moderate", executor: "subagent", roleId: "coverage-moderator", objective: "Assess whether accepted packets and the advisory outline cover every required target.", requestedCapabilityIds: [], dependencies: [...seeds.filter((seed) => seed.executor !== "ptc" || seed.kind === "search").map((seed) => seed.id)], reasonCodes: ["coverage_gap"], priority: 60 });
   }
   const beforeReconciliation = seeds.map((seed) => seed.id);
   const shouldReconcile = brief.requestedReconciliation === "required" ||
@@ -760,8 +764,9 @@ function approvalEnvelope(
 /**
  * The host owns the maximum number of sequential pre-reconciliation research
  * waves. It is derived from the admitted DAG rather than from a broad effort
- * label: a V2 outline can legitimately follow a cross-product join, coverage
- * review, and verification. Reconciliation, repair, and synthesis remain
+ * label: a V2 outline can legitimately follow a cross-product join and
+ * verification, while coverage moderation follows that outline.
+ * Reconciliation, repair, and synthesis remain
  * separately bounded execution phases.
  */
 function researchWaveCeiling(nodes: readonly ResearchGraphNodeV1[]): number {
@@ -1040,8 +1045,11 @@ function executionRank(node: ResearchGraphNodeV1): number {
     case "focused-researcher": return 0;
     case "document-distiller": return 1;
     case "contradiction-verifier": return 2;
-    case "coverage-moderator": return 3;
-    case "outline-planner": return 4;
+    // V2 coverage moderation needs the advisory, claim-linked outline in
+    // addition to the full predecessor packet set. The outline is still only
+    // an analysis proposal; moderation retains authority over coverage gaps.
+    case "outline-planner": return 3;
+    case "coverage-moderator": return 4;
     case "reconciler": return 5;
     case "synthesizer": return 7;
     case undefined: return 8;
@@ -1247,13 +1255,19 @@ export function acceptResearchGraphProposalV1(
         ? selectedCatalogNodes.filter((candidate) =>
             candidate.id !== node.id && candidate.roleId !== "synthesizer"
           ).map((candidate) => candidate.id)
-        : node.roleId === "document-distiller" ||
-            node.roleId === "contradiction-verifier" ||
-            node.roleId === "coverage-moderator"
-          ? acquisitions
-          : node.roleId === "outline-planner"
+        : node.roleId === "coverage-moderator"
+          ? selectedCatalogNodes.filter((candidate) =>
+              candidate.id !== node.id &&
+              candidate.roleId !== "reconciler" &&
+              candidate.roleId !== "synthesizer"
+            ).map((candidate) => candidate.id)
+          : node.roleId === "document-distiller" ||
+              node.roleId === "contradiction-verifier"
+            ? acquisitions
+        : node.roleId === "outline-planner"
             ? selectedCatalogNodes.filter((candidate) =>
                 candidate.id !== node.id &&
+                candidate.roleId !== "coverage-moderator" &&
                 candidate.roleId !== "reconciler" &&
                 candidate.roleId !== "synthesizer"
               ).map((candidate) => candidate.id)

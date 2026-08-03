@@ -3819,9 +3819,17 @@ Shared:
       exposes one fresh ready frontier. A complete deep-run proof executes
       retrieval → host-derived coverage gap → dynamically admitted coverage
       moderator → terminal synthesis (2026-08-03).
-- [ ] Add a coverage moderator that compares the brief and outline against
+- [x] Add a coverage moderator that compares the brief and outline against
       accepted evidence, unused evidence, negative-claim coverage, and open
       contradictions. It is selected dynamically, not called on every loop.
+      In a V2 graph the claim-linked outline planner now precedes coverage
+      moderation; the moderator receives every selected pre-critique packet,
+      including the outline's unselected-claim boundary, gaps/limitations, and
+      any contradiction packet. Its reference-only prompt requires an
+      abstention or target gap for negative, stale, truncated, or insufficient
+      support. V1's T3 topology is unchanged. Graph/DeepAgentsJS focused tests
+      and the packed MV3 suite verify the dependency ordering and production
+      bundle (2026-08-03).
 - [x] Calculate deterministic novelty, duplicate-work, coverage-at-budget,
       unresolved-contradiction, and marginal-evidence signals. The host
       persists new-detail, duplicate-detail, unresolved-coverage, and
