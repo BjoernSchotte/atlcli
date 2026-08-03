@@ -117,6 +117,12 @@ describe("research evidence store", () => {
     const movedDisplayUrl = await record({ source: source({ url: "https://example.atlassian.net/browse/ATLCLI-42?view=detail" }) });
     expect(movedDisplayUrl.record.id).toBe(original.record.id);
     expect(movedDisplayUrl.record.identity).toEqual(original.record.identity);
+    const changedProjection = await record({
+      text: "The retained evidence was materially revised without a provider timestamp change.",
+    });
+    expect(changedProjection.record.id).not.toBe(original.record.id);
+    expect(changedProjection.record.identity).toEqual(original.record.identity);
+    expect(changedProjection.record.version.contentHash).not.toBe(original.record.version.contentHash);
     const newerVersion = await record({ source: source({ updatedAt: "2026-08-02T12:00:00.000Z" }) });
     expect(newerVersion.record.id).not.toBe(original.record.id);
     expect(newerVersion.record.identity).toEqual(original.record.identity);

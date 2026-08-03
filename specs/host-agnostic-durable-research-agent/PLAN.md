@@ -3595,8 +3595,8 @@ tests recover the same current outline. The shared conformance covers
 compact-index failure injection and retention/deletion across hosts; a focused
 browser adapter test independently proves quota release. Later V2 report gates
 remain below.
-- [ ] Canonicalize entity identity independently of display URLs.
-- [ ] Hash projected content and record exact source version or `updatedAt`.
+- [x] Canonicalize entity identity independently of display URLs.
+- [x] Hash projected content and record exact source version or `updatedAt`.
 - [ ] Store bounded source chunks once and reference them from checkpoints,
       packets, claims, outline nodes, reconciliation defects, and reports.
 - [ ] Mount `/evidence/` as agent-read-only and keep `/workspace/` plus
@@ -3611,6 +3611,14 @@ remain below.
       exact chunk spans for factual packet/claim support; retain completed T3
       V1 accepted packets for inspection but require host retrieval and
       revalidation before any V1 source pointer becomes current V2 support.
+
+T5 canonical-version checkpoint (2026-08-03): evidence identity is the
+tenant-bound product/entity-kind/entity-ID tuple; the display URL is validated
+metadata and does not affect identity or evidence ID. The evidence ID binds
+that identity to a SHA-256 of the bounded content projection and the provider
+`updatedAt` when supplied. `evidence-store.test.ts` proves both a changed
+display URL preserving the evidence version and changed projected content
+creating a new version even when the provider timestamp has not advanced.
 
 T5 evidence-quote normalization checkpoint (2026-08-01): the broker now
 returns a durable evidence ID only after the detail body has passed the
