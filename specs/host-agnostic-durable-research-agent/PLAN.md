@@ -3790,10 +3790,18 @@ Gate:
       disposition says `no_change`; its factual claims, sources, sections, and
       coverage are otherwise identical with reconciliation off or on
       (2026-08-03).
-- [ ] Every outline section can be traced to accepted claim/evidence IDs, and
-      unused evidence remains visible in coverage metadata.
-- [ ] CLI and packed browser V2 reports remain schema-equivalent and
-      Markdown-byte-identical for deterministic inputs.
+- [x] Every outline section can be traced to accepted claim/evidence IDs, and
+      unused evidence remains visible in coverage metadata. The host derives
+      planner-section evidence IDs from accepted claims, rejects forged claim
+      references, puts an unassigned accepted claim in a visible host section,
+      and retains both its claims/evidence in the coverage assessment
+      (2026-08-03).
+- [x] CLI and packed browser V2 reports remain schema-equivalent and
+      Markdown-byte-identical for deterministic inputs. The V2 host-parity
+      fixture runs the same request/graph in Node and the packed MV3 extension,
+      compares complete report objects and UTF-8 Markdown bytes, and verifies
+      the persisted `/artifacts/report.md` bytes in the durable browser session
+      (2026-08-03).
 
 ### T6 — Replace fixed acquisition with iterative typed retrieval
 

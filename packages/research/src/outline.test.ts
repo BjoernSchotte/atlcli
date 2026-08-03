@@ -302,6 +302,12 @@ describe("research outline store", () => {
     expect(revised.outline.sections).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "outline-section:host-unassigned", claimIds: [support.wikiClaim.id] }),
     ]));
+    expect(revised.outline.coverage).toEqual([expect.objectContaining({
+      targetId: "coverage:primary",
+      claimIds: expect.arrayContaining([support.jiraClaim.id, support.wikiClaim.id]),
+      evidenceIds: expect.arrayContaining([support.jira.record.id, support.wiki.record.id]),
+      distinctSourceCount: 2,
+    })]);
 
     const rejected = await resolveResearchOutlineProposalV1({
       baseline,
