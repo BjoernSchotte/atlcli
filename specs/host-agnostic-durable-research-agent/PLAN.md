@@ -3817,9 +3817,13 @@ Shared:
 - [ ] Add a coverage moderator that compares the brief and outline against
       accepted evidence, unused evidence, negative-claim coverage, and open
       contradictions. It is selected dynamically, not called on every loop.
-- [ ] Calculate deterministic novelty, duplicate-work, coverage-at-budget,
-      unresolved-contradiction, and marginal-evidence signals. Model confidence
-      is advisory and cannot be the sole continue/stop condition.
+- [x] Calculate deterministic novelty, duplicate-work, coverage-at-budget,
+      unresolved-contradiction, and marginal-evidence signals. The host
+      persists new-detail, duplicate-detail, unresolved-coverage, and
+      unresolved-contradiction counters beside a closed retrieval action/reason;
+      unread ranked candidates, exhausted detail/search/capability budgets, and
+      marginal evidence select the terminal outcome deterministically. Model
+      confidence has no control-flow input (2026-08-03).
 - [x] Allow repeated bounded QuickJS calls, but make each call replayable and
       disposable. The host compacts the completed supervisor/tool transcript
       only at a persisted retrieval checkpoint into one body-free continuation
