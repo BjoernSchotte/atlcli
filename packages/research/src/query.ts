@@ -2,7 +2,10 @@ import type {
   ResearchScopeV1,
   ResearchTimeWindowV1,
 } from "./contracts.js";
-import type { ResearchSearchQueryV1 } from "./capability-contracts.js";
+import {
+  decodeResearchSearchInputV1,
+  type ResearchSearchQueryV1,
+} from "./capability-contracts.js";
 
 function stripControls(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
@@ -18,6 +21,10 @@ export function escapeResearchCqlLiteral(value: string): string {
 
 function quotedList(values: readonly string[], escape: (value: string) => string): string {
   return values.map((value) => `"${escape(value)}"`).join(", ");
+}
+
+function orderedLabels(labels: readonly string[] | undefined): string[] {
+  return [...(labels ?? [])].sort((left, right) => left.localeCompare(right, "en-US"));
 }
 
 function addDateClauses(
@@ -79,6 +86,9 @@ export function buildResearchJql(
       );
     }
   }
+  for (const label of orderedLabels(query.labels)) {
+    clauses.push(`labels = "${escapeResearchJqlLiteral(label)}"`);
+  }
   return `${clauses.join(" AND ")} ORDER BY updated DESC, key ASC`;
 }
 
@@ -91,6 +101,10 @@ export function buildResearchCql(
     `space in (${quotedList(scope.confluenceSpaceKeys, escapeResearchCqlLiteral)})`,
   ];
   addDateClauses(clauses, "lastmodified", scope.timeWindow);
+  for (const label of orderedLabels(query.labels)) {
+    clauses.push(`label = "${escapeResearchCqlLiteral(label)}"`);
+  }
+  if (query.ancestorId) clauses.push(`ancestor = ${query.ancestorId}`);
   if (query.text) {
     const phrase = `\\"${escapeResearchCqlLiteral(query.text)}\\"`;
     clauses.push(`(title ~ "${phrase}" OR text ~ "${phrase}")`);
@@ -127,12 +141,22 @@ export function parseResearchQueryFingerprint(value: string): {
     typeof candidate.query === "object" && candidate.query !== null
       ? (candidate.query as Record<string, unknown>)
       : {};
-  if (query.text !== undefined && typeof query.text !== "string") {
-    throw new Error("Invalid query text.");
+  let decoded;
+  try {
+    decoded = decodeResearchSearchInputV1(candidate.tool, {
+      schema: `atlcli.ptc/${candidate.tool}.input/v1`,
+      query,
+      pageSize: candidate.pageSize,
+    }, 50);
+  } catch {
+    throw new Error("Invalid query state.");
+  }
+  if ("cursor" in decoded) {
+    throw new Error("Invalid query state.");
   }
   return {
     tool: candidate.tool,
-    query: query.text ? { text: query.text } : {},
+    query: decoded.query,
     pageSize: candidate.pageSize,
   };
 }

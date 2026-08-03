@@ -8,13 +8,17 @@ import {
 import type { ResearchToolId } from "./contracts.js";
 import type { ResearchGraphCapabilityV1 } from "./graph.js";
 
-const searchInputSchema = () =>
+const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") =>
   z.union([
     z
       .object({
         query: z
           .object({
             text: z.string().max(500).optional(),
+            labels: z.array(z.string().max(255)).min(1).max(8).optional(),
+            ...(toolId === "wiki.search"
+              ? { ancestorId: z.string().max(128).optional() }
+              : {}),
           })
           .strict(),
         pageSize: z.number().int().positive().optional(),
@@ -33,6 +37,7 @@ const searchInputSchema = () =>
         query: z
           .object({
             text: z.string().max(500).optional(),
+            labels: z.array(z.string().max(255)).min(1).max(8).optional(),
             cursor: z.string().max(220),
           })
           .strict(),
@@ -221,8 +226,8 @@ export function createResearchPtcTools(
     tool(async (input) => invoke("jira.issue.search", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["jira.issue.search"],
         description:
-          "Search Jira issues inside the host-bound project and date scope. Parse the returned JSON string. Continue only with page.nextCursor.",
-        schema: searchInputSchema(),
+          "Search Jira issues inside the host-bound project and date scope. query supports text and exact conjunctive labels; it never accepts raw JQL. Parse the returned JSON string. Continue only with page.nextCursor.",
+        schema: searchInputSchema("jira.issue.search"),
       }),
     tool(async (input) => invoke("jira.issue.get", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["jira.issue.get"],
@@ -233,8 +238,8 @@ export function createResearchPtcTools(
     tool(async (input) => invoke("wiki.search", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["wiki.search"],
         description:
-          "Search Confluence pages inside the host-bound space and date scope. Parse the returned JSON string. Continue only with page.nextCursor.",
-        schema: searchInputSchema(),
+          "Search Confluence pages inside the host-bound space and date scope. query supports text, exact conjunctive labels, and one numeric ancestorId; it never accepts raw CQL. Parse the returned JSON string. Continue only with page.nextCursor.",
+        schema: searchInputSchema("wiki.search"),
       }),
     tool(async (input) => invoke("wiki.page.get", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["wiki.page.get"],

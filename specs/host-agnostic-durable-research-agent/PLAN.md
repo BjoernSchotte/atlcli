@@ -3792,12 +3792,24 @@ Gate:
 
 Shared:
 
-- [ ] Add the required on-demand capability schemas and exact key validation.
+- [x] Add the required on-demand capability schemas and exact key validation.
 - [ ] Extend the Jira and Confluence provider ports without exposing client or
       transport objects to the model.
-- [ ] Compile typed search intents into scope-clamped JQL/CQL in the host.
+- [x] Compile typed search intents into scope-clamped JQL/CQL in the host.
 - [ ] Add exact link, issue-key, page-ID, ancestor/child, label, comment, and
       issue-link graph extraction.
+
+T6 typed-intent checkpoint (2026-08-03): the read-only search capabilities
+accept only closed model-facing query objects: bounded text, up to eight exact
+conjunctive labels for both products, and a positive numeric `ancestorId` for
+Confluence only. The host sorts and fingerprints those fields, restores them
+only from its opaque cursor vault, and compiles them alongside the existing
+tenant, project/space, and time bounds. Raw JQL/CQL and Jira `ancestorId` are
+rejected before any provider call; browser-facing tools expose the same simple
+arguments and never a client or transport object. Focused broker/QuickJS and
+browser-boundary tests, complete type checks, privacy, and browser-build gates
+passed (2026-08-03).
+
   - [x] Resolve an exact, current-tenant Jira issue or Confluence page URL to
         one opaque, read-only candidate through the existing reference
         capability. The REST adapter verifies that the returned Issue/Page is

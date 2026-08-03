@@ -40,6 +40,17 @@ export const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string> = {
 
 export interface ResearchSearchQueryV1 {
   text?: string;
+  /**
+   * Exact labels to require. Multiple labels are conjunctive: every returned
+   * item must carry every requested label. The host compiles this intent; the
+   * model never receives JQL or CQL.
+   */
+  labels?: string[];
+  /**
+   * A Confluence page ID whose descendants may be searched. This is not
+   * meaningful for Jira and is rejected for the Jira capability.
+   */
+  ancestorId?: string;
 }
 
 export type ResearchSearchInputV1 =
@@ -156,6 +167,35 @@ function decodeText(value: unknown): string | undefined {
   return text || undefined;
 }
 
+const RESEARCH_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
+
+function decodeLabels(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8) {
+    invalid("Search labels must contain between 1 and 8 values.");
+  }
+  const labels = value.map((label) => {
+    if (typeof label !== "string") invalid("Search label must be a string.");
+    const normalized = label.trim();
+    if (!RESEARCH_LABEL_PATTERN.test(normalized)) {
+      invalid("Search label is invalid.");
+    }
+    return normalized;
+  });
+  if (new Set(labels).size !== labels.length) {
+    invalid("Search labels must be unique.");
+  }
+  return labels.sort((left, right) => left.localeCompare(right, "en-US"));
+}
+
+function decodeAncestorId(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^[1-9][0-9]{0,127}$/.test(value)) {
+    invalid("Confluence ancestor ID is invalid.");
+  }
+  return value;
+}
+
 export function decodeResearchSearchInputV1(
   tool: "jira.issue.search" | "wiki.search",
   value: unknown,
@@ -178,8 +218,16 @@ export function decodeResearchSearchInputV1(
 
   assertExactKeys(value, ["schema", "query", "pageSize"], `${tool} search`);
   assertRecord(value.query, `${tool} query`);
-  assertExactKeys(value.query, ["text"], `${tool} query`);
+  assertExactKeys(
+    value.query,
+    tool === "jira.issue.search" ? ["text", "labels"] : ["text", "labels", "ancestorId"],
+    `${tool} query`,
+  );
   const text = decodeText(value.query.text);
+  const labels = decodeLabels(value.query.labels);
+  const ancestorId = tool === "wiki.search"
+    ? decodeAncestorId(value.query.ancestorId)
+    : undefined;
   let pageSize: number | undefined;
   if (value.pageSize !== undefined) {
     if (
@@ -193,7 +241,11 @@ export function decodeResearchSearchInputV1(
   }
   return {
     schema: expectedSchema,
-    query: text ? { text } : {},
+    query: {
+      ...(text ? { text } : {}),
+      ...(labels ? { labels } : {}),
+      ...(ancestorId ? { ancestorId } : {}),
+    },
     ...(pageSize !== undefined ? { pageSize } : {}),
   };
 }

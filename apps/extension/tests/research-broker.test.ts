@@ -203,6 +203,21 @@ describe("research query builders", () => {
     );
   });
 
+  it("compiles closed typed labels and a Confluence ancestor into the already-clamped host query", () => {
+    const scope = request().scope;
+    expect(buildResearchJql(scope, {
+      labels: ["release", "agentic-ai"],
+    })).toBe(
+      'project in ("DEMO") AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND labels = "agentic-ai" AND labels = "release" ORDER BY updated DESC, key ASC',
+    );
+    expect(buildResearchCql(scope, {
+      labels: ["release", "agentic-ai"],
+      ancestorId: "1001",
+    })).toBe(
+      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND label = "agentic-ai" AND label = "release" AND ancestor = 1001 ORDER BY lastmodified DESC',
+    );
+  });
+
   it("keeps stable permission ids separate from valid QuickJS tool names", () => {
     expect(RESEARCH_LANGCHAIN_TOOL_NAMES).toEqual({
       "jira.issue.search": "jira_issue_search",
@@ -679,6 +694,35 @@ describe("bounded research capability broker", () => {
     expect(providers.calls[1]?.cql).toContain('space in ("KB")');
   });
 
+  it("retains only host-normalized typed filters across an opaque cursor", async () => {
+    const providers = fakeProviders();
+    let cursorId = 0;
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(request(), providers, {
+      createCursorId: () => `cursor-${++cursorId}`,
+      createEntityId: () => `entity-${++entityId}`,
+    });
+    const first = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: { labels: ["release", "agentic-ai"] },
+    }) as ResearchSearchOutputV1;
+    await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      cursor: first.page.nextCursor,
+    });
+    const jqlCalls = providers.calls.filter((call) => call.product === "jira");
+    expect(jqlCalls).toHaveLength(2);
+    expect(jqlCalls.map((call) => call.jql)).toEqual([
+      expect.stringContaining('project in ("DEMO")'),
+      expect.stringContaining('project in ("DEMO")'),
+    ]);
+    expect(jqlCalls.map((call) => call.jql)).toEqual([
+      expect.stringContaining('labels = "agentic-ai" AND labels = "release"'),
+      expect.stringContaining('labels = "agentic-ai" AND labels = "release"'),
+    ]);
+    expect(JSON.stringify(first)).not.toContain("agentic-ai");
+  });
+
   it("allows details only through search-issued refs and rechecks provider scope", async () => {
     const providers = fakeProviders();
     let cursorId = 0;
@@ -834,6 +878,25 @@ describe("bounded research capability broker", () => {
         jql: 'project = "OTHER"',
       })
     ).rejects.toThrow("unknown fields");
+
+    await expect(
+      broker.invoke("jira.issue.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+        query: { ancestorId: "1001" },
+      }),
+    ).rejects.toThrow("unknown fields");
+    await expect(
+      broker.invoke("wiki.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+        query: { labels: ["valid", "valid"] },
+      }),
+    ).rejects.toThrow("unique");
+    await expect(
+      broker.invoke("wiki.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+        query: { ancestorId: "1001 OR space = OTHER" },
+      }),
+    ).rejects.toThrow("ancestor ID");
 
     const result = (await broker.invoke("wiki.search", {
       schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
