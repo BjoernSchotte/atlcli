@@ -718,7 +718,11 @@ describe("research CLI one-shot contract", () => {
           scopeBindings: expect.arrayContaining([
             expect.objectContaining({ source: "profile_default", authority: "approved" }),
           ]),
-          limits: expect.objectContaining({ maxPtcCalls: 32, maxHttpCalls: 40 }),
+          limits: expect.objectContaining({
+            maxPtcCalls: 80,
+            maxHttpCalls: 128,
+            maxDetailItemsPerProduct: 30,
+          }),
         },
         graph: {
           status: "proposed",

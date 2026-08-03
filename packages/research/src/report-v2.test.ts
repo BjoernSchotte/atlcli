@@ -268,6 +268,7 @@ describe("V2 research report finalization", () => {
     }]);
     expect(report.limitations).toEqual([
       "A selected claim was excluded because its evidence is no longer current.",
+      "Evidence coverage for coverage:delivery is partial (1 distinct retained source); the report is not exhaustive for this target.",
     ]);
     expect(report.markdown).toContain("## Delivery \\*evidence\\*");
     expect(report.markdown).toContain("> Focus: What \\<is\\> currently established?");

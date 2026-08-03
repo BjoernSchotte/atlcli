@@ -293,6 +293,12 @@ export function buildResearchAcquisitionProgram(
     .map((match) => match[1]?.trim())
     .filter((term): term is string => Boolean(term))
     .slice(0, Math.min(MAX_QUOTED_TITLE_QUERIES, boundedSearchCalls));
+  const projectionTerms = [...new Set([
+    ...quotedTerms,
+    ...[...question.matchAll(/\b[A-Z][A-Z0-9]{1,14}-\d+\b/g)].map((match) => match[0]),
+  ])]
+    .filter((term): term is string => Boolean(term) && term.length <= 240)
+    .slice(0, 8);
   const titleQueries = quotedTerms.map((term) => JSON.stringify(term));
   const search = isJira ? "tools.jiraIssueSearch" : "tools.wikiSearch";
   const detail = isJira ? "tools.jiraIssueGet" : "tools.wikiPageGet";
@@ -306,16 +312,34 @@ export function buildResearchAcquisitionProgram(
     : "JSON.parse(await search({ query: {} }))";
   const detailLimit = Math.max(0, Math.min(Math.trunc(maxDetailItems), 50));
   const detailSelection = `const entityRefs = [...new Set(result.items.map((item) => item.entityRef))]; const ranked = entityRefs.length === 0 ? { items: [] } : JSON.parse(await ${rank}({ product: ${JSON.stringify(isJira ? "jira" : "confluence")}, entityRefs })); const detailItems = ranked.items.slice(0, ${detailLimit});`;
+  // Detail calls are deliberately serial.  Reading the complete admitted
+  // candidate set is more valuable here than a short, parallel first-N burst,
+  // and serial calls cooperate better with Atlassian's rate limits.
   const detailProgram = hasDetailGrant && hasRankGrant && detailLimit > 0
-    ? `${detailSelection}\nconst details = await Promise.all(detailItems.map((item) => readDetail(${detail}, item)));`
-    : "const details = [];";
+    ? `${detailSelection}\nconst rawDetails = []; for (const item of detailItems) rawDetails.push(await readDetail(${detail}, item));`
+    : "const rawDetails = [];";
+  // Detail bodies are retained by the host evidence ledger, but a complete
+  // thirty-item corpus must not be pasted verbatim into one model turn. This
+  // deterministic projection preserves every candidate's identity, canonical
+  // URL, bounded link set, and evidence text windows for the model; any quote
+  // it returns is still normalized against the full host-retained evidence.
+  const modelProjection = `const researchTerms = ${JSON.stringify(projectionTerms)};
+function compactText(value, maximum) { const text = typeof value === "string" ? value.replace(/\\s+/g, " ").trim() : ""; return text.length <= maximum ? text : text.slice(0, maximum).trimEnd(); }
+function compactSource(value) { const source = value && typeof value === "object" ? value : {}; const projected = { sourceId: compactText(source.sourceId, 200), product: compactText(source.product, 32), title: compactText(source.title, 360), url: compactText(source.url, 512) }; for (const key of ["issueKey", "contentId", "projectKey", "spaceKey", "updatedAt"]) { const text = compactText(source[key], 160); if (text) projected[key] = text; } return projected; }
+function compactLinks(value) { const raw = Array.isArray(value) ? value.filter((entry) => typeof entry === "string").map((entry) => compactText(entry, 320)).filter(Boolean) : []; return { values: [...new Set(raw)].slice(0, 4), truncated: raw.length > 4 }; }
+function compactExcerpt(value) { const text = typeof value === "string" ? value : ""; if (!text) return ""; const fragments = [text.slice(0, 640)]; const lower = text.toLowerCase(); for (const term of researchTerms) { const position = lower.indexOf(term.toLowerCase()); if (position < 0) continue; const fragment = text.slice(Math.max(0, position - 180), Math.min(text.length, position + term.length + 260)); if (!fragments.includes(fragment)) fragments.push(fragment); if (fragments.length >= 3) break; } const projected = fragments.join("\\n[… ]\\n"); return projected.length <= 1_200 ? projected : projected.slice(0, 1_200); }
+function projectCandidateForModel(value) { const item = value && typeof value === "object" ? value : {}; return compactSource({ sourceId: item.sourceId, product: item.product, title: item.title, url: item.url, issueKey: item.issueKey, contentId: item.contentId, projectKey: item.projectKey, spaceKey: item.spaceKey, updatedAt: item.updatedAt }); }
+function projectDetailForModel(detail) { if (!detail || detail.status !== "available" || !detail.value || typeof detail.value !== "object") return { status: "unavailable", sourceId: compactText(detail && detail.sourceId, 200) }; const value = detail.value; const content = value.content && typeof value.content === "object" ? value.content : {}; const links = compactLinks(content.linkTargets); return { status: "available", source: compactSource(value.source), content: { text: compactExcerpt(content.text), linkTargets: links.values, linkTargetsTruncated: links.truncated, truncated: content.truncated === true } }; }
+const candidates = result.items.map(projectCandidateForModel);
+const details = rawDetails.map(projectDetailForModel);`;
 
   return `async function collect(search) { const items = []; try { let page = ${initialSearch}; let searchCalls = ${titleQueries.length > 0 ? titleQueries.length : 1}; items.push(...page.items); while (page.page.nextCursor && searchCalls < ${boundedSearchCalls}) { page = JSON.parse(await search({ cursor: page.page.nextCursor })); searchCalls += 1; items.push(...page.items); } const terminalPage = page.page.nextCursor ? { complete: false, termination: "local-search-cap" } : page.page; return { items, page: terminalPage }; } catch { return { items, page: { complete: false, termination: "provider-error" } }; } }
 async function readDetail(read, item) { try { return { status: "available", value: JSON.parse(await read({ entityRef: item.entityRef })) }; } catch { return { status: "unavailable", sourceId: item.sourceId }; } }
 const search = ${search};
 const result = await collect(search);
 ${detailProgram}
-({ result, details });`;
+${modelProjection}
+({ search: { candidateCount: candidates.length, complete: result.page.complete === true, termination: compactText(result.page.termination, 80) }, candidates, details });`;
 }
 
 function acquisitionInstructions(
@@ -342,12 +366,12 @@ function acquisitionInstructions(
     }
     return `Your only source-acquisition tool is eval. Inside eval, run this single host-generated bounded program without changing its search set, pagination, ranking, detail limit, or opaque references:
 ${buildResearchAcquisitionProgram(node, question, maxDetailItems, maxSearchCalls)}
-Do not call eval a second time. If every bounded Jira search returns zero candidates, return a schema-valid abstaining packet rather than retrying. ${emptyPacket} Only opaque nextCursor and entityRef values returned by the host may be reused.`;
+Do not call eval a second time. The eval return contains a bounded host projection for every full detail read: it is sufficient for positive claims only when it exposes an exact supporting quote or an explicit link. Copy a support quote verbatim from one visible content.text fragment; never normalize whitespace, join fragments, or quote the […] separator. Never infer that a source lacks a topic, link, or relationship from its bounded text or link sample. If the projection does not directly support a claim, report a gap. If every bounded Jira search returns zero candidates, return a schema-valid abstaining packet rather than retrying. ${emptyPacket} Only opaque nextCursor and entityRef values returned by the host may be reused.`;
   }
 
   return `Your only source-acquisition tool is eval. Inside eval, use exactly the granted PTC functions. Make exactly one eval call and run this bounded program, adapting neither its pagination nor its opaque references:
 ${buildResearchAcquisitionProgram(node, question, maxDetailItems, maxSearchCalls)}
-Do not call eval a second time. Only opaque nextCursor and entityRef values returned by the host may be reused.`;
+Do not call eval a second time. The eval return contains a bounded host projection for every full detail read: it is sufficient for positive claims only when it exposes an exact supporting quote or an explicit link. Copy a support quote verbatim from one visible content.text fragment; never normalize whitespace, join fragments, or quote the […] separator. Never infer that a source lacks a topic, link, or relationship from its bounded text or link sample. If the projection does not directly support a claim, report a gap. Only opaque nextCursor and entityRef values returned by the host may be reused.`;
 }
 
 interface ResearchNodeAcquisitionBudgetV1 {

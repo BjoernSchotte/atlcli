@@ -102,6 +102,8 @@ describe("T3 workflow contracts", () => {
     expect(RESEARCH_SUBAGENT_ROLE_REGISTRY_V1.synthesizer.supportedOutputSchemas).toEqual([
       "atlcli.research-agent-draft/v1",
     ]);
+    expect(RESEARCH_SUBAGENT_ROLE_REGISTRY_V1["focused-researcher"].maxBudget.maxCapabilityCalls)
+      .toBe(40);
     expect(() => validateResearchTaskAdmissionV1({
       executor: "subagent",
       roleId: "outline-planner",

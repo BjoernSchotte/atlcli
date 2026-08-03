@@ -1609,18 +1609,18 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
       pageSize: 10,
-      // Each focused worker has a 16-call capability envelope. Four Jira
-      // screening queries plus host ranking still leave room for eleven
-      // evidence-backed details; keep the same bounded cross-product total.
+      // A focused worker reads every discovered candidate in the host-bounded
+      // 30-item set, serially.  The wider run ceilings still make a failed or
+      // unexpectedly large search visible rather than silently partial.
       maxSearchPagesPerProduct: 5,
       maxItemsPerProduct: 30,
-      maxDetailItemsPerProduct: 11,
+      maxDetailItemsPerProduct: 30,
       // Research claims may only cite complete detail projections. Keep the
       // contract maximum so ordinary long-form Confluence pages are not
       // silently reduced to excerpts before synthesis.
       maxBodyCharsPerItem: 50_000,
-      maxPtcCalls: 32,
-      maxHttpCalls: 40,
+      maxPtcCalls: 80,
+      maxHttpCalls: 128,
       // The dynamic supervisor emits one complete QuickJS workflow before any
       // subagent runs. Its provider budget must accommodate that program;
       // 4,096 tokens can terminate mid-tool-input for a valid six-node graph.

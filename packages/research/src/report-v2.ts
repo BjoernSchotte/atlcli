@@ -109,6 +109,16 @@ function coverageMarkdown(report: ResearchReportV2): string[] {
   ];
 }
 
+function incompleteCoverageLimitations(
+  coverage: readonly Pick<ResearchReportV2["coverage"][number], "targetId" | "status" | "distinctSourceCount">[],
+): string[] {
+  return coverage
+    .filter((entry) => entry.status !== "covered")
+    .map((entry) =>
+      `Evidence coverage for ${entry.targetId} is ${entry.status} (${entry.distinctSourceCount} distinct retained ${entry.distinctSourceCount === 1 ? "source" : "sources"}); the report is not exhaustive for this target.`,
+    );
+}
+
 function markdownText(value: string): string {
   return value
     .replace(/[\u0000-\u001f\u007f]/g, " ")
@@ -458,6 +468,20 @@ export async function finalizeResearchReportV2(
     authorities.add(record.authority.authorityClass);
     authorityClassesBySourceId.set(record.source.id, authorities);
   }
+  const coverage = (input.outline?.coverage ?? []).map((entry) => {
+    const claimIds = entry.claimIds.filter((id) => currentClaimIds.has(id));
+    const evidenceIds = entry.evidenceIds.filter((id) => currentEvidenceIds.has(id));
+    const distinctSourceCount = new Set(evidenceIds.map((id) => records.get(id)?.identity.canonicalId)).size;
+    return {
+      targetId: entry.targetId,
+      status: claimIds.length === entry.claimIds.length && evidenceIds.length === entry.evidenceIds.length
+        ? entry.status
+        : evidenceIds.length === 0 ? "uncovered" as const : "partial" as const,
+      claimIds,
+      evidenceIds,
+      distinctSourceCount,
+    };
+  });
   const report = {
     schema: RESEARCH_REPORT_SCHEMA_V2,
     title: input.title === undefined ? "Evidence-backed research" : boundedText(input.title, "V2 report title", 300),
@@ -466,20 +490,7 @@ export async function finalizeResearchReportV2(
     executiveSummaryClaimIds: reportClaims.slice(0, 4).map((claim) => claim.id),
     claims: reportClaims,
     sections: sectionsFor(input.outline, reportClaims.map((claim) => claim.id)),
-    coverage: (input.outline?.coverage ?? []).map((entry) => {
-      const claimIds = entry.claimIds.filter((id) => currentClaimIds.has(id));
-      const evidenceIds = entry.evidenceIds.filter((id) => currentEvidenceIds.has(id));
-      const distinctSourceCount = new Set(evidenceIds.map((id) => records.get(id)?.identity.canonicalId)).size;
-      return {
-        targetId: entry.targetId,
-        status: claimIds.length === entry.claimIds.length && evidenceIds.length === entry.evidenceIds.length
-          ? entry.status
-          : evidenceIds.length === 0 ? "uncovered" as const : "partial" as const,
-        claimIds,
-        evidenceIds,
-        distinctSourceCount,
-      };
-    }),
+    coverage,
     reconciliation: normalizedReconciliation(input.reconciliation),
     sourceAuthorities: [...reportSourceIds]
       .map((sourceId) => ({
@@ -491,6 +502,7 @@ export async function finalizeResearchReportV2(
       ...(input.limitations ?? []).map((value) => boundedText(value, "V2 report limitation", 700)),
       ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),
       ...staleLimitations,
+      ...incompleteCoverageLimitations(coverage),
     ])].slice(0, 12),
     sources: [...new Set(reportClaims.flatMap((claim) => claim.sourceIds))]
       .map((sourceId) => sources.get(sourceId)!)

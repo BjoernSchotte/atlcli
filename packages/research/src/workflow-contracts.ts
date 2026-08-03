@@ -200,6 +200,10 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
       "atlassian.reference.resolve",
     ],
     supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2, RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2],
+    // A focused branch may need to inspect every bounded candidate: five
+    // search pages, one host ranking, and up to thirty sequential detail
+    // reads. The shared run budget remains the binding cross-branch ceiling.
+    maxBudget: { maxCapabilityCalls: 40 },
     mayProposeFollowUps: true,
   }),
   "document-distiller": role({

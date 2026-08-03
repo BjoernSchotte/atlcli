@@ -16,6 +16,7 @@ import {
   type ResearchRunOptions,
   type ResearchRunSummaryV1,
   type ResearchRunUsageV1,
+  type ResearchSourceReferenceV1,
 } from "./contracts.js";
 import {
   ResearchCapabilityBroker,
@@ -263,6 +264,37 @@ export function hostSearchCoverageLimitationsV1(
     limitations.push("The admitted Confluence search returned no items in the approved scope.");
   }
   return limitations;
+}
+
+/**
+ * State the detail-retrieval boundary from host ledgers. Search summaries may
+ * screen candidates, but only retrieved details can support published claims.
+ * This makes a bounded acquisition visibly non-exhaustive without turning the
+ * omitted candidates into a claim about their content.
+ */
+export function hostDetailCoverageLimitationsV1(
+  graph: ResearchGraphV1 | undefined,
+  sources: readonly ResearchSourceReferenceV1[],
+  detailEvidence: readonly { source: ResearchSourceReferenceV1 }[],
+): string[] {
+  const searchedProducts = selectedSearchProductsV1(graph);
+  if (!searchedProducts) return [];
+  return searchedProducts.flatMap((product) => {
+    const candidateIds = new Set(
+      sources.filter((source) => source.product === product).map((source) => source.id),
+    );
+    if (candidateIds.size === 0) return [];
+    const detailedIds = new Set(
+      detailEvidence
+        .filter((entry) => entry.source.product === product && candidateIds.has(entry.source.id))
+        .map((entry) => entry.source.id),
+    );
+    if (detailedIds.size >= candidateIds.size) return [];
+    const label = product === "jira" ? "Jira" : "Confluence";
+    return [
+      `${detailedIds.size} of ${candidateIds.size} discovered ${label} candidates were read in detail within the bounded retrieval budget; undetailed candidates were not used as evidence.`,
+    ];
+  });
 }
 
 /**
@@ -4301,6 +4333,11 @@ async function runResearchAgentWithBindings(
           limitations: [
             ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),
             ...hostSearchCoverageLimitationsV1(acceptedGraph, run),
+            ...hostDetailCoverageLimitationsV1(
+              acceptedGraph,
+              broker.sourceLedger(),
+              broker.detailEvidenceLedger(),
+            ),
             ...hostSearchFreshnessLimitationsV1(acceptedGraph),
             ...revalidationLimitations,
           ],

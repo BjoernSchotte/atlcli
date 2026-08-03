@@ -41,6 +41,7 @@ describe("issue-138 research request contract", () => {
   });
 
   it("normalizes one bounded Jira + Confluence request", () => {
+    expect(DEFAULT_RESEARCH_LIMITS_V1.maxInterpreterMs).toBe(60_000);
     expect(
       normalizeResearchRequestV1({
         question: "  Which implementation pages relate to open issues?  ",

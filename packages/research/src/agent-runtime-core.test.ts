@@ -20,6 +20,7 @@ import {
   createResearchScopeDiscoveriesPtcTool,
   createResearchScopeDiscoveryDispositionsPtcTool,
   acceptedSourceIdsForRetrievalAssessmentV1,
+  hostDetailCoverageLimitationsV1,
   hostSearchCoverageLimitationsV1,
   hostSearchFreshnessLimitationsV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
@@ -1282,6 +1283,43 @@ describe("host search-coverage limitations", () => {
       complete: false,
       counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 0 },
     })).toEqual([]);
+  });
+});
+
+describe("host detail-coverage limitations", () => {
+  test("states when bounded retrieval leaves discovered candidates undetailed", () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:detail-coverage-limit",
+      turnId: "research-turn:detail-coverage-limit",
+      objective: "Relate one Jira item to one page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["DOCS"],
+      },
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+    const source = (id: string, product: "jira" | "confluence") => ({
+      id,
+      product,
+      title: id,
+      url: `https://example.atlassian.net/${id}`,
+    });
+    const jiraOne = source("jira:DEMO-1", "jira");
+    const jiraTwo = source("jira:DEMO-2", "jira");
+    const page = source("wiki:100", "confluence");
+
+    expect(hostDetailCoverageLimitationsV1(
+      graph,
+      [jiraOne, jiraTwo, page],
+      [{ source: jiraOne }, { source: page }],
+    )).toEqual([
+      "1 of 2 discovered Jira candidates were read in detail within the bounded retrieval budget; undetailed candidates were not used as evidence.",
+    ]);
   });
 });
 

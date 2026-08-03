@@ -62,7 +62,106 @@ describe("Jira focused-researcher acquisition", () => {
     expect(program).toContain("const result = await collect(search)");
     expect(program).toContain("const ranked = entityRefs.length === 0");
     expect(program).toContain("ranked.items.slice(0, 8)");
+    expect(program).toContain("for (const item of detailItems) rawDetails.push(await readDetail");
+    expect(program).not.toContain("Promise.all(detailItems.map");
+    expect(program).toContain("const details = rawDetails.map(projectDetailForModel)");
+    expect(jira?.systemPrompt).toContain("bounded host projection for every full detail read");
     expect(program.match(/tools\.researchCandidateRank/g)).toHaveLength(1);
+  });
+
+  test("reads every ranked detail serially while returning a bounded projection to the model", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:projection",
+      turnId: "research-turn:projection",
+      objective: "Which Jira work items cite the ‘Delivery Plan’ for DEMO-42?",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const program = buildResearchAcquisitionProgram(
+      graph.nodes.find((node) => node.id === "research-node:jira-lookup")!,
+      brief.objective,
+      2,
+      1,
+    ).replace("\n({ search:", "\nreturn ({ search:");
+    const detailOrder: string[] = [];
+    const tools = {
+      async jiraIssueSearch() {
+        return JSON.stringify({
+          items: ["DEMO-42", "DEMO-43"].map((issueKey) => ({
+            entityRef: `opaque:${issueKey}`,
+            sourceId: `jira:${issueKey}`,
+            product: "jira",
+            title: `Issue ${issueKey}`,
+            url: `https://example.atlassian.net/browse/${issueKey}`,
+            issueKey,
+            projectKey: "DEMO",
+          })),
+          page: { complete: true },
+        });
+      },
+      async researchCandidateRank() {
+        return JSON.stringify({
+          items: ["DEMO-42", "DEMO-43"].map((issueKey) => ({
+            entityRef: `opaque:${issueKey}`,
+          })),
+        });
+      },
+      async jiraIssueGet({ entityRef }: { entityRef: string }) {
+        const issueKey = entityRef.slice("opaque:".length);
+        detailOrder.push(issueKey);
+        return JSON.stringify({
+          source: {
+            sourceId: `jira:${issueKey}`,
+            product: "jira",
+            title: `Issue ${issueKey}`,
+            url: `https://example.atlassian.net/browse/${issueKey}`,
+            issueKey,
+            projectKey: "DEMO",
+          },
+          content: {
+            text: `${"filler\n".repeat(250)}Delivery Plan directly names ${issueKey}.`,
+            linkTargets: Array.from({ length: 6 }, (_, index) => `https://example.atlassian.net/wiki/pages/${index}`),
+            truncated: false,
+          },
+        });
+      },
+    };
+    const invoke = new Function("tools", `return (async () => {${program}})();`) as (
+      tools: unknown,
+    ) => Promise<unknown>;
+    const projection = await invoke(tools) as {
+      candidates: Array<Record<string, unknown>>;
+      details: Array<{
+        status: string;
+        source: { sourceId: string };
+        content: { text: string; linkTargets: string[]; linkTargetsTruncated: boolean };
+      }>;
+    };
+
+    expect(detailOrder).toEqual(["DEMO-42", "DEMO-43"]);
+    expect(projection.candidates).toHaveLength(2);
+    expect(projection.candidates[0]).not.toHaveProperty("entityRef");
+    expect(projection.details).toHaveLength(2);
+    expect(projection.details[0]).toMatchObject({
+      status: "available",
+      source: { sourceId: "jira:DEMO-42" },
+      content: { linkTargetsTruncated: true },
+    });
+    expect(projection.details[0]!.content.linkTargets).toHaveLength(4);
+    expect(projection.details[0]!.content.text).toContain("Delivery Plan directly names DEMO-42.");
+    expect(projection.details[0]!.content.text).toContain("filler\nfiller");
+    expect(projection.details[0]!.content.text.length).toBeLessThanOrEqual(1_200);
   });
 
   test("caps concurrent PTC calls at the host-admitted node budget", async () => {
