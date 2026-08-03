@@ -96,6 +96,45 @@ export async function normalizeResearchPacketModelBodyV2(input: {
 }
 
 /**
+ * Preserve the evidence boundary when a syntactically valid worker packet
+ * contains a claim whose proposed quote cannot be verified. The caller may
+ * continue with a clearly labelled abstention, but it must never retain the
+ * rejected claim, its derived contradiction, or its outline proposal.
+ */
+export function createHostValidationAbstentionPacketV2(
+  modelBody: unknown,
+): ResearchPacketBodyV2 {
+  const parsed = parseResearchPacketModelBodyV2(modelBody);
+  const existingGapIds = new Set(parsed.gaps.map((gap) => gap.id));
+  const baseGapId = "gap:host-claim-validation";
+  let suffix = 1;
+  let gapId = baseGapId;
+  while (existingGapIds.has(gapId)) {
+    suffix += 1;
+    gapId = `${baseGapId}-${suffix}`;
+  }
+  const coverageLimit = "One or more proposed claims failed host exact-evidence validation and were omitted.";
+  return parseResearchPacketBodyV2({
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    claims: [],
+    referencedClaimIds: [],
+    contradictions: [],
+    outlineProposals: [],
+    gaps: [
+      ...parsed.gaps.slice(0, 15),
+      {
+        id: gapId,
+        summary: "Proposed claim support did not pass host exact-evidence validation.",
+        sourceIds: [],
+      },
+    ],
+    proposedFollowUps: parsed.proposedFollowUps,
+    coverageLimits: [...parsed.coverageLimits.slice(0, 15), coverageLimit],
+    abstentionReason: "No claim candidate passed host exact-evidence validation.",
+  });
+}
+
+/**
  * Normalizes an analysis-only V2 response. It may carry forward only current
  * claims that were present in the host-projected dependency envelope; all
  * evidence IDs for contradictions and outline proposals are derived again by

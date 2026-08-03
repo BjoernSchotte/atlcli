@@ -78,6 +78,7 @@ import {
   type ResearchOutlineV1,
 } from "./outline.js";
 import {
+  createHostValidationAbstentionPacketV2,
   normalizeResearchPacketModelBodyV2,
   normalizeResearchPacketReferenceModelBodyV2,
 } from "./packet-v2-normalizer.js";
@@ -2953,13 +2954,24 @@ async function runResearchAgentWithBindings(
         const detailEvidence = broker.detailEvidenceLedger().filter((detail) =>
           allowedSourceIds.has(detail.source.id),
         );
-        const packet = await normalizeResearchPacketModelBodyV2({
-          modelBody: inputForPacket.modelBody,
-          detailEvidence,
-          evidenceStore: durableEvidence,
-          claimLedger: durableClaims,
-          createdAt: new Date(now()).toISOString(),
-        });
+        let packet: import("./workflow-contracts.js").ResearchPacketBodyV2;
+        try {
+          packet = await normalizeResearchPacketModelBodyV2({
+            modelBody: inputForPacket.modelBody,
+            detailEvidence,
+            evidenceStore: durableEvidence,
+            claimLedger: durableClaims,
+            createdAt: new Date(now()).toISOString(),
+          });
+        } catch (error) {
+          // A model-proposed quote is never a reason to relax host evidence
+          // validation or abandon an otherwise useful bounded run. Retain no
+          // claim from that worker and surface the exact limitation instead.
+          if (!(error instanceof ResearchContractError) || error.code !== "invalid-report") {
+            throw error;
+          }
+          packet = createHostValidationAbstentionPacketV2(inputForPacket.modelBody);
+        }
         const normalized = {
           packet,
           dependencyResult: await projectV2PacketDependency!(packet),

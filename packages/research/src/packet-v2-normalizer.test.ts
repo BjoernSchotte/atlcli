@@ -6,6 +6,7 @@ import {
   WorkspaceResearchEvidenceStoreV1,
 } from "./evidence-store.js";
 import {
+  createHostValidationAbstentionPacketV2,
   normalizeResearchPacketModelBodyV2,
   normalizeResearchPacketReferenceModelBodyV2,
 } from "./packet-v2-normalizer.js";
@@ -205,6 +206,42 @@ describe("V2 research packet normalization", () => {
       createdAt: "2026-08-01T12:02:00.000Z",
     })).rejects.toThrow("does not exactly match");
     await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
+  });
+
+  test("converts a rejected claim candidate into an explicit host-validation abstention", () => {
+    const packet = createHostValidationAbstentionPacketV2({
+      schema: "atlcli.research-packet-body/v2",
+      claimCandidates: [{
+        id: "candidate:invalid",
+        classification: "fact",
+        summary: "The ticket references the guide.",
+        support: [{ sourceId: "jira:ATLCLI-44", quote: "The ticket references the guide." }],
+      }],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [{
+        id: "gap:existing",
+        summary: "The bounded source set did not establish an explicit cross-product link.",
+        sourceIds: [],
+      }],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    });
+
+    expect(packet).toMatchObject({
+      claims: [],
+      contradictions: [],
+      outlineProposals: [],
+      gaps: [
+        { id: "gap:existing" },
+        { id: "gap:host-claim-validation", sourceIds: [] },
+      ],
+      abstentionReason: "No claim candidate passed host exact-evidence validation.",
+    });
+    expect(packet.coverageLimits).toContain(
+      "One or more proposed claims failed host exact-evidence validation and were omitted.",
+    );
+    expect(JSON.stringify(packet)).not.toContain("The ticket references the guide.");
   });
 
   test("retains an abstaining V2 packet without creating a synthetic claim", async () => {
