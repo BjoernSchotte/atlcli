@@ -453,6 +453,15 @@ export function renderResearchReportWithFindingSectionsMarkdown(
       question?: string;
       findings: readonly ResearchFindingV1[];
     }[];
+    /**
+     * Host-authored status sections rendered after findings and before report
+     * limitations. Text is escaped here so this renderer never accepts raw
+     * Markdown from a caller.
+     */
+    additionalSections?: readonly {
+      title: string;
+      paragraphs: readonly string[];
+    }[];
     language?: ResearchReportLanguageV1;
   },
 ): string {
@@ -468,6 +477,12 @@ export function renderResearchReportWithFindingSectionsMarkdown(
     linkedMarkdownParagraph(input.executiveSummary, sources, input.scope.siteOrigin),
     "",
     ...renderResearchFindingSectionsMarkdown(input.sections, input.sources, input.scope.siteOrigin, input.language),
+    ...(input.additionalSections ?? []).flatMap((section) => [
+      `## ${markdownText(section.title)}`,
+      "",
+      ...section.paragraphs.map((paragraph) => markdownText(paragraph)),
+      "",
+    ]),
     ...renderResearchReportTail(input, sources, input.scope.siteOrigin, input.language),
   ].join("\n");
 }

@@ -5,6 +5,8 @@ export interface ResearchReportCopyV1 {
   executiveSummary: string;
   sources: string;
   limitations: string;
+  unresolvedRelationships: string;
+  unresolvedCrossProductRelationship: string;
   run: string;
   sourceLabel: string;
   focus: string;
@@ -32,6 +34,8 @@ const ENGLISH: ResearchReportCopyV1 = {
   executiveSummary: "Executive summary",
   sources: "Sources",
   limitations: "Limitations",
+  unresolvedRelationships: "Unresolved Jira ↔ Confluence relationships",
+  unresolvedCrossProductRelationship: "No published claim is supported by retained evidence from both Jira and Confluence. This report therefore does not establish a direct Jira ↔ Confluence relationship; topical or temporal similarity is not reported as a relationship.",
   run: "Run",
   sourceLabel: "Sources",
   focus: "Focus",
@@ -59,6 +63,8 @@ const GERMAN: ResearchReportCopyV1 = {
   executiveSummary: "Zusammenfassung",
   sources: "Quellen",
   limitations: "Einschränkungen",
+  unresolvedRelationships: "Ungelöste Jira ↔ Confluence-Verbindungen",
+  unresolvedCrossProductRelationship: "Kein veröffentlichter Befund wird durch erhaltene Evidenz aus Jira und Confluence zugleich gestützt. Dieser Bericht belegt daher keine direkte Jira-↔-Confluence-Verbindung; thematische oder zeitliche Ähnlichkeit wird nicht als Verbindung ausgegeben.",
   run: "Laufdaten",
   sourceLabel: "Quellen",
   focus: "Fokus",

@@ -77,6 +77,28 @@ function record(id: string, sourceId: string): ResearchEvidenceRecordV1 {
   };
 }
 
+function confluenceRecord(id: string): ResearchEvidenceRecordV1 {
+  return {
+    ...record(id, "wiki:1001"),
+    identity: {
+      tenantOrigin: "https://example.atlassian.net",
+      product: "confluence",
+      entityKind: "page",
+      entityId: "1001",
+      canonicalId: "https://example.atlassian.net|confluence|page|1001",
+    },
+    source: {
+      id: "wiki:1001",
+      product: "confluence",
+      title: "Validated implementation documentation",
+      url: "https://example.atlassian.net/wiki/spaces/DOCSY/pages/1001",
+      contentId: "1001",
+      spaceKey: "DOCSY",
+    },
+    authority: { bindingId: "scope-binding:report:confluence:DOCSY", authorityClass: "whole_scope" },
+  };
+}
+
 function claim(id: string, evidenceId: string, freshness: ResearchClaimV1["freshness"]): ResearchClaimV1 {
   return {
     schema: "atlcli.research-claim/v1",
@@ -182,6 +204,8 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("coverage coverage:delivery: abstain (insufficient_budget).");
     expect(report.markdown).toContain("## Source access authority");
     expect(report.markdown).toContain("`jira:ATLCLI-42`: whole scope.");
+    expect(report.markdown).toContain("## Unresolved Jira ↔ Confluence relationships");
+    expect(report.markdown).toContain("does not establish a direct Jira ↔ Confluence relationship");
   });
 
   test("renders deterministic report copy and host limitations in the selected German language", async () => {
@@ -205,11 +229,47 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("> Fokus: Was belegen die derzeit validierten Befunde?");
     expect(report.markdown).toContain("Quellen: [Validated implementation item]");
     expect(report.markdown).toContain("## Einschränkungen");
+    expect(report.markdown).toContain("## Ungelöste Jira ↔ Confluence-Verbindungen");
+    expect(report.markdown).toContain("belegt daher keine direkte Jira-↔-Confluence-Verbindung");
     expect(report.markdown).toContain("Die Kandidatensuche in Jira verwendet den nativen Suchindex");
     expect(report.markdown).toContain("Es wurden nur Felder der erlaubten, schreibgeschützten Fähigkeiten ausgewertet");
     expect(report.markdown).toContain("## Laufdaten");
     expect(report.markdown).toContain("## Zugriffsbereich der Quellen");
     expect(report.markdown).toContain("`jira:ATLCLI-42`: vollständiger Bereich.");
+  });
+
+  test("does not mark a cross-product relationship unresolved when one published claim retains both sources", async () => {
+    const base = claim(CURRENT_CLAIM, EVIDENCE, "current");
+    const crossProductClaim: ResearchClaimV1 = {
+      ...base,
+      evidenceIds: [EVIDENCE, SECOND_EVIDENCE],
+      evidenceSpans: [
+        ...base.evidenceSpans,
+        {
+          evidenceId: SECOND_EVIDENCE,
+          chunkId: `${SECOND_EVIDENCE}:chunk:000`,
+          start: 0,
+          end: 12,
+          textHash: "f".repeat(64),
+        },
+      ],
+      scopeBindingIds: ["scope-binding:report:jira:ATLCLI", "scope-binding:report:confluence:DOCSY"],
+    };
+    const report = await finalizeResearchReportV2({
+      request,
+      ...ports({
+        claims: [crossProductClaim],
+        records: [record(EVIDENCE, "jira:ATLCLI-42"), confluenceRecord(SECOND_EVIDENCE)],
+      }),
+      claimIds: [CURRENT_CLAIM],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+
+    expect(report.claims).toEqual([expect.objectContaining({
+      sourceIds: ["jira:ATLCLI-42", "wiki:1001"],
+    })]);
+    expect(report.markdown).not.toContain("## Unresolved Jira ↔ Confluence relationships");
   });
 
   test("retains exact-entity authority independently of source display metadata", async () => {

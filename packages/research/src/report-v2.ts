@@ -163,6 +163,32 @@ function sourceAuthorityMarkdown(report: ResearchReportV2, language: ResearchReq
   ];
 }
 
+/**
+ * V2 does not publish a free-form relationship list. A direct cross-product
+ * relationship is therefore established only when one published claim retains
+ * evidence from both products. Make the absence of that proof explicit for a
+ * cross-product scope instead of relying on a generic coverage limitation.
+ */
+function unresolvedCrossProductRelationshipSection(
+  report: Omit<ResearchReportV2, "markdown">,
+  language: ResearchRequestV1["reportLanguage"],
+): { title: string; paragraphs: string[] }[] {
+  if (report.scope.jiraProjectKeys.length === 0 || report.scope.confluenceSpaceKeys.length === 0) {
+    return [];
+  }
+  const sourcesById = new Map(report.sources.map((source) => [source.id, source]));
+  const hasDirectCrossProductSupport = report.claims.some((claim) => {
+    const products = new Set(claim.sourceIds.map((sourceId) => sourcesById.get(sourceId)?.product));
+    return products.has("jira") && products.has("confluence");
+  });
+  if (hasDirectCrossProductSupport) return [];
+  const copy = researchReportCopyV1(language);
+  return [{
+    title: copy.unresolvedRelationships,
+    paragraphs: [copy.unresolvedCrossProductRelationship],
+  }];
+}
+
 function renderMarkdown(
   report: Omit<ResearchReportV2, "markdown">,
   language: ResearchRequestV1["reportLanguage"],
@@ -207,6 +233,7 @@ function renderMarkdown(
     ...renderResearchReportWithFindingSectionsMarkdown({
       ...legacy,
       sections,
+      additionalSections: unresolvedCrossProductRelationshipSection(report, language),
       language,
     }).trimEnd().split("\n"),
     ...coverageMarkdown({ ...report, markdown: "" }, language),
