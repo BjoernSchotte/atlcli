@@ -3904,8 +3904,11 @@ Shared:
 - [ ] Add cross-turn memory only when a real user workflow requires it. It must
       be explicitly user-namespaced, read-only by default, and must not retain
       raw Atlassian content. It is not part of the MVP.
-- [ ] Add explicit context and storage compaction with retention of canonical
-      evidence and accepted reports.
+- [x] Add explicit context and storage compaction with retention of canonical
+      evidence and accepted reports. Native summarization bounds model context;
+      the durable LangGraph journal compacts independently, and the 2,000+
+      checkpoint recovery proof verifies it cannot touch evidence or accepted
+      report paths (2026-08-03).
 - [ ] Compact only completed branches deeply; keep the active frontier and
       recent interaction tail detailed. Deletion from active context never
       deletes canonical messages, packets, evidence, plans, or reports.

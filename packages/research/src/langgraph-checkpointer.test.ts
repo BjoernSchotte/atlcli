@@ -90,6 +90,14 @@ describe("research LangGraph checkpointer adapter", () => {
 
   test("compacts completed checkpoint history without losing the newest restart point", async () => {
     const workspace = createMemoryResearchWorkspace();
+    const canonicalEvidence = JSON.stringify({
+      schema: "atlcli.research-evidence-record/v1",
+      id: "evidence:compaction-proof",
+      fact: "Canonical evidence remains outside the LangGraph journal.",
+    });
+    const acceptedReport = "# Accepted report\n\n## Sources\n\n1. Canonical evidence\n";
+    await workspace.writeFile("/.atlcli/evidence/v1/records/evidence-compaction-proof.json", canonicalEvidence);
+    await workspace.writeFile("/artifacts/report.md", acceptedReport);
     const saver = new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace);
     let config: RunnableConfig = researchCheckpointConfigV1({ sessionId, checkpointNamespace: "research" });
 
@@ -121,6 +129,9 @@ describe("research LangGraph checkpointer adapter", () => {
           channel_values: { durable_state: { index: 2_000 } },
         },
       });
+    expect(await workspace.readFile("/.atlcli/evidence/v1/records/evidence-compaction-proof.json"))
+      .toBe(canonicalEvidence);
+    expect(await workspace.readFile("/artifacts/report.md")).toBe(acceptedReport);
   });
 
   test("recovers the last complete checkpoint when compacted-index publication is interrupted", async () => {
