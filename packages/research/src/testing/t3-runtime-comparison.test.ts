@@ -352,10 +352,7 @@ function workflowProgram(graph: ResearchGraphV1): string {
 
 function supervisorModel(graph: ResearchGraphV1): BaseChatModel {
   return fakeModel()
-    .respondWithTools([{ name: "eval", args: { code: workflowProgram(graph) } }])
-    // The parent retains its provider-native structured publication boundary
-    // after the one allowed QuickJS eval returns the synthesizer object.
-    .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
+    .respondWithTools([{ name: "eval", args: { code: workflowProgram(graph) } }]);
 }
 
 function subagentModels(graph: ResearchGraphV1): Partial<Record<string, BaseChatModel>> {

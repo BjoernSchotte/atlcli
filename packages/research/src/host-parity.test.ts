@@ -199,8 +199,7 @@ function model() {
     finalDraft;
   `;
   return fakeModel()
-    .respondWithTools([{ name: "eval", args: { code } }])
-    .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]);
+    .respondWithTools([{ name: "eval", args: { code } }]);
 }
 
 function subagentModels() {

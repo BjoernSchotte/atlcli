@@ -5240,7 +5240,14 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(jiraSearches[0]?.jql).toContain('updated >= "2026-07-23"');
   expect(wikiSearches[0]?.cql).toContain('space in ("KB")');
   expect(wikiSearches[0]?.cql).toContain('lastmodified >= "2026-07-23"');
-  expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(11);
+  // A one-shot graph now returns the schema-constrained synthesizer object
+  // directly. There is no eleventh parent-supervisor restatement call.
+  const providerFetches = fetches.filter((event) => event.apiKeyPresent);
+  expect(providerFetches).toHaveLength(10);
+  expect(providerFetches.at(-1)).toMatchObject({
+    modelCall: 10,
+    toolNames: ["AtlcliDynamicResearchAgentDraftV1"],
+  });
   expect(JSON.stringify(successEvents)).not.toContain(FAKE_KEY);
   const persistedResearchDatabase = await readPackedResearchDatabaseText(page);
   expect(persistedResearchDatabase).not.toContain(FAKE_KEY);
