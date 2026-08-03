@@ -2518,13 +2518,13 @@ async function seedPackedResearchSessionOwnedRows(
 async function findPackedDurableResearchSessionByObjective(
   page: Page,
   objective: string,
-): Promise<{ sessionId: string; status: string } | undefined> {
+): Promise<{ sessionId: string; status: string; turnId: string } | undefined> {
   return page.evaluate(async (expectedObjective) => {
     type SessionRecord = {
       sessionId: string;
       state: {
         status: string;
-        turns?: Array<{ brief?: { objective?: string } }>;
+        turns?: Array<{ id: string; brief?: { objective?: string } }>;
       };
     };
     const open = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -2542,7 +2542,14 @@ async function findPackedDurableResearchSessionByObjective(
       const record = records.find((candidate) =>
         candidate.state.turns?.some((turn) => turn.brief?.objective === expectedObjective)
       );
-      return record && { sessionId: record.sessionId, status: record.state.status };
+      const turn = record?.state.turns?.find((candidate) =>
+        candidate.brief?.objective === expectedObjective
+      );
+      return record && turn && {
+        sessionId: record.sessionId,
+        status: record.state.status,
+        turnId: turn.id,
+      };
     } finally {
       open.close();
     }
@@ -5052,11 +5059,8 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     "off"
   );
 
-  await fillResearchForm(
-    page,
-    "hold-after-ptc: How does Jira project DEMO relate to Confluence space KB?",
-    { includeScope: false },
-  );
+  const completedObjective = "hold-after-ptc: How does Jira project DEMO relate to Confluence space KB?";
+  await fillResearchForm(page, completedObjective, { includeScope: false });
   await page.getByTestId("research-run").click();
 
   try {
@@ -5263,11 +5267,82 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     `[research-packed-metrics] sidePanelHeapUsed=${heap.usedSize} sidePanelHeapTotal=${heap.totalSize} backingStorage=${heap.backingStorageSize} workerHeap=unattributed quickJsCap=64000000 ptc=10 http=8`
   );
 
+  // The terminal session must be fully durable before the sidebar disappears.
+  // This captures the exact report and private stores that a follow-up needs;
+  // it does not seed any state or rely on a worker remaining alive.
+  const completedSession = await findPackedDurableResearchSessionByObjective(page, completedObjective);
+  if (!completedSession) throw new Error("Packed UI report did not retain its terminal session.");
+  expect(completedSession.status).toBe("complete");
+  const completedTurnId = completedSession.turnId;
+  const beforeReopen = await readPackedDurableResearchSession(
+    page,
+    completedSession.sessionId,
+    `artifact:report:${completedTurnId}`,
+  );
+  expect(beforeReopen.artifact?.contents).toBe(markdown);
+  expect(beforeReopen.session.state.turns[0]?.graph).toEqual(expect.objectContaining({
+    status: "complete",
+    revision: expect.any(Number),
+  }));
+  const rowsBeforeReopen = await countPackedResearchSessionRows(page, completedSession.sessionId);
+  expect(rowsBeforeReopen).toEqual(expect.objectContaining({
+    sessions: 1,
+    artifacts: expect.any(Number),
+    evidenceWorkspace: expect.any(Number),
+    claimsWorkspace: expect.any(Number),
+    outlineWorkspace: expect.any(Number),
+  }));
+  expect(rowsBeforeReopen.evidenceWorkspace).toBeGreaterThan(0);
+  expect(rowsBeforeReopen.claimsWorkspace).toBeGreaterThan(0);
+  expect(rowsBeforeReopen.outlineWorkspace).toBeGreaterThan(0);
+
+  // Reload the whole side-panel document. The retained session must be
+  // recovered from IndexedDB, rather than from the prior page, service worker,
+  // or disposed dedicated agent worker.
   await page.reload();
   await page.getByTestId("app-shell").waitFor();
   await openResearchScreen(page);
   await expect(page.getByTestId("research-forget-key")).toBeEnabled();
   await expect(page.getByTestId("research-key")).toHaveValue("");
+  const afterReopen = await readPackedDurableResearchSession(
+    page,
+    completedSession.sessionId,
+    `artifact:report:${completedTurnId}`,
+  );
+  expect(afterReopen.artifact?.contents).toBe(markdown);
+  expect(afterReopen.session.state.turns[0]?.graph).toEqual(beforeReopen.session.state.turns[0]?.graph);
+  expect(await countPackedResearchSessionRows(page, completedSession.sessionId)).toEqual(rowsBeforeReopen);
+
+  const retainedCard = page.locator('[data-testid^="research-retained-session-"]')
+    .filter({ hasText: completedObjective });
+  await expect(retainedCard).toHaveCount(1);
+  const followUpQuestion = "Which accepted evidence should the next turn examine?";
+  await retainedCard.locator('[data-testid^="research-follow-up-question-"]').fill(followUpQuestion);
+  await retainedCard.locator('[data-testid^="research-follow-up-prepare-"]').click();
+  await expect(page.getByTestId("research-resumable-sessions")).toContainText(followUpQuestion);
+  const preparedFollowUp = await readPackedDurableResearchSession(
+    page,
+    completedSession.sessionId,
+    `artifact:report:${completedTurnId}`,
+  );
+  expect(preparedFollowUp.session.state).toMatchObject({
+    status: "running",
+    turns: [
+      expect.objectContaining({ id: completedTurnId }),
+      expect.objectContaining({
+        brief: expect.objectContaining({ objective: followUpQuestion }),
+        tasks: [],
+        acceptedPackets: [],
+      }),
+    ],
+  });
+  expect(await countPackedResearchSessionRows(page, completedSession.sessionId)).toEqual(
+    expect.objectContaining({
+      evidenceWorkspace: rowsBeforeReopen.evidenceWorkspace,
+      claimsWorkspace: rowsBeforeReopen.claimsWorkspace,
+      outlineWorkspace: rowsBeforeReopen.outlineWorkspace,
+    }),
+  );
 
   await installEventCapture(page);
   const cancelledObjective = "cancel-before-ptc: Search Jira project DEMO and Confluence space KB.";

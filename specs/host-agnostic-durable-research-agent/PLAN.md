@@ -3932,9 +3932,19 @@ CLI:
 
 Extension/browser:
 
-- [ ] Add session resume/new-turn UI without requiring a long-lived worker.
-- [ ] Prove the browser can close and reopen before the next turn without
-      losing the report, plan, claims, or evidence.
+- [x] Add session resume/new-turn UI without requiring a long-lived worker.
+      The side panel lists tenant-filtered terminal sessions and appends a
+      follow-up only through a revision-fenced host operation; preparation
+      persists the new turn but cannot start a provider or dedicated worker
+      (2026-08-03).
+- [x] Prove the side-panel document can reload before the next turn without
+      losing the report, plan, claims, or evidence. The packed MV3 journey
+      completes a synthetic cited report, records nonempty Evidence/Claim/
+      Outline stores, reloads the entire side-panel document, verifies the
+      report and durable graph byte-for-byte/structurally, then prepares the
+      next user turn through the freshly mounted UI while all private stores
+      remain unchanged (2026-08-03). Full Chrome-process restart remains a
+      separate T4 lifecycle-matrix gate.
 
 Gate:
 
