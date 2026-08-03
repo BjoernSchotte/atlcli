@@ -99,6 +99,26 @@ export function formatResearchActivityEvent(event: ResearchOneShotEventV1): stri
   return formatResearchOneShotEventV1(event);
 }
 
+type ResearchBudgetEventV1 = Extract<ResearchOneShotEventV1, { kind: "budget" }>;
+
+/** Latest body-free counters supplied by the host-owned activity stream. */
+export function latestResearchBudgetEvents(
+  events: readonly ResearchOneShotEventV1[],
+): Partial<Record<ResearchBudgetEventV1["metric"], ResearchBudgetEventV1>> {
+  return events.reduce<Partial<Record<ResearchBudgetEventV1["metric"], ResearchBudgetEventV1>>>(
+    (latest, event) => event.kind === "budget"
+      ? { ...latest, [event.metric]: event }
+      : latest,
+    {},
+  );
+}
+
+function formatResearchBudgetUsd(micros: number | undefined): string {
+  if (micros === undefined) return "—";
+  const usd = micros / MICROS_PER_USD;
+  return usd > 0 && usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
+}
+
 export function inferResearchScope(input: {
   siteOrigin: string;
   /**
@@ -507,6 +527,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [followUpActionId, setFollowUpActionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const planReviewListingGeneration = useRef(0);
+  const liveBudget = useMemo(() => latestResearchBudgetEvents(activity), [activity]);
 
   useEffect(() => {
     let active = true;
@@ -1640,6 +1661,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             </Button>
           </div>
           {progress && <p role="status" className="m-0 text-xs text-muted-foreground">{progress}</p>}
+          {(liveBudget.cost_micros || liveBudget.tokens || liveBudget.duration_ms) && (
+            <p className="m-0 text-xs text-muted-foreground" data-testid="research-live-budget">
+              {t("research.liveBudget", {
+                cost: formatResearchBudgetUsd(liveBudget.cost_micros?.consumed),
+                costMaximum: formatResearchBudgetUsd(liveBudget.cost_micros?.maximum),
+                tokens: String(liveBudget.tokens?.consumed ?? "—"),
+                tokensMaximum: String(liveBudget.tokens?.maximum ?? "—"),
+                duration: String(liveBudget.duration_ms?.consumed ?? "—"),
+                durationMaximum: String(liveBudget.duration_ms?.maximum ?? "—"),
+              })}
+            </p>
+          )}
           {activity.length > 0 && (
             <details open aria-live="polite" data-testid="research-activity">
               <summary className="mt-2 cursor-pointer text-xs font-medium">{t("research.activity")}</summary>

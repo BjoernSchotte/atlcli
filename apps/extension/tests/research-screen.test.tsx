@@ -375,6 +375,30 @@ describe("portable Research screen", () => {
           consumed: 1,
           maximum: 32,
         });
+        options?.onEvent?.({
+          kind: "budget",
+          seq: 6,
+          at: "2026-07-31T12:00:00.000Z",
+          metric: "tokens",
+          consumed: 12_500,
+          maximum: 224_000,
+        });
+        options?.onEvent?.({
+          kind: "budget",
+          seq: 7,
+          at: "2026-07-31T12:00:00.000Z",
+          metric: "cost_micros",
+          consumed: 250_000,
+          maximum: 1_250_000,
+        });
+        options?.onEvent?.({
+          kind: "budget",
+          seq: 8,
+          at: "2026-07-31T12:00:00.000Z",
+          metric: "duration_ms",
+          consumed: 42_000,
+          maximum: 420_000,
+        });
         return report;
       },
       copyMarkdown: async () => undefined,
@@ -415,6 +439,8 @@ describe("portable Research screen", () => {
     });
     expect(dom.find("research-model-cost-summary").textContent).toContain("1.25");
     expect(dom.find("research-max-runtime-summary").textContent).toContain("7");
+    expect(dom.find("research-live-budget").textContent).toContain("$0.25 / $1.25");
+    expect(dom.find("research-live-budget").textContent).toContain("12500 / 224000");
     expect(observed[0]!.scopeSeeds).toEqual(expect.arrayContaining([
       expect.objectContaining({
         binding: expect.objectContaining({ source: "natural_language", key: "DEMO" }),
