@@ -3515,8 +3515,11 @@ Gate:
         Atlassian-session-cookie values returns only the classified generic
         error. The response/event stream and every durable IndexedDB namespace
         exclude each sentinel (32 packed tests, 2026-08-02).
-- [ ] CLI and packed extension each resume the deterministic scenario to the
-      same final structured report and Markdown.
+- [x] CLI and packed extension each resume the deterministic scenario to the
+      same final structured report and Markdown. The shared Node/browser
+      recovery proof, the public hard-stop CLI recovery fixture, and the
+      packed fresh-worker resume journey all preserve the canonical report
+      without replaying accepted work (reverified 2026-08-03).
   - [x] The shared Node and browser runtimes resume one durable checkpoint
         with two already-accepted Jira/Confluence branches, consume its sole
         continuation, and finish the remaining graph with the same structured
