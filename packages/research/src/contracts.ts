@@ -212,10 +212,11 @@ export const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1> = {
   // result through a ten-second cutoff.
   maxInterpreterMs: 60_000,
   maxModelCalls: 16,
-  // The monetary ceiling is the binding spend guard. Leave enough aggregate
-  // input headroom for join and synthesis after two comprehensive, bounded
-  // acquisition workers have returned their compact evidence packets.
-  maxTotalModelInputTokens: 250_000,
+  // The monetary ceiling is the binding spend guard. A complete bounded
+  // workflow may need to retain two acquisition traces before join, critique,
+  // and final synthesis. This remains a hard run-wide token cap, but must not
+  // stop a fully acquired evidence set before its final author can run.
+  maxTotalModelInputTokens: 350_000,
   maxTotalModelOutputTokens: 64_000,
   maxModelCostMicros: 2_000_000,
   maxModelInputTokens: 80_000,
