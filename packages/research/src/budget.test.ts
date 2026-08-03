@@ -97,7 +97,24 @@ describe("model run budget", () => {
       .toThrow("model run budget was exhausted before another provider call");
     expect(budget.settle(reservation, {
       response_metadata: { usage: { input_tokens: 300, output_tokens: 200 } },
-    })).toEqual({ calls: 1, inputTokens: 300, outputTokens: 200, costMicros: 6_400 });
+    })).toEqual({ calls: 1, inputTokens: 300, outputTokens: 200, costMicros: 4_200 });
+  });
+
+  test("uses long-context rates only when one request can cross that threshold", () => {
+    const standard = new ResearchModelRunBudget(DEFAULT_RESEARCH_LIMITS_V1);
+    const standardReservation = standard.reserve({ messages: [] }, 100);
+    expect(standard.settle(standardReservation, {
+      response_metadata: { usage: { input_tokens: 300, output_tokens: 200 } },
+    }).costMicros).toBe(4_200);
+
+    const longContext = new ResearchModelRunBudget({
+      ...DEFAULT_RESEARCH_LIMITS_V1,
+      maxModelInputTokens: 200_001,
+    });
+    const longContextReservation = longContext.reserve({ messages: [] }, 100);
+    expect(longContext.settle(longContextReservation, {
+      response_metadata: { usage: { input_tokens: 300, output_tokens: 200 } },
+    }).costMicros).toBe(6_400);
   });
 
   test("fails closed after an unaccounted provider error consumes a reservation", () => {
@@ -119,7 +136,7 @@ describe("model run budget", () => {
       maxModelCalls: 2,
       maxTotalModelInputTokens: 20_000,
       maxTotalModelOutputTokens: 2_000,
-      maxModelCostMicros: 40_000,
+      maxModelCostMicros: 30_000,
     };
     const original = new ResearchModelRunBudget(limits);
     original.reserve({ messages: [{ content: "A provider request may have reached the service." }] }, 1_000);
@@ -168,5 +185,31 @@ describe("model run budget", () => {
       tools: [{ name: "read_only_tool", description: "Reads one bounded source.", schema: schemaInternal }],
       runtime: { nonSerializedMetadata: schemaInternal },
     }, 1_000)).not.toThrow();
+  });
+
+  test("reserves a complete PTC workflow without starving its final author", () => {
+    const budget = new ResearchModelRunBudget(DEFAULT_RESEARCH_LIMITS_V1);
+    const ptcTools = Array.from({ length: 7 }, (_, index) => ({
+      name: `bounded_read_${index}`,
+      description: "Runs one host-validated read-only operation.",
+      schema: { type: "object" },
+    }));
+    const workflowPrompt = "Bounded one-shot research workflow. ".repeat(400);
+
+    // The global budget has to admit the known complete graph, not only the
+    // early supervisor and acquisition requests. Exact provider usage will
+    // still settle below these pessimistic reservations when it is available.
+    expect(() => {
+      budget.reserve({ systemMessage: workflowPrompt, messages: [], tools: ptcTools }, 8_000);
+      budget.reserve({ systemMessage: workflowPrompt, messages: [], tools: ptcTools }, 3_000);
+      budget.reserve({ systemMessage: workflowPrompt, messages: [], tools: ptcTools }, 3_000);
+      budget.reserve({ systemMessage: workflowPrompt, messages: [], tools: [{ name: "js_eval" }] }, 2_400);
+      budget.reserve({
+        systemMessage: workflowPrompt,
+        messages: [{ content: "Compact accepted packets." }],
+        tools: [{ name: "js_eval" }],
+        responseFormat: { type: "json_schema" },
+      }, 4_096);
+    }).not.toThrow();
   });
 });

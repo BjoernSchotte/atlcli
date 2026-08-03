@@ -55,11 +55,18 @@ interface ResearchModelBudgetReservationV1 {
   costMicros: number;
 }
 
-// Use the documented Sonnet long-context rates rounded upward: $6/MTok input
-// and $22.50/MTok output. A local client-side tool has no separate provider
-// fee; its schema/result bytes are nevertheless accounted as model input.
-const CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN = 6;
-const CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN = 23;
+// Standard Sonnet requests cost $3/MTok input and $15/MTok output. Reserve
+// $4/MTok input to cover a normal five-minute cache write. A request only
+// reaches the more expensive long-context tier above 200k input tokens; that
+// decision is per provider request, not per aggregate session. The normal
+// research request ceiling is 80k, so charging every turn at long-context
+// rates would incorrectly prevent a bounded workflow from reaching its final
+// author.
+const STANDARD_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN = 4;
+const STANDARD_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN = 15;
+const LONG_CONTEXT_INPUT_TOKENS = 200_000;
+const LONG_CONTEXT_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN = 6;
+const LONG_CONTEXT_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN = 23;
 
 const RESEARCH_RUN_BUDGET_SCHEMA_V1 = "atlcli.research-run-budget/v1" as const;
 const RESEARCH_MODEL_BUDGET_SCHEMA_V1 = "atlcli.research-model-budget/v1" as const;
@@ -199,8 +206,16 @@ function modelInputBytes(value: unknown, seen = new Set<object>()): number {
   );
 }
 
-const MODEL_TOOL_SCHEMA_RESERVE_BYTES = 8_192;
-const MODEL_RESPONSE_FORMAT_RESERVE_BYTES = 8_192;
+// PTC requests usually carry a small JSON input schema per function. The
+// previous 8 KiB-per-tool placeholder treated every small read capability as
+// a large custom schema, multiplying a one-shot run's reservation until the
+// final author could not start. Keep a conservative, serializable bound per
+// tool and a separate fixed allowance for the provider's tool-use prompt.
+// The latter is documented by Anthropic and must not be multiplied by the
+// number of functions in a request.
+const MODEL_TOOL_SCHEMA_RESERVE_BYTES = 2_048;
+const MODEL_TOOL_USE_SYSTEM_RESERVE_BYTES = 1_536;
+const MODEL_RESPONSE_FORMAT_RESERVE_BYTES = 2_048;
 
 /**
  * Project LangChain's internal request object onto the data that is actually
@@ -241,6 +256,7 @@ function providerRequestInputBytes(value: unknown): number {
     })
     : [];
   return modelInputBytes({ systemMessage, messages, tools }) +
+    (tools.length > 0 ? MODEL_TOOL_USE_SYSTEM_RESERVE_BYTES : 0) +
     tools.length * MODEL_TOOL_SCHEMA_RESERVE_BYTES +
     (request.responseFormat === undefined ? 0 : MODEL_RESPONSE_FORMAT_RESERVE_BYTES);
 }
@@ -270,6 +286,8 @@ function observedModelUsage(value: unknown): { inputTokens: number; outputTokens
  */
 export class ResearchModelRunBudget {
   readonly #limits: ResearchLimitsV1;
+  readonly #inputCostMicrosPerToken: number;
+  readonly #outputCostMicrosPerToken: number;
   #calls = 0;
   #inputTokens = 0;
   #outputTokens = 0;
@@ -279,6 +297,13 @@ export class ResearchModelRunBudget {
 
   constructor(limits: ResearchLimitsV1) {
     this.#limits = limits;
+    const longContext = limits.maxModelInputTokens > LONG_CONTEXT_INPUT_TOKENS;
+    this.#inputCostMicrosPerToken = longContext
+      ? LONG_CONTEXT_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN
+      : STANDARD_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN;
+    this.#outputCostMicrosPerToken = longContext
+      ? LONG_CONTEXT_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN
+      : STANDARD_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN;
   }
 
   snapshot(): ResearchModelBudgetSnapshotV1 {
@@ -342,8 +367,8 @@ export class ResearchModelRunBudget {
     // tool JSON. Three bytes plus fixed provider/tool overhead is deliberate.
     const inputTokens = Math.ceil(providerRequestInputBytes(request) / 3) + 1_024;
     const outputTokens = maximumOutputTokens;
-    const costMicros = inputTokens * CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN +
-      outputTokens * CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN;
+    const costMicros = inputTokens * this.#inputCostMicrosPerToken +
+      outputTokens * this.#outputCostMicrosPerToken;
     if (
       this.#calls + 1 > this.#limits.maxModelCalls ||
       this.#inputTokens + inputTokens > this.#limits.maxTotalModelInputTokens ||
@@ -372,8 +397,8 @@ export class ResearchModelRunBudget {
     this.#reservations.delete(reservation.id);
     const usage = observedModelUsage(response);
     if (!usage) return this.snapshot();
-    const actualCostMicros = usage.inputTokens * CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN +
-      usage.outputTokens * CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN;
+    const actualCostMicros = usage.inputTokens * this.#inputCostMicrosPerToken +
+      usage.outputTokens * this.#outputCostMicrosPerToken;
     this.#inputTokens += usage.inputTokens - active.inputTokens;
     this.#outputTokens += usage.outputTokens - active.outputTokens;
     this.#costMicros += actualCostMicros - active.costMicros;
