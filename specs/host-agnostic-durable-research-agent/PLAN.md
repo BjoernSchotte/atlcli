@@ -3781,8 +3781,12 @@ Gate:
       paths exclude the old claim, leave its coverage uncovered, and emit the
       same deterministic currentness limitation (2026-08-02).
 - [ ] V1 completed reports remain readable; new turns use V2.
-- [ ] Reconciliation cannot make an unsupported claim pass, and disabling the
+- [x] Reconciliation cannot make an unsupported claim pass, and disabling the
       reconciler does not change deterministic validation of identical claims.
+      The V2 finalizer rejects an unretained claim even when a reconciliation
+      disposition says `no_change`; its factual claims, sources, sections, and
+      coverage are otherwise identical with reconciliation off or on
+      (2026-08-03).
 - [ ] Every outline section can be traced to accepted claim/evidence IDs, and
       unused evidence remains visible in coverage metadata.
 - [ ] CLI and packed browser V2 reports remain schema-equivalent and

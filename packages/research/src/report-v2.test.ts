@@ -322,6 +322,49 @@ describe("V2 research report finalization", () => {
     })).rejects.toThrow("outside its current evidence");
   });
 
+  test("keeps factual claim validation independent of reconciliation", async () => {
+    const current = claim(CURRENT_CLAIM, EVIDENCE, "current");
+    const support = ports({ claims: [current], records: [record(EVIDENCE, "jira:ATLCLI-42")] });
+    const withoutReconciler = await finalizeResearchReportV2({
+      request,
+      ...support,
+      claimIds: [CURRENT_CLAIM],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+    const withReconciler = await finalizeResearchReportV2({
+      request,
+      ...support,
+      claimIds: [CURRENT_CLAIM],
+      reconciliation: [{
+        defectId: "defect:coverage",
+        target: { kind: "claim", id: CURRENT_CLAIM },
+        decision: "abstain",
+        reasonCode: "material_defect",
+      }],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+
+    expect(withReconciler.claims).toEqual(withoutReconciler.claims);
+    expect(withReconciler.sources).toEqual(withoutReconciler.sources);
+    expect(withReconciler.sections).toEqual(withoutReconciler.sections);
+    expect(withReconciler.coverage).toEqual(withoutReconciler.coverage);
+    await expect(finalizeResearchReportV2({
+      request,
+      ...support,
+      claimIds: [CURRENT_CLAIM, STALE_CLAIM],
+      reconciliation: [{
+        defectId: "defect:forged-claim",
+        target: { kind: "claim", id: STALE_CLAIM },
+        decision: "no_change",
+        reasonCode: "supported_by_evidence",
+      }],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    })).rejects.toThrow("not retained");
+  });
+
   test("fails closed when selected support is unknown or forged", async () => {
     const support = ports({ claims: [], records: [] });
     await expect(finalizeResearchReportV2({
