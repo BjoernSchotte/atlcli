@@ -123,6 +123,78 @@ describe("QuickJS research sandbox", () => {
     }
   });
 
+  it("keeps parallel initial searches independent when their native next cursor matches", async () => {
+    const request = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Find the bounded documentation.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["KB"],
+      },
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      wikiProvider: "rest",
+    });
+    const broker = new ResearchCapabilityBroker(request, {
+      jira: {
+        async searchPage() {
+          return { items: [] };
+        },
+        async getIssue() {
+          throw new Error("not used");
+        },
+      },
+      wiki: {
+        async searchPage() {
+          return {
+            items: [{ contentId: "1001", spaceKey: "KB", title: "Bounded page" }],
+            nextProviderCursor: "same-first-page-cursor",
+          };
+        },
+        async getPage() {
+          throw new Error("not used");
+        },
+      },
+    });
+    try {
+      const wikiSearch = createResearchPtcTools(broker).find(
+        (candidate) => candidate.name === "wiki_search",
+      );
+      const candidateRank = createResearchPtcTools(broker).find(
+        (candidate) => candidate.name === "research_candidate_rank",
+      );
+      expect(wikiSearch).toBeDefined();
+      expect(candidateRank).toBeDefined();
+
+      const pages = await Promise.all([
+        wikiSearch!.invoke({ query: {} }),
+        wikiSearch!.invoke({ query: {} }),
+      ]).then((values) => values.map((value) => JSON.parse(String(value)) as {
+        items: Array<{ entityRef: string }>;
+        page: { nextCursor?: string };
+      }));
+
+      expect(pages.map((page) => page.page.nextCursor)).toEqual([
+        expect.stringMatching(/^research-cursor:/),
+        expect.stringMatching(/^research-cursor:/),
+      ]);
+      expect(pages[0]!.page.nextCursor).not.toBe(pages[1]!.page.nextCursor);
+
+      const ranks = await Promise.all(pages.map((page) =>
+        candidateRank!.invoke({
+          product: "confluence",
+          entityRefs: page.items.map((item) => item.entityRef),
+        }).then((value) => JSON.parse(String(value)) as { items: unknown[] }),
+      ));
+      expect(ranks.map((rank) => rank.items)).toEqual([
+        [expect.any(Object)],
+        [expect.any(Object)],
+      ]);
+    } finally {
+      broker.cancel();
+    }
+  });
+
   it("exposes four PTC reads plus host candidate ranking and no host escape hatches", async () => {
     const session = new ReplSession("research-sandbox-contract", {
       tools: readTools(),

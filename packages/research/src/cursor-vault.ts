@@ -5,11 +5,23 @@ interface CursorRecord {
   queryFingerprint: string;
   providerCursor: string;
   expiresAt: number;
+  /**
+   * Provider cursors are only meaningful relative to one pagination chain.
+   * Two concurrent, identical first-page searches may legitimately receive
+   * the same native next cursor, while a repeated cursor after consuming a
+   * prior token is a provider loop.
+   */
+  chain: ResearchCursorChain;
+}
+
+export interface ResearchCursorChain {
+  readonly seenProviderCursorKeys: readonly string[];
 }
 
 export interface ResearchCursorResolution {
   queryFingerprint: string;
   providerCursor: string;
+  chain: ResearchCursorChain;
 }
 
 export interface ResearchCursorVaultOptions {
@@ -32,7 +44,6 @@ export class ResearchCursorVault {
   readonly #now: () => number;
   readonly #ttlMs: number;
   readonly #records = new Map<string, CursorRecord>();
-  readonly #seenProviderCursors = new Set<string>();
   #issued = 0;
 
   constructor(options: ResearchCursorVaultOptions = {}) {
@@ -52,14 +63,15 @@ export class ResearchCursorVault {
   issue(
     tool: ResearchToolId,
     queryFingerprint: string,
-    providerCursor: string | undefined
+    providerCursor: string | undefined,
+    previousChain?: ResearchCursorChain,
   ): string | undefined {
     if (!providerCursor) return undefined;
     if (this.#issued >= this.#maxEntries) {
       throw new ResearchContractError("limit-exceeded", "The cursor budget was exhausted.");
     }
     const providerKey = `${tool}\u0000${queryFingerprint}\u0000${providerCursor}`;
-    if (this.#seenProviderCursors.has(providerKey)) {
+    if (previousChain?.seenProviderCursorKeys.includes(providerKey)) {
       throw new ResearchContractError(
         "provider-error",
         "The provider returned a repeated pagination cursor."
@@ -70,12 +82,17 @@ export class ResearchCursorVault {
       throw new ResearchContractError("unknown", "A secure cursor id was reused.");
     }
     this.#issued += 1;
-    this.#seenProviderCursors.add(providerKey);
     this.#records.set(token, {
       tool,
       queryFingerprint,
       providerCursor,
       expiresAt: this.#now() + this.#ttlMs,
+      chain: {
+        seenProviderCursorKeys: [
+          ...(previousChain?.seenProviderCursorKeys ?? []),
+          providerKey,
+        ],
+      },
     });
     return token;
   }
@@ -101,11 +118,11 @@ export class ResearchCursorVault {
     return {
       queryFingerprint: record.queryFingerprint,
       providerCursor: record.providerCursor,
+      chain: record.chain,
     };
   }
 
   clear(): void {
     this.#records.clear();
-    this.#seenProviderCursors.clear();
   }
 }

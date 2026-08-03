@@ -22,7 +22,10 @@ import {
 } from "./capability-contracts.js";
 import { rankResearchCandidatesV1 } from "./candidate-ranking.js";
 import { ResearchRunBudget } from "./budget.js";
-import { ResearchCursorVault } from "./cursor-vault.js";
+import {
+  ResearchCursorVault,
+  type ResearchCursorChain,
+} from "./cursor-vault.js";
 import { ResearchEntityVault } from "./entity-vault.js";
 import {
   createResearchEvidenceRecordV1,
@@ -592,6 +595,7 @@ export class ResearchCapabilityBroker {
     let query: ResearchSearchQueryV1;
     let pageSize: number;
     let providerCursor: string | undefined;
+    let cursorChain: ResearchCursorChain | undefined;
     if ("cursor" in decoded) {
       const resolved = this.#cursorVault.resolve("jira.issue.search", decoded.cursor)!;
       const state = parseResearchQueryFingerprint(resolved.queryFingerprint);
@@ -601,17 +605,19 @@ export class ResearchCapabilityBroker {
       query = state.query;
       pageSize = state.pageSize;
       providerCursor = resolved.providerCursor;
+      cursorChain = resolved.chain;
     } else {
       query = decoded.query;
       pageSize = decoded.pageSize ?? this.#request.limits.pageSize;
     }
-    return this.#searchJiraPage(query, pageSize, providerCursor);
+    return this.#searchJiraPage(query, pageSize, providerCursor, cursorChain);
   }
 
   async #searchJiraPage(
     query: ResearchSearchQueryV1,
     pageSize: number,
-    providerCursor?: string
+    providerCursor?: string,
+    cursorChain?: ResearchCursorChain,
   ): Promise<ResearchSearchOutputV1> {
     this.#searchAttempts.jira += 1;
     this.budget.beginSearchPage("jira");
@@ -652,7 +658,8 @@ export class ResearchCapabilityBroker {
       pageSize,
       accepted,
       page.nextProviderCursor,
-      remaining <= accepted.length ? "item-limit" : undefined
+      remaining <= accepted.length ? "item-limit" : undefined,
+      cursorChain,
     );
   }
 
@@ -665,6 +672,7 @@ export class ResearchCapabilityBroker {
     let query: ResearchSearchQueryV1;
     let pageSize: number;
     let providerCursor: string | undefined;
+    let cursorChain: ResearchCursorChain | undefined;
     if ("cursor" in decoded) {
       const resolved = this.#cursorVault.resolve("wiki.search", decoded.cursor)!;
       const state = parseResearchQueryFingerprint(resolved.queryFingerprint);
@@ -674,6 +682,7 @@ export class ResearchCapabilityBroker {
       query = state.query;
       pageSize = state.pageSize;
       providerCursor = resolved.providerCursor;
+      cursorChain = resolved.chain;
     } else {
       query = decoded.query;
       pageSize = decoded.pageSize ?? this.#request.limits.pageSize;
@@ -715,7 +724,8 @@ export class ResearchCapabilityBroker {
       pageSize,
       accepted,
       page.nextProviderCursor,
-      remaining <= accepted.length ? "item-limit" : undefined
+      remaining <= accepted.length ? "item-limit" : undefined,
+      cursorChain,
     );
   }
 
@@ -725,7 +735,8 @@ export class ResearchCapabilityBroker {
     pageSize: number,
     items: ResearchEntitySummaryV1[],
     nextProviderCursor: string | undefined,
-    forcedTermination: ResearchTerminationCode | undefined
+    forcedTermination: ResearchTerminationCode | undefined,
+    cursorChain?: ResearchCursorChain,
   ): ResearchSearchOutputV1 {
     const product = tool === "jira.issue.search" ? "jira" : "confluence";
     const pageLimit = !this.budget.canSearchAnotherPage(product);
@@ -735,7 +746,8 @@ export class ResearchCapabilityBroker {
         ? this.#cursorVault.issue(
             tool,
             researchQueryFingerprint(tool, query, pageSize),
-            nextProviderCursor
+            nextProviderCursor,
+            cursorChain,
           )
         : undefined;
     const page: ResearchSearchOutputV1["page"] = nextCursor

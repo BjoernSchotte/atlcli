@@ -243,7 +243,7 @@ describe("per-run opaque research cursors", () => {
 
     expect(token).toBe("research-cursor:id-1");
     expect(token).not.toContain("atlassian.net");
-    expect(vault.resolve("wiki.search", token)).toEqual({
+    expect(vault.resolve("wiki.search", token)).toMatchObject({
       queryFingerprint: "query:implementation",
       providerCursor:
         "https://example.atlassian.net/wiki/rest/api/content/search?cursor=secret",
@@ -280,7 +280,7 @@ describe("per-run opaque research cursors", () => {
     );
   });
 
-  it("rejects provider loops and expired cursors", () => {
+  it("permits independent first-page cursors but rejects a repeated continuation cursor", () => {
     let now = 1_000;
     let id = 0;
     const vault = new ResearchCursorVault({
@@ -288,11 +288,17 @@ describe("per-run opaque research cursors", () => {
       now: () => now,
       ttlMs: 100,
     });
-    const token = vault.issue("jira.issue.search", "query:open", "next-1");
-    expect(() => vault.issue("jira.issue.search", "query:open", "next-1")).toThrow(
-      "repeated"
-    );
+    const first = vault.issue("jira.issue.search", "query:open", "next-1");
+    const parallelFirst = vault.issue("jira.issue.search", "query:open", "next-1");
+    expect(first).not.toBe(parallelFirst);
+    const continuation = vault.resolve("jira.issue.search", first);
+    expect(() => vault.issue(
+      "jira.issue.search",
+      "query:open",
+      "next-1",
+      continuation?.chain,
+    )).toThrow("repeated");
     now = 1_101;
-    expect(() => vault.resolve("jira.issue.search", token)).toThrow("unknown");
+    expect(() => vault.resolve("jira.issue.search", parallelFirst)).toThrow("unknown");
   });
 });
