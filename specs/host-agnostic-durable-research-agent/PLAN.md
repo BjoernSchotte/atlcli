@@ -3780,7 +3780,10 @@ Gate:
       evidence publishes, while deletion is detected during finalization. Both
       paths exclude the old claim, leave its coverage uncovered, and emit the
       same deterministic currentness limitation (2026-08-02).
-- [ ] V1 completed reports remain readable; new turns use V2.
+- [x] V1 completed reports remain readable; new turns use V2. The sidebar
+      renders the frozen V1 report fixture through its V1 component, while the
+      CLI follow-up-turn contract preserves that prior turn and composes its
+      focused-researcher node with the V2 packet schema (2026-08-03).
 - [x] Reconciliation cannot make an unsupported claim pass, and disabling the
       reconciler does not change deterministic validation of identical claims.
       The V2 finalizer rejects an unretained claim even when a reconciliation

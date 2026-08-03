@@ -9,6 +9,7 @@ import {
   ResearchContractError,
   ResearchSessionDispatchJournalV1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
   InMemoryResearchSessionStoreV1,
   WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchEvidenceStoreV1,
@@ -1240,6 +1241,8 @@ describe("research CLI one-shot contract", () => {
         { key: "DOCSY", source: "cli_flag", authority: "locked" },
       ],
     });
+    expect(persisted?.turns[1]?.graph?.nodes.find((node) => node.roleId === "focused-researcher"))
+      .toMatchObject({ outputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 });
     expect(harness.stderr.join("")).toContain(`session=${terminal.sessionId}`);
     expect(harness.stderr.join("")).toContain("new_turn=true");
   });
