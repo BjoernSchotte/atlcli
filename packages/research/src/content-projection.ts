@@ -34,7 +34,7 @@ function safeAtlassianLink(
   if (
     url.origin !== siteOrigin ||
     !(
-      /^\/browse\/[A-Z][A-Z0-9]{1,19}-\d+$/i.test(url.pathname) ||
+      /^\/browse\/[A-Z][A-Z0-9_]{0,31}-[1-9]\d*$/i.test(url.pathname) ||
       /^\/wiki\/spaces\/[^/]+\/pages\/\d+(?:\/.*)?$/i.test(url.pathname)
     )
   ) {
@@ -207,6 +207,36 @@ export function prependBoundedDetailText(
     truncated: projection.truncated || bounded.truncated,
     inputBytes:
       projection.inputBytes + new TextEncoder().encode(normalizedPrefix).byteLength,
+  };
+}
+
+/**
+ * Add host-derived same-tenant relation targets to an already bounded detail
+ * projection. The source text budget is unaffected; only the fixed link list
+ * budget applies. This is deliberately not a generic URL passthrough.
+ */
+export function appendBoundedDetailLinks(
+  projection: BoundedContentProjectionV1,
+  linkTargets: readonly string[],
+  siteOrigin: string,
+  limits: ContentProjectionLimits,
+  sourceRelationsTruncated = false,
+): BoundedContentProjectionV1 {
+  const links = new Set(projection.linkTargets);
+  let truncated = projection.truncated || sourceRelationsTruncated;
+  for (const target of linkTargets) {
+    const safe = safeAtlassianLink(target, siteOrigin);
+    if (!safe || links.has(safe)) continue;
+    if (links.size >= limits.maxLinks) {
+      truncated = true;
+      break;
+    }
+    links.add(safe);
+  }
+  return {
+    ...projection,
+    linkTargets: [...links].sort(),
+    truncated,
   };
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  appendBoundedDetailLinks,
   projectConfluenceStorage,
   projectJiraDescription,
   prependBoundedDetailText,
@@ -124,6 +125,42 @@ describe("bounded research content projection", () => {
     expect(detail.text).toContain("Design");
     expect(detail.linkTargets).toEqual(description.linkTargets);
     expect(detail.truncated).toBe(false);
+  });
+
+  it("adds only bounded same-tenant relation targets after a detail read", () => {
+    const detail = appendBoundedDetailLinks(
+      {
+        text: "Detail body",
+        linkTargets: ["https://example.atlassian.net/browse/DEMO-1"],
+        truncated: false,
+        inputBytes: 11,
+      },
+      [
+        "https://example.atlassian.net/browse/OPS_TEAM-2",
+        "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
+        "https://foreign.atlassian.net/browse/OTHER-9",
+      ],
+      "https://example.atlassian.net",
+      { ...limits, maxLinks: 2 },
+    );
+
+    expect(detail.linkTargets).toEqual([
+      "https://example.atlassian.net/browse/DEMO-1",
+      "https://example.atlassian.net/browse/OPS_TEAM-2",
+    ]);
+    expect(detail.truncated).toBe(true);
+  });
+
+  it("keeps an adapter-declared relation cap visible even when link capacity remains", () => {
+    const detail = appendBoundedDetailLinks(
+      { text: "Detail body", linkTargets: [], truncated: false, inputBytes: 11 },
+      ["https://example.atlassian.net/browse/DEMO-1"],
+      "https://example.atlassian.net",
+      limits,
+      true,
+    );
+    expect(detail.linkTargets).toEqual(["https://example.atlassian.net/browse/DEMO-1"]);
+    expect(detail.truncated).toBe(true);
   });
 
   it("degrades an oversized Confluence page to bounded text instead of losing the detail", () => {

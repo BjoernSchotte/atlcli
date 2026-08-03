@@ -21,6 +21,7 @@ import { ResearchRunBudget } from "./budget.js";
 import {
   projectConfluenceStorage,
   projectJiraDescription,
+  appendBoundedDetailLinks,
   prependBoundedDetailText,
   type ContentProjectionLimits,
 } from "./content-projection.js";
@@ -65,6 +66,75 @@ function projectionLimits(request: ResearchRequestV1): ContentProjectionLimits {
   };
 }
 
+function boundedMetadataValues(values: readonly string[] | undefined): string[] {
+  return [...new Set((values ?? [])
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .map((value) => value.slice(0, 255)))].sort((left, right) => left.localeCompare(right, "en-US"));
+}
+
+const MAX_DETAIL_RELATION_IDS = 100;
+
+interface BoundedRelationIds {
+  values: string[];
+  truncated: boolean;
+}
+
+function validJiraIssueKey(value: string | undefined): value is string {
+  return typeof value === "string" && /^[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}$/i.test(value);
+}
+
+function jiraIssueUrl(siteOrigin: string, issueKey: string): string {
+  return `${siteOrigin}/browse/${encodeURIComponent(issueKey)}`;
+}
+
+function jiraRelationKeys(issue: Awaited<ReturnType<JiraClient["getIssue"]>>): BoundedRelationIds {
+  const keys = [
+    issue.fields.parent?.key,
+    ...(issue.fields.subtasks ?? []).map((subtask) => subtask.key),
+    ...(issue.fields.issuelinks ?? []).flatMap((link) => [
+      link.inwardIssue?.key,
+      link.outwardIssue?.key,
+    ]),
+  ].filter(validJiraIssueKey)
+    .map((key) => key.toLocaleUpperCase("en-US"));
+  const values = [...new Set(keys)].sort((left, right) => left.localeCompare(right, "en-US"));
+  return {
+    values: values.slice(0, MAX_DETAIL_RELATION_IDS),
+    truncated: values.length > MAX_DETAIL_RELATION_IDS,
+  };
+}
+
+function wikiAncestorIds(page: Awaited<ReturnType<ConfluenceClient["getPageDetails"]>>): BoundedRelationIds {
+  const values = [...new Set((page.ancestors ?? [])
+    .map((ancestor) => ancestor.id)
+    .filter((id): id is string => /^[1-9][0-9]{0,127}$/.test(id)))];
+  return {
+    values: values.slice(0, MAX_DETAIL_RELATION_IDS),
+    truncated: values.length > MAX_DETAIL_RELATION_IDS,
+  };
+}
+
+function detailPrefix(input: {
+  summary?: string;
+  status?: string;
+  labels?: readonly string[];
+  relationLabel?: string;
+  relationIds?: readonly string[];
+}): string {
+  return [
+    input.summary ? `Summary: ${input.summary}` : undefined,
+    input.status ? `Status: ${input.status}` : undefined,
+    boundedMetadataValues(input.labels).length > 0
+      ? `Labels: ${boundedMetadataValues(input.labels).join(", ")}`
+      : undefined,
+    input.relationLabel && input.relationIds && input.relationIds.length > 0
+      ? `${input.relationLabel}: ${input.relationIds.join(", ")}`
+      : undefined,
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
 function guardTransport(
   budget: ResearchRunBudget
 ): (event: JiraTransportEvent | ConfluenceTransportEvent) => void {
@@ -102,7 +172,7 @@ export function createRestResearchProviders(
       async searchPage(input) {
         const result = await jira.search(input.jql, {
           maxResults: input.pageSize,
-          fields: ["summary", "description", "project", "status", "updated"],
+          fields: ["summary", "description", "project", "status", "updated", "labels"],
           nextPageToken: input.providerCursor,
           signal: input.signal,
         });
@@ -136,7 +206,17 @@ export function createRestResearchProviders(
       },
       async getIssue(input) {
         const issue = await jira.getIssue(input.issueKey, {
-          fields: ["summary", "description", "project", "status", "updated"],
+          fields: [
+            "summary",
+            "description",
+            "project",
+            "status",
+            "updated",
+            "labels",
+            "parent",
+            "subtasks",
+            "issuelinks",
+          ],
           signal: input.signal,
         });
         const description = projectJiraDescription(
@@ -144,18 +224,26 @@ export function createRestResearchProviders(
           request.scope.siteOrigin,
           limits
         );
-        const detailFields = [
-          `Summary: ${issue.fields.summary ?? issue.key}`,
-          issue.fields.status?.name
-            ? `Status: ${issue.fields.status.name}`
-            : "",
-        ].filter(Boolean).join("\n");
+        const relations = jiraRelationKeys(issue);
+        const detailFields = detailPrefix({
+          summary: issue.fields.summary ?? issue.key,
+          status: issue.fields.status?.name,
+          labels: issue.fields.labels,
+          relationLabel: "Related issue keys",
+          relationIds: relations.values,
+        });
         return {
           issueKey: issue.key,
           projectKey: issue.fields.project?.key ?? "",
           title: issue.fields.summary ?? issue.key,
           ...(issue.fields.updated ? { updatedAt: issue.fields.updated } : {}),
-          content: prependBoundedDetailText(description, detailFields, limits),
+          content: appendBoundedDetailLinks(
+            prependBoundedDetailText(description, detailFields, limits),
+            relations.values.map((issueKey) => jiraIssueUrl(request.scope.siteOrigin, issueKey)),
+            request.scope.siteOrigin,
+            limits,
+            relations.truncated,
+          ),
         };
       },
     },
@@ -187,15 +275,31 @@ export function createRestResearchProviders(
         const page = await wiki.getPageDetails(input.contentId, {
           signal: input.signal,
         });
+        const ancestors = wikiAncestorIds(page);
+        const detailFields = detailPrefix({
+          labels: page.labels,
+          relationLabel: "Ancestor page IDs",
+          relationIds: ancestors.values,
+        });
         return {
           contentId: page.id,
           spaceKey: page.spaceKey ?? "",
           title: page.title,
           ...(page.modified ? { updatedAt: page.modified } : {}),
-          content: projectConfluenceStorage(
-            page.storage,
+          content: appendBoundedDetailLinks(
+            prependBoundedDetailText(
+              projectConfluenceStorage(page.storage, request.scope.siteOrigin, limits),
+              detailFields,
+              limits,
+            ),
+            page.spaceKey
+              ? ancestors.values.map((ancestorId) =>
+                  `${request.scope.siteOrigin}/wiki/spaces/${encodeURIComponent(page.spaceKey!)}/pages/${ancestorId}`,
+                )
+              : [],
             request.scope.siteOrigin,
-            limits
+            limits,
+            ancestors.truncated,
           ),
         };
       },

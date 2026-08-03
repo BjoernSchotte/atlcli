@@ -3793,7 +3793,7 @@ Gate:
 Shared:
 
 - [x] Add the required on-demand capability schemas and exact key validation.
-- [ ] Extend the Jira and Confluence provider ports without exposing client or
+- [x] Extend the Jira and Confluence provider ports without exposing client or
       transport objects to the model.
 - [x] Compile typed search intents into scope-clamped JQL/CQL in the host.
 - [ ] Add exact link, issue-key, page-ID, ancestor/child, label, comment, and
@@ -3809,6 +3809,17 @@ rejected before any provider call; browser-facing tools expose the same simple
 arguments and never a client or transport object. Focused broker/QuickJS and
 browser-boundary tests, complete type checks, privacy, and browser-build gates
 passed (2026-08-03).
+
+T6 detail-relation checkpoint (2026-08-03): one already-ranked detail read
+now contributes its own bounded relation metadata: Jira labels plus
+parent/subtask/issue-link keys, and Confluence labels plus ancestor page IDs.
+The adapter converts only valid same-tenant identities into the existing
+bounded `linkTargets` projection; invalid or foreign targets are discarded and
+an over-cap relation list makes the detail visibly truncated. This creates no
+additional content call, provider/client exposure, binding, or scope expansion.
+Comments and child enumeration remain separate, explicitly unimplemented
+capabilities. Mocked REST-adapter and projection tests cover the exact fields,
+same-tenant filter, caps, and browser session boundary (2026-08-03).
 
   - [x] Resolve an exact, current-tenant Jira issue or Confluence page URL to
         one opaque, read-only candidate through the existing reference
