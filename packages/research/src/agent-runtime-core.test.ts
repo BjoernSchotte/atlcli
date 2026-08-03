@@ -1323,6 +1323,20 @@ describe("legacy bounded acquisition prompt", () => {
     expect(prompt).toContain("ranked.items.slice(0, 8)");
     expect(prompt).not.toContain("slice(0, 3)");
   });
+
+  test("does not search Jira for a Confluence-only direct chat", () => {
+    const prompt = buildLegacyResearchSystemPromptV1(1, ["confluence"]);
+    expect(prompt).toContain("const wiki = await collect(tools.wikiSearch)");
+    expect(prompt).not.toContain("collect(tools.jiraIssueSearch)");
+    expect(prompt).not.toContain('rankedDetails("jira"');
+  });
+
+  test("follows only Jira references observed while reading an exact Confluence page", () => {
+    const prompt = buildLegacyResearchSystemPromptV1(4, ["confluence"], true);
+    expect(prompt).toContain("hasObservedJiraReference");
+    expect(prompt).toContain("if (hasObservedJiraReference)");
+    expect(prompt).toContain("jira = await collect(tools.jiraIssueSearch)");
+  });
 });
 
 describe("host search-coverage limitations", () => {

@@ -183,7 +183,6 @@ function normalizeRelationships(
     detailEvidence
       .filter(
         (entry) =>
-          !entry.content.truncated &&
           (entry.content.text.trim().length > 0 ||
             entry.content.linkTargets.length > 0)
       )
@@ -192,8 +191,7 @@ function normalizeRelationships(
   const textDetailSourceIds = new Set(
     detailEvidence
       .filter(
-        (entry) =>
-          !entry.content.truncated && entry.content.text.trim().length > 0
+        (entry) => entry.content.text.trim().length > 0
       )
       .map((entry) => entry.source.id)
   );
@@ -243,7 +241,6 @@ function deriveVerifiedRelationships(
 ): AtlassianRelationshipV1[] {
   const readable = detailEvidence.filter(
     (entry) =>
-      !entry.content.truncated &&
       (entry.content.text.trim().length > 0 || entry.content.linkTargets.length > 0),
   );
   const jiraEvidence = readable.filter(
@@ -290,12 +287,9 @@ function normalizeFindings(
   sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
   detailEvidence: readonly ResearchDetailEvidenceV1[]
 ): ResearchFindingV1[] {
-  const completeDetailSourceIds = new Set(
+  const readableDetailSourceIds = new Set(
     detailEvidence
-      .filter(
-        (entry) =>
-          !entry.content.truncated && entry.content.text.trim().length > 0
-      )
+      .filter((entry) => entry.content.text.trim().length > 0)
       .map((entry) => entry.source.id)
   );
   const normalized: ResearchFindingV1[] = [];
@@ -303,7 +297,7 @@ function normalizeFindings(
     const sourceIds = uniqueKnownSourceIds(finding.sourceIds, sources);
     if (
       sourceIds.length === 0 ||
-      sourceIds.some((sourceId) => !completeDetailSourceIds.has(sourceId))
+      sourceIds.some((sourceId) => !readableDetailSourceIds.has(sourceId))
     ) {
       continue;
     }
@@ -349,7 +343,7 @@ function evidenceQualityBoundary(
   const qualifications = [
     ...(truncatedDetails > 0
       ? [
-          `${truncatedDetails} truncated detail ${truncatedDetails === 1 ? "projection was" : "projections were"} excluded from published findings.`,
+          `${truncatedDetails} truncated detail ${truncatedDetails === 1 ? "projection supports" : "projections support"} only positive statements visible in the captured excerpt; coverage beyond the excerpt is not exhaustive.`,
         ]
       : []),
     ...(emptyDetails > 0
@@ -364,7 +358,7 @@ function evidenceQualityBoundary(
       : []),
     ...(!run.complete
       ? [
-          "Candidate screening reached a configured search limit; published findings cite only fully retrieved detail evidence and may not be exhaustive.",
+          "Candidate screening reached a configured search limit; published findings cite only retrieved detail evidence and may not be exhaustive.",
         ]
       : []),
   ];
@@ -389,7 +383,7 @@ function evidenceBackedExecutiveSummary(
   ];
   return statements.length > 0
     ? statements.join("\n\n")
-    : "No non-empty, non-truncated detail evidence supported a publishable finding for this run.";
+    : "No non-empty detail evidence supported a publishable finding for this run.";
 }
 
 function clampText(value: unknown, maximum: number): unknown {

@@ -147,8 +147,8 @@ describe("research activity timeline", () => {
     const steps = researchTimelineSteps(events, true);
 
     expect(steps).toHaveLength(1);
-    expect(steps[0]?.kind).toBe("researching");
-    expect(steps[0]?.events).toHaveLength(77);
+    expect(steps[0]?.kind).toBe("thinking");
+    expect(steps[0]?.events).toHaveLength(0);
   });
 });
 
@@ -378,6 +378,9 @@ describe("portable Research screen", () => {
     expect((dom.find("research-effort") as HTMLSelectElement).value).toBe("deep");
     expect((dom.find("research-plan-approval") as HTMLSelectElement).value).toBe("default");
     expect((dom.find("research-reconciliation") as HTMLSelectElement).value).toBe("auto");
+    await openConversationMenu();
+    await dom.click("research-new-conversation");
+    expect(dom.find("research-mode-chat").getAttribute("aria-pressed")).toBe("true");
 
     expect(dom.maybeFind("research-composer-add-menu")).toBeNull();
     expect(dom.find("research-composer-add-menu-toggle").getAttribute("aria-expanded")).toBe("false");
@@ -451,8 +454,9 @@ describe("portable Research screen", () => {
     await dom.click("research-run");
     await dom.flush();
     expect(runCalls).toBe(1);
-    expect(dom.find("research-activity").textContent).toContain("The selected sources are being investigated");
-    expect(dom.find("research-activity").textContent).toContain("A Confluence page is being read");
+    expect(dom.find("research-activity").textContent).not.toContain("The selected sources are being investigated");
+    expect(dom.find("research-activity").textContent).toContain("is being read");
+    expect(dom.find("research-activity").textContent).toContain("loaded for evidence-backed statements");
     expect(dom.find("research-streaming-turn").querySelectorAll('[data-testid="research-active-kite"]')).toHaveLength(1);
     expect(dom.find("research-streaming-turn").querySelectorAll("details")).toHaveLength(0);
 
@@ -695,6 +699,7 @@ describe("portable Research screen", () => {
           inputKeys: ["query"],
           queryKeys: ["text"],
           itemCount: 10,
+          itemLabels: ["Confluence 1001: Design", "Confluence 1002: Delivery notes"],
           complete: false,
           termination: "item-limit",
           resultBytes: 2048,
@@ -702,8 +707,19 @@ describe("portable Research screen", () => {
           durationMs: 42,
         });
         options?.onEvent?.({
-          kind: "budget",
+          kind: "capability",
           seq: 5,
+          at: "2026-07-31T12:00:00.000Z",
+          callId: "research.candidate.rank:1",
+          toolId: "research.candidate.rank",
+          inputKind: "ranking",
+          status: "completed",
+          itemCount: 1,
+          itemLabels: ["Confluence 1001: Design"],
+        });
+        options?.onEvent?.({
+          kind: "budget",
+          seq: 6,
           at: "2026-07-31T12:00:00.000Z",
           metric: "capability_calls",
           consumed: 1,
@@ -711,7 +727,7 @@ describe("portable Research screen", () => {
         });
         options?.onEvent?.({
           kind: "budget",
-          seq: 6,
+          seq: 7,
           at: "2026-07-31T12:00:00.000Z",
           metric: "tokens",
           consumed: 12_500,
@@ -719,7 +735,7 @@ describe("portable Research screen", () => {
         });
         options?.onEvent?.({
           kind: "budget",
-          seq: 7,
+          seq: 8,
           at: "2026-07-31T12:00:00.000Z",
           metric: "cost_micros",
           consumed: 250_000,
@@ -727,7 +743,7 @@ describe("portable Research screen", () => {
         });
         options?.onEvent?.({
           kind: "budget",
-          seq: 8,
+          seq: 9,
           at: "2026-07-31T12:00:00.000Z",
           metric: "duration_ms",
           consumed: 42_000,
@@ -793,7 +809,8 @@ describe("portable Research screen", () => {
     expect(dom.find("research-chat-answer").textContent).toContain(
       "The page explicitly links the issue."
     );
-    expect(dom.find("research-activity").textContent).toContain("Die Confluence-Suche ergab 10 Treffer.");
+    expect(dom.find("research-activity").textContent).toContain("Gefunden: Confluence 1001: Design");
+    expect(dom.find("research-activity").textContent).toContain("Für das detaillierte Lesen ausgewählt: Confluence 1001: Design");
     expect(dom.find("research-activity").textContent).not.toContain("research-task:1");
     expect(dom.find("research-activity").textContent).not.toContain("capability_calls");
     expect(dom.find("research-activity").textContent).not.toContain("2048");
@@ -804,9 +821,12 @@ describe("portable Research screen", () => {
     );
     await dom.click("research-run");
     await dom.flush();
-    expect(observed[1]!.scopeSeeds?.some(
-      (seed) => seed.binding.source === "current_context",
+    expect(preflightInputs[1]!.scopeSeeds?.some(
+      (seed) => seed.binding.source === "current_context" && seed.binding.entityKind === "page",
     )).toBe(false);
+    expect(preflightInputs[1]!.scopeSeeds?.some(
+      (seed) => seed.binding.source === "current_context" && seed.binding.entityKind === "space",
+    )).toBe(true);
     expect(dom.html()).not.toContain("<script");
     expect((globalThis as Record<string, unknown>).chrome).toBeUndefined();
   });
@@ -849,6 +869,8 @@ describe("portable Research screen", () => {
     expect({ scopeCalls, runCalls }).toEqual({ scopeCalls: 0, runCalls: 0 });
     expect(dom.find("research-error").textContent)
       .toContain("Enter a maximum model cost from $0.01 to $25.00.");
+    expect(dom.find("research-error-diagnostics").textContent)
+      .toContain("The run stopped before a validated answer could be published.");
 
     await dom.setValue("research-max-cost-usd", "2");
     await dom.setValue("research-max-run-minutes", "11");
@@ -898,6 +920,8 @@ describe("portable Research screen", () => {
     await dom.click("research-run");
     await dom.flush();
     expect((dom.find("research-pause") as HTMLButtonElement).disabled).toBe(false);
+    expect(dom.find("research-run").getAttribute("aria-label")).toBe("Stop run");
+    expect(dom.find("research-run").className).toContain("bg-destructive");
 
     await dom.click("research-pause");
     expect(pauseCalls).toBe(1);
@@ -905,6 +929,40 @@ describe("portable Research screen", () => {
       "Pause requested — finishing the current retrieval wave.",
     );
     expect((dom.find("research-pause") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("stops an active chat run from the composer", async () => {
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (_request, options) => new Promise<ResearchReportV1>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+      }),
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-question", "Summarize the attached page.");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(dom.find("research-action-status").textContent).toContain("Research was stopped.");
+    expect(dom.maybeFind("research-error")).toBeNull();
   });
 
   it("treats a durable paused result as resumable status rather than an error", async () => {
@@ -1045,8 +1103,9 @@ describe("portable Research screen", () => {
     await dom.flush();
 
     expect(resumed).toEqual(["research-session:resume"]);
-    expect(dom.find("research-activity").textContent)
-      .toContain("The selected sources are being investigated");
+    expect(dom.find("research-activity").textContent).not.toContain(
+      "The selected sources are being investigated",
+    );
     expect(dom.find("research-chat-answer").textContent)
       .toContain("The page explicitly links the issue.");
   });
@@ -1766,6 +1825,7 @@ describe("portable Research screen", () => {
   it("does not turn a normal chat question into a deep-research clarification", async () => {
     let preparedClarifications = 0;
     let runs = 0;
+    let submitted: ResearchRequestV1 | undefined;
     const port: ResearchPort = {
       hasApiKey: async () => true,
       setApiKey: async () => undefined,
@@ -1781,8 +1841,20 @@ describe("portable Research screen", () => {
         preparedClarifications += 1;
         throw new Error("Chat mode must not prepare a deep-research clarification.");
       },
-      run: async () => {
+      run: async (request, options) => {
         runs += 1;
+        submitted = request;
+        options?.onEvent?.({
+          kind: "capability",
+          seq: 1,
+          at: "2026-08-03T12:00:00.000Z",
+          callId: "wiki.search:1",
+          toolId: "wiki.search",
+          inputKind: "search",
+          status: "completed",
+          itemCount: 1,
+          itemLabels: ["Confluence 1001: Design"],
+        });
         return report;
       },
       copyMarkdown: async () => undefined,
@@ -1796,13 +1868,19 @@ describe("portable Research screen", () => {
     await dom.toggle("research-disclosure");
     await dom.setValue(
       "copilot-chat-textarea",
-      "How is the current Jira work in DEMO related to Confluence space KB?",
+      "What is the attached page about?",
     );
     await dom.click("research-run");
     await dom.flush();
 
     expect({ preparedClarifications, runs }).toEqual({ preparedClarifications: 0, runs: 1 });
+    expect(submitted?.exactContextProducts).toEqual(["confluence"]);
+    expect(submitted?.scope.confluenceSpaceKeys).toEqual(["KB"]);
     expect(dom.maybeFind("research-clarification-reviews")).toBeNull();
+    expect(dom.find("research-activity").textContent).toContain(
+      "The page ID was taken directly from the attached context; no Confluence search was run.",
+    );
+    expect(dom.find("research-activity").textContent).not.toContain("Confluence search returned");
     expect(dom.find("research-chat-answer").textContent).toContain(
       "The page explicitly links the issue.",
     );

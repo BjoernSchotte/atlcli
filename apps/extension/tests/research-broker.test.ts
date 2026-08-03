@@ -532,6 +532,121 @@ describe("bounded research capability broker", () => {
     });
   });
 
+  it("admits only exact Jira keys observed in a retrieved bound page", async () => {
+    const exactPageRequest = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Summarize the approved exact page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: ["KB"],
+      },
+      scopeSeeds: [
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:current:confluence:KB",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "space",
+            entityRef: "research-scope-entity:confluence-space-kb",
+            key: "KB",
+            name: "Knowledge base",
+            source: "current_context",
+            authority: "approved",
+          },
+          precedence: 300,
+        },
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:current:confluence:2002",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "page",
+            entityRef: "research-scope-entity:confluence-page-2002",
+            key: "2002",
+            name: "Bound implementation note",
+            source: "current_context",
+            authority: "approved",
+          },
+          precedence: 300,
+        },
+      ],
+      exactContextProducts: ["confluence"],
+      limits: { maxDetailItemsPerProduct: 2 },
+      wikiProvider: "rest",
+    });
+    const providers = fakeProviders();
+    let jiraProjectSearches = 0;
+    let wikiSpaceSearches = 0;
+    providers.wiki.searchPage = async () => {
+      wikiSpaceSearches += 1;
+      throw new Error("an exact page must not search its parent space");
+    };
+    providers.wiki.getPage = async ({ contentId }) => ({
+      contentId,
+      spaceKey: "KB",
+      title: "Bound implementation note",
+      content: {
+        text: "The next implementation step is tracked by DEMO-7.",
+        linkTargets: [],
+        truncated: false,
+        inputBytes: 51,
+      },
+    });
+    providers.jira.searchPage = async () => {
+      jiraProjectSearches += 1;
+      throw new Error("an observed exact Jira key must not search a project");
+    };
+    providers.jira.getIssue = async ({ issueKey }) => ({
+      issueKey,
+      projectKey: "UNSCOPED",
+      title: "Observed exact work item",
+      content: {
+        text: "The work item implements the referenced step.",
+        linkTargets: [],
+        truncated: false,
+        inputBytes: 47,
+      },
+    });
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(exactPageRequest, providers, {
+      createEntityId: () => `observed-entity-${++entityId}`,
+    });
+
+    const wiki = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+    await broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: wiki.items[0]!.entityRef,
+    });
+
+    const jira = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    expect(jira.items).toHaveLength(1);
+    expect(jira.items[0]).toMatchObject({ issueKey: "DEMO-7" });
+    await admitRankedCandidates(broker, "jira", jira.items);
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: jira.items[0]!.entityRef,
+    });
+
+    expect({ jiraProjectSearches, wikiSpaceSearches }).toEqual({
+      jiraProjectSearches: 0,
+      wikiSpaceSearches: 0,
+    });
+    expect(broker.detailEvidenceLedger().map((entry) => entry.source.id)).toEqual([
+      "wiki:2002",
+      "jira:DEMO-7",
+    ]);
+  });
+
   it("admits one host-preauthorized exact link without a parent-space search", async () => {
     const exactRequest = normalizeResearchRequestV1({
       schema: RESEARCH_REQUEST_SCHEMA_V1,

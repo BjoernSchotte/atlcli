@@ -157,6 +157,28 @@ describe("issue-138 research request contract", () => {
     })).toThrow("precedence");
   });
 
+  it("normalizes the exact-context discovery policy without removing its validating scope", () => {
+    const input = {
+      question: "Summarize the attached page",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: ["KB"],
+      },
+      exactContextProducts: ["confluence", "confluence"],
+      limits: {},
+      wikiProvider: "rest",
+    };
+
+    const normalized = normalizeResearchRequestV1(input);
+    expect(normalized.exactContextProducts).toEqual(["confluence"]);
+    expect(normalized.scope.confluenceSpaceKeys).toEqual(["KB"]);
+    expect(() => normalizeResearchRequestV1({
+      ...input,
+      exactContextProducts: ["web"],
+    })).toThrow("Exact context product is invalid");
+  });
+
   it("clamps every public resource budget", () => {
     expect(
       normalizeResearchLimitsV1({

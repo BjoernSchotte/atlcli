@@ -73,6 +73,7 @@ export interface ResearchPtcDiagnosticV1 {
   outcome: "started" | "success" | "error";
   durationMs?: number;
   itemCount?: number;
+  itemLabels?: string[];
   complete?: boolean;
   termination?: string;
   resultBytes?: number;
@@ -121,6 +122,7 @@ export function createResearchPtcTools(
   options: ResearchPtcToolOptions = {}
 ): DynamicStructuredTool[] {
   let callSequence = 0;
+  const labelByEntityRef = new Map<string, string>();
   const now = options.now ?? Date.now;
   const invoke = async (
     id: ResearchToolId,
@@ -164,6 +166,28 @@ export function createResearchPtcTools(
       });
       const serialized = jsonResult(result);
       await options.onResult?.(id, result, callId);
+      const resultItems = typeof result === "object" && result !== null &&
+        "items" in result && Array.isArray(result.items)
+        ? result.items
+        : [];
+      const itemLabels = resultItems.flatMap((candidate): string[] => {
+        if (!candidate || typeof candidate !== "object") return [];
+        const item = candidate as Record<string, unknown>;
+        const entityRef = typeof item.entityRef === "string" ? item.entityRef : undefined;
+        const remembered = entityRef ? labelByEntityRef.get(entityRef) : undefined;
+        const title = typeof item.title === "string" ? item.title.replace(/\s+/g, " ").trim() : "";
+        const key = typeof item.issueKey === "string"
+          ? item.issueKey
+          : typeof item.contentId === "string"
+            ? `Confluence ${item.contentId}`
+            : typeof item.sourceId === "string"
+              ? item.sourceId
+              : "";
+        const observed = [key, title].filter(Boolean).join(": ").slice(0, 240);
+        const label = remembered || observed;
+        if (entityRef && label) labelByEntityRef.set(entityRef, label);
+        return label ? [label] : [];
+      }).slice(0, 12);
       const page =
         typeof result === "object" && result !== null && "page" in result
           ? result.page
@@ -180,6 +204,7 @@ export function createResearchPtcTools(
         Array.isArray(result.items)
           ? { itemCount: result.items.length }
           : {}),
+        ...(itemLabels.length > 0 ? { itemLabels } : {}),
         ...(typeof page === "object" &&
         page !== null &&
         "complete" in page &&

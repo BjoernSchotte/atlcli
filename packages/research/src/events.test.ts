@@ -39,8 +39,12 @@ describe("research one-shot events", () => {
       toolId: "research.candidate.rank",
       inputKind: "ranking",
       itemCount: 2,
+      itemLabels: ["DEMO-1: Bounded issue", "Confluence 1001: Design"],
       complete: undefined,
     }))).toBe(true);
+    expect(isResearchOneShotEventV1(capabilityEvent({
+      itemLabels: ["x".repeat(241)],
+    }))).toBe(false);
   });
 
   it("rejects unknown capability and input identifiers", () => {

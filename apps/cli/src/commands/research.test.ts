@@ -3270,6 +3270,7 @@ describe("research CLI one-shot contract", () => {
     expect(parsed.report.markdown).toBe(report.markdown);
     expect(harness.stdout.join("")).not.toContain("[research]");
     expect(harness.stderr.join("")).toContain("[research] phase=researching");
+    expect(harness.stderr.join("")).toContain("[research] running — press Ctrl+C to stop");
     expect(harness.stderr.join("")).toContain(
       "subagent=wiki-retrieval task=research-task:1 status=started",
     );

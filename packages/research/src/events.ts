@@ -35,6 +35,11 @@ const tokenArray = (value: unknown, maximumItems = 32): value is string[] =>
   value.length <= maximumItems &&
   value.every((entry) => boundedToken(entry));
 
+const boundedTextArray = (value: unknown, maximumItems = 12): value is string[] =>
+  Array.isArray(value) &&
+  value.length <= maximumItems &&
+  value.every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 240);
+
 /**
  * Validate the body-free, bounded event payload at every CLI/browser realm
  * boundary. Source bodies, prompts, provider payloads, workflow code and
@@ -119,7 +124,7 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
   if (event.kind === "capability") {
     return hasOnlyKeys(event, [
       "kind", "seq", "at", "callId", "toolId", "inputKind", "status",
-      "itemCount", "complete", "termination", "resultBytes", "truncated",
+      "itemCount", "itemLabels", "complete", "termination", "resultBytes", "truncated",
       "durationMs", "errorCode", "inputKeys", "queryKeys",
     ]) &&
       boundedToken(event.callId) &&
@@ -129,6 +134,7 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       ["search", "continuation", "detail", "reference", "ranking"].includes(String(event.inputKind)) &&
       ["started", "completed", "failed"].includes(String(event.status)) &&
       optionalNonNegativeInteger(event.itemCount) &&
+      (event.itemLabels === undefined || boundedTextArray(event.itemLabels)) &&
       (event.complete === undefined || typeof event.complete === "boolean") &&
       (event.termination === undefined || boundedToken(event.termination)) &&
       optionalNonNegativeInteger(event.resultBytes) &&
@@ -279,6 +285,7 @@ export function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): str
       event.inputKeys === undefined ? "" : `input {${event.inputKeys.join(", ")}}`,
       event.queryKeys === undefined ? "" : `query {${event.queryKeys.join(", ")}}`,
       event.itemCount === undefined ? "" : `${event.itemCount} items`,
+      event.itemLabels === undefined ? "" : event.itemLabels.join(", "),
       event.complete === undefined ? "" : `complete ${event.complete}`,
       event.termination ?? "",
       event.resultBytes === undefined ? "" : `${event.resultBytes} bytes`,

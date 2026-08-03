@@ -43,6 +43,7 @@ import {
   createResearchKeyScopeSeedV1,
 } from "@atlcli/research/scope-discovery";
 import {
+  prepareDirectChatRequestV1,
   prepareResearchBriefPreflightV1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
 } from "@atlcli/research";
@@ -143,10 +144,8 @@ type ResearchTimelineStepKind =
   | "jira-read"
   | "ranking"
   | "relationships"
-  | "researching"
   | "checking"
-  | "synthesizing"
-  | "complete";
+  | "synthesizing";
 
 interface ResearchTimelineStep {
   id: string;
@@ -164,18 +163,27 @@ function researchActivityDetailMessages(
       if (event.status !== "completed") return [];
       const count = String(event.itemCount ?? 0);
       if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
+        if (event.itemLabels?.length) {
+          return event.itemLabels.map((label) => t("research.chat.detail.foundItem", { label }));
+        }
         return [t("research.chat.detail.confluenceFound", { count })];
       }
       if (event.toolId === "wiki.page.get") {
         return [t("research.chat.detail.confluenceRead")];
       }
       if (event.toolId === "jira.issue.search" || event.toolId === "jira.project.search") {
+        if (event.itemLabels?.length) {
+          return event.itemLabels.map((label) => t("research.chat.detail.foundItem", { label }));
+        }
         return [t("research.chat.detail.jiraFound", { count })];
       }
       if (event.toolId === "jira.issue.get") {
         return [t("research.chat.detail.jiraRead")];
       }
       if (event.toolId === "research.candidate.rank") {
+        if (event.itemLabels?.length) {
+          return event.itemLabels.map((label) => t("research.chat.detail.selectedItem", { label }));
+        }
         return [t("research.chat.detail.selected", { count })];
       }
       return [];
@@ -198,8 +206,7 @@ function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKi
   if (event.kind === "phase") {
     if (event.phase === "preparing") return "planning";
     if (event.phase === "rendering") return "synthesizing";
-    if (event.phase === "complete") return "complete";
-    return "researching";
+    return null;
   }
   if (event.kind === "brief" || event.kind === "plan") return "planning";
   if (event.kind === "capability") {
@@ -219,15 +226,19 @@ function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKi
     if (roleId.includes("synthesizer")) return "synthesizing";
     if (roleId.includes("reconciler") || roleId.includes("critic")) return "checking";
     if (roleId.includes("relationship") || roleId.includes("join")) return "relationships";
-    return "researching";
+    return null;
   }
   if (event.kind === "reconciliation" || event.kind === "reconciliation_disposition") {
     return "checking";
   }
-  if (event.kind === "retrieval") return "checking";
-  if (event.kind === "artifact") return "complete";
+  // Retrieval summaries enrich the adjacent read/ranking step. Presenting
+  // them as validation created a misleading duplicate “checking” phase.
+  if (event.kind === "retrieval") return null;
+  if (event.kind === "artifact") return null;
   if (event.kind === "decision") {
-    if (event.decisionId === "direct-chat-agent-run") return "thinking";
+    if (event.decisionId === "direct-chat-agent-run") {
+      return event.status === "started" ? "planning" : null;
+    }
     return event.reasonCode.includes("validat") ? "checking" : "planning";
   }
   return null;
@@ -711,28 +722,55 @@ function ResearchStreamingTurn({
   activity,
   progress,
   running,
+  request,
 }: {
   activity: readonly ResearchOneShotEventV1[];
   progress: string;
   running: boolean;
+  request?: ResearchRequestV1 | null;
 }): React.JSX.Element | null {
   const t = useT();
   if (!running && activity.length === 0) return null;
   const steps = researchTimelineSteps(activity, running);
+  const exactPage = request?.exactContextProducts?.includes("confluence")
+    ? request.scopeSeeds?.find((seed) =>
+      seed.binding.source === "current_context" &&
+      seed.binding.product === "confluence" &&
+      seed.binding.entityKind === "page",
+    )?.binding
+    : undefined;
   const label = (kind: ResearchTimelineStepKind): string => {
     switch (kind) {
       case "thinking": return t("research.chat.phase.thinking");
       case "planning": return t("research.chat.phase.planning");
-      case "confluence-search": return t("research.chat.phase.confluenceSearch");
-      case "confluence-read": return t("research.chat.phase.confluenceRead");
+      case "confluence-search": return exactPage
+        ? t("research.chat.phase.confluenceContext")
+        : t("research.chat.phase.confluenceSearch");
+      case "confluence-read": return exactPage
+        ? t("research.chat.phase.confluenceContextRead", { name: exactPage.name })
+        : t("research.chat.phase.confluenceRead");
       case "jira-search": return t("research.chat.phase.jiraSearch");
       case "jira-read": return t("research.chat.phase.jiraRead");
       case "ranking": return t("research.chat.phase.ranking");
       case "relationships": return t("research.chat.phase.relationships");
-      case "researching": return t("research.chat.phase.researching");
       case "checking": return t("research.chat.phase.checking");
       case "synthesizing": return t("research.chat.phase.synthesizing");
-      case "complete": return t("research.chat.phase.complete");
+    }
+  };
+  const description = (kind: ResearchTimelineStepKind): string => {
+    switch (kind) {
+      case "thinking": return t("research.chat.phase.thinking.description");
+      case "planning": return t("research.chat.phase.planning.description");
+      case "confluence-search": return exactPage
+        ? t("research.chat.phase.confluenceContext.description")
+        : t("research.chat.phase.confluenceSearch.description");
+      case "confluence-read": return t("research.chat.phase.confluenceRead.description");
+      case "jira-search": return t("research.chat.phase.jiraSearch.description");
+      case "jira-read": return t("research.chat.phase.jiraRead.description");
+      case "ranking": return t("research.chat.phase.ranking.description");
+      case "relationships": return t("research.chat.phase.relationships.description");
+      case "checking": return t("research.chat.phase.checking.description");
+      case "synthesizing": return t("research.chat.phase.synthesizing.description");
     }
   };
   return (
@@ -744,14 +782,26 @@ function ResearchStreamingTurn({
       <div className="space-y-1" data-testid="research-activity">
         {steps.map((step, index) => {
           const active = running && index === steps.length - 1;
-          const details = researchActivityDetailMessages(step.events, t);
+          const details = exactPage && step.kind === "confluence-search"
+            ? [t("research.chat.detail.confluenceContextSelected")]
+            : researchActivityDetailMessages(step.events, t);
+          if (step.kind === "planning") {
+            details.push(exactPage
+              ? t("research.chat.detail.planExactContext", { name: exactPage.name })
+              : t("research.chat.detail.planScopedDiscovery"));
+          }
           const summary = (
             <span className={cn(
               "flex min-h-9 items-center gap-2.5 rounded-lg px-2 py-1.5",
               active ? "font-medium text-foreground" : "text-muted-foreground",
             )}>
               {active ? <KiteActivityMark /> : <span className="size-5 shrink-0" aria-hidden="true" />}
-              <span className="min-w-0 flex-1">{label(step.kind)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block">{label(step.kind)}</span>
+                <span className="mt-0.5 block text-xs font-normal leading-4 text-muted-foreground">
+                  {description(step.kind)}
+                </span>
+              </span>
               {details.length > 0 && (
                 <ChevronRight
                   className="size-4 shrink-0 transition-transform group-open:rotate-90"
@@ -1159,8 +1209,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           question: requestedQuestion,
           jiraProjects,
           confluenceSpaces,
-          activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
-          activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
+          activeSpaceKey: site.activeSpaceKey,
+          activeProjectKey: site.activeProjectKey,
           activeEntity: includeCurrentContext ? site.activeEntity : undefined,
         });
         return normalizeResearchRequestV1({
@@ -1228,7 +1278,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         setProgress("");
         return true;
       }
-      const request = scopeOutcome.request;
+      const request = interactionMode === "chat"
+        ? prepareDirectChatRequestV1(scopeOutcome.request)
+        : scopeOutcome.request;
       setSubmittedRequest(structuredClone(request));
       if (interactionMode === "deep") {
         const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
@@ -1307,6 +1359,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       return true;
     } catch (value) {
       if (expectedDirectSteeringAbort.current) {
+        setProgress("");
+      } else if (value instanceof ResearchContractError && value.code === "cancelled") {
+        setActionStatus(t("research.stopped"));
         setProgress("");
       } else if (value instanceof ResearchContractError &&
         (value.code === "paused" || value.code === "scope-approval-required")) {
@@ -2005,8 +2060,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         question,
         jiraProjects,
         confluenceSpaces,
-        activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
-      activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
+        activeSpaceKey: site.activeSpaceKey,
+        activeProjectKey: site.activeProjectKey,
       activeEntity: includeCurrentContext ? site.activeEntity : undefined,
     })
     : null;
@@ -2038,6 +2093,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   function startNewConversation(): void {
     if (running) return;
+    selectInteractionMode("chat");
     setQuestion("");
     setChatTurns([]);
     setQueuedChatMessages([]);
@@ -2113,8 +2169,14 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       <Button
         {...props}
         size="icon"
-        className="size-9 shrink-0 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
-        aria-label={running ? t("research.pause") : t("research.run")}
+        className={cn(
+          "size-9 shrink-0 rounded-lg text-primary-foreground disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
+          running
+            ? "bg-destructive hover:bg-destructive/90"
+            : "bg-primary hover:bg-primary/90",
+        )}
+        aria-label={running ? t("research.stop") : t("research.run")}
+        title={running ? t("research.stop") : t("research.run")}
         data-testid="research-run"
       >
         {children ?? (running
@@ -2392,11 +2454,31 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                 )}
               </div>
             ))}
-            <ResearchStreamingTurn activity={activity} progress={progress} running={running} />
+            <ResearchStreamingTurn
+              activity={activity}
+              progress={progress}
+              running={running}
+              request={submittedRequest}
+            />
             {error && (
               <Alert tone="danger" role="alert" data-testid="research-error">
                 <AlertTitle>{t("research.error")}</AlertTitle>
                 <p className="m-0 mt-1">{error}</p>
+                <details className="mt-3" data-testid="research-error-diagnostics">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    {t("research.chat.errorDiagnostics")}
+                  </summary>
+                  <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                    <dt className="text-muted-foreground">{t("research.chat.errorDiagnostics.mode")}</dt>
+                    <dd className="m-0">{interactionMode === "chat"
+                      ? t("research.chat.mode.chat")
+                      : t("research.chat.mode.deep")}</dd>
+                    <dt className="text-muted-foreground">{t("research.chat.errorDiagnostics.context")}</dt>
+                    <dd className="m-0 break-words">{currentContextLabel ?? t("research.chat.errorDiagnostics.noContext")}</dd>
+                    <dt className="text-muted-foreground">{t("research.chat.errorDiagnostics.result")}</dt>
+                    <dd className="m-0">{t("research.chat.errorDiagnostics.noReport")}</dd>
+                  </dl>
+                </details>
               </Alert>
             )}
             {report && (
@@ -2491,7 +2573,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                     className={cn(
                       "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
                       interactionMode === "chat"
-                        ? "bg-background text-foreground"
+                        ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                     aria-pressed={interactionMode === "chat"}
@@ -2506,7 +2588,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                     className={cn(
                       "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
                       interactionMode === "deep"
-                        ? "bg-background text-foreground"
+                        ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                     aria-pressed={interactionMode === "deep"}
@@ -2521,8 +2603,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   <ComposerSendButton
                     disabled={running ? false : question.trim().length === 0}
                     onClick={() => {
-                      if (running && question.trim().length === 0) {
-                        void requestPause();
+                      if (running) {
+                        abortRef.current?.abort(new ResearchContractError("cancelled", t("research.stopped")));
                         return;
                       }
                       const value = question;
@@ -2711,13 +2793,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <FieldHelp>{t("research.maxCost.help")}</FieldHelp>
           <FieldHelp>{t("research.maxRuntime.help")}</FieldHelp>
           <FieldHelp>{t("research.keys.help")}</FieldHelp>
-          {(site?.activeProjectKey || site?.activeSpaceKey) && (
+          {site?.activeEntity && (
             <CheckboxField
               checked={includeCurrentContext}
               onChange={(event) => setIncludeCurrentContext(event.target.checked)}
               disabled={running}
               label={t("research.currentContext", {
-                context: site.activeProjectKey ?? site.activeSpaceKey ?? "",
+                context: site.activeEntity.name,
               })}
               data-testid="research-current-context"
             />

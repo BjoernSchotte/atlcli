@@ -9,6 +9,7 @@ import {
   createRestScopeCatalogProviders,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
+  prepareDirectChatRequestV1,
   prepareResearchBriefPreflightV1,
   researchPolicyFromBriefV1,
   researchRequestFromBriefV1,
@@ -61,7 +62,9 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         if (!("request" in message)) {
           throw new ResearchContractError("invalid-request", "A direct chat run requires a request.");
         }
-        const request = normalizeResearchRequestV1(message.request);
+        const request = prepareDirectChatRequestV1(
+          normalizeResearchRequestV1(message.request),
+        );
         const policy = normalizeResearchOneShotPolicyV1(message.policy);
         const profile: Profile = {
           name: "chat-session",

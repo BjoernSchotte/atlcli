@@ -244,6 +244,12 @@ export interface ResearchRequestV1 {
   reportLanguage?: ResearchReportLanguageV1;
   /** Ordered host-originated scope provenance; omitted by legacy V1 callers. */
   scopeSeeds?: ResearchScopeSeedV1[];
+  /**
+   * Products whose attached exact entity replaces broad discovery for this
+   * conversational turn. The enclosing project/space remains in the signed
+   * scope so detail evidence can still be validated against its real source.
+   */
+  exactContextProducts?: ResearchProduct[];
 }
 
 export interface ResearchSourceReferenceV1 {
@@ -475,6 +481,8 @@ export type ResearchEventV1 =
       inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
       status: string;
       itemCount?: number;
+      /** Bounded source labels safe for user-facing live activity. */
+      itemLabels?: string[];
       complete?: boolean;
       termination?: string;
       resultBytes?: number;
@@ -1179,6 +1187,18 @@ export function normalizeResearchRequestV1(value: unknown): ResearchRequestV1 {
   }
   const scope = normalizeResearchScopeV1(request.scope);
   const scopeSeeds = normalizeResearchScopeSeedsV1(request.scopeSeeds, scope);
+  let exactContextProducts: ResearchProduct[] | undefined;
+  if (request.exactContextProducts !== undefined) {
+    if (!Array.isArray(request.exactContextProducts)) {
+      throw new ResearchContractError("invalid-request", "Exact context products must be a list.");
+    }
+    exactContextProducts = [...new Set(request.exactContextProducts.map((product) => {
+      if (product !== "jira" && product !== "confluence") {
+        throw new ResearchContractError("invalid-request", "Exact context product is invalid.");
+      }
+      return product as ResearchProduct;
+    }))].sort();
+  }
   return {
     schema: RESEARCH_REQUEST_SCHEMA_V1,
     question,
@@ -1189,5 +1209,6 @@ export function normalizeResearchRequestV1(value: unknown): ResearchRequestV1 {
       ? {}
       : { reportLanguage: request.reportLanguage as ResearchReportLanguageV1 }),
     ...(scopeSeeds ? { scopeSeeds } : {}),
+    ...(exactContextProducts?.length ? { exactContextProducts } : {}),
   };
 }

@@ -1,4 +1,5 @@
 import {
+  RESEARCH_SCOPE_BINDING_SCHEMA_V1,
   RESEARCH_TOOL_IDS,
   ResearchContractError,
   type ResearchProduct,
@@ -198,6 +199,32 @@ function cleanOptionalText(value: string | undefined, maximum: number): string |
   return cleaned || undefined;
 }
 
+const OBSERVED_JIRA_KEY_PATTERN_V1 = /\b[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}\b/g;
+
+function observedJiraKeysFromWikiDetail(
+  content: BoundedContentProjectionV1,
+  tenantOrigin: string,
+  maximum: number,
+): string[] {
+  const keys = new Set<string>();
+  for (const match of content.text.matchAll(OBSERVED_JIRA_KEY_PATTERN_V1)) {
+    keys.add(match[0]);
+    if (keys.size >= maximum) return [...keys];
+  }
+  for (const target of content.linkTargets) {
+    try {
+      const url = new URL(target);
+      if (url.origin !== tenantOrigin) continue;
+      const match = url.pathname.match(/(?:^|\/)(?:browse\/)?([A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18})(?:\/|$)/);
+      if (match?.[1]) keys.add(match[1]);
+      if (keys.size >= maximum) break;
+    } catch {
+      // Invalid projected links are ignored; they never become capabilities.
+    }
+  }
+  return [...keys];
+}
+
 function publicSource(
   source: ResearchSourceReferenceV1
 ): Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt"> {
@@ -324,6 +351,33 @@ export class ResearchCapabilityBroker {
       throw new ResearchContractError("invalid-request", "Approved exact research scope binding is duplicated.");
     }
     this.#exactEntityBindings.set(key, exact);
+  }
+
+  #registerObservedJiraReferences(content: BoundedContentProjectionV1): void {
+    const keys = observedJiraKeysFromWikiDetail(
+      content,
+      this.#request.scope.siteOrigin,
+      Math.min(this.#request.limits.maxItemsPerProduct, 20),
+    );
+    for (const issueKey of keys) {
+      const exactKey = `jira:${issueKey}`;
+      if (this.#exactEntityBindings.has(exactKey)) continue;
+      const binding: ResearchScopeBindingV1 = {
+        schema: RESEARCH_SCOPE_BINDING_SCHEMA_V1,
+        id: `scope-binding:observed-link:jira:${issueKey}`,
+        tenantOrigin: this.#request.scope.siteOrigin,
+        product: "jira",
+        entityKind: "issue",
+        entityRef: `research-scope-entity:observed-jira-${issueKey}`,
+        key: issueKey,
+        name: issueKey,
+        source: "exact_link",
+        authority: "approved",
+      };
+      this.#scopeBindings.push(binding);
+      this.#registerExactEntityBinding(binding);
+      this.#exactSearchEmitted.delete("jira");
+    }
   }
 
   get signal(): AbortSignal {
@@ -666,7 +720,10 @@ export class ResearchCapabilityBroker {
     this.#searchAttempts.jira += 1;
     this.budget.beginSearchPage("jira");
     const exact = providerCursor ? [] : this.#exactJiraSummaries();
-    if (this.#request.scope.jiraProjectKeys.length === 0) {
+    if (
+      this.#request.scope.jiraProjectKeys.length === 0 ||
+      (this.#request.exactContextProducts?.includes("jira") === true && exact.length > 0)
+    ) {
       const remaining = this.budget.remainingItems("jira");
       const items = exact.slice(0, remaining);
       this.budget.addItems("jira", items.length);
@@ -734,7 +791,10 @@ export class ResearchCapabilityBroker {
     this.#searchAttempts.confluence += 1;
     this.budget.beginSearchPage("confluence");
     const exact = providerCursor ? [] : this.#exactWikiSummaries();
-    if (this.#request.scope.confluenceSpaceKeys.length === 0) {
+    if (
+      this.#request.scope.confluenceSpaceKeys.length === 0 ||
+      (this.#request.exactContextProducts?.includes("confluence") === true && exact.length > 0)
+    ) {
       const remaining = this.budget.remainingItems("confluence");
       const items = exact.slice(0, remaining);
       this.budget.addItems("confluence", items.length);
@@ -1032,6 +1092,7 @@ export class ResearchCapabilityBroker {
     if (admission.retrieval.sourceId !== source.id) {
       throw new ResearchContractError("provider-error", "Confluence ranked candidate does not match its detail source.");
     }
+    this.#registerObservedJiraReferences(detail.content);
     await this.#recordDetailEvidence(source, detail.content, admission.retrieval);
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].output,

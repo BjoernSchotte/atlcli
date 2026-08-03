@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 54" fill="none" role="img" aria-labelledby="title desc">
   <title id="title">Kiteweave icon</title>
-  <desc id="desc">A white Kiteweave K on a rounded navy tile.</desc>
-  <rect width="24" height="24" rx="6" fill="#172B4D"/>
-  <path fill="#FFF" d="M7 5.5h2.5v5.2l4.6-5.2h3.1l-5 5.5 5.4 7.5h-3.1l-4-5.6-1 1.1v4.5H7z"/>
+  <desc id="desc">A blue and green Kiteweave kite.</desc>
+  <path fill="#0C66E4" d="M24 3 6 24l18 20V3Z"/>
+  <path fill="#00875A" d="m24 3 18 21-18 20V3Z"/>
+  <path fill="none" stroke="#FFF" stroke-linecap="round" stroke-width="2" d="M6 24h36M24 44c5 3 1 6 5 8"/>
 </svg>

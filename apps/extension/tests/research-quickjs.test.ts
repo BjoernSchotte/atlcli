@@ -110,8 +110,8 @@ describe("QuickJS research sandbox", () => {
       ) as { items: Array<{ issueKey: string }> };
       expect(continuation.items[0]?.issueKey).toBe("DEMO-2");
       expect(diagnostics.filter((diagnostic) => diagnostic.outcome === "success")).toEqual([
-        expect.objectContaining({ inputKind: "search", itemCount: 1, resultBytes: expect.any(Number) }),
-        expect.objectContaining({ inputKind: "continuation", itemCount: 1, resultBytes: expect.any(Number) }),
+        expect.objectContaining({ inputKind: "search", itemCount: 1, itemLabels: ["DEMO-1: Bounded issue"], resultBytes: expect.any(Number) }),
+        expect.objectContaining({ inputKind: "continuation", itemCount: 1, itemLabels: ["DEMO-2: Second bounded issue"], resultBytes: expect.any(Number) }),
       ]);
       expect(diagnostics.filter((diagnostic) => diagnostic.outcome === "started")).toEqual([
         expect.objectContaining({ inputKind: "search", inputKeys: ["query"], queryKeys: [] }),

@@ -214,7 +214,7 @@ describe("research agent draft finalization", () => {
     ]);
   });
 
-  it("drops a relationship when either endpoint was not read in full", () => {
+  it("drops a relationship when either endpoint has no readable detail", () => {
     const report = finalizeResearchAgentDraftV1({
       draft: draft(),
       request,
@@ -226,10 +226,10 @@ describe("research agent draft finalization", () => {
     expect(report.relationships).toEqual([]);
     expect(report.findings).toEqual([]);
     expect(report.sources).toEqual([]);
-    expect(report.executiveSummary).toContain("No non-empty, non-truncated");
+    expect(report.executiveSummary).toContain("No non-empty detail evidence");
   });
 
-  it("excludes truncated evidence from published claims", () => {
+  it("keeps positive excerpt-backed findings from truncated evidence with an explicit boundary", () => {
     const report = finalizeResearchAgentDraftV1({
       draft: draft(),
       request,
@@ -248,17 +248,18 @@ describe("research agent draft finalization", () => {
       run: { ...run, complete: false },
     });
 
-    expect(report.findings).toEqual([]);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.sourceIds).toEqual(["wiki:1001"]);
     expect(report.relationships).toEqual([]);
-    expect(report.sources).toEqual([]);
-    expect(report.executiveSummary).toContain("No non-empty, non-truncated");
+    expect(report.sources.map((source) => source.id)).toEqual(["wiki:1001"]);
+    expect(report.executiveSummary).toContain("The implementation is documented");
     expect(report.limitations.at(-1)).toStartWith(
-      "1 truncated detail projection was excluded from published findings."
+      "1 truncated detail projection supports only positive statements visible in the captured excerpt"
     );
     expect(report.limitations.at(-1)).toContain(
       "Candidate screening reached a configured search limit"
     );
-    expect(report.markdown).not.toContain("captured excerpt");
+    expect(report.markdown).toContain("captured excerpt");
   });
 
   it("keeps empty detail responses only as linked limitations", () => {

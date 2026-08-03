@@ -2409,6 +2409,7 @@ async function runEstablishedResearchCliSession(
         `[research] session=${input.sessionId} workspace=${root}\n`,
       );
     }
+    input.dependencies.writeStderr("[research] running — press Ctrl+C to stop\n");
     const report = await input.dependencies.runAgent({
           apiKey: input.apiKey,
           profile: input.profile,

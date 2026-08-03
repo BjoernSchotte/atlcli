@@ -20,6 +20,7 @@ import {
   RESEARCH_REPORT_ARTIFACT_PATH_V1,
   ResearchContractError,
   type ResearchOneShotEventV1,
+  type ResearchProduct,
   type ResearchProgressV1,
   type ResearchReport,
   type ResearchRequestV1,
@@ -28,6 +29,10 @@ import {
   type ResearchRunUsageV1,
   type ResearchSourceReferenceV1,
 } from "./contracts.js";
+import {
+  directChatHasExactCurrentPageV1,
+  directChatProductsV1,
+} from "./direct-chat.js";
 import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
@@ -428,11 +433,47 @@ export function researchRecursionLimitV1(graph?: ResearchGraphV1): number {
 
 export function buildLegacyResearchSystemPromptV1(
   maxDetailItemsPerProduct: number,
+  products: readonly ResearchProduct[] = ["jira", "confluence"],
+  followObservedJiraReferences = false,
 ): string {
   const detailLimit = Math.max(
     1,
     Math.min(Math.trunc(maxDetailItemsPerProduct), 50),
   );
+  const admittedProducts = [...new Set(products)];
+  const jira = admittedProducts.includes("jira");
+  const wiki = admittedProducts.includes("confluence");
+  if (!jira && !wiki) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Direct chat requires at least one bound Atlassian product.",
+    );
+  }
+  const acquisition = jira && wiki
+    ? `const [jira, wiki] = await Promise.all([
+  collect(tools.jiraIssueSearch),
+  collect(tools.wikiSearch)
+]);
+const [jiraDetails, wikiDetails] = await Promise.all([
+  rankedDetails("jira", jira.items, tools.jiraIssueGet),
+  rankedDetails("confluence", wiki.items, tools.wikiPageGet)
+]);
+({ jira, wiki, jiraDetails, wikiDetails });`
+    : jira
+      ? `const jira = await collect(tools.jiraIssueSearch);
+const jiraDetails = await rankedDetails("jira", jira.items, tools.jiraIssueGet);
+({ jira, jiraDetails });`
+      : `const wiki = await collect(tools.wikiSearch);
+const wikiDetails = await rankedDetails("confluence", wiki.items, tools.wikiPageGet);
+${followObservedJiraReferences ? `const observedWikiDetails = JSON.stringify(wikiDetails);
+const hasObservedJiraReference = /(?:^|[^A-Z0-9_])[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}(?:$|[^A-Z0-9_])/.test(observedWikiDetails);
+let jira = { items: [], page: { complete: true, termination: "index-exhausted" } };
+let jiraDetails = [];
+if (hasObservedJiraReference) {
+  jira = await collect(tools.jiraIssueSearch);
+  jiraDetails = await rankedDetails("jira", jira.items, tools.jiraIssueGet);
+}
+({ wiki, wikiDetails, jira, jiraDetails });` : `({ wiki, wikiDetails });`}`;
   return `You are a read-only Jira and Confluence research agent.
 
 The host already bound the exact Atlassian tenant, Jira project keys, Confluence space keys, date window, pagination and budgets. Never attempt to broaden that scope.
@@ -478,15 +519,7 @@ async function rankedDetails(product, items, read) {
   return Promise.all(ranked.items.slice(0, ${detailLimit}).map((item) =>
     readDetail(read, item)));
 }
-const [jira, wiki] = await Promise.all([
-  collect(tools.jiraIssueSearch),
-  collect(tools.wikiSearch)
-]);
-const [jiraDetails, wikiDetails] = await Promise.all([
-  rankedDetails("jira", jira.items, tools.jiraIssueGet),
-  rankedDetails("confluence", wiki.items, tools.wikiPageGet)
-]);
-({ jira, wiki, jiraDetails, wikiDetails });
+${acquisition}
 
 Only opaque nextCursor values may continue a search. Only opaque entityRef values returned by search may be passed to tools.researchCandidateRank. Only opaque entityRef values returned by that host ranking may request details. Never substitute visible Jira keys, page IDs, URLs, or invented values.
 
@@ -3207,6 +3240,9 @@ async function runResearchAgentWithBindings(
       ...(diagnostic.itemCount === undefined
         ? {}
         : { itemCount: diagnostic.itemCount }),
+      ...(diagnostic.itemLabels === undefined
+        ? {}
+        : { itemLabels: diagnostic.itemLabels }),
       ...(diagnostic.complete === undefined
         ? {}
         : { complete: diagnostic.complete }),
@@ -4904,6 +4940,8 @@ async function runResearchAgentWithBindings(
       dynamicSupervisorSystemPrompt ??
       buildLegacyResearchSystemPromptV1(
         input.request.limits.maxDetailItemsPerProduct,
+        directChatProductsV1(input.request),
+        directChatHasExactCurrentPageV1(input.request),
       ),
     middleware: isDynamic
       ? [
@@ -5044,8 +5082,10 @@ async function runResearchAgentWithBindings(
             executionTimeoutMs: input.request.limits.maxInterpreterMs,
             maxPtcCalls: input.request.limits.maxPtcCalls,
             maxResultChars: Math.min(
-              24_000,
-              input.request.limits.maxReportChars,
+              input.request.limits.maxPtcOutputBytes,
+              directChatHasExactCurrentPageV1(input.request)
+                ? input.request.limits.maxBodyCharsPerItem + 16_000
+                : Math.max(24_000, input.request.limits.maxReportChars),
             ),
             captureConsole: false,
           }),
@@ -5172,16 +5212,12 @@ async function runResearchAgentWithBindings(
     supervisorActive = false;
     broker.signal.throwIfAborted();
     const initialCounts = broker.budget.counts();
-    const selectedProducts = isDynamic
+    const selectedProducts = (isDynamic
       ? selectedSearchProductsV1(acceptedGraph)
-      : undefined;
+      : directChatProductsV1(input.request)) ?? [];
     const completion = broker.completionStatus(selectedProducts);
     const assessedProducts =
-      selectedProducts && selectedProducts.length > 0
-        ? selectedProducts
-        : isDynamic
-          ? []
-          : undefined;
+      selectedProducts.length > 0 ? selectedProducts : [];
     if (
       !retrievalAssessmentRecorded &&
       (assessedProducts === undefined || assessedProducts.length > 0)
