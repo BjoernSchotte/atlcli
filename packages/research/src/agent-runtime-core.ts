@@ -4403,16 +4403,11 @@ async function runResearchAgentWithBindings(
         reasonCode: "supervisor-run-failed",
       });
     }
-    if (fatalWorkflowError instanceof ResearchContractError) {
-      throw fatalWorkflowError;
+    const terminalError = fatalWorkflowError ?? error;
+    if (terminalError instanceof ResearchContractError) {
+      throw terminalError;
     }
-    if (fatalWorkflowError !== undefined) {
-      throw new ResearchContractError(
-        "invalid-report",
-        "A required research task did not return an accepted structured result.",
-      );
-    }
-    const providerStatus = providerHttpStatus(error);
+    const providerStatus = providerHttpStatus(terminalError);
     if (providerStatus === 401 || providerStatus === 403) {
       await durableDispatchJournal?.waitForAuthentication();
       throw new ResearchContractError(
@@ -4425,6 +4420,15 @@ async function runResearchAgentWithBindings(
       throw new ResearchContractError(
         "rate-limited",
         "The Anthropic provider rate-limited this run. Resume the retained research session after the provider retry window.",
+      );
+    }
+    if (fatalWorkflowError !== undefined) {
+      await durableDispatchJournal?.fail();
+      throw new ResearchContractError(
+        "provider-error",
+        providerStatus === undefined
+          ? "The research provider failed while executing a required research task."
+          : `The research provider failed with HTTP ${providerStatus} while executing a required research task.`,
       );
     }
     if (broker.signal.aborted) {

@@ -1268,7 +1268,9 @@ export function createBoundedResearchSubagentMiddleware(
       ...(status === "started" || status === "rejected" ? {} : {
         durationMs: Math.max(0, now() - (startedAtByTaskId.get(diagnostic.taskId) ?? now())),
       }),
-      ...(diagnostic.code ? { errorCode: diagnostic.code } : {}),
+      ...(diagnostic.providerStatus === undefined
+        ? diagnostic.code ? { errorCode: diagnostic.code } : {}
+        : { errorCode: `provider-http-${diagnostic.providerStatus}` }),
     });
   };
   const durableDispatchJournal = options.durableDispatchJournal;

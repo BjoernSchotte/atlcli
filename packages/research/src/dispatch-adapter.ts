@@ -70,6 +70,8 @@ export interface ResearchDispatchDiagnosticV1 {
   taskId?: string;
   status: ResearchDispatchStatusV1;
   code?: ResearchDispatchErrorCodeV1;
+  /** A body-free provider status, when an upstream invocation exposed one. */
+  providerStatus?: number;
   resultBytes?: number;
 }
 
@@ -221,6 +223,14 @@ function timeoutError(maxDurationMs: number): ResearchDispatchError {
     "timeout",
     `Research task dispatch timed out after ${maxDurationMs} ms.`,
   );
+}
+
+function providerHttpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" && Number.isSafeInteger(status) && status >= 400 && status <= 599
+    ? status
+    : undefined;
 }
 
 type InvocationOutcome =
@@ -659,12 +669,19 @@ export function createResearchDispatchInterceptionAdapter(options: {
     }
     if (first.kind === "error") {
       await observeUncommitted("upstream-error", { error: first.error });
+      const code = first.error instanceof ResearchDispatchError
+        ? first.error.code
+        : "subagent-provider-error";
+      const providerStatus = code === "subagent-provider-error"
+        ? providerHttpStatus(first.error)
+        : undefined;
       emit({
         taskId,
         status: "failed",
-        code: first.error instanceof ResearchDispatchError
-          ? first.error.code
-          : "subagent-provider-error",
+        code,
+        ...(providerStatus === undefined
+          ? {}
+          : { providerStatus }),
       });
       throw first.error;
     }
