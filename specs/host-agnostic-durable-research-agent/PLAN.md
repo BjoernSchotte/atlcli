@@ -3770,9 +3770,17 @@ Gate:
       exposes only the prior complete state after a fresh store is constructed;
       removed evidence invalidates the linked factual claim and prevents its
       outline from validating (2026-08-02).
-- [ ] Every factual claim in deterministic tests has valid supporting spans.
-- [ ] Unsupported, unknown, stale, truncated-negative, cross-scope, and
-      cross-tenant claims are rejected.
+- [x] Every factual claim in deterministic tests has valid supporting spans.
+      The V2 packet normalizer fixture asserts every emitted factual claim's
+      persisted span against the host-retained evidence chunks and hashes;
+      claim creation and ledger insertion repeat this validation before either
+      a claim ID or current freshness can be published (2026-08-03).
+- [x] Unsupported, unknown, stale, truncated-negative, cross-scope, and
+      cross-tenant claims are rejected. Exact quote normalization rejects
+      paraphrased, ambiguous, non-durable, and superseded support; the ledger
+      rejects truncated factual support; evidence admission rejects unbound,
+      out-of-scope, and foreign-tenant sources; and V2 finalization rejects
+      unknown or forged support (2026-08-03).
 - [x] Updating or deleting a fixture source invalidates dependent claims and
       changes the report limitation deterministically. The V2 integration
       fixture starts with a span-validated factual claim and validated outline;

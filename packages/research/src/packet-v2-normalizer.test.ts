@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
-import { createResearchEvidenceRecordV1, WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
+import {
+  createResearchEvidenceRecordV1,
+  validateResearchEvidenceSpanV1,
+  WorkspaceResearchEvidenceStoreV1,
+} from "./evidence-store.js";
 import {
   normalizeResearchPacketModelBodyV2,
   normalizeResearchPacketReferenceModelBodyV2,
@@ -141,12 +145,29 @@ describe("V2 research packet normalization", () => {
     expect(JSON.stringify(packet)).not.toContain("\"quote\"");
     expect(JSON.stringify(packet)).not.toContain(firstQuote);
     expect(JSON.stringify(packet)).not.toContain(secondQuote);
-    await expect(claimLedger.list()).resolves.toMatchObject({
+    const admitted = await claimLedger.list();
+    expect(admitted).toMatchObject({
       claims: [
         { freshness: "current", evidenceIds: [first.record.id] },
         { freshness: "current", evidenceIds: [second.record.id] },
       ],
     });
+    const retained = new Map([
+      [first.record.id, first],
+      [second.record.id, second],
+    ]);
+    for (const claim of admitted.claims) {
+      expect(claim.classification).toBe("fact");
+      for (const span of claim.evidenceSpans) {
+        const evidence = retained.get(span.evidenceId);
+        expect(evidence).toBeDefined();
+        await expect(validateResearchEvidenceSpanV1(
+          evidence!.record,
+          evidence!.chunks,
+          span,
+        )).resolves.toEqual(span);
+      }
+    }
   });
 
   test("rejects a non-verbatim model packet before it becomes a canonical packet", async () => {
