@@ -3791,10 +3791,13 @@ Shared:
       parent-space/project search. `strict` rejects it, `ask` pauses it, and
       every whole-project/space proposal still creates a binding/envelope
       revision and approval wait (2026-08-02).
-- [ ] Keep catalog budgets independent of content-search budgets and pass only
-      the bounded top candidates to the supervisor/subagent. Expired,
+- [x] Keep catalog budgets independent of content-search budgets and pass only
+      the bounded top candidates to the supervisor/subagent. The catalog broker
+      now applies a shared catalog-only call and per-call timeout fence across
+      project/space pages and exact-reference resolution, alongside its
+      existing page, candidate, byte, and opaque-cursor caps. Expired,
       permission-lost, archived-disallowed, foreign-tenant, and superseded
-      candidates fail closed at use time.
+      candidates fail closed at use time (2026-08-03).
 - [x] Rank search candidates before detail acquisition and replace the current
       first-N fallback with deterministic question-relevance selection. The
       host accepts only unique opaque refs issued by scoped search, returns

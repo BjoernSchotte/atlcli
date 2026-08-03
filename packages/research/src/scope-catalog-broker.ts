@@ -39,19 +39,25 @@ export interface ResearchScopeCatalogProvidersV1 {
 }
 
 export interface ResearchScopeCatalogBrokerLimitsV1 {
+  /** Provider calls across catalog pages and exact-reference resolution. */
+  maxCalls: number;
   maxPages: number;
   maxCandidates: number;
   maxResultBytes: number;
   maxCursorEntries: number;
   cursorTtlMs: number;
+  /** Per-provider-call ceiling; separate from the run-wide content deadline. */
+  maxCallDurationMs: number;
 }
 
 const DEFAULT_LIMITS: ResearchScopeCatalogBrokerLimitsV1 = {
+  maxCalls: 32,
   maxPages: 10,
   maxCandidates: 100,
   maxResultBytes: 128_000,
   maxCursorEntries: 32,
   cursorTtlMs: 120_000,
+  maxCallDurationMs: 10_000,
 };
 
 interface CursorEntry {
@@ -80,6 +86,7 @@ export class ResearchScopeCatalogBroker {
   readonly #controller = new AbortController();
   readonly #cursors = new Map<string, CursorEntry>();
   #cursorSequence = 0;
+  #calls = 0;
   #pages = 0;
   #candidates = 0;
 
@@ -105,7 +112,9 @@ export class ResearchScopeCatalogBroker {
   async invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1> {
     if (capability === "atlassian.reference.resolve") {
       const input = decodeResearchReferenceResolveIntentV1(value);
-      const candidate = await this.#providers.resolveReference({ ...input, signal: this.signal });
+      const candidate = await this.#invokeProvider((signal) =>
+        this.#providers.resolveReference({ ...input, signal }),
+      );
       if (!candidate) return { schema: "atlcli.ptc/atlassian.reference.resolve.output/v1", unavailable: true };
       assertCandidate(candidate, this.#tenantOrigin, input);
       return { schema: "atlcli.ptc/atlassian.reference.resolve.output/v1", candidate, unavailable: false };
@@ -115,20 +124,20 @@ export class ResearchScopeCatalogBroker {
     this.#pages += 1;
     const providerCursor = input.cursorRef ? this.takeCursor(input.cursorRef, capability) : undefined;
     const page = input.product === "jira"
-      ? await this.#providers.jira.listProjects({
+      ? await this.#invokeProvider((signal) => this.#providers.jira.listProjects({
           query: input.normalizedQuery,
           includeArchived: input.includeArchived,
           providerCursor,
           maxCandidates: Math.min(input.maxCandidates, this.#limits.maxCandidates - this.#candidates),
-          signal: this.signal,
-        })
-      : await this.#providers.confluence.listSpaces({
+          signal,
+        }))
+      : await this.#invokeProvider((signal) => this.#providers.confluence.listSpaces({
           query: input.normalizedQuery,
           includeArchived: input.includeArchived,
           providerCursor,
           maxCandidates: Math.min(input.maxCandidates, this.#limits.maxCandidates - this.#candidates),
-          signal: this.signal,
-        });
+          signal,
+        }));
     const candidates = page.candidates.slice(0, Math.max(0, this.#limits.maxCandidates - this.#candidates));
     for (const candidate of candidates) assertCandidate(candidate, this.#tenantOrigin, input);
     this.#candidates += candidates.length;
@@ -156,6 +165,43 @@ export class ResearchScopeCatalogBroker {
     if (!entry || entry.capability !== capability || entry.expiresAt < Date.now()) invalid("Scope catalog cursor is invalid or expired.");
     this.#cursors.delete(ref);
     return entry.providerCursor;
+  }
+
+  /**
+   * Catalog metadata is intentionally budgeted independently from content
+   * search, but it still needs one run-wide call and per-call time fence. The
+   * local controller lets an expired catalog call fail without cancelling a
+   * later, still-valid catalog request; a host-wide cancellation propagates
+   * through the same signal immediately.
+   */
+  async #invokeProvider<T>(
+    operation: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    if (this.#calls >= this.#limits.maxCalls) {
+      invalid("Scope catalog call budget exhausted.");
+    }
+    this.#calls += 1;
+    const controller = new AbortController();
+    const onHostAbort = (): void => controller.abort(this.signal.reason);
+    if (this.signal.aborted) onHostAbort();
+    else this.signal.addEventListener("abort", onHostAbort, { once: true });
+    const timeout = setTimeout(() => controller.abort(
+      new ResearchContractError("limit-exceeded", "Scope catalog call timed out."),
+    ), this.#limits.maxCallDurationMs);
+    try {
+      const aborted = new Promise<never>((_, reject) => {
+        controller.signal.addEventListener("abort", () => reject(
+          controller.signal.reason ?? new DOMException("Cancelled", "AbortError"),
+        ), { once: true });
+      });
+      return await Promise.race([
+        Promise.resolve().then(() => operation(controller.signal)),
+        aborted,
+      ]);
+    } finally {
+      clearTimeout(timeout);
+      this.signal.removeEventListener("abort", onHostAbort);
+    }
   }
 }
 

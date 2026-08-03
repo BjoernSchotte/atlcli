@@ -102,4 +102,51 @@ describe("scope catalog broker", () => {
       maxCandidates: 25,
     })).rejects.toThrow("schema is unsupported");
   });
+
+  test("bounds catalog calls independently across search and reference resolution", async () => {
+    const host = providers();
+    let referenceCalls = 0;
+    host.resolveReference = async () => {
+      referenceCalls += 1;
+      return undefined;
+    };
+    const broker = new ResearchScopeCatalogBroker({
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      providers: host,
+      limits: { maxCalls: 1 },
+    });
+    await broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 1,
+    });
+    await expect(broker.invoke("atlassian.reference.resolve", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["atlassian.reference.resolve"].input,
+      reference: "https://tenant-a.atlassian.net/browse/ATLCLI",
+      expectedTenantOrigin: "https://tenant-a.atlassian.net",
+      expectedKinds: ["project"],
+    })).rejects.toThrow("Scope catalog call budget exhausted");
+    expect(referenceCalls).toBe(0);
+  });
+
+  test("aborts a catalog provider call at its independent timeout", async () => {
+    const host = providers();
+    host.jira.listProjects = async ({ signal }) => await new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+    const broker = new ResearchScopeCatalogBroker({
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      providers: host,
+      limits: { maxCallDurationMs: 1 },
+    });
+    await expect(broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 1,
+    })).rejects.toThrow("Scope catalog call timed out");
+  });
 });
