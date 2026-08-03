@@ -12,6 +12,7 @@ import {
   reduceResearchGraphV1,
   reviseResearchGraphSelectionV1,
   validateResearchGraphV1,
+  type ResearchGraphCapabilityV1,
   type ResearchGraphProposalV1,
   type ResearchGraphV1,
 } from "./graph.js";
@@ -825,5 +826,55 @@ describe("dynamic research graph composition", () => {
       requiresApproval: true,
     });
     expect(JSON.stringify(diff)).not.toContain("Separate direct links");
+  });
+
+  test("permits only catalog-approved additions and exposes hidden envelope widening", () => {
+    const initialBrief = brief(
+      "Map Jira work to Confluence documentation",
+      ["jira", "confluence"],
+      "off",
+      "analysis",
+    );
+    const catalog = composeResearchGraphV1(initialBrief);
+    const initialIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    const selected = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, initialIds));
+    const revised = reviseResearchGraphSelectionV1(
+      catalog,
+      selected,
+      revisionProposalFor(catalog, selected, [
+        ...initialIds.slice(0, 2),
+        "research-node:cross-product-join",
+        initialIds[2]!,
+      ]),
+    );
+    const approvedDiff = diffResearchPlansV1({
+      fromBrief: initialBrief,
+      fromGraph: selected,
+      toBrief: initialBrief,
+      toGraph: revised,
+    });
+    expect(approvedDiff).toMatchObject({
+      addedRoleIds: ["document-distiller"],
+      exceededApprovalEnvelopeFields: [],
+    });
+
+    const widened = structuredClone(revised);
+    widened.approvalEnvelope.allowedCapabilityIds.push(
+      "jira.issue.comments" as ResearchGraphCapabilityV1,
+    );
+    widened.approvalEnvelope.coverageTargetFingerprint = "fnv1a32:changed";
+    const widenedDiff = diffResearchPlansV1({
+      fromBrief: initialBrief,
+      fromGraph: selected,
+      toBrief: initialBrief,
+      toGraph: widened,
+    });
+    expect(widenedDiff.exceededApprovalEnvelopeFields).toEqual(
+      expect.arrayContaining(["capabilities", "coverage_targets"]),
+    );
   });
 });

@@ -8,6 +8,7 @@ import {
   acceptResearchGraphProposalV1,
   composeResearchGraphV1,
   reviseResearchGraphSelectionV1,
+  type ResearchGraphCapabilityV1,
   type ResearchGraphProposalV1,
 } from "./graph.js";
 import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
@@ -461,6 +462,20 @@ describe("durable host-neutral research session reducer", () => {
       })),
       prune: [],
     });
+    const widened = structuredClone(revised);
+    widened.approvalEnvelope.allowedCapabilityIds.push(
+      "jira.issue.comments" as ResearchGraphCapabilityV1,
+    );
+    const snapshot = structuredClone(current);
+    expect(() => update(current, {
+      kind: "apply_graph_revision",
+      graph: widened,
+      evidenceIds: [],
+      gapIds: [],
+      reason: "coverage_gap",
+    }, "2026-08-01T09:00:05.500Z")).toThrow("exceeds the approved graph envelope");
+    expect(current).toEqual(snapshot);
+
     current = update(current, {
       kind: "apply_graph_revision",
       graph: revised,
@@ -480,8 +495,13 @@ describe("durable host-neutral research session reducer", () => {
         evidenceIds: ["evidence:wave-one"],
         gapIds: ["gap:coverage-one"],
         reason: "coverage_gap",
+        planDiff: expect.objectContaining({
+          addedRoleIds: ["document-distiller"],
+          exceededApprovalEnvelopeFields: [],
+        }),
       }),
     ]);
+
   });
 
   test("accepts a packet atomically with its task and graph node", () => {

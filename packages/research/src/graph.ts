@@ -395,24 +395,61 @@ export function diffResearchPlansV1(input: {
   const coverageTargetFingerprintChanged = input.fromGraph.approvalEnvelope.coverageTargetFingerprint !== input.toGraph.approvalEnvelope.coverageTargetFingerprint;
   const scopeDiscoveryPolicyChanged = fingerprint(input.fromGraph.approvalEnvelope.scopeDiscoveryPolicy) !==
     fingerprint(input.toGraph.approvalEnvelope.scopeDiscoveryPolicy);
-  const reconciliationPolicyChanged = fingerprint(input.fromGraph.reconciliationPolicy) !==
-    fingerprint(input.toGraph.reconciliationPolicy);
   const parallelismDelta = input.toGraph.maxParallelNodes - input.fromGraph.maxParallelNodes;
   const researchWaveLimitDelta = input.toGraph.maxResearchWaves - input.fromGraph.maxResearchWaves;
   const reconciliationWaveLimitDelta = input.toGraph.maxReconciliationWaves - input.fromGraph.maxReconciliationWaves;
   const depthDelta = input.toGraph.approvalEnvelope.maxDepth - input.fromGraph.approvalEnvelope.maxDepth;
+  const allowedRoleIdsAdded = stableAdded(
+    input.fromGraph.approvalEnvelope.allowedRoleIds,
+    input.toGraph.approvalEnvelope.allowedRoleIds,
+  );
+  const allowedCapabilityIdsAdded = stableAdded(
+    input.fromGraph.approvalEnvelope.allowedCapabilityIds,
+    input.toGraph.approvalEnvelope.allowedCapabilityIds,
+  );
   const addedCapabilityIds = stableAdded(fromCapabilities, toCapabilities) as ResearchGraphCapabilityV1[];
   const removedCapabilityIds = stableRemoved(fromCapabilities, toCapabilities) as ResearchGraphCapabilityV1[];
+  const addedRoleIds = stableAdded(fromRoles, toRoles) as ResearchSubagentRoleIdV1[];
+  const unapprovedRoleAdded = addedRoleIds.some((roleId) =>
+    !input.fromGraph.approvalEnvelope.allowedRoleIds.includes(roleId),
+  );
+  const unapprovedCapabilityAdded = addedCapabilityIds.some((capabilityId) =>
+    !input.fromGraph.approvalEnvelope.allowedCapabilityIds.includes(capabilityId),
+  );
+  const effortChanged = input.fromGraph.resolvedEffort !== input.toGraph.resolvedEffort ||
+    input.fromGraph.approvalEnvelope.resolvedEffort !== input.toGraph.approvalEnvelope.resolvedEffort;
+  const reconciliationPolicyChanged = fingerprint(input.fromGraph.reconciliationPolicy) !==
+    fingerprint(input.toGraph.reconciliationPolicy) ||
+    fingerprint(input.fromGraph.approvalEnvelope.reconciliationPolicy) !==
+      fingerprint(input.toGraph.approvalEnvelope.reconciliationPolicy);
+  const budgetExceedsApprovedEnvelope =
+    !budgetWithinCeiling(input.toGraph.totalBudget, input.fromGraph.approvalEnvelope.totalBudgetCeiling);
+  const budgetEnvelopeWidened = hasPositiveBudgetDelta(budgetDelta(
+    input.fromGraph.approvalEnvelope.totalBudgetCeiling,
+    input.toGraph.approvalEnvelope.totalBudgetCeiling,
+  ));
+  const parallelismExceedsApprovedEnvelope =
+    input.toGraph.maxParallelNodes > input.fromGraph.approvalEnvelope.maxParallelNodes;
+  const researchWavesExceedApprovedEnvelope =
+    input.toGraph.maxResearchWaves > input.fromGraph.approvalEnvelope.maxResearchWaves;
+  const reconciliationWavesExceedApprovedEnvelope =
+    input.toGraph.maxReconciliationWaves > input.fromGraph.approvalEnvelope.maxReconciliationWaves;
+  const depthExceedsApprovedEnvelope =
+    input.toGraph.approvalEnvelope.maxDepth > input.fromGraph.approvalEnvelope.maxDepth;
   const exceededApprovalEnvelopeFields = [
     ...(scopeFingerprintChanged ? ["scope"] : []),
     ...(scopeBindingFingerprintChanged ? ["scope_bindings"] : []),
     ...(scopeDiscoveryPolicyChanged ? ["scope_discovery_policy"] : []),
-    ...(addedCapabilityIds.length > 0 ? ["capabilities"] : []),
-    ...(hasPositiveBudgetDelta(budget) ? ["budget"] : []),
-    ...(parallelismDelta > 0 ? ["parallelism"] : []),
-    ...(researchWaveLimitDelta > 0 ? ["research_waves"] : []),
-    ...(reconciliationWaveLimitDelta > 0 ? ["reconciliation_waves"] : []),
-    ...(depthDelta > 0 ? ["depth"] : []),
+    ...(coverageTargetFingerprintChanged ? ["coverage_targets"] : []),
+    ...(effortChanged ? ["effort"] : []),
+    ...(reconciliationPolicyChanged ? ["reconciliation"] : []),
+    ...(allowedRoleIdsAdded.length > 0 || unapprovedRoleAdded ? ["roles"] : []),
+    ...(allowedCapabilityIdsAdded.length > 0 || unapprovedCapabilityAdded ? ["capabilities"] : []),
+    ...(budgetExceedsApprovedEnvelope || budgetEnvelopeWidened ? ["budget"] : []),
+    ...(parallelismExceedsApprovedEnvelope ? ["parallelism"] : []),
+    ...(researchWavesExceedApprovedEnvelope ? ["research_waves"] : []),
+    ...(reconciliationWavesExceedApprovedEnvelope ? ["reconciliation_waves"] : []),
+    ...(depthExceedsApprovedEnvelope ? ["depth"] : []),
   ];
   return {
     schema: RESEARCH_PLAN_DIFF_SCHEMA_V1,
@@ -423,7 +460,7 @@ export function diffResearchPlansV1(input: {
     reprioritizedNodeIds,
     changedDependencies,
     changedCoverageTargets,
-    addedRoleIds: stableAdded(fromRoles, toRoles) as ResearchSubagentRoleIdV1[],
+    addedRoleIds,
     removedRoleIds: stableRemoved(fromRoles, toRoles) as ResearchSubagentRoleIdV1[],
     addedCapabilityIds,
     removedCapabilityIds,

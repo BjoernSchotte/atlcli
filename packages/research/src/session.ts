@@ -1465,16 +1465,14 @@ export function reduceResearchSessionV1(
             update.reason !== "user_steering"))) {
       invalid("Research graph revision steering control is invalid or stale.");
     }
-    const planDiff = steering
-      ? diffResearchPlansV1({
-          fromBrief: current.brief!,
-          fromGraph: previous,
-          toBrief: current.brief!,
-          toGraph: update.graph,
-        })
-      : undefined;
-    if (planDiff?.exceededApprovalEnvelopeFields.length) {
-      invalid("Research steering revision exceeds the approved graph envelope.");
+    const planDiff = diffResearchPlansV1({
+      fromBrief: current.brief!,
+      fromGraph: previous,
+      toBrief: current.brief!,
+      toGraph: update.graph,
+    });
+    if (planDiff.exceededApprovalEnvelopeFields.length) {
+      invalid("Research graph revision exceeds the approved graph envelope.");
     }
     const previousHistory = current.graphRevisions ?? [];
     const history: ResearchSessionGraphRevisionV1[] = previousHistory.some((record) => record.graph.revision === previous.revision)
@@ -1500,7 +1498,7 @@ export function reduceResearchSessionV1(
       gapIds: [...update.gapIds],
       reason: update.reason,
       ...(update.steeringId === undefined ? {} : { steeringId: update.steeringId }),
-      ...(planDiff === undefined ? {} : { planDiff }),
+      planDiff,
       recordedAt: update.at,
     };
     return withNext(session, update, {
