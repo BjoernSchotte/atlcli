@@ -77,6 +77,7 @@ function boundedMetadataValues(values: readonly string[] | undefined): string[] 
 
 const MAX_DETAIL_RELATION_IDS = 100;
 const MAX_DETAIL_COMMENTS = 20;
+const MAX_DETAIL_COMMENT_REQUESTS = 8;
 
 interface BoundedRelationIds {
   values: string[];
@@ -146,6 +147,42 @@ function projectJiraComments(
         ? `Comments: ${capturedCount} of ${total} captured`
         : `Comments: ${capturedCount} captured`
       : undefined,
+  };
+}
+
+function projectWikiInlineComments(
+  result: Awaited<ReturnType<ConfluenceClient["listPageInlineCommentsForExport"]>>,
+  siteOrigin: string,
+  limits: ContentProjectionLimits,
+) {
+  const flattened: Array<{ body: string; status: string }> = [];
+  const visit = (comment: (typeof result.comments)[number]): void => {
+    flattened.push({ body: comment.body, status: comment.status });
+    for (const reply of comment.replies) visit(reply);
+  };
+  for (const comment of result.comments) visit(comment);
+
+  let projection = projectConfluenceStorage("", siteOrigin, limits);
+  for (const [index, comment] of flattened.entries()) {
+    const body = projectConfluenceStorage(comment.body, siteOrigin, limits);
+    projection = appendBoundedDetailProjection(
+      projection,
+      prependBoundedDetailText(
+        body,
+        `Inline comment ${index + 1} (${comment.status}):`,
+        limits,
+      ),
+      limits,
+    );
+  }
+  return {
+    projection: {
+      ...projection,
+      truncated: projection.truncated || !result.complete,
+    },
+    summary: result.complete
+      ? `Inline comments: ${flattened.length} captured`
+      : `Inline comments: ${flattened.length} captured (partial)`,
   };
 }
 
@@ -318,10 +355,21 @@ export function createRestResearchProviders(
           signal: input.signal,
         });
         const ancestors = wikiAncestorIds(page);
+        const inlineComments = input.includeComments
+          ? await wiki.listPageInlineCommentsForExport(page.id, {
+              signal: input.signal,
+              maxInlineComments: MAX_DETAIL_COMMENTS,
+              maxRequests: MAX_DETAIL_COMMENT_REQUESTS,
+            })
+          : undefined;
+        const comments = inlineComments
+          ? projectWikiInlineComments(inlineComments, request.scope.siteOrigin, limits)
+          : undefined;
         const detailFields = detailPrefix({
           labels: page.labels,
           relationLabel: "Ancestor page IDs",
           relationIds: ancestors.values,
+          commentSummary: comments?.summary,
         });
         return {
           contentId: page.id,
@@ -329,11 +377,21 @@ export function createRestResearchProviders(
           title: page.title,
           ...(page.modified ? { updatedAt: page.modified } : {}),
           content: appendBoundedDetailLinks(
-            prependBoundedDetailText(
-              projectConfluenceStorage(page.storage, request.scope.siteOrigin, limits),
-              detailFields,
-              limits,
-            ),
+            comments
+              ? appendBoundedDetailProjection(
+                  prependBoundedDetailText(
+                    projectConfluenceStorage(page.storage, request.scope.siteOrigin, limits),
+                    detailFields,
+                    limits,
+                  ),
+                  comments.projection,
+                  limits,
+                )
+              : prependBoundedDetailText(
+                  projectConfluenceStorage(page.storage, request.scope.siteOrigin, limits),
+                  detailFields,
+                  limits,
+                ),
             page.spaceKey
               ? ancestors.values.map((ancestorId) =>
                   `${request.scope.siteOrigin}/wiki/spaces/${encodeURIComponent(page.spaceKey!)}/pages/${ancestorId}`,

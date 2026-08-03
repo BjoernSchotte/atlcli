@@ -74,6 +74,12 @@ export type ResearchSearchInputV1 =
 export interface ResearchGetInputV1 {
   schema: string;
   entityRef: string;
+  /**
+   * Confluence only. The host may make one separately bounded inline-comment
+   * sidecar read for this already-ranked page. It never changes the page
+   * identity, scope, or opaque entity reference.
+   */
+  includeComments?: boolean;
 }
 
 export type ResearchTerminationCode =
@@ -269,7 +275,11 @@ export function decodeResearchGetInputV1(
   value: unknown
 ): ResearchGetInputV1 {
   assertRecord(value, `${tool} input`);
-  assertExactKeys(value, ["schema", "entityRef"], `${tool} input`);
+  assertExactKeys(
+    value,
+    tool === "wiki.page.get" ? ["schema", "entityRef", "includeComments"] : ["schema", "entityRef"],
+    `${tool} input`,
+  );
   const expectedSchema = RESEARCH_CAPABILITY_SCHEMAS[tool].input;
   if (value.schema !== expectedSchema) invalid(`Unsupported ${tool} input schema.`);
   if (
@@ -278,7 +288,14 @@ export function decodeResearchGetInputV1(
   ) {
     invalid("Entity reference is invalid.");
   }
-  return { schema: expectedSchema, entityRef: value.entityRef };
+  if (value.includeComments !== undefined && typeof value.includeComments !== "boolean") {
+    invalid("Confluence detail includeComments flag is invalid.");
+  }
+  return {
+    schema: expectedSchema,
+    entityRef: value.entityRef,
+    ...(value.includeComments === true ? { includeComments: true } : {}),
+  };
 }
 
 export function decodeResearchCandidateRankInputV1(

@@ -48,10 +48,11 @@ const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") =>
       .strict(),
   ]);
 
-const getInputSchema = () =>
+const getInputSchema = (toolId: "jira.issue.get" | "wiki.page.get") =>
   z
     .object({
       entityRef: z.string().max(220),
+      ...(toolId === "wiki.page.get" ? { includeComments: z.boolean().optional() } : {}),
     })
     .strict();
 
@@ -236,7 +237,7 @@ export function createResearchPtcTools(
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["jira.issue.get"],
         description:
           "Read one Jira issue previously returned by jiraIssueSearch. Parse the returned JSON string. entityRef is opaque.",
-        schema: getInputSchema(),
+        schema: getInputSchema("jira.issue.get"),
       }),
     tool(async (input) => invoke("wiki.search", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["wiki.search"],
@@ -247,8 +248,8 @@ export function createResearchPtcTools(
     tool(async (input) => invoke("wiki.page.get", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["wiki.page.get"],
         description:
-          "Read one Confluence page previously returned by wikiSearch. Parse the returned JSON string. entityRef is opaque.",
-        schema: getInputSchema(),
+          "Read one Confluence page previously returned by wikiSearch. Parse the returned JSON string. entityRef is opaque. Set includeComments only when bounded inline-comment evidence is materially needed; the host caps that sidecar and reports partiality.",
+        schema: getInputSchema("wiki.page.get"),
       }),
     tool(async (input) => invoke("research.candidate.rank", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["research.candidate.rank"],

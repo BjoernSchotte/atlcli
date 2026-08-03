@@ -92,6 +92,7 @@ export interface ResearchReadProviders {
     }): Promise<ResearchProviderPage<WikiResearchSummary>>;
     getPage(input: {
       contentId: string;
+      includeComments?: boolean;
       signal: AbortSignal;
     }): Promise<WikiResearchDetail>;
   };
@@ -958,6 +959,7 @@ export class ResearchCapabilityBroker {
     this.budget.beginDetail("confluence");
     const detail = await this.#providers.wiki.getPage({
       contentId: entity.entityId,
+      ...(decoded.includeComments ? { includeComments: true } : {}),
       signal: this.signal,
     });
     const exact = this.#exactEntityBindings.get(`confluence:${entity.entityId}`);

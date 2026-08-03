@@ -260,6 +260,40 @@ describe("bounded research capability broker", () => {
     expect(broker.budget.canReadAnotherDetail("confluence")).toBe(true);
   });
 
+  it("permits the bounded Confluence comment sidecar only on an already-ranked page", async () => {
+    const providers = fakeProviders();
+    const broker = new ResearchCapabilityBroker(
+      request({ maxDetailItemsPerProduct: 1 }),
+      providers,
+      { createEntityId: () => "comment-sidecar-entity" },
+    );
+    const page = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "confluence", page.items);
+
+    await expect(broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: page.items[0]!.entityRef,
+      includeComments: true,
+    })).resolves.toMatchObject({
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].output,
+      source: { contentId: "1001" },
+    });
+    expect(providers.calls).toContainEqual(expect.objectContaining({
+      product: "wiki-detail",
+      contentId: "1001",
+      includeComments: true,
+    }));
+
+    await expect(broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+      includeComments: true,
+    })).rejects.toThrow("contains unknown fields");
+  });
+
   it("assesses only host-observed ranked retrieval state before another wave", async () => {
     let entityId = 0;
     const broker = new ResearchCapabilityBroker(

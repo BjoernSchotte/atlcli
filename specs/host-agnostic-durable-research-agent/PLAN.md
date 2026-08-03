@@ -3819,8 +3819,15 @@ Shared:
 - [x] Extend the Jira and Confluence provider ports without exposing client or
       transport objects to the model.
 - [x] Compile typed search intents into scope-clamped JQL/CQL in the host.
-- [ ] Add exact link, issue-key, page-ID, ancestor/child, label, comment, and
-      issue-link graph extraction.
+- [x] Add exact link, issue-key, page-ID, ancestor/child, label, comment, and
+      issue-link graph extraction. Exact references remain preflight-only;
+      ranked detail reads extract Jira hierarchy/link keys and Confluence
+      ancestor IDs as same-tenant links, while the typed search intent handles
+      direct children. Jira comments come from its bounded detail field;
+      Confluence inline comments require the explicit `includeComments` flag
+      on the already-ranked opaque page ref and are capped at 20 comments / 8
+      HTTP requests. Partiality is retained as a visible boundary rather than
+      silently treated as exhaustive (2026-08-03).
 
 T6 typed-intent checkpoint (2026-08-03): the read-only search capabilities
 accept only closed model-facing query objects: bounded text, up to eight exact
@@ -3842,10 +3849,12 @@ bounded `linkTargets` projection; invalid or foreign targets are discarded and
 an over-cap relation list makes the detail visibly truncated. Jira's existing
 bounded `comment` detail field is projected in the same allowed read: comment
 text and safe exact links become retained evidence, while a partial comment
-page is visibly truncated. This creates no additional content call,
-provider/client exposure, binding, or scope expansion. Direct-child
-enumeration is available through the separately bounded `parentId` intent;
-Confluence comment traversal remains an explicitly unimplemented capability.
+page is visibly truncated. Confluence makes its separately bounded inline
+comment sidecar read only when the model sets `includeComments` on an
+already-ranked opaque `wiki.page.get` reference; it has no raw URL, no new
+authority, at most 20 comments and eight requests, and marks an incomplete
+sidecar visibly truncated. Direct-child enumeration is available through the
+separately bounded `parentId` intent.
 Mocked REST-adapter and projection tests cover the exact fields, same-tenant
 filter, caps, comment partiality, and browser session boundary (2026-08-03).
 

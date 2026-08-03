@@ -3526,10 +3526,12 @@ export class ConfluenceClient {
    */
   async listPageInlineCommentsForExport(
     pageId: string,
-    options: { signal?: AbortSignal; maxInlineComments?: number } = {},
+    options: { signal?: AbortSignal; maxInlineComments?: number; maxRequests?: number } = {},
   ): Promise<PageInlineCommentsExportResult> {
     const requested = options.maxInlineComments ?? DEFAULT_PAGE_INLINE_COMMENT_LIMIT;
     const maxComments = Math.max(0, Math.min(requested, MAX_PAGE_INLINE_COMMENT_LIMIT));
+    const requestedRequests = options.maxRequests ?? MAX_PAGE_INLINE_COMMENT_REQUESTS;
+    const maxRequests = Math.max(1, Math.min(requestedRequests, MAX_PAGE_INLINE_COMMENT_REQUESTS));
     if (maxComments === 0) return { comments: [], complete: false };
 
     let requests = 0;
@@ -3542,7 +3544,7 @@ export class ConfluenceClient {
       cursor: string | undefined,
       includeRootFilters: boolean,
     ): Promise<{ items: InlineComment[]; next?: string }> => {
-      if (requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+      if (requests >= maxRequests) {
         complete = false;
         return { items: [] };
       }
@@ -3586,7 +3588,7 @@ export class ConfluenceClient {
         true,
       );
       roots.push(...page.items);
-      if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+      if (!page.next || observed >= maxComments || requests >= maxRequests) {
         if (page.next) complete = false;
         break;
       }
@@ -3596,7 +3598,7 @@ export class ConfluenceClient {
     }
 
     for (const root of roots) {
-      if (observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+      if (observed >= maxComments || requests >= maxRequests) {
         complete = false;
         break;
       }
@@ -3609,7 +3611,7 @@ export class ConfluenceClient {
           false,
         );
         root.replies.push(...page.items);
-        if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        if (!page.next || observed >= maxComments || requests >= maxRequests) {
           if (page.next) complete = false;
           break;
         }

@@ -106,6 +106,27 @@ describe("REST research provider authentication boundary", () => {
           },
         }), { status: 200, headers: { "content-type": "application/json" } }));
       }
+      if (url.includes("/api/v2/pages/1001/inline-comments")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [{
+            id: "inline-comment-1",
+            version: { authorId: "account-1", createdAt: "2026-08-01T12:00:00.000Z" },
+            body: {
+              storage: {
+                value: "<p>Inline comment links the <a href=\"/wiki/spaces/KB/pages/1002\">related page</a>.</p>",
+              },
+            },
+            resolutionStatus: "open",
+          }],
+          _links: {},
+        }), { status: 200, headers: { "content-type": "application/json" } }));
+      }
+      if (url.includes("/api/v2/inline-comments/inline-comment-1/children")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [],
+          _links: {},
+        }), { status: 200, headers: { "content-type": "application/json" } }));
+      }
       if (url.includes("/wiki/rest/api/content/1001")) {
         return Promise.resolve(new Response(JSON.stringify({
           id: "1001",
@@ -131,7 +152,7 @@ describe("REST research provider authentication boundary", () => {
     const signal = new AbortController().signal;
 
     const issue = await providers.jira.getIssue({ issueKey: "DEMO-1", signal });
-    const page = await providers.wiki.getPage({ contentId: "1001", signal });
+    const page = await providers.wiki.getPage({ contentId: "1001", includeComments: true, signal });
 
     expect(issue.content.text).toContain("Labels: agentic-ai, release");
     expect(issue.content.text).toContain("Related issue keys: DEMO-2, DEMO-3, DEMO-9");
@@ -147,11 +168,16 @@ describe("REST research provider authentication boundary", () => {
     ]);
     expect(page.content.text).toContain("Labels: release");
     expect(page.content.text).toContain("Ancestor page IDs: 1000");
+    expect(page.content.text).toContain("Inline comments: 1 captured");
+    expect(page.content.text).toContain("Inline comment 1 (open):");
+    expect(page.content.text).toContain("Inline comment links the related page.");
     expect(page.content.linkTargets).toEqual([
       "https://example.atlassian.net/wiki/spaces/KB/pages/1000",
+      "https://example.atlassian.net/wiki/spaces/KB/pages/1002",
     ]);
     expect(calls.find((url) => url.includes("/rest/api/3/issue/DEMO-1"))).toContain("issuelinks");
     expect(calls.find((url) => url.includes("/rest/api/3/issue/DEMO-1"))).toContain("comment");
     expect(calls.find((url) => url.includes("/wiki/rest/api/content/1001"))).toContain("ancestors");
+    expect(calls).toContainEqual(expect.stringContaining("/api/v2/pages/1001/inline-comments"));
   });
 });
