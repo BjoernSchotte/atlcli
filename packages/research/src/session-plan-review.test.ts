@@ -38,7 +38,27 @@ function waitingPlan(): ResearchSessionV1 {
       siteOrigin: "https://example.atlassian.net",
       jiraProjectKeys: ["DEMO"],
       confluenceSpaceKeys: ["KB"],
+      timeWindow: { from: "2026-07-01", to: "2026-08-02" },
     },
+    scopeBindings: [{
+      schema: "atlcli.research-scope-binding/v1",
+      id: "scope-binding:cli-demo",
+      tenantOrigin: "https://example.atlassian.net",
+      product: "jira",
+      entityKind: "project",
+      entityRef: "research-scope-entity:cli-demo",
+      key: "DEMO",
+      name: "Demo project",
+      source: "cli_flag",
+      authority: "locked",
+    }],
+    coverageTargets: [{
+      id: "coverage:primary",
+      question: "Do not expose this private coverage wording.",
+      required: true,
+      sourceClasses: ["jira", "confluence"],
+      minimumDistinctSources: 2,
+    }],
     asOf: at,
     timezone: "UTC",
     requestedEffort: "deep",
@@ -64,9 +84,26 @@ describe("projectResearchSessionPlanReviewV1", () => {
         graphRevision: 1,
         resolvedEffort: "deep",
         scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        timeWindow: { from: "2026-07-01", to: "2026-08-02" },
+        scopeBindings: [{
+          id: "scope-binding:cli-demo",
+          key: "DEMO",
+          source: "cli_flag",
+          authority: "locked",
+        }],
+        coverageTargets: [{
+          id: "coverage:primary",
+          required: true,
+          sourceClasses: ["jira", "confluence"],
+          minimumDistinctSources: 2,
+        }],
+        replanEnvelope: expect.objectContaining({
+          allowedCapabilityIds: expect.arrayContaining(["jira.issue.search"]),
+        }),
         budget: {
           maxPtcCalls: 32,
           maxHttpCalls: 64,
+          maxModelCalls: 16,
           maxTotalModelInputTokens: 160_000,
           maxTotalModelOutputTokens: 64_000,
           maxModelCostMicros: 2_000_000,
@@ -76,7 +113,9 @@ describe("projectResearchSessionPlanReviewV1", () => {
     });
     const serialized = JSON.stringify(review);
     expect(serialized).not.toContain("private objective");
+    expect(serialized).not.toContain("private coverage wording");
     expect(serialized).not.toContain("siteOrigin");
+    expect(serialized).not.toContain("research-scope-entity:cli-demo");
   });
 
   test("denies a foreign tenant and delegates replacement plans to scope review", () => {

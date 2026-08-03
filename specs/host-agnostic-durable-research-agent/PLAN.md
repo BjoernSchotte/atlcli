@@ -4091,10 +4091,14 @@ Gate:
 - [ ] Stale clarification, assumption, approval, rejection, revision,
       steering, pause, cancel, and resume commands are rejected with the
       current revision and a useful diff; they never mutate state implicitly.
-- [ ] A user can see before approval which roles, maximum calls/tokens/cost,
+- [x] A user can see before approval which roles, maximum calls/tokens/cost,
       scope bindings/provenance/expansion mode, time window, coverage targets,
       and optional roles/capabilities later replans may use without renewed
-      approval.
+      approval. The tenant-bound body-free plan-review projection exposes the
+      model-call ceiling, temporal window, binding authority/source, coverage
+      criteria, and closed replan envelope; the sidebar renders each before
+      the explicit approval control and regression tests exclude objective,
+      entity-reference, and tenant-origin data (2026-08-03).
 - [ ] Keyboard-only and screen-reader labels cover all extension session
       actions.
 - [ ] Non-TTY CLI output remains deterministic and contains no control

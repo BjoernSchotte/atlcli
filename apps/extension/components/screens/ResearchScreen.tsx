@@ -1973,6 +1973,16 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <CardContent className="flex flex-col gap-3">
             {planReviews.map((review, index) => {
               const deciding = planReviewActionId === review.sessionId;
+              const timeWindow = review.turn.timeWindow;
+              const bindings = review.turn.scopeBindings?.map((binding) => [
+                `${binding.product}/${binding.entityKind}`,
+                binding.key ?? binding.name,
+                `(${binding.authority}, ${binding.source})`,
+              ].join(" ")).join(", ") ?? "—";
+              const coverageTargets = review.turn.coverageTargets?.map((target) =>
+                `${target.id} [${target.sourceClasses.join("/")}; ≥${target.minimumDistinctSources}]`,
+              ).join(", ") ?? "—";
+              const replanEnvelope = review.turn.replanEnvelope;
               return (
                 <div
                   key={review.sessionId}
@@ -1997,10 +2007,40 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                       confluence: review.turn.scope.confluenceSpaceKeys.join(", ") || "—",
                     })}
                   </p>
+                  {timeWindow && (
+                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-time-window-${index}`}>
+                      {t("research.planReview.timeWindow", {
+                        from: timeWindow.from ?? "—",
+                        to: timeWindow.to ?? "—",
+                      })}
+                    </p>
+                  )}
+                  {review.turn.scopeBindings && (
+                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-bindings-${index}`}>
+                      {t("research.planReview.bindings", { bindings })}
+                    </p>
+                  )}
+                  {review.turn.coverageTargets && (
+                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-coverage-${index}`}>
+                      {t("research.planReview.coverage", { targets: coverageTargets })}
+                    </p>
+                  )}
+                  {replanEnvelope && (
+                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-replan-envelope-${index}`}>
+                      {t("research.planReview.replanEnvelope", {
+                        roles: replanEnvelope.optionalRoleIds.join(", ") || "—",
+                        capabilities: replanEnvelope.allowedCapabilityIds.join(", ") || "—",
+                        parallel: String(replanEnvelope.maxParallelNodes),
+                        waves: String(replanEnvelope.maxResearchWaves),
+                        reconciliationWaves: String(replanEnvelope.maxReconciliationWaves),
+                      })}
+                    </p>
+                  )}
                   <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-budget-${index}`}>
                     {t("research.planReview.budget", {
                       ptc: String(review.turn.budget.maxPtcCalls),
                       http: String(review.turn.budget.maxHttpCalls),
+                      modelCalls: String(review.turn.budget.maxModelCalls ?? "—"),
                       tokens: String(
                         review.turn.budget.maxTotalModelInputTokens + review.turn.budget.maxTotalModelOutputTokens,
                       ),

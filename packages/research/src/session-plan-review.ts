@@ -28,6 +28,39 @@ export interface ResearchSessionPlanReviewV1 {
       jiraProjectKeys: string[];
       confluenceSpaceKeys: string[];
     };
+    /** Body-free bound time window; omitted when no date constraint applies. */
+    timeWindow?: {
+      from?: string;
+      to?: string;
+    };
+    /** Approved or locked scope identities, without tenant origin or entity refs. */
+    scopeBindings?: Array<{
+      id: string;
+      product: "jira" | "confluence";
+      entityKind: "project" | "space" | "issue" | "page";
+      key?: string;
+      name: string;
+      source: string;
+      authority: string;
+    }>;
+    /** Coverage criteria, deliberately omitting the user question text. */
+    coverageTargets?: Array<{
+      id: string;
+      required: boolean;
+      sourceClasses: Array<"jira" | "confluence">;
+      minimumDistinctSources: number;
+    }>;
+    /**
+     * The closed, host-approved envelope available to later in-envelope
+     * replans. This never grants a new role, capability, scope, or budget.
+     */
+    replanEnvelope?: {
+      optionalRoleIds: string[];
+      allowedCapabilityIds: string[];
+      maxParallelNodes: number;
+      maxResearchWaves: number;
+      maxReconciliationWaves: number;
+    };
     /**
      * Body-free limits that the user can inspect before approving a durable
      * plan. The host derives these from the persisted brief; no caller may
@@ -36,6 +69,7 @@ export interface ResearchSessionPlanReviewV1 {
     budget: {
       maxPtcCalls: number;
       maxHttpCalls: number;
+      maxModelCalls?: number;
       maxTotalModelInputTokens: number;
       maxTotalModelOutputTokens: number;
       maxModelCostMicros: number;
@@ -83,9 +117,37 @@ export function projectResearchSessionPlanReviewV1(
         jiraProjectKeys: [...turn.brief.scope.jiraProjectKeys],
         confluenceSpaceKeys: [...turn.brief.scope.confluenceSpaceKeys],
       },
+      ...(turn.brief.resolvedTimeWindow || turn.brief.scope.timeWindow ? {
+        timeWindow: structuredClone(turn.brief.resolvedTimeWindow ?? turn.brief.scope.timeWindow),
+      } : {}),
+      scopeBindings: turn.scopeBindings.map((binding) => ({
+        id: binding.id,
+        product: binding.product,
+        entityKind: binding.entityKind,
+        ...(binding.key === undefined ? {} : { key: binding.key }),
+        name: binding.name,
+        source: binding.source,
+        authority: binding.authority,
+      })),
+      coverageTargets: turn.brief.coverageTargets.map((target) => ({
+        id: target.id,
+        required: target.required,
+        sourceClasses: [...target.sourceClasses],
+        minimumDistinctSources: target.minimumDistinctSources,
+      })),
+      replanEnvelope: {
+        optionalRoleIds: turn.graph.approvalEnvelope.allowedRoleIds.filter((roleId) =>
+          !required.selectedRoleIds.includes(roleId),
+        ),
+        allowedCapabilityIds: [...turn.graph.approvalEnvelope.allowedCapabilityIds],
+        maxParallelNodes: turn.graph.approvalEnvelope.maxParallelNodes,
+        maxResearchWaves: turn.graph.approvalEnvelope.maxResearchWaves,
+        maxReconciliationWaves: turn.graph.approvalEnvelope.maxReconciliationWaves,
+      },
       budget: {
         maxPtcCalls: turn.brief.limits.maxPtcCalls,
         maxHttpCalls: turn.brief.limits.maxHttpCalls,
+        maxModelCalls: turn.brief.limits.maxModelCalls,
         maxTotalModelInputTokens: turn.brief.limits.maxTotalModelInputTokens,
         maxTotalModelOutputTokens: turn.brief.limits.maxTotalModelOutputTokens,
         maxModelCostMicros: turn.brief.limits.maxModelCostMicros,

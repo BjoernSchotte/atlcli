@@ -1079,9 +1079,33 @@ describe("portable Research screen", () => {
         scopeExpansionMode: "ask",
         reconciliationMode: "required",
         scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+        timeWindow: { from: "2026-07-01", to: "2026-08-02" },
+        scopeBindings: [{
+          id: "scope-binding:cli-demo",
+          product: "jira",
+          entityKind: "project",
+          key: "DEMO",
+          name: "Demo project",
+          source: "cli_flag",
+          authority: "locked",
+        }],
+        coverageTargets: [{
+          id: "coverage:primary",
+          required: true,
+          sourceClasses: ["jira", "confluence"],
+          minimumDistinctSources: 2,
+        }],
+        replanEnvelope: {
+          optionalRoleIds: ["coverage-moderator"],
+          allowedCapabilityIds: ["jira.issue.search", "jira.issue.get", "wiki.search"],
+          maxParallelNodes: 3,
+          maxResearchWaves: 3,
+          maxReconciliationWaves: 1,
+        },
         budget: {
           maxPtcCalls: 32,
           maxHttpCalls: 32,
+          maxModelCalls: 16,
           maxTotalModelInputTokens: 80_000,
           maxTotalModelOutputTokens: 32_000,
           maxModelCostMicros: 2_000_000,
@@ -1163,6 +1187,14 @@ describe("portable Research screen", () => {
     expect(dom.find("research-plan-reviews").textContent).toContain("reconciler");
     expect(dom.find("research-plan-review-budget-0").textContent)
       .toContain("$2.00");
+    expect(dom.find("research-plan-review-time-window-0").textContent)
+      .toContain("2026-07-01 → 2026-08-02");
+    expect(dom.find("research-plan-review-bindings-0").textContent)
+      .toContain("DEMO (locked, cli_flag)");
+    expect(dom.find("research-plan-review-coverage-0").textContent)
+      .toContain("coverage:primary [jira/confluence; ≥2]");
+    expect(dom.find("research-plan-review-replan-envelope-0").textContent)
+      .toContain("coverage-moderator");
     expect(dom.find("research-plan-reviews").textContent).toContain("does not store a key");
     await dom.click("research-plan-review-approve-0");
     await dom.flush();
