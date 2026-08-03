@@ -3597,12 +3597,15 @@ browser adapter test independently proves quota release. Later V2 report gates
 remain below.
 - [x] Canonicalize entity identity independently of display URLs.
 - [x] Hash projected content and record exact source version or `updatedAt`.
-- [ ] Store bounded source chunks once and reference them from checkpoints,
+- [x] Store bounded source chunks once and reference them from checkpoints,
       packets, claims, outline nodes, reconciliation defects, and reports.
-- [ ] Mount `/evidence/` as agent-read-only and keep `/workspace/` plus
-      `/artifacts/` writable.
-- [ ] Add deterministic span validation and scope/freshness checks.
-- [ ] Bind every evidence record to the approved whole-scope or exact-entity
+- [x] Keep evidence, reports, checkpoints, and artifacts host-private; expose
+      only the virtual `/workspace/` plan read-only and `/workspace/scratch/`
+      writable to DeepAgentsJS. This is stricter than the earlier `/evidence/`
+      mount proposal and prevents an agent from treating raw evidence as a
+      writable scratchpad.
+- [x] Add deterministic span validation and scope/freshness checks.
+- [x] Bind every evidence record to the approved whole-scope or exact-entity
       binding that authorized retrieval. Reject missing, stale, wrong-tenant,
       superseded, or entity-mismatched binding references and expose the
       authority class in sanitized source metadata.
@@ -3619,6 +3622,17 @@ that identity to a SHA-256 of the bounded content projection and the provider
 `updatedAt` when supplied. `evidence-store.test.ts` proves both a changed
 display URL preserving the evidence version and changed projected content
 creating a new version even when the provider timestamp has not advanced.
+
+T5 private-evidence checkpoint (2026-08-03): bounded source chunks are stored
+only in the evidence store. Checkpoints, V2 packets, claims, outline sections,
+reconciliation inputs, and reports retain canonical IDs (and, for claims,
+hash-validated spans), never duplicated source bodies. The DeepAgentsJS
+filesystem adapter exposes only a generated read-only plan and a writable
+scratch route; evidence, reports, artifacts, checkpoints, and the host OS are
+not model-visible. Focused tests prove the native middleware permissions,
+exact span validation, currentness/invalidation fencing, packet and outline
+reference-only projections, report source-authority sanitization, and both
+whole-scope and exact-entity binding rejection/acceptance.
 
 T5 evidence-quote normalization checkpoint (2026-08-01): the broker now
 returns a durable evidence ID only after the detail body has passed the

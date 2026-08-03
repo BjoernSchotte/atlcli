@@ -126,6 +126,48 @@ describe("research evidence store", () => {
     const newerVersion = await record({ source: source({ updatedAt: "2026-08-02T12:00:00.000Z" }) });
     expect(newerVersion.record.id).not.toBe(original.record.id);
     expect(newerVersion.record.identity).toEqual(original.record.identity);
+
+    const exactBinding: ResearchScopeBindingV1 = {
+      schema: "atlcli.research-scope-binding/v1",
+      id: "scope-binding:link:jira:OTHER-1",
+      tenantOrigin: scope.siteOrigin,
+      product: "jira",
+      entityKind: "issue",
+      entityRef: "research-scope-entity:jira-issue-other-1",
+      key: "OTHER-1",
+      name: "An exact linked issue",
+      source: "exact_link",
+      authority: "approved",
+    };
+    const exact = await createResearchEvidenceRecordV1({
+      source: source({
+        id: "jira:OTHER-1",
+        url: "https://example.atlassian.net/browse/OTHER-1",
+        issueKey: "OTHER-1",
+        projectKey: "OTHER",
+      }),
+      content: { text: "Approved linked issue", linkTargets: [], truncated: false, inputBytes: 21 },
+      scope,
+      scopeBindings: [...bindings, exactBinding],
+      capturedAt: "2026-08-01T12:01:00.000Z",
+    });
+    expect(exact.record.authority).toEqual({
+      bindingId: exactBinding.id,
+      authorityClass: "exact_entity",
+    });
+    await expect(createResearchEvidenceRecordV1({
+      source: source({
+        id: "jira:OTHER-1",
+        url: "https://example.atlassian.net/browse/OTHER-1",
+        issueKey: "OTHER-1",
+        projectKey: "OTHER",
+      }),
+      content: { text: "Mismatched exact issue", linkTargets: [], truncated: false, inputBytes: 22 },
+      scope,
+      scopeBindings: [{ ...exactBinding, id: "scope-binding:link:jira:OTHER-2", key: "OTHER-2" }],
+      capturedAt: "2026-08-01T12:01:00.000Z",
+    })).rejects.toThrow("outside the approved research scope");
+
     const store = new WorkspaceResearchEvidenceStoreV1(createMemoryResearchWorkspace());
     await store.put(original.record, original.chunks);
     await store.put(newerVersion.record, newerVersion.chunks);
