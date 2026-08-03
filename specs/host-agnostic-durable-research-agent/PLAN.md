@@ -3311,9 +3311,15 @@ an undispatched plan, a non-expired lease, and an interrupted task.
         steering text through its body-free resume projection. Packed MV3
         proof covers concurrent stale fencing, no worker start, and no public
         instruction disclosure (30/30, 2026-08-02).
-- [ ] Persist required clarification questions and responses by brief revision
+- [x] Persist required clarification questions and responses by brief revision
       plus explicit assumption accept/reject decisions by assumption ID.
       Regenerate the graph only after the response transition commits.
+
+  Reverified 2026-08-03 by the shared reducer/runtime and sidebar corridors:
+  51 focused tests plus the packed MV3 suite preserve revision-fenced
+  question/assumption history, prohibit graph construction before the answer
+  commit, recover the answer-committed planning boundary, and keep key/model/
+  content work outside the clarification wait.
 
   - [x] The shared reducer and CLI persist the original answer/decision history
         plus a new body-free brief revision carrying resolved response context;
@@ -3327,10 +3333,15 @@ an undispatched plan, a non-expired lease, and an interrupted task.
         revision fences. Packed MV3 proof covers answer persistence, stale
         rejection, the no-key/no-retrieval boundary, and a recovered
         answer-committed planning checkpoint.
-- [ ] Persist scope candidates, bindings, resolution decisions, and expansion
+- [x] Persist scope candidates, bindings, resolution decisions, and expansion
       proposals by brief/graph revision. Add candidate selection and
       scope-proposal approval/rejection controls; closing the sidebar or
       changing tabs never accepts one.
+
+  Reverified 2026-08-03 by the same 51 focused tests and packed MV3 suite:
+  catalog choices, bound scope decisions, and expansion proposals are
+  tenant-bound and revision-fenced; stale/tab-changed callers cannot accept a
+  candidate, and approval paths perform no retrieval as a side effect.
 
   - [x] Add tenant-bound, body-free scope-proposal review to the extension.
         The sidebar sends only a persisted session/brief/graph/proposal
