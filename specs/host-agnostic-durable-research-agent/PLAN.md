@@ -3929,13 +3929,14 @@ Gate:
       at or below the configured 48-message trigger and retains native durable
       history; a separate fresh-host test proves the same session thread
       restores prior user and agent turns (2026-08-02).
-- [ ] A 1,000-turn synthetic stretch soak completes with bounded checkpoint and
-      active-context growth.
+- [x] A 1,000-turn synthetic stretch soak completes with bounded checkpoint and
+      active-context growth across fresh DeepAgentsJS hosts (2026-08-03).
 - [ ] Repeated planted evaluation questions at turns 1, 50, 100, 250, 500, and
       1,000 show no more than a two-percentage-point score decrease from the
       turn-1 baseline.
-- [ ] Active model context after compaction stays below 60% of the configured
-      model input limit at the measurement checkpoints.
+- [x] Active model context after compaction stays below 60% of the configured
+      model input limit at every 1,000-turn stretch measurement checkpoint
+      (2026-08-03).
 - [ ] Exact facts planted in early turns can be recovered from canonical
       checkpointed conversation state or cited evidence at turns 50, 250, and
       1,000; summaries themselves never count as evidence.

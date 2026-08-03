@@ -30,6 +30,15 @@ const MAXIMUM_PAYLOAD_BYTES = 64_000_000;
 // aggregate host limit.
 const MAXIMUM_BLOB_BYTES = 8_000_000;
 const BLOB_CHUNK_BYTES = 500_000;
+/*
+ * Every ordinary DeepAgentsJS turn emits several checkpoints and pending
+ * writes. Retain a useful per-namespace execution tail, but do not allow a
+ * long completed conversation to turn the durable journal into an unbounded
+ * append-only log. A checkpoint contains complete state, so an older parent
+ * is not necessary to resume the retained frontier.
+ */
+const MAXIMUM_RETAINED_CHECKPOINTS_PER_NAMESPACE = 64;
+const MAXIMUM_COMPACTED_OPERATIONS = 1_024;
 
 interface PersistedBlobV1 {
   bytes: number;
@@ -83,7 +92,7 @@ function limitedString(value: unknown, label: string, allowEmpty = false): strin
 
 function operationId(value: unknown): string {
   const id = limitedString(value, "operation ID");
-  if (!/^operation-\d{6}$/.test(id)) invalid("Stored LangGraph operation ID is invalid.");
+  if (!/^operation-\d{6,}$/.test(id)) invalid("Stored LangGraph operation ID is invalid.");
   return id;
 }
 
@@ -260,8 +269,8 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
     return result;
   }
 
-  async #persistIndex(): Promise<void> {
-    const contents = JSON.stringify(this.#index);
+  async #persistIndex(index = this.#index): Promise<void> {
+    const contents = JSON.stringify(index);
     if (new TextEncoder().encode(contents).byteLength > 2_000_000) {
       throw new ResearchContractError("limit-exceeded", "Research LangGraph checkpoint index is too large.");
     }
@@ -269,7 +278,11 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
   }
 
   #nextOperationId(): string {
-    return `operation-${String(this.#index.operations.length + 1).padStart(6, "0")}`;
+    const highest = this.#index.operations.reduce((current, entry) => {
+      const sequence = Number.parseInt(entry.id.slice("operation-".length), 10);
+      return Math.max(current, sequence);
+    }, 0);
+    return `operation-${String(highest + 1).padStart(6, "0")}`;
   }
 
   #assertAppendBytes(bytes: number): void {
@@ -286,6 +299,151 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
       operations: [...this.#index.operations, operation],
     };
     await this.#persistIndex();
+  }
+
+  /**
+   * Rebuild the durable journal from the latest complete checkpoint tail in
+   * every namespace. The MemorySaver state has already accepted the current
+   * put/putWrites call when this method runs, so the compacted index includes
+   * that newest state. We publish the replacement index only after every new
+   * blob is durable; a failed publication therefore leaves the previous index
+   * usable on a fresh host, exactly like normal journal append.
+   */
+  async #compactJournal(): Promise<void> {
+    const retained = new Map<string, {
+      namespace: string;
+      checkpointId: string;
+      stored: [Uint8Array, Uint8Array, string | undefined];
+    }>();
+    const threadStorage = this.storage[this.#threadId] ?? Object.create(null) as Record<string, Record<string, [Uint8Array, Uint8Array, string | undefined]>>;
+
+    for (const namespace of Object.keys(threadStorage).sort()) {
+      let count = 0;
+      for await (const tuple of super.list({
+        configurable: { thread_id: this.#threadId, checkpoint_ns: namespace },
+      })) {
+        if (count >= MAXIMUM_RETAINED_CHECKPOINTS_PER_NAMESPACE) break;
+        const checkpointId = tuple.config.configurable?.checkpoint_id;
+        if (!checkpointId) invalid("LangGraph returned a checkpoint without an ID during compaction.");
+        const stored = threadStorage[namespace]?.[checkpointId];
+        if (!stored) invalid("LangGraph did not retain a checkpoint selected for compaction.");
+        retained.set(outerWriteKey(this.#threadId, namespace, checkpointId), {
+          namespace,
+          checkpointId,
+          stored,
+        });
+        count += 1;
+      }
+    }
+
+    if (retained.size === 0) {
+      throw new ResearchContractError("limit-exceeded", "Research LangGraph checkpoint compaction has no resumable checkpoint to retain.");
+    }
+
+    const priorOperationIds = new Set(this.#index.operations.map((entry) => entry.id));
+    let nextSequence = this.#index.operations.reduce((current, entry) => Math.max(
+      current,
+      Number.parseInt(entry.id.slice("operation-".length), 10),
+    ), 0) + 1;
+    const nextOperationId = (): string => `operation-${String(nextSequence++).padStart(6, "0")}`;
+    const operations: PersistedOperationV1[] = [];
+    let payloadBytes = 0;
+    const retainedKeys = new Set(retained.keys());
+    const compactedStorage = Object.create(null) as typeof this.storage;
+    compactedStorage[this.#threadId] = Object.create(null);
+    const compactedWrites = Object.create(null) as typeof this.writes;
+
+    const assertCompactedCapacity = (additionalBytes: number): void => {
+      if (operations.length >= MAXIMUM_COMPACTED_OPERATIONS || additionalBytes > MAXIMUM_PAYLOAD_BYTES - payloadBytes) {
+        throw new ResearchContractError("limit-exceeded", "Research LangGraph checkpoint compaction exceeds the durable session budget.");
+      }
+    };
+    const newOperationIds = new Set<string>();
+
+    for (const [key, entry] of retained) {
+      const operationId = nextOperationId();
+      newOperationIds.add(operationId);
+      const parentCheckpointId = entry.stored[2];
+      const retainedParentKey = parentCheckpointId === undefined
+        ? undefined
+        : outerWriteKey(this.#threadId, entry.namespace, parentCheckpointId);
+      const retainedParentCheckpointId = retainedParentKey && retainedKeys.has(retainedParentKey)
+        ? parentCheckpointId
+        : undefined;
+      const namespaceStorage = compactedStorage[this.#threadId][entry.namespace] ??= Object.create(null);
+      namespaceStorage[entry.checkpointId] = [
+        entry.stored[0],
+        entry.stored[1],
+        retainedParentCheckpointId,
+      ];
+      assertCompactedCapacity(entry.stored[0].byteLength + entry.stored[1].byteLength);
+      await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+      const checkpoint = await this.#writeBlob(operationId, "checkpoint", entry.stored[0]);
+      const metadata = await this.#writeBlob(operationId, "metadata", entry.stored[1]);
+      operations.push({
+        id: operationId,
+        kind: "checkpoint",
+        namespace: entry.namespace,
+        checkpointId: entry.checkpointId,
+        ...(retainedParentCheckpointId ? { parentCheckpointId: retainedParentCheckpointId } : {}),
+        checkpoint,
+        metadata,
+      });
+      payloadBytes += checkpoint.bytes + metadata.bytes;
+
+      const writes = this.writes[key];
+      if (!writes || Object.keys(writes).length === 0) continue;
+      compactedWrites[key] = { ...writes };
+      assertCompactedCapacity(Object.values(writes).reduce((total, [, , value]) => total + value.byteLength, 0));
+      const writesOperationId = nextOperationId();
+      newOperationIds.add(writesOperationId);
+      await this.#workspace.remove(`${ROOT_PATH}/${writesOperationId}`);
+      const persistedWrites: PersistedWriteV1[] = [];
+      for (const [index, [key, [taskId, channel, value]]] of Object.entries(writes).entries()) {
+        persistedWrites.push({
+          key,
+          taskId,
+          channel,
+          value: await this.#writeBlob(writesOperationId, `write-${index}`, value),
+        });
+      }
+      operations.push({
+        id: writesOperationId,
+        kind: "writes",
+        namespace: entry.namespace,
+        checkpointId: entry.checkpointId,
+        writes: persistedWrites,
+      });
+      payloadBytes += persistedWrites.reduce((total, write) => total + write.value.bytes, 0);
+    }
+
+    const compacted: PersistedIndexV1 = {
+      schema: SCHEMA,
+      threadId: this.#threadId,
+      payloadBytes,
+      operations,
+    };
+    await this.#persistIndex(compacted);
+    this.#index = compacted;
+    this.storage = compactedStorage;
+    this.writes = compactedWrites;
+    for (const operationId of priorOperationIds) {
+      if (newOperationIds.has(operationId)) continue;
+      try {
+        await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+      } catch {
+        // The new index no longer references this completed-branch data. A
+        // later compaction can retry cleanup without risking a valid resume.
+      }
+    }
+  }
+
+  async #ensureAppendCapacity(payloadBytes: number): Promise<boolean> {
+    if (this.#index.operations.length < MAXIMUM_OPERATIONS && payloadBytes <= MAXIMUM_PAYLOAD_BYTES - this.#index.payloadBytes) {
+      return false;
+    }
+    await this.#compactJournal();
+    return true;
   }
 
   async #hydrate(): Promise<void> {
@@ -366,19 +524,22 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
         if (!checkpointId) invalid("LangGraph did not return a checkpoint ID.");
         const stored = this.storage[this.#threadId]?.[namespace]?.[checkpointId];
         if (!stored) invalid("LangGraph did not retain the checkpoint it returned.");
-        const operationId = this.#nextOperationId();
-        await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
-        const checkpointBlob = await this.#writeBlob(operationId, "checkpoint", stored[0]);
-        const metadataBlob = await this.#writeBlob(operationId, "metadata", stored[1]);
-        await this.#append({
-          id: operationId,
-          kind: "checkpoint",
-          namespace,
-          checkpointId,
-          ...(stored[2] ? { parentCheckpointId: stored[2] } : {}),
-          checkpoint: checkpointBlob,
-          metadata: metadataBlob,
-        }, checkpointBlob.bytes + metadataBlob.bytes);
+        const compacted = await this.#ensureAppendCapacity(stored[0].byteLength + stored[1].byteLength);
+        if (!compacted) {
+          const operationId = this.#nextOperationId();
+          await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+          const checkpointBlob = await this.#writeBlob(operationId, "checkpoint", stored[0]);
+          const metadataBlob = await this.#writeBlob(operationId, "metadata", stored[1]);
+          await this.#append({
+            id: operationId,
+            kind: "checkpoint",
+            namespace,
+            checkpointId,
+            ...(stored[2] ? { parentCheckpointId: stored[2] } : {}),
+            checkpoint: checkpointBlob,
+            metadata: metadataBlob,
+          }, checkpointBlob.bytes + metadataBlob.bytes);
+        }
       } catch (error) {
         return this.#failWrite(error);
       }
@@ -400,19 +561,23 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
         const after = this.writes[key] ?? {};
         const added = Object.entries(after).filter(([writeKey]) => !before.has(writeKey));
         if (added.length === 0) return;
-        const operationId = this.#nextOperationId();
-        await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
-        const persistedWrites: PersistedWriteV1[] = [];
-        for (let index = 0; index < added.length; index += 1) {
-          const [writeKey, [storedTaskId, channel, value]] = added[index]!;
-          persistedWrites.push({
-            key: writeKey,
-            taskId: storedTaskId,
-            channel,
-            value: await this.#writeBlob(operationId, `write-${index}`, value),
-          });
+        const payloadBytes = added.reduce((total, [, [, , value]]) => total + value.byteLength, 0);
+        const compacted = await this.#ensureAppendCapacity(payloadBytes);
+        if (!compacted) {
+          const operationId = this.#nextOperationId();
+          await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+          const persistedWrites: PersistedWriteV1[] = [];
+          for (let index = 0; index < added.length; index += 1) {
+            const [writeKey, [storedTaskId, channel, value]] = added[index]!;
+            persistedWrites.push({
+              key: writeKey,
+              taskId: storedTaskId,
+              channel,
+              value: await this.#writeBlob(operationId, `write-${index}`, value),
+            });
+          }
+          await this.#append({ id: operationId, kind: "writes", namespace, checkpointId, writes: persistedWrites }, persistedWrites.reduce((total, write) => total + write.value.bytes, 0));
         }
-        await this.#append({ id: operationId, kind: "writes", namespace, checkpointId, writes: persistedWrites }, persistedWrites.reduce((total, write) => total + write.value.bytes, 0));
       } catch (error) {
         return this.#failWrite(error);
       }

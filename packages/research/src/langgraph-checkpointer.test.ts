@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { fakeModel } from "@langchain/core/testing";
-import { createDeepAgent } from "deepagents/node";
+import { createDeepAgent, createSummarizationMiddleware } from "deepagents/node";
+import { createResearchDurableSummarizationMiddleware } from "./agent-runtime-core.js";
 import {
   ResearchSessionMemoryCheckpointerV1,
 } from "./langgraph-checkpointer.js";
@@ -86,6 +88,41 @@ describe("research LangGraph checkpointer adapter", () => {
     expect(await workspace.list("/.atlcli/langgraph-checkpoints/v1")).not.toHaveLength(0);
   });
 
+  test("compacts completed checkpoint history without losing the newest restart point", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const saver = new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace);
+    let config: RunnableConfig = researchCheckpointConfigV1({ sessionId, checkpointNamespace: "research" });
+
+    for (let index = 0; index <= 2_000; index += 1) {
+      const checkpointId = `checkpoint:tail-${String(index).padStart(4, "0")}`;
+      config = await saver.put(config, {
+        v: 4,
+        id: checkpointId,
+        ts: `2026-08-01T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000Z`,
+        channel_values: { durable_state: { index } },
+        channel_versions: { durable_state: index + 1 },
+        versions_seen: {},
+      }, {
+        source: "loop",
+        step: index,
+        parents: {},
+      });
+    }
+
+    const indexContents = await workspace.readFile("/.atlcli/langgraph-checkpoints/v1/index.json");
+    const compacted = JSON.parse(indexContents ?? "{}") as { operations?: unknown[] };
+    expect(compacted.operations?.length).toBeLessThanOrEqual(64);
+
+    const resumed = new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace);
+    await expect(resumed.getTuple(researchCheckpointConfigV1({ sessionId, checkpointNamespace: "research" })))
+      .resolves.toMatchObject({
+        checkpoint: {
+          id: "checkpoint:tail-2000",
+          channel_values: { durable_state: { index: 2_000 } },
+        },
+      });
+  });
+
   test("restores one native DeepAgent conversation in a fresh host for the same session thread", async () => {
     const workspace = createMemoryResearchWorkspace();
     const threadId = researchThreadIdForSessionV1(sessionId);
@@ -120,6 +157,72 @@ describe("research LangGraph checkpointer adapter", () => {
       "Second durable user turn.",
     ]);
   });
+
+  test("runs one thousand native DeepAgents turns across fresh hosts with compact durable checkpoints", async () => {
+    const durableSessionId = "research-session:one-thousand-turns";
+    const workspace = createMemoryResearchWorkspace();
+    const threadId = researchThreadIdForSessionV1(durableSessionId);
+    const mainModel = fakeModel();
+    const summaryModel = fakeModel();
+    // The fresh resume can prompt the native agent twice while it restores a
+    // completed checkpoint, so queue a small deterministic tail as well.
+    for (let index = 0; index <= 1_127; index += 1) {
+      mainModel.respond(new AIMessage(`Synthetic answer ${index + 1}.`));
+    }
+    for (let index = 0; index < 64; index += 1) {
+      summaryModel.respond(new AIMessage(`Synthetic operational summary ${index + 1}.`));
+    }
+    const createHost = () => createDeepAgent({
+      name: "research-one-thousand-turn-proof",
+      model: mainModel,
+      checkpointer: new ResearchSessionWorkspaceCheckpointerV1(durableSessionId, workspace),
+      tools: [],
+      middleware: [createResearchDurableSummarizationMiddleware(
+        { createSummarizationMiddleware },
+        { workspace, model: summaryModel },
+      )],
+    });
+    let host = createHost();
+
+    for (let index = 1; index <= 1_000; index += 1) {
+      await host.invoke({
+        messages: [new HumanMessage(
+          `Turn ${index}: durable fact marker ORION-${String(index).padStart(4, "0")}.`,
+        )],
+      }, { configurable: { thread_id: threadId } });
+      // A new saver and graph emulate a resumed CLI process or a restarted
+      // MV3 worker, while the workspace remains the only durable owner.
+      if (index % 100 === 0 && index < 1_000) host = createHost();
+    }
+
+    const indexContents = await workspace.readFile("/.atlcli/langgraph-checkpoints/v1/index.json");
+    const checkpointIndex = JSON.parse(indexContents ?? "{}") as {
+      operations?: Array<{ id?: string }>;
+    };
+    const visibleContext = mainModel.calls.map((call) => new TextEncoder().encode(
+      call.messages.map((message) => String(message.content)).join("\n"),
+    ).byteLength);
+    expect(mainModel.callCount).toBeGreaterThanOrEqual(1_000);
+    expect(mainModel.callCount).toBeLessThanOrEqual(1_100);
+    expect(Math.max(...visibleContext)).toBeLessThanOrEqual(48_000);
+    expect(checkpointIndex.operations?.length).toBeLessThanOrEqual(2_000);
+    expect(checkpointIndex.operations?.some((entry) => Number.parseInt(
+      entry.id?.slice("operation-".length) ?? "0",
+      10,
+    ) > 2_000)).toBe(true);
+    expect(await workspace.list("/.atlcli/deepagents-summarization/v1")).not.toHaveLength(0);
+
+    const resumedHost = createHost();
+    const callsBeforeResume = mainModel.callCount;
+    await resumedHost.invoke(
+      { messages: [new HumanMessage("Recover the current durable marker after restart.")] },
+      { configurable: { thread_id: threadId } },
+    );
+    const resumedInputs = mainModel.calls.slice(callsBeforeResume).map((call) =>
+      call.messages.map((message) => message.text).join("\n"),
+    );
+    expect(resumedInputs.some((input) => input.includes("ORION-1000"))).toBe(true);
+  }, 120_000);
 
   test("fails closed when a workspace checkpoint index belongs to another session", async () => {
     const workspace = createMemoryResearchWorkspace();
