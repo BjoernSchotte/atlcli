@@ -89,6 +89,14 @@ const RESEARCH_DEPENDENCY_RECONCILIATION_SCHEMA_V1 =
   "atlcli.research-dependency-reconciliation/v1" as const;
 
 /**
+ * Research composition admits only host-catalogued depth-one specialists.
+ * These values are shared with the DeepAgents harness setup so a future
+ * library default cannot silently re-enable generic or recursive children.
+ */
+export const RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1 = false as const;
+export const RESEARCH_NESTED_SUBAGENTS_ENABLED_V1 = false as const;
+
+/**
  * A body-free host projection supplied only to an admitted coverage moderator.
  * It is intentionally smaller than the brief: the specialist already has the
  * user question, but needs the authoritative target thresholds that it must
@@ -722,7 +730,7 @@ export function compileDynamicResearchSubagents(
             // not merge or share LangGraph LastValue counter state.
             createCodeInterpreterMiddleware({
               ptc,
-              subagents: false,
+              subagents: RESEARCH_NESTED_SUBAGENTS_ENABLED_V1,
               toolName: "eval",
               memoryLimitBytes: options.maxInterpreterMemoryBytes,
               maxStackSizeBytes: 320 * 1024,
@@ -874,7 +882,7 @@ export function createBoundedResearchSubagentMiddleware(
     defaultModel: model,
     defaultTools: [],
     subagents,
-    generalPurposeAgent: false,
+    generalPurposeAgent: RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1,
   });
   const upstreamTask = upstream.tools?.find((candidate) => candidate.name === "task");
   if (!upstreamTask) throw new Error("DeepAgentsJS did not provide the declarative task tool.");

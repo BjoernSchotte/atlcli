@@ -111,6 +111,7 @@ import {
   compileDynamicResearchSubagents,
   createBoundedResearchSubagentMiddleware,
   providerCompatibleResearchSchema,
+  RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1,
   researchSubagentTypeForNodeV1,
   researchTaskIdForNodeV1,
   type ResearchReadyFrontierControllerV1,
@@ -4244,7 +4245,7 @@ export function createResearchAgentRuntime(
   runResearchAgent(input: RunResearchAgentInput): Promise<ResearchReport>;
 } {
   runtime.registerHarnessProfile(MODEL_SPEC, {
-    generalPurposeSubagent: { enabled: false },
+    generalPurposeSubagent: { enabled: RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1 },
   });
   return {
     runResearchAgent: (input) => runResearchAgentWithBindings(input, runtime),

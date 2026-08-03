@@ -58,6 +58,8 @@ import {
   buildResearchAcquisitionProgram,
   compileDynamicResearchSubagents,
   createBoundedResearchSubagentMiddleware,
+  RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1,
+  RESEARCH_NESTED_SUBAGENTS_ENABLED_V1,
   createResearchNodePtcToolsV1,
   extractResearchStructuredCandidateV1,
   providerCompatibleResearchSchema,
@@ -462,6 +464,49 @@ test("repairs a provider-shaped synthesizer result rejected by the authoritative
   })).resolves.toBe(validDraft);
   expect(invokes).toBe(2);
   expect(diagnostics).toEqual(["started", "repairing", "completed"]);
+});
+
+test("disables generic and recursively nested subagent composition", () => {
+  const graph = synthesisOnlyGraph();
+  const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+  const specs = [{
+    name: researchSubagentTypeForNodeV1(synthesizer),
+    description: "Synthetic bounded synthesizer.",
+    systemPrompt: "Return only the admitted draft.",
+    tools: [],
+  }];
+  let upstreamConfiguration: { generalPurposeAgent?: unknown; subagents?: unknown } | undefined;
+  const upstreamTask = tool(async () => JSON.stringify({
+    title: "Unused",
+    executiveSummary: "Unused.",
+    selectedClaimIds: [],
+    findings: [],
+    relationships: [],
+    limitations: [],
+  }), {
+    name: "task",
+    description: "Synthetic upstream task.",
+    schema: z.object({ description: z.string(), subagent_type: z.string() }),
+  });
+
+  createBoundedResearchSubagentMiddleware(
+    model,
+    graph,
+    specs,
+    {
+      createSubAgentMiddleware: ((configuration: { generalPurposeAgent?: unknown; subagents?: unknown }) => {
+        upstreamConfiguration = configuration;
+        return { name: "subAgentMiddleware", tools: [upstreamTask] };
+      }) as never,
+    },
+  );
+
+  expect(RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1).toBe(false);
+  expect(RESEARCH_NESTED_SUBAGENTS_ENABLED_V1).toBe(false);
+  expect(upstreamConfiguration).toMatchObject({
+    generalPurposeAgent: false,
+    subagents: specs,
+  });
 });
 
 test("blocks synthesis until host reconciliation context exists and injects only accepted dispositions", async () => {

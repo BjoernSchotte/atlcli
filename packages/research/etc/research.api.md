@@ -16149,6 +16149,9 @@ export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-a
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
 
+// export: RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1
+export declare const RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1: false;
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -16195,6 +16198,9 @@ export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.researc
 
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
+
+// export: RESEARCH_NESTED_SUBAGENTS_ENABLED_V1
+export declare const RESEARCH_NESTED_SUBAGENTS_ENABLED_V1: false;
 
 // export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
 export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
@@ -21500,6 +21506,9 @@ export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-a
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
 
+// export: RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1
+export declare const RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1: false;
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -21546,6 +21555,9 @@ export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.researc
 
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
+
+// export: RESEARCH_NESTED_SUBAGENTS_ENABLED_V1
+export declare const RESEARCH_NESTED_SUBAGENTS_ENABLED_V1: false;
 
 // export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
 export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
@@ -28101,6 +28113,9 @@ export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_PATH_V1: "/artifacts/gap-a
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.research-gap-assessment-artifact/v1";
 
+// export: RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1
+export declare const RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1: false;
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -28147,6 +28162,9 @@ export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.researc
 
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
+
+// export: RESEARCH_NESTED_SUBAGENTS_ENABLED_V1
+export declare const RESEARCH_NESTED_SUBAGENTS_ENABLED_V1: false;
 
 // export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
 export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";

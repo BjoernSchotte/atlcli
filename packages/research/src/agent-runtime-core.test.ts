@@ -9,6 +9,7 @@ import {
   buildCheckpointedDynamicSupervisorPrompt,
   buildLegacyResearchSystemPromptV1,
   createResearchDurableSummarizationMiddleware,
+  createResearchAgentRuntime,
   createResearchCheckpointTranscriptCompactionMiddleware,
   createOneShotSupervisorEvalMiddleware,
   createResearchGraphProposalPtcTool,
@@ -20,7 +21,9 @@ import {
   createResearchScopeDiscoveryDispositionsPtcTool,
   hostSearchCoverageLimitationsV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
+  type ResearchAgentRuntimeBindings,
 } from "./agent-runtime-core.js";
+import { RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1 } from "./dynamic-subagents.js";
 import { createResearchBriefV1 } from "./brief.js";
 import { acceptResearchGraphProposalV1, composeResearchGraphV1 } from "./graph.js";
 import {
@@ -138,6 +141,21 @@ async function invokeBeforeModel(
 }
 
 describe("one-shot supervisor eval capability lifecycle", () => {
+  test("registers a disabled generic-subagent profile for every research runtime", () => {
+    let observed: { modelSpec: string; profile: unknown } | undefined;
+    createResearchAgentRuntime({
+      registerHarnessProfile(modelSpec: string, profile: { generalPurposeSubagent: { enabled: boolean } }) {
+        observed = { modelSpec, profile };
+      },
+    } as unknown as ResearchAgentRuntimeBindings);
+
+    expect(RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1).toBe(false);
+    expect(observed).toEqual({
+      modelSpec: "anthropic:claude-sonnet-4-6",
+      profile: { generalPurposeSubagent: { enabled: false } },
+    });
+  });
+
   test("revokes eval after one successful workflow but preserves structured publication", async () => {
     const middleware = createOneShotSupervisorEvalMiddleware();
     expect(await observeOfferedTools(middleware)).toEqual([

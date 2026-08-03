@@ -3909,7 +3909,9 @@ Shared:
 - [ ] Compact only completed branches deeply; keep the active frontier and
       recent interaction tail detailed. Deletion from active context never
       deletes canonical messages, packets, evidence, plans, or reports.
-- [ ] Keep general-purpose and recursively nested subagents disabled.
+- [x] Keep general-purpose and recursively nested subagents disabled. The
+      DeepAgents harness profile, bounded task middleware, and QuickJS
+      interpreter share explicit false-valued policy constants (2026-08-03).
 - [ ] Keep T3 dynamic composition behind an experimental flag until the
       long-session, recovery, and comparative gates below pass; the experiment
       itself no longer waits for the 250-turn soak.
