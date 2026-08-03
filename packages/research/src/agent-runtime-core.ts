@@ -2354,6 +2354,7 @@ async function runResearchAgentWithBindings(
   let retrievalContinuation: ResearchRetrievalContinuationProjectionV1 | undefined;
   let retrievalContinuationConsumed = false;
   let retrievalAssessmentRecorded = false;
+  let latestRetrievalAssessment: ResearchRetrievalAssessmentV1 | undefined;
   let resumedContinuation: {
     graphRevision: number;
     wave: number;
@@ -2395,16 +2396,17 @@ async function runResearchAgentWithBindings(
       updatedAt: new Date(now()).toISOString(),
     }));
   const persistGapAssessmentArtifact = (
-    latestRetrievalAssessment?: ResearchRetrievalAssessmentV1,
+    latest?: ResearchRetrievalAssessmentV1,
   ): Promise<void> => {
     const graph = acceptedGraph ?? input.researchGraph;
     if (!graph) return Promise.resolve();
+    if (latest) latestRetrievalAssessment = structuredClone(latest);
     return persistSessionArtifact(projectResearchGapAssessmentArtifactV1({
-      turnId: graph.turnId,
-      graphRevision: graph.revision,
+      graph,
       packets: acceptedPacketsByTaskId.values(),
       updatedAt: new Date(now()).toISOString(),
       ...(latestRetrievalAssessment ? { latestRetrievalAssessment } : {}),
+      ...(reconciliationDispositions === undefined ? {} : { reconciliationDispositions }),
     }));
   };
   const usesCheckpointedSupervisor = Boolean(
@@ -2602,6 +2604,11 @@ async function runResearchAgentWithBindings(
         return turn;
       })()
     : undefined;
+  const persistedRetrievalAssessments = durableTurn?.retrievalAssessments
+    ?.filter((assessment) => assessment.graphRevision === input.researchGraph?.revision) ?? [];
+  if (persistedRetrievalAssessments.length > 0) {
+    latestRetrievalAssessment = structuredClone(persistedRetrievalAssessments.at(-1)!.assessment);
+  }
   // The active graph is intentionally reduced to the supervisor-selected
   // subset after its first proposal. Keep the original, host-composed catalog
   // beside it so a fresh worker can validate a later in-envelope revision
@@ -3500,6 +3507,7 @@ async function runResearchAgentWithBindings(
           } else {
             reconciliationDispositions = dispositions;
           }
+          if (input.durableSession) await persistGapAssessmentArtifact();
           repairAuthorization = authorizedRepair;
           if (repairOutcome) {
             emitEvent({

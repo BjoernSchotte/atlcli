@@ -3836,9 +3836,14 @@ Shared:
       budget counters; it commits that assessment at the settled-wave CAS
       boundary, emits a body-free progress receipt, and retains the same
       projection in the current gap-assessment artifact (2026-08-03).
-- [ ] Record why each role/node was selected or omitted, why reconciliation
+- [x] Record why each role/node was selected or omitted, why reconciliation
       was triggered or skipped, and why each proposed follow-up was accepted,
-      rejected, or pruned.
+      rejected, or pruned. The query-intents current-state artifact projects
+      the closed role/node decisions and reason codes; the gap-assessment
+      artifact projects the approved reconciliation policy and each
+      host-recorded disposition (decision, reason, graph/node/claim outcome),
+      without packet bodies or prompts. Node and browser recovery both prove
+      the durable projection after a journaled reconciliation (2026-08-03).
 - [ ] Record why each related scope was discovered, proposed, approved,
       rejected, or left unresolved and identify every report source read under
       an exact-entity versus whole-scope authority.

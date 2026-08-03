@@ -10,6 +10,7 @@ import {
   isResearchPacketBodyV2,
   type ResearchAcceptedPacketV1,
   type ResearchGapV1,
+  type ResearchReconciliationDispositionV1,
 } from "./workflow-contracts.js";
 
 /**
@@ -48,6 +49,16 @@ export interface ResearchQueryIntentsArtifactV1 {
     coverageTargetIds: string[];
     reasonCodes: string[];
   }>;
+  roleDecisions: Array<{
+    roleId: ResearchGraphV1["roleDecisions"][number]["roleId"];
+    decision: ResearchGraphV1["roleDecisions"][number]["decision"];
+    reasonCodes: string[];
+  }>;
+  nodeDecisions: Array<{
+    nodeId: string;
+    decision: "selected" | "omitted";
+    reasonCodes: string[];
+  }>;
 }
 
 export interface ResearchGapAssessmentArtifactV1 {
@@ -64,6 +75,22 @@ export interface ResearchGapAssessmentArtifactV1 {
     proposedFollowUpIds: string[];
     abstentionReason?: string;
   }>;
+  reconciliation: {
+    /** Whether the approved graph omitted, still awaits, or recorded reconciliation. */
+    status: "not_selected" | "pending" | "recorded";
+    policy: Pick<ResearchGraphV1["reconciliationPolicy"], "mode" | "triggers" | "maxPasses">;
+    dispositions: Array<{
+      id: string;
+      defectId: string;
+      basedOnGraphRevision: number;
+      decision: ResearchReconciliationDispositionV1["decision"];
+      reasonCode: ResearchReconciliationDispositionV1["reasonCode"];
+      resultingGraphRevision?: number;
+      resultingNodeId?: string;
+      resultingClaimIds: string[];
+      recordedAt: string;
+    }>;
+  };
   latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
 }
 
@@ -85,7 +112,7 @@ export interface ResearchSessionArtifactWriteV1 {
   contents: string;
 }
 
-function canonicalStrings(values: readonly string[]): string[] {
+function canonicalStrings<T extends string>(values: readonly T[]): T[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
@@ -128,6 +155,20 @@ export function projectResearchQueryIntentsArtifactV1(input: {
         reasonCodes: canonicalStrings(node.reasonCodes),
       }))
       .sort((left, right) => left.nodeId.localeCompare(right.nodeId)),
+    roleDecisions: input.graph.roleDecisions
+      .map((decision) => ({
+        roleId: decision.roleId,
+        decision: decision.decision,
+        reasonCodes: canonicalStrings(decision.reasonCodes),
+      }))
+      .sort((left, right) => left.roleId.localeCompare(right.roleId)),
+    nodeDecisions: input.graph.nodes
+      .map((node) => ({
+        nodeId: node.id,
+        decision: node.status === "pruned" ? "omitted" as const : "selected" as const,
+        reasonCodes: canonicalStrings(node.reasonCodes),
+      }))
+      .sort((left, right) => left.nodeId.localeCompare(right.nodeId)),
   };
 }
 
@@ -137,16 +178,22 @@ export function projectResearchQueryIntentsArtifactV1(input: {
  * authoritative stores and are deliberately not copied into this artifact.
  */
 export function projectResearchGapAssessmentArtifactV1(input: {
-  turnId: string;
-  graphRevision: number;
+  graph: ResearchGraphV1;
   packets: Iterable<ResearchAcceptedPacketV1>;
   updatedAt: string;
   latestRetrievalAssessment?: ResearchRetrievalAssessmentV1;
+  reconciliationDispositions?: readonly ResearchReconciliationDispositionV1[];
 }): ResearchGapAssessmentArtifactV1 {
+  const reconciler = input.graph.roleDecisions.find((decision) => decision.roleId === "reconciler");
+  const reconciliationStatus = reconciler?.decision !== "selected"
+    ? "not_selected" as const
+    : input.reconciliationDispositions === undefined
+      ? "pending" as const
+      : "recorded" as const;
   return {
     schema: RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1,
-    turnId: input.turnId,
-    graphRevision: input.graphRevision,
+    turnId: input.graph.turnId,
+    graphRevision: input.graph.revision,
     updatedAt: input.updatedAt,
     packets: [...input.packets]
       .filter((packet) => isResearchPacketBodyV1(packet.body) || isResearchPacketBodyV2(packet.body))
@@ -166,6 +213,31 @@ export function projectResearchGapAssessmentArtifactV1(input: {
         };
       })
       .sort((left, right) => left.taskId.localeCompare(right.taskId)),
+    reconciliation: {
+      status: reconciliationStatus,
+      policy: {
+        mode: input.graph.reconciliationPolicy.mode,
+        triggers: canonicalStrings(input.graph.reconciliationPolicy.triggers),
+        maxPasses: input.graph.reconciliationPolicy.maxPasses,
+      },
+      dispositions: [...(input.reconciliationDispositions ?? [])]
+        .map((disposition) => ({
+          id: disposition.id,
+          defectId: disposition.defectId,
+          basedOnGraphRevision: disposition.basedOnGraphRevision,
+          decision: disposition.decision,
+          reasonCode: disposition.reasonCode,
+          ...(disposition.resultingGraphRevision === undefined
+            ? {}
+            : { resultingGraphRevision: disposition.resultingGraphRevision }),
+          ...(disposition.resultingNodeId === undefined
+            ? {}
+            : { resultingNodeId: disposition.resultingNodeId }),
+          resultingClaimIds: canonicalStrings(disposition.resultingClaimIds),
+          recordedAt: disposition.recordedAt,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
+    },
     ...(input.latestRetrievalAssessment
       ? { latestRetrievalAssessment: structuredClone(input.latestRetrievalAssessment) }
       : {}),

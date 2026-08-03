@@ -13,7 +13,12 @@ import {
   projectResearchQueryIntentsArtifactV1,
   projectResearchReportDraftArtifactV1,
 } from "./session-artifacts.js";
-import { RESEARCH_PACKET_BODY_SCHEMA_V1, type ResearchAcceptedPacketV1 } from "./workflow-contracts.js";
+import {
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
+  type ResearchAcceptedPacketV1,
+  type ResearchReconciliationDispositionV1,
+} from "./workflow-contracts.js";
 
 const updatedAt = "2026-08-03T12:00:00.000Z";
 const graph = composeResearchGraphV1(createResearchBriefV1({
@@ -81,6 +86,20 @@ const packet: ResearchAcceptedPacketV1 = {
   acceptedAt: updatedAt,
 };
 
+const disposition: ResearchReconciliationDispositionV1 = {
+  schema: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
+  id: "reconciliation-disposition:artifact",
+  reconciliationPacketRef: "packet:excluded-from-artifact",
+  defectId: "defect:coverage",
+  basedOnGraphRevision: graph.revision,
+  decision: "add_follow_up",
+  reasonCode: "material_defect",
+  resultingGraphRevision: graph.revision + 1,
+  resultingNodeId: "research-node:repair-coverage",
+  resultingClaimIds: ["claim:two", "claim:one"],
+  recordedAt: updatedAt,
+};
+
 describe("durable session artifact projections", () => {
   test("projects only compact graph query intents without source evidence", () => {
     const artifact = projectResearchQueryIntentsArtifactV1({ graph, updatedAt });
@@ -97,12 +116,30 @@ describe("durable session artifact projections", () => {
     });
     expect(JSON.stringify(artifact)).not.toContain("sourceIds");
     expect(JSON.stringify(artifact)).not.toContain("DEMO-1");
+    expect(artifact.roleDecisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ roleId: "focused-researcher", decision: "selected" }),
+      expect.objectContaining({ roleId: "coverage-moderator", decision: "omitted" }),
+    ]));
+    expect(artifact.nodeDecisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nodeId: "research-node:jira-research", decision: "selected" }),
+    ]));
+    const pruned = structuredClone(graph);
+    const prunedNode = pruned.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    prunedNode.status = "pruned";
+    expect(projectResearchQueryIntentsArtifactV1({ graph: pruned, updatedAt }).nodeDecisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nodeId: prunedNode.id,
+          decision: "omitted",
+          reasonCodes: ["independent_branch"],
+        }),
+      ]),
+    );
   });
 
   test("projects gaps and host retrieval status without copying findings or follow-up prompts", () => {
     const artifact = projectResearchGapAssessmentArtifactV1({
-      turnId: graph.turnId,
-      graphRevision: graph.revision,
+      graph,
       packets: [packet],
       updatedAt,
       latestRetrievalAssessment: {
@@ -125,6 +162,7 @@ describe("durable session artifact projections", () => {
         unresolvedCoverageTargetCount: 1,
         unresolvedContradictionCount: 0,
       },
+      reconciliationDispositions: [disposition],
     });
 
     expect(artifact.packets).toEqual([expect.objectContaining({
@@ -133,8 +171,19 @@ describe("durable session artifact projections", () => {
       proposedFollowUpIds: ["follow-up:wiki-detail"],
     })]);
     expect(artifact.latestRetrievalAssessment).toMatchObject({ reason: "coverage_gap" });
+    expect(artifact.reconciliation).toMatchObject({
+      status: "recorded",
+      policy: expect.objectContaining({ mode: "auto" }),
+      dispositions: [expect.objectContaining({
+        id: disposition.id,
+        decision: "add_follow_up",
+        reasonCode: "material_defect",
+        resultingClaimIds: ["claim:one", "claim:two"],
+      })],
+    });
     expect(JSON.stringify(artifact)).not.toContain("excluded-from-artifact");
     expect(JSON.stringify(artifact)).not.toContain("Read the relevant Confluence page.");
+    expect(JSON.stringify(artifact)).not.toContain("packet:excluded-from-artifact");
   });
 
   test("uses stable canonical paths so current state never consumes one artifact slot per turn", () => {
@@ -142,8 +191,7 @@ describe("durable session artifact projections", () => {
       projectResearchQueryIntentsArtifactV1({ graph, updatedAt }),
     );
     const gaps = prepareResearchSessionArtifactWriteV1(projectResearchGapAssessmentArtifactV1({
-      turnId: graph.turnId,
-      graphRevision: graph.revision,
+      graph,
       packets: [packet],
       updatedAt,
     }));

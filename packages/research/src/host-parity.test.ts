@@ -635,10 +635,22 @@ describe("research durable recovery host parity", () => {
       expect(JSON.parse(intents!.contents)).toMatchObject({
         turnId: runtime.turnId,
         graphRevision: turn!.graph!.revision,
+        roleDecisions: expect.arrayContaining([
+          expect.objectContaining({ roleId: "reconciler", decision: "selected" }),
+          expect.objectContaining({ roleId: "contradiction-verifier", decision: "omitted" }),
+        ]),
       });
       expect(JSON.parse(gaps!.contents)).toMatchObject({
         turnId: runtime.turnId,
         packets: expect.any(Array),
+        reconciliation: {
+          status: "recorded",
+          policy: expect.objectContaining({ mode: "auto" }),
+          dispositions: [expect.objectContaining({
+            decision: "abstain",
+            reasonCode: "material_defect",
+          })],
+        },
       });
       expect(JSON.parse(draftArtifact!.contents)).toMatchObject({
         turnId: runtime.turnId,
