@@ -4,6 +4,7 @@ import {
   ResearchContractError,
   type ResearchReportClaimV2,
   type ResearchReportReconciliationV2,
+  type ResearchReportSourceAuthorityV2,
   type ResearchReportSectionV2,
   type ResearchReportV1,
   type ResearchReportV2,
@@ -130,6 +131,20 @@ function reconciliationMarkdown(report: ResearchReportV2): string[] {
   ];
 }
 
+function sourceAuthorityMarkdown(report: ResearchReportV2): string[] {
+  if (!report.sourceAuthorities || report.sourceAuthorities.length === 0) return [];
+  return [
+    "## Source access authority",
+    "",
+    ...report.sourceAuthorities.map((entry) =>
+      `- \`${markdownText(entry.sourceId)}\`: ${entry.authorityClasses
+        .map((authority) => authority === "exact_entity" ? "exact entity" : "whole scope")
+        .join(", ")}.`,
+    ),
+    "",
+  ];
+}
+
 function renderMarkdown(report: Omit<ResearchReportV2, "markdown">): string {
   const claimsById = new Map(report.claims.map((claim) => [claim.id, claim]));
   const sections = report.sections.map((section) => ({
@@ -174,6 +189,7 @@ function renderMarkdown(report: Omit<ResearchReportV2, "markdown">): string {
     }).trimEnd().split("\n"),
     ...coverageMarkdown({ ...report, markdown: "" }),
     ...reconciliationMarkdown({ ...report, markdown: "" }),
+    ...sourceAuthorityMarkdown({ ...report, markdown: "" }),
   ].join("\n");
 }
 
@@ -195,6 +211,31 @@ function reconciliationOutcome(value: unknown): ResearchReportReconciliationV2 {
     decision: outcome.decision,
     reasonCode: outcome.reasonCode,
   } as ResearchReportReconciliationV2;
+}
+
+function sourceAuthorityEntries(value: unknown, sourceIds: ReadonlySet<string>): ResearchReportSourceAuthorityV2[] {
+  if (!Array.isArray(value) || value.length !== sourceIds.size || value.length > MAXIMUM_REPORT_CLAIMS) {
+    invalid("V2 report source authority projection is invalid.");
+  }
+  const seen = new Set<string>();
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      invalid("V2 report source authority projection is invalid.");
+    }
+    const candidate = entry as Partial<ResearchReportSourceAuthorityV2>;
+    if (typeof candidate.sourceId !== "string" || !sourceIds.has(candidate.sourceId) ||
+        seen.has(candidate.sourceId) || !Array.isArray(candidate.authorityClasses) ||
+        candidate.authorityClasses.length === 0 || candidate.authorityClasses.length > 2 ||
+        candidate.authorityClasses.some((authority) => authority !== "whole_scope" && authority !== "exact_entity") ||
+        new Set(candidate.authorityClasses).size !== candidate.authorityClasses.length) {
+      invalid("V2 report source authority projection is invalid.");
+    }
+    seen.add(candidate.sourceId);
+    return {
+      sourceId: candidate.sourceId,
+      authorityClasses: [...candidate.authorityClasses].sort(),
+    } as ResearchReportSourceAuthorityV2;
+  }).sort((left, right) => left.sourceId.localeCompare(right.sourceId));
 }
 
 /**
@@ -232,6 +273,9 @@ export function assertResearchReportV2(value: unknown): asserts value is Researc
   const sourceIds = new Set(report.sources.map((source) => source.id));
   for (const claim of claims.values()) {
     if (claim.sourceIds.some((sourceId) => !sourceIds.has(sourceId))) invalid("V2 report claim source is missing.");
+  }
+  if (report.sourceAuthorities !== undefined) {
+    sourceAuthorityEntries(report.sourceAuthorities, sourceIds);
   }
   const summaries = distinctClaimIds(report.executiveSummaryClaimIds, "V2 report executive summary claims");
   if (summaries.some((id) => !claims.has(id))) invalid("V2 report executive summary references an unknown claim.");
@@ -405,6 +449,15 @@ export async function finalizeResearchReportV2(
   }));
   const currentClaimIds = new Set(reportClaims.map((claim) => claim.id));
   const currentEvidenceIds = new Set(reportClaims.flatMap((claim) => claim.evidenceIds));
+  const reportSourceIds = new Set(reportClaims.flatMap((claim) => claim.sourceIds));
+  const authorityClassesBySourceId = new Map<string, Set<"whole_scope" | "exact_entity">>();
+  for (const evidenceId of currentEvidenceIds) {
+    const record = records.get(evidenceId);
+    if (!record || !reportSourceIds.has(record.source.id)) continue;
+    const authorities = authorityClassesBySourceId.get(record.source.id) ?? new Set();
+    authorities.add(record.authority.authorityClass);
+    authorityClassesBySourceId.set(record.source.id, authorities);
+  }
   const report = {
     schema: RESEARCH_REPORT_SCHEMA_V2,
     title: input.title === undefined ? "Evidence-backed research" : boundedText(input.title, "V2 report title", 300),
@@ -428,6 +481,12 @@ export async function finalizeResearchReportV2(
       };
     }),
     reconciliation: normalizedReconciliation(input.reconciliation),
+    sourceAuthorities: [...reportSourceIds]
+      .map((sourceId) => ({
+        sourceId,
+        authorityClasses: [...(authorityClassesBySourceId.get(sourceId) ?? new Set())].sort(),
+      }))
+      .sort((left, right) => left.sourceId.localeCompare(right.sourceId)),
     limitations: [...new Set([
       ...(input.limitations ?? []).map((value) => boundedText(value, "V2 report limitation", 700)),
       ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),

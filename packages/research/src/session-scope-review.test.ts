@@ -126,4 +126,27 @@ describe("research session scope-review projection", () => {
       "https://other.atlassian.net",
     )).toBeUndefined();
   });
+
+  test("retains a rejected expansion for the tenant-bound presenter", () => {
+    const rejected = update(waitingForScopeApproval(), {
+      kind: "reject_scope_expansion",
+      proposalId: "scope-expansion:related",
+    });
+    const projected = projectResearchSessionScopeReviewV1(
+      rejected,
+      "https://example.atlassian.net",
+    );
+
+    expect(projected).toMatchObject({
+      status: "running",
+      turn: {
+        bindings: [],
+        expansionProposals: [{
+          id: "scope-expansion:related",
+          status: "rejected",
+          expansionKind: "whole_scope",
+        }],
+      },
+    });
+  });
 });

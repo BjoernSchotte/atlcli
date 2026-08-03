@@ -332,6 +332,17 @@ export interface ResearchReportReconciliationV2 {
 }
 
 /**
+ * Host-derived visibility into why every published source was permitted to be
+ * read. It carries neither a scope entity nor a credential: the source list
+ * already supplies the user-visible citation, while this records whether the
+ * read relied on a whole project/space or one approved exact entity.
+ */
+export interface ResearchReportSourceAuthorityV2 {
+  sourceId: string;
+  authorityClasses: Array<"whole_scope" | "exact_entity">;
+}
+
+/**
  * New evidence-first report contract. `markdown` remains an exact
  * deterministic projection so CLI, browser, copy, download, and future
  * exporters consume identical bytes.
@@ -353,6 +364,8 @@ export interface ResearchReportV2 {
   }>;
   /** Absent on historical V2 reports created before reconciliation projection. */
   reconciliation?: ResearchReportReconciliationV2[];
+  /** Absent on historical V2 reports created before authority projection. */
+  sourceAuthorities?: ResearchReportSourceAuthorityV2[];
   limitations: string[];
   sources: ResearchSourceReferenceV1[];
   run: ResearchRunSummaryV1;

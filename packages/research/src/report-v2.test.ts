@@ -172,6 +172,7 @@ describe("V2 research report finalization", () => {
       schema: RESEARCH_REPORT_SCHEMA_V2,
       executiveSummaryClaimIds: [CURRENT_CLAIM],
       claims: [{ id: CURRENT_CLAIM, freshness: "current", sourceIds: ["jira:ATLCLI-42"] }],
+      sourceAuthorities: [{ sourceId: "jira:ATLCLI-42", authorityClasses: ["whole_scope"] }],
     });
     expect(report.markdown).toContain("The implementation item records a currently validated delivery fact.");
     expect(report.markdown).toContain("[Validated implementation item](https://example.atlassian.net/browse/ATLCLI-42)");
@@ -179,6 +180,32 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).not.toContain(CURRENT_CLAIM);
     expect(report.markdown).toContain("## Reconciliation decisions");
     expect(report.markdown).toContain("coverage coverage:delivery: abstain (insufficient_budget).");
+    expect(report.markdown).toContain("## Source access authority");
+    expect(report.markdown).toContain("`jira:ATLCLI-42`: whole scope.");
+  });
+
+  test("retains exact-entity authority independently of source display metadata", async () => {
+    const current = claim(CURRENT_CLAIM, EVIDENCE, "current");
+    const exactRecord = {
+      ...record(EVIDENCE, "jira:ATLCLI-42"),
+      authority: {
+        bindingId: "scope-binding:report:jira:ATLCLI-42",
+        authorityClass: "exact_entity" as const,
+      },
+    };
+    const report = await finalizeResearchReportV2({
+      request,
+      ...ports({ claims: [current], records: [exactRecord] }),
+      claimIds: [CURRENT_CLAIM],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+
+    expect(report.sourceAuthorities).toEqual([
+      { sourceId: "jira:ATLCLI-42", authorityClasses: ["exact_entity"] },
+    ]);
+    expect(report.markdown).toContain("`jira:ATLCLI-42`: exact entity.");
+    expect(JSON.stringify(report.sourceAuthorities)).not.toContain("scope-binding");
   });
 
   test("derives sections and coverage from a validated outline without publishing stale support", async () => {

@@ -3844,9 +3844,15 @@ Shared:
       host-recorded disposition (decision, reason, graph/node/claim outcome),
       without packet bodies or prompts. Node and browser recovery both prove
       the durable projection after a journaled reconciliation (2026-08-03).
-- [ ] Record why each related scope was discovered, proposed, approved,
+- [x] Record why each related scope was discovered, proposed, approved,
       rejected, or left unresolved and identify every report source read under
-      an exact-entity versus whole-scope authority.
+      an exact-entity versus whole-scope authority. The durable scope reducer
+      retains discovery reason/provenance, central closed-enum dispositions,
+      expansion status, and any approved binding; the tenant-bound review
+      projection retains proposed and rejected outcomes. New V2 reports add a
+      deterministic, body-free source-authority section derived only from
+      retained evidence records; historical V2 reports remain readable
+      without it (2026-08-03).
 - [ ] Treat native search-index lag and unavailable fields as explicit
       completeness/freshness limitations.
 - [ ] Preserve all existing call, byte, item, concurrency, interpreter, model,
