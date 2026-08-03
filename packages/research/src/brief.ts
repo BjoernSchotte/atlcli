@@ -241,12 +241,20 @@ export function resolveResearchPlanApprovalV1(input: {
   return input.resolvedEffort === "deep" ? "required" : "automatic";
 }
 
-function normalizedProducts(scope: ResearchScopeV1, requested?: readonly ResearchProduct[]): ResearchProduct[] {
+function normalizedProducts(
+  scope: ResearchScopeV1,
+  requested?: readonly ResearchProduct[],
+  scopeBindings: readonly ResearchScopeBindingV1[] = [],
+): ResearchProduct[] {
   const products = requested?.length
     ? [...requested]
     : [
-        ...(scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
-        ...(scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
+        ...(scope.jiraProjectKeys.length > 0 || scopeBindings.some((binding) => binding.product === "jira")
+          ? ["jira" as const]
+          : []),
+        ...(scope.confluenceSpaceKeys.length > 0 || scopeBindings.some((binding) => binding.product === "confluence")
+          ? ["confluence" as const]
+          : []),
       ];
   const unique = [...new Set(products)];
   return unique.length > 0 ? unique : ["jira", "confluence"];
@@ -312,7 +320,7 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
   if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("Research brief revision is invalid.");
   const objective = input.objective.trim();
   if (!objective || objective.length > 4_000) throw new Error("Research brief objective is invalid.");
-  const sourceClasses = normalizedProducts(input.scope, input.sourceClasses);
+  const sourceClasses = normalizedProducts(input.scope, input.sourceClasses, input.scopeBindings);
   const requestedEffort = input.requestedEffort ?? "auto";
   const resolvedEffort = resolveResearchEffortV1({ requested: requestedEffort, objective, sourceClasses });
   const requestedPlanApproval = input.requestedPlanApproval ?? "default";

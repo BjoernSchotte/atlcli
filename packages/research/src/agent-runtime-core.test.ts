@@ -1331,11 +1331,21 @@ describe("legacy bounded acquisition prompt", () => {
     expect(prompt).not.toContain('rankedDetails("jira"');
   });
 
+  test("requires fresh evidence acquisition for every durable conversation turn", () => {
+    const prompt = buildLegacyResearchSystemPromptV1(1, ["confluence"]);
+    expect(prompt).toContain("For every user turn");
+    expect(prompt).toContain("call eval once again");
+    expect(prompt).toContain("within the same turn");
+    expect(prompt).not.toContain("Your first and only eval call MUST");
+  });
+
   test("follows only Jira references observed while reading an exact Confluence page", () => {
     const prompt = buildLegacyResearchSystemPromptV1(4, ["confluence"], true);
     expect(prompt).toContain("hasObservedJiraReference");
     expect(prompt).toContain("if (hasObservedJiraReference)");
     expect(prompt).toContain("jira = await collect(tools.jiraIssueSearch)");
+    expect(prompt).toContain("The attached Confluence page is the exact primary scope");
+    expect(prompt).toContain("do not add a Jira limitation when no Jira reference was observed");
   });
 });
 
@@ -1459,6 +1469,41 @@ describe("host search freshness limitations", () => {
     expect(hostSearchFreshnessLimitationsV1(undefined)).toEqual([
       "Jira candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.",
       "Confluence candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.",
+      "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
+    ]);
+  });
+
+  test("does not claim native index discovery for an exact-only page binding", () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:exact-page-freshness",
+      turnId: "research-turn:exact-page-freshness",
+      objective: "Summarize the explicitly bound page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:exact-page-freshness:1001",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "research-scope-entity:confluence-page-1001",
+        key: "1001",
+        name: "Bound page",
+        source: "exact_link",
+        authority: "approved",
+      }],
+      asOf: "2026-08-01T10:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief);
+
+    expect(hostSearchFreshnessLimitationsV1(graph, brief.scopeBindings)).toEqual([
       "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
     ]);
   });

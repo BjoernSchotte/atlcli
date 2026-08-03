@@ -34,6 +34,18 @@ const request = normalizeResearchRequestV1({
   wikiProvider: "rest",
 });
 
+const exactPageRequest = normalizeResearchRequestV1({
+  schema: RESEARCH_REQUEST_SCHEMA_V1,
+  question: "What does the explicitly bound page establish?",
+  scope: {
+    siteOrigin: "https://example.atlassian.net",
+    jiraProjectKeys: [],
+    confluenceSpaceKeys: [],
+  },
+  limits: DEFAULT_RESEARCH_LIMITS_V1,
+  wikiProvider: "rest",
+});
+
 const run: ResearchRunSummaryV1 = {
   model: "claude-sonnet-4-6",
   wikiProvider: "rest",
@@ -294,6 +306,39 @@ describe("V2 research report finalization", () => {
     ]);
     expect(report.markdown).toContain("`jira:ATLCLI-42`: exact entity.");
     expect(JSON.stringify(report.sourceAuthorities)).not.toContain("scope-binding");
+  });
+
+  test("renders an exact Confluence page without widening the whole-space report scope", async () => {
+    const current = {
+      ...claim(CURRENT_CLAIM, EVIDENCE, "current"),
+      scopeBindingIds: ["scope-binding:report:confluence:1001"],
+    };
+    const exactRecord = {
+      ...confluenceRecord(EVIDENCE),
+      authority: {
+        bindingId: "scope-binding:report:confluence:1001",
+        authorityClass: "exact_entity" as const,
+      },
+    };
+    const report = await finalizeResearchReportV2({
+      request: exactPageRequest,
+      ...ports({ claims: [current], records: [exactRecord] }),
+      claimIds: [CURRENT_CLAIM],
+      run: {
+        ...run,
+        counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 1 },
+      },
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+
+    expect(report.scope).toMatchObject({
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: [],
+    });
+    expect(report.sourceAuthorities).toEqual([
+      { sourceId: "wiki:1001", authorityClasses: ["exact_entity"] },
+    ]);
+    expect(report.markdown).toContain("Validated implementation documentation");
   });
 
   test("derives sections and coverage from a validated outline without publishing stale support", async () => {

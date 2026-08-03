@@ -123,6 +123,45 @@ describe("dynamic research graph composition", () => {
       },
     })).toThrow("scope must be resolved");
   });
+
+  test("does not add a Jira branch for an exact Confluence page binding", () => {
+    const exactPageBrief = createResearchBriefV1({
+      sessionId: "research-session:exact-page",
+      turnId: "research-turn:exact-page",
+      objective: "Summarize the attached page and cite its main claims.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:exact-page:12345",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "page:12345",
+        key: "12345",
+        name: "Customer retention analysis",
+        source: "exact_link",
+        authority: "approved",
+      }],
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(exactPageBrief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+
+    expect(graph.nodes.map((node) => node.id)).toEqual([
+      "research-node:wiki-lookup",
+      "research-node:synthesizer",
+    ]);
+    expect(graph.nodes.some((node) => node.id.includes("jira"))).toBe(false);
+  });
   test("gives every productive host the same standard cross-product graph", () => {
     const graph = composeStandardResearchGraphV1(
       "Which Confluence pages correspond to Jira work items?",
@@ -130,6 +169,7 @@ describe("dynamic research graph composition", () => {
     expect(projectSelectedResearchRolesV1(graph)).toEqual([
       "focused-researcher",
       "document-distiller",
+      "coverage-moderator",
       "reconciler",
       "synthesizer",
     ]);
@@ -729,7 +769,15 @@ describe("dynamic research graph composition", () => {
 
   test("preserves default versus explicit automatic approval for an identical deep brief", () => {
     const objective = "Perform exhaustive contradiction analysis across Jira and Confluence.";
-    const proposed = composeStandardResearchGraphV1(objective);
+    const proposed = composeStandardResearchGraphV1(objective, {
+      policy: {
+        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+        requestedEffort: "deep",
+        requestedPlanApproval: "default",
+        scopeExpansionMode: "ask",
+        requestedReconciliation: "auto",
+      },
+    });
     expect(proposed).toMatchObject({
       resolvedEffort: "deep",
       status: "proposed",
@@ -749,7 +797,7 @@ describe("dynamic research graph composition", () => {
     const automatic = composeStandardResearchGraphV1(objective, {
       policy: {
         schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
-        requestedEffort: "auto",
+        requestedEffort: "deep",
         requestedPlanApproval: "automatic",
         scopeExpansionMode: "ask",
         requestedReconciliation: "auto",

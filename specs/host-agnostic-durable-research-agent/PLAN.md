@@ -625,6 +625,66 @@ interface ResearchClarificationQuestionV1 {
   candidateIds?: string[];
 }
 
+type ResearchHumanInputQuestionV1 =
+  | {
+      id: string;
+      kind: "single_choice" | "multiple_choice";
+      header?: string;
+      prompt: string;
+      options: Array<{
+        id: string;
+        label: string;
+        description?: string;
+      }>;
+      allowOther: boolean;
+      minimumSelections?: number;
+      maximumSelections?: number;
+    }
+  | {
+      id: string;
+      kind: "text";
+      header?: string;
+      prompt: string;
+      placeholder?: string;
+      multiline: boolean;
+      minimumCharacters?: number;
+      maximumCharacters: number;
+    }
+  | {
+      id: string;
+      kind: "confirmation";
+      header?: string;
+      prompt: string;
+      confirmLabel: string;
+      rejectLabel: string;
+    };
+
+interface ResearchHumanInputRequestV1 {
+  schema: "atlcli.research-human-input-request/v1";
+  id: string;
+  sessionId: string;
+  turnId: string;
+  checkpointRef: string;
+  origin: "brief" | "scope" | "agent_tool";
+  questions: ResearchHumanInputQuestionV1[];
+  createdAt: string;
+}
+
+interface ResearchHumanInputResponseV1 {
+  schema: "atlcli.research-human-input-response/v1";
+  requestId: string;
+  sessionId: string;
+  turnId: string;
+  expectedSessionRevision: number;
+  checkpointRef: string;
+  answers: Array<
+    | { questionId: string; kind: "choice"; selectedOptionIds: string[]; otherText?: string }
+    | { questionId: string; kind: "text"; text: string }
+    | { questionId: string; kind: "confirmation"; confirmed: boolean }
+  >;
+  submittedAt: string;
+}
+
 interface ResearchBriefAssumptionV1 {
   id: string;
   text: string;
@@ -838,6 +898,7 @@ interface ResearchSessionSnapshotV1 {
     | "idle"
     | "briefing"
     | "waiting_for_clarification"
+    | "waiting_for_user_input"
     | "planning"
     | "waiting_for_plan_approval"
     | "waiting_for_plan_revision"
@@ -853,6 +914,7 @@ interface ResearchSessionSnapshotV1 {
     | "cancelled";
   waitReason?:
     | "clarification"
+    | "agent_question"
     | "plan_approval"
     | "plan_rejected"
     | "scope_expansion"
@@ -926,6 +988,30 @@ the user to rerun with a clarified question. The CLI emits no Markdown on
 stdout, writes sanitized guidance to stderr (or the typed value for `--json`),
 and uses a documented nonzero exit code; the extension displays the same typed
 outcome. T4 adds revision-fenced answers on the retained session.
+
+`ResearchClarificationQuestionV1` remains the narrow deterministic briefing
+contract. Every presenter projects it, scope ambiguity, and runtime agent
+questions into the richer `ResearchHumanInputRequestV1` UI contract. The
+central supervisor alone receives the `ask_user_question` tool. Parallel
+subagents return a bounded `needsUserInput` proposal to the supervisor; they
+must not open competing UI waits. The supervisor may batch at most three
+questions into one call and the host executes that tool with LangGraph
+`interrupt()` inside the tool body. This preserves typed structured answers,
+uses the same durable `thread_id` and checkpointer as the current turn, and
+resumes via `Command({ resume })` only after the revision-fenced response is
+committed. It is not implemented as an ordinary promise owned by a sidebar,
+TUI component, worker, or browser tab.
+
+The schema intentionally carries Pi's useful interaction semantics—labelled
+options, optional descriptions, a controlled free-text alternative, and
+sequential question handling—without coupling the core to Pi's TUI. CLI/TUI
+renders a numbered/selectable prompt and has a JSON/non-interactive control
+outcome; CopilotKit UI renders the same request through v2
+`useHumanInTheLoop`. Cancellation keeps the checkpoint paused and returns an
+explicit cancel control; it never manufactures an answer. Both Chat and Deep
+Research may invoke the tool, but the prompt requires it only when an answer
+would materially change scope, interpretation, or the requested output—not as
+a substitute for reasonable defaults.
 Pause is cooperative: `request-pause` stops new dispatch, propagates abort,
 and enters `pause_requested`; only a durable checkpoint can
 `acknowledge-pause` and enter `paused`. Resume starts from that committed
@@ -3358,7 +3444,20 @@ an undispatched plan, a non-expired lease, and an interrupted task.
         required prompts, explicit assumption decisions, scope keys, and
         revision fences. Packed MV3 proof covers answer persistence, stale
         rejection, the no-key/no-retrieval boundary, and a recovered
-        answer-committed planning checkpoint.
+      answer-committed planning checkpoint.
+- [ ] Add the central-supervisor `ask_user_question` tool for both Chat and
+      Deep Research. Persist its sanitized request plus LangGraph checkpoint
+      before exposing it, release the session lease, and resume the exact same
+      thread only from a revision-fenced `ResearchHumanInputResponseV1`.
+  - [ ] Support single choice, multiple choice, optional free-text `other`,
+        bounded text/multiline input, and confirmation without accepting
+        caller-authored schemas or executable UI.
+  - [ ] Coalesce bounded question proposals from parallel subagents into one
+        sequential supervisor interrupt; prove that two concurrent subagents
+        cannot create competing active questions.
+  - [ ] Prove process/sidebar termination while waiting, fresh-process resume,
+        stale/foreign/duplicate response rejection, cancellation, and that no
+        Atlassian/model work continues while the question is unanswered.
 - [x] Persist scope candidates, bindings, resolution decisions, and expansion
       proposals by brief/graph revision. Add candidate selection and
       scope-proposal approval/rejection controls; closing the sidebar or
@@ -4092,9 +4191,17 @@ Shared:
       prompt. Concurrent subagent completions serialize their artifact writes;
       the shared, SQLite, and IndexedDB stores retain capacity for 64 reports
       plus the three current operating projections (2026-08-03).
-- [ ] Add cross-turn memory only when a real user workflow requires it. It must
-      be explicitly user-namespaced, read-only by default, and must not retain
-      raw Atlassian content. It is not part of the MVP.
+- [x] Preserve short-term conversation memory across completed direct-chat
+      turns by reusing one host-owned DeepAgentsJS thread ID and persisting its
+      native LangGraph checkpoints in the session workspace. Browser content
+      lives in IndexedDB; the active-conversation pointer lives in extension
+      local storage and survives a side-panel reload. CLI/filesystem hosts use
+      the same shared checkpointer contract. A new-conversation action rotates
+      the pointer without deleting the retained thread (2026-08-03).
+- [ ] Add factual memory shared between separate conversations only when a real
+      user workflow requires it. It must be explicitly user-namespaced,
+      read-only by default, and must not retain raw Atlassian content. It is
+      not part of the MVP.
 - [x] Add explicit context and storage compaction with retention of canonical
       evidence and accepted reports. Native summarization bounds model context;
       the durable LangGraph journal compacts independently, and the 2,000+
@@ -4143,6 +4250,15 @@ Gate:
       at or below the configured 48-message trigger and retains native durable
       history; a separate fresh-host test proves the same session thread
       restores prior user and agent turns (2026-08-02).
+- [x] Verify against DeepAgentsJS 1.12.1 source and the current JavaScript
+      context-engineering documentation that `createDeepAgent` includes
+      automatic model-profile-aware summarization and Anthropic prompt caching.
+      The JavaScript SDK does not currently expose the Python/Deep Agents Code
+      `compact_conversation` tool, so the MVP does not emulate it with a custom
+      tool. The pinned `pkg.pr.new/deepagents@717` preview is based on the same
+      1.12.1 main revision and adds the still-open browser RunnableConfig fix;
+      track its merge before release rather than silently replacing it with an
+      older stable artifact (2026-08-03).
 - [x] A 1,000-turn synthetic stretch soak completes with bounded checkpoint and
       active-context growth across fresh DeepAgentsJS hosts (2026-08-03).
 - [ ] Repeated planted evaluation questions at turns 1, 50, 100, 250, 500, and
@@ -4187,6 +4303,10 @@ CLI:
       rejection, plan revision, steering, pause, cancel, and resume commands.
 - [ ] Add a `ResearchEventSubscriber` boundary that a later interactive TUI can
       consume without changing the runtime.
+- [ ] Render `ResearchHumanInputRequestV1` interactively as numbered options,
+      optional descriptions and a bounded text editor. Non-TTY and `--json`
+      return the typed request plus a resumable command instead of blocking on
+      stdin; the durable `sessions answer` command submits the fenced response.
 - [ ] Add cursor-resumable, bounded safe activity replay for CLI/TUI and
       extension observers. Verify the presentation can disclose task/tool/
       budget/checkpoint detail without source bodies, prompt text, credentials,
@@ -4205,6 +4325,10 @@ Extension/browser:
       approve/reject/revise controls, natural-language steering input,
       validated plan diff, reconciliation summary, and explicit
       reconciliation-disposition states.
+- [ ] Bind the same human-input request/response contract to CopilotKit v2
+      `useHumanInTheLoop`; render choices, descriptions, free text, confirm and
+      cancel as an inline chat turn. The React component owns no authoritative
+      promise or checkpoint and can be destroyed/recreated while the run waits.
 - [ ] Add scope chips with source/authority, project/space catalog search,
       ambiguous-candidate selection, expansion-mode control, and
       approve/reject views for exact-entity and whole-scope proposals to both
@@ -4230,6 +4354,10 @@ Gate:
       the plan, approve the replacement revision, pause after one wave, resume,
       inspect reconciliation, and download identical Markdown in both host
       presenters.
+- [ ] The same Chat and Deep Research fixtures can invoke
+      `ask_user_question`, stop after a durable interrupt, lose the original
+      process/presenter, resume from each answer kind, and produce the same
+      subsequent tool/result stream in CLI and CopilotKit UI.
 - [ ] Stale clarification, assumption, approval, rejection, revision,
       steering, pause, cancel, and resume commands are rejected with the
       current revision and a useful diff; they never mutate state implicitly.

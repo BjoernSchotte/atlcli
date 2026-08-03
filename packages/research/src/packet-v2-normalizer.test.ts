@@ -208,6 +208,86 @@ describe("V2 research packet normalization", () => {
     await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
   });
 
+  test("retains verified claims when another candidate fails exact-evidence validation", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const retained = await retainedEvidence({
+      store: evidenceStore,
+      id: "jira:ATLCLI-46",
+      text: "The ticket requires a documented verification step before publication.",
+    });
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+    const packet = await normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [
+          {
+            id: "candidate:verified",
+            classification: "fact",
+            summary: "The ticket requires verification before publication.",
+            support: [{
+              sourceId: retained.record.source.id,
+              quote: "requires a documented verification step before publication",
+            }],
+          },
+          {
+            id: "candidate:rejected",
+            classification: "fact",
+            summary: "The ticket requires an executive approval.",
+            support: [{
+              sourceId: retained.record.source.id,
+              quote: "requires an executive approval",
+            }],
+          },
+        ],
+        contradictionCandidates: [{
+          id: "contradiction:mixed",
+          claimCandidateIds: ["candidate:verified", "candidate:rejected"],
+          summary: "The proposed requirements may conflict.",
+        }],
+        outlineProposals: [{
+          id: "outline:mixed",
+          sectionId: "section:mixed",
+          title: "Mixed support",
+          question: "Which requirements are supported?",
+          claimCandidateIds: ["candidate:verified", "candidate:rejected"],
+          dependsOnSectionIds: [],
+          coverageTargetIds: ["target:mixed"],
+        }],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      detailEvidence: [{
+        source: retained.record.source,
+        content: {
+          text: retained.chunks[0]!.text,
+          linkTargets: [],
+          truncated: false,
+          inputBytes: retained.chunks[0]!.text.length,
+        },
+        evidenceId: retained.record.id,
+      }],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    });
+
+    expect(packet.claims).toEqual([{
+      candidateId: "candidate:verified",
+      claimId: expect.stringMatching(/^claim:[a-f0-9]{48}$/),
+    }]);
+    expect(packet.contradictions).toEqual([]);
+    expect(packet.outlineProposals).toEqual([]);
+    expect(packet.coverageLimits).toContain(
+      "One or more proposed claims failed host exact-evidence validation and were omitted.",
+    );
+    expect(JSON.stringify(packet)).not.toContain("requires an executive approval");
+    await expect(claimLedger.list()).resolves.toMatchObject({
+      claims: [{ statement: "The ticket requires verification before publication." }],
+    });
+  });
+
   test("converts a rejected claim candidate into an explicit host-validation abstention", () => {
     const packet = createHostValidationAbstentionPacketV2({
       schema: "atlcli.research-packet-body/v2",

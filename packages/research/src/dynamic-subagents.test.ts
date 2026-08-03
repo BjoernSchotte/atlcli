@@ -66,6 +66,7 @@ describe("Jira focused-researcher acquisition", () => {
     expect(program).not.toContain("Promise.all(detailItems.map");
     expect(program).toContain("const details = rawDetails.map(projectDetailForModel)");
     expect(jira?.systemPrompt).toContain("bounded host projection for every full detail read");
+    expect(jira?.systemPrompt).toContain("content.truncated and content.projectionTruncated are both false");
     expect(program.match(/tools\.researchCandidateRank/g)).toHaveLength(1);
   });
 
@@ -204,6 +205,89 @@ describe("Jira focused-researcher acquisition", () => {
     expect(projection.details[0]!.content.text).toContain("Delivery Plan directly names DEMO-42.");
     expect(projection.details[0]!.content.text).toContain("filler\nfiller");
     expect(projection.details[0]!.content.text.length).toBeLessThanOrEqual(1_200);
+  });
+
+  test("projects one complete bounded detail body instead of only its opening excerpt", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:single-detail-projection",
+      turnId: "research-turn:single-detail-projection",
+      objective: "Summarize the attached Confluence page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: ["DOCSY"],
+      },
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const program = buildResearchAcquisitionProgram(
+      graph.nodes.find((node) => node.id === "research-node:wiki-lookup")!,
+      brief.objective,
+      1,
+      1,
+    ).replace("\n({ search:", "\nreturn ({ search:");
+    const completeBody = `${"Introductory context.\n".repeat(180)}The final section contains the decisive supported conclusion.`;
+    const invoke = new Function("tools", `return (async () => {${program}})();`) as (
+      tools: unknown,
+    ) => Promise<unknown>;
+    const projection = await invoke({
+      async wikiSearch() {
+        return JSON.stringify({
+          items: [{
+            entityRef: "opaque:12345",
+            sourceId: "wiki:12345",
+            product: "confluence",
+            title: "Customer retention analysis",
+            url: "https://example.atlassian.net/wiki/spaces/DOCSY/pages/12345",
+            contentId: "12345",
+            spaceKey: "DOCSY",
+          }],
+          page: { complete: true },
+        });
+      },
+      async researchCandidateRank() {
+        return JSON.stringify({ items: [{ entityRef: "opaque:12345" }] });
+      },
+      async wikiPageGet() {
+        return JSON.stringify({
+          source: {
+            sourceId: "wiki:12345",
+            product: "confluence",
+            title: "Customer retention analysis",
+            url: "https://example.atlassian.net/wiki/spaces/DOCSY/pages/12345",
+            contentId: "12345",
+            spaceKey: "DOCSY",
+          },
+          content: { text: completeBody, linkTargets: [], truncated: false },
+        });
+      },
+    }) as {
+      details: Array<{
+        content: {
+          text: string;
+          linkTargets: string[];
+          linkTargetsTruncated: boolean;
+          truncated: boolean;
+          projectionTruncated: boolean;
+        };
+      }>;
+    };
+
+    expect(projection.details[0]!.content).toEqual({
+      text: completeBody,
+      linkTargets: [],
+      linkTargetsTruncated: false,
+      truncated: false,
+      projectionTruncated: false,
+    });
+    expect(projection.details[0]!.content.text.length).toBeGreaterThan(1_200);
+    expect(projection.details[0]!.content.text).toContain("decisive supported conclusion");
   });
 
   test("caps concurrent PTC calls at the host-admitted node budget", async () => {

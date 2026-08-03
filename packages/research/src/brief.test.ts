@@ -46,6 +46,41 @@ describe("host-owned research brief", () => {
     });
   });
 
+  test("derives a Confluence-only brief from one exact page binding", () => {
+    const brief = create({
+      objective: "Summarize the attached page and cite its main claims.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:exact-page:12345",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "page:12345",
+        key: "12345",
+        name: "Customer retention analysis",
+        source: "exact_link",
+        authority: "approved",
+      }],
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+
+    expect(brief.sourceClasses).toEqual(["confluence"]);
+    expect(brief.coverageTargets).toEqual([{
+      id: "coverage:primary-question",
+      question: "Summarize the attached page and cite its main claims.",
+      required: true,
+      sourceClasses: ["confluence"],
+      minimumDistinctSources: 1,
+    }]);
+  });
+
   test("keeps explicit deep work reviewable while auto remains runnable", () => {
     expect(resolveResearchEffortV1({
       requested: "auto",

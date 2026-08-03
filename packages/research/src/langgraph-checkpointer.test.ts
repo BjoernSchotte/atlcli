@@ -340,7 +340,10 @@ describe("research LangGraph checkpointer adapter", () => {
       call.messages.map((message) => message.text).join("\n"),
     );
     expect(resumedInputs.some((input) => input.includes("ORION-1000"))).toBe(true);
-  }, 120_000);
+  // This exercises 1,000 real LangGraph checkpoint transitions plus ten fresh
+  // host reconstructions. Slower CI runners need more than the unit default,
+  // while the product's per-run deadline remains independently bounded.
+  }, 180_000);
 
   test("fails closed when a workspace checkpoint index belongs to another session", async () => {
     const workspace = createMemoryResearchWorkspace();

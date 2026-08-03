@@ -373,8 +373,10 @@ describe("portable Research screen", () => {
     expect(dom.find("research-context-chips").textContent).toContain("Design");
     expect(dom.find("research-context-chips").textContent).not.toContain("confluence: KB");
     expect(dom.find("research-mode-chat").getAttribute("aria-pressed")).toBe("true");
+    expect(dom.find("research-run").getAttribute("aria-label")).toBe("Send answer");
     await dom.click("research-mode-deep");
     expect(dom.find("research-mode-deep").getAttribute("aria-pressed")).toBe("true");
+    expect(dom.find("research-run").getAttribute("aria-label")).toBe("Run research");
     expect((dom.find("research-effort") as HTMLSelectElement).value).toBe("deep");
     expect((dom.find("research-plan-approval") as HTMLSelectElement).value).toBe("default");
     expect((dom.find("research-reconciliation") as HTMLSelectElement).value).toBe("auto");
@@ -399,6 +401,8 @@ describe("portable Research screen", () => {
     let releaseRun: ((value: ResearchReportV1) => void) | undefined;
     let pauseCalls = 0;
     let runCalls = 0;
+    const runQuestions: string[] = [];
+    const conversationIds: Array<string | undefined> = [];
     const port: ResearchPort = {
       hasApiKey: async () => true,
       setApiKey: async () => undefined,
@@ -410,8 +414,10 @@ describe("portable Research screen", () => {
         mentions: [],
         resolutions: [],
       }),
-      run: async (_request, options) => {
+      run: async (request, options) => {
         runCalls += 1;
+        runQuestions.push(request.question);
+        conversationIds.push(options?.conversationId);
         options?.onSessionStart?.({ sessionId: "research-session:chat" });
         options?.onEvent?.({
           kind: "phase",
@@ -475,35 +481,63 @@ describe("portable Research screen", () => {
     releaseRun?.(report);
     await dom.flush(20);
     expect(runCalls).toBe(3);
+    expect(runQuestions).toEqual([
+      "How are DEMO-1 and KB related?",
+      "Prioritize linked evidence before synthesis.",
+      "Queue a source check after this report.",
+    ]);
+    expect(conversationIds).toEqual([
+      undefined,
+      "research-session:chat",
+      "research-session:chat",
+    ]);
     expect(dom.find("research-chat-answer").textContent).toContain("The page explicitly links the issue.");
     expect(dom.find("research-streaming-turn").querySelector('[data-testid="research-active-kite"]')).toBeNull();
   });
 
-  it("drains an ordinary queued chat message through the retained session", async () => {
-    const retained = {
-      schema: "atlcli.research-retained-session/v1" as const,
-      sessionId: "research-session:chat-queue",
-      revision: 6,
-      turnId: "research-turn:initial",
-      status: "complete" as const,
-      updatedAt: "2026-08-03T10:00:00.000Z",
-      question: "How are DEMO-1 and KB related?",
-      scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["KB"] },
+  it("clears the durable direct-chat pointer when a new conversation starts", async () => {
+    let resetCalls = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resetChatConversation: async () => {
+        resetCalls += 1;
+      },
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (_request, options) => {
+        options?.onSessionStart?.({ sessionId: "research-session:chat-before-reset" });
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
     };
-    const resumable = {
-      schema: "atlcli.research-resumable-session/v1" as const,
-      sessionId: retained.sessionId,
-      revision: 8,
-      turnId: "research-turn:follow-up",
-      status: "running" as const,
-      updatedAt: "2026-08-03T10:01:00.000Z",
-      question: "Which source needs another check?",
-      scope: retained.scope,
-    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+
+    await dom.setValue("research-effort", "lookup");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "Remember this first turn.");
+    await dom.click("research-run");
+    await openConversationMenu();
+    await dom.click("research-new-conversation");
+    await dom.flush();
+
+    expect(resetCalls).toBe(1);
+  });
+
+  it("drains an ordinary queued chat message through the durable chat thread", async () => {
     let releaseInitial: ((value: ResearchReportV1) => void) | undefined;
-    let complete = false;
-    let resumed = 0;
-    const prepared: Array<{ sessionId: string; revision: number; question: string }> = [];
+    const calls: Array<{ question: string; conversationId?: string }> = [];
     const port: ResearchPort = {
       hasApiKey: async () => true,
       setApiKey: async () => undefined,
@@ -515,24 +549,16 @@ describe("portable Research screen", () => {
         mentions: [],
         resolutions: [],
       }),
-      listRetainedSessions: async () => complete ? [retained] : [],
-      prepareFollowUpTurn: async (input) => {
-        prepared.push(input);
-        return { kind: "resumable", session: resumable };
-      },
-      run: async (_request, options) => {
-        options?.onSessionStart?.({ sessionId: retained.sessionId });
-        return await new Promise<ResearchReportV1>((resolve) => {
-          releaseInitial = (value) => {
-            complete = true;
-            resolve(value);
-          };
+      run: async (request, options) => {
+        calls.push({
+          question: request.question,
+          ...(options?.conversationId ? { conversationId: options.conversationId } : {}),
         });
-      },
-      resume: async (sessionId) => {
-        expect(sessionId).toBe(retained.sessionId);
-        resumed += 1;
-        return report;
+        options?.onSessionStart?.({ sessionId: "research-session:chat-queue" });
+        if (calls.length > 1) return report;
+        return await new Promise<ResearchReportV1>((resolve) => {
+          releaseInitial = resolve;
+        });
       },
       copyMarkdown: async () => undefined,
       downloadMarkdown: async () => undefined,
@@ -544,20 +570,21 @@ describe("portable Research screen", () => {
     );
     await dom.setValue("research-effort", "lookup");
     await dom.toggle("research-disclosure");
-    await dom.setValue("copilot-chat-textarea", retained.question);
+    await dom.setValue("copilot-chat-textarea", "How are DEMO-1 and KB related?");
     await dom.click("research-run");
-    await dom.setValue("copilot-chat-textarea", resumable.question);
+    await dom.setValue("copilot-chat-textarea", "Which source needs another check?");
     await pressComposerKey("Enter");
 
     releaseInitial?.(report);
     await dom.flush(12);
 
-    expect(prepared).toEqual([{
-      sessionId: retained.sessionId,
-      revision: retained.revision,
-      question: resumable.question,
-    }]);
-    expect(resumed).toBe(1);
+    expect(calls).toEqual([
+      { question: "How are DEMO-1 and KB related?" },
+      {
+        question: "Which source needs another check?",
+        conversationId: "research-session:chat-queue",
+      },
+    ]);
     expect(dom.find("research-chat").textContent).not.toContain("Queued for the current research session.");
   });
 
@@ -1855,6 +1882,17 @@ describe("portable Research screen", () => {
           itemCount: 1,
           itemLabels: ["Confluence 1001: Design"],
         });
+        options?.onEvent?.({
+          kind: "capability",
+          seq: 2,
+          at: "2026-08-03T12:00:01.000Z",
+          callId: "research.candidate.rank:1",
+          toolId: "research.candidate.rank",
+          inputKind: "ranking",
+          status: "completed",
+          itemCount: 1,
+          itemLabels: ["Confluence 1001: Design"],
+        });
         return report;
       },
       copyMarkdown: async () => undefined,
@@ -1881,6 +1919,8 @@ describe("portable Research screen", () => {
       "The page ID was taken directly from the attached context; no Confluence search was run.",
     );
     expect(dom.find("research-activity").textContent).not.toContain("Confluence search returned");
+    expect(dom.find("research-activity").textContent).not.toContain("Relevant results");
+    expect(dom.find("research-activity").textContent).not.toContain("Selected for detailed reading");
     expect(dom.find("research-chat-answer").textContent).toContain(
       "The page explicitly links the issue.",
     );

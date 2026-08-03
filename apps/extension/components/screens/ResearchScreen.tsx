@@ -739,6 +739,13 @@ function ResearchStreamingTurn({
       seed.binding.entityKind === "page",
     )?.binding
     : undefined;
+  // Ranking validates the one host-bound entity reference internally, but it
+  // is not a user-visible discovery step when there is only one exact page.
+  // Showing it as "relevant results selected" suggested a broad search that
+  // never happened and duplicated the direct-context selection row.
+  const displaySteps = exactPage
+    ? steps.filter((step) => step.kind !== "ranking")
+    : steps;
   const label = (kind: ResearchTimelineStepKind): string => {
     switch (kind) {
       case "thinking": return t("research.chat.phase.thinking");
@@ -780,8 +787,8 @@ function ResearchStreamingTurn({
       data-testid="research-streaming-turn"
     >
       <div className="space-y-1" data-testid="research-activity">
-        {steps.map((step, index) => {
-          const active = running && index === steps.length - 1;
+        {displaySteps.map((step, index) => {
+          const active = running && index === displaySteps.length - 1;
           const details = exactPage && step.kind === "confluence-search"
             ? [t("research.chat.detail.confluenceContextSelected")]
             : researchActivityDetailMessages(step.events, t);
@@ -943,6 +950,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const abortRef = useRef<AbortController | null>(null);
   const chatTurnSequence = useRef(0);
   const activeSessionIdRef = useRef<string | null>(null);
+  const activeChatConversationIdRef = useRef<string | null>(null);
   const queueDrainInFlight = useRef(false);
   const failedQueuedTurnId = useRef<string | null>(null);
   const expectedDirectSteeringAbort = useRef(false);
@@ -1341,15 +1349,26 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current = controller;
       setRunning(true);
       setPauseRequested(false);
-      setProgress(t("research.running"));
+      setProgress(t(interactionMode === "chat" ? "research.chat.running" : "research.running"));
       setActivity([]);
       setReport(null);
       const result = await port!.run(request, {
         signal: controller.signal,
         mode: interactionMode === "chat" ? "chat" : "research",
+        ...(interactionMode === "chat" && activeChatConversationIdRef.current
+          ? { conversationId: activeChatConversationIdRef.current }
+          : {}),
         policy,
-        onSessionStart: (session) => trackActiveSession(session.sessionId),
-        onProgress: (value) => setProgress(value.message),
+        onSessionStart: (session) => {
+          if (interactionMode === "chat") {
+            activeChatConversationIdRef.current = session.sessionId;
+          } else {
+            trackActiveSession(session.sessionId);
+          }
+        },
+        onProgress: () => setProgress(t(
+          interactionMode === "chat" ? "research.chat.running" : "research.running",
+        )),
         onEvent: (event) => setActivity((current) =>
           [...current, event].slice(-MAX_RESEARCH_ACTIVITY_EVENTS)
         ),
@@ -1588,16 +1607,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     if (interactionMode === "chat" && !session) {
       queueDrainInFlight.current = true;
       void (async () => {
-        const priorAnswer = report?.schema === "atlcli.research-report/v1"
-          ? report.executiveSummary
-          : report?.executiveSummaryClaimIds
-            .map((claimId) => report.claims.find((claim) => claim.id === claimId)?.statement)
-            .filter(Boolean)
-            .join("\n");
-        const requestContent = queued.baseQuestion
-          ? `${queued.baseQuestion}\n\n${priorAnswer ? `Previous answer:\n${priorAnswer}\n\n` : ""}User follow-up or steering:\n${queued.content}`
-          : queued.content;
-        const accepted = await run(undefined, requestContent, queued.id);
+        const accepted = await run(undefined, queued.content, queued.id);
         if (!accepted) {
           failedQueuedTurnId.current = queued.id;
           return;
@@ -2091,13 +2101,16 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     setReconciliation(policy.requestedReconciliation);
   }
 
-  function startNewConversation(): void {
+  async function startNewConversation(): Promise<void> {
     if (running) return;
+    await port?.resetChatConversation?.();
     selectInteractionMode("chat");
     setQuestion("");
     setChatTurns([]);
     setQueuedChatMessages([]);
     setActiveSessionId(null);
+    activeSessionIdRef.current = null;
+    activeChatConversationIdRef.current = null;
     setImmediateSteering(null);
     setSubmittedRequest(null);
     setReport(null);
@@ -2165,6 +2178,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
+    const submitLabel = interactionMode === "chat"
+      ? t("research.chat.send")
+      : t("research.run");
     return (
       <Button
         {...props}
@@ -2175,8 +2191,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             ? "bg-destructive hover:bg-destructive/90"
             : "bg-primary hover:bg-primary/90",
         )}
-        aria-label={running ? t("research.stop") : t("research.run")}
-        title={running ? t("research.stop") : t("research.run")}
+        aria-label={running ? t("research.stop") : submitLabel}
+        title={running ? t("research.stop") : submitLabel}
         data-testid="research-run"
       >
         {children ?? (running
@@ -2236,7 +2252,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             className="w-full justify-start"
             variant="ghost"
             disabled={running}
-            onClick={startNewConversation}
+            onClick={() => void startNewConversation()}
             data-testid="research-new-conversation"
           >
             <Pencil className="size-4" aria-hidden="true" />
@@ -2831,7 +2847,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               disabled={running || !site}
               data-testid="research-run-advanced"
             >
-              {running ? t("research.running") : t("research.run")}
+              {running
+                ? t(interactionMode === "chat" ? "research.chat.running" : "research.running")
+                : t(interactionMode === "chat" ? "research.chat.send" : "research.run")}
             </Button>
             {port.pauseActiveRun && (
               <Button

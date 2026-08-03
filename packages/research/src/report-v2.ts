@@ -226,9 +226,30 @@ function renderMarkdown(
     sources: report.sources,
     run: report.run,
   };
+  const exactSourceIds = new Set(
+    (report.sourceAuthorities ?? [])
+      .filter((entry) => entry.authorityClasses.includes("exact_entity"))
+      .map((entry) => entry.sourceId),
+  );
+  const exactJiraProjectKeys = report.sources
+    .filter((source) => exactSourceIds.has(source.id) && source.product === "jira")
+    .map((source) => source.projectKey!);
+  const exactConfluenceSpaceKeys = report.sources
+    .filter((source) => exactSourceIds.has(source.id) && source.product === "confluence")
+    .map((source) => source.spaceKey!);
+  const validationScope = {
+    ...legacy.scope,
+    jiraProjectKeys: [...new Set([...legacy.scope.jiraProjectKeys, ...exactJiraProjectKeys])],
+    confluenceSpaceKeys: [
+      ...new Set([...legacy.scope.confluenceSpaceKeys, ...exactConfluenceSpaceKeys]),
+    ],
+  };
   // Reuse the legacy contract validator for source URLs and run metadata, then
   // project the host-approved outline through the same safe Markdown helpers.
-  finalizeResearchReportV1(legacy);
+  // Exact-entity evidence is admitted by its host-retained authority record,
+  // not by widening the report's whole-space scope. The temporary validation
+  // scope exists only for the legacy source-metadata validator.
+  finalizeResearchReportV1({ ...legacy, scope: validationScope });
   return [
     ...renderResearchReportWithFindingSectionsMarkdown({
       ...legacy,

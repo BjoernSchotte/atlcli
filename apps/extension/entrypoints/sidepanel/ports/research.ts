@@ -23,6 +23,8 @@ import {
 } from "../../../utils/messages.js";
 
 const MAX_RESEARCH_RESUME_MS = 10 * 60_000;
+const ACTIVE_CHAT_CONVERSATION_KEY = "atlcli.research.active-chat-conversation-id.v1";
+const RESEARCH_SESSION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/;
 
 function safeFilename(value: string): string {
   const normalized = value
@@ -56,6 +58,10 @@ export function chromeResearchPort(): ResearchPort {
 
     async clearApiKey() {
       await chrome.storage.session.remove(RESEARCH_ANTHROPIC_SESSION_KEY);
+    },
+
+    async resetChatConversation() {
+      await chrome.storage.local.remove(ACTIVE_CHAT_CONVERSATION_KEY);
     },
 
     async resolveScope(request, options) {
@@ -801,7 +807,17 @@ export function chromeResearchPort(): ResearchPort {
         throw new ResearchContractError("cancelled", "The research run was cancelled.");
       }
       const runId = crypto.randomUUID();
-      const sessionId = `research-session:${crypto.randomUUID()}`;
+      let sessionId = `research-session:${crypto.randomUUID()}`;
+      if (options?.mode === "chat") {
+        const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
+        const retained = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+        sessionId = options.conversationId ?? (
+          typeof retained === "string" && RESEARCH_SESSION_ID_PATTERN.test(retained)
+            ? retained
+            : sessionId
+        );
+        await chrome.storage.local.set({ [ACTIVE_CHAT_CONVERSATION_KEY]: sessionId });
+      }
       const turnId = `research-turn:${crypto.randomUUID()}`;
       const policy = normalizeResearchOneShotPolicyV1(options?.policy);
       activeRunId = runId;

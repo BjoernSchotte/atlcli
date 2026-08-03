@@ -27,6 +27,7 @@ import {
   type ResearchRunOptions,
   type ResearchRunSummaryV1,
   type ResearchRunUsageV1,
+  type ResearchScopeBindingV1,
   type ResearchSourceReferenceV1,
 } from "./contracts.js";
 import {
@@ -391,12 +392,23 @@ export function hostDetailCoverageLimitationsV1(
  */
 export function hostSearchFreshnessLimitationsV1(
   graph: ResearchGraphV1 | undefined,
+  scopeBindings: readonly ResearchScopeBindingV1[] = [],
 ): string[] {
-  const searchedProducts = selectedSearchProductsV1(graph) ?? [
+  const selectedProducts = selectedSearchProductsV1(graph) ?? [
     "jira",
     "confluence",
   ];
-  if (searchedProducts.length === 0) return [];
+  const searchedProducts = selectedProducts.filter((product) => {
+    const admitted = scopeBindings.filter((binding) =>
+      binding.product === product &&
+      (binding.authority === "approved" || binding.authority === "locked"));
+    const exactKind = product === "jira" ? "issue" : "page";
+    const wholeScopeKind = product === "jira" ? "project" : "space";
+    const exactOnly = admitted.some((binding) => binding.entityKind === exactKind) &&
+      !admitted.some((binding) => binding.entityKind === wholeScopeKind);
+    return !exactOnly;
+  });
+  if (selectedProducts.length === 0) return [];
   const limitations = searchedProducts.map((product) => {
     const label = product === "jira" ? "Jira" : "Confluence";
     return `${label} candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.`;
@@ -487,7 +499,7 @@ You have only one normal tool: eval. Inside eval, QuickJS exposes exactly:
 
 Every bridged tool returns a JSON string: call JSON.parse. The host injects contract schema IDs; do not pass a schema field. QuickJS has no fetch, filesystem, process, require, chrome APIs or subagents.
 
-Your first and only eval call MUST run this exact bounded acquisition algorithm. Do not add query text, do not start another search, and do not call eval again:
+For every user turn, your first and only eval call in that turn MUST run this exact bounded acquisition algorithm. A new user turn starts a new evidence-validation boundary, so call eval once again even when the conversation checkpoint already contains an earlier answer. Do not add query text, do not start another search, and do not call eval a second time within the same turn:
 
 async function collect(search) {
   const items = [];
@@ -527,6 +539,7 @@ Return the required structured draft without Markdown syntax. Cite only sourceId
 Do not invent a relationship from update-time proximity or generic titles alone. Omit the relationship entirely unless the available titles or detailed content provide a concrete semantic signal.
 When a detail result has content.truncated=true, never claim that the complete Jira issue or Confluence page lacks a link, reference, or topic. Qualify negative content findings as applying only to the captured excerpt and include that boundary in limitations.
 Never generalize a negative content claim from search summaries to items whose details were not read. State the exact detail coverage when the answer is not exhaustive.
+${followObservedJiraReferences ? "The attached Confluence page is the exact primary scope. Do not describe it as a space-wide search, do not mention unrelated pages, and do not add a Jira limitation when no Jira reference was observed and no Jira read was performed." : ""}
 The fields findings, relationships, and limitations are always JSON arrays. Use [] when there are no supported entries; never put prose directly in one of those fields.
 
 Implementation and output-format constraints stated only in this system prompt are not evidence. Never mention or turn them into a finding or inference unless an observed Jira or Confluence source independently supports the claim.`;
@@ -2852,6 +2865,14 @@ export interface RunResearchAgentInput {
   options?: ResearchRunOptions;
   /** Host-owned virtual workspace; a bounded in-memory backend is the fallback. */
   workspace?: ResearchWorkspace;
+  /**
+   * Durable direct-chat thread identity. The host supplies a persistent
+   * workspace (filesystem for CLI, IndexedDB for browser) and reuses the same
+   * session ID for every turn in one conversation.
+   */
+  conversation?: {
+    sessionId: string;
+  };
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
   /**
@@ -3026,6 +3047,12 @@ async function runResearchAgentWithBindings(
     throw new ResearchContractError(
       "invalid-request",
       "Durable research execution must use the matching approved graph envelope.",
+    );
+  }
+  if (input.conversation && input.researchGraph) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Direct-chat conversation state cannot be combined with a research graph.",
     );
   }
   const now = input.now ?? Date.now;
@@ -3543,16 +3570,19 @@ async function runResearchAgentWithBindings(
     ? resumedContinuation === undefined
       ? "initial"
       : `continuation:${resumedContinuation.continuationId}`
+    : input.conversation
+      ? "chat"
     : undefined;
-  const checkpointThreadId = input.durableSession && supervisorCheckpointPhaseId
+  const checkpointSessionId = input.durableSession?.sessionId ?? input.conversation?.sessionId;
+  const checkpointThreadId = checkpointSessionId && supervisorCheckpointPhaseId
     ? researchSupervisorThreadIdForSessionV1(
-        input.durableSession.sessionId,
+        checkpointSessionId,
         supervisorCheckpointPhaseId,
       )
     : runId;
-  const checkpointer = input.durableSession && supervisorCheckpointPhaseId
+  const checkpointer = checkpointSessionId && supervisorCheckpointPhaseId
     ? new ResearchSessionWorkspaceCheckpointerV1(
-        input.durableSession.sessionId,
+        checkpointSessionId,
         workspace,
         { supervisorPhaseId: supervisorCheckpointPhaseId },
       )
@@ -4914,7 +4944,7 @@ async function runResearchAgentWithBindings(
           : buildDynamicSupervisorPrompt(input.researchGraph!),
       ].join("\n\n")
     : undefined;
-  const durableSummarizationMiddleware = isDynamic
+  const durableSummarizationMiddleware = isDynamic || input.conversation
     ? createResearchDurableSummarizationMiddleware(runtime, {
         workspace,
         model,
@@ -5069,7 +5099,13 @@ async function runResearchAgentWithBindings(
           }),
         ]
       : [
-          ...disabledMiddleware,
+          ...(input.conversation
+            ? [
+                createMiddleware({ name: "FilesystemMiddleware" }),
+                createMiddleware({ name: "subAgentMiddleware" }),
+                durableSummarizationMiddleware!,
+              ]
+            : disabledMiddleware),
           ...(supervisorModelBudgetMiddleware
             ? [supervisorModelBudgetMiddleware]
             : []),
@@ -5119,9 +5155,16 @@ async function runResearchAgentWithBindings(
   let supervisorActive = false;
 
   try {
+    const progressProducts = isDynamic
+      ? selectedSearchProductsV1(acceptedGraph) ?? []
+      : directChatProductsV1(input.request);
     emitProgress({
       phase: "researching",
-      message: "Researching Jira and Confluence.",
+      message: directChatHasExactCurrentPageV1(input.request)
+        ? "Reading the attached Confluence page."
+        : progressProducts.length === 1
+          ? `Reading the selected ${progressProducts[0] === "jira" ? "Jira" : "Confluence"} sources.`
+          : "Reading the selected Atlassian sources.",
       completedCalls: 0,
       maxCalls: input.request.limits.maxPtcCalls,
     });
@@ -5460,7 +5503,10 @@ async function runResearchAgentWithBindings(
                 broker.sourceLedger(),
                 broker.detailEvidenceLedger(),
               ),
-              ...hostSearchFreshnessLimitationsV1(acceptedGraph),
+              ...hostSearchFreshnessLimitationsV1(
+                acceptedGraph,
+                input.brief?.scopeBindings,
+              ),
               ...revalidationLimitations,
             ],
             run,
@@ -5475,7 +5521,10 @@ async function runResearchAgentWithBindings(
               ...(input.brief
                 ? projectResearchProposedAssumptionLimitationsV1(input.brief)
                 : []),
-              ...hostSearchFreshnessLimitationsV1(undefined),
+              ...hostSearchFreshnessLimitationsV1(
+                undefined,
+                input.brief?.scopeBindings,
+              ),
             ],
             run,
           });

@@ -621,6 +621,12 @@ export interface ResearchRunOptions {
   signal?: AbortSignal;
   /** Selects a direct conversational turn or the dynamic research workflow. */
   mode?: ResearchRunModeV1;
+  /**
+   * Host-owned durable identity for a multi-turn direct-chat conversation.
+   * Reusing it causes the checkpointer to append the new human turn to the
+   * same DeepAgentsJS thread. Omitting it starts a new conversation.
+   */
+  conversationId?: string;
   policy?: ResearchOneShotPolicyV1;
   /**
    * The host owns durable session identity. Presenters may use this opaque
@@ -642,6 +648,12 @@ export interface ResearchPort {
   hasApiKey(): Promise<boolean>;
   setApiKey(apiKey: string): Promise<void>;
   clearApiKey(): Promise<void>;
+  /**
+   * Start the next direct-chat turn in a fresh durable conversation. The host
+   * clears only its active-conversation pointer; retained conversation state
+   * remains host-owned and may be exposed by a future history surface.
+   */
+  resetChatConversation?(): Promise<void>;
   resolveScope(
     request: ResearchRequestV1,
     options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1,

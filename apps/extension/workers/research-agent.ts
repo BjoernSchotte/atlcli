@@ -34,6 +34,7 @@ import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
 } from "../utils/research/worker-protocol.js";
+import { openDurableChatConversationWorkspaceV1 } from "../utils/research/chat-conversation.js";
 
 function post(message: ResearchWorkerResponseV1): void {
   globalThis.postMessage(message);
@@ -85,16 +86,33 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           post({ kind: "research-worker:progress", runId, progress });
         const onEvent = (event: ResearchOneShotEventV1): void =>
           post({ kind: "research-worker:event", runId, event });
-        const report = await runResearchAgent({
-          apiKey,
-          request,
-          providers,
-          budget,
-          scopeCatalog,
-          runId,
-          options: { mode: "chat", onProgress, onEvent, policy },
-        });
-        post({ kind: "research-worker:complete", runId, report });
+        const store = await IndexedDbResearchSessionStoreV1.open();
+        try {
+          const now = new Date().toISOString();
+          const workspace = await openDurableChatConversationWorkspaceV1({
+            store,
+            sessionId,
+            ownerId: `owner:browser-chat-${runId}`,
+            createdAt: now,
+            leaseExpiresAt: new Date(
+              Date.parse(now) + request.limits.maxRunMs,
+            ).toISOString(),
+          });
+          const report = await runResearchAgent({
+            apiKey,
+            request,
+            providers,
+            budget,
+            scopeCatalog,
+            runId,
+            workspace,
+            conversation: { sessionId },
+            options: { mode: "chat", onProgress, onEvent, policy },
+          });
+          post({ kind: "research-worker:complete", runId, report });
+        } finally {
+          store.close();
+        }
         return;
       }
       const store = await IndexedDbResearchSessionStoreV1.open();

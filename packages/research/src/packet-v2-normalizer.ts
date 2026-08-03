@@ -2,6 +2,7 @@ import type { ResearchDetailEvidenceV1 } from "./broker.js";
 import { ResearchContractError } from "./contracts.js";
 import {
   normalizeResearchClaimCandidatesV2,
+  type NormalizedResearchClaimCandidateV2,
 } from "./claim-candidate-normalizer.js";
 import type { ResearchClaimLedgerV1, ResearchClaimV1 } from "./claim-ledger.js";
 import type { ResearchEvidenceStoreV1 } from "./evidence-store.js";
@@ -41,6 +42,65 @@ function coverageLimitsWithOmittedReferences(
   return [...coverageLimits.filter((candidate) => candidate !== limit).slice(0, 15), limit];
 }
 
+const HOST_CLAIM_VALIDATION_LIMIT =
+  "One or more proposed claims failed host exact-evidence validation and were omitted.";
+
+async function normalizeIndividuallyVerifiedClaims(input: {
+  candidates: Parameters<typeof normalizeResearchClaimCandidatesV2>[0]["candidates"];
+  detailEvidence: readonly ResearchDetailEvidenceV1[];
+  evidenceStore: ResearchEvidenceStoreV1;
+  claimLedger: ResearchClaimLedgerV1;
+  createdAt: string;
+}): Promise<{
+  normalized: NormalizedResearchClaimCandidateV2[];
+  omittedCandidateIds: Set<string>;
+}> {
+  const normalized: NormalizedResearchClaimCandidateV2[] = [];
+  const omittedCandidateIds = new Set<string>();
+  const admittedClaimIds = new Set<string>();
+  let lastValidationError: ResearchContractError | undefined;
+
+  for (const candidate of input.candidates) {
+    try {
+      const [accepted] = await normalizeResearchClaimCandidatesV2({
+        candidates: [candidate],
+        detailEvidence: input.detailEvidence,
+        evidenceStore: input.evidenceStore,
+        claimLedger: input.claimLedger,
+        createdAt: input.createdAt,
+      });
+      if (!accepted || admittedClaimIds.has(accepted.claim.id)) {
+        omittedCandidateIds.add(candidate.id);
+        continue;
+      }
+      admittedClaimIds.add(accepted.claim.id);
+      normalized.push(accepted);
+    } catch (error) {
+      if (!(error instanceof ResearchContractError) || error.code !== "invalid-report") {
+        throw error;
+      }
+      lastValidationError = error;
+      omittedCandidateIds.add(candidate.id);
+    }
+  }
+
+  if (input.candidates.length > 0 && normalized.length === 0 && lastValidationError) {
+    throw lastValidationError;
+  }
+  return { normalized, omittedCandidateIds };
+}
+
+function appendHostClaimValidationLimit(
+  coverageLimits: readonly string[],
+  omitted: boolean,
+): string[] {
+  if (!omitted) return [...coverageLimits];
+  return [
+    ...coverageLimits.filter((candidate) => candidate !== HOST_CLAIM_VALIDATION_LIMIT).slice(0, 15),
+    HOST_CLAIM_VALIDATION_LIMIT,
+  ];
+}
+
 /**
  * Crosses the model/host trust boundary for the V2 research packet.
  *
@@ -63,13 +123,17 @@ export async function normalizeResearchPacketModelBodyV2(input: {
     modelBody.proposedFollowUps,
     allowedSourceIds,
   );
-  const normalizedClaims = await normalizeResearchClaimCandidatesV2({
+  const claimNormalization = await normalizeIndividuallyVerifiedClaims({
     candidates: modelBody.claimCandidates,
     detailEvidence: input.detailEvidence,
     evidenceStore: input.evidenceStore,
     claimLedger: input.claimLedger,
     createdAt: input.createdAt,
   });
+  const normalizedClaims = claimNormalization.normalized;
+  const admittedCandidateIds = new Set(
+    normalizedClaims.map(({ candidateId }) => candidateId),
+  );
   const claimsByCandidateId = new Map(
     normalizedClaims.map(({ candidateId, claim }) => [candidateId, claim] as const),
   );
@@ -94,7 +158,10 @@ export async function normalizeResearchPacketModelBodyV2(input: {
       claimId: claim.id,
     })),
     referencedClaimIds: [],
-    contradictions: modelBody.contradictionCandidates.map((candidate) => {
+    contradictions: modelBody.contradictionCandidates
+      .filter((candidate) => candidate.claimCandidateIds.every((candidateId) =>
+        admittedCandidateIds.has(candidateId)))
+      .map((candidate) => {
       const claims = claimsFor(candidate.claimCandidateIds);
       return {
         id: candidate.id,
@@ -103,7 +170,10 @@ export async function normalizeResearchPacketModelBodyV2(input: {
         summary: candidate.summary,
       };
     }),
-    outlineProposals: modelBody.outlineProposals.map((proposal) => {
+    outlineProposals: modelBody.outlineProposals
+      .filter((proposal) => proposal.claimCandidateIds.every((candidateId) =>
+        admittedCandidateIds.has(candidateId)))
+      .map((proposal) => {
       const claims = claimsFor(proposal.claimCandidateIds);
       return {
         id: proposal.id,
@@ -118,9 +188,12 @@ export async function normalizeResearchPacketModelBodyV2(input: {
     }),
     gaps: gaps.values,
     proposedFollowUps: proposedFollowUps.values,
-    coverageLimits: coverageLimitsWithOmittedReferences(
-      modelBody.coverageLimits,
-      gaps.omitted || proposedFollowUps.omitted,
+    coverageLimits: appendHostClaimValidationLimit(
+      coverageLimitsWithOmittedReferences(
+        modelBody.coverageLimits,
+        gaps.omitted || proposedFollowUps.omitted,
+      ),
+      claimNormalization.omittedCandidateIds.size > 0,
     ),
     ...(modelBody.abstentionReason === undefined
       ? {}
@@ -150,7 +223,6 @@ export function createHostValidationAbstentionPacketV2(
     suffix += 1;
     gapId = `${baseGapId}-${suffix}`;
   }
-  const coverageLimit = "One or more proposed claims failed host exact-evidence validation and were omitted.";
   return parseResearchPacketBodyV2({
     schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
     claims: [],
@@ -171,7 +243,7 @@ export function createHostValidationAbstentionPacketV2(
         parsed.coverageLimits,
         gaps.omitted || proposedFollowUps.omitted,
       ).slice(0, 15),
-      coverageLimit,
+      HOST_CLAIM_VALIDATION_LIMIT,
     ],
     abstentionReason: "No claim candidate passed host exact-evidence validation.",
   });
