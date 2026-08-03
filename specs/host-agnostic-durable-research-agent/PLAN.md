@@ -3831,7 +3831,11 @@ Shared:
 - [x] Persist body-free, host-bound rationale for each detail fetch (the
       question-relevance rank and source identity); reject mismatched
       provenance before evidence publication.
-- [ ] Record why the retrieval loop stopped.
+- [x] Record why the retrieval loop stopped. The host derives a closed-enum
+      action/reason from observed candidate, coverage, contradiction, and
+      budget counters; it commits that assessment at the settled-wave CAS
+      boundary, emits a body-free progress receipt, and retains the same
+      projection in the current gap-assessment artifact (2026-08-03).
 - [ ] Record why each role/node was selected or omitted, why reconciliation
       was triggered or skipped, and why each proposed follow-up was accepted,
       rejected, or pruned.
