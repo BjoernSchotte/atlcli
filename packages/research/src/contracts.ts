@@ -208,10 +208,11 @@ export const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1> = {
   maxInterpreterMemoryBytes: 64_000_000,
   maxInterpreterMs: 10_000,
   maxModelCalls: 16,
-  // The monetary ceiling is the binding spend guard. Leave enough aggregate
-  // input headroom for DeepAgentsJS's final structured-response turn after a
-  // multi-wave workflow, rather than rejecting it below the $2 cost ceiling.
-  maxTotalModelInputTokens: 160_000,
+  // The monetary ceiling is the binding spend guard. Use the full validated
+  // aggregate input range so a bounded multi-wave DeepAgentsJS run can reach
+  // its final structured-response turn instead of stopping below that $2
+  // ceiling solely because independent workers ran in parallel.
+  maxTotalModelInputTokens: 200_000,
   maxTotalModelOutputTokens: 64_000,
   maxModelCostMicros: 2_000_000,
   maxModelInputTokens: 80_000,

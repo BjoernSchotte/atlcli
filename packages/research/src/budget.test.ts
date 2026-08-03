@@ -58,7 +58,7 @@ describe("durable research budget state", () => {
 describe("model run budget", () => {
   test("keeps enough default token headroom for the final structured turn while the $2 ceiling stays binding", () => {
     expect(DEFAULT_RESEARCH_LIMITS_V1).toMatchObject({
-      maxTotalModelInputTokens: 160_000,
+      maxTotalModelInputTokens: 200_000,
       maxModelCostMicros: 2_000_000,
       maxRunMs: 10 * 60_000,
     });
