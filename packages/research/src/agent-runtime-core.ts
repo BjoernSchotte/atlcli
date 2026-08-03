@@ -3020,7 +3020,10 @@ async function runResearchAgentWithBindings(
           if (!(error instanceof ResearchContractError) || error.code !== "invalid-report") {
             throw error;
           }
-          packet = createHostValidationAbstentionPacketV2(inputForPacket.modelBody);
+          packet = createHostValidationAbstentionPacketV2(
+            inputForPacket.modelBody,
+            [...allowedSourceIds],
+          );
         }
         const normalized = {
           packet,
@@ -3046,6 +3049,7 @@ async function runResearchAgentWithBindings(
         const packet = await normalizeResearchPacketReferenceModelBodyV2({
           modelBody: inputForPacket.modelBody,
           allowedClaimIds: availableClaimIdsForNode(inputForPacket.node.id),
+          allowedSourceIds: availableSourceIdsForNode(inputForPacket.node.id),
           claimLedger: durableClaims,
           checkedAt: new Date(now()).toISOString(),
         });

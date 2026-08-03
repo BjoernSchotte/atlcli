@@ -17,6 +17,30 @@ function evidenceIdsForClaims(claims: readonly ResearchClaimV1[]): string[] {
   return [...new Set(claims.flatMap((claim) => claim.evidenceIds))].sort();
 }
 
+function retainHostAdmittedSourceIds<T extends { sourceIds: string[] }>(
+  values: readonly T[],
+  allowedSourceIds: ReadonlySet<string>,
+): { values: T[]; omitted: boolean } {
+  let omitted = false;
+  return {
+    values: values.map((value) => {
+      const sourceIds = value.sourceIds.filter((sourceId) => allowedSourceIds.has(sourceId));
+      if (sourceIds.length !== value.sourceIds.length) omitted = true;
+      return { ...value, sourceIds };
+    }),
+    omitted,
+  };
+}
+
+function coverageLimitsWithOmittedReferences(
+  coverageLimits: readonly string[],
+  omitted: boolean,
+): string[] {
+  if (!omitted) return [...coverageLimits];
+  const limit = "One or more model-proposed evidence references were outside the host-admitted detail set and were omitted.";
+  return [...coverageLimits.filter((candidate) => candidate !== limit).slice(0, 15), limit];
+}
+
 /**
  * Crosses the model/host trust boundary for the V2 research packet.
  *
@@ -33,6 +57,12 @@ export async function normalizeResearchPacketModelBodyV2(input: {
   createdAt: string;
 }): Promise<ResearchPacketBodyV2> {
   const modelBody = parseResearchPacketModelBodyV2(input.modelBody);
+  const allowedSourceIds = new Set(input.detailEvidence.map((detail) => detail.source.id));
+  const gaps = retainHostAdmittedSourceIds(modelBody.gaps, allowedSourceIds);
+  const proposedFollowUps = retainHostAdmittedSourceIds(
+    modelBody.proposedFollowUps,
+    allowedSourceIds,
+  );
   const normalizedClaims = await normalizeResearchClaimCandidatesV2({
     candidates: modelBody.claimCandidates,
     detailEvidence: input.detailEvidence,
@@ -86,9 +116,12 @@ export async function normalizeResearchPacketModelBodyV2(input: {
         coverageTargetIds: proposal.coverageTargetIds,
       };
     }),
-    gaps: modelBody.gaps,
-    proposedFollowUps: modelBody.proposedFollowUps,
-    coverageLimits: modelBody.coverageLimits,
+    gaps: gaps.values,
+    proposedFollowUps: proposedFollowUps.values,
+    coverageLimits: coverageLimitsWithOmittedReferences(
+      modelBody.coverageLimits,
+      gaps.omitted || proposedFollowUps.omitted,
+    ),
     ...(modelBody.abstentionReason === undefined
       ? {}
       : { abstentionReason: modelBody.abstentionReason }),
@@ -103,8 +136,12 @@ export async function normalizeResearchPacketModelBodyV2(input: {
  */
 export function createHostValidationAbstentionPacketV2(
   modelBody: unknown,
+  allowedSourceIds: readonly string[] = [],
 ): ResearchPacketBodyV2 {
   const parsed = parseResearchPacketModelBodyV2(modelBody);
+  const allowed = new Set(allowedSourceIds);
+  const gaps = retainHostAdmittedSourceIds(parsed.gaps, allowed);
+  const proposedFollowUps = retainHostAdmittedSourceIds(parsed.proposedFollowUps, allowed);
   const existingGapIds = new Set(parsed.gaps.map((gap) => gap.id));
   const baseGapId = "gap:host-claim-validation";
   let suffix = 1;
@@ -121,15 +158,21 @@ export function createHostValidationAbstentionPacketV2(
     contradictions: [],
     outlineProposals: [],
     gaps: [
-      ...parsed.gaps.slice(0, 15),
+      ...gaps.values.slice(0, 15),
       {
         id: gapId,
         summary: "Proposed claim support did not pass host exact-evidence validation.",
         sourceIds: [],
       },
     ],
-    proposedFollowUps: parsed.proposedFollowUps,
-    coverageLimits: [...parsed.coverageLimits.slice(0, 15), coverageLimit],
+    proposedFollowUps: proposedFollowUps.values,
+    coverageLimits: [
+      ...coverageLimitsWithOmittedReferences(
+        parsed.coverageLimits,
+        gaps.omitted || proposedFollowUps.omitted,
+      ).slice(0, 15),
+      coverageLimit,
+    ],
     abstentionReason: "No claim candidate passed host exact-evidence validation.",
   });
 }
@@ -143,11 +186,18 @@ export function createHostValidationAbstentionPacketV2(
 export async function normalizeResearchPacketReferenceModelBodyV2(input: {
   modelBody: unknown;
   allowedClaimIds: readonly string[];
+  allowedSourceIds: readonly string[];
   claimLedger: ResearchClaimLedgerV1;
   checkedAt: string;
 }): Promise<ResearchPacketBodyV2> {
   const modelBody = parseResearchPacketReferenceModelBodyV2(input.modelBody);
   const allowed = new Set(input.allowedClaimIds);
+  const allowedSources = new Set(input.allowedSourceIds);
+  const gaps = retainHostAdmittedSourceIds(modelBody.gaps, allowedSources);
+  const proposedFollowUps = retainHostAdmittedSourceIds(
+    modelBody.proposedFollowUps,
+    allowedSources,
+  );
   const claimsById = new Map<string, ResearchClaimV1>();
   for (const claimId of modelBody.claimIds) {
     if (!allowed.has(claimId)) {
@@ -203,9 +253,12 @@ export async function normalizeResearchPacketReferenceModelBodyV2(input: {
         coverageTargetIds: proposal.coverageTargetIds,
       };
     }),
-    gaps: modelBody.gaps,
-    proposedFollowUps: modelBody.proposedFollowUps,
-    coverageLimits: modelBody.coverageLimits,
+    gaps: gaps.values,
+    proposedFollowUps: proposedFollowUps.values,
+    coverageLimits: coverageLimitsWithOmittedReferences(
+      modelBody.coverageLimits,
+      gaps.omitted || proposedFollowUps.omitted,
+    ),
     ...(modelBody.abstentionReason === undefined
       ? {}
       : { abstentionReason: modelBody.abstentionReason }),

@@ -222,20 +222,26 @@ describe("V2 research packet normalization", () => {
       gaps: [{
         id: "gap:existing",
         summary: "The bounded source set did not establish an explicit cross-product link.",
-        sourceIds: [],
+        sourceIds: ["jira:untrusted"],
       }],
-      proposedFollowUps: [],
+      proposedFollowUps: [{
+        id: "follow-up:untrusted",
+        objective: "Read the model-proposed source.",
+        reasonCode: "coverage_gap",
+        sourceIds: ["jira:untrusted"],
+      }],
       coverageLimits: [],
-    });
+    }, ["jira:ATLCLI-44"]);
 
     expect(packet).toMatchObject({
       claims: [],
       contradictions: [],
       outlineProposals: [],
       gaps: [
-        { id: "gap:existing" },
+        { id: "gap:existing", sourceIds: [] },
         { id: "gap:host-claim-validation", sourceIds: [] },
       ],
+      proposedFollowUps: [{ id: "follow-up:untrusted", sourceIds: [] }],
       abstentionReason: "No claim candidate passed host exact-evidence validation.",
     });
     expect(packet.coverageLimits).toContain(
@@ -244,7 +250,7 @@ describe("V2 research packet normalization", () => {
     expect(JSON.stringify(packet)).not.toContain("The ticket references the guide.");
   });
 
-  test("retains an abstaining V2 packet without creating a synthetic claim", async () => {
+  test("removes model evidence references outside the retrieved detail set", async () => {
     const workspace = createMemoryResearchWorkspace();
     const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
     const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
@@ -257,9 +263,14 @@ describe("V2 research packet normalization", () => {
         gaps: [{
           id: "gap:no-detail",
           summary: "No detailed source was available for the bounded lookup.",
-          sourceIds: [],
+          sourceIds: ["wiki:unretrieved"],
         }],
-        proposedFollowUps: [],
+        proposedFollowUps: [{
+          id: "follow-up:unretrieved",
+          objective: "Read the model-proposed source.",
+          reasonCode: "coverage_gap",
+          sourceIds: ["wiki:unretrieved"],
+        }],
         coverageLimits: ["No detailed source was retrieved."],
         abstentionReason: "The bounded lookup has no detail-backed support.",
       },
@@ -269,7 +280,8 @@ describe("V2 research packet normalization", () => {
       createdAt: "2026-08-01T12:02:00.000Z",
     })).resolves.toMatchObject({
       claims: [],
-      gaps: [{ id: "gap:no-detail" }],
+      gaps: [{ id: "gap:no-detail", sourceIds: [] }],
+      proposedFollowUps: [{ id: "follow-up:unretrieved", sourceIds: [] }],
       abstentionReason: "The bounded lookup has no detail-backed support.",
     });
     await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
@@ -329,6 +341,7 @@ describe("V2 research packet normalization", () => {
         coverageLimits: [],
       },
       allowedClaimIds: [claimId],
+      allowedSourceIds: [retained.record.source.id],
       claimLedger,
       checkedAt: "2026-08-01T12:03:00.000Z",
     });
@@ -349,6 +362,7 @@ describe("V2 research packet normalization", () => {
         coverageLimits: [],
       },
       allowedClaimIds: [claimId],
+      allowedSourceIds: [retained.record.source.id],
       claimLedger,
       checkedAt: "2026-08-01T12:03:00.000Z",
     })).rejects.toThrow("outside its admitted dependencies");
