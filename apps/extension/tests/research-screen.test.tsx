@@ -391,13 +391,14 @@ describe("portable Research screen", () => {
       "Nutze Jira Projektkey DEMO und Confluence Spacekey KB: Wie hängen DEMO-1 und Seite 1001 zusammen?"
     );
     await dom.setValue("research-max-cost-usd", "1.25");
+    await dom.setValue("research-max-run-minutes", "7");
     await dom.toggle("research-disclosure");
     await dom.click("research-run");
     await dom.flush();
 
     expect(stored).toBe(true);
     expect(preflightInputs[0]).toMatchObject({
-      limits: { maxModelCostMicros: 1_250_000 },
+      limits: { maxModelCostMicros: 1_250_000, maxRunMs: 7 * 60_000 },
       scope: {
         siteOrigin: "https://example.atlassian.net",
         jiraProjectKeys: [],
@@ -413,6 +414,7 @@ describe("portable Research screen", () => {
       confluenceSpaceKeys: ["KB"],
     });
     expect(dom.find("research-model-cost-summary").textContent).toContain("1.25");
+    expect(dom.find("research-max-runtime-summary").textContent).toContain("7");
     expect(observed[0]!.scopeSeeds).toEqual(expect.arrayContaining([
       expect.objectContaining({
         binding: expect.objectContaining({ source: "natural_language", key: "DEMO" }),
@@ -494,6 +496,15 @@ describe("portable Research screen", () => {
     expect({ scopeCalls, runCalls }).toEqual({ scopeCalls: 0, runCalls: 0 });
     expect(dom.find("research-error").textContent)
       .toContain("Enter a maximum model cost from $0.01 to $25.00.");
+
+    await dom.setValue("research-max-cost-usd", "2");
+    await dom.setValue("research-max-run-minutes", "11");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect({ scopeCalls, runCalls }).toEqual({ scopeCalls: 0, runCalls: 0 });
+    expect(dom.find("research-error").textContent)
+      .toContain("Enter a maximum run time from 1 to 10 whole minutes.");
   });
 
   it("requests a cooperative durable pause without cancelling the active run", async () => {

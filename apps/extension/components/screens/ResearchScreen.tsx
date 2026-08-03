@@ -65,6 +65,8 @@ const MAX_RESEARCH_ACTIVITY_EVENTS = 500;
 const MICROS_PER_USD = 1_000_000;
 const MIN_RESEARCH_MODEL_COST_USD = 0.01;
 const MAX_RESEARCH_MODEL_COST_USD = 25;
+const MIN_RESEARCH_RUN_MINUTES = 1;
+const MAX_RESEARCH_RUN_MINUTES = 10;
 
 function modelCostMicrosFromUsdInput(value: string, invalidMessage: string): number {
   const usd = Number(value);
@@ -77,6 +79,14 @@ function modelCostMicrosFromUsdInput(value: string, invalidMessage: string): num
     throw new ResearchContractError("invalid-request", invalidMessage);
   }
   return micros;
+}
+
+function runDurationMsFromMinutesInput(value: string, invalidMessage: string): number {
+  const minutes = Number(value);
+  if (!Number.isSafeInteger(minutes) || minutes < MIN_RESEARCH_RUN_MINUTES || minutes > MAX_RESEARCH_RUN_MINUTES) {
+    throw new ResearchContractError("invalid-request", invalidMessage);
+  }
+  return minutes * 60_000;
 }
 
 function splitScopeValues(value: string): string[] {
@@ -432,6 +442,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [maxCostUsd, setMaxCostUsd] = useState(
     String(DEFAULT_RESEARCH_LIMITS_V1.maxModelCostMicros / MICROS_PER_USD),
   );
+  const [maxRunMinutes, setMaxRunMinutes] = useState(
+    String(Math.ceil(DEFAULT_RESEARCH_LIMITS_V1.maxRunMs / 60_000)),
+  );
   const [effort, setEffort] = useState<ResearchRequestedEffortV1>(
     DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedEffort,
   );
@@ -731,6 +744,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           maxCostUsd,
           t("research.maxCost.invalid"),
         );
+        const maxRunMs = runDurationMsFromMinutesInput(
+          maxRunMinutes,
+          t("research.maxRuntime.invalid"),
+        );
         const scope = inferResearchScope({
           siteOrigin: site.origin,
           question,
@@ -755,6 +772,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           limits: {
             ...DEFAULT_RESEARCH_LIMITS_V1,
             maxModelCostMicros,
+            maxRunMs,
           },
           wikiProvider: "rest",
         });
@@ -1535,9 +1553,25 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                 disabled={running}
               />
             </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="research-max-run-minutes">{t("research.maxRuntime")}</Label>
+              <Input
+                id="research-max-run-minutes"
+                data-testid="research-max-run-minutes"
+                type="number"
+                inputMode="numeric"
+                min={MIN_RESEARCH_RUN_MINUTES}
+                max={MAX_RESEARCH_RUN_MINUTES}
+                step="1"
+                value={maxRunMinutes}
+                onChange={(event) => setMaxRunMinutes(event.target.value)}
+                disabled={running}
+              />
+            </div>
           </div>
           <FieldHelp>{t("research.policy.help")}</FieldHelp>
           <FieldHelp>{t("research.maxCost.help")}</FieldHelp>
+          <FieldHelp>{t("research.maxRuntime.help")}</FieldHelp>
           <FieldHelp>{t("research.keys.help")}</FieldHelp>
           {(site?.activeProjectKey || site?.activeSpaceKey) && (
             <CheckboxField
@@ -1565,6 +1599,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             <p className="m-0 mt-1">{t("research.limits.value")}</p>
             <p className="m-0 mt-1" data-testid="research-model-cost-summary">
               {t("research.maxCost.value", { cost: maxCostUsd || "—" })}
+            </p>
+            <p className="m-0 mt-1" data-testid="research-max-runtime-summary">
+              {t("research.maxRuntime.value", { minutes: maxRunMinutes || "—" })}
             </p>
           </Alert>
           <CheckboxField
