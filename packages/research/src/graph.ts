@@ -273,7 +273,7 @@ const DEFAULT_NODE_BUDGET: ResearchNodeBudgetV1 = {
   maxInputTokens: 20_000,
   maxOutputTokens: 3_000,
   maxResultBytes: 64_000,
-  maxDurationMs: 180_000,
+  maxDurationMs: 240_000,
   maxCostMicros: 2_000_000,
 };
 

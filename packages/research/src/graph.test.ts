@@ -178,7 +178,7 @@ describe("dynamic research graph composition", () => {
       },
     );
 
-    expect(graph.nodes.find((node) => node.roleId === "focused-researcher")?.budget.maxDurationMs).toBe(180_000);
+    expect(graph.nodes.find((node) => node.roleId === "focused-researcher")?.budget.maxDurationMs).toBe(240_000);
     expect(graph.approvalEnvelope.scopeFingerprint).not.toBe(
       composeStandardResearchGraphV1("Which Confluence pages are related to Jira work items?")
         .approvalEnvelope.scopeFingerprint,

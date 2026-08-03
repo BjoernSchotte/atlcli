@@ -165,7 +165,10 @@ const DEFAULT_ROLE_BUDGET_V1: ResearchNodeBudgetV1 = {
   maxInputTokens: 24_000,
   maxOutputTokens: 4_000,
   maxResultBytes: 64_000,
-  maxDurationMs: 180_000,
+  // A cross-product join receives two complete bounded acquisition packets.
+  // Leave it four minutes on a ten-minute run; the host-wide deadline and
+  // token/cost ceilings remain the authoritative upper bounds.
+  maxDurationMs: 240_000,
   maxCostMicros: 2_000_000,
 };
 
