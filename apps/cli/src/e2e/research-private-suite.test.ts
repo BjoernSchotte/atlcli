@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   buildResearchPrivateSuiteCommand,
+  hasCompletePrivateSuiteMarkdown,
   parseResearchPrivateSuiteCliArguments,
   parseResearchPrivateSuiteV1,
   researchPrivateSuiteReportPath,
@@ -35,6 +36,12 @@ const suite = parseResearchPrivateSuiteV1({
 });
 
 describe("research CLI private suite harness", () => {
+  test("accepts the localized sources heading selected by the suite", () => {
+    expect(hasCompletePrivateSuiteMarkdown("# Report\n\n## Sources\n", "en")).toBe(true);
+    expect(hasCompletePrivateSuiteMarkdown("# Bericht\n\n## Quellen\n", "de")).toBe(true);
+    expect(hasCompletePrivateSuiteMarkdown("# Bericht\n\n## Sources\n", "de")).toBe(false);
+  });
+
   test("keeps private suite and output paths outside the repository", () => {
     expect(() => parseResearchPrivateSuiteCliArguments([
       "--suite", "relative.json",
@@ -77,7 +84,7 @@ describe("research CLI private suite harness", () => {
     await writeFile(input.suitePath, JSON.stringify(suite));
     let tick = 0;
     const metrics = await runResearchPrivateSuite(input, suite, async (_command, caseId) => {
-      await writeFile(researchPrivateSuiteReportPath(input.outputDirectory, caseId), "# Private report\n\n## Sources\n\nPrivate source title\n");
+      await writeFile(researchPrivateSuiteReportPath(input.outputDirectory, caseId), "# Private report\n\n## Quellen\n\nPrivate source title\n");
       return {
         exitCode: 0,
         stdout: JSON.stringify({ report: {

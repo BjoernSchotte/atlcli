@@ -197,6 +197,17 @@ export function researchPrivateSuiteReportPath(outputDirectory: string, caseId: 
   return join(outputDirectory, `${caseId}.md`);
 }
 
+function requiredSourcesHeading(reportLanguage: ResearchPrivateSuiteV1["reportLanguage"]): string {
+  return reportLanguage === "de" ? "## Quellen" : "## Sources";
+}
+
+export function hasCompletePrivateSuiteMarkdown(
+  markdown: string,
+  reportLanguage: ResearchPrivateSuiteV1["reportLanguage"],
+): boolean {
+  return markdown.startsWith("# ") && markdown.includes(`\n${requiredSourcesHeading(reportLanguage)}\n`);
+}
+
 export function buildResearchPrivateSuiteCommand(
   input: ResearchPrivateSuiteCliArguments,
   suite: ResearchPrivateSuiteV1,
@@ -302,7 +313,7 @@ export async function runResearchPrivateSuite(
     let markdownBytes = 0;
     if (result.exitCode === 0) {
       const markdown = await readFile(reportPath, "utf8");
-      if (!markdown.startsWith("# ") || !markdown.includes("\n## Sources\n")) {
+      if (!hasCompletePrivateSuiteMarkdown(markdown, suite.reportLanguage)) {
         throw new Error(`Private research suite report is incomplete for ${entry.id}.`);
       }
       markdownBytes = new TextEncoder().encode(markdown).byteLength;
