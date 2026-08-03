@@ -3811,9 +3811,14 @@ Shared:
       only remaining analysis/synthesis. A later coverage-moderator packet is
       authoritative for its already-reviewed targets, so an old acquisition
       gap cannot cause an unbounded replan loop (2026-08-02).
-- [ ] Let the central supervisor add, prune, reprioritize, or close graph nodes
-      after each accepted wave. Every revision records the evidence/gap IDs
-      that caused it.
+- [x] Let the central supervisor add, prune, reprioritize, or close graph nodes
+      after each accepted wave. The checkpoint-authorized continuation may
+      submit one in-envelope `researchGraphRevise` proposal; the host accepts
+      only catalog nodes, preserves completed task IDs, persists the causal
+      evidence/gap-ID projection in the same durable revision, and then
+      exposes one fresh ready frontier. A complete deep-run proof executes
+      retrieval → host-derived coverage gap → dynamically admitted coverage
+      moderator → terminal synthesis (2026-08-03).
 - [ ] Add a coverage moderator that compares the brief and outline against
       accepted evidence, unused evidence, negative-claim coverage, and open
       contradictions. It is selected dynamically, not called on every loop.
