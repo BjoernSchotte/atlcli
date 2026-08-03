@@ -239,7 +239,8 @@ export async function prepareResearchScopePreflightV1(input: {
   if (mentions.length === 0) {
     if (
       request.scope.jiraProjectKeys.length === 0 &&
-      request.scope.confluenceSpaceKeys.length === 0
+      request.scope.confluenceSpaceKeys.length === 0 &&
+      existingSeeds.length === 0
     ) {
       return {
         schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,

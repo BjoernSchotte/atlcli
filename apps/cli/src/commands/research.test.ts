@@ -16,6 +16,7 @@ import {
   WorkspaceResearchOutlineStoreV1,
   createResearchClaimV1,
   createResearchEvidenceRecordV1,
+  createResearchEntityScopeSeedV1,
   createResearchOutlineFromClaimsV1,
   createResearchBriefV1,
   createResearchScopeExpansionProposalV1,
@@ -32,9 +33,12 @@ import {
   createStandardResearchBriefV1,
 } from "@atlcli/research/graph";
 import {
+  buildChatRequest,
   buildResearchRequest,
   defaultResearchCliDependencies,
+  handleChat,
   handleResearch,
+  parseChatCliInput,
   parseResearchCliInput,
   researchArtifactPath,
   writeResearchMarkdownAtomic,
@@ -85,6 +89,7 @@ interface CliHarness {
   writes: Map<string, string>;
   workspaces: Array<ResearchCliWorkspace & { disposed: boolean }>;
   runInputs: Parameters<ResearchCliDependencies["runAgent"]>[0][];
+  chatRunInputs: Parameters<ResearchCliDependencies["runChatAgent"]>[0][];
   triggerInterrupt(): void;
 }
 
@@ -102,6 +107,7 @@ function cliHarness(
   const writes = new Map<string, string>();
   const workspaces: Array<ResearchCliWorkspace & { disposed: boolean }> = [];
   const runInputs: Parameters<ResearchCliDependencies["runAgent"]>[0][] = [];
+  const chatRunInputs: Parameters<ResearchCliDependencies["runChatAgent"]>[0][] = [];
   const durableStore = new InMemoryResearchSessionStoreV1();
   let interrupt: (() => void) | undefined;
   const dependencies: ResearchCliDependencies = {
@@ -194,6 +200,28 @@ function cliHarness(
       await input.workspace.writeFile("/artifacts/report.md", result.markdown);
       return result;
     },
+    async runChatAgent(input) {
+      chatRunInputs.push(input);
+      input.onEvent({
+        kind: "capability",
+        seq: 1,
+        at: "2026-07-31T12:00:00.000Z",
+        callId: "wiki.search:1",
+        toolId: "wiki.search",
+        inputKind: "search",
+        status: "completed",
+        itemCount: 1,
+        durationMs: 10,
+      });
+      if (input.signal.aborted) {
+        throw new ResearchContractError(
+          "cancelled",
+          "The chat run was cancelled.",
+        );
+      }
+      if (options.runError) throw options.runError;
+      return options.result ?? report;
+    },
     async writeAtomic(path, contents) {
       writes.set(path, contents);
     },
@@ -240,6 +268,7 @@ function cliHarness(
     writes,
     workspaces,
     runInputs,
+    chatRunInputs,
     triggerInterrupt: () => interrupt?.(),
   };
 }
@@ -768,6 +797,143 @@ afterEach(async () => {
 });
 
 describe("research CLI one-shot contract", () => {
+  test("parses ordinary chat separately from research workflow options", () => {
+    const parsed = parseChatCliInput(["Summarize", "DOCSY"], {
+      space: "DOCSY",
+      language: "de",
+    });
+    expect(parsed.question).toBe("Summarize DOCSY");
+    expect(parsed.spaceKeys).toEqual(["DOCSY"]);
+    expect(parsed.policy).toMatchObject({
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    expect(() =>
+      parseChatCliInput(["question"], { effort: "deep" }),
+    ).toThrow("Use `atlcli research`");
+  });
+
+  test("keeps ordinary chat bounded below the deep-research envelope", () => {
+    const input = parseChatCliInput(["Summarize DOCSY"], {
+      space: "DOCSY",
+    });
+    const request = buildChatRequest(input, profile);
+    expect(request.scope).toMatchObject({
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: ["DOCSY"],
+    });
+    expect(request.limits).toMatchObject({
+      maxSearchPagesPerProduct: 2,
+      maxItemsPerProduct: 20,
+      maxDetailItemsPerProduct: 6,
+      maxPtcCalls: 16,
+      maxHttpCalls: 20,
+      maxModelOutputTokens: 4_096,
+      maxModelCostMicros: 500_000,
+    });
+  });
+
+  test("runs Confluence-only CLI chat without a research graph or Jira scope", async () => {
+    const harness = cliHarness();
+    await handleChat(
+      ["What changed in DOCSY?"],
+      { space: "DOCSY", language: "en" },
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(harness.chatRunInputs).toHaveLength(1);
+    expect(harness.chatRunInputs[0]).toMatchObject({
+      sessionId: "research-session:cli-plan",
+      conversation: { sessionId: "research-session:cli-plan" },
+      request: {
+        scope: {
+          jiraProjectKeys: [],
+          confluenceSpaceKeys: ["DOCSY"],
+        },
+      },
+    });
+    expect(harness.runInputs).toHaveLength(0);
+    expect(harness.stderr.join("")).not.toContain("subagent=");
+  });
+
+  test("continues ordinary CLI chat from the same durable conversation", async () => {
+    const harness = cliHarness();
+    await handleChat(
+      ["Summarize DOCSY."],
+      { space: "DOCSY" },
+      { json: false },
+      harness.dependencies,
+    );
+    await handleChat(
+      ["Which part matters most?"],
+      { session: "research-session:cli-plan" },
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(harness.chatRunInputs).toHaveLength(2);
+    expect(harness.chatRunInputs.map((input) => input.conversation.sessionId))
+      .toEqual([
+        "research-session:cli-plan",
+        "research-session:cli-plan",
+      ]);
+    expect(harness.chatRunInputs[1]?.request.question).toBe(
+      "Which part matters most?",
+    );
+    expect(harness.chatRunInputs[1]?.request.scope).toMatchObject({
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: ["DOCSY"],
+    });
+  });
+
+  test("rebinds retained exact chat scope before a fresh-host follow-up", async () => {
+    const harness = cliHarness();
+    let resolution = 0;
+    harness.dependencies.resolveScope = async ({ request }) => {
+      resolution += 1;
+      const seed = createResearchEntityScopeSeedV1({
+        tenantOrigin: request.scope.siteOrigin,
+        product: "confluence",
+        entityKind: "page",
+        key: "12345",
+        name: "Bound page",
+        source: "exact_link",
+        authority: "locked",
+      });
+      seed.binding.entityRef = `research-scope-entity:page-${resolution}`;
+      return {
+        schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+        kind: "ready",
+        request: {
+          ...request,
+          scopeSeeds: [seed],
+        },
+        mentions: [],
+        resolutions: [],
+      };
+    };
+    await handleChat(
+      ["Summarize the exact page URL."],
+      {},
+      { json: false },
+      harness.dependencies,
+    );
+    await handleChat(
+      ["What matters most?"],
+      { session: "research-session:cli-plan" },
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(resolution).toBe(2);
+    expect(harness.chatRunInputs[0]?.request.scopeSeeds?.[0]?.binding.entityRef)
+      .toBe("research-scope-entity:page-1");
+    expect(harness.chatRunInputs[1]?.request.scopeSeeds?.[0]?.binding.entityRef)
+      .toBe("research-scope-entity:page-2");
+  });
+
   test("persists a durable plan-only session before key, workspace, or agent construction", async () => {
     const harness = cliHarness();
     harness.dependencies.readApiKey = () => undefined;

@@ -478,7 +478,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -752,6 +754,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;
@@ -1703,7 +1711,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -1977,6 +1987,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;
@@ -3131,7 +3147,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -3405,6 +3423,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;
@@ -4356,7 +4380,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -4630,6 +4656,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;

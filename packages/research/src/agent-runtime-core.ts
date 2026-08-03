@@ -36,6 +36,7 @@ import {
 } from "./direct-chat.js";
 import {
   ResearchCapabilityBroker,
+  type ResearchDetailEvidenceV1,
   type ResearchReadProviders,
 } from "./broker.js";
 import {
@@ -348,6 +349,52 @@ export function enforceDirectChatDetailBoundaryV1(
 }
 
 /**
+ * V1 reports validate sources through containing project/space keys. Exact
+ * entity chat deliberately has no whole-scope key, so project only the
+ * host-retrieved exact detail's container into the report-validation request.
+ * This is publication authority only and never changes provider/tool scope.
+ */
+export function projectExactDetailReportRequestV1(
+  request: ResearchRequestV1,
+  detailEvidence: readonly ResearchDetailEvidenceV1[],
+): ResearchRequestV1 {
+  const exact = new Set(request.exactContextProducts ?? []);
+  if (exact.size === 0) return request;
+  const jiraProjectKeys = exact.has("jira")
+    ? [
+        ...new Set([
+          ...request.scope.jiraProjectKeys,
+          ...detailEvidence.flatMap((entry) =>
+            entry.source.product === "jira" && entry.source.projectKey
+              ? [entry.source.projectKey]
+              : [],
+          ),
+        ]),
+      ]
+    : request.scope.jiraProjectKeys;
+  const confluenceSpaceKeys = exact.has("confluence")
+    ? [
+        ...new Set([
+          ...request.scope.confluenceSpaceKeys,
+          ...detailEvidence.flatMap((entry) =>
+            entry.source.product === "confluence" && entry.source.spaceKey
+              ? [entry.source.spaceKey]
+              : [],
+          ),
+        ]),
+      ]
+    : request.scope.confluenceSpaceKeys;
+  return {
+    ...request,
+    scope: {
+      ...request.scope,
+      jiraProjectKeys,
+      confluenceSpaceKeys,
+    },
+  };
+}
+
+/**
  * State the detail-retrieval boundary from host ledgers. Search summaries may
  * screen candidates, but only retrieved details can support published claims.
  * This makes a bounded acquisition visibly non-exhaustive without turning the
@@ -393,11 +440,10 @@ export function hostDetailCoverageLimitationsV1(
 export function hostSearchFreshnessLimitationsV1(
   graph: ResearchGraphV1 | undefined,
   scopeBindings: readonly ResearchScopeBindingV1[] = [],
+  directProducts?: readonly ResearchProduct[],
 ): string[] {
-  const selectedProducts = selectedSearchProductsV1(graph) ?? [
-    "jira",
-    "confluence",
-  ];
+  const selectedProducts = selectedSearchProductsV1(graph) ??
+    directProducts ?? ["jira", "confluence"];
   const searchedProducts = selectedProducts.filter((product) => {
     const admitted = scopeBindings.filter((binding) =>
       binding.product === product &&
@@ -5505,7 +5551,11 @@ async function runResearchAgentWithBindings(
               ),
               ...hostSearchFreshnessLimitationsV1(
                 acceptedGraph,
-                input.brief?.scopeBindings,
+                input.brief?.scopeBindings ??
+                  input.request.scopeSeeds?.map((seed) => seed.binding),
+                acceptedGraph
+                  ? undefined
+                  : directChatProductsV1(input.request),
               ),
               ...revalidationLimitations,
             ],
@@ -5514,7 +5564,12 @@ async function runResearchAgentWithBindings(
           })
         : finalizeResearchAgentDraftV1({
             draft: validatedDraftInput,
-            request: input.request,
+            request: directDetailEvidence
+              ? projectExactDetailReportRequestV1(
+                  input.request,
+                  directDetailEvidence,
+                )
+              : input.request,
             sources: broker.sourceLedger(),
             detailEvidence: broker.detailEvidenceLedger(),
             additionalLimitations: [
@@ -5523,7 +5578,9 @@ async function runResearchAgentWithBindings(
                 : []),
               ...hostSearchFreshnessLimitationsV1(
                 undefined,
-                input.brief?.scopeBindings,
+                input.brief?.scopeBindings ??
+                  input.request.scopeSeeds?.map((seed) => seed.binding),
+                directChatProductsV1(input.request),
               ),
             ],
             run,

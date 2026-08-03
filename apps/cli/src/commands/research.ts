@@ -45,6 +45,8 @@ import {
   normalizeResearchRequestV1,
   prepareResearchBriefPreflightV1,
   prepareResearchScopePreflightV1,
+  prepareDirectChatRequestV1,
+  openDurableChatConversationWorkspaceV1,
   runResearchAgent,
   type ResearchBriefPreflightOutcomeV1,
   type ResearchBriefV1,
@@ -167,6 +169,15 @@ const T2_BOOLEAN_FLAGS = [
   "h",
 ] as const;
 const RESEARCH_SESSION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/;
+const CHAT_CONTEXT_REQUEST_PATH_V1 = "/.atlcli/chat-context/v1/request.json";
+
+const CHAT_POLICY_V1 = normalizeResearchOneShotPolicyV1({
+  schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+  requestedEffort: "lookup",
+  requestedPlanApproval: "automatic",
+  scopeExpansionMode: "ask",
+  requestedReconciliation: "off",
+});
 
 export interface ResearchCliWorkspace extends ResearchWorkspace {
   readonly root: string;
@@ -186,6 +197,18 @@ export interface ResearchCliAgentInput {
   };
   researchGraph: ResearchGraphV1;
   brief: ResearchBriefV1;
+  signal: AbortSignal;
+  onEvent: (event: ResearchOneShotEventV1) => void;
+  writeDiagnostic: (message: string) => void;
+}
+
+export interface ResearchCliChatAgentInput {
+  apiKey: string;
+  profile: Profile;
+  request: ResearchRequestV1;
+  workspace: ResearchWorkspace;
+  sessionId: string;
+  conversation: { sessionId: string };
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   writeDiagnostic: (message: string) => void;
@@ -212,6 +235,7 @@ export interface ResearchCliDependencies {
   readApiKey(): string | undefined;
   createWorkspace(): Promise<ResearchCliWorkspace>;
   runAgent(input: ResearchCliAgentInput): Promise<ResearchReport>;
+  runChatAgent(input: ResearchCliChatAgentInput): Promise<ResearchReport>;
   writeAtomic(path: string, contents: string): Promise<void>;
   artifactPath(): string;
   createDurableSessionId(): string;
@@ -543,6 +567,31 @@ export function parseResearchCliInput(
     planOnly: hasFlag(flags, "plan-only"),
     policy,
   };
+}
+
+export function parseChatCliInput(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+): ResearchCliInput {
+  const researchOnly = [
+    "from",
+    "to",
+    "as-of",
+    "timezone",
+    "effort",
+    "plan-approval",
+    "scope-expansion",
+    "reconciliation",
+    "plan-only",
+    "resume",
+  ].filter((key) => hasFlag(flags, key));
+  if (researchOnly.length > 0) {
+    throw new Error(
+      `Chat does not accept research workflow options: ${researchOnly.map((key) => `--${key}`).join(", ")}. Use \`atlcli research\` for a planned deep-research run.`,
+    );
+  }
+  const parsed = parseResearchCliInput(args, flags);
+  return { ...parsed, policy: CHAT_POLICY_V1, planOnly: false };
 }
 
 function requireSessionId(value: string | undefined): string {
@@ -2158,6 +2207,7 @@ export async function handleResearchSessions(
 export function buildResearchRequest(
   input: ResearchCliInput,
   profile: Profile,
+  options: { includeProfileDefaults?: boolean } = {},
 ): ResearchRequestV1 {
   const defaults = resolveDefaults(
     { profiles: {}, currentProfile: undefined },
@@ -2166,11 +2216,15 @@ export function buildResearchRequest(
   const projectKeys =
     input.projectKeys.length > 0
       ? input.projectKeys
-      : uniqueKeys(defaults.project ? [defaults.project] : []);
+      : options.includeProfileDefaults === false
+        ? []
+        : uniqueKeys(defaults.project ? [defaults.project] : []);
   const spaceKeys =
     input.spaceKeys.length > 0
       ? input.spaceKeys
-      : uniqueKeys(defaults.space ? [defaults.space] : [], false);
+      : options.includeProfileDefaults === false
+        ? []
+        : uniqueKeys(defaults.space ? [defaults.space] : [], false);
   const siteOrigin = new URL(profile.baseUrl).origin;
   const scopeSeeds: ResearchScopeSeedV1[] = [
     ...projectKeys.map((key) =>
@@ -2238,6 +2292,40 @@ export function buildResearchRequest(
     },
     wikiProvider: "rest",
     reportLanguage: input.reportLanguage ?? "en",
+  });
+}
+
+export function buildChatRequest(
+  input: ResearchCliInput,
+  profile: Profile,
+): ResearchRequestV1 {
+  const request = buildResearchRequest(input, profile, {
+    includeProfileDefaults: false,
+  });
+  return normalizeResearchRequestV1({
+    ...request,
+    limits: {
+      ...request.limits,
+      maxSearchPagesPerProduct: Math.min(
+        request.limits.maxSearchPagesPerProduct,
+        2,
+      ),
+      maxItemsPerProduct: Math.min(request.limits.maxItemsPerProduct, 20),
+      maxDetailItemsPerProduct: Math.min(
+        request.limits.maxDetailItemsPerProduct,
+        6,
+      ),
+      maxPtcCalls: Math.min(request.limits.maxPtcCalls, 16),
+      maxHttpCalls: Math.min(request.limits.maxHttpCalls, 20),
+      maxModelOutputTokens: Math.min(
+        request.limits.maxModelOutputTokens,
+        4_096,
+      ),
+      maxModelCostMicros:
+        input.maxCostUsd === undefined
+          ? 500_000
+          : request.limits.maxModelCostMicros,
+    },
   });
 }
 
@@ -2335,6 +2423,40 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       workspace: input.workspace,
       durableSession: input.durableSession,
       options: {
+        signal: input.signal,
+        onEvent: input.onEvent,
+      },
+    });
+  },
+  async runChatAgent(input) {
+    const budget = new ResearchRunBudget(input.request.limits);
+    const providers = createRestResearchProviders(
+      input.profile,
+      input.request,
+      budget,
+      { allowProfileAuth: true },
+    );
+    return runResearchAgent({
+      apiKey: input.apiKey,
+      request: input.request,
+      providers,
+      budget,
+      scopeCatalog: {
+        tenantOrigin: input.request.scope.siteOrigin,
+        broker: new ResearchScopeCatalogBroker({
+          tenantOrigin: input.request.scope.siteOrigin,
+          providers: createRestScopeCatalogProviders(
+            input.profile,
+            input.request.scope.siteOrigin,
+            { allowProfileAuth: true },
+          ),
+        }),
+      },
+      runId: input.sessionId,
+      workspace: input.workspace,
+      conversation: input.conversation,
+      options: {
+        mode: "chat",
         signal: input.signal,
         onEvent: input.onEvent,
       },
@@ -2797,6 +2919,191 @@ async function resumeAuthenticationWaitingResearchSession(
   }
 }
 
+async function runDirectChatCliConversation(input: {
+  cli: ResearchCliInput;
+  opts: OutputOptions;
+  dependencies: ResearchCliDependencies;
+  profile: Profile;
+  request: ResearchRequestV1;
+  workspace: ResearchWorkspace;
+  sessionId: string;
+  apiKey: string;
+}): Promise<void> {
+  const controller = new AbortController();
+  const timeout = input.dependencies.scheduleAbort(
+    () => controller.abort(new Error("Chat run timed out.")),
+    input.request.limits.maxRunMs,
+  );
+  const removeInterruptListener = input.dependencies.listenForInterrupt(() =>
+    controller.abort(new Error("Chat run cancelled.")),
+  );
+  try {
+    input.dependencies.writeStderr(
+      `[chat] model=${RESEARCH_MODEL_ID} profile=${input.profile.name} session=${input.sessionId}\n`,
+    );
+    input.dependencies.writeStderr("[chat] running — press Ctrl+C to stop\n");
+    const report = await input.dependencies.runChatAgent({
+      apiKey: input.apiKey,
+      profile: input.profile,
+      request: input.request,
+      workspace: input.workspace,
+      sessionId: input.sessionId,
+      conversation: { sessionId: input.sessionId },
+      signal: controller.signal,
+      writeDiagnostic: (message) =>
+        input.dependencies.writeStderr(`[chat] ${message}\n`),
+      onEvent: (event) => {
+        if (event.kind === "phase") {
+          input.dependencies.writeStderr(`[chat] phase=${event.phase}\n`);
+        } else if (event.kind === "capability") {
+          input.dependencies.writeStderr(
+            `[chat] tool=${event.toolId} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}\n`,
+          );
+        } else if (event.kind === "progress") {
+          input.dependencies.writeStderr(
+            `[chat] calls=${event.completed}/${event.maximum}\n`,
+          );
+        }
+      },
+    });
+    const artifactPath = input.dependencies.artifactPath();
+    try {
+      await input.dependencies.writeAtomic(artifactPath, report.markdown);
+      input.dependencies.writeStderr(`[chat] artifact=${artifactPath}\n`);
+    } catch (error) {
+      input.dependencies.writeStderr(
+        `[chat] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`,
+      );
+    }
+    if (input.cli.outputPath) {
+      await input.dependencies.writeAtomic(input.cli.outputPath, report.markdown);
+    }
+    if (input.opts.json) {
+      input.dependencies.emitOutput(
+        { sessionId: input.sessionId, artifactPath, report },
+        input.opts,
+      );
+    } else {
+      input.dependencies.writeStdout(report.markdown);
+    }
+  } finally {
+    input.dependencies.cancelScheduledAbort(timeout);
+    removeInterruptListener();
+  }
+}
+
+export async function handleChat(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  dependencies: ResearchCliDependencies = defaultResearchCliDependencies,
+): Promise<void> {
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    dependencies.emitOutput(chatHelp(), opts);
+    return;
+  }
+  const input = parseChatCliInput(args, flags);
+  const profile = await dependencies.resolveProfile(input.profile);
+  if (!profile) {
+    dependencies.fail(
+      opts,
+      1,
+      ERROR_CODES.AUTH,
+      "No active profile found. Run `atlcli auth login` or select --profile.",
+      { profile: input.profile },
+    );
+  }
+  const apiKey = readApiKey(dependencies);
+  if (!apiKey) {
+    throw new Error(
+      "ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.",
+    );
+  }
+  const opened = await dependencies.openSessionStore();
+  try {
+    let request: ResearchRequestV1;
+    let workspace: ResearchWorkspace;
+    let sessionId: string;
+    if (input.newTurnSessionId) {
+      sessionId = input.newTurnSessionId;
+      const stored = await opened.store.read(sessionId);
+      if (!stored) {
+        throw new Error("The requested chat conversation does not exist.");
+      }
+      workspace = await opened.store.workspace(sessionId);
+      const retained = await workspace.readFile(CHAT_CONTEXT_REQUEST_PATH_V1);
+      if (!retained) {
+        throw new Error("The retained session is not an ordinary chat conversation.");
+      }
+      const previous = normalizeResearchRequestV1(JSON.parse(retained));
+      if (new URL(profile.baseUrl).origin !== previous.scope.siteOrigin) {
+        throw new Error(
+          "The selected profile belongs to a different Atlassian tenant than the retained chat conversation.",
+        );
+      }
+      const rebound = await dependencies.resolveScope({
+        profile,
+        request: normalizeResearchRequestV1({
+          ...previous,
+          question: input.question,
+        }),
+      });
+      if (rebound.kind === "clarification_required") {
+        throw new Error(
+          "The retained chat scope could not be revalidated unambiguously.",
+        );
+      }
+      request = prepareDirectChatRequestV1({
+        ...rebound.request,
+        question: input.question,
+      });
+    } else {
+      const initial = buildChatRequest(input, profile);
+      const scopeOutcome = await dependencies.resolveScope({
+        profile,
+        request: initial,
+      });
+      if (scopeOutcome.kind === "clarification_required") {
+        dependencies.fail(
+          opts,
+          2,
+          ERROR_CODES.VALIDATION,
+          "Chat scope is ambiguous. Name an exact project or space, choose --project/--space, or provide an exact Jira/Confluence URL.",
+          { outcome: scopeOutcome },
+        );
+      }
+      request = prepareDirectChatRequestV1(scopeOutcome.request);
+      sessionId = dependencies.createDurableSessionId();
+      const now = new Date().toISOString();
+      workspace = await openDurableChatConversationWorkspaceV1({
+        store: opened.store,
+        sessionId,
+        ownerId: `owner:cli-chat-${process.pid}`,
+        createdAt: now,
+        leaseExpiresAt: new Date(
+          Date.parse(now) + request.limits.maxRunMs,
+        ).toISOString(),
+      });
+      await workspace.writeFile(
+        CHAT_CONTEXT_REQUEST_PATH_V1,
+        JSON.stringify(request),
+      );
+    }
+    await runDirectChatCliConversation({
+      cli: input,
+      opts,
+      dependencies,
+      profile,
+      request,
+      workspace,
+      sessionId,
+      apiKey,
+    });
+  } finally {
+    opened.close();
+  }
+}
+
 export async function handleResearch(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -3093,6 +3400,32 @@ export async function handleResearch(
     if (!input.keepSession) await disposeWorkspace?.();
     opened.close();
   }
+}
+
+export function chatHelp(): string {
+  return `atlcli chat <question>
+atlcli chat --session <conversation-id> <follow-up>
+
+Ask a bounded, read-only Jira or Confluence question without composing a Deep Research graph.
+The first turn uses only explicit --project/--space context or scope named in the question;
+profile defaults never widen an ordinary chat to an unrelated product. Follow-up turns restore
+the same durable DeepAgentsJS conversation and approved scope.
+
+Options:
+  --profile <name>       Auth profile
+  --project <key>        Explicit Jira project context (repeatable)
+  --space <key>          Explicit Confluence space context (repeatable)
+  --session <id>         Continue a retained ordinary chat conversation
+  --language <en|de>     Response language (default: en)
+  --max-run-minutes <n>  Turn deadline, 1-10 (default: 10)
+  --max-cost-usd <n>     Conservative model-cost ceiling, $0 < n <= $25
+  --output <path>        Atomically write the generated Markdown
+  --json                 Emit session ID and structured result as JSON
+  --help                 Show this help
+
+ANTHROPIC_API_KEY must be supplied through the process environment.
+Jira and Confluence access is read-only. Press Ctrl+C to stop the active turn.
+`;
 }
 
 export function researchHelp(): string {

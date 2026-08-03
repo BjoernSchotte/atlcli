@@ -52,3 +52,4 @@ export * from "./session-dispatch-journal.js";
 export * from "./message-lineage.js";
 export * from "./turn-context.js";
 export * from "./direct-chat.js";
+export * from "./chat-conversation.js";

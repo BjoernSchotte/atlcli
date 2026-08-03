@@ -3,7 +3,10 @@ import {
   prepareResearchScopePreflightV1,
   proposeResearchScopeMentionsV1,
 } from "./scope-preflight.js";
-import { createResearchKeyScopeSeedV1 } from "./scope-discovery.js";
+import {
+  createResearchEntityScopeSeedV1,
+  createResearchKeyScopeSeedV1,
+} from "./scope-discovery.js";
 import type {
   ResearchReferenceResolveOutputV1,
   ResearchScopeCatalogCapabilityId,
@@ -197,6 +200,44 @@ describe("research scope preflight", () => {
       expect.objectContaining({ binding: expect.objectContaining({ entityKind: "issue", key: "ATLCLI-42", authority: "approved" }) }),
       expect.objectContaining({ binding: expect.objectContaining({ entityKind: "page", key: "1001", authority: "approved" }) }),
     ]));
+  });
+
+  test("retains an exact entity binding for a follow-up without repeating its URL", async () => {
+    const seed = createResearchEntityScopeSeedV1({
+      tenantOrigin: origin,
+      product: "confluence",
+      entityKind: "page",
+      key: "1001",
+      name: "Exact Confluence page",
+      source: "exact_link",
+      authority: "approved",
+    });
+    let catalogCalls = 0;
+    const outcome = await prepareResearchScopePreflightV1({
+      request: request({
+        question: "Which part matters most?",
+        scope: {
+          siteOrigin: origin,
+          jiraProjectKeys: [],
+          confluenceSpaceKeys: [],
+        },
+        scopeSeeds: [seed],
+      }),
+      catalog: catalog(async () => {
+        catalogCalls += 1;
+        throw new Error("must not resolve a retained exact binding again");
+      }),
+    });
+
+    expect(catalogCalls).toBe(0);
+    expect(outcome).toMatchObject({
+      kind: "ready",
+      request: {
+        scopeSeeds: [
+          { binding: { entityKind: "page", key: "1001" } },
+        ],
+      },
+    });
   });
 
   test("resolves natural names and replaces lower-precedence profile defaults", async () => {

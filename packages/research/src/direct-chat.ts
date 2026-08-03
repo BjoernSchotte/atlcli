@@ -21,7 +21,8 @@ function exactCurrentContextProducts(
   seeds: readonly ResearchScopeSeedV1[],
 ): Set<ResearchProduct> {
   return new Set(seeds.flatMap((seed) =>
-    seed.binding.source === "current_context" &&
+    (seed.binding.source === "current_context" ||
+      seed.binding.source === "exact_link") &&
     (seed.binding.entityKind === "issue" || seed.binding.entityKind === "page")
       ? [seed.binding.product]
       : [],
@@ -91,7 +92,8 @@ export function directChatHasExactCurrentPageV1(
   request: ResearchRequestV1,
 ): boolean {
   return (request.scopeSeeds ?? []).some((seed) =>
-    seed.binding.source === "current_context" &&
+    (seed.binding.source === "current_context" ||
+      seed.binding.source === "exact_link") &&
     seed.binding.product === "confluence" &&
     seed.binding.entityKind === "page",
   );

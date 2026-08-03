@@ -820,6 +820,7 @@ export declare class ConfluenceClient {
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
+        maxRequests?: number;
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
@@ -3633,6 +3634,7 @@ export declare class ConfluenceClient {
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
+        maxRequests?: number;
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
@@ -6446,6 +6448,7 @@ export declare class ConfluenceClient {
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
+        maxRequests?: number;
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
@@ -9013,6 +9016,7 @@ export declare class ConfluenceClient {
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
+        maxRequests?: number;
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
@@ -12281,6 +12285,7 @@ export declare class ConfluenceClient {
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
+        maxRequests?: number;
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
@@ -14533,6 +14538,7 @@ export declare class ConfluenceClient {
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
+        maxRequests?: number;
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;

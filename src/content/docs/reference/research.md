@@ -5,6 +5,7 @@ description: "Run bounded, read-only research across Jira and Confluence from th
 
 # Jira and Confluence Research
 
+`atlcli chat` answers ordinary scoped questions without a research graph.
 `atlcli research` produces one cited Markdown report from read-only Jira and
 Confluence evidence. The CLI and browser extension use the same request,
 scope-provenance, progress-event, workspace, structured-report, and Markdown
@@ -13,6 +14,7 @@ contracts.
 ## On this page
 
 - [Prerequisites](#prerequisites)
+- [Use ordinary chat from the CLI](#use-ordinary-chat-from-the-cli)
 - [Run from the CLI](#run-from-the-cli)
 - [Run from the browser extension](#run-from-the-browser-extension)
 - [Options](#options)
@@ -28,7 +30,39 @@ contracts.
 - Set `ANTHROPIC_API_KEY` in the CLI process environment. Do not put it on the
   command line.
 - For the extension, open an Atlassian Cloud page and enter the key in the
-  Research screen. The extension stores it only in browser session storage.
+  global settings screen. The extension stores it only in browser session
+  storage.
+
+## Use ordinary chat from the CLI
+
+Use `chat` for a direct answer that does not need planning, dynamic subagents,
+reconciliation, or a deep-research report:
+
+```bash
+ANTHROPIC_API_KEY=... atlcli chat \
+  "Summarize the most important changes in DOCS." \
+  --profile work \
+  --space DOCS \
+  --language en \
+  --json
+```
+
+The JSON result contains the retained conversation ID. Continue it without
+repeating the scope:
+
+```bash
+ANTHROPIC_API_KEY=... atlcli chat \
+  --profile work \
+  --session research-session:... \
+  "Which change has the largest operational impact?"
+```
+
+Ordinary chat never imports Jira or Confluence defaults from the selected
+profile. It uses only explicit `--project`/`--space` values or an exact,
+unambiguous project, space, issue, page, or URL named in the question. This
+prevents a Confluence-only question from silently creating Jira work. Use
+`research` when the task needs broader discovery or a planned multi-source
+investigation.
 
 ## Run from the CLI
 
@@ -73,6 +107,11 @@ uses that product's configured profile default as an approved seed.
 
 ## Options
 
+Both commands accept `--profile`, `--project`, `--space`, `--language`,
+`--max-run-minutes`, `--max-cost-usd`, `--output`, and `--json`. `chat` also
+accepts `--session` for a follow-up turn. Research-only planning, time-window,
+scope-expansion, and reconciliation flags are rejected by `chat`.
+
 | Option | Type | Default | Constraints |
 |---|---|---|---|
 | `--profile` | string | active profile | Existing atlcli profile |
@@ -101,11 +140,12 @@ read-only capability names, start/completion/failure state, item counts,
 pagination termination, durations, and host validation decisions. It does not
 buffer diagnostics until the report is complete.
 
-Each run writes the normalized request to `/session/request.json` and the final
-Markdown to `/artifacts/report.md` through a host-supplied virtual workspace.
-CLI workspaces use a unique mode-`0700` temporary directory and mode-`0600`
-files. They are removed after success or failure unless `--keep-session` is
-set. The browser uses an isolated in-memory workspace for the one-shot run.
+Each run writes its host-owned state through a virtual workspace. Retained CLI
+research sessions and ordinary chat conversations use the private SQLite-backed
+session store under `~/.atlcli/research-sessions/`. A chat follow-up restores
+the same DeepAgentsJS checkpointer and approved scope. Browser chat uses the
+equivalent IndexedDB-backed workspace so a fresh extension worker can restore
+the conversation.
 
 ## Security boundaries
 

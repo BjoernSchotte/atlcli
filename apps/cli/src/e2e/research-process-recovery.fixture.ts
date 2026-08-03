@@ -235,6 +235,9 @@ async function createDependencies(
       process.kill(process.pid, "SIGKILL");
       throw new Error("SIGKILL should have stopped the interrupted process.");
     },
+    runChatAgent: async () => {
+      throw new Error("The research process-recovery fixture does not run chat.");
+    },
     writeAtomic: async (path, contents) => {
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
       await Bun.write(path, contents);

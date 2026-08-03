@@ -58,6 +58,26 @@ describe("direct chat scope projection", () => {
     expect(directChatProductsV1(projected)).toEqual(["confluence"]);
   });
 
+  test("uses an exact page URL as direct CLI chat context", () => {
+    const input = request();
+    input.scope.confluenceSpaceKeys = [];
+    input.scopeSeeds = [
+      createResearchEntityScopeSeedV1({
+        tenantOrigin: origin,
+        product: "confluence",
+        entityKind: "page",
+        key: "12345",
+        name: "Exact linked page",
+        source: "exact_link",
+        authority: "locked",
+      }),
+    ];
+
+    expect(prepareDirectChatRequestV1(input).exactContextProducts).toEqual([
+      "confluence",
+    ]);
+  });
+
   test("keeps an explicitly added space alongside the bound page", () => {
     const input = request();
     input.scope.confluenceSpaceKeys = ["DOCS"];

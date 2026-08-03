@@ -24,6 +24,7 @@ import {
   hostDetailCoverageLimitationsV1,
   hostSearchCoverageLimitationsV1,
   hostSearchFreshnessLimitationsV1,
+  projectExactDetailReportRequestV1,
   rehydrateResearchCheckpointRunInputV1,
   validatedResearchGraphRequiredV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
@@ -48,6 +49,11 @@ import {
   createResearchScopeExpansionProposalV1,
 } from "./scope-discovery.js";
 import { createMemoryResearchWorkspace } from "./workspace.js";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  type ResearchRequestV1,
+} from "./contracts.js";
+import type { ResearchDetailEvidenceV1 } from "./broker.js";
 
 const evalTool = tool(async () => "unused", {
   name: "eval",
@@ -83,6 +89,40 @@ test("replaces a direct chat draft when no source was read in detail", () => {
   });
   expect(enforceDirectChatDetailBoundaryV1(unsafeSearchOnlyDraft, 1, "de"))
     .toBe(unsafeSearchOnlyDraft);
+});
+
+test("projects only host-read exact source containers into V1 report validation", () => {
+  const request: ResearchRequestV1 = {
+    schema: "atlcli.research-request/v1",
+    question: "Summarize the exact page.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: [],
+    },
+    exactContextProducts: ["confluence"],
+    limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
+    wikiProvider: "rest",
+  };
+  const detailEvidence = [{
+    source: {
+      id: "wiki:1001",
+      product: "confluence",
+      title: "Bound page",
+      url: "https://example.atlassian.net/wiki/spaces/DOCS/pages/1001",
+      contentId: "1001",
+      spaceKey: "DOCS",
+    },
+    content: { text: "Detail text", truncated: false },
+  }] as ResearchDetailEvidenceV1[];
+
+  const projected = projectExactDetailReportRequestV1(request, detailEvidence);
+  expect(projected.scope).toEqual({
+    siteOrigin: "https://example.atlassian.net",
+    jiraProjectKeys: [],
+    confluenceSpaceKeys: ["DOCS"],
+  });
+  expect(request.scope.confluenceSpaceKeys).toEqual([]);
 });
 
 test("permits only explicitly selected direct chat to run without a production graph", () => {
@@ -1441,6 +1481,15 @@ describe("host detail-coverage limitations", () => {
 });
 
 describe("host search freshness limitations", () => {
+  test("reports only the product used by ordinary direct chat", () => {
+    expect(
+      hostSearchFreshnessLimitationsV1(undefined, [], ["confluence"]),
+    ).toEqual([
+      "Confluence candidate discovery uses its native search index at retrieval time; recently changed or not-yet-indexed records may be absent.",
+      "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
+    ]);
+  });
+
   test("states native-index and unavailable-field boundaries without treating an exhausted index as incomplete", () => {
     const brief = createResearchBriefV1({
       sessionId: "research-session:search-freshness",

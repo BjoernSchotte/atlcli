@@ -4296,6 +4296,16 @@ Shared:
 
 CLI:
 
+- [x] Expose ordinary `atlcli chat <question>` separately from
+      `atlcli research`. Chat bypasses graph composition and subagent dispatch,
+      imports no profile-default product scope, persists one host-owned request
+      envelope plus the native DeepAgentsJS checkpoint, and restores both with
+      `--session` for follow-up turns. Focused CLI, direct-chat, exact-page,
+      graph, and process-recovery regressions prove that a Confluence-only chat
+      has no Jira scope or Jira worker. A two-turn read-only CLI E2E against an
+      approved test page restored the same checkpoint, performed one exact
+      Confluence detail read per turn, produced sourced Markdown, and
+      dispatched neither Jira nor subagent work (2026-08-04).
 - [ ] Finalize one-shot, retained-session, resume, list, show, and delete help
       and documentation.
 - [ ] Finalize `--plan-only`, effort/approval flags, plan inspection,
