@@ -3862,8 +3862,16 @@ Shared:
       distinguish an exhausted native index from an exhaustive tenant result,
       name index freshness for each admitted product, and state that unavailable
       read-capability fields are not inferred (2026-08-03).
-- [ ] Preserve all existing call, byte, item, concurrency, interpreter, model,
-      and wall-clock limits and add per-capability limits where needed.
+- [x] Preserve all existing call, byte, item, concurrency, interpreter, model,
+      and wall-clock limits and add per-capability limits where needed. The
+      run budget fences PTC/HTTP/response bytes plus per-product pages/items/
+      details; QuickJS fences memory, stack, call count, and interpreter time;
+      each graph role has a bounded workflow budget; the durable model budget
+      reserves conservative worst-case Sonnet input/output spend before every
+      billable call and retains uncertain reservations after a failure. CLI
+      `--max-cost-usd` and `--max-run-minutes` are bounded and immutable across
+      a resumed session. Contract, budget, durable-journal, CLI, and extension
+      boundary tests verify the chain (2026-08-03).
 
 CLI:
 
