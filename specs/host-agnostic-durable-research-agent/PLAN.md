@@ -3928,8 +3928,12 @@ Gate:
       pagination, rate-limit/retry, cancellation, and partial-result fixtures
       fail or degrade identically in CLI and packed browser without silent
       scope expansion.
-- [ ] Repeated queries that add no new evidence stop within the configured
-      duplicate/marginal-value policy and report the explicit stop reason.
+- [x] Repeated queries that add no new evidence stop within the configured
+      duplicate/marginal-value policy and report the explicit stop reason. A
+      durable DeepAgentsJS proof performs a real Jira PTC search/rank/detail
+      read, replans once for a host-approved coverage gap, and then stops the
+      analysis frontier as `marginal_evidence` with zero new details before
+      terminal synthesis (2026-08-03).
 
 ### T7 — Enable long-context DeepAgents behavior safely
 

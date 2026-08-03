@@ -2507,15 +2507,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
     const sourcePacket = {
       schema: "atlcli.research-packet-body/v1",
-      answeredQuestion: "The initial retrieval frontier exposed an approved coverage gap.",
-      sourceIds: [],
+      answeredQuestion: "One bounded Jira detail read exposed an approved coverage gap.",
+      sourceIds: ["jira:DEMO-1"],
       findingCandidates: [],
       relationshipCandidates: [],
       gaps: [{
         id: "gap:synthetic-approved-coverage",
         summary: "The approved coverage target needs a bounded moderator review.",
         targetId: coverageTargetId,
-        sourceIds: [],
+        sourceIds: ["jira:DEMO-1"],
       }],
       proposedFollowUps: [],
       coverageLimits: ["Synthetic coverage-gap proof."],
@@ -2576,7 +2576,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         wave: 2,
         continuationId: "research-continuation:2.2"
       }));
-      if (continuation.action !== "stop") throw new Error("Expected a terminal host checkpoint.");
+      if (continuation.action !== "stop" || continuation.reason !== "marginal_evidence") {
+        throw new Error("Expected a terminal marginal-evidence checkpoint.");
+      }
       const responseSchemas = ${JSON.stringify(responseSchemas)};
       const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
       const finalTask = finalFrontier.tasks[0];
@@ -2594,6 +2596,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     `;
     const dynamicModel = fakeModel()
       .respondWithTools([{ name: "eval", args: { code: firstEval } }])
+      .respondWithTools([{ name: "eval", args: {
+        code: buildResearchAcquisitionProgram(researcher, brief.objective, 1),
+      } }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: sourcePacket }])
       .respondWithTools([{ name: "eval", args: { code: secondEval } }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: analysisPacket }])
@@ -2619,7 +2624,24 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       model: dynamicModel,
       request,
       providers: {
-        jira: { async searchPage() { throw new Error("model skipped PTC"); }, async getIssue() { throw new Error("unused"); } },
+        jira: {
+          async searchPage() {
+            return { items: [{ issueKey: "DEMO-1", projectKey: "DEMO", title: "Bounded evidence" }] };
+          },
+          async getIssue() {
+            return {
+              issueKey: "DEMO-1",
+              projectKey: "DEMO",
+              title: "Bounded evidence",
+              content: {
+                text: "The bounded Jira issue contains evidence for the approved coverage target.",
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 70,
+              },
+            };
+          },
+        },
         wiki: { async searchPage() { throw new Error("unused"); }, async getPage() { throw new Error("unused"); } },
       },
       researchGraph: graph,
@@ -2629,7 +2651,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       options: { onEvent: (event) => events.push(event) },
     });
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(7);
+    expect(dynamicModel.callCount).toBe(8);
     const coverageCall = dynamicModel.calls.find((call) => call.messages.some((message) =>
       message.text.includes("Host-validated coverage moderation context"),
     ));
@@ -2640,7 +2662,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(coverageRequest).toContain('"minimumDistinctSources":1');
     expect(events.filter((event) => event.kind === "retrieval")).toEqual([
       expect.objectContaining({ action: "replan", reason: "coverage_gap", unresolvedCoverageTargetCount: 1 }),
-      expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),
+      expect.objectContaining({ action: "stop", reason: "marginal_evidence", newDetailSourceCount: 0 }),
     ]);
     const session = await durableStore.read(graph.sessionId);
     const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
@@ -2656,7 +2678,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       expect.objectContaining({
         graphRevision: 2,
         wave: 2,
-        assessment: expect.objectContaining({ action: "stop", reason: "no_ranked_candidates" }),
+        assessment: expect.objectContaining({ action: "stop", reason: "marginal_evidence", newDetailSourceCount: 0 }),
         continuation: expect.objectContaining({ status: "consumed" }),
       }),
     ]);
