@@ -123,6 +123,70 @@ describe("research LangGraph checkpointer adapter", () => {
       });
   });
 
+  test("recovers the last complete checkpoint when compacted-index publication is interrupted", async () => {
+    const durableWorkspace = createMemoryResearchWorkspace();
+    let indexWrites = 0;
+    const interruptedWorkspace = {
+      readFile: (path: string) => durableWorkspace.readFile(path),
+      async writeFile(path: string, contents: string) {
+        // The first 2,000 appends are complete. The next write attempts the
+        // replacement index after it has prepared a compacted journal.
+        if (path === "/.atlcli/langgraph-checkpoints/v1/index.json" && indexWrites++ >= 2_000) {
+          throw new Error("injected compacted index interruption");
+        }
+        await durableWorkspace.writeFile(path, contents);
+      },
+      remove: (path: string) => durableWorkspace.remove(path),
+      list: (prefix?: string) => durableWorkspace.list(prefix),
+    };
+    const baseConfig = researchCheckpointConfigV1({ sessionId, checkpointNamespace: "research" });
+    const saver = new ResearchSessionWorkspaceCheckpointerV1(sessionId, interruptedWorkspace);
+    let config: RunnableConfig = baseConfig;
+    for (let index = 0; index < 2_000; index += 1) {
+      config = await saver.put(config, {
+        v: 4,
+        id: `checkpoint:complete-${String(index).padStart(4, "0")}`,
+        ts: "2026-08-01T12:00:00.000Z",
+        channel_values: { durable_state: { index } },
+        channel_versions: { durable_state: index + 1 },
+        versions_seen: {},
+      }, { source: "loop", step: index, parents: {} });
+    }
+
+    await expect(saver.put(config, {
+      v: 4,
+      id: "checkpoint:interrupted-compaction",
+      ts: "2026-08-01T12:00:01.000Z",
+      channel_values: { durable_state: { index: 2_000 } },
+      channel_versions: { durable_state: 2_001 },
+      versions_seen: {},
+    }, { source: "loop", step: 2_000, parents: {} })).rejects.toThrow("injected compacted index interruption");
+
+    const recovered = new ResearchSessionWorkspaceCheckpointerV1(sessionId, durableWorkspace);
+    await expect(recovered.getTuple(baseConfig)).resolves.toMatchObject({
+      checkpoint: {
+        id: "checkpoint:complete-1999",
+        channel_values: { durable_state: { index: 1_999 } },
+      },
+    });
+
+    const recovery = await recovered.put(baseConfig, {
+      v: 4,
+      id: "checkpoint:recovered-after-compaction",
+      ts: "2026-08-01T12:00:02.000Z",
+      channel_values: { durable_state: { index: 2_001 } },
+      channel_versions: { durable_state: 2_002 },
+      versions_seen: {},
+    }, { source: "loop", step: 2_001, parents: {} });
+    const freshHost = new ResearchSessionWorkspaceCheckpointerV1(sessionId, durableWorkspace);
+    await expect(freshHost.getTuple(recovery)).resolves.toMatchObject({
+      checkpoint: {
+        id: "checkpoint:recovered-after-compaction",
+        channel_values: { durable_state: { index: 2_001 } },
+      },
+    });
+  });
+
   test("restores one native DeepAgent conversation in a fresh host for the same session thread", async () => {
     const workspace = createMemoryResearchWorkspace();
     const threadId = researchThreadIdForSessionV1(sessionId);

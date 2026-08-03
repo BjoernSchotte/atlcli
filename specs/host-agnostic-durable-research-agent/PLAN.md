@@ -3920,8 +3920,10 @@ CLI:
       process fixes the full $ cost ceiling; each later process uses only
       `--session`, verifies a complete Markdown artifact, and fails closed if
       the durable session identity changes (2026-08-03).
-- [ ] Prove interruption and resume while compaction or summarization is in
-      progress.
+- [x] Prove interruption and resume while compaction or summarization is in
+      progress. A failed compacted-index publication resumes from the preceding
+      complete checkpoint on a fresh host and compacts successfully on retry
+      (2026-08-03).
 
 Extension/browser:
 
