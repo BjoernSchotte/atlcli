@@ -281,7 +281,7 @@ flowchart TD
 - `auto` may answer directly without composing a workflow, but its routing
   decision is still projected as a safe structured event.
 - Auto routing initially remains a host-visible supervisor decision. A cheaper
-  domain/direct-versus-agentic classifier may be introduced only after T9 data
+  domain/direct-versus-agentic classifier may be introduced only after T10 data
   shows it reduces a material round trip without reducing routing quality; it is
   not an unmeasured prerequisite for the first correct implementation.
 
@@ -309,7 +309,112 @@ guest code filters and reduces IDs/metadata rather than copying complete bodies
 into QuickJS or child prompts. Boundary and near-limit fixtures must fail closed
 with a typed limitation instead of silent truncation.
 
-## 6. Quality gates
+## 6. Retrieval quality policy
+
+Retrieval is a first-class host contract between workflow composition and
+quality assessment, not an emergent behavior left to individual reader prompts.
+The normal acquisition order is:
+
+1. Detail-read bound Confluence/Jira context directly without rediscovery.
+2. Resolve explicit canonical URLs, page/issue IDs, Jira keys, text mentions,
+   Jira macros, and remote links.
+3. Resolve natural-language project/space names through the approved project and
+   space resolver/list capabilities; ambiguous matches use HITL.
+4. Run focused host-approved CQL/JQL/search operations for unresolved entities,
+   terms, and time ranges.
+5. Generate bounded query variants for synonyms, alternate titles, terminology,
+   spelling, and temporal expressions when the first search leaves material
+   gaps.
+6. Traverse relevant Jira-to-Confluence remote links and
+   Confluence-to-Jira text/macro relationships in both directions.
+7. Consider related projects/spaces only when evidence or the question justifies
+   expansion; re-run scope authorization and ask the user when expansion is
+   material or ambiguous.
+8. Hand the accepted, detail-read evidence ledger to quality assessment and
+   synthesis; search-result snippets alone never become published evidence.
+
+The supervisor/QuickJS proposes a typed plan rather than arbitrary host access:
+
+```ts
+interface RetrievalPlanV1 {
+  anchors: SourceAnchorV1[];
+  entities: ResolvedEntityV1[];
+  searches: ApprovedSearchV1[];
+  relationshipTraversals: RelationshipTraversalV1[];
+  unresolvedTerms: string[];
+  completionSignals: RetrievalCompletionSignalV1[];
+}
+```
+
+QuickJS may compose variants, dependencies, pagination, and reductions. The host
+validates operation IDs, bound tenant/scope, CQL/JQL shape, variables, traversal
+depth, pagination, bytes, time, and root budget before execution.
+
+### Durable candidate coverage
+
+The candidate ledger records every unique candidate with discovery method,
+query/anchor/relationship provenance, rank, canonical URL, source version,
+last-modified time, authority/freshness metadata, and one explicit coverage
+state:
+
+- `discovered`
+- `deduplicated`
+- `admitted`
+- `detail_read`
+- `excluded` with a reason
+- `uncovered`
+- `deadline_deferred`
+
+These are retrieval-coverage states, not dispatch-journal lifecycle states. A
+run may not present three detail reads as complete coverage while silently
+dropping 27 admitted candidates. Every admitted candidate is detail-read,
+explicitly excluded, or disclosed as uncovered/deferred before synthesis.
+
+### Completion and gap-directed retrieval
+
+“The search returned few results” is not a completion signal. The host-owned
+assessment may declare retrieval sufficient only when applicable conditions are
+recorded, including:
+
+- all direct anchors were detail-read;
+- required pagination was exhausted or its unvisited remainder is disclosed;
+- bounded query diversification reaches saturation (no new unique relevant
+  candidates) or leaves a named unresolved term;
+- relevant direct links, Jira macros, issue mentions, and remote links were
+  traversed or explicitly excluded;
+- answer-critical claims have accepted detail evidence;
+- remaining candidates have reviewable exclusion/defer reasons;
+- or `mustSynthesizeAt` requires a supported partial answer whose exact coverage
+  gap is visible.
+
+The critic returns typed gap-directed acquisition work rather than only
+“insufficient”: missing time window, unresolved project/space, unverified Jira
+mention or macro, conflicting source versions, missing primary/authoritative
+source, incomplete pagination, or unconfirmed relationship. Repair targets only
+those gaps instead of repeating a broad search.
+
+Discovery cannot consume the synthesis budget. The fair-share root allocator
+reserves capacity for direct detail reads, discovery/pagination, relationship
+traversal, gap repair, critique, and synthesis. Additional retrieval is selected
+by expected information gain under those reserves, never a fixed candidate or
+page cap. Native Atlassian search-index limitations remain explicit; saturation
+is evidence about the performed strategy, not a claim that no unseen source
+exists.
+
+### Retrieval sequence traceability
+
+| Step | Enforced contract | T4 proof |
+| --- | --- | --- |
+| 1. Bound context | Direct detail-read precedence | Attached page with zero discovery calls |
+| 2. Explicit references | URL/ID/key/mention/macro/remotelink resolution | Direct link, embedded Jira key, macro, and remote-link fixtures |
+| 3. Natural-language scope | Approved project/space resolver plus ambiguity HITL | Unique and ambiguous space/project cases |
+| 4. Focused search | Host-approved scoped CQL/JQL/search plus pagination | Later-page relevant candidate and host-validation rejection cases |
+| 5. Query diversification | Bounded synonym/title/time variants with saturation | First query misses; accepted variant finds the relevant source |
+| 6. Relationship traversal | Bidirectional Jira/Confluence graph evidence | Text mention, Live Macro, and Jira remote-link cases |
+| 7. Related scope | Evidence-justified expansion with authorization/HITL | Related-space case cannot run before approval |
+| 8. Evidence handoff | Only accepted detail evidence enters quality/synthesis | Candidate ledger accounts for every admitted/excluded/uncovered item |
+
+## 7. Quality gates
 
 Provider reasoning alone cannot compensate for bad retrieval. Agentic Chat must
 reuse and strengthen the existing evidence contracts:
@@ -377,7 +482,7 @@ time window, entity/project/space resolution, and required scope:
   a provided answer flag or return a resumable `needs_input` result; ambiguity
   must never degrade to a fatal graph-composition error.
 
-## 7. Durability, steering, queueing, and cancellation
+## 8. Durability, steering, queueing, and cancellation
 
 The same control protocol serves CLI/TUI, extension, and ordinary browser:
 
@@ -453,7 +558,7 @@ apply/cancel it at a safe boundary. Do not introduce a remote Agent-Protocol
 async-subagent service merely to obtain concurrency; reconsider that only after
 an in-process MV3/browser durability and cancellation proof.
 
-## 8. User-visible activity
+## 9. User-visible activity
 
 Project typed events into concise activity rows; retain raw diagnostics only in
 developer traces:
@@ -488,7 +593,7 @@ reports a typed resumable interruption; it does not pretend that provider tokens
 can be resumed. Exact committed chunk/cursor replay without missing or duplicate
 tokens is production hardening after the answer-quality and durable-beta proofs.
 
-## 9. Delivery sequence and acceptance stages
+## 10. Delivery sequence and acceptance stages
 
 The target architecture remains unchanged, but proof is ordered by user value so
 durability hardening cannot postpone the first visible quality comparison.
@@ -501,11 +606,13 @@ Prove one vertical answer path at a time:
    citations and no irrelevant Jira/search work.
 2. Decompose one genuinely complex question into dynamic parallel specialists
    and measurably improve the answer over Quick Chat and the current baseline.
-3. Have an independent critic identify one real evidence gap and trigger one
+3. Prove retrieval quality by finding a relevant later-page/alternate-term
+   source that the first query misses and account for every admitted candidate.
+4. Have an independent critic identify one real evidence gap and trigger one
    targeted repair that improves the final answer.
-4. Apply one steering instruction to the remaining workflow and exclude obsolete
+5. Apply one steering instruction to the remaining workflow and exclude obsolete
    results.
-5. Answer a follow-up using still-fresh accepted evidence from the prior turn.
+6. Answer a follow-up using still-fresh accepted evidence from the prior turn.
 
 This stage requires the real final architecture along the exercised path, but
 not exact token-chunk replay or a combinatorial host fault matrix. Its release
@@ -532,16 +639,16 @@ fault matrices and host-specific E2Es, enforce upstream dependency upgrade gates
 and finish operational/privacy documentation. Deferral changes delivery order,
 not the final production quality bar.
 
-## 10. Implementation tasks and proof gates
+## 11. Implementation tasks and proof gates
 
 Every checked task must have regression proof before its commit is pushed.
 Tasks are executed as vertical slices rather than finishing all infrastructure
 before a live answer:
 
-- Stage A draws the minimum exercised path from T0–T4 plus live-stream,
-  latency, shape, and evaluation slices from T6–T9.
-- Stage B completes T5 and the durable/event/presenter portions of T6–T8.
-- Stage C completes the evidence-gated hardening and delivery work in T10.
+- Stage A draws the minimum exercised path from T0–T5 plus live-stream,
+  latency, shape, and evaluation slices from T7–T10.
+- Stage B completes T6 and the durable/event/presenter portions of T7–T9.
+- Stage C completes the evidence-gated hardening and delivery work in T11.
 
 A task checkbox is checked only when its own proof passes; stage acceptance is a
 separate user-visible gate and does not imply unexercised later checkboxes.
@@ -559,7 +666,7 @@ separate user-visible gate and does not imply unexercised later checkboxes.
 - [ ] Record the exact preview package revision and generated lockfile identity
       used by the characterization suite.
 - [ ] Record numeric Auto/Deep deadline defaults as explicitly unresolved and
-      exclude them from the T0 freeze; T7 owns measurement and the later
+      exclude them from the T0 freeze; T8 owns measurement and the later
       deadline decision. Keep 120/180 seconds as hypotheses, not defaults.
 - [ ] Add the accepted invariants and later measured deadline decision to the
       main issue-138 plan without duplicating implementation tasks.
@@ -594,7 +701,7 @@ fake providers.
 - [ ] Extract graph admission, ready-frontier dispatch, reconciliation, and
       synthesis from research-only naming into an internal host-neutral
       agentic-workflow core. Do not claim fair-share allocation or FIFO queueing
-      through extraction; T5/T7 introduce those missing primitives explicitly.
+      through extraction; T6/T8 introduce those missing primitives explicitly.
 - [ ] Retain one `createDeepAgent` supervisor construction per active turn.
 - [ ] Add `conversation-answer` and `research-report` completion objectives.
 - [ ] Replace the pinned built-in middleware by name with the repository-owned
@@ -638,7 +745,56 @@ Proof: deterministic QuickJS composition, task-admission, concurrency,
 capability-closure, context-isolation, HITL pause/resume, declared-assumption,
 near-limit packet, overflow rejection, and single-model fallback tests.
 
-### T4 — Quality assessment, critique, repair, and synthesis
+### T4 — Retrieval planning, candidate coverage, and gap-directed acquisition
+
+- [ ] Add `RetrievalPlanV1` plus typed anchor, entity, approved-search,
+      relationship-traversal, unresolved-term, and completion-signal contracts.
+- [ ] Enforce direct detail-read precedence for bound page/issue context and
+      explicit URLs/IDs/keys without an unnecessary discovery search.
+- [ ] Resolve natural-language space/project names through approved resolvers;
+      park ambiguous matches through the shared HITL contract.
+- [ ] Validate every proposed operation, tenant/scope, CQL/JQL shape, variable,
+      pagination cursor, traversal, byte/time limit, and budget in the host.
+- [ ] Implement bounded query reformulation/diversification and saturation
+      detection for unresolved synonyms, titles, terminology, and time windows.
+- [ ] Build the durable candidate ledger with discovery provenance, canonical
+      identity, deduplication, source metadata, and explicit coverage state.
+- [ ] Traverse Jira-to-Confluence remote links and Confluence-to-Jira text
+      mentions/macros in both directions without expanding scope implicitly.
+- [ ] Implement host-owned retrieval completion assessment; few search results or
+      a fixed candidate cap cannot establish completeness.
+- [ ] Convert critic gaps into targeted retrieval work for missing time range,
+      entity/scope, pagination, relationship, source authority, or version
+      conflict rather than repeating broad discovery.
+- [ ] Reserve root budget separately for direct detail reads, discovery/
+      pagination, relationship traversal, gap repair, critique, and synthesis;
+      choose additional work by expected information gain.
+
+Proof: committed synthetic fixtures and deterministic provider/search doubles
+cover all of the following individually and in at least one combined workflow:
+
+- attached page detail-read with zero unnecessary search calls;
+- explicit canonical URL/page ID/Jira key resolved without broad discovery;
+- natural-language space and project resolution, including ambiguous HITL;
+- invalid, unscoped, or over-budget CQL/JQL/traversal rejected before HTTP;
+- relevant result appearing only on a later pagination page;
+- synonym/alternate title found only by a query variant;
+- Jira key embedded in Confluence text;
+- Confluence Jira Live Macro relationship;
+- Jira-to-Confluence remote link traversal;
+- stale/new and near-duplicate competing pages;
+- justified related-space expansion requiring authorization/HITL;
+- native search miss while a direct approved link still resolves the source;
+- deadline before complete discovery with exact uncovered/deferred disclosure;
+- first query missing a relevant candidate that bounded diversification finds.
+
+The proof reports candidate recall, admitted/detail-read coverage, wrong-source
+rate, canonical-URL correctness, relationship recall, Atlassian call count,
+phase latency, and resulting answer quality. CLI and MV3 consume the same
+retrieval trace; a real read-only acceptance run verifies the active host path
+without committing private inputs or results.
+
+### T5 — Quality assessment, critique, repair, and synthesis
 
 - [ ] Implement the sufficient-evidence assessment independently from report
       completeness targets.
@@ -669,9 +825,9 @@ contradiction, missing detail, truncation, irrelevant candidates, repair,
 stale/duplicate/conflicting sources, and prompt injection in page bodies,
 comments, descriptions, and linked content. Rubric output and iteration limits
 are deterministic under a fake model; judge scores are not release-blocking
-until calibrated in T9.
+until calibrated in T10.
 
-### T5 — Durable execution and steering
+### T6 — Durable execution and steering
 
 - [ ] Extend the durable session model with Chat workflow revisions, frontiers,
       task attempts, accepted packets, quality assessments, and resumable
@@ -715,7 +871,7 @@ full combinatorial matrix in every shape. Multi-turn tests prove fresh evidence
 is reused and changed/stale evidence is re-read. Resume-without-repeat claims
 apply only to committed boundaries, never mid-provider call.
 
-### T6 — Safe streaming and presenter parity
+### T7 — Safe streaming and presenter parity
 
 - [ ] Extend safe events for strategy, dynamic groups, child lifecycle,
       assessment, critique, repair, steering, deadline, and continuation.
@@ -744,7 +900,7 @@ replay. Assertions cover replayable activity, atomic final-answer persistence,
 honest interruption handling, and no raw child/thinking/source content leakage.
 Exact mid-stream chunk replay is not a Stage A/B gate.
 
-### T7 — Conversational latency and budget policy
+### T8 — Conversational latency and budget policy
 
 - [ ] Instrument phase durations for routing/scope, each frontier, quality/
       critique, repair, and first/final synthesis token in Core, CLI, and MV3.
@@ -772,7 +928,7 @@ tests, budget exhaustion, deadline synthesis, prompt-cache hit/miss isolation,
 model-routing fallback, and resumable continuation. Deadline defaults are frozen
 only after the results and user-visible trade-off are reviewed.
 
-### T8 — CLI, extension, and ordinary-browser controls
+### T9 — CLI, extension, and ordinary-browser controls
 
 - [ ] Keep `--thinking quick|auto|deep` as the CLI-facing spelling while mapping
       it to the new provider-neutral policy.
@@ -796,18 +952,20 @@ ordinary-browser shape initially proves the identical Core ports, event/control
 contracts, presenter behavior, and a targeted happy-path E2E; it does not repeat
 the full CLI/MV3 fault matrix. All shapes preserve the same product semantics.
 
-### T9 — Evaluation-driven quality gate
+### T10 — Evaluation-driven quality gate
 
 - [ ] Start with roughly 20 hand-labelled, committed synthetic DOCSY/ATLCLI cases
       and single-decision checks (routing, scope, clarification, direct context,
-      critique, repair, steering admission) before expanding to full trajectories.
+      retrieval plan/admission/completion, critique, repair, steering admission)
+      before expanding to full trajectories.
 - [ ] Expand that gold set to cover dynamic multi-wave work, deadline behavior,
       prompt injection, stale/duplicate/conflicting sources, model routing,
       reconnect, and cross-turn evidence reuse.
 - [ ] Maintain private live evaluation inputs/results only outside Git.
 - [ ] Score answer correctness, citation precision, evidence recall, wrong-source
-      rate, relationship recall, contradiction handling, uncovered-candidate
-      disclosure, latency, model tokens, and Atlassian call count.
+      rate, candidate recall, admitted/detail-read coverage, relationship recall,
+      contradiction handling, uncovered-candidate disclosure, query-variant
+      contribution, latency, model tokens, and Atlassian call count.
 - [ ] Evaluate trajectory, final answer, durable state, single decisions, full
       turns, and multi-turn sessions.
 - [ ] Calibrate every rubric/LLM judge against hand-labelled anchors, publish
@@ -830,7 +988,7 @@ Proof: reproducible offline experiment artifact, judge-calibration report, and
 operator-owned live review outside the repository. No private live input,
 feedback text, tenant-derived report, or evaluation trace is committed.
 
-### T10 — Documentation, privacy, and delivery
+### T11 — Documentation, privacy, and delivery
 
 - [ ] Document user-visible mode behavior, expected latency, costs, steering,
       continuation, and the Deep Research boundary.
@@ -860,7 +1018,7 @@ typecheck/build, the accepted production-hardening matrix, packed-MV3 plus
 built-CLI E2E, targeted ordinary-browser E2E, staged privacy scan, documentation
 review, and verified Draft PR commit/check status for every completed slice.
 
-## 11. Review decisions
+## 12. Review decisions
 
 Recommended defaults for approval:
 
@@ -901,28 +1059,33 @@ Recommended defaults for approval:
     production hardening. Exact token-chunk replay and duplicated full fault
     matrices across every presenter are not prerequisites for proving that the
     agent answers materially better.
+12. **Retrieval quality:** treat the ordered eight-step retrieval sequence,
+    candidate ledger, measurable completion signals, and gap-directed repair as
+    release-blocking answer-quality contracts. Search-result count or a fixed
+    read cap can never stand in for coverage.
 
-## 12. Reviewer finding traceability
+## 13. Finding traceability
 
 | Finding | Plan contract | Implementation task | Required proof |
 | --- | --- | --- | --- |
+| RQ.1 explicit eight-step retrieval strategy and proof matrix | Retrieval quality policy | T4, T10 | Direct anchors, resolvers, scoped search/pagination, query variants, bidirectional links, controlled expansion, and complete candidate accounting |
 | P0.1 pinned runtime has no mutable dynamic registry; bridged `task()` bypasses ToolNode wrappers | Verified pinned-runtime constraints; dynamic composition | T0, T2 | Pin characterization plus bridge authorization/HITL/journal tests |
-| P0.2 QuickJS eval is not cooperatively abortable | Durability, steering, and cancellation | T5, T8 | Short-slice virtual-clock and packed-MV3 stop/steer latency tests |
-| P0.3 120/180-second defaults are unmeasured | Measured conversational deadlines | T0, T7 | Phase-level cold/warm latency experiment before deadline freeze |
-| P0.4 retrieved-content prompt injection | Quality gates | T4, T9 | Injection fixtures across page/comment/description/link content |
-| P1.1 clarification policy | Clarification and assumptions | T3, T8 | Shape-neutral HITL pause/reload/answer/resume E2E |
-| P1.2 freshness, authority, duplicates | Quality gates | T4, T5, T9 | Stale/versioned/near-duplicate/conflict gold cases and cross-turn refresh tests |
-| P1.3 per-role model routing and prompt caching | Provider-neutral policy | T1, T3, T7 | Fallback parity, cache-boundary, latency/cost/quality comparison |
-| P1.4 rubric critic and calibrated judge | Quality gates | T4, T9 | Anchored deterministic rubric, pass limit, human-labelled calibration report |
-| P1.5 cross-turn evidence reuse | Durability section | T5, T8, T9 | Reuse unchanged evidence and re-read changed/stale evidence in CLI/MV3 |
-| P1.6 final synthesis streaming | User-visible activity | T6, T8, T10 | Stage A/B incremental Markdown plus atomic completed answer and honest checkpoint resume; exact chunk replay is an evidence-gated Stage C decision |
-| P2.1 English-only activity strings | User-visible activity | T6 | Complete German/English locale snapshots and fallback test |
-| P2.2 journal vocabulary mismatch | Durability section | T5 | Quarantine/revision/`outcome_unknown` state conformance tests |
-| P2.3 fair-share allocator and FIFO queue do not yet exist | Baseline constraints | T5, T7 | New durable queue and concurrent reserve-race tests |
+| P0.2 QuickJS eval is not cooperatively abortable | Durability, steering, and cancellation | T6, T9 | Short-slice virtual-clock and packed-MV3 stop/steer latency tests |
+| P0.3 120/180-second defaults are unmeasured | Measured conversational deadlines | T0, T8 | Phase-level cold/warm latency experiment before deadline freeze |
+| P0.4 retrieved-content prompt injection | Quality gates | T5, T10 | Injection fixtures across page/comment/description/link content |
+| P1.1 clarification policy | Clarification and assumptions | T3, T9 | Shape-neutral HITL pause/reload/answer/resume E2E |
+| P1.2 freshness, authority, duplicates | Retrieval and quality gates | T4, T5, T6, T10 | Stale/versioned/near-duplicate/conflict gold cases and cross-turn refresh tests |
+| P1.3 per-role model routing and prompt caching | Provider-neutral policy | T1, T3, T8 | Fallback parity, cache-boundary, latency/cost/quality comparison |
+| P1.4 rubric critic and calibrated judge | Quality gates | T5, T10 | Anchored deterministic rubric, pass limit, human-labelled calibration report |
+| P1.5 cross-turn evidence reuse | Durability section | T6, T9, T10 | Reuse unchanged evidence and re-read changed/stale evidence in CLI/MV3 |
+| P1.6 final synthesis streaming | User-visible activity | T7, T9, T11 | Stage A/B incremental Markdown plus atomic completed answer and honest checkpoint resume; exact chunk replay is an evidence-gated Stage C decision |
+| P2.1 English-only activity strings | User-visible activity | T7 | Complete German/English locale snapshots and fallback test |
+| P2.2 journal vocabulary mismatch | Durability section | T6 | Quarantine/revision/`outcome_unknown` state conformance tests |
+| P2.3 fair-share allocator and FIFO queue do not yet exist | Baseline constraints | T6, T8 | New durable queue and concurrent reserve-race tests |
 | P2.4 interpreter result/memory/schema limits | Context isolation | T0, T3 | Near-limit, overflow, depth, and fail-closed truncation tests |
-| P2.5 preview dependency risk | Pinned-runtime constraints | T0, T10 | Exact pin plus mandatory upgrade seam-contract suite |
-| P3.1 pragmatic eval start and feedback | Evaluation gate | T9 | Initial hand-labelled set, single-step metrics, privacy-safe feedback contract |
-| P3.2 checkpoint restore only at committed boundaries | Durability section | T5 | Fault injection including `outcome_unknown`; no mid-call resume claim |
-| P3.3 optional cheap domain detection | Dynamic composition | T3, T9 | Adopt only after baseline A/B routing data meets quality gate |
+| P2.5 preview dependency risk | Pinned-runtime constraints | T0, T11 | Exact pin plus mandatory upgrade seam-contract suite |
+| P3.1 pragmatic eval start and feedback | Evaluation gate | T10 | Initial hand-labelled set, single-step metrics, privacy-safe feedback contract |
+| P3.2 checkpoint restore only at committed boundaries | Durability section | T6 | Fault injection including `outcome_unknown`; no mid-call resume claim |
+| P3.3 optional cheap domain detection | Dynamic composition | T3, T10 | Adopt only after baseline A/B routing data meets quality gate |
 
 Implementation starts only after these decisions and this plan are reviewed.
