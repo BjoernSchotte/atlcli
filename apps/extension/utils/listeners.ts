@@ -19,6 +19,7 @@ import {
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
+  ChatQualityPolicyV1,
   ResearchReport,
   ResearchRequestV1,
   ResearchOneShotPolicyV1,
@@ -50,6 +51,7 @@ export interface OffscreenListenerDeps {
     mode: "chat" | "research",
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
+    qualityPolicy?: ChatQualityPolicyV1,
   ) => Promise<ResearchReport>;
   resumeResearch?: (
     runId: string,
@@ -395,6 +397,7 @@ export function handleOffscreenMessage(
           message.mode,
           message.request,
           message.policy,
+          message.qualityPolicy,
         )
         : Promise.reject(new Error("Research worker host is not configured.")))
         .then((report) => sendResponse({

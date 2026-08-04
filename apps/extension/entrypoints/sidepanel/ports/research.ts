@@ -857,6 +857,7 @@ export function chromeResearchPort(): ResearchPort {
           mode: options?.mode ?? "research",
           request,
           policy,
+          ...(options?.qualityPolicy ? { qualityPolicy: options.qualityPolicy } : {}),
         })) as
           | {
               kind: "research:run-result";

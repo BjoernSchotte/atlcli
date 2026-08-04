@@ -31,12 +31,14 @@ import {
   isExportJobsChanged,
 } from "../utils/messages.js";
 import type {
+  ChatQualityPolicyV1,
   ResearchOneShotPolicyV1,
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
 import {
   ResearchContractError,
   normalizeResearchOneShotPolicyV1,
+  normalizeChatQualityPolicyV1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
 import {
@@ -494,9 +496,13 @@ export default defineBackground({
     mode: "chat" | "research",
     value: ResearchRequestV1,
     policyValue?: ResearchOneShotPolicyV1,
+    qualityPolicyValue?: ChatQualityPolicyV1,
   ) => {
     const request = normalizeResearchRequestV1(value);
     const policy = normalizeResearchOneShotPolicyV1(policyValue);
+    const qualityPolicy = mode === "chat" && qualityPolicyValue
+      ? normalizeChatQualityPolicyV1(qualityPolicyValue)
+      : undefined;
     const detection = await getCurrentEntity(windowId);
     const profile = detection.url ? profileFromTabUrl(detection.url) : null;
     if (!profile || new URL(profile.baseUrl).origin !== request.scope.siteOrigin) {
@@ -527,6 +533,7 @@ export default defineBackground({
         mode,
         request,
         policy,
+        ...(qualityPolicy ? { qualityPolicy } : {}),
       })) as OffscreenResponse | undefined;
       if (
         !response ||

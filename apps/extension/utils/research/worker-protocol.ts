@@ -1,4 +1,5 @@
 import type {
+  ChatQualityPolicyV1,
   ResearchErrorCode,
   ResearchOneShotEventV1,
   ResearchOneShotPolicyV1,
@@ -17,6 +18,7 @@ export type ResearchWorkerRequestV1 =
       mode?: "chat" | "research";
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
+      qualityPolicy?: ChatQualityPolicyV1;
       resume?: false;
     }
   | {

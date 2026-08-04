@@ -1,3 +1,17 @@
+import {
+  CHAT_QUALITY_MODES_V1,
+  chatQualityPolicyV1,
+  type ChatQualityModeV1,
+  type ChatQualityPolicyV1,
+} from "./quality-policy.js";
+export {
+  CHAT_QUALITY_MODES_V1,
+  chatQualityPolicyV1,
+  normalizeChatQualityPolicyV1,
+  type ChatQualityModeV1,
+  type ChatQualityPolicyV1,
+} from "./quality-policy.js";
+
 /**
  * Host-neutral contracts for atlcli read-only research.
  *
@@ -21,6 +35,7 @@ export const RESEARCH_REQUESTED_EFFORTS_V1 = [
   "analysis",
   "deep",
 ] as const;
+/** @deprecated Use CHAT_QUALITY_MODES_V1. */
 export const CHAT_THINKING_MODES_V1 = ["auto", "quick", "deep"] as const;
 export const RESEARCH_REQUESTED_PLAN_APPROVALS_V1 = [
   "default",
@@ -41,7 +56,8 @@ export const RESEARCH_REPORT_LANGUAGES_V1 = ["en", "de"] as const;
 
 export type ResearchRequestedEffortV1 =
   (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number];
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+/** @deprecated Use ChatQualityModeV1. */
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto">;
 export type ResearchRequestedPlanApprovalV1 =
   (typeof RESEARCH_REQUESTED_PLAN_APPROVALS_V1)[number];
@@ -95,6 +111,13 @@ export function chatPolicyForThinkingModeV1(
     scopeExpansionMode: "ask",
     requestedReconciliation: "off",
   };
+}
+
+/** Canonical provider-neutral policy for a direct chat turn. */
+export function chatQualityPolicyForModeV1(
+  mode: ChatQualityModeV1,
+): ChatQualityPolicyV1 {
+  return chatQualityPolicyV1(mode);
 }
 
 /** Recover the stable presenter label from a normalized direct-chat policy. */
@@ -662,6 +685,8 @@ export interface ResearchRunOptions {
    */
   conversationId?: string;
   policy?: ResearchOneShotPolicyV1;
+  /** Canonical provider-neutral quality semantics for a direct Chat turn. */
+  qualityPolicy?: ChatQualityPolicyV1;
   /**
    * The host owns durable session identity. Presenters may use this opaque
    * reference to associate a streamed user turn with its later continuation,

@@ -163,7 +163,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       });
     },
     runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
-    runResearch: async (runId, sessionId, turnId, key, mode, request, policy) => {
+    runResearch: async (runId, sessionId, turnId, key, mode, request, policy, qualityPolicy) => {
       const apiKey = normalizeAnthropicApiKey(key);
       return researchHost.run({
         runId,
@@ -173,6 +173,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
         mode,
         request,
         policy,
+        ...(qualityPolicy ? { qualityPolicy } : {}),
         onProgress: (progress) => {
           void chrome.runtime.sendMessage({
             kind: "research:progress",

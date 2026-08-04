@@ -10,6 +10,9 @@
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: ANTHROPIC_QUALITY_ADAPTER_V1
+export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
 // export: appendBoundedDetailLinks
 export declare function appendBoundedDetailLinks(projection: BoundedContentProjectionV1, linkTargets: readonly string[], siteOrigin: string, limits: ContentProjectionLimits, sourceRelationsTruncated?: boolean): BoundedContentProjectionV1;
 
@@ -97,7 +100,21 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
+export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_QUALITY_MODES_V1
+export declare const CHAT_QUALITY_MODES_V1: readonly [
+    "quick",
+    "auto",
+    "deep"
+];
+
+// export: CHAT_QUALITY_STATE_PATH_V1
+export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
+// @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
     "auto",
     "quick",
@@ -107,11 +124,36 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
 
+// export: ChatQualityModeV1
+export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
+
+// export: chatQualityPolicyForModeV1
+export declare function chatQualityPolicyForModeV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: chatQualityPolicyV1
+export declare function chatQualityPolicyV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: ChatQualityPolicyV1
+export interface ChatQualityPolicyV1 {
+    mode: ChatQualityModeV1;
+    delegation: "disabled" | "adaptive" | "strategy-required";
+    completionTarget: "direct" | "sufficient-validated";
+    planning: "none" | "automatic";
+    scopeExpansion: "deny" | "ask";
+    deadline?: {
+        softDeadlineMs: number;
+        hardDeadlineMs: number;
+        finalizationReserveMs: number;
+    };
+    providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+// @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -184,6 +226,17 @@ export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
 // export: createNamespacedResearchWorkspace
 export declare function createNamespacedResearchWorkspace(parent: ResearchWorkspace, root: string): ResearchWorkspace;
+
+// export: createPromptCacheSegmentsV1
+export declare function createPromptCacheSegmentsV1(input: {
+    supervisorPrompt: string;
+    toolSchemas: readonly string[];
+    responseSchemas: readonly string[];
+    userInput?: string;
+    evidenceBodies?: readonly string[];
+    credentials?: readonly string[];
+    steeringRevisions?: readonly string[];
+}): PromptCacheSegmentsV1;
 
 // export: CreateResearchBriefInputV1
 export interface CreateResearchBriefInputV1 {
@@ -354,6 +407,9 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: decodeStoredChatQualityPolicyV1
+export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
@@ -627,6 +683,9 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: normalizeChatQualityPolicyV1
+export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
     candidateId: string;
@@ -745,6 +804,9 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: persistChatQualityPolicyV1
+export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
+
 // export: prepareDirectChatRequestV1
 export declare function prepareDirectChatRequestV1(input: ResearchRequestV1): ResearchRequestV1;
 
@@ -774,6 +836,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectPromptCacheSystemContentV1
+export declare function projectPromptCacheSystemContentV1(input: {
+    existingContent: unknown;
+    privateSegments: readonly string[];
+    cacheStablePrefix: boolean;
+    ttl?: "5m" | "1h";
+}): PromptCacheContentBlockV1[];
 
 // export: projectResearchGapAssessmentArtifactV1
 export declare function projectResearchGapAssessmentArtifactV1(input: {
@@ -840,6 +910,23 @@ export declare function projectResearchSessionScopeReviewV1(session: ResearchSes
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
+// export: PromptCacheContentBlockV1
+export interface PromptCacheContentBlockV1 {
+    type: string;
+    text?: string;
+    cache_control?: {
+        type: "ephemeral";
+        ttl?: "5m" | "1h";
+    };
+    [key: string]: unknown;
+}
+
+// export: PromptCacheSegmentsV1
+export interface PromptCacheSegmentsV1 {
+    stable: readonly string[];
+    private: readonly string[];
+}
+
 // export: ProposeResearchGraphForReadyBriefInputV1
 export interface ProposeResearchGraphForReadyBriefInputV1 {
     store: ResearchSessionStoreV1;
@@ -863,11 +950,40 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: PROVIDER_REASONING_PREFERENCES_V1
+export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
+    "fast",
+    "balanced",
+    "thorough"
+];
+
+// export: ProviderQualityCapabilityAdapterV1
+export interface ProviderQualityCapabilityAdapterV1 {
+    readonly providerId: string;
+    reasoningControls(preference: ProviderReasoningPreferenceV1): ProviderReasoningControlsV1 | undefined;
+    promptCache?: {
+        readonly enabled: boolean;
+        readonly ttl: "5m" | "1h";
+    };
+}
+
+// export: ProviderReasoningControlsV1
+export interface ProviderReasoningControlsV1 {
+    effort?: "low" | "medium" | "high";
+    adaptiveThinking?: boolean;
+}
+
+// export: ProviderReasoningPreferenceV1
+export type ProviderReasoningPreferenceV1 = (typeof PROVIDER_REASONING_PREFERENCES_V1)[number];
+
 // export: rankResearchCandidatesV1
 export declare function rankResearchCandidatesV1(input: {
     question: string;
     candidates: readonly ResearchCandidateRankingInputV1[];
 }): ResearchRankedCandidateV1[];
+
+// export: readStoredChatQualityPolicyV1
+export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -1168,6 +1284,12 @@ export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-
 // export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
 export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
+// export: RESEARCH_MODEL_PROFILE_IDS_V1
+export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
+    "fast-reader",
+    "strong-reasoner"
+];
+
 // export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
 export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
 
@@ -1311,6 +1433,38 @@ export declare const RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1: readonly Research
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-retrieval-assessment/v1";
+
+// export: RESEARCH_ROLE_MODEL_PROFILES_V1
+export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
+    readonly "focused-researcher": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "document-distiller": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "contradiction-verifier": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "coverage-moderator": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "outline-planner": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "balanced";
+    };
+    readonly reconciler: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly synthesizer: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+};
 
 // export: RESEARCH_SCOPE_AUTHORITIES_V1
 export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
@@ -2688,6 +2842,9 @@ export interface ResearchModelBudgetStateV1 {
     snapshot: ResearchModelBudgetSnapshotV1;
 }
 
+// export: ResearchModelProfileIdV1
+export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
@@ -3422,6 +3579,12 @@ export interface ResearchRetrievalProductAssessmentV1 {
     canReadMoreDetails: boolean;
 }
 
+// export: ResearchRoleModelProfileV1
+export interface ResearchRoleModelProfileV1 {
+    profile: ResearchModelProfileIdV1;
+    reasoning: ProviderReasoningPreferenceV1;
+}
+
 // export: ResearchRunBudget
 export declare class ResearchRunBudget {
     #private;
@@ -3469,6 +3632,7 @@ export interface ResearchRunOptions {
     mode?: ResearchRunModeV1;
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -4878,6 +5042,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: ResolvedProviderQualityV1
+export interface ResolvedProviderQualityV1 {
+    workflow: ChatQualityPolicyV1;
+    controls?: ProviderReasoningControlsV1;
+}
+
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
     baseScope: ResearchScopeV1;
@@ -4888,6 +5058,9 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveProviderQualityV1
+export declare function resolveProviderQualityV1(policy: ChatQualityPolicyV1, adapter: ProviderQualityCapabilityAdapterV1): ResolvedProviderQualityV1;
 
 // export: resolveResearchBriefClarificationsV1
 export declare function resolveResearchBriefClarificationsV1(input: {
@@ -4917,6 +5090,9 @@ export declare function resolveResearchPlanApprovalV1(input: {
     resolvedEffort: ResearchResolvedEffortV1;
     requestedEffort?: ResearchRequestedEffortV1;
 }): ResearchResolvedPlanApprovalV1;
+
+// export: resolveResearchRoleModelV1
+export declare function resolveResearchRoleModelV1(role: keyof typeof RESEARCH_ROLE_MODEL_PROFILES_V1, defaultModel: BaseChatModel, configured?: Partial<Record<ResearchModelProfileIdV1, BaseChatModel>>): BaseChatModel;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -5162,6 +5338,9 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: ANTHROPIC_QUALITY_ADAPTER_V1
+export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
 // export: appendBoundedDetailLinks
 export declare function appendBoundedDetailLinks(projection: BoundedContentProjectionV1, linkTargets: readonly string[], siteOrigin: string, limits: ContentProjectionLimits, sourceRelationsTruncated?: boolean): BoundedContentProjectionV1;
 
@@ -5249,7 +5428,21 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
+export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_QUALITY_MODES_V1
+export declare const CHAT_QUALITY_MODES_V1: readonly [
+    "quick",
+    "auto",
+    "deep"
+];
+
+// export: CHAT_QUALITY_STATE_PATH_V1
+export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
+// @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
     "auto",
     "quick",
@@ -5259,11 +5452,36 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
 
+// export: ChatQualityModeV1
+export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
+
+// export: chatQualityPolicyForModeV1
+export declare function chatQualityPolicyForModeV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: chatQualityPolicyV1
+export declare function chatQualityPolicyV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: ChatQualityPolicyV1
+export interface ChatQualityPolicyV1 {
+    mode: ChatQualityModeV1;
+    delegation: "disabled" | "adaptive" | "strategy-required";
+    completionTarget: "direct" | "sufficient-validated";
+    planning: "none" | "automatic";
+    scopeExpansion: "deny" | "ask";
+    deadline?: {
+        softDeadlineMs: number;
+        hardDeadlineMs: number;
+        finalizationReserveMs: number;
+    };
+    providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+// @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -5336,6 +5554,17 @@ export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
 // export: createNamespacedResearchWorkspace
 export declare function createNamespacedResearchWorkspace(parent: ResearchWorkspace, root: string): ResearchWorkspace;
+
+// export: createPromptCacheSegmentsV1
+export declare function createPromptCacheSegmentsV1(input: {
+    supervisorPrompt: string;
+    toolSchemas: readonly string[];
+    responseSchemas: readonly string[];
+    userInput?: string;
+    evidenceBodies?: readonly string[];
+    credentials?: readonly string[];
+    steeringRevisions?: readonly string[];
+}): PromptCacheSegmentsV1;
 
 // export: CreateResearchBriefInputV1
 export interface CreateResearchBriefInputV1 {
@@ -5497,6 +5726,9 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: decodeStoredChatQualityPolicyV1
+export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
@@ -5770,6 +6002,9 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: normalizeChatQualityPolicyV1
+export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
     candidateId: string;
@@ -5888,6 +6123,9 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: persistChatQualityPolicyV1
+export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
+
 // export: prepareDirectChatRequestV1
 export declare function prepareDirectChatRequestV1(input: ResearchRequestV1): ResearchRequestV1;
 
@@ -5917,6 +6155,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectPromptCacheSystemContentV1
+export declare function projectPromptCacheSystemContentV1(input: {
+    existingContent: unknown;
+    privateSegments: readonly string[];
+    cacheStablePrefix: boolean;
+    ttl?: "5m" | "1h";
+}): PromptCacheContentBlockV1[];
 
 // export: projectResearchGapAssessmentArtifactV1
 export declare function projectResearchGapAssessmentArtifactV1(input: {
@@ -5983,6 +6229,23 @@ export declare function projectResearchSessionScopeReviewV1(session: ResearchSes
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
+// export: PromptCacheContentBlockV1
+export interface PromptCacheContentBlockV1 {
+    type: string;
+    text?: string;
+    cache_control?: {
+        type: "ephemeral";
+        ttl?: "5m" | "1h";
+    };
+    [key: string]: unknown;
+}
+
+// export: PromptCacheSegmentsV1
+export interface PromptCacheSegmentsV1 {
+    stable: readonly string[];
+    private: readonly string[];
+}
+
 // export: ProposeResearchGraphForReadyBriefInputV1
 export interface ProposeResearchGraphForReadyBriefInputV1 {
     store: ResearchSessionStoreV1;
@@ -6006,11 +6269,40 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: PROVIDER_REASONING_PREFERENCES_V1
+export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
+    "fast",
+    "balanced",
+    "thorough"
+];
+
+// export: ProviderQualityCapabilityAdapterV1
+export interface ProviderQualityCapabilityAdapterV1 {
+    readonly providerId: string;
+    reasoningControls(preference: ProviderReasoningPreferenceV1): ProviderReasoningControlsV1 | undefined;
+    promptCache?: {
+        readonly enabled: boolean;
+        readonly ttl: "5m" | "1h";
+    };
+}
+
+// export: ProviderReasoningControlsV1
+export interface ProviderReasoningControlsV1 {
+    effort?: "low" | "medium" | "high";
+    adaptiveThinking?: boolean;
+}
+
+// export: ProviderReasoningPreferenceV1
+export type ProviderReasoningPreferenceV1 = (typeof PROVIDER_REASONING_PREFERENCES_V1)[number];
+
 // export: rankResearchCandidatesV1
 export declare function rankResearchCandidatesV1(input: {
     question: string;
     candidates: readonly ResearchCandidateRankingInputV1[];
 }): ResearchRankedCandidateV1[];
+
+// export: readStoredChatQualityPolicyV1
+export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -6311,6 +6603,12 @@ export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-
 // export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
 export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
+// export: RESEARCH_MODEL_PROFILE_IDS_V1
+export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
+    "fast-reader",
+    "strong-reasoner"
+];
+
 // export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
 export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
 
@@ -6454,6 +6752,38 @@ export declare const RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1: readonly Research
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-retrieval-assessment/v1";
+
+// export: RESEARCH_ROLE_MODEL_PROFILES_V1
+export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
+    readonly "focused-researcher": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "document-distiller": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "contradiction-verifier": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "coverage-moderator": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "outline-planner": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "balanced";
+    };
+    readonly reconciler: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly synthesizer: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+};
 
 // export: RESEARCH_SCOPE_AUTHORITIES_V1
 export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
@@ -7831,6 +8161,9 @@ export interface ResearchModelBudgetStateV1 {
     snapshot: ResearchModelBudgetSnapshotV1;
 }
 
+// export: ResearchModelProfileIdV1
+export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
@@ -8565,6 +8898,12 @@ export interface ResearchRetrievalProductAssessmentV1 {
     canReadMoreDetails: boolean;
 }
 
+// export: ResearchRoleModelProfileV1
+export interface ResearchRoleModelProfileV1 {
+    profile: ResearchModelProfileIdV1;
+    reasoning: ProviderReasoningPreferenceV1;
+}
+
 // export: ResearchRunBudget
 export declare class ResearchRunBudget {
     #private;
@@ -8612,6 +8951,7 @@ export interface ResearchRunOptions {
     mode?: ResearchRunModeV1;
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -10021,6 +10361,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: ResolvedProviderQualityV1
+export interface ResolvedProviderQualityV1 {
+    workflow: ChatQualityPolicyV1;
+    controls?: ProviderReasoningControlsV1;
+}
+
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
     baseScope: ResearchScopeV1;
@@ -10031,6 +10377,9 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveProviderQualityV1
+export declare function resolveProviderQualityV1(policy: ChatQualityPolicyV1, adapter: ProviderQualityCapabilityAdapterV1): ResolvedProviderQualityV1;
 
 // export: resolveResearchBriefClarificationsV1
 export declare function resolveResearchBriefClarificationsV1(input: {
@@ -10060,6 +10409,9 @@ export declare function resolveResearchPlanApprovalV1(input: {
     resolvedEffort: ResearchResolvedEffortV1;
     requestedEffort?: ResearchRequestedEffortV1;
 }): ResearchResolvedPlanApprovalV1;
+
+// export: resolveResearchRoleModelV1
+export declare function resolveResearchRoleModelV1(role: keyof typeof RESEARCH_ROLE_MODEL_PROFILES_V1, defaultModel: BaseChatModel, configured?: Partial<Record<ResearchModelProfileIdV1, BaseChatModel>>): BaseChatModel;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -10294,6 +10646,9 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: ANTHROPIC_QUALITY_ADAPTER_V1
+export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
 // export: appendBoundedDetailLinks
 export declare function appendBoundedDetailLinks(projection: BoundedContentProjectionV1, linkTargets: readonly string[], siteOrigin: string, limits: ContentProjectionLimits, sourceRelationsTruncated?: boolean): BoundedContentProjectionV1;
 
@@ -10381,7 +10736,21 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
+export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_QUALITY_MODES_V1
+export declare const CHAT_QUALITY_MODES_V1: readonly [
+    "quick",
+    "auto",
+    "deep"
+];
+
+// export: CHAT_QUALITY_STATE_PATH_V1
+export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
+// @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
     "auto",
     "quick",
@@ -10391,11 +10760,36 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
 
+// export: ChatQualityModeV1
+export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
+
+// export: chatQualityPolicyForModeV1
+export declare function chatQualityPolicyForModeV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: chatQualityPolicyV1
+export declare function chatQualityPolicyV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: ChatQualityPolicyV1
+export interface ChatQualityPolicyV1 {
+    mode: ChatQualityModeV1;
+    delegation: "disabled" | "adaptive" | "strategy-required";
+    completionTarget: "direct" | "sufficient-validated";
+    planning: "none" | "automatic";
+    scopeExpansion: "deny" | "ask";
+    deadline?: {
+        softDeadlineMs: number;
+        hardDeadlineMs: number;
+        finalizationReserveMs: number;
+    };
+    providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+// @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -10468,6 +10862,17 @@ export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
 // export: createNamespacedResearchWorkspace
 export declare function createNamespacedResearchWorkspace(parent: ResearchWorkspace, root: string): ResearchWorkspace;
+
+// export: createPromptCacheSegmentsV1
+export declare function createPromptCacheSegmentsV1(input: {
+    supervisorPrompt: string;
+    toolSchemas: readonly string[];
+    responseSchemas: readonly string[];
+    userInput?: string;
+    evidenceBodies?: readonly string[];
+    credentials?: readonly string[];
+    steeringRevisions?: readonly string[];
+}): PromptCacheSegmentsV1;
 
 // export: CreateResearchBriefInputV1
 export interface CreateResearchBriefInputV1 {
@@ -10638,6 +11043,9 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: decodeStoredChatQualityPolicyV1
+export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
@@ -10911,6 +11319,9 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: normalizeChatQualityPolicyV1
+export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
     candidateId: string;
@@ -11029,6 +11440,9 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: persistChatQualityPolicyV1
+export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
+
 // export: prepareDirectChatRequestV1
 export declare function prepareDirectChatRequestV1(input: ResearchRequestV1): ResearchRequestV1;
 
@@ -11058,6 +11472,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectPromptCacheSystemContentV1
+export declare function projectPromptCacheSystemContentV1(input: {
+    existingContent: unknown;
+    privateSegments: readonly string[];
+    cacheStablePrefix: boolean;
+    ttl?: "5m" | "1h";
+}): PromptCacheContentBlockV1[];
 
 // export: projectResearchGapAssessmentArtifactV1
 export declare function projectResearchGapAssessmentArtifactV1(input: {
@@ -11124,6 +11546,23 @@ export declare function projectResearchSessionScopeReviewV1(session: ResearchSes
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
+// export: PromptCacheContentBlockV1
+export interface PromptCacheContentBlockV1 {
+    type: string;
+    text?: string;
+    cache_control?: {
+        type: "ephemeral";
+        ttl?: "5m" | "1h";
+    };
+    [key: string]: unknown;
+}
+
+// export: PromptCacheSegmentsV1
+export interface PromptCacheSegmentsV1 {
+    stable: readonly string[];
+    private: readonly string[];
+}
+
 // export: ProposeResearchGraphForReadyBriefInputV1
 export interface ProposeResearchGraphForReadyBriefInputV1 {
     store: ResearchSessionStoreV1;
@@ -11147,11 +11586,40 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: PROVIDER_REASONING_PREFERENCES_V1
+export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
+    "fast",
+    "balanced",
+    "thorough"
+];
+
+// export: ProviderQualityCapabilityAdapterV1
+export interface ProviderQualityCapabilityAdapterV1 {
+    readonly providerId: string;
+    reasoningControls(preference: ProviderReasoningPreferenceV1): ProviderReasoningControlsV1 | undefined;
+    promptCache?: {
+        readonly enabled: boolean;
+        readonly ttl: "5m" | "1h";
+    };
+}
+
+// export: ProviderReasoningControlsV1
+export interface ProviderReasoningControlsV1 {
+    effort?: "low" | "medium" | "high";
+    adaptiveThinking?: boolean;
+}
+
+// export: ProviderReasoningPreferenceV1
+export type ProviderReasoningPreferenceV1 = (typeof PROVIDER_REASONING_PREFERENCES_V1)[number];
+
 // export: rankResearchCandidatesV1
 export declare function rankResearchCandidatesV1(input: {
     question: string;
     candidates: readonly ResearchCandidateRankingInputV1[];
 }): ResearchRankedCandidateV1[];
+
+// export: readStoredChatQualityPolicyV1
+export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -11452,6 +11920,12 @@ export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-
 // export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
 export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
+// export: RESEARCH_MODEL_PROFILE_IDS_V1
+export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
+    "fast-reader",
+    "strong-reasoner"
+];
+
 // export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
 export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
 
@@ -11595,6 +12069,38 @@ export declare const RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1: readonly Research
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-retrieval-assessment/v1";
+
+// export: RESEARCH_ROLE_MODEL_PROFILES_V1
+export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
+    readonly "focused-researcher": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "document-distiller": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "contradiction-verifier": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "coverage-moderator": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "outline-planner": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "balanced";
+    };
+    readonly reconciler: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly synthesizer: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+};
 
 // export: RESEARCH_SCOPE_AUTHORITIES_V1
 export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
@@ -12972,6 +13478,9 @@ export interface ResearchModelBudgetStateV1 {
     snapshot: ResearchModelBudgetSnapshotV1;
 }
 
+// export: ResearchModelProfileIdV1
+export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
@@ -13706,6 +14215,12 @@ export interface ResearchRetrievalProductAssessmentV1 {
     canReadMoreDetails: boolean;
 }
 
+// export: ResearchRoleModelProfileV1
+export interface ResearchRoleModelProfileV1 {
+    profile: ResearchModelProfileIdV1;
+    reasoning: ProviderReasoningPreferenceV1;
+}
+
 // export: ResearchRunBudget
 export declare class ResearchRunBudget {
     #private;
@@ -13753,6 +14268,7 @@ export interface ResearchRunOptions {
     mode?: ResearchRunModeV1;
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -15162,6 +15678,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: ResolvedProviderQualityV1
+export interface ResolvedProviderQualityV1 {
+    workflow: ChatQualityPolicyV1;
+    controls?: ProviderReasoningControlsV1;
+}
+
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
     baseScope: ResearchScopeV1;
@@ -15172,6 +15694,9 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveProviderQualityV1
+export declare function resolveProviderQualityV1(policy: ChatQualityPolicyV1, adapter: ProviderQualityCapabilityAdapterV1): ResolvedProviderQualityV1;
 
 // export: resolveResearchBriefClarificationsV1
 export declare function resolveResearchBriefClarificationsV1(input: {
@@ -15201,6 +15726,9 @@ export declare function resolveResearchPlanApprovalV1(input: {
     resolvedEffort: ResearchResolvedEffortV1;
     requestedEffort?: ResearchRequestedEffortV1;
 }): ResearchResolvedPlanApprovalV1;
+
+// export: resolveResearchRoleModelV1
+export declare function resolveResearchRoleModelV1(role: keyof typeof RESEARCH_ROLE_MODEL_PROFILES_V1, defaultModel: BaseChatModel, configured?: Partial<Record<ResearchModelProfileIdV1, BaseChatModel>>): BaseChatModel;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -15446,6 +15974,9 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: ANTHROPIC_QUALITY_ADAPTER_V1
+export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
 // export: appendBoundedDetailLinks
 export declare function appendBoundedDetailLinks(projection: BoundedContentProjectionV1, linkTargets: readonly string[], siteOrigin: string, limits: ContentProjectionLimits, sourceRelationsTruncated?: boolean): BoundedContentProjectionV1;
 
@@ -15542,7 +16073,21 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
+export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_QUALITY_MODES_V1
+export declare const CHAT_QUALITY_MODES_V1: readonly [
+    "quick",
+    "auto",
+    "deep"
+];
+
+// export: CHAT_QUALITY_STATE_PATH_V1
+export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
+// @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
     "auto",
     "quick",
@@ -15552,11 +16097,36 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
 
+// export: ChatQualityModeV1
+export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
+
+// export: chatQualityPolicyForModeV1
+export declare function chatQualityPolicyForModeV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: chatQualityPolicyV1
+export declare function chatQualityPolicyV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: ChatQualityPolicyV1
+export interface ChatQualityPolicyV1 {
+    mode: ChatQualityModeV1;
+    delegation: "disabled" | "adaptive" | "strategy-required";
+    completionTarget: "direct" | "sufficient-validated";
+    planning: "none" | "automatic";
+    scopeExpansion: "deny" | "ask";
+    deadline?: {
+        softDeadlineMs: number;
+        hardDeadlineMs: number;
+        finalizationReserveMs: number;
+    };
+    providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+// @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -15718,6 +16288,17 @@ export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
 // export: createNamespacedResearchWorkspace
 export declare function createNamespacedResearchWorkspace(parent: ResearchWorkspace, root: string): ResearchWorkspace;
+
+// export: createPromptCacheSegmentsV1
+export declare function createPromptCacheSegmentsV1(input: {
+    supervisorPrompt: string;
+    toolSchemas: readonly string[];
+    responseSchemas: readonly string[];
+    userInput?: string;
+    evidenceBodies?: readonly string[];
+    credentials?: readonly string[];
+    steeringRevisions?: readonly string[];
+}): PromptCacheSegmentsV1;
 
 // export: CreateResearchBriefInputV1
 export interface CreateResearchBriefInputV1 {
@@ -15926,6 +16507,9 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: decodeStoredChatQualityPolicyV1
+export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
@@ -16245,6 +16829,9 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: normalizeChatQualityPolicyV1
+export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
     candidateId: string;
@@ -16366,6 +16953,9 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: persistChatQualityPolicyV1
+export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
+
 // export: prepareDirectChatRequestV1
 export declare function prepareDirectChatRequestV1(input: ResearchRequestV1): ResearchRequestV1;
 
@@ -16395,6 +16985,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectPromptCacheSystemContentV1
+export declare function projectPromptCacheSystemContentV1(input: {
+    existingContent: unknown;
+    privateSegments: readonly string[];
+    cacheStablePrefix: boolean;
+    ttl?: "5m" | "1h";
+}): PromptCacheContentBlockV1[];
 
 // export: projectResearchGapAssessmentArtifactV1
 export declare function projectResearchGapAssessmentArtifactV1(input: {
@@ -16461,6 +17059,23 @@ export declare function projectResearchSessionScopeReviewV1(session: ResearchSes
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
+// export: PromptCacheContentBlockV1
+export interface PromptCacheContentBlockV1 {
+    type: string;
+    text?: string;
+    cache_control?: {
+        type: "ephemeral";
+        ttl?: "5m" | "1h";
+    };
+    [key: string]: unknown;
+}
+
+// export: PromptCacheSegmentsV1
+export interface PromptCacheSegmentsV1 {
+    stable: readonly string[];
+    private: readonly string[];
+}
+
 // export: ProposeResearchGraphForReadyBriefInputV1
 export interface ProposeResearchGraphForReadyBriefInputV1 {
     store: ResearchSessionStoreV1;
@@ -16484,17 +17099,46 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: PROVIDER_REASONING_PREFERENCES_V1
+export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
+    "fast",
+    "balanced",
+    "thorough"
+];
+
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
     type: "object";
     [key: string]: unknown;
 };
 
+// export: ProviderQualityCapabilityAdapterV1
+export interface ProviderQualityCapabilityAdapterV1 {
+    readonly providerId: string;
+    reasoningControls(preference: ProviderReasoningPreferenceV1): ProviderReasoningControlsV1 | undefined;
+    promptCache?: {
+        readonly enabled: boolean;
+        readonly ttl: "5m" | "1h";
+    };
+}
+
+// export: ProviderReasoningControlsV1
+export interface ProviderReasoningControlsV1 {
+    effort?: "low" | "medium" | "high";
+    adaptiveThinking?: boolean;
+}
+
+// export: ProviderReasoningPreferenceV1
+export type ProviderReasoningPreferenceV1 = (typeof PROVIDER_REASONING_PREFERENCES_V1)[number];
+
 // export: rankResearchCandidatesV1
 export declare function rankResearchCandidatesV1(input: {
     question: string;
     candidates: readonly ResearchCandidateRankingInputV1[];
 }): ResearchRankedCandidateV1[];
+
+// export: readStoredChatQualityPolicyV1
+export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -16812,6 +17456,12 @@ export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.researc
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
+// export: RESEARCH_MODEL_PROFILE_IDS_V1
+export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
+    "fast-reader",
+    "strong-reasoner"
+];
+
 // export: RESEARCH_NESTED_SUBAGENTS_ENABLED_V1
 export declare const RESEARCH_NESTED_SUBAGENTS_ENABLED_V1: false;
 
@@ -16958,6 +17608,38 @@ export declare const RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1: readonly Research
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-retrieval-assessment/v1";
+
+// export: RESEARCH_ROLE_MODEL_PROFILES_V1
+export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
+    readonly "focused-researcher": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "document-distiller": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "contradiction-verifier": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "coverage-moderator": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "outline-planner": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "balanced";
+    };
+    readonly reconciler: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly synthesizer: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+};
 
 // export: RESEARCH_SCOPE_AUTHORITIES_V1
 export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
@@ -18389,6 +19071,9 @@ export interface ResearchModelBudgetStateV1 {
     snapshot: ResearchModelBudgetSnapshotV1;
 }
 
+// export: ResearchModelProfileIdV1
+export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
@@ -19163,6 +19848,12 @@ export interface ResearchRetrievalProductAssessmentV1 {
     canReadMoreDetails: boolean;
 }
 
+// export: ResearchRoleModelProfileV1
+export interface ResearchRoleModelProfileV1 {
+    profile: ResearchModelProfileIdV1;
+    reasoning: ProviderReasoningPreferenceV1;
+}
+
 // export: ResearchRunBudget
 export declare class ResearchRunBudget {
     #private;
@@ -19210,6 +19901,7 @@ export interface ResearchRunOptions {
     mode?: ResearchRunModeV1;
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -20670,6 +21362,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: ResolvedProviderQualityV1
+export interface ResolvedProviderQualityV1 {
+    workflow: ChatQualityPolicyV1;
+    controls?: ProviderReasoningControlsV1;
+}
+
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
     baseScope: ResearchScopeV1;
@@ -20680,6 +21378,9 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveProviderQualityV1
+export declare function resolveProviderQualityV1(policy: ChatQualityPolicyV1, adapter: ProviderQualityCapabilityAdapterV1): ResolvedProviderQualityV1;
 
 // export: resolveResearchBriefClarificationsV1
 export declare function resolveResearchBriefClarificationsV1(input: {
@@ -20709,6 +21410,9 @@ export declare function resolveResearchPlanApprovalV1(input: {
     resolvedEffort: ResearchResolvedEffortV1;
     requestedEffort?: ResearchRequestedEffortV1;
 }): ResearchResolvedPlanApprovalV1;
+
+// export: resolveResearchRoleModelV1
+export declare function resolveResearchRoleModelV1(role: keyof typeof RESEARCH_ROLE_MODEL_PROFILES_V1, defaultModel: BaseChatModel, configured?: Partial<Record<ResearchModelProfileIdV1, BaseChatModel>>): BaseChatModel;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -20990,6 +21694,9 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: ANTHROPIC_QUALITY_ADAPTER_V1
+export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
 // export: appendBoundedDetailLinks
 export declare function appendBoundedDetailLinks(projection: BoundedContentProjectionV1, linkTargets: readonly string[], siteOrigin: string, limits: ContentProjectionLimits, sourceRelationsTruncated?: boolean): BoundedContentProjectionV1;
 
@@ -21086,7 +21793,21 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
+export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_QUALITY_MODES_V1
+export declare const CHAT_QUALITY_MODES_V1: readonly [
+    "quick",
+    "auto",
+    "deep"
+];
+
+// export: CHAT_QUALITY_STATE_PATH_V1
+export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
+// @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
     "auto",
     "quick",
@@ -21096,11 +21817,36 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
 
+// export: ChatQualityModeV1
+export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
+
+// export: chatQualityPolicyForModeV1
+export declare function chatQualityPolicyForModeV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: chatQualityPolicyV1
+export declare function chatQualityPolicyV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: ChatQualityPolicyV1
+export interface ChatQualityPolicyV1 {
+    mode: ChatQualityModeV1;
+    delegation: "disabled" | "adaptive" | "strategy-required";
+    completionTarget: "direct" | "sufficient-validated";
+    planning: "none" | "automatic";
+    scopeExpansion: "deny" | "ask";
+    deadline?: {
+        softDeadlineMs: number;
+        hardDeadlineMs: number;
+        finalizationReserveMs: number;
+    };
+    providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+// @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -21262,6 +22008,17 @@ export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
 // export: createNamespacedResearchWorkspace
 export declare function createNamespacedResearchWorkspace(parent: ResearchWorkspace, root: string): ResearchWorkspace;
+
+// export: createPromptCacheSegmentsV1
+export declare function createPromptCacheSegmentsV1(input: {
+    supervisorPrompt: string;
+    toolSchemas: readonly string[];
+    responseSchemas: readonly string[];
+    userInput?: string;
+    evidenceBodies?: readonly string[];
+    credentials?: readonly string[];
+    steeringRevisions?: readonly string[];
+}): PromptCacheSegmentsV1;
 
 // export: CreateResearchBriefInputV1
 export interface CreateResearchBriefInputV1 {
@@ -21470,6 +22227,9 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: decodeStoredChatQualityPolicyV1
+export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
@@ -21804,6 +22564,9 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: normalizeChatQualityPolicyV1
+export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
     candidateId: string;
@@ -21925,6 +22688,9 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: persistChatQualityPolicyV1
+export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
+
 // export: prepareDirectChatRequestV1
 export declare function prepareDirectChatRequestV1(input: ResearchRequestV1): ResearchRequestV1;
 
@@ -21954,6 +22720,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectPromptCacheSystemContentV1
+export declare function projectPromptCacheSystemContentV1(input: {
+    existingContent: unknown;
+    privateSegments: readonly string[];
+    cacheStablePrefix: boolean;
+    ttl?: "5m" | "1h";
+}): PromptCacheContentBlockV1[];
 
 // export: projectResearchGapAssessmentArtifactV1
 export declare function projectResearchGapAssessmentArtifactV1(input: {
@@ -22020,6 +22794,23 @@ export declare function projectResearchSessionScopeReviewV1(session: ResearchSes
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
+// export: PromptCacheContentBlockV1
+export interface PromptCacheContentBlockV1 {
+    type: string;
+    text?: string;
+    cache_control?: {
+        type: "ephemeral";
+        ttl?: "5m" | "1h";
+    };
+    [key: string]: unknown;
+}
+
+// export: PromptCacheSegmentsV1
+export interface PromptCacheSegmentsV1 {
+    stable: readonly string[];
+    private: readonly string[];
+}
+
 // export: ProposeResearchGraphForReadyBriefInputV1
 export interface ProposeResearchGraphForReadyBriefInputV1 {
     store: ResearchSessionStoreV1;
@@ -22043,17 +22834,46 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: PROVIDER_REASONING_PREFERENCES_V1
+export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
+    "fast",
+    "balanced",
+    "thorough"
+];
+
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
     type: "object";
     [key: string]: unknown;
 };
 
+// export: ProviderQualityCapabilityAdapterV1
+export interface ProviderQualityCapabilityAdapterV1 {
+    readonly providerId: string;
+    reasoningControls(preference: ProviderReasoningPreferenceV1): ProviderReasoningControlsV1 | undefined;
+    promptCache?: {
+        readonly enabled: boolean;
+        readonly ttl: "5m" | "1h";
+    };
+}
+
+// export: ProviderReasoningControlsV1
+export interface ProviderReasoningControlsV1 {
+    effort?: "low" | "medium" | "high";
+    adaptiveThinking?: boolean;
+}
+
+// export: ProviderReasoningPreferenceV1
+export type ProviderReasoningPreferenceV1 = (typeof PROVIDER_REASONING_PREFERENCES_V1)[number];
+
 // export: rankResearchCandidatesV1
 export declare function rankResearchCandidatesV1(input: {
     question: string;
     candidates: readonly ResearchCandidateRankingInputV1[];
 }): ResearchRankedCandidateV1[];
+
+// export: readStoredChatQualityPolicyV1
+export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -22371,6 +23191,12 @@ export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.researc
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
+// export: RESEARCH_MODEL_PROFILE_IDS_V1
+export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
+    "fast-reader",
+    "strong-reasoner"
+];
+
 // export: RESEARCH_NESTED_SUBAGENTS_ENABLED_V1
 export declare const RESEARCH_NESTED_SUBAGENTS_ENABLED_V1: false;
 
@@ -22517,6 +23343,38 @@ export declare const RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1: readonly Research
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-retrieval-assessment/v1";
+
+// export: RESEARCH_ROLE_MODEL_PROFILES_V1
+export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
+    readonly "focused-researcher": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "document-distiller": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "contradiction-verifier": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "coverage-moderator": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "outline-planner": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "balanced";
+    };
+    readonly reconciler: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly synthesizer: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+};
 
 // export: RESEARCH_SCOPE_AUTHORITIES_V1
 export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
@@ -23948,6 +24806,9 @@ export interface ResearchModelBudgetStateV1 {
     snapshot: ResearchModelBudgetSnapshotV1;
 }
 
+// export: ResearchModelProfileIdV1
+export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
@@ -24722,6 +25583,12 @@ export interface ResearchRetrievalProductAssessmentV1 {
     canReadMoreDetails: boolean;
 }
 
+// export: ResearchRoleModelProfileV1
+export interface ResearchRoleModelProfileV1 {
+    profile: ResearchModelProfileIdV1;
+    reasoning: ProviderReasoningPreferenceV1;
+}
+
 // export: ResearchRunBudget
 export declare class ResearchRunBudget {
     #private;
@@ -24769,6 +25636,7 @@ export interface ResearchRunOptions {
     mode?: ResearchRunModeV1;
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -26223,6 +27091,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: ResolvedProviderQualityV1
+export interface ResolvedProviderQualityV1 {
+    workflow: ChatQualityPolicyV1;
+    controls?: ProviderReasoningControlsV1;
+}
+
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
     baseScope: ResearchScopeV1;
@@ -26233,6 +27107,9 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveProviderQualityV1
+export declare function resolveProviderQualityV1(policy: ChatQualityPolicyV1, adapter: ProviderQualityCapabilityAdapterV1): ResolvedProviderQualityV1;
 
 // export: resolveResearchBriefClarificationsV1
 export declare function resolveResearchBriefClarificationsV1(input: {
@@ -26262,6 +27139,9 @@ export declare function resolveResearchPlanApprovalV1(input: {
     resolvedEffort: ResearchResolvedEffortV1;
     requestedEffort?: ResearchRequestedEffortV1;
 }): ResearchResolvedPlanApprovalV1;
+
+// export: resolveResearchRoleModelV1
+export declare function resolveResearchRoleModelV1(role: keyof typeof RESEARCH_ROLE_MODEL_PROFILES_V1, defaultModel: BaseChatModel, configured?: Partial<Record<ResearchModelProfileIdV1, BaseChatModel>>): BaseChatModel;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -26725,7 +27605,15 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: CHAT_QUALITY_MODES_V1
+export declare const CHAT_QUALITY_MODES_V1: readonly [
+    "quick",
+    "auto",
+    "deep"
+];
+
 // export: CHAT_THINKING_MODES_V1
+// @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
     "auto",
     "quick",
@@ -26735,17 +27623,45 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
 
+// export: ChatQualityModeV1
+export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
+
+// export: chatQualityPolicyForModeV1
+export declare function chatQualityPolicyForModeV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: chatQualityPolicyV1
+export declare function chatQualityPolicyV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: ChatQualityPolicyV1
+export interface ChatQualityPolicyV1 {
+    mode: ChatQualityModeV1;
+    delegation: "disabled" | "adaptive" | "strategy-required";
+    completionTarget: "direct" | "sufficient-validated";
+    planning: "none" | "automatic";
+    scopeExpansion: "deny" | "ask";
+    deadline?: {
+        softDeadlineMs: number;
+        hardDeadlineMs: number;
+        finalizationReserveMs: number;
+    };
+    providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+// @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
 // export: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1
 export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneShotPolicyV1>;
+
+// export: normalizeChatQualityPolicyV1
+export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: normalizeResearchLimitsV1
 export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
@@ -27358,6 +28274,7 @@ export interface ResearchRunOptions {
     mode?: ResearchRunModeV1;
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -27849,6 +28766,9 @@ export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: ANTHROPIC_QUALITY_ADAPTER_V1
+export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
 // export: appendBoundedDetailLinks
 export declare function appendBoundedDetailLinks(projection: BoundedContentProjectionV1, linkTargets: readonly string[], siteOrigin: string, limits: ContentProjectionLimits, sourceRelationsTruncated?: boolean): BoundedContentProjectionV1;
 
@@ -27945,7 +28865,21 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
+export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_QUALITY_MODES_V1
+export declare const CHAT_QUALITY_MODES_V1: readonly [
+    "quick",
+    "auto",
+    "deep"
+];
+
+// export: CHAT_QUALITY_STATE_PATH_V1
+export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
+// @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
     "auto",
     "quick",
@@ -27955,11 +28889,36 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
 
+// export: ChatQualityModeV1
+export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
+
+// export: chatQualityPolicyForModeV1
+export declare function chatQualityPolicyForModeV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: chatQualityPolicyV1
+export declare function chatQualityPolicyV1(mode: ChatQualityModeV1): ChatQualityPolicyV1;
+
+// export: ChatQualityPolicyV1
+export interface ChatQualityPolicyV1 {
+    mode: ChatQualityModeV1;
+    delegation: "disabled" | "adaptive" | "strategy-required";
+    completionTarget: "direct" | "sufficient-validated";
+    planning: "none" | "automatic";
+    scopeExpansion: "deny" | "ask";
+    deadline?: {
+        softDeadlineMs: number;
+        hardDeadlineMs: number;
+        finalizationReserveMs: number;
+    };
+    providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
-export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+// @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
+export type ChatThinkingModeV1 = ChatQualityModeV1;
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -28121,6 +29080,17 @@ export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
 
 // export: createNamespacedResearchWorkspace
 export declare function createNamespacedResearchWorkspace(parent: ResearchWorkspace, root: string): ResearchWorkspace;
+
+// export: createPromptCacheSegmentsV1
+export declare function createPromptCacheSegmentsV1(input: {
+    supervisorPrompt: string;
+    toolSchemas: readonly string[];
+    responseSchemas: readonly string[];
+    userInput?: string;
+    evidenceBodies?: readonly string[];
+    credentials?: readonly string[];
+    steeringRevisions?: readonly string[];
+}): PromptCacheSegmentsV1;
 
 // export: CreateResearchBriefInputV1
 export interface CreateResearchBriefInputV1 {
@@ -28329,6 +29299,9 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: decodeStoredChatQualityPolicyV1
+export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
@@ -28663,6 +29636,9 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: normalizeChatQualityPolicyV1
+export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
     candidateId: string;
@@ -28784,6 +29760,9 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: persistChatQualityPolicyV1
+export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
+
 // export: prepareDirectChatRequestV1
 export declare function prepareDirectChatRequestV1(input: ResearchRequestV1): ResearchRequestV1;
 
@@ -28813,6 +29792,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectPromptCacheSystemContentV1
+export declare function projectPromptCacheSystemContentV1(input: {
+    existingContent: unknown;
+    privateSegments: readonly string[];
+    cacheStablePrefix: boolean;
+    ttl?: "5m" | "1h";
+}): PromptCacheContentBlockV1[];
 
 // export: projectResearchGapAssessmentArtifactV1
 export declare function projectResearchGapAssessmentArtifactV1(input: {
@@ -28879,6 +29866,23 @@ export declare function projectResearchSessionScopeReviewV1(session: ResearchSes
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
+// export: PromptCacheContentBlockV1
+export interface PromptCacheContentBlockV1 {
+    type: string;
+    text?: string;
+    cache_control?: {
+        type: "ephemeral";
+        ttl?: "5m" | "1h";
+    };
+    [key: string]: unknown;
+}
+
+// export: PromptCacheSegmentsV1
+export interface PromptCacheSegmentsV1 {
+    stable: readonly string[];
+    private: readonly string[];
+}
+
 // export: ProposeResearchGraphForReadyBriefInputV1
 export interface ProposeResearchGraphForReadyBriefInputV1 {
     store: ResearchSessionStoreV1;
@@ -28902,17 +29906,46 @@ export declare function proposeResearchScopeMentionsV1(input: {
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
 
+// export: PROVIDER_REASONING_PREFERENCES_V1
+export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
+    "fast",
+    "balanced",
+    "thorough"
+];
+
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
     type: "object";
     [key: string]: unknown;
 };
 
+// export: ProviderQualityCapabilityAdapterV1
+export interface ProviderQualityCapabilityAdapterV1 {
+    readonly providerId: string;
+    reasoningControls(preference: ProviderReasoningPreferenceV1): ProviderReasoningControlsV1 | undefined;
+    promptCache?: {
+        readonly enabled: boolean;
+        readonly ttl: "5m" | "1h";
+    };
+}
+
+// export: ProviderReasoningControlsV1
+export interface ProviderReasoningControlsV1 {
+    effort?: "low" | "medium" | "high";
+    adaptiveThinking?: boolean;
+}
+
+// export: ProviderReasoningPreferenceV1
+export type ProviderReasoningPreferenceV1 = (typeof PROVIDER_REASONING_PREFERENCES_V1)[number];
+
 // export: rankResearchCandidatesV1
 export declare function rankResearchCandidatesV1(input: {
     question: string;
     candidates: readonly ResearchCandidateRankingInputV1[];
 }): ResearchRankedCandidateV1[];
+
+// export: readStoredChatQualityPolicyV1
+export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -29230,6 +30263,12 @@ export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.researc
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
+// export: RESEARCH_MODEL_PROFILE_IDS_V1
+export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
+    "fast-reader",
+    "strong-reasoner"
+];
+
 // export: RESEARCH_NESTED_SUBAGENTS_ENABLED_V1
 export declare const RESEARCH_NESTED_SUBAGENTS_ENABLED_V1: false;
 
@@ -29376,6 +30415,38 @@ export declare const RESEARCH_RETRIEVAL_ASSESSMENT_REASONS_V1: readonly Research
 
 // export: RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1
 export declare const RESEARCH_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.research-retrieval-assessment/v1";
+
+// export: RESEARCH_ROLE_MODEL_PROFILES_V1
+export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
+    readonly "focused-researcher": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "document-distiller": {
+        readonly profile: "fast-reader";
+        readonly reasoning: "fast";
+    };
+    readonly "contradiction-verifier": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "coverage-moderator": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly "outline-planner": {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "balanced";
+    };
+    readonly reconciler: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+    readonly synthesizer: {
+        readonly profile: "strong-reasoner";
+        readonly reasoning: "thorough";
+    };
+};
 
 // export: RESEARCH_SCOPE_AUTHORITIES_V1
 export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
@@ -30807,6 +31878,9 @@ export interface ResearchModelBudgetStateV1 {
     snapshot: ResearchModelBudgetSnapshotV1;
 }
 
+// export: ResearchModelProfileIdV1
+export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
@@ -31581,6 +32655,12 @@ export interface ResearchRetrievalProductAssessmentV1 {
     canReadMoreDetails: boolean;
 }
 
+// export: ResearchRoleModelProfileV1
+export interface ResearchRoleModelProfileV1 {
+    profile: ResearchModelProfileIdV1;
+    reasoning: ProviderReasoningPreferenceV1;
+}
+
 // export: ResearchRunBudget
 export declare class ResearchRunBudget {
     #private;
@@ -31628,6 +32708,7 @@ export interface ResearchRunOptions {
     mode?: ResearchRunModeV1;
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -33082,6 +34163,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: ResolvedProviderQualityV1
+export interface ResolvedProviderQualityV1 {
+    workflow: ChatQualityPolicyV1;
+    controls?: ProviderReasoningControlsV1;
+}
+
 // export: resolveInitialResearchScopeV1
 export declare function resolveInitialResearchScopeV1(input: {
     baseScope: ResearchScopeV1;
@@ -33092,6 +34179,9 @@ export declare function resolveInitialResearchScopeV1(input: {
     maximumCatalogPages?: number;
     candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveProviderQualityV1
+export declare function resolveProviderQualityV1(policy: ChatQualityPolicyV1, adapter: ProviderQualityCapabilityAdapterV1): ResolvedProviderQualityV1;
 
 // export: resolveResearchBriefClarificationsV1
 export declare function resolveResearchBriefClarificationsV1(input: {
@@ -33121,6 +34211,9 @@ export declare function resolveResearchPlanApprovalV1(input: {
     resolvedEffort: ResearchResolvedEffortV1;
     requestedEffort?: ResearchRequestedEffortV1;
 }): ResearchResolvedPlanApprovalV1;
+
+// export: resolveResearchRoleModelV1
+export declare function resolveResearchRoleModelV1(role: keyof typeof RESEARCH_ROLE_MODEL_PROFILES_V1, defaultModel: BaseChatModel, configured?: Partial<Record<ResearchModelProfileIdV1, BaseChatModel>>): BaseChatModel;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;

@@ -748,6 +748,23 @@ export function compileDynamicResearchSubagents(
       ].join("\n"),
       tools: [],
       middleware: [
+        // DeepAgents enables both a static system breakpoint and a moving
+        // conversation cache for Anthropic by default. This specialist prompt
+        // contains the private user question and its messages contain private
+        // evidence, so both upstream slots are replaced with no-ops until T7
+        // introduces a separately cacheable static specialist prefix.
+        createMiddleware({
+          name: "PromptCachingMiddleware",
+          wrapModelCall: (request, handler) => {
+            const settings = { ...(request.modelSettings ?? {}) } as Record<string, unknown>;
+            delete settings.cache_control;
+            return handler({ ...request, modelSettings: settings });
+          },
+        }),
+        createMiddleware({
+          name: "CacheBreakpointMiddleware",
+          wrapModelCall: (request, handler) => handler(request),
+        }),
         ...(options.createModelBudgetMiddleware ? [options.createModelBudgetMiddleware(node)] : []),
         ...(ptc.length > 0
           ? [

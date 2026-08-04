@@ -221,6 +221,14 @@ describe("routeMessage (pure router)", () => {
       requestedReconciliation: "auto",
     } as const;
     const observed: unknown[] = [];
+    const qualityPolicy = {
+      mode: "quick",
+      delegation: "disabled",
+      completionTarget: "direct",
+      planning: "none",
+      scopeExpansion: "deny",
+      providerReasoningPreference: "fast",
+    } as const;
     expect(await routeMessage({
       kind: "research:run",
       runId: "run-1",
@@ -230,10 +238,11 @@ describe("routeMessage (pure router)", () => {
       mode: "chat",
       request,
       policy,
+      qualityPolicy,
     }, {
       ...okDeps,
-      runResearch: async (_runId, _sessionId, _turnId, _windowId, mode, _request, receivedPolicy) => {
-        observed.push(mode, receivedPolicy);
+      runResearch: async (_runId, _sessionId, _turnId, _windowId, mode, _request, receivedPolicy, receivedQuality) => {
+        observed.push(mode, receivedPolicy, receivedQuality);
         return researchReport;
       },
     })).toEqual({
@@ -242,6 +251,7 @@ describe("routeMessage (pure router)", () => {
       ok: true,
       report: researchReport,
     });
+    expect(observed).toEqual(["chat", policy, qualityPolicy]);
     expect(await routeMessage({
       kind: "research:cancel",
       runId: "run-1",
@@ -285,7 +295,7 @@ describe("routeMessage (pure router)", () => {
       request,
       policy,
     })).not.toContain("apiKey");
-    expect(observed).toEqual(["chat", policy]);
+    expect(observed).toEqual(["chat", policy, qualityPolicy]);
   });
 
   it("routes a durable research resume with opaque identifiers only", async () => {

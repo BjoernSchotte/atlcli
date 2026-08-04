@@ -1,5 +1,6 @@
 import {
   ResearchContractError,
+  type ChatQualityPolicyV1,
   type ResearchOneShotPolicyV1,
   type ResearchOneShotEventV1,
   type ResearchProgressV1,
@@ -40,6 +41,7 @@ export class ResearchAgentWorkerHost {
     mode?: "chat" | "research";
     request?: ResearchRequestV1;
     policy?: ResearchOneShotPolicyV1;
+    qualityPolicy?: ChatQualityPolicyV1;
     resume?: true;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
@@ -98,6 +100,7 @@ export class ResearchAgentWorkerHost {
         mode: input.mode ?? "research",
         request: input.request,
         ...(input.policy ? { policy: input.policy } : {}),
+        ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
       });
     }).finally(() => {
       const active = this.#active.get(input.runId);

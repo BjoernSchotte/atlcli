@@ -809,13 +809,22 @@ describe("research CLI one-shot contract", () => {
       requestedPlanApproval: "automatic",
       requestedReconciliation: "off",
     });
+    expect(parsed.qualityPolicy).toMatchObject({
+      mode: "auto",
+      delegation: "adaptive",
+      providerReasoningPreference: "balanced",
+    });
     expect(() =>
       parseChatCliInput(["question"], { effort: "deep" }),
     ).toThrow("Use `atlcli research`");
     expect(parseChatCliInput(["question"], { thinking: "quick" }).policy)
       .toMatchObject({ requestedEffort: "lookup" });
+    expect(parseChatCliInput(["question"], { thinking: "quick" }).qualityPolicy)
+      .toMatchObject({ mode: "quick", delegation: "disabled" });
     expect(parseChatCliInput(["question"], { thinking: "deep" }).policy)
       .toMatchObject({ requestedEffort: "deep" });
+    expect(parseChatCliInput(["question"], { thinking: "deep" }).qualityPolicy)
+      .toMatchObject({ mode: "deep", delegation: "strategy-required" });
     expect(() => parseChatCliInput(["question"], { thinking: "maximum" }))
       .toThrow("--thinking must be one of");
   });
@@ -898,6 +907,10 @@ describe("research CLI one-shot contract", () => {
       "Which part matters most?",
     );
     expect(harness.chatRunInputs[1]?.policy.requestedEffort).toBe("deep");
+    expect(harness.chatRunInputs[1]?.qualityPolicy).toMatchObject({
+      mode: "deep",
+      providerReasoningPreference: "thorough",
+    });
     expect(harness.chatRunInputs[1]?.request.scope).toMatchObject({
       jiraProjectKeys: [],
       confluenceSpaceKeys: ["DOCSY"],

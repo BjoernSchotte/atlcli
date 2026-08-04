@@ -1250,13 +1250,33 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "synthesizer",
     ]);
     expect(specs.every((spec) => spec.tools?.length === 0)).toBe(true);
-    expect(specs[0]?.middleware).toHaveLength(3);
-    expect(specs[1]?.middleware).toHaveLength(3);
-    expect(specs[2]?.middleware).toHaveLength(0);
-    expect(specs[3]?.middleware).toHaveLength(0);
-    expect(specs[4]?.middleware).toHaveLength(0);
-    expect(specs[5]?.middleware).toHaveLength(3);
-    expect(specs[6]?.middleware).toHaveLength(0);
+    expect(specs.map((spec) => spec.middleware?.map((entry) => entry.name))).toEqual([
+      [
+        "PromptCachingMiddleware",
+        "CacheBreakpointMiddleware",
+        "ResearchStructuredOutputRepairNoPtcMiddleware",
+        "ResearchCompletedEvalNoPtcMiddleware",
+        "CodeInterpreterMiddleware",
+      ],
+      [
+        "PromptCachingMiddleware",
+        "CacheBreakpointMiddleware",
+        "ResearchStructuredOutputRepairNoPtcMiddleware",
+        "ResearchCompletedEvalNoPtcMiddleware",
+        "CodeInterpreterMiddleware",
+      ],
+      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
+      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
+      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
+      [
+        "PromptCachingMiddleware",
+        "CacheBreakpointMiddleware",
+        "ResearchStructuredOutputRepairNoPtcMiddleware",
+        "ResearchCompletedEvalNoPtcMiddleware",
+        "CodeInterpreterMiddleware",
+      ],
+      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
+    ]);
     expect(specs.every((spec) => !("responseFormat" in spec))).toBe(true);
     expect(specs[0]?.systemPrompt).toContain("single host-generated bounded program");
     expect(specs[0]?.systemPrompt).toContain("Do not call eval a second time");
@@ -1856,7 +1876,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
     expect(report.title).toBe(draft.title);
     expect(report.markdown).toContain(
-      "No non-empty, non-truncated detail evidence supported a publishable finding"
+      "No non-empty detail evidence supported a publishable finding"
     );
     expect(report.markdown).not.toContain(draft.executiveSummary);
     expect(report.limitations).toContain(

@@ -23,6 +23,7 @@ import type {
 } from "../../utils/screens/registry.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  chatQualityPolicyForModeV1,
   chatPolicyForThinkingModeV1,
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
@@ -890,9 +891,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [maxRunMinutes, setMaxRunMinutes] = useState(
     String(Math.ceil(DEFAULT_RESEARCH_LIMITS_V1.maxRunMs / 60_000)),
   );
-  const [effort, setEffort] = useState<ResearchRequestedEffortV1>(
-    RESEARCH_INTERACTION_MODE_POLICY.chat.requestedEffort,
-  );
+  const effort = RESEARCH_INTERACTION_MODE_POLICY.deep.requestedEffort;
   const [planApproval, setPlanApproval] = useState<ResearchRequestedPlanApprovalV1>(
     RESEARCH_INTERACTION_MODE_POLICY.chat.requestedPlanApproval,
   );
@@ -1254,13 +1253,15 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           state: "sent",
         }]);
       }
-      const policy = normalizeResearchOneShotPolicyV1({
-        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
-        requestedEffort: effort,
-        requestedPlanApproval: planApproval,
-        scopeExpansionMode: scopeExpansion,
-        requestedReconciliation: reconciliation,
-      });
+      const policy = interactionMode === "chat"
+        ? chatPolicyForThinkingModeV1(chatThinkingMode)
+        : normalizeResearchOneShotPolicyV1({
+            schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+            requestedEffort: effort,
+            requestedPlanApproval: planApproval,
+            scopeExpansionMode: scopeExpansion,
+            requestedReconciliation: reconciliation,
+          });
       const scopeOutcome = await port!.resolveScope(
         initialRequest,
         retry ? { candidateSelections: [retry.selection] } : undefined,
@@ -1362,6 +1363,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           ? { conversationId: activeChatConversationIdRef.current }
           : {}),
         policy,
+        ...(interactionMode === "chat"
+          ? { qualityPolicy: chatQualityPolicyForModeV1(chatThinkingMode) }
+          : {}),
         onSessionStart: (session) => {
           if (interactionMode === "chat") {
             activeChatConversationIdRef.current = session.sessionId;
@@ -2103,7 +2107,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       ? chatPolicyForThinkingModeV1(thinkingMode)
       : RESEARCH_INTERACTION_MODE_POLICY.deep;
     setInteractionMode(mode);
-    setEffort(policy.requestedEffort);
     setPlanApproval(policy.requestedPlanApproval);
     setScopeExpansion(policy.scopeExpansionMode);
     setReconciliation(policy.requestedReconciliation);
@@ -2111,9 +2114,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   function selectChatThinkingMode(mode: ChatThinkingModeV1): void {
     setChatThinkingMode(mode);
-    if (interactionMode === "chat") {
-      setEffort(chatPolicyForThinkingModeV1(mode).requestedEffort);
-    }
   }
 
   async function startNewConversation(): Promise<void> {
@@ -2753,21 +2753,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <div className="grid grid-cols-2 gap-2">
             {interactionMode === "deep" && (
               <>
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="research-effort">{t("research.effort")}</Label>
-                  <Select
-                    id="research-effort"
-                    data-testid="research-effort"
-                    value={effort}
-                    onChange={(event) => setEffort(event.target.value as ResearchRequestedEffortV1)}
-                    disabled={running}
-                  >
-                    <option value="auto">{t("research.effort.auto")}</option>
-                    <option value="lookup">{t("research.effort.lookup")}</option>
-                    <option value="analysis">{t("research.effort.analysis")}</option>
-                    <option value="deep">{t("research.effort.deep")}</option>
-                  </Select>
-                </div>
                 <div className="flex flex-col gap-1">
                   <Label htmlFor="research-plan-approval">{t("research.planApproval")}</Label>
                   <Select

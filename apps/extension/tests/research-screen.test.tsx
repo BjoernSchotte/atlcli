@@ -381,7 +381,7 @@ describe("portable Research screen", () => {
     expect(dom.find("research-mode-deep").getAttribute("aria-pressed")).toBe("true");
     expect(dom.maybeFind("research-chat-thinking")).toBeNull();
     expect(dom.find("research-run").getAttribute("aria-label")).toBe("Run research");
-    expect((dom.find("research-effort") as HTMLSelectElement).value).toBe("deep");
+    expect(dom.maybeFind("research-effort")).toBeNull();
     expect((dom.find("research-plan-approval") as HTMLSelectElement).value).toBe("default");
     expect((dom.find("research-reconciliation") as HTMLSelectElement).value).toBe("auto");
     await openConversationMenu();
@@ -642,6 +642,7 @@ describe("portable Research screen", () => {
     const preflightInputs: ResearchRequestV1[] = [];
     const observed: ResearchRequestV1[] = [];
     const observedPolicies: unknown[] = [];
+    const observedQualityPolicies: unknown[] = [];
     const port: ResearchPort = {
       hasApiKey: async () => stored,
       setApiKey: async () => undefined,
@@ -682,6 +683,7 @@ describe("portable Research screen", () => {
       run: async (request, options) => {
         observed.push(request);
         observedPolicies.push(options?.policy);
+        observedQualityPolicies.push(options?.qualityPolicy);
         options?.onProgress?.({
           phase: "researching",
           message: "Synthetic progress",
@@ -838,6 +840,12 @@ describe("portable Research screen", () => {
       requestedPlanApproval: "automatic",
       scopeExpansionMode: "ask",
       requestedReconciliation: "off",
+    });
+    expect(observedQualityPolicies[0]).toMatchObject({
+      mode: "quick",
+      delegation: "disabled",
+      completionTarget: "direct",
+      providerReasoningPreference: "fast",
     });
     expect(dom.find("research-chat-answer").textContent).toContain(
       "The page explicitly links the issue."

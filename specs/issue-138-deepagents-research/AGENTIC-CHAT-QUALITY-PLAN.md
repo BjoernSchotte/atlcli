@@ -1,6 +1,6 @@
 # Agentic Chat Quality Workflow
 
-Status: **T0 verified; T1 implementation next**
+Status: **T0-T1 verified; T2 implementation next**
 
 ## 1. Objective
 
@@ -801,24 +801,46 @@ T0 proof completed on 2026-08-04:
 
 ### T1 — Decouple quality policy from provider controls
 
-- [ ] Add `ChatQualityModeV1` and `ChatQualityPolicyV1` to the shared package.
-- [ ] Migrate CLI and extension from `requestedEffort` as behavior semantics.
-- [ ] Introduce an optional provider capability adapter for fast/balanced/
+- [x] Add `ChatQualityModeV1` and `ChatQualityPolicyV1` to the shared package.
+- [x] Migrate CLI and extension from `requestedEffort` as behavior semantics.
+- [x] Introduce an optional provider capability adapter for fast/balanced/
       thorough reasoning hints.
-- [ ] Add provider-neutral per-role model profiles with safe fallback to the
+- [x] Add provider-neutral per-role model profiles with safe fallback to the
       configured default model; reader/critic/synthesizer routing must not alter
       capability grants or completion semantics.
-- [ ] Add prompt-cache segmentation for stable supervisor/tool/schema prefixes;
+- [x] Add prompt-cache segmentation for stable supervisor/tool/schema prefixes;
       prove user input, evidence bodies, credentials, and steering revisions are
       never included in a reusable stable prefix.
-- [ ] Prove identical workflow trajectories with a provider that supports no
+- [x] Prove identical workflow trajectories with a provider that supports no
       effort/thinking option.
-- [ ] Preserve backward decoding only where stored sessions require it; do not
+- [x] Preserve backward decoding only where stored sessions require it; do not
       expose two competing public mode systems.
 
 Proof: contract, persistence migration, provider-adapter, model-routing fallback,
 cache-boundary, CLI parse, and UI tests with both capable and capability-free
 fake providers.
+
+T1 proof completed on 2026-08-04:
+
+- 145 focused shared-contract, runtime-invariant, CLI, extension-router, worker,
+  UI, role-routing, prompt-cache, and capability-free-provider tests passed.
+- The complete workspace suite passed with 6,645 tests, 15 intentional skips,
+  and zero failures; this includes the 1,000-turn fresh-host DeepAgents
+  checkpoint/compaction proof.
+- Root typecheck, the production extension build, output/CSP audit, generated
+  public API/closure reports, and the tracked-tree research privacy scan passed.
+- All 33 packed production MV3 research tests passed, including worker restart,
+  resume, stop, steering, scope fencing, credential redaction, and Node/MV3
+  artifact parity.
+- Read-only private dual-product live runs exercised Quick, Auto, and Deep
+  quality policies through the real provider and tenant adapters. The strongest
+  completed run used 16 PTC calls, 20 HTTP attempts, 32,109 input tokens, 2,723
+  output tokens, and 56,947 ms of reported active duration. Its inputs and
+  reports remain external local artifacts and are not committed.
+- Those live runs also confirmed that current retrieval can still return a
+  partial answer or miss a direct URL anchor. T1 therefore proves policy and
+  provider decoupling only; T4-T5 still own retrieval completeness, exact-anchor
+  precedence, and answer-quality acceptance.
 
 ### T2 — Generalize the existing dynamic workflow engine
 

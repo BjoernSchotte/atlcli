@@ -9,6 +9,7 @@ import {
   createSummarizationMiddleware,
 } from "deepagents/node";
 import {
+  createResearchPromptCacheMiddlewareV1,
   createResearchAgentRuntime,
   type ResearchAgentRuntimeBindings,
 } from "./agent-runtime-core.js";
@@ -16,8 +17,25 @@ import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ResearchRequestV1,
 } from "./contracts.js";
+import {
+  chatQualityPolicyV1,
+  readStoredChatQualityPolicyV1,
+} from "./quality-policy.js";
+import { createMemoryResearchWorkspace } from "./workspace.js";
 
 describe("research root architecture invariants", () => {
+  test("replaces both upstream Anthropic cache slots with audited host middleware", () => {
+    const middleware = createResearchPromptCacheMiddlewareV1([
+      "private turn segment",
+    ]);
+
+    expect(middleware.map((entry) => entry.name)).toEqual([
+      "PromptCachingMiddleware",
+      "CacheBreakpointMiddleware",
+    ]);
+    expect(new Set(middleware.map((entry) => entry.name)).size).toBe(2);
+  });
+
   test("constructs one logical Quick Chat root with no delegated task surface", async () => {
     let constructions = 0;
     let captured: Parameters<typeof createDeepAgent>[0] | undefined;
@@ -60,6 +78,7 @@ describe("research root architecture invariants", () => {
       limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
       wikiProvider: "rest",
     };
+    const workspace = createMemoryResearchWorkspace();
 
     await runtime.runResearchAgent({
       model,
@@ -74,7 +93,11 @@ describe("research root architecture invariants", () => {
           async getPage() { throw new Error("not reached"); },
         },
       },
-      options: { mode: "chat" },
+      workspace,
+      options: {
+        mode: "chat",
+        qualityPolicy: chatQualityPolicyV1("deep"),
+      },
     });
 
     expect(constructions).toBe(1);
@@ -91,5 +114,8 @@ describe("research root architecture invariants", () => {
       middleware.flatMap((entry) => entry.tools ?? [])
         .filter((candidate) => candidate.name === "task"),
     ).toHaveLength(0);
+    expect(await readStoredChatQualityPolicyV1(workspace)).toEqual(
+      chatQualityPolicyV1("deep"),
+    );
   });
 });

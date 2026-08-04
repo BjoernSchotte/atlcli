@@ -18,7 +18,7 @@ import type { Profile } from "@atlcli/core";
 import {
   DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
-  CHAT_THINKING_MODES_V1,
+  CHAT_QUALITY_MODES_V1,
   FileSystemResearchWorkspace,
   RESEARCH_MODEL_ID,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
@@ -49,9 +49,10 @@ import {
   prepareDirectChatRequestV1,
   openDurableChatConversationWorkspaceV1,
   chatPolicyForThinkingModeV1,
-  chatThinkingModeFromPolicyV1,
+  chatQualityPolicyForModeV1,
   runResearchAgent,
   type ResearchBriefPreflightOutcomeV1,
+  type ChatQualityPolicyV1,
   type ResearchBriefV1,
   type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
@@ -113,6 +114,8 @@ export interface ResearchCliInput {
   /** A new question against a terminal session's preserved scope and policy. */
   newTurnSessionId?: string;
   policy: ResearchOneShotPolicyV1;
+  /** Present only for direct Chat; research workflow policy remains separate. */
+  qualityPolicy?: ChatQualityPolicyV1;
 }
 
 const DEFAULT_MAX_RUN_MINUTES = 10;
@@ -210,6 +213,7 @@ export interface ResearchCliChatAgentInput {
   sessionId: string;
   conversation: { sessionId: string };
   policy: ResearchOneShotPolicyV1;
+  qualityPolicy: ChatQualityPolicyV1;
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   writeDiagnostic: (message: string) => void;
@@ -598,7 +602,7 @@ export function parseChatCliInput(
   const thinkingMode = enumFlag(
     flags,
     "thinking",
-    CHAT_THINKING_MODES_V1,
+    CHAT_QUALITY_MODES_V1,
     "auto",
   );
   const researchFlags = { ...flags };
@@ -624,6 +628,7 @@ export function parseChatCliInput(
   return {
     ...parsed,
     policy: chatPolicyForThinkingModeV1(thinkingMode),
+    qualityPolicy: chatQualityPolicyForModeV1(thinkingMode),
     planOnly: false,
   };
 }
@@ -2495,6 +2500,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       options: {
         mode: "chat",
         policy: input.policy,
+        qualityPolicy: input.qualityPolicy,
         signal: input.signal,
         onEvent: input.onEvent,
       },
@@ -2977,7 +2983,7 @@ async function runDirectChatCliConversation(input: {
   );
   try {
     input.dependencies.writeStderr(
-      `[chat] model=${RESEARCH_MODEL_ID} thinking=${chatThinkingModeFromPolicyV1(input.cli.policy)} profile=${input.profile.name} session=${input.sessionId}\n`,
+      `[chat] model=${RESEARCH_MODEL_ID} quality=${input.cli.qualityPolicy?.mode ?? "auto"} profile=${input.profile.name} session=${input.sessionId}\n`,
     );
     input.dependencies.writeStderr("[chat] running — press Ctrl+C to stop\n");
     const report = await input.dependencies.runChatAgent({
@@ -2988,6 +2994,7 @@ async function runDirectChatCliConversation(input: {
       sessionId: input.sessionId,
       conversation: { sessionId: input.sessionId },
       policy: input.cli.policy,
+      qualityPolicy: input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto"),
       signal: controller.signal,
       writeDiagnostic: (message) =>
         input.dependencies.writeStderr(`[chat] ${message}\n`),
@@ -3489,7 +3496,7 @@ Options:
   --max-cost-usd <n>     Immutable conservative Claude ceiling for a new durable session, including resumes, $0 < n <= $25 (default: $2)
   --max-total-model-input-tokens <n>
                          Advanced immutable run-wide input-token ceiling, 1,000-1,000,000 (default: 350,000)
-  --effort <mode>         auto|lookup|analysis|deep (default: auto)
+  --effort <mode>         Deep-research planning depth: auto|lookup|analysis|deep (default: auto)
   --plan-approval <mode>  automatic; omitted deep plans stop for review
   --scope-expansion <m>   strict|ask|exact-linked (default: ask)
   --reconciliation <m>    off|auto|required (default: auto)

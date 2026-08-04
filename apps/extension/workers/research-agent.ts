@@ -8,6 +8,7 @@ import {
   createRestResearchProviders,
   createRestScopeCatalogProviders,
   normalizeResearchOneShotPolicyV1,
+  normalizeChatQualityPolicyV1,
   normalizeResearchRequestV1,
   prepareDirectChatRequestV1,
   prepareResearchBriefPreflightV1,
@@ -107,7 +108,15 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             runId,
             workspace,
             conversation: { sessionId },
-            options: { mode: "chat", onProgress, onEvent, policy },
+            options: {
+              mode: "chat",
+              onProgress,
+              onEvent,
+              policy,
+              ...(message.qualityPolicy
+                ? { qualityPolicy: normalizeChatQualityPolicyV1(message.qualityPolicy) }
+                : {}),
+            },
           });
           post({ kind: "research-worker:complete", runId, report });
         } finally {

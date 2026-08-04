@@ -52,6 +52,13 @@ describe("Jira focused-researcher acquisition", () => {
     expect(jira?.systemPrompt).toContain("exact detail quotes of at most 280 characters");
     expect(jira?.systemPrompt).not.toContain("exactly two bounded stages");
     expect(jira?.systemPrompt).not.toContain("Stage 2 — read evidence");
+    expect(jira?.middleware?.slice(0, 2).map((entry) => entry.name)).toEqual([
+      "PromptCachingMiddleware",
+      "CacheBreakpointMiddleware",
+    ]);
+    expect(
+      new Set(jira?.middleware?.slice(0, 2).map((entry) => entry.name)).size,
+    ).toBe(2);
 
     const program = buildResearchAcquisitionProgram(
       (graph.nodes.find((node) => node.id === "research-node:jira-lookup"))!,

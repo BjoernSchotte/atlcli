@@ -104,7 +104,7 @@ describe("projectResearchSessionPlanReviewV1", () => {
           maxPtcCalls: 32,
           maxHttpCalls: 64,
           maxModelCalls: 16,
-          maxTotalModelInputTokens: 160_000,
+          maxTotalModelInputTokens: 350_000,
           maxTotalModelOutputTokens: 64_000,
           maxModelCostMicros: 2_000_000,
           maxRunMs: 10 * 60_000,

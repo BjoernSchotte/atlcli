@@ -375,6 +375,14 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       requestedReconciliation: "auto",
     } as const;
     const received: unknown[] = [];
+    const qualityPolicy = {
+      mode: "quick",
+      delegation: "disabled",
+      completionTarget: "direct",
+      planning: "none",
+      scopeExpansion: "deny",
+      providerReasoningPreference: "fast",
+    } as const;
     expect(handleOffscreenMessage(
       {
         kind: "offscreen:research-run",
@@ -385,12 +393,13 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         mode: "chat",
         request,
         policy,
+        qualityPolicy,
       },
       cap.sendResponse,
       {
         ...okOffscreenDeps,
-        runResearch: async (runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy) => {
-          received.push(runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy);
+        runResearch: async (runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality) => {
+          received.push(runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality);
           return report;
         },
       },
@@ -404,6 +413,7 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       "chat",
       request,
       policy,
+      qualityPolicy,
     ]);
     expect(cap.values).toEqual([{
       kind: "offscreen:research-run-result",

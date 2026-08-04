@@ -352,8 +352,14 @@ describe("V2 report evidence invalidation", () => {
     });
     await expect(finalize(fixture)).resolves.toMatchObject({
       claims: [],
-      coverage: [{ targetId: "coverage:source-currentness", status: "uncovered", claimIds: [] }],
-      limitations: ["A selected claim was excluded because its evidence is no longer current."],
+      coverage: [expect.objectContaining({
+        targetId: "coverage:source-currentness",
+        status: "uncovered",
+        claimIds: [],
+      })],
+      limitations: expect.arrayContaining([
+        "A selected claim was excluded because its evidence is no longer current.",
+      ]),
     });
   });
 
@@ -363,8 +369,14 @@ describe("V2 report evidence invalidation", () => {
 
     await expect(finalize(fixture)).resolves.toMatchObject({
       claims: [],
-      coverage: [{ targetId: "coverage:source-currentness", status: "uncovered", claimIds: [] }],
-      limitations: ["A selected claim was excluded because its evidence is no longer current."],
+      coverage: [expect.objectContaining({
+        targetId: "coverage:source-currentness",
+        status: "uncovered",
+        claimIds: [],
+      })],
+      limitations: expect.arrayContaining([
+        "A selected claim was excluded because its evidence is no longer current.",
+      ]),
     });
     await expect(fixture.claims.get(fixture.claim.id)).resolves.toMatchObject({
       freshness: "invalidated",

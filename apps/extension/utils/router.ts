@@ -26,6 +26,7 @@ import type {
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
+  ChatQualityPolicyV1,
   ResearchReport,
   ResearchRequestV1,
   ResearchOneShotPolicyV1,
@@ -78,6 +79,7 @@ export interface RouterDeps {
     mode: "chat" | "research",
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
+    qualityPolicy?: ChatQualityPolicyV1,
   ) => Promise<ResearchReport>;
   resumeResearch?: (
     runId: string,
@@ -282,6 +284,7 @@ export async function routeMessage(
           msg.mode,
           msg.request,
           msg.policy,
+          msg.qualityPolicy,
         );
         return { kind: "research:run-result", runId: msg.runId, ok: true, report };
       } catch (error) {

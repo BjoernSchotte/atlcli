@@ -45,6 +45,14 @@ const policy = {
   scopeExpansionMode: "ask",
   requestedReconciliation: "auto",
 } as const;
+const qualityPolicy = {
+  mode: "quick",
+  delegation: "disabled",
+  completionTarget: "direct",
+  planning: "none",
+  scopeExpansion: "deny",
+  providerReasoningPreference: "fast",
+} as const;
 
 describe("dedicated research worker host", () => {
   it("forwards progress and terminates the fresh worker after completion", async () => {
@@ -59,6 +67,7 @@ describe("dedicated research worker host", () => {
       apiKey: "synthetic-key",
       request,
       policy,
+      qualityPolicy,
       onProgress: (value) => progress.push(value),
       onEvent: (value) => events.push(value),
     });
@@ -73,6 +82,7 @@ describe("dedicated research worker host", () => {
         mode: "research",
         request,
         policy,
+        qualityPolicy,
       },
     ]);
     worker.emit({
