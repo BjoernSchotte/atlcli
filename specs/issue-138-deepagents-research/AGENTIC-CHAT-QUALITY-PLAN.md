@@ -416,6 +416,12 @@ type ChatControlV1 =
 - Task start, accepted result, rejected late result, checkpoint, steering
   request, steering application, and final synthesis are committed to the
   durable dispatch journal before they are exposed to the next phase.
+- The durable beta baseline persists only state needed for correctness and
+  continuation: conversation/turn/revision IDs, accepted workflow, canonical
+  task status, evidence references, queue/steer/stop controls, checkpoints,
+  `outcome_unknown`, and the completed final answer. UI animation state, child
+  token streams, raw activity details, and QuickJS variables are not durable
+  authorities.
 - Restart after any committed boundary rehydrates the accepted graph/frontier,
   evidence ledger, compact conversation context, root budget, pending control,
   and settled task packets without redispatching completed work.
@@ -473,14 +479,72 @@ Activity copy is semantic event data plus locale-specific presentation, not
 English strings emitted by the runtime. German and English presenters must cover
 every event/failure/HITL state with deterministic fallback copy. The final
 synthesizer streams answer Markdown incrementally; child outputs and hidden
-reasoning do not stream to the user. Since provider/subagent token streams cannot
-be resumed after MV3 worker loss, committed answer chunks/event cursors form the
-replay boundary: reconnect replays committed chunks and continues or reports a
-typed resumable interruption without duplicating text.
+reasoning do not stream to the user.
 
-## 9. Implementation tasks and proof gates
+For the durable beta, activity events are replayable and the completed final
+answer is persisted atomically. If MV3 worker loss interrupts an unfinished
+provider token stream, the host resumes from the last workflow checkpoint or
+reports a typed resumable interruption; it does not pretend that provider tokens
+can be resumed. Exact committed chunk/cursor replay without missing or duplicate
+tokens is production hardening after the answer-quality and durable-beta proofs.
+
+## 9. Delivery sequence and acceptance stages
+
+The target architecture remains unchanged, but proof is ordered by user value so
+durability hardening cannot postpone the first visible quality comparison.
+
+### Stage A — Functional quality proof
+
+Prove one vertical answer path at a time:
+
+1. Read an exact attached page directly and answer it correctly with canonical
+   citations and no irrelevant Jira/search work.
+2. Decompose one genuinely complex question into dynamic parallel specialists
+   and measurably improve the answer over Quick Chat and the current baseline.
+3. Have an independent critic identify one real evidence gap and trigger one
+   targeted repair that improves the final answer.
+4. Apply one steering instruction to the remaining workflow and exclude obsolete
+   results.
+5. Answer a follow-up using still-fresh accepted evidence from the prior turn.
+
+This stage requires the real final architecture along the exercised path, but
+not exact token-chunk replay or a combinatorial host fault matrix. Its release
+question is: **does the user receive a faster, better-supported answer than the
+current/Rovo-like baseline?**
+
+### Stage B — Durable beta
+
+Add and prove the minimum durable control plane required for an honest browser
+and CLI beta:
+
+- durable turn/revision/workflow/task/evidence/control/final-answer state;
+- FIFO queue, steering, stop, HITL pause/resume, and checkpoint continuation;
+- `outcome_unknown` instead of blind replay after ambiguous external calls;
+- replayable activity events and atomic completed-answer persistence;
+- bounded stop/steer latency through short QuickJS continuation slices;
+- representative CLI and MV3 restart/recovery scenarios.
+
+### Stage C — Production hardening
+
+After Stages A and B are accepted, add exact answer-chunk replay if user testing
+shows seamless mid-stream reconnect justifies its complexity, expand property/
+fault matrices and host-specific E2Es, enforce upstream dependency upgrade gates,
+and finish operational/privacy documentation. Deferral changes delivery order,
+not the final production quality bar.
+
+## 10. Implementation tasks and proof gates
 
 Every checked task must have regression proof before its commit is pushed.
+Tasks are executed as vertical slices rather than finishing all infrastructure
+before a live answer:
+
+- Stage A draws the minimum exercised path from T0–T4 plus live-stream,
+  latency, shape, and evaluation slices from T6–T9.
+- Stage B completes T5 and the durable/event/presenter portions of T6–T8.
+- Stage C completes the evidence-gated hardening and delivery work in T10.
+
+A task checkbox is checked only when its own proof passes; stage acceptance is a
+separate user-visible gate and does not imply unexercised later checkboxes.
 
 ### T0 — Verify the pinned baseline and accept product invariants
 
@@ -640,12 +704,16 @@ until calibrated in T9.
       compact long-turn context in durable host state rather than QuickJS vars.
 
 Proof: fault injection before/after task start, external invocation, result
-commit, checkpoint, steering commit/application, synthesis, and restart in CLI
-plus IndexedDB; virtual-clock and real-browser stop-latency tests; concurrent
-steering proves obsolete results cannot reach the answer; multi-turn tests prove
-fresh evidence is reused, changed evidence is re-read, and `outcome_unknown` is
-never blindly replayed. Resume-without-repeat claims apply only to committed
-boundaries, never mid-provider call.
+commit, checkpoint, steering commit/application, and synthesis is covered by a
+deterministic unit/property state-machine suite. Durable-beta E2E is limited to
+five representative boundaries: crash before dispatch; crash after external
+call but before commit (`outcome_unknown`); crash after committed result (reuse);
+steering during a frontier (quarantine obsolete result); and stop during
+QuickJS/subagent work within the accepted latency. Run the complete workflow in
+CLI and the browser-lifecycle cases in IndexedDB/MV3 instead of duplicating the
+full combinatorial matrix in every shape. Multi-turn tests prove fresh evidence
+is reused and changed/stale evidence is re-read. Resume-without-repeat claims
+apply only to committed boundaries, never mid-provider call.
 
 ### T6 — Safe streaming and presenter parity
 
@@ -654,8 +722,7 @@ boundaries, never mid-provider call.
 - [ ] Consume DeepAgentsJS subagent streams concurrently without exposing raw
       child tokens or hidden reasoning by default.
 - [ ] Stream final synthesizer Markdown tokens/chunks incrementally while keeping
-      child generation private; commit chunk sequence/cursor data needed for
-      idempotent replay after presenter reconnect.
+      child generation private; atomically persist the completed final answer.
 - [ ] Render identical semantic activity in CLI/TUI, extension, and ordinary
       browser presenters.
 - [ ] Move activity/error/HITL wording out of runtime event creation into a
@@ -666,14 +733,16 @@ boundaries, never mid-provider call.
 - [ ] Offer "continue deeply" and "switch to Deep Research" actions when a
       conversational deadline leaves material gaps.
 - [ ] Define MV3/browser reconnect semantics: replay committed events and answer
-      chunks without duplicates; when provider tokens were lost before commit,
-      resume from a durable boundary or show a typed resumable interruption
-      rather than pretending token-stream resumption exists.
+      final answers without duplicates; when provider tokens were lost before
+      final-answer commit, resume from a workflow checkpoint or show a typed
+      resumable interruption rather than pretending token-stream resumption
+      exists.
 
 Proof: presenter contract and locale snapshot tests, incremental Markdown stream
-tests, disconnect/reconnect and MV3 worker-recycle fault injection, plus packed
-MV3 and CLI event-replay E2E. Assertions cover no duplicate/missing committed
-chunks and no raw child/thinking/source content leakage.
+tests, one disconnect/reconnect and MV3 worker-recycle scenario, plus CLI event
+replay. Assertions cover replayable activity, atomic final-answer persistence,
+honest interruption handling, and no raw child/thinking/source content leakage.
+Exact mid-stream chunk replay is not a Stage A/B gate.
 
 ### T7 — Conversational latency and budget policy
 
@@ -720,10 +789,12 @@ only after the results and user-visible trade-off are reviewed.
       history, and multi-turn continuation.
 - [ ] Verify the ordinary-browser shape against the same ports and event log.
 
-Proof: built CLI smoke/E2E, production packed-MV3 E2E, and browser harness E2E,
-each covering direct Chat, dynamic Deep Chat, clarification/resume, stacked queue
-edit/delete, immediate steering, stop latency, final synthesis streaming,
-reconnect, and multi-turn evidence reuse.
+Proof: CLI runs the complete direct/deep/repair/steering/multi-turn workflow and
+fast recovery suite. Packed MV3 owns worker recreation, IndexedDB, active browser
+session, streaming, stop, and one representative restart/steering scenario. The
+ordinary-browser shape initially proves the identical Core ports, event/control
+contracts, presenter behavior, and a targeted happy-path E2E; it does not repeat
+the full CLI/MV3 fault matrix. All shapes preserve the same product semantics.
 
 ### T9 — Evaluation-driven quality gate
 
@@ -769,6 +840,13 @@ feedback text, tenant-derived report, or evaluation trace is committed.
 - [ ] Make upstream upgrades conditional on the T0 seam contract suite covering
       middleware merge-by-name, registry closure, bridge dispatch, cancellation,
       interpreter limits, checkpointer behavior, and event/stream shapes.
+- [ ] After durable-beta user testing, decide whether seamless mid-token reconnect
+      justifies exact committed chunk/cursor replay. If accepted, prove no
+      duplicate/missing Markdown across MV3 recycle; otherwise document the
+      checkpoint-resume behavior as the supported production contract.
+- [ ] Expand the exhaustive state-transition/property suite into host-specific
+      fault E2Es only where a host adds a distinct lifecycle/storage risk; avoid
+      duplicating identical Core failure cases across all presenters.
 - [ ] Update public API/closure reports and the main implementation plan.
 - [ ] Run focused tests, root typecheck, complete build, packed MV3 E2E, built CLI
       E2E, and applicable root regression lanes.
@@ -778,10 +856,11 @@ feedback text, tenant-derived report, or evaluation trace is committed.
       keep its description aligned with verified behavior.
 
 Proof: dependency seam-contract suite, focused and root regression lanes,
-typecheck/build, packed-MV3 plus built-CLI E2E, staged privacy scan, documentation
+typecheck/build, the accepted production-hardening matrix, packed-MV3 plus
+built-CLI E2E, targeted ordinary-browser E2E, staged privacy scan, documentation
 review, and verified Draft PR commit/check status for every completed slice.
 
-## 10. Review decisions
+## 11. Review decisions
 
 Recommended defaults for approval:
 
@@ -817,8 +896,13 @@ Recommended defaults for approval:
 10. **Role optimization:** permit provider-neutral per-role model routing and
     prompt caching only as optional adapters with single-model/no-cache semantic
     parity.
+11. **Durability delivery:** preserve the full durable target, but accept it in
+    three stages: functional answer-quality proof, minimum durable beta, then
+    production hardening. Exact token-chunk replay and duplicated full fault
+    matrices across every presenter are not prerequisites for proving that the
+    agent answers materially better.
 
-## 11. Reviewer finding traceability
+## 12. Reviewer finding traceability
 
 | Finding | Plan contract | Implementation task | Required proof |
 | --- | --- | --- | --- |
@@ -831,7 +915,7 @@ Recommended defaults for approval:
 | P1.3 per-role model routing and prompt caching | Provider-neutral policy | T1, T3, T7 | Fallback parity, cache-boundary, latency/cost/quality comparison |
 | P1.4 rubric critic and calibrated judge | Quality gates | T4, T9 | Anchored deterministic rubric, pass limit, human-labelled calibration report |
 | P1.5 cross-turn evidence reuse | Durability section | T5, T8, T9 | Reuse unchanged evidence and re-read changed/stale evidence in CLI/MV3 |
-| P1.6 final synthesis streaming | User-visible activity | T6, T8 | Incremental Markdown, cursor replay, MV3 recycle without duplicate chunks |
+| P1.6 final synthesis streaming | User-visible activity | T6, T8, T10 | Stage A/B incremental Markdown plus atomic completed answer and honest checkpoint resume; exact chunk replay is an evidence-gated Stage C decision |
 | P2.1 English-only activity strings | User-visible activity | T6 | Complete German/English locale snapshots and fallback test |
 | P2.2 journal vocabulary mismatch | Durability section | T5 | Quarantine/revision/`outcome_unknown` state conformance tests |
 | P2.3 fair-share allocator and FIFO queue do not yet exist | Baseline constraints | T5, T7 | New durable queue and concurrent reserve-race tests |
