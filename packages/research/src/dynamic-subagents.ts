@@ -56,9 +56,9 @@ import {
   DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY,
   ResearchDispatchError,
   ResearchPostCommitResultError,
-  createResearchDispatchInterceptionAdapter,
+  createAgenticDispatchInterceptionAdapter,
+  type AgenticTaskAdmissionV1,
   type ResearchDispatchDiagnosticV1,
-  type ResearchTaskAdmissionV1,
   type ResearchTaskDependencyResultV1,
   type ResearchUncommittedOutcomeReasonV1,
 } from "./dispatch-adapter.js";
@@ -844,10 +844,10 @@ export function compileDynamicResearchSubagents(
 export interface ResearchReadyFrontierControllerV1 {
   /** Whether this middleware instance has already admitted an initial frontier. */
   isConfigured(): boolean;
-  configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
-  appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
+  configureInitialFrontier(): readonly AgenticTaskAdmissionV1[];
+  appendNextFrontier(): readonly AgenticTaskAdmissionV1[];
   /** Read the current durable ready set without reopening a prior task. */
-  currentReadyFrontier(): readonly ResearchTaskAdmissionV1[];
+  currentReadyFrontier(): readonly AgenticTaskAdmissionV1[];
   /** Admit the caller's node only if it belongs to the current ready frontier. */
   ensureTaskFrontier(taskId: string): void;
 }
@@ -1057,7 +1057,7 @@ export function createBoundedResearchSubagentMiddleware(
     dispatchPort.admit(taskAttemptForNode(node, graph));
   }
   const ensureLocalAdmission = (
-    admission: ResearchTaskAdmissionV1,
+    admission: AgenticTaskAdmissionV1,
     activeGraph: ResearchGraphV1,
   ): void => {
     if (dispatchPort.attempt(admission.taskId)) return;
@@ -1135,7 +1135,7 @@ export function createBoundedResearchSubagentMiddleware(
   };
   const admissionsForGraph = (
     activeGraph: ResearchGraphV1,
-  ): ResearchTaskAdmissionV1[] => {
+  ): AgenticTaskAdmissionV1[] => {
     validateResearchGraphV1(activeGraph);
     if (activeGraph.sessionId !== graph.sessionId ||
         activeGraph.turnId !== graph.turnId ||
@@ -1184,7 +1184,7 @@ export function createBoundedResearchSubagentMiddleware(
         };
       });
   };
-  const readyAdmissionsForGraph = (activeGraph: ResearchGraphV1): ResearchTaskAdmissionV1[] => {
+  const readyAdmissionsForGraph = (activeGraph: ResearchGraphV1): AgenticTaskAdmissionV1[] => {
     const readyNodeIds = new Set(activeGraph.nodes
       .filter((node) => node.status === "ready")
       .map((node) => node.id));
@@ -1326,7 +1326,7 @@ export function createBoundedResearchSubagentMiddleware(
     });
   };
   const durableDispatchJournal = options.durableDispatchJournal;
-  const adapter = createResearchDispatchInterceptionAdapter({
+  const adapter = createAgenticDispatchInterceptionAdapter({
     admissions: recoveredDependencies?.admissions ?? (options.activeGraph ? [] : admissions),
     maxTasks: executableNodes.length,
     maxConcurrency: Math.min(MAX_CONCURRENT_SUBAGENT_TASKS, graph.maxParallelNodes),
@@ -1653,7 +1653,7 @@ export function createBoundedResearchSubagentMiddleware(
   };
   const readyFrontierController: ResearchReadyFrontierControllerV1 = {
     isConfigured: (): boolean => readyFrontierConfigured,
-    configureInitialFrontier: (): readonly ResearchTaskAdmissionV1[] => {
+    configureInitialFrontier: (): readonly AgenticTaskAdmissionV1[] => {
       if (readyFrontierConfigured) {
         throw new ResearchDispatchError(
           "admissions-locked",
@@ -1673,7 +1673,7 @@ export function createBoundedResearchSubagentMiddleware(
       readyFrontierConfigured = true;
       return initial;
     },
-    appendNextFrontier: (): readonly ResearchTaskAdmissionV1[] => {
+    appendNextFrontier: (): readonly AgenticTaskAdmissionV1[] => {
       if (!readyFrontierConfigured) {
         throw new ResearchDispatchError(
           "admissions-locked",
@@ -1689,7 +1689,7 @@ export function createBoundedResearchSubagentMiddleware(
       next.forEach((admission) => admittedFrontierTaskIds.add(admission.taskId));
       return next;
     },
-    currentReadyFrontier: (): readonly ResearchTaskAdmissionV1[] =>
+    currentReadyFrontier: (): readonly AgenticTaskAdmissionV1[] =>
       readyAdmissionsForGraph(requireActiveGraph()),
     ensureTaskFrontier: (taskId: string): void => {
       if (!readyFrontierConfigured) readyFrontierController.configureInitialFrontier();

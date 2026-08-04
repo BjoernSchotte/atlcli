@@ -19,6 +19,7 @@ contracts.
 - [Run from the browser extension](#run-from-the-browser-extension)
 - [Options](#options)
 - [Output and session workspace](#output-and-session-workspace)
+- [Shared workflow core](#shared-workflow-core)
 - [Security boundaries](#security-boundaries)
 - [Troubleshooting](#troubleshooting)
 - [Related topics](#related-topics)
@@ -155,6 +156,29 @@ session store under `~/.atlcli/research-sessions/`. A chat follow-up restores
 the same DeepAgentsJS checkpointer and approved scope. Browser chat uses the
 equivalent IndexedDB-backed workspace so a fresh extension worker can restore
 the conversation.
+
+### Shared workflow core
+
+Chat and Deep Research use one host-neutral agentic workflow contract, but
+they have different completion objectives. Ordinary Chat completes a
+conversation answer. Deep Research completes a cited research report. A
+validated graph is compiled into immutable depth-one profiles for acquisition,
+analysis, reconciliation, and synthesis; mutable tenant, thread, scope,
+provider-cache, steering, cancellation, and credential state remains bound to
+the individual run.
+
+Every delegated task passes the same host-owned admission bridge before a
+provider call. The bridge validates the registered subagent type and response
+schema, then applies authorization, any required human approval, budget
+reservation, cancellation, and the durable journal transition. QuickJS may
+compose admitted tasks, but it cannot create a role, widen scope, skip a gate,
+or act as the durable scheduler. Quick Chat constructs neither delegated
+subagent middleware nor this task bridge.
+
+Compiled-root reuse is disabled by default. A host may enable it only after
+fresh-versus-reused trajectory tests prove cross-user, thread, scope, cache,
+steering, and cancellation isolation and measurements show a material latency
+benefit.
 
 ## Security boundaries
 

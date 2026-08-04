@@ -10,6 +10,113 @@
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: AGENTIC_COMPLETION_OBJECTIVES_V1
+export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
+    "conversation-answer",
+    "research-report"
+];
+
+// export: AGENTIC_WORKFLOW_PHASES_V1
+export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "synthesis"
+];
+
+// export: AGENTIC_WORKFLOW_SCHEMA_V1
+export declare const AGENTIC_WORKFLOW_SCHEMA_V1: "atlcli.agentic-workflow/v1";
+
+// export: AgenticCompletionObjectiveV1
+export type AgenticCompletionObjectiveV1 = (typeof AGENTIC_COMPLETION_OBJECTIVES_V1)[number];
+
+// export: AgenticDispatchControlGateV1
+export interface AgenticDispatchControlGateV1 {
+    authorize(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    requireHumanApproval?(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    reserveBudget(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    journalStart(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+}
+
+// export: AgenticDispatchInterceptionAdapter
+export type AgenticDispatchInterceptionAdapter = ResearchDispatchInterceptionAdapter;
+
+// export: AgenticDispatchInterceptionOptionsV1
+export interface AgenticDispatchInterceptionOptionsV1 {
+    admissions: readonly AgenticTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    allowHostDependencyHydration?: boolean;
+    signal?: AbortSignal;
+    invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    projectResult?: (value: unknown, input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => unknown | Promise<unknown>;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}
+
+// export: AgenticTaskAdmissionV1
+export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskToolInputV1
+export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
+
+// export: AgenticWorkflowDefinitionV1
+export interface AgenticWorkflowDefinitionV1 {
+    schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    id: string;
+    completionObjective: AgenticCompletionObjectiveV1;
+    profiles: readonly AgenticWorkflowProfileV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+}
+
+// export: AgenticWorkflowPhaseV1
+export type AgenticWorkflowPhaseV1 = (typeof AGENTIC_WORKFLOW_PHASES_V1)[number];
+
+// export: AgenticWorkflowProfileV1
+export interface AgenticWorkflowProfileV1 {
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    dependsOnSubagentTypes: readonly string[];
+}
+
+// export: AgenticWorkflowRunIdentityV1
+export interface AgenticWorkflowRunIdentityV1 {
+    userId: string;
+    threadId: string;
+    turnId: string;
+    revision: number;
+    scopeFingerprint: string;
+    providerCacheIdentity: string;
+}
+
 // export: ANTHROPIC_QUALITY_ADAPTER_V1
 export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -73,6 +180,16 @@ export interface AtlassianRelationshipV1 {
     confluenceContentId: string;
     summary: string;
     sourceIds: string[];
+}
+
+// export: bindAgenticWorkflowRunV1
+export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: BoundAgenticWorkflowRunV1
+export interface BoundAgenticWorkflowRunV1 {
+    readonly compiled: CompiledAgenticWorkflowV1;
+    readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
+    readonly signal?: AbortSignal;
 }
 
 // export: BoundedContentProjectionV1
@@ -161,6 +278,21 @@ export declare function classifyResearchError(value: unknown): {
     message: string;
 };
 
+// export: compileAgenticWorkflowV1
+export declare function compileAgenticWorkflowV1(definition: AgenticWorkflowDefinitionV1): CompiledAgenticWorkflowV1;
+
+// export: CompiledAgenticWorkflowV1
+export interface CompiledAgenticWorkflowV1 {
+    readonly schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    readonly id: string;
+    readonly completionObjective: AgenticCompletionObjectiveV1;
+    readonly profiles: readonly Readonly<AgenticWorkflowProfileV1>[];
+    readonly maxTasks: number;
+    readonly maxConcurrency: number;
+    readonly reuseEligible: false;
+    readonly compatibilityFingerprint: string;
+}
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -217,6 +349,15 @@ export interface ContinueResearchSessionScopeClarificationInputV1 {
 
 // export: continueResearchSessionScopeClarificationV1
 export declare function continueResearchSessionScopeClarificationV1(input: ContinueResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: createAgenticDispatchControlHookV1
+export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatchControlGateV1): (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+}) => Promise<void>;
+
+// export: createAgenticDispatchInterceptionAdapter
+export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -281,31 +422,8 @@ export declare function createResearchClaimV1(input: {
 }): Promise<ResearchClaimV1>;
 
 // export: createResearchDispatchInterceptionAdapter
-export declare function createResearchDispatchInterceptionAdapter(options: {
-    admissions: readonly ResearchTaskAdmissionV1[];
-    maxTasks: number;
-    maxConcurrency: number;
-    allowHostDependencyHydration?: boolean;
-    signal?: AbortSignal;
-    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
-    projectResult?: (value: unknown, input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => unknown | Promise<unknown>;
-    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    beforeInvoke?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => void | Promise<void>;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
-    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
-    onLateResult?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-        resultBytes?: number;
-    }) => void | Promise<void>;
-    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
-}): ResearchDispatchInterceptionAdapter;
+// @deprecated createResearchDispatchInterceptionAdapter — Use createAgenticDispatchInterceptionAdapter.
+export declare function createResearchDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchEntityScopeSeedV1
 export declare function createResearchEntityScopeSeedV1(input: {
@@ -984,6 +1102,12 @@ export declare function rankResearchCandidatesV1(input: {
 
 // export: readStoredChatQualityPolicyV1
 export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
+
+// export: readyAgenticFrontierV1
+export declare function readyAgenticFrontierV1(compiled: CompiledAgenticWorkflowV1, state: {
+    completedSubagentTypes: ReadonlySet<string>;
+    startedSubagentTypes?: ReadonlySet<string>;
+}): readonly Readonly<AgenticWorkflowProfileV1>[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -5041,6 +5165,12 @@ export interface ResearchWorkspace {
 
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
+
+// export: resolveAgenticCompletionObjectiveV1
+export declare function resolveAgenticCompletionObjectiveV1(input: {
+    requested?: AgenticCompletionObjectiveV1;
+    hasWorkflowGraph: boolean;
+}): AgenticCompletionObjectiveV1;
 
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
@@ -5338,6 +5468,113 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: AGENTIC_COMPLETION_OBJECTIVES_V1
+export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
+    "conversation-answer",
+    "research-report"
+];
+
+// export: AGENTIC_WORKFLOW_PHASES_V1
+export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "synthesis"
+];
+
+// export: AGENTIC_WORKFLOW_SCHEMA_V1
+export declare const AGENTIC_WORKFLOW_SCHEMA_V1: "atlcli.agentic-workflow/v1";
+
+// export: AgenticCompletionObjectiveV1
+export type AgenticCompletionObjectiveV1 = (typeof AGENTIC_COMPLETION_OBJECTIVES_V1)[number];
+
+// export: AgenticDispatchControlGateV1
+export interface AgenticDispatchControlGateV1 {
+    authorize(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    requireHumanApproval?(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    reserveBudget(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    journalStart(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+}
+
+// export: AgenticDispatchInterceptionAdapter
+export type AgenticDispatchInterceptionAdapter = ResearchDispatchInterceptionAdapter;
+
+// export: AgenticDispatchInterceptionOptionsV1
+export interface AgenticDispatchInterceptionOptionsV1 {
+    admissions: readonly AgenticTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    allowHostDependencyHydration?: boolean;
+    signal?: AbortSignal;
+    invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    projectResult?: (value: unknown, input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => unknown | Promise<unknown>;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}
+
+// export: AgenticTaskAdmissionV1
+export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskToolInputV1
+export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
+
+// export: AgenticWorkflowDefinitionV1
+export interface AgenticWorkflowDefinitionV1 {
+    schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    id: string;
+    completionObjective: AgenticCompletionObjectiveV1;
+    profiles: readonly AgenticWorkflowProfileV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+}
+
+// export: AgenticWorkflowPhaseV1
+export type AgenticWorkflowPhaseV1 = (typeof AGENTIC_WORKFLOW_PHASES_V1)[number];
+
+// export: AgenticWorkflowProfileV1
+export interface AgenticWorkflowProfileV1 {
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    dependsOnSubagentTypes: readonly string[];
+}
+
+// export: AgenticWorkflowRunIdentityV1
+export interface AgenticWorkflowRunIdentityV1 {
+    userId: string;
+    threadId: string;
+    turnId: string;
+    revision: number;
+    scopeFingerprint: string;
+    providerCacheIdentity: string;
+}
+
 // export: ANTHROPIC_QUALITY_ADAPTER_V1
 export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -5401,6 +5638,16 @@ export interface AtlassianRelationshipV1 {
     confluenceContentId: string;
     summary: string;
     sourceIds: string[];
+}
+
+// export: bindAgenticWorkflowRunV1
+export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: BoundAgenticWorkflowRunV1
+export interface BoundAgenticWorkflowRunV1 {
+    readonly compiled: CompiledAgenticWorkflowV1;
+    readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
+    readonly signal?: AbortSignal;
 }
 
 // export: BoundedContentProjectionV1
@@ -5489,6 +5736,21 @@ export declare function classifyResearchError(value: unknown): {
     message: string;
 };
 
+// export: compileAgenticWorkflowV1
+export declare function compileAgenticWorkflowV1(definition: AgenticWorkflowDefinitionV1): CompiledAgenticWorkflowV1;
+
+// export: CompiledAgenticWorkflowV1
+export interface CompiledAgenticWorkflowV1 {
+    readonly schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    readonly id: string;
+    readonly completionObjective: AgenticCompletionObjectiveV1;
+    readonly profiles: readonly Readonly<AgenticWorkflowProfileV1>[];
+    readonly maxTasks: number;
+    readonly maxConcurrency: number;
+    readonly reuseEligible: false;
+    readonly compatibilityFingerprint: string;
+}
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -5545,6 +5807,15 @@ export interface ContinueResearchSessionScopeClarificationInputV1 {
 
 // export: continueResearchSessionScopeClarificationV1
 export declare function continueResearchSessionScopeClarificationV1(input: ContinueResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: createAgenticDispatchControlHookV1
+export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatchControlGateV1): (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+}) => Promise<void>;
+
+// export: createAgenticDispatchInterceptionAdapter
+export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -5609,31 +5880,8 @@ export declare function createResearchClaimV1(input: {
 }): Promise<ResearchClaimV1>;
 
 // export: createResearchDispatchInterceptionAdapter
-export declare function createResearchDispatchInterceptionAdapter(options: {
-    admissions: readonly ResearchTaskAdmissionV1[];
-    maxTasks: number;
-    maxConcurrency: number;
-    allowHostDependencyHydration?: boolean;
-    signal?: AbortSignal;
-    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
-    projectResult?: (value: unknown, input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => unknown | Promise<unknown>;
-    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    beforeInvoke?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => void | Promise<void>;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
-    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
-    onLateResult?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-        resultBytes?: number;
-    }) => void | Promise<void>;
-    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
-}): ResearchDispatchInterceptionAdapter;
+// @deprecated createResearchDispatchInterceptionAdapter — Use createAgenticDispatchInterceptionAdapter.
+export declare function createResearchDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchEntityScopeSeedV1
 export declare function createResearchEntityScopeSeedV1(input: {
@@ -6303,6 +6551,12 @@ export declare function rankResearchCandidatesV1(input: {
 
 // export: readStoredChatQualityPolicyV1
 export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
+
+// export: readyAgenticFrontierV1
+export declare function readyAgenticFrontierV1(compiled: CompiledAgenticWorkflowV1, state: {
+    completedSubagentTypes: ReadonlySet<string>;
+    startedSubagentTypes?: ReadonlySet<string>;
+}): readonly Readonly<AgenticWorkflowProfileV1>[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -10361,6 +10615,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: resolveAgenticCompletionObjectiveV1
+export declare function resolveAgenticCompletionObjectiveV1(input: {
+    requested?: AgenticCompletionObjectiveV1;
+    hasWorkflowGraph: boolean;
+}): AgenticCompletionObjectiveV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -10646,6 +10906,113 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: AGENTIC_COMPLETION_OBJECTIVES_V1
+export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
+    "conversation-answer",
+    "research-report"
+];
+
+// export: AGENTIC_WORKFLOW_PHASES_V1
+export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "synthesis"
+];
+
+// export: AGENTIC_WORKFLOW_SCHEMA_V1
+export declare const AGENTIC_WORKFLOW_SCHEMA_V1: "atlcli.agentic-workflow/v1";
+
+// export: AgenticCompletionObjectiveV1
+export type AgenticCompletionObjectiveV1 = (typeof AGENTIC_COMPLETION_OBJECTIVES_V1)[number];
+
+// export: AgenticDispatchControlGateV1
+export interface AgenticDispatchControlGateV1 {
+    authorize(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    requireHumanApproval?(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    reserveBudget(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    journalStart(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+}
+
+// export: AgenticDispatchInterceptionAdapter
+export type AgenticDispatchInterceptionAdapter = ResearchDispatchInterceptionAdapter;
+
+// export: AgenticDispatchInterceptionOptionsV1
+export interface AgenticDispatchInterceptionOptionsV1 {
+    admissions: readonly AgenticTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    allowHostDependencyHydration?: boolean;
+    signal?: AbortSignal;
+    invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    projectResult?: (value: unknown, input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => unknown | Promise<unknown>;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}
+
+// export: AgenticTaskAdmissionV1
+export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskToolInputV1
+export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
+
+// export: AgenticWorkflowDefinitionV1
+export interface AgenticWorkflowDefinitionV1 {
+    schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    id: string;
+    completionObjective: AgenticCompletionObjectiveV1;
+    profiles: readonly AgenticWorkflowProfileV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+}
+
+// export: AgenticWorkflowPhaseV1
+export type AgenticWorkflowPhaseV1 = (typeof AGENTIC_WORKFLOW_PHASES_V1)[number];
+
+// export: AgenticWorkflowProfileV1
+export interface AgenticWorkflowProfileV1 {
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    dependsOnSubagentTypes: readonly string[];
+}
+
+// export: AgenticWorkflowRunIdentityV1
+export interface AgenticWorkflowRunIdentityV1 {
+    userId: string;
+    threadId: string;
+    turnId: string;
+    revision: number;
+    scopeFingerprint: string;
+    providerCacheIdentity: string;
+}
+
 // export: ANTHROPIC_QUALITY_ADAPTER_V1
 export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -10709,6 +11076,16 @@ export interface AtlassianRelationshipV1 {
     confluenceContentId: string;
     summary: string;
     sourceIds: string[];
+}
+
+// export: bindAgenticWorkflowRunV1
+export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: BoundAgenticWorkflowRunV1
+export interface BoundAgenticWorkflowRunV1 {
+    readonly compiled: CompiledAgenticWorkflowV1;
+    readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
+    readonly signal?: AbortSignal;
 }
 
 // export: BoundedContentProjectionV1
@@ -10797,6 +11174,21 @@ export declare function classifyResearchError(value: unknown): {
     message: string;
 };
 
+// export: compileAgenticWorkflowV1
+export declare function compileAgenticWorkflowV1(definition: AgenticWorkflowDefinitionV1): CompiledAgenticWorkflowV1;
+
+// export: CompiledAgenticWorkflowV1
+export interface CompiledAgenticWorkflowV1 {
+    readonly schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    readonly id: string;
+    readonly completionObjective: AgenticCompletionObjectiveV1;
+    readonly profiles: readonly Readonly<AgenticWorkflowProfileV1>[];
+    readonly maxTasks: number;
+    readonly maxConcurrency: number;
+    readonly reuseEligible: false;
+    readonly compatibilityFingerprint: string;
+}
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -10853,6 +11245,15 @@ export interface ContinueResearchSessionScopeClarificationInputV1 {
 
 // export: continueResearchSessionScopeClarificationV1
 export declare function continueResearchSessionScopeClarificationV1(input: ContinueResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: createAgenticDispatchControlHookV1
+export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatchControlGateV1): (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+}) => Promise<void>;
+
+// export: createAgenticDispatchInterceptionAdapter
+export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -10917,31 +11318,8 @@ export declare function createResearchClaimV1(input: {
 }): Promise<ResearchClaimV1>;
 
 // export: createResearchDispatchInterceptionAdapter
-export declare function createResearchDispatchInterceptionAdapter(options: {
-    admissions: readonly ResearchTaskAdmissionV1[];
-    maxTasks: number;
-    maxConcurrency: number;
-    allowHostDependencyHydration?: boolean;
-    signal?: AbortSignal;
-    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
-    projectResult?: (value: unknown, input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => unknown | Promise<unknown>;
-    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    beforeInvoke?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => void | Promise<void>;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
-    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
-    onLateResult?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-        resultBytes?: number;
-    }) => void | Promise<void>;
-    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
-}): ResearchDispatchInterceptionAdapter;
+// @deprecated createResearchDispatchInterceptionAdapter — Use createAgenticDispatchInterceptionAdapter.
+export declare function createResearchDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchEntityScopeSeedV1
 export declare function createResearchEntityScopeSeedV1(input: {
@@ -11621,6 +11999,12 @@ export declare function rankResearchCandidatesV1(input: {
 // export: readStoredChatQualityPolicyV1
 export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
 
+// export: readyAgenticFrontierV1
+export declare function readyAgenticFrontierV1(compiled: CompiledAgenticWorkflowV1, state: {
+    completedSubagentTypes: ReadonlySet<string>;
+    startedSubagentTypes?: ReadonlySet<string>;
+}): readonly Readonly<AgenticWorkflowProfileV1>[];
+
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
     schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
@@ -15678,6 +16062,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: resolveAgenticCompletionObjectiveV1
+export declare function resolveAgenticCompletionObjectiveV1(input: {
+    requested?: AgenticCompletionObjectiveV1;
+    hasWorkflowGraph: boolean;
+}): AgenticCompletionObjectiveV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -15974,6 +16364,113 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: AGENTIC_COMPLETION_OBJECTIVES_V1
+export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
+    "conversation-answer",
+    "research-report"
+];
+
+// export: AGENTIC_WORKFLOW_PHASES_V1
+export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "synthesis"
+];
+
+// export: AGENTIC_WORKFLOW_SCHEMA_V1
+export declare const AGENTIC_WORKFLOW_SCHEMA_V1: "atlcli.agentic-workflow/v1";
+
+// export: AgenticCompletionObjectiveV1
+export type AgenticCompletionObjectiveV1 = (typeof AGENTIC_COMPLETION_OBJECTIVES_V1)[number];
+
+// export: AgenticDispatchControlGateV1
+export interface AgenticDispatchControlGateV1 {
+    authorize(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    requireHumanApproval?(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    reserveBudget(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    journalStart(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+}
+
+// export: AgenticDispatchInterceptionAdapter
+export type AgenticDispatchInterceptionAdapter = ResearchDispatchInterceptionAdapter;
+
+// export: AgenticDispatchInterceptionOptionsV1
+export interface AgenticDispatchInterceptionOptionsV1 {
+    admissions: readonly AgenticTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    allowHostDependencyHydration?: boolean;
+    signal?: AbortSignal;
+    invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    projectResult?: (value: unknown, input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => unknown | Promise<unknown>;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}
+
+// export: AgenticTaskAdmissionV1
+export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskToolInputV1
+export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
+
+// export: AgenticWorkflowDefinitionV1
+export interface AgenticWorkflowDefinitionV1 {
+    schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    id: string;
+    completionObjective: AgenticCompletionObjectiveV1;
+    profiles: readonly AgenticWorkflowProfileV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+}
+
+// export: AgenticWorkflowPhaseV1
+export type AgenticWorkflowPhaseV1 = (typeof AGENTIC_WORKFLOW_PHASES_V1)[number];
+
+// export: AgenticWorkflowProfileV1
+export interface AgenticWorkflowProfileV1 {
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    dependsOnSubagentTypes: readonly string[];
+}
+
+// export: AgenticWorkflowRunIdentityV1
+export interface AgenticWorkflowRunIdentityV1 {
+    userId: string;
+    threadId: string;
+    turnId: string;
+    revision: number;
+    scopeFingerprint: string;
+    providerCacheIdentity: string;
+}
+
 // export: ANTHROPIC_QUALITY_ADAPTER_V1
 export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -16037,6 +16534,16 @@ export interface AtlassianRelationshipV1 {
     confluenceContentId: string;
     summary: string;
     sourceIds: string[];
+}
+
+// export: bindAgenticWorkflowRunV1
+export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: BoundAgenticWorkflowRunV1
+export interface BoundAgenticWorkflowRunV1 {
+    readonly compiled: CompiledAgenticWorkflowV1;
+    readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
+    readonly signal?: AbortSignal;
 }
 
 // export: BoundedContentProjectionV1
@@ -16134,6 +16641,21 @@ export declare function classifyResearchError(value: unknown): {
     message: string;
 };
 
+// export: compileAgenticWorkflowV1
+export declare function compileAgenticWorkflowV1(definition: AgenticWorkflowDefinitionV1): CompiledAgenticWorkflowV1;
+
+// export: CompiledAgenticWorkflowV1
+export interface CompiledAgenticWorkflowV1 {
+    readonly schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    readonly id: string;
+    readonly completionObjective: AgenticCompletionObjectiveV1;
+    readonly profiles: readonly Readonly<AgenticWorkflowProfileV1>[];
+    readonly maxTasks: number;
+    readonly maxConcurrency: number;
+    readonly reuseEligible: false;
+    readonly compatibilityFingerprint: string;
+}
+
 // export: compileDynamicResearchSubagents
 export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
 
@@ -16193,6 +16715,15 @@ export interface ContinueResearchSessionScopeClarificationInputV1 {
 
 // export: continueResearchSessionScopeClarificationV1
 export declare function continueResearchSessionScopeClarificationV1(input: ContinueResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: createAgenticDispatchControlHookV1
+export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatchControlGateV1): (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+}) => Promise<void>;
+
+// export: createAgenticDispatchInterceptionAdapter
+export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
 // export: createBoundedResearchSubagentMiddleware
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, graph: ResearchGraphV1, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
@@ -16343,31 +16874,8 @@ export declare function createResearchClaimV1(input: {
 }): Promise<ResearchClaimV1>;
 
 // export: createResearchDispatchInterceptionAdapter
-export declare function createResearchDispatchInterceptionAdapter(options: {
-    admissions: readonly ResearchTaskAdmissionV1[];
-    maxTasks: number;
-    maxConcurrency: number;
-    allowHostDependencyHydration?: boolean;
-    signal?: AbortSignal;
-    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
-    projectResult?: (value: unknown, input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => unknown | Promise<unknown>;
-    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    beforeInvoke?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => void | Promise<void>;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
-    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
-    onLateResult?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-        resultBytes?: number;
-    }) => void | Promise<void>;
-    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
-}): ResearchDispatchInterceptionAdapter;
+// @deprecated createResearchDispatchInterceptionAdapter — Use createAgenticDispatchInterceptionAdapter.
+export declare function createResearchDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchEntityScopeSeedV1
 export declare function createResearchEntityScopeSeedV1(input: {
@@ -17139,6 +17647,12 @@ export declare function rankResearchCandidatesV1(input: {
 
 // export: readStoredChatQualityPolicyV1
 export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
+
+// export: readyAgenticFrontierV1
+export declare function readyAgenticFrontierV1(compiled: CompiledAgenticWorkflowV1, state: {
+    completedSubagentTypes: ReadonlySet<string>;
+    startedSubagentTypes?: ReadonlySet<string>;
+}): readonly Readonly<AgenticWorkflowProfileV1>[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -19548,9 +20062,9 @@ export interface ResearchReadProviders {
 // export: ResearchReadyFrontierControllerV1
 export interface ResearchReadyFrontierControllerV1 {
     isConfigured(): boolean;
-    configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
-    appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
-    currentReadyFrontier(): readonly ResearchTaskAdmissionV1[];
+    configureInitialFrontier(): readonly AgenticTaskAdmissionV1[];
+    appendNextFrontier(): readonly AgenticTaskAdmissionV1[];
+    currentReadyFrontier(): readonly AgenticTaskAdmissionV1[];
     ensureTaskFrontier(taskId: string): void;
 }
 
@@ -21362,6 +21876,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: resolveAgenticCompletionObjectiveV1
+export declare function resolveAgenticCompletionObjectiveV1(input: {
+    requested?: AgenticCompletionObjectiveV1;
+    hasWorkflowGraph: boolean;
+}): AgenticCompletionObjectiveV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -21492,6 +22012,7 @@ export interface RunResearchAgentInput {
     conversation?: {
         sessionId: string;
     };
+    completionObjective?: AgenticCompletionObjectiveV1;
     researchGraph?: ResearchGraphV1;
     durableSession?: {
         store: ResearchSessionStoreV1;
@@ -21694,6 +22215,113 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: AGENTIC_COMPLETION_OBJECTIVES_V1
+export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
+    "conversation-answer",
+    "research-report"
+];
+
+// export: AGENTIC_WORKFLOW_PHASES_V1
+export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "synthesis"
+];
+
+// export: AGENTIC_WORKFLOW_SCHEMA_V1
+export declare const AGENTIC_WORKFLOW_SCHEMA_V1: "atlcli.agentic-workflow/v1";
+
+// export: AgenticCompletionObjectiveV1
+export type AgenticCompletionObjectiveV1 = (typeof AGENTIC_COMPLETION_OBJECTIVES_V1)[number];
+
+// export: AgenticDispatchControlGateV1
+export interface AgenticDispatchControlGateV1 {
+    authorize(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    requireHumanApproval?(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    reserveBudget(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    journalStart(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+}
+
+// export: AgenticDispatchInterceptionAdapter
+export type AgenticDispatchInterceptionAdapter = ResearchDispatchInterceptionAdapter;
+
+// export: AgenticDispatchInterceptionOptionsV1
+export interface AgenticDispatchInterceptionOptionsV1 {
+    admissions: readonly AgenticTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    allowHostDependencyHydration?: boolean;
+    signal?: AbortSignal;
+    invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    projectResult?: (value: unknown, input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => unknown | Promise<unknown>;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}
+
+// export: AgenticTaskAdmissionV1
+export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskToolInputV1
+export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
+
+// export: AgenticWorkflowDefinitionV1
+export interface AgenticWorkflowDefinitionV1 {
+    schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    id: string;
+    completionObjective: AgenticCompletionObjectiveV1;
+    profiles: readonly AgenticWorkflowProfileV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+}
+
+// export: AgenticWorkflowPhaseV1
+export type AgenticWorkflowPhaseV1 = (typeof AGENTIC_WORKFLOW_PHASES_V1)[number];
+
+// export: AgenticWorkflowProfileV1
+export interface AgenticWorkflowProfileV1 {
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    dependsOnSubagentTypes: readonly string[];
+}
+
+// export: AgenticWorkflowRunIdentityV1
+export interface AgenticWorkflowRunIdentityV1 {
+    userId: string;
+    threadId: string;
+    turnId: string;
+    revision: number;
+    scopeFingerprint: string;
+    providerCacheIdentity: string;
+}
+
 // export: ANTHROPIC_QUALITY_ADAPTER_V1
 export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -21757,6 +22385,16 @@ export interface AtlassianRelationshipV1 {
     confluenceContentId: string;
     summary: string;
     sourceIds: string[];
+}
+
+// export: bindAgenticWorkflowRunV1
+export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: BoundAgenticWorkflowRunV1
+export interface BoundAgenticWorkflowRunV1 {
+    readonly compiled: CompiledAgenticWorkflowV1;
+    readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
+    readonly signal?: AbortSignal;
 }
 
 // export: BoundedContentProjectionV1
@@ -21854,6 +22492,21 @@ export declare function classifyResearchError(value: unknown): {
     message: string;
 };
 
+// export: compileAgenticWorkflowV1
+export declare function compileAgenticWorkflowV1(definition: AgenticWorkflowDefinitionV1): CompiledAgenticWorkflowV1;
+
+// export: CompiledAgenticWorkflowV1
+export interface CompiledAgenticWorkflowV1 {
+    readonly schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    readonly id: string;
+    readonly completionObjective: AgenticCompletionObjectiveV1;
+    readonly profiles: readonly Readonly<AgenticWorkflowProfileV1>[];
+    readonly maxTasks: number;
+    readonly maxConcurrency: number;
+    readonly reuseEligible: false;
+    readonly compatibilityFingerprint: string;
+}
+
 // export: compileDynamicResearchSubagents
 export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
 
@@ -21913,6 +22566,15 @@ export interface ContinueResearchSessionScopeClarificationInputV1 {
 
 // export: continueResearchSessionScopeClarificationV1
 export declare function continueResearchSessionScopeClarificationV1(input: ContinueResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: createAgenticDispatchControlHookV1
+export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatchControlGateV1): (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+}) => Promise<void>;
+
+// export: createAgenticDispatchInterceptionAdapter
+export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
 // export: createBoundedResearchSubagentMiddleware
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, graph: ResearchGraphV1, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
@@ -22063,31 +22725,8 @@ export declare function createResearchClaimV1(input: {
 }): Promise<ResearchClaimV1>;
 
 // export: createResearchDispatchInterceptionAdapter
-export declare function createResearchDispatchInterceptionAdapter(options: {
-    admissions: readonly ResearchTaskAdmissionV1[];
-    maxTasks: number;
-    maxConcurrency: number;
-    allowHostDependencyHydration?: boolean;
-    signal?: AbortSignal;
-    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
-    projectResult?: (value: unknown, input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => unknown | Promise<unknown>;
-    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    beforeInvoke?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => void | Promise<void>;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
-    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
-    onLateResult?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-        resultBytes?: number;
-    }) => void | Promise<void>;
-    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
-}): ResearchDispatchInterceptionAdapter;
+// @deprecated createResearchDispatchInterceptionAdapter — Use createAgenticDispatchInterceptionAdapter.
+export declare function createResearchDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchEntityScopeSeedV1
 export declare function createResearchEntityScopeSeedV1(input: {
@@ -22874,6 +23513,12 @@ export declare function rankResearchCandidatesV1(input: {
 
 // export: readStoredChatQualityPolicyV1
 export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
+
+// export: readyAgenticFrontierV1
+export declare function readyAgenticFrontierV1(compiled: CompiledAgenticWorkflowV1, state: {
+    completedSubagentTypes: ReadonlySet<string>;
+    startedSubagentTypes?: ReadonlySet<string>;
+}): readonly Readonly<AgenticWorkflowProfileV1>[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -25283,9 +25928,9 @@ export interface ResearchReadProviders {
 // export: ResearchReadyFrontierControllerV1
 export interface ResearchReadyFrontierControllerV1 {
     isConfigured(): boolean;
-    configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
-    appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
-    currentReadyFrontier(): readonly ResearchTaskAdmissionV1[];
+    configureInitialFrontier(): readonly AgenticTaskAdmissionV1[];
+    appendNextFrontier(): readonly AgenticTaskAdmissionV1[];
+    currentReadyFrontier(): readonly AgenticTaskAdmissionV1[];
     ensureTaskFrontier(taskId: string): void;
 }
 
@@ -27091,6 +27736,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: resolveAgenticCompletionObjectiveV1
+export declare function resolveAgenticCompletionObjectiveV1(input: {
+    requested?: AgenticCompletionObjectiveV1;
+    hasWorkflowGraph: boolean;
+}): AgenticCompletionObjectiveV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -27221,6 +27872,7 @@ export interface RunResearchAgentInput {
     conversation?: {
         sessionId: string;
     };
+    completionObjective?: AgenticCompletionObjectiveV1;
     researchGraph?: ResearchGraphV1;
     durableSession?: {
         store: ResearchSessionStoreV1;
@@ -28766,6 +29418,113 @@ export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: AGENTIC_COMPLETION_OBJECTIVES_V1
+export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
+    "conversation-answer",
+    "research-report"
+];
+
+// export: AGENTIC_WORKFLOW_PHASES_V1
+export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "synthesis"
+];
+
+// export: AGENTIC_WORKFLOW_SCHEMA_V1
+export declare const AGENTIC_WORKFLOW_SCHEMA_V1: "atlcli.agentic-workflow/v1";
+
+// export: AgenticCompletionObjectiveV1
+export type AgenticCompletionObjectiveV1 = (typeof AGENTIC_COMPLETION_OBJECTIVES_V1)[number];
+
+// export: AgenticDispatchControlGateV1
+export interface AgenticDispatchControlGateV1 {
+    authorize(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    requireHumanApproval?(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    reserveBudget(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+    journalStart(input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }): void | Promise<void>;
+}
+
+// export: AgenticDispatchInterceptionAdapter
+export type AgenticDispatchInterceptionAdapter = ResearchDispatchInterceptionAdapter;
+
+// export: AgenticDispatchInterceptionOptionsV1
+export interface AgenticDispatchInterceptionOptionsV1 {
+    admissions: readonly AgenticTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    allowHostDependencyHydration?: boolean;
+    signal?: AbortSignal;
+    invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    projectResult?: (value: unknown, input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => unknown | Promise<unknown>;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: AgenticTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}
+
+// export: AgenticTaskAdmissionV1
+export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskToolInputV1
+export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
+
+// export: AgenticWorkflowDefinitionV1
+export interface AgenticWorkflowDefinitionV1 {
+    schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    id: string;
+    completionObjective: AgenticCompletionObjectiveV1;
+    profiles: readonly AgenticWorkflowProfileV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+}
+
+// export: AgenticWorkflowPhaseV1
+export type AgenticWorkflowPhaseV1 = (typeof AGENTIC_WORKFLOW_PHASES_V1)[number];
+
+// export: AgenticWorkflowProfileV1
+export interface AgenticWorkflowProfileV1 {
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    dependsOnSubagentTypes: readonly string[];
+}
+
+// export: AgenticWorkflowRunIdentityV1
+export interface AgenticWorkflowRunIdentityV1 {
+    userId: string;
+    threadId: string;
+    turnId: string;
+    revision: number;
+    scopeFingerprint: string;
+    providerCacheIdentity: string;
+}
+
 // export: ANTHROPIC_QUALITY_ADAPTER_V1
 export declare const ANTHROPIC_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -28829,6 +29588,16 @@ export interface AtlassianRelationshipV1 {
     confluenceContentId: string;
     summary: string;
     sourceIds: string[];
+}
+
+// export: bindAgenticWorkflowRunV1
+export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: BoundAgenticWorkflowRunV1
+export interface BoundAgenticWorkflowRunV1 {
+    readonly compiled: CompiledAgenticWorkflowV1;
+    readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
+    readonly signal?: AbortSignal;
 }
 
 // export: BoundedContentProjectionV1
@@ -28926,6 +29695,21 @@ export declare function classifyResearchError(value: unknown): {
     message: string;
 };
 
+// export: compileAgenticWorkflowV1
+export declare function compileAgenticWorkflowV1(definition: AgenticWorkflowDefinitionV1): CompiledAgenticWorkflowV1;
+
+// export: CompiledAgenticWorkflowV1
+export interface CompiledAgenticWorkflowV1 {
+    readonly schema: typeof AGENTIC_WORKFLOW_SCHEMA_V1;
+    readonly id: string;
+    readonly completionObjective: AgenticCompletionObjectiveV1;
+    readonly profiles: readonly Readonly<AgenticWorkflowProfileV1>[];
+    readonly maxTasks: number;
+    readonly maxConcurrency: number;
+    readonly reuseEligible: false;
+    readonly compatibilityFingerprint: string;
+}
+
 // export: compileDynamicResearchSubagents
 export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
 
@@ -28985,6 +29769,15 @@ export interface ContinueResearchSessionScopeClarificationInputV1 {
 
 // export: continueResearchSessionScopeClarificationV1
 export declare function continueResearchSessionScopeClarificationV1(input: ContinueResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: createAgenticDispatchControlHookV1
+export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatchControlGateV1): (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+}) => Promise<void>;
+
+// export: createAgenticDispatchInterceptionAdapter
+export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
 // export: createBoundedResearchSubagentMiddleware
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, graph: ResearchGraphV1, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
@@ -29135,31 +29928,8 @@ export declare function createResearchClaimV1(input: {
 }): Promise<ResearchClaimV1>;
 
 // export: createResearchDispatchInterceptionAdapter
-export declare function createResearchDispatchInterceptionAdapter(options: {
-    admissions: readonly ResearchTaskAdmissionV1[];
-    maxTasks: number;
-    maxConcurrency: number;
-    allowHostDependencyHydration?: boolean;
-    signal?: AbortSignal;
-    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
-    projectResult?: (value: unknown, input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => unknown | Promise<unknown>;
-    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    beforeInvoke?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-    }) => void | Promise<void>;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
-    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
-    onLateResult?: (input: {
-        taskId: string;
-        admission: ResearchTaskAdmissionV1;
-        resultBytes?: number;
-    }) => void | Promise<void>;
-    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
-}): ResearchDispatchInterceptionAdapter;
+// @deprecated createResearchDispatchInterceptionAdapter — Use createAgenticDispatchInterceptionAdapter.
+export declare function createResearchDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchEntityScopeSeedV1
 export declare function createResearchEntityScopeSeedV1(input: {
@@ -29946,6 +30716,12 @@ export declare function rankResearchCandidatesV1(input: {
 
 // export: readStoredChatQualityPolicyV1
 export declare function readStoredChatQualityPolicyV1(workspace: ResearchWorkspace): Promise<ChatQualityPolicyV1 | undefined>;
+
+// export: readyAgenticFrontierV1
+export declare function readyAgenticFrontierV1(compiled: CompiledAgenticWorkflowV1, state: {
+    completedSubagentTypes: ReadonlySet<string>;
+    startedSubagentTypes?: ReadonlySet<string>;
+}): readonly Readonly<AgenticWorkflowProfileV1>[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -32355,9 +33131,9 @@ export interface ResearchReadProviders {
 // export: ResearchReadyFrontierControllerV1
 export interface ResearchReadyFrontierControllerV1 {
     isConfigured(): boolean;
-    configureInitialFrontier(): readonly ResearchTaskAdmissionV1[];
-    appendNextFrontier(): readonly ResearchTaskAdmissionV1[];
-    currentReadyFrontier(): readonly ResearchTaskAdmissionV1[];
+    configureInitialFrontier(): readonly AgenticTaskAdmissionV1[];
+    appendNextFrontier(): readonly AgenticTaskAdmissionV1[];
+    currentReadyFrontier(): readonly AgenticTaskAdmissionV1[];
     ensureTaskFrontier(taskId: string): void;
 }
 
@@ -34163,6 +34939,12 @@ export interface ResearchWorkspace {
 // export: researchWorkspacePathMatchesPrefix
 export declare function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean;
 
+// export: resolveAgenticCompletionObjectiveV1
+export declare function resolveAgenticCompletionObjectiveV1(input: {
+    requested?: AgenticCompletionObjectiveV1;
+    hasWorkflowGraph: boolean;
+}): AgenticCompletionObjectiveV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -34293,6 +35075,7 @@ export interface RunResearchAgentInput {
     conversation?: {
         sessionId: string;
     };
+    completionObjective?: AgenticCompletionObjectiveV1;
     researchGraph?: ResearchGraphV1;
     durableSession?: {
         store: ResearchSessionStoreV1;

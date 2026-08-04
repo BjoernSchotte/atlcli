@@ -31,10 +31,19 @@ export interface ResearchTaskAdmissionV1 {
   maxDurationMs: number;
 }
 
+/**
+ * Host-neutral task admission used by both conversational and report
+ * workflows. The research name remains as a source-compatible alias while
+ * callers migrate to the shared agentic workflow core.
+ */
+export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
 export interface ResearchTaskToolInputV1 {
   description: string;
   subagent_type: string;
 }
+
+export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
 
 export type ResearchDispatchErrorCodeV1 =
   | "invalid-task-description"
@@ -256,62 +265,56 @@ export interface ResearchDispatchInterceptionAdapter {
   snapshot(): ResearchDispatchSnapshotV1;
 }
 
+export type AgenticDispatchInterceptionAdapter =
+  ResearchDispatchInterceptionAdapter;
+
+export interface AgenticDispatchInterceptionOptionsV1 {
+  admissions: readonly AgenticTaskAdmissionV1[];
+  maxTasks: number;
+  maxConcurrency: number;
+  /** Attach exact completed dependency projections after immutable admission. */
+  allowHostDependencyHydration?: boolean;
+  signal?: AbortSignal;
+  invokeUpstream(
+    input: AgenticTaskToolInputV1,
+    config: RunnableConfig,
+  ): Promise<unknown>;
+  /** Reduce an untrusted provider result before durable acceptance. */
+  projectResult?: (value: unknown, input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+  }) => unknown | Promise<unknown>;
+  /** Project the bounded value visible to dependent tasks and QuickJS. */
+  projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+  /** Runs after static admission but before any upstream provider/model call. */
+  beforeInvoke?: (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+  }) => void | Promise<void>;
+  /** Persist the authoritative result before local dependency publication. */
+  acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+  /** Record a started provider invocation whose terminal packet was not committed. */
+  onUncommittedOutcome?: (
+    outcome: ResearchUncommittedDispatchOutcomeV1,
+  ) => void | Promise<void>;
+  /** Quarantine an observed result after local timeout or cancellation. */
+  onLateResult?: (input: {
+    taskId: string;
+    admission: AgenticTaskAdmissionV1;
+    resultBytes?: number;
+  }) => void | Promise<void>;
+  onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}
+
 /**
  * Host-owned interception boundary around DeepAgentsJS' public `task` tool.
  * The upstream tool still performs declarative subagent compilation with the
  * dynamic response schema; this adapter admits the dispatch before that model
  * call can begin and accepts or quarantines its result afterwards.
  */
-export function createResearchDispatchInterceptionAdapter(options: {
-  admissions: readonly ResearchTaskAdmissionV1[];
-  maxTasks: number;
-  maxConcurrency: number;
-  /**
-   * Let this host-owned adapter attach completed dependency projections after
-   * it has admitted the immutable task identity. This keeps the supervisor
-   * from serializing large, mutable child results into its next task call.
-   * Callers that do not opt in retain the explicit-envelope contract.
-   */
-  allowHostDependencyHydration?: boolean;
-  signal?: AbortSignal;
-  invokeUpstream(
-    input: ResearchTaskToolInputV1,
-    config: RunnableConfig,
-  ): Promise<unknown>;
-  /**
-   * Host-only reduction between the untrusted provider result and durable
-   * acceptance. It may perform asynchronous evidence/claim normalization;
-   * the raw value is never published if this reduction fails.
-   */
-  projectResult?: (value: unknown, input: {
-    taskId: string;
-    admission: ResearchTaskAdmissionV1;
-  }) => unknown | Promise<unknown>;
-  /**
-   * Host-owned projection returned to QuickJS and dependent tasks after packet
-   * acceptance. The authoritative accepted packet may retain more structured
-   * data, but child trajectories must never become downstream prompt context.
-   */
-  projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-  /** Runs after static admission but before any upstream provider/model call. */
-  beforeInvoke?: (input: {
-    taskId: string;
-    admission: ResearchTaskAdmissionV1;
-  }) => void | Promise<void>;
-  /** Durable hosts persist the result before the local dependency projection is published. */
-  acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
-  /** Records a started provider invocation whose terminal packet was not committed. */
-  onUncommittedOutcome?: (
-    outcome: ResearchUncommittedDispatchOutcomeV1,
-  ) => void | Promise<void>;
-  /** Receives an observed result after a local timeout/abort for quarantine. */
-  onLateResult?: (input: {
-    taskId: string;
-    admission: ResearchTaskAdmissionV1;
-    resultBytes?: number;
-  }) => void | Promise<void>;
-  onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
-}): ResearchDispatchInterceptionAdapter {
+export function createAgenticDispatchInterceptionAdapter(
+  options: AgenticDispatchInterceptionOptionsV1,
+): AgenticDispatchInterceptionAdapter {
   if (options.maxTasks < 1) throw new Error("maxTasks must be at least 1.");
   if (options.maxConcurrency < 1) {
     throw new Error("maxConcurrency must be at least 1.");
@@ -765,4 +768,11 @@ export function createResearchDispatchInterceptionAdapter(options: {
       taskStatuses: Object.fromEntries(taskStatuses),
     }),
   };
+}
+
+/** @deprecated Use createAgenticDispatchInterceptionAdapter. */
+export function createResearchDispatchInterceptionAdapter(
+  options: AgenticDispatchInterceptionOptionsV1,
+): ResearchDispatchInterceptionAdapter {
+  return createAgenticDispatchInterceptionAdapter(options);
 }

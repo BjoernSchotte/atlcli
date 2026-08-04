@@ -44,6 +44,12 @@ import {
   type ResearchModelProfileIdV1,
 } from "./quality-policy.js";
 import {
+  AGENTIC_WORKFLOW_SCHEMA_V1,
+  compileAgenticWorkflowV1,
+  resolveAgenticCompletionObjectiveV1,
+  type AgenticCompletionObjectiveV1,
+} from "./agentic-workflow-core.js";
+import {
   directChatHasExactCurrentPageV1,
   directChatProductsV1,
 } from "./direct-chat.js";
@@ -3173,6 +3179,12 @@ export interface RunResearchAgentInput {
   conversation?: {
     sessionId: string;
   };
+  /**
+   * Explicit terminal artifact contract. Today a graph produces a research
+   * report and graphless Chat produces a conversation answer; T3 may add an
+   * agentic conversation graph without changing the dispatcher contract.
+   */
+  completionObjective?: AgenticCompletionObjectiveV1;
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
   /**
@@ -3364,6 +3376,10 @@ async function runResearchAgentWithBindings(
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();
   const isDynamic = input.researchGraph !== undefined;
+  const completionObjective = resolveAgenticCompletionObjectiveV1({
+    requested: input.completionObjective,
+    hasWorkflowGraph: isDynamic,
+  });
   const durableDispatchJournal = input.durableSession
     ? new ResearchSessionDispatchJournalV1({
         store: input.durableSession.store,
@@ -4459,6 +4475,59 @@ async function runResearchAgentWithBindings(
         now,
       })
     : [];
+  const compiledAgenticWorkflow = isDynamic
+    ? compileAgenticWorkflowV1({
+        schema: AGENTIC_WORKFLOW_SCHEMA_V1,
+        id: "atlcli-read-only-agentic-workflow",
+        completionObjective,
+        profiles: approvedGraphCatalog!.nodes
+          .filter((node) => node.executor === "subagent" && node.status !== "pruned" && node.roleId)
+          .map((node) => ({
+            subagentType: researchSubagentTypeForNodeV1(node),
+            roleId: node.roleId!,
+            phase: node.roleId === "synthesizer"
+              ? "synthesis" as const
+              : node.roleId === "reconciler" || node.kind === "repair"
+                ? "reconciliation" as const
+                : node.kind === "search" || node.kind === "expand"
+                  ? "acquisition" as const
+                  : "analysis" as const,
+            dependsOnSubagentTypes: node.dependencies.flatMap((dependencyId) => {
+              const dependency = approvedGraphCatalog!.nodes.find(
+                (candidate) => candidate.id === dependencyId,
+              );
+              if (!dependency) {
+                throw new ResearchContractError(
+                  "invalid-request",
+                  "Agentic workflow dependency is absent from the validated graph.",
+                );
+              }
+              return dependency.roleId && dependency.executor === "subagent" &&
+                  dependency.status !== "pruned"
+                ? [researchSubagentTypeForNodeV1(dependency)]
+                : [];
+            }),
+          })),
+        maxTasks: approvedGraphCatalog!.nodes.filter(
+          (node) => node.executor === "subagent" && node.status !== "pruned",
+        ).length,
+        maxConcurrency: Math.min(
+          approvedGraphCatalog!.maxParallelNodes,
+          approvedGraphCatalog!.nodes.filter(
+            (node) => node.executor === "subagent" && node.status !== "pruned",
+          ).length,
+        ),
+      })
+    : undefined;
+  if (
+    compiledAgenticWorkflow &&
+    compiledAgenticWorkflow.profiles.length !== dynamicSubagents.length
+  ) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Compiled agentic workflow profiles diverged from the validated graph catalog.",
+    );
+  }
   let fatalWorkflowError: unknown;
   let workflowControlFlowRejectionCount = 0;
   const reconciliationInputContext = (): ReturnType<
