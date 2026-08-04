@@ -2373,6 +2373,13 @@ export function reduceResearchSessionV1(
   }
 
   if (update.kind === "cancel") {
+    // A host can receive a deliberate stop after the durable session envelope
+    // is created but before the first turn/brief is accepted. Preserve that
+    // user intent as a terminal checkpoint instead of leaving an orphaned idle
+    // session that appears resumable after a browser-worker race.
+    if (session.status === "idle") {
+      return withNext(session, update, { status: "cancelled" });
+    }
     const current = ensureActive(session, ["planning", "waiting_clarification", "waiting_plan_approval", "waiting_plan_revision", "waiting_scope_approval", "waiting_steering", "pause_requested", "paused", "running", "waiting_authentication", "waiting_quota"]);
     const graph = current.graph;
     const nextTasks = current.tasks.map((task) => task.status === "running" || task.status === "outcome_unknown" ? reduceResearchTaskAttemptV1(task, { kind: "cancelled", at: update.at }) : task);

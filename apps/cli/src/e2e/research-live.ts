@@ -12,6 +12,8 @@ export interface ResearchLiveCliArguments {
   projectKeys: string[];
   spaceKeys: string[];
   maxRunMinutes: number;
+  maxCostUsd?: number;
+  maxTotalModelInputTokens?: number;
 }
 
 function valueAfter(argv: readonly string[], index: number, option: string): string {
@@ -24,6 +26,24 @@ function boundedMinutes(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 10) {
     throw new Error("--max-run-minutes must be an integer from 1 to 10.");
+  }
+  return parsed;
+}
+
+function boundedCost(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 25) {
+    throw new Error("--max-cost-usd must be a number greater than 0 and at most 25.");
+  }
+  return parsed;
+}
+
+function boundedInputTokens(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1_000 || parsed > 1_000_000) {
+    throw new Error(
+      "--max-total-model-input-tokens must be an integer from 1000 to 1000000.",
+    );
   }
   return parsed;
 }
@@ -60,6 +80,8 @@ export function parseResearchLiveCliArguments(
   const projectKeys: string[] = [];
   const spaceKeys: string[] = [];
   let maxRunMinutes = 10;
+  let maxCostUsd: number | undefined;
+  let maxTotalModelInputTokens: number | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]!;
@@ -84,6 +106,12 @@ export function parseResearchLiveCliArguments(
       spaceKeys.push(...take("--space").split(",").map((value) => value.trim()).filter(Boolean));
     } else if (argument === "--max-run-minutes") {
       maxRunMinutes = boundedMinutes(take("--max-run-minutes"));
+    } else if (argument === "--max-cost-usd") {
+      maxCostUsd = boundedCost(take("--max-cost-usd"));
+    } else if (argument === "--max-total-model-input-tokens") {
+      maxTotalModelInputTokens = boundedInputTokens(
+        take("--max-total-model-input-tokens"),
+      );
     } else {
       throw new Error(`Unknown option: ${argument}`);
     }
@@ -104,6 +132,10 @@ export function parseResearchLiveCliArguments(
     projectKeys: [...new Set(projects)],
     spaceKeys: [...new Set(spaces)],
     maxRunMinutes,
+    ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
+    ...(maxTotalModelInputTokens === undefined
+      ? {}
+      : { maxTotalModelInputTokens }),
   };
 }
 
@@ -122,6 +154,15 @@ export function buildResearchLiveCliCommand(
     ...input.projectKeys.flatMap((key) => ["--project", key]),
     ...input.spaceKeys.flatMap((key) => ["--space", key]),
     "--max-run-minutes", String(input.maxRunMinutes),
+    ...(input.maxCostUsd === undefined
+      ? []
+      : ["--max-cost-usd", String(input.maxCostUsd)]),
+    ...(input.maxTotalModelInputTokens === undefined
+      ? []
+      : [
+          "--max-total-model-input-tokens",
+          String(input.maxTotalModelInputTokens),
+        ]),
     "--output", input.outputPath,
   ];
 }

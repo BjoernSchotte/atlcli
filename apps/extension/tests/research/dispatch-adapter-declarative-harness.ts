@@ -1,7 +1,13 @@
 import { AIMessage, SystemMessage } from "@langchain/core/messages";
 import { fakeModel } from "@langchain/core/testing";
 import { tool } from "@langchain/core/tools";
-import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
+import {
+  DEFAULT_EXECUTION_TIMEOUT,
+  DEFAULT_MAX_PTC_CALLS,
+  DEFAULT_MAX_STACK_SIZE,
+  DEFAULT_MEMORY_LIMIT,
+  createCodeInterpreterMiddleware,
+} from "@langchain/quickjs";
 import {
   createDeepAgent,
   createSubAgentMiddleware,
@@ -40,6 +46,19 @@ export interface DeclarativeDispatchCharacterizationResult {
   taskStatuses: Readonly<Record<string, string>>;
   productionSchemas: ProductionResponseSchemaCharacterization;
   modelScript: Omit<DeterministicResearchModelScriptV1, "code">;
+  runtimeInvariants: {
+    subagentMergeKey: string;
+    middlewareNames: string[];
+    delegatedTaskToolCount: number;
+    quickChatTaskToolCount: number;
+    wrappedToolNames: string[];
+    quickjsDefaults: {
+      executionTimeoutMs: number;
+      memoryLimitBytes: number;
+      maxStackSizeBytes: number;
+      maxPtcCalls: number;
+    };
+  };
 }
 
 /**
@@ -153,6 +172,14 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
       }),
     },
   );
+  const wrappedToolNames: string[] = [];
+  const wrapperSentinel = createMiddleware({
+    name: "dispatchWrapperCharacterization",
+    wrapToolCall: async (request, handler) => {
+      wrappedToolNames.push(request.toolCall.name);
+      return handler(request);
+    },
+  });
   const agent = createDeepAgent({
     name: "atlcli-dispatch-characterization-supervisor",
     model: supervisorModel,
@@ -161,6 +188,7 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
     middleware: [
       ...disabledDeepAgentMiddleware,
       { ...declarativeSubagents, tools: [interceptedTask] },
+      wrapperSentinel,
       createCodeInterpreterMiddleware({
         subagents: true,
         captureConsole: false,
@@ -169,6 +197,24 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
       }),
     ],
   });
+  const inspectMiddleware = (value: unknown) =>
+    (value as {
+      options: { middleware: Array<{ name: string; tools?: Array<{ name: string }> }> };
+    }).options.middleware;
+  const middleware = inspectMiddleware(agent);
+  const delegatedTaskToolCount = middleware
+    .flatMap((entry) => entry.tools ?? [])
+    .filter((candidate) => candidate.name === "task").length;
+  const quickChatAgent = createDeepAgent({
+    name: "atlcli-dispatch-characterization-quick-chat",
+    model: fakeModel(),
+    tools: [],
+    subagents: [],
+    middleware: [createMiddleware({ name: "subAgentMiddleware" })],
+  });
+  const quickChatTaskToolCount = inspectMiddleware(quickChatAgent)
+    .flatMap((entry) => entry.tools ?? [])
+    .filter((candidate) => candidate.name === "task").length;
 
   const result = await agent.invoke(
     { messages: [{ role: "user", content: "Run the host-issued tasks." }] },
@@ -232,6 +278,19 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
       id: modelScript.id,
       codeBytes: modelScript.codeBytes,
       taskIds: modelScript.taskIds,
+    },
+    runtimeInvariants: {
+      subagentMergeKey: declarativeSubagents.name,
+      middlewareNames: middleware.map((entry) => entry.name),
+      delegatedTaskToolCount,
+      quickChatTaskToolCount,
+      wrappedToolNames,
+      quickjsDefaults: {
+        executionTimeoutMs: DEFAULT_EXECUTION_TIMEOUT,
+        memoryLimitBytes: DEFAULT_MEMORY_LIMIT,
+        maxStackSizeBytes: DEFAULT_MAX_STACK_SIZE,
+        maxPtcCalls: DEFAULT_MAX_PTC_CALLS,
+      },
     },
   };
 }

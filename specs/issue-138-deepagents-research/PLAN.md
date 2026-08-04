@@ -127,3 +127,27 @@ repository gates pass, push it to the Draft PR before starting the next task.
   and the T5 A/B gates.
 - Is interpreted model-generated code acceptable for a future Web Store build?
   This needs a separate policy decision after the technical spike.
+
+## Accepted Agentic Chat follow-on invariants
+
+The reviewed follow-on implementation is defined in
+[`AGENTIC-CHAT-QUALITY-PLAN.md`](./AGENTIC-CHAT-QUALITY-PLAN.md). This section
+records its accepted boundaries without duplicating its task list:
+
+- Quick Chat is direct; Auto Chat may select a direct or agentic path; Deep Chat
+  makes an explicit strategy decision and may use dynamic subagents when they
+  improve quality. Deep Research remains a separate coverage-oriented report
+  mode.
+- One logical root owns each turn. One repository-owned middleware with the
+  exact pinned merge key `subAgentMiddleware` owns dynamic child dispatch.
+- QuickJS `task()` authorization, journaling, budget, HITL, cancellation, and
+  result bounds live in the host dispatcher because the bridge bypasses normal
+  ToolNode wrappers.
+- Graph construction remains per-turn until immutable compiled-root reuse proves
+  cross-run isolation and a material measured latency benefit.
+- Checkpoint/journal state is authoritative on resume. Client state may provide
+  validated per-turn context but cannot overwrite durable authorization or
+  workflow state.
+- Auto/Deep Chat deadlines are intentionally unresolved. T8 measures phase-level
+  warm/cold latency and selects defaults plus `mustSynthesizeAt`; 120/180 seconds
+  remain hypotheses rather than current product defaults.

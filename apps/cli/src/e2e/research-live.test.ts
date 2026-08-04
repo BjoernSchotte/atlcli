@@ -23,12 +23,16 @@ describe("research public CLI live harness", () => {
       "--project", "ATLCLI,SECOND",
       "--space", "DOCSY",
       "--max-run-minutes", "7",
+      "--max-cost-usd", "4",
+      "--max-total-model-input-tokens", "600000",
     ]);
     const sourceCommand = buildResearchLiveCliCommand(source, root);
     expect(sourceCommand).toContain("--conditions=development");
     expect(sourceCommand).toContain("src/index.ts");
     expect(sourceCommand.filter((value) => value === "--project")).toHaveLength(2);
     expect(sourceCommand).toContain("7");
+    expect(sourceCommand).toContain("4");
+    expect(sourceCommand).toContain("600000");
 
     const built = parseResearchLiveCliArguments([
       "--mode", "built",
@@ -37,6 +41,21 @@ describe("research public CLI live harness", () => {
     expect(buildResearchLiveCliCommand(built, root)).toContain(
       "/tmp/atlcli-repository/dist/index.js",
     );
+  });
+
+  test("rejects live budgets outside the public CLI contract", () => {
+    expect(() =>
+      parseResearchLiveCliArguments([
+        "--output", "/tmp/research.md",
+        "--max-cost-usd", "26",
+      ]),
+    ).toThrow("at most 25");
+    expect(() =>
+      parseResearchLiveCliArguments([
+        "--output", "/tmp/research.md",
+        "--max-total-model-input-tokens", "1000001",
+      ]),
+    ).toThrow("1000000");
   });
 
   test("requires an external absolute Markdown output", () => {

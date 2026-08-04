@@ -19,6 +19,7 @@ import {
 } from "./index.js";
 import { runResearchAgent as runBrowserResearchAgent } from "./agent-runtime.browser.js";
 import { runResearchAgent as runNodeResearchAgent } from "./agent-runtime.node.js";
+import { isResearchOneShotEventV1 } from "./events.js";
 import {
   composeResearchGraphV1,
 } from "./graph.js";
@@ -275,6 +276,8 @@ describe("research one-shot host parity", () => {
     expect(nodeEvents.map((event) => event.seq)).toEqual(
       nodeEvents.map((_, index) => index + 1),
     );
+    expect(nodeEvents.every(isResearchOneShotEventV1)).toBe(true);
+    expect(browserEvents.every(isResearchOneShotEventV1)).toBe(true);
     expect(nodeEvents).toContainEqual(expect.objectContaining({
       kind: "artifact",
       path: "/artifacts/report.md",

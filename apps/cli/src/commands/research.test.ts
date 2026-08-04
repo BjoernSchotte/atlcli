@@ -1814,6 +1814,31 @@ describe("research CLI one-shot contract", () => {
     ).toThrow("greater than 0 and at most 25");
   });
 
+  test("supports an explicit bounded run-wide input-token ceiling", () => {
+    const input = parseResearchCliInput(["Find related content"], {
+      "max-total-model-input-tokens": "600000",
+    });
+    expect(input.maxTotalModelInputTokens).toBe(600_000);
+    expect(
+      buildResearchRequest(input, profile).limits.maxTotalModelInputTokens,
+    ).toBe(600_000);
+    expect(() =>
+      parseResearchCliInput(["question"], {
+        "max-total-model-input-tokens": "999",
+      }),
+    ).toThrow("between 1000 and 1000000");
+    expect(() =>
+      parseResearchCliInput(["question"], {
+        "max-total-model-input-tokens": "1000001",
+      }),
+    ).toThrow("between 1000 and 1000000");
+    expect(() =>
+      parseResearchCliInput(["question"], {
+        "max-total-model-input-tokens": "1.5",
+      }),
+    ).toThrow("between 1000 and 1000000");
+  });
+
   test("uses profile defaults only when explicit keys are absent", () => {
     const input = parseResearchCliInput(["Find related content"], {});
     const request = buildResearchRequest(input, profile);

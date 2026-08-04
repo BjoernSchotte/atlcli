@@ -620,8 +620,7 @@ await Promise.all(frontier.tasks.map((returnedTask) => task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
     taskId: returnedTask.taskId,
-    objective: returnedTask.objective,
-    ...(returnedTask.dependencyResults.length > 0 ? { dependencyResults: returnedTask.dependencyResults } : {})
+    objective: returnedTask.objective
   }),
   subagentType: returnedTask.subagentType,
   responseSchema: responseSchemas[returnedTask.outputSchema]
@@ -646,21 +645,21 @@ const responseSchemas = ${JSON.stringify({
 const joinFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
 const joinTask = joinFrontier.tasks[0];
 await task({
-  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: joinTask.taskId, objective: joinTask.objective, dependencyResults: joinTask.dependencyResults }),
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: joinTask.taskId, objective: joinTask.objective }),
   subagentType: joinTask.subagentType,
   responseSchema: responseSchemas[joinTask.outputSchema]
 });
 const coverageFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
 const coverageTask = coverageFrontier.tasks[0];
 await task({
-  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: coverageTask.taskId, objective: coverageTask.objective, dependencyResults: coverageTask.dependencyResults }),
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: coverageTask.taskId, objective: coverageTask.objective }),
   subagentType: coverageTask.subagentType,
   responseSchema: responseSchemas[coverageTask.outputSchema]
 });
 const critiqueFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
 const critiqueTask = critiqueFrontier.tasks[0];
 await task({
-  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: critiqueTask.taskId, objective: critiqueTask.objective, dependencyResults: critiqueTask.dependencyResults }),
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: critiqueTask.taskId, objective: critiqueTask.objective }),
   subagentType: critiqueTask.subagentType,
   responseSchema: responseSchemas[critiqueTask.outputSchema]
 });
@@ -672,7 +671,7 @@ await tools.researchReconciliationDispositions({
 const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
 const finalTask = finalFrontier.tasks[0];
 const finalDraft = await task({
-  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: finalTask.taskId, objective: finalTask.objective, dependencyResults: finalTask.dependencyResults }),
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: finalTask.taskId, objective: finalTask.objective }),
   subagentType: finalTask.subagentType,
   responseSchema: responseSchemas[finalTask.outputSchema]
 });
@@ -1218,7 +1217,7 @@ globalThis.fetch = async (input, init) => {
       packedResumeSupervisorEvals += 1;
       if (
         packedResumeSupervisorEvals > 1 &&
-        !serializedRequest.includes("RESUMED CONTINUATION")
+        serializedRequest.includes("RESUMED CONTINUATION")
       ) {
         // The durable checkpoint is already committed. Keep the disposable
         // worker alive until the harness terminates it through research:cancel.
@@ -1807,6 +1806,12 @@ async function openResearchScreen(page: Page): Promise<void> {
   await expect(page.locator("#research-site")).toHaveValue(SITE_ORIGIN);
 }
 
+async function excludeCurrentContext(page: Page): Promise<void> {
+  const remove = page.getByTestId("research-current-context-remove");
+  if (await remove.isVisible().catch(() => false)) await remove.click();
+  await expect(remove).toBeHidden();
+}
+
 async function fillResearchForm(
   page: Page,
   question: string,
@@ -2356,8 +2361,9 @@ async function runPackedResearchInBackground(
   page: Page,
   request: ResearchRequestV1,
   runId: string,
+  mode: "chat" | "research" = "research",
 ): Promise<PackedRunResponse> {
-  return page.evaluate(async ({ request, runId, policy }) => {
+  return page.evaluate(async ({ request, runId, mode, policy }) => {
     const window = await chrome.windows.getCurrent();
     if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
     return chrome.runtime.sendMessage({
@@ -2366,10 +2372,11 @@ async function runPackedResearchInBackground(
       sessionId: `research-session:${runId}`,
       turnId: `research-turn:${runId}`,
       windowId: window.id,
+      mode,
       request,
       policy,
     });
-  }, { request, runId, policy: HOST_PARITY_POLICY }) as Promise<PackedRunResponse>;
+  }, { request, runId, mode, policy: HOST_PARITY_POLICY }) as Promise<PackedRunResponse>;
 }
 
 async function resumePackedResearchInBackground(
@@ -2616,28 +2623,50 @@ async function findPackedDurableResearchSessionByObjective(
         turns?: Array<{ id: string; brief?: { objective?: string } }>;
       };
     };
+    type WorkspaceRecord = {
+      sessionId: string;
+      path: string;
+      contents: string;
+    };
     const open = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("atlcli-research-sessions");
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
     try {
-      const records = await new Promise<SessionRecord[]>((resolve, reject) => {
-        const transaction = open.transaction("sessions", "readonly");
+      const transaction = open.transaction(["sessions", "workspace"], "readonly");
+      const recordsPromise = new Promise<SessionRecord[]>((resolve, reject) => {
         const request = transaction.objectStore("sessions").getAll();
         request.onsuccess = () => resolve(request.result as SessionRecord[]);
         request.onerror = () => reject(request.error);
       });
-      const record = records.find((candidate) =>
+      const workspacePromise = new Promise<WorkspaceRecord[]>((resolve, reject) => {
+        const request = transaction.objectStore("workspace").getAll();
+        request.onsuccess = () => resolve(request.result as WorkspaceRecord[]);
+        request.onerror = () => reject(request.error);
+      });
+      const [records, workspace] = await Promise.all([recordsPromise, workspacePromise]);
+      let record = records.find((candidate) =>
         candidate.state.turns?.some((turn) => turn.brief?.objective === expectedObjective)
       );
+      // A deliberate stop may happen before the first brief has been accepted
+      // into a turn. The durable request envelope is then the authoritative
+      // correlation record for the cancelled session.
+      record ??= records.find((candidate) => workspace.some((entry) => {
+        if (entry.sessionId !== candidate.sessionId || entry.path !== "/session/request.json") return false;
+        try {
+          return (JSON.parse(entry.contents) as { request?: { question?: string } }).request?.question === expectedObjective;
+        } catch {
+          return false;
+        }
+      }));
       const turn = record?.state.turns?.find((candidate) =>
         candidate.brief?.objective === expectedObjective
       );
-      return record && turn && {
+      return record && {
         sessionId: record.sessionId,
         status: record.state.status,
-        turnId: turn.id,
+        turnId: turn?.id ?? "",
       };
     } finally {
       open.close();
@@ -2803,6 +2832,19 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
             codeBytes: number;
             taskIds: string[];
           };
+          runtimeInvariants: {
+            subagentMergeKey: string;
+            middlewareNames: string[];
+            delegatedTaskToolCount: number;
+            quickChatTaskToolCount: number;
+            wrappedToolNames: string[];
+            quickjsDefaults: {
+              executionTimeoutMs: number;
+              memoryLimitBytes: number;
+              maxStackSizeBytes: number;
+              maxPtcCalls: number;
+            };
+          };
         };
         error?: { name: string; message: string; stack?: string };
       }>((resolve, reject) => {
@@ -2882,6 +2924,26 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   });
   expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
+  expect(response.result?.runtimeInvariants).toEqual({
+    subagentMergeKey: "subAgentMiddleware",
+    middlewareNames: [
+      "FilesystemMiddleware",
+      "subAgentMiddleware",
+      "SummarizationMiddleware",
+      "patchToolCallsMiddleware",
+      "dispatchWrapperCharacterization",
+      "CodeInterpreterMiddleware",
+    ],
+    delegatedTaskToolCount: 1,
+    quickChatTaskToolCount: 0,
+    wrappedToolNames: ["eval"],
+    quickjsDefaults: {
+      executionTimeoutMs: 5_000,
+      memoryLimitBytes: 64 * 1024 * 1024,
+      maxStackSizeBytes: 320 * 1024,
+      maxPtcCalls: 256,
+    },
+  });
 });
 
 test("reviews a durable scope proposal in packed MV3 without allowing caller-owned scope authority", async () => {
@@ -3670,7 +3732,7 @@ test("recovers an expired retrieval checkpoint when the first offscreen document
       hostParityRequest(),
       "packed-startup-recovery-trigger",
     );
-    if (!trigger.ok) {
+    if (!trigger?.ok) {
       throw new Error(JSON.stringify({ trigger, events: await harnessEvents(page) }, null, 2));
     }
     await expect.poll(async () => {
@@ -4599,7 +4661,10 @@ test("keeps raw child trajectories and hidden supervisor state out of packed MV3
     ]));
     const specialistRequests = modelRequests.filter((request) => request.modelRole !== "supervisor");
     expect(specialistRequests.length).toBeGreaterThanOrEqual(5);
-    expect(modelRequests.some((request) => request.hasHiddenSupervisorContext)).toBe(true);
+    expect(modelRequests.filter((request) => request.modelRole === "supervisor"))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ hasHiddenSupervisorContext: false }),
+      ]));
     for (const request of specialistRequests) {
       expect(request.hasHiddenSupervisorContext).toBe(false);
     }
@@ -4945,7 +5010,7 @@ test("preserves a locked manual scope over a question-derived project key", asyn
 test("stops an archived Confluence key before key storage or agent work", async () => {
   await openResearchScreen(page);
   await installEventCapture(page);
-  await page.getByTestId("research-current-context-remove").click();
+  await excludeCurrentContext(page);
   await fillResearchForm(
     page,
     "Research Confluence space LEGACY.",
@@ -4979,7 +5044,7 @@ test("stops an archived Confluence key before key storage or agent work", async 
 test("stops an inaccessible same-tenant Confluence link before key storage or agent work", async () => {
   await openResearchScreen(page);
   await installEventCapture(page);
-  await page.getByTestId("research-current-context").uncheck();
+  await excludeCurrentContext(page);
   await fillResearchForm(
     page,
     `Research ${SITE_ORIGIN}/wiki/spaces/PRIVATE/overview.`,
@@ -5044,7 +5109,7 @@ test("stops a packed natural-name scope ambiguity before key storage or agent wo
 test("resolves a question-derived Jira scope and streams a Jira-only composition in the packed production bundle", async () => {
   await openResearchScreen(page);
   await installEventCapture(page);
-  await page.getByTestId("research-current-context-remove").click();
+  await excludeCurrentContext(page);
   await fillResearchForm(
     page,
     "packed-jira-only: Find the exact Jira project DEMO work item.",
@@ -5157,19 +5222,39 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
 }, testInfo) => {
   await openResearchScreen(page);
   await installEventCapture(page);
-  await page.getByTestId("research-current-context").uncheck();
-  await expect(page.getByTestId("research-key")).toHaveAttribute(
+  await excludeCurrentContext(page);
+  await page.getByTestId("area-menu-toggle").click();
+  await page.getByTestId("nav-settings").click();
+  await expect(page.getByTestId("settings-ai-key")).toHaveAttribute(
     "type",
     "password"
   );
-  await expect(page.getByTestId("research-key")).toHaveAttribute(
+  await expect(page.getByTestId("settings-ai-key")).toHaveAttribute(
     "autocomplete",
     "off"
   );
+  await page.getByTestId("area-menu-toggle").click();
+  await page.getByTestId("area-ai").click();
 
   const completedObjective = "hold-after-ptc: How does Jira project DEMO relate to Confluence space KB?";
   await fillResearchForm(page, completedObjective, { includeScope: false });
+  await page.getByTestId("research-mode-deep").click();
+  await expect(page.getByTestId("research-mode-deep")).toHaveAttribute("aria-pressed", "true");
+  const planReviewCards = page.getByTestId("research-plan-reviews")
+    .locator('div[data-testid^="research-plan-review-"]');
+  const planReviewCount = await planReviewCards.count();
   await page.getByTestId("research-run").click();
+  await expect(page.getByTestId("research-plan-reviews")).toBeVisible();
+  await expect(planReviewCards).toHaveCount(planReviewCount + 1);
+  await planReviewCards.first().locator('button[data-testid^="research-plan-review-approve-"]').click();
+  await expect(planReviewCards).toHaveCount(planReviewCount);
+  await page.getByTestId("research-conversation-menu-toggle").click();
+  await expect(page.getByTestId("research-resumable-sessions")).toContainText(completedObjective);
+  const resumableCard = page.locator('div[data-testid^="research-resumable-session-"]')
+    .filter({ hasText: completedObjective });
+  await expect(resumableCard).toHaveCount(1);
+  await resumableCard.locator('button[data-testid^="research-resume-"]').click();
+  await page.getByTestId("research-conversation-menu-toggle").click();
 
   try {
     await page.waitForFunction(
@@ -5274,35 +5359,26 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
       )
     );
   }
-  await expect(page.getByTestId("research-formatted-report")).toContainText(
+  const deepReport = page.getByTestId("research-report");
+  const deepFormattedReport = deepReport.getByTestId("research-formatted-report");
+  await expect(deepFormattedReport).toContainText(
     "DEMO-1"
   );
-  await expect(page.getByTestId("research-formatted-report")).toContainText(
+  await expect(deepFormattedReport).toContainText(
     "Evidence-backed findings"
   );
-  await expect(page.getByTestId("research-formatted-report").locator("img")).toHaveCount(0);
-  await expect(page.getByTestId("research-formatted-report").locator("script")).toHaveCount(0);
+  await expect(deepFormattedReport.locator("img")).toHaveCount(0);
+  await expect(deepFormattedReport.locator("script")).toHaveCount(0);
   const activityTrace = await page.getByTestId("research-activity").innerText();
-  expect(activityTrace).toContain("plan · graph 1 · approved");
-  expect(activityTrace).toContain("6 nodes in 5 waves");
-  expect(activityTrace).toContain("task · research-task:r1:jira-research:a1");
-  expect(activityTrace).toContain("tool · jira.issue.search");
-  expect(activityTrace).toContain("input {query}");
-  expect(activityTrace).toContain("bytes");
-  expect(activityTrace).toContain("critique · research-task:r1:reconciler:a1 · completed");
-  expect(activityTrace).toContain(
-    "decision · central-supervisor-reconciliation-dispositions · completed"
-  );
-  expect(activityTrace).toContain(
-    "disposition · defect:packed-relationship-review · add_follow_up · material_defect · recorded"
-  );
-  expect(activityTrace).toContain(
-    "repair · follow-up:packed-relationship-review · authorized · accepted_follow_up"
-  );
-  expect(activityTrace).toContain(
-    "repair · follow-up:packed-relationship-review · completed · packet_accepted"
-  );
-  expect(activityTrace).toContain("budget · tokens");
+  expect(activityTrace).toContain("Question and context are being matched");
+  expect(activityTrace).toContain("Relevant Jira work items are being searched");
+  expect(activityTrace).toContain("Relevant pages are being searched in Confluence");
+  expect(activityTrace).toContain("Evidence and coverage are being checked");
+  expect(activityTrace).toContain("The answer is being written");
+  expect(activityTrace).not.toContain("research-task:");
+  expect(activityTrace).not.toContain("central-supervisor");
+  expect(activityTrace).not.toContain("cost_micros");
+  expect(activityTrace).not.toContain("budget · tokens");
   expect(activityTrace).not.toContain(FAKE_KEY);
   expect(activityTrace).not.toContain("Ignore all previous instructions");
   expect(
@@ -5312,7 +5388,10 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     )
   ).toBeUndefined();
 
-  await page.getByTestId("research-raw").click();
+  await expect(deepReport.getByTestId("research-raw")).toBeHidden();
+  await deepReport.locator("summary").click();
+  await expect(deepReport.getByTestId("research-raw")).toBeVisible();
+  await deepReport.getByTestId("research-raw").click();
   const markdown = await page.getByTestId("research-raw-markdown").innerText();
   expect(markdown).toContain("# Packed \\<img");
   expect(markdown).toContain("Evidence-backed findings");
@@ -5322,7 +5401,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
 
   const diagnosticText = await page.getByTestId("research-report").innerText();
   expect(diagnosticText).toContain("claude-sonnet-4-6");
-  expect(diagnosticText).toContain("10 / 8");
+  expect(diagnosticText).toContain("10 / 10");
   expect(diagnosticText).toContain("2 / 2");
   expect(diagnosticText).toContain("rest");
 
@@ -5345,9 +5424,9 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(jiraSearches).toHaveLength(2);
   expect(wikiSearches).toHaveLength(2);
   expect(jiraSearches[0]?.jql).toContain('project in ("DEMO")');
-  expect(jiraSearches[0]?.jql).toContain('updated >= "2026-07-23"');
   expect(wikiSearches[0]?.cql).toContain('space in ("KB")');
-  expect(wikiSearches[0]?.cql).toContain('lastmodified >= "2026-07-23"');
+  expect(jiraSearches[0]?.jql).toContain("ORDER BY updated DESC, key ASC");
+  expect(wikiSearches[0]?.cql).toContain("ORDER BY lastmodified DESC");
   // A one-shot graph now returns the schema-constrained synthesizer object
   // directly. There is no eleventh parent-supervisor restatement call.
   const providerFetches = fetches.filter((event) => event.apiKeyPresent);
@@ -5379,7 +5458,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     description: `Side-panel V8 heap while the dedicated agent worker is paused after PTC: used=${heap.usedSize}, total=${heap.totalSize}, backing=${heap.backingStorageSize}; dedicated-worker V8 heap is not attributed by this packed harness; QuickJS linear-memory cap=64000000.`,
   });
   console.info(
-    `[research-packed-metrics] sidePanelHeapUsed=${heap.usedSize} sidePanelHeapTotal=${heap.totalSize} backingStorage=${heap.backingStorageSize} workerHeap=unattributed quickJsCap=64000000 ptc=10 http=8`
+    `[research-packed-metrics] sidePanelHeapUsed=${heap.usedSize} sidePanelHeapTotal=${heap.totalSize} backingStorage=${heap.backingStorageSize} workerHeap=unattributed quickJsCap=64000000 ptc=10 http=10`
   );
 
   // The terminal session must be fully durable before the sidebar disappears.
@@ -5417,8 +5496,12 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await page.reload();
   await page.getByTestId("app-shell").waitFor();
   await openResearchScreen(page);
-  await expect(page.getByTestId("research-forget-key")).toBeEnabled();
-  await expect(page.getByTestId("research-key")).toHaveValue("");
+  await page.getByTestId("area-menu-toggle").click();
+  await page.getByTestId("nav-settings").click();
+  await expect(page.getByTestId("settings-ai-forget-key")).toBeEnabled();
+  await expect(page.getByTestId("settings-ai-key")).toHaveValue("");
+  await page.getByTestId("area-menu-toggle").click();
+  await page.getByTestId("area-ai").click();
   const afterReopen = await readPackedDurableResearchSession(
     page,
     completedSession.sessionId,
@@ -5428,24 +5511,32 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(afterReopen.session.state.turns[0]?.graph).toEqual(beforeReopen.session.state.turns[0]?.graph);
   expect(await countPackedResearchSessionRows(page, completedSession.sessionId)).toEqual(rowsBeforeReopen);
 
+  await page.getByTestId("research-conversation-menu-toggle").click();
   const retainedCard = page.locator('[data-testid^="research-retained-session-"]')
     .filter({ hasText: completedObjective });
   await expect(retainedCard).toHaveCount(1);
+  await retainedCard.locator("summary").click();
   const followUpQuestion = "Which accepted evidence should the next turn examine?";
   await retainedCard.locator('[data-testid^="research-follow-up-question-"]').fill(followUpQuestion);
   await retainedCard.locator('[data-testid^="research-follow-up-prepare-"]').click();
-  await expect(page.getByTestId("research-resumable-sessions")).toContainText(followUpQuestion);
+  await expect.poll(async () => (await readPackedDurableResearchSession(
+    page,
+    completedSession.sessionId,
+    `artifact:report:${completedTurnId}`,
+  )).session.state.turns.length).toBe(2);
+  await page.getByTestId("research-conversation-menu-toggle").click();
   const preparedFollowUp = await readPackedDurableResearchSession(
     page,
     completedSession.sessionId,
     `artifact:report:${completedTurnId}`,
   );
   expect(preparedFollowUp.session.state).toMatchObject({
-    status: "running",
+    status: "waiting_plan_approval",
     turns: [
       expect.objectContaining({ id: completedTurnId }),
       expect.objectContaining({
         brief: expect.objectContaining({ objective: followUpQuestion }),
+        graph: expect.objectContaining({ status: "proposed" }),
         tasks: [],
         acceptedPackets: [],
       }),
@@ -5461,10 +5552,13 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
 
   await installEventCapture(page);
   const cancelledObjective = "cancel-before-ptc: Search Jira project DEMO and Confluence space KB.";
+  await excludeCurrentContext(page);
+  await page.getByTestId("research-mode-chat").click();
+  await expect(page.getByTestId("research-mode-chat")).toHaveAttribute("aria-pressed", "true");
   await fillResearchForm(
     page,
     cancelledObjective,
-    { includeKey: false }
+    { includeKey: false, includeScope: false }
   );
   await page.getByTestId("research-run").click();
   await page.waitForFunction(
@@ -5483,8 +5577,9 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await expect
     .poll(async () => (await researchWorkerTargets(cancelRoot)).length)
     .toBe(1);
-  await page.getByTestId("research-cancel").click();
-  await expect(page.getByTestId("research-error")).toContainText(/cancel/i);
+  await page.getByTestId("research-run").click();
+  await expect(page.getByTestId("research-action-status")).toContainText(/stopped/i);
+  await expect(page.getByTestId("research-error")).toHaveCount(0);
   await expect(page.getByTestId("research-run")).toBeEnabled();
   await expect
     .poll(async () => (await researchWorkerTargets(cancelRoot)).length)
@@ -5509,6 +5604,8 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   ].filter((event) => event.kind === "worker-start");
   expect(new Set(allStarts.map((event) => event.workerId)).size).toBe(2);
 
-  await page.getByTestId("research-forget-key").click();
-  await expect(page.getByTestId("research-forget-key")).toBeDisabled();
+  await page.getByTestId("area-menu-toggle").click();
+  await page.getByTestId("nav-settings").click();
+  await page.getByTestId("settings-ai-forget-key").click();
+  await expect(page.getByTestId("settings-ai-forget-key")).toHaveCount(0);
 });

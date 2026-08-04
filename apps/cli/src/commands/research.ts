@@ -104,6 +104,8 @@ export interface ResearchCliInput {
   maxRunMinutes: number;
   /** Conservative provider-cost ceiling for a new durable session, in USD. */
   maxCostUsd?: number;
+  /** Explicit run-wide input-token ceiling for diagnostic and advanced runs. */
+  maxTotalModelInputTokens?: number;
   keepSession: boolean;
   planOnly: boolean;
   /** Resume is deliberately limited to a no-dispatch authentication wait in T4. */
@@ -116,6 +118,7 @@ export interface ResearchCliInput {
 const DEFAULT_MAX_RUN_MINUTES = 10;
 const MAX_MAX_RUN_MINUTES = 10;
 const MAX_MODEL_COST_USD = 25;
+const MAX_TOTAL_MODEL_INPUT_TOKENS = 1_000_000;
 const T2_RESEARCH_FLAGS = new Set([
   "profile",
   "project",
@@ -127,6 +130,7 @@ const T2_RESEARCH_FLAGS = new Set([
   "language",
   "max-run-minutes",
   "max-cost-usd",
+  "max-total-model-input-tokens",
   "output",
   "effort",
   "plan-approval",
@@ -152,6 +156,7 @@ const T2_VALUE_FLAGS = [
   "language",
   "max-run-minutes",
   "max-cost-usd",
+  "max-total-model-input-tokens",
   "output",
   "effort",
   "plan-approval",
@@ -497,6 +502,24 @@ export function parseResearchCliInput(
       `--max-cost-usd must be a number greater than 0 and at most ${MAX_MODEL_COST_USD}.`,
     );
   }
+  const maxTotalModelInputTokensFlag = getFlag(
+    flags,
+    "max-total-model-input-tokens",
+  );
+  const maxTotalModelInputTokens =
+    maxTotalModelInputTokensFlag === undefined
+      ? undefined
+      : Number(maxTotalModelInputTokensFlag);
+  if (
+    maxTotalModelInputTokens !== undefined &&
+    (!Number.isSafeInteger(maxTotalModelInputTokens) ||
+      maxTotalModelInputTokens < 1_000 ||
+      maxTotalModelInputTokens > MAX_TOTAL_MODEL_INPUT_TOKENS)
+  ) {
+    throw new Error(
+      `--max-total-model-input-tokens must be an integer between 1000 and ${MAX_TOTAL_MODEL_INPUT_TOKENS}.`,
+    );
+  }
   const requestedPlanApproval =
     getFlag(flags, "plan-approval") ??
     DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedPlanApproval;
@@ -559,6 +582,9 @@ export function parseResearchCliInput(
       : {}),
     maxRunMinutes,
     ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
+    ...(maxTotalModelInputTokens === undefined
+      ? {}
+      : { maxTotalModelInputTokens }),
     keepSession: hasFlag(flags, "keep-session"),
     planOnly: hasFlag(flags, "plan-only"),
     policy,
@@ -2294,6 +2320,9 @@ export function buildResearchRequest(
       ...(input.maxCostUsd === undefined
         ? {}
         : { maxModelCostMicros: Math.floor(input.maxCostUsd * 1_000_000) }),
+      ...(input.maxTotalModelInputTokens === undefined
+        ? {}
+        : { maxTotalModelInputTokens: input.maxTotalModelInputTokens }),
       // The CLI controls only the complete workflow deadline. Individual
       // QuickJS/PTC operations retain their tighter contract limits.
       maxRunMs: input.maxRunMinutes * 60_000,
@@ -3458,6 +3487,8 @@ Options:
   --language <en|de>     Language for model prose and deterministic Markdown copy (default: en)
   --max-run-minutes <n>  Complete workflow deadline, 1-10 (default: 10)
   --max-cost-usd <n>     Immutable conservative Claude ceiling for a new durable session, including resumes, $0 < n <= $25 (default: $2)
+  --max-total-model-input-tokens <n>
+                         Advanced immutable run-wide input-token ceiling, 1,000-1,000,000 (default: 350,000)
   --effort <mode>         auto|lookup|analysis|deep (default: auto)
   --plan-approval <mode>  automatic; omitted deep plans stop for review
   --scope-expansion <m>   strict|ask|exact-linked (default: ask)

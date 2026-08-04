@@ -21,8 +21,30 @@ import {
   decodeResearchSearchInputV1 as decodeFromExtension,
 } from "../../../apps/extension/utils/research/capability-contracts.js";
 import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
+import * as deepagentsBrowser from "deepagents/browser";
+import * as deepagentsNode from "deepagents/node";
 
 describe("@atlcli/research import boundaries", () => {
+  it("pins the required DeepAgentsJS common surface without leaking Node-only exports", () => {
+    const requiredCommon = [
+      "CompositeBackend",
+      "StateBackend",
+      "createDeepAgent",
+      "createFilesystemMiddleware",
+      "createSubAgentMiddleware",
+      "createSummarizationMiddleware",
+      "registerHarnessProfile",
+    ] as const;
+    for (const symbol of requiredCommon) {
+      expect(typeof deepagentsNode[symbol], `node:${symbol}`).toBe("function");
+      expect(typeof deepagentsBrowser[symbol], `browser:${symbol}`).toBe("function");
+    }
+    expect("LocalShellBackend" in deepagentsNode).toBe(true);
+    expect("LocalShellBackend" in deepagentsBrowser).toBe(false);
+    expect("SUBAGENT_RESPONSE_FORMAT_CONFIG_KEY" in deepagentsNode).toBe(true);
+    expect("SUBAGENT_RESPONSE_FORMAT_CONFIG_KEY" in deepagentsBrowser).toBe(false);
+  });
+
   it("keeps default, browser, and legacy extension imports behavior-identical", () => {
     expect(defaultRequestSchema).toBe(browserRequestSchema);
     expect(DefaultResearchContractError).toBe(BrowserResearchContractError);

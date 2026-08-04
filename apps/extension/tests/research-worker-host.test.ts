@@ -150,7 +150,12 @@ describe("dedicated research worker host", () => {
       turnId: "research-turn:resume",
       apiKey: "synthetic-key",
       resume: true,
-    });
+      // Hostile stale presenter fields are deliberately not part of the input
+      // contract and must never be forwarded as resume authority.
+      request,
+      policy,
+      sessionSnapshot: { revision: 999, status: "complete" },
+    } as never);
 
     expect(worker.posted).toEqual([{
       kind: "research-worker:run",

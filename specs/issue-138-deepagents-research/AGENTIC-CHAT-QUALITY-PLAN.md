@@ -1,7 +1,6 @@
 # Agentic Chat Quality Workflow
 
-Status: **reviewer findings incorporated; proposed for product review; no runtime
-implementation has started**
+Status: **T0 verified; T1 implementation next**
 
 ## 1. Objective
 
@@ -91,16 +90,21 @@ baseline, not implementation discoveries to defer:
   task journaling, and cancellation must therefore run inside the bridge/host
   dispatcher itself.
 - `config.signal` reaches model and subagent calls, but an active QuickJS eval is
-  not cooperatively `AbortSignal`-aware. It ends at its interpreter
-  `executionTimeoutMs` (30 seconds by default), so Deep Chat must use short
-  one-shot/continuation eval slices plus dispatcher cancellation checks.
+  not cooperatively `AbortSignal`-aware. The pinned interpreter's exported
+  `executionTimeoutMs` default is 5 seconds; the current product passes explicit
+  values up to 60 seconds for worker evals and a run-wide value for the dynamic
+  supervisor. Deep Chat must therefore use measured short one-shot/continuation
+  eval slices plus dispatcher cancellation checks rather than rely on either the
+  upstream default or today's explicit values.
 - QuickJS state is in-memory and is deleted after the agent turn. Durable
   workflow state, evidence reuse, and steering mailboxes belong in the host
   workspace/checkpointer, never in guest variables.
-- QuickJS enforces bounded memory and result projection (currently 64 MB and a
-  default `maxResultChars` of 4,000). Guest code must reduce large source sets to
-  bounded references/packets; schemas must retain depth headroom instead of
-  sitting at the interpreter limit.
+- QuickJS enforces a 64 MiB default memory limit and a 4,000-character console
+  buffer, but the pin does **not** reliably apply `maxResultChars` to the final
+  expression or a bridged `task()` return. The host dispatcher and typed packet
+  validators remain the authoritative byte/depth boundary. Guest code must
+  reduce large source sets to bounded references/packets; schemas must retain
+  depth headroom instead of sitting at the interpreter limit.
 - DeepAgents subagent/event streaming is useful input for observability but does
   not itself provide replayable token streams after an MV3 worker restart.
 
@@ -720,29 +724,80 @@ separate user-visible gate and does not imply unexercised later checkboxes.
 
 ### T0 — Verify the pinned baseline and accept product invariants
 
-- [ ] Review and accept the mode matrix and Chat/Deep Research boundary.
-- [ ] Confirm that Deep may choose an audited direct plan for a genuinely simple
+- [x] Review and accept the mode matrix and Chat/Deep Research boundary.
+- [x] Confirm that Deep may choose an audited direct plan for a genuinely simple
       exact-context question rather than spawning ceremonial subagents.
-- [ ] Add characterization tests for the pinned DeepAgentsJS/QuickJS seams:
+- [x] Add characterization tests for the pinned DeepAgentsJS/QuickJS seams:
       middleware replacement by the `subAgentMiddleware` merge key, immutable
       built-in registry behavior, direct `createBridgeDispatch` task invocation,
       ToolNode/`wrapToolCall`/`interruptOn` bypass, eval timeout behavior, event
       projection, result/memory bounds, and browser exports.
-- [ ] Establish the architecture-invariant suite: singleton root/task ownership,
+- [x] Establish the architecture-invariant suite: singleton root/task ownership,
       middleware order/no double registration, single prompt/memory/skill
       injection, typed per-run binding, a baseline inventory of persisted fields
       and resume ownership, and exact pinned public API/event/checkpoint contracts.
-- [ ] Record the exact preview package revision and generated lockfile identity
+- [x] Record the exact preview package revision and generated lockfile identity
       used by the characterization suite.
-- [ ] Record numeric Auto/Deep deadline defaults as explicitly unresolved and
+- [x] Record numeric Auto/Deep deadline defaults as explicitly unresolved and
       exclude them from the T0 freeze; T8 owns measurement and the later
       deadline decision. Keep 120/180 seconds as hypotheses, not defaults.
-- [ ] Add the accepted invariants and later measured deadline decision to the
+- [x] Add the accepted invariants and later measured deadline decision to the
       main issue-138 plan without duplicating implementation tasks.
 
 Proof: pinned-package and architecture-invariant suites in Node and browser
 conditions plus explicit product review showing the deadline numbers remain
 unresolved. No runtime feature is implemented merely by checking T0.
+
+#### T0 baseline record
+
+The accepted product boundary is the mode matrix in section 3: Quick is always
+direct, Auto chooses direct or agentic execution, Deep makes an explicit
+strategy decision and may still choose an audited direct plan for a genuinely
+simple exact-context question, and Deep Research remains the only
+coverage-oriented long-running report mode. Numeric Auto/Deep deadlines remain
+unresolved hypotheses until T8 measures them.
+
+The characterization suite is tied to these generated lock identities:
+
+| Package | Preview pin | Installed version | `bun.lock` integrity |
+| --- | --- | --- | --- |
+| `deepagents` | `pkg.pr.new/deepagents@717` | `1.12.1` | `sha512-NV7QNwwhDlo6kp0woq8UtGiz8OLNoA7tGgaDmLRiK5pwOxpV/qcCUtouyyl9hw1PYDBeP40jG+eF8WG7R+kARg==` |
+| `@langchain/quickjs` | `pkg.pr.new/@langchain/quickjs@717` | `1.0.0` | `sha512-oDG0+bwfo3uU4SV3nAbeIyZR094rjCq6BMSRKWjvgADoknw4CHK1+2UnwgmXLupdcu6d5B+8yAmle/WpFGqenQ==` |
+
+Current persisted ownership is inventoried before T6 generalizes it:
+
+| Persisted field group | Current fields/data | Resume authority |
+| --- | --- | --- |
+| Session envelope | schema, session/revision/status, lease, retention, active turn, timestamps | `ResearchSessionStoreV1` plus revision-fenced session reducer |
+| Scope and intent | scope clarification, brief, bindings/resolutions, discoveries/dispositions, assumptions and plan/scope revisions | accepted host session checkpoint; fresh client context may not widen it |
+| Workflow control | approved graph/catalog, graph selection/revisions, steering, pause/cancel/completion/failure state | session reducer and dispatch journal |
+| Work and budgets | task attempts, accepted packet references, reconciliation dispositions, retrieval assessments/continuations, run/model budget projections | dispatch journal, session reducer, and budget checkpoint |
+| Checkpoints | session checkpoints and LangGraph checkpoint/pending-write index | session store and `ResearchSessionWorkspaceCheckpointerV1` |
+| Evidence and artifacts | opaque source refs, content-addressed evidence/claim/outline workspaces, report metadata/body | host-owned session/data workspace stores |
+| Non-persisted runtime | QuickJS globals, provider request objects, hidden reasoning, uncommitted token chunks and UI animation state | no resume authority; reconstruct or report an interruption |
+
+T6 replaces this baseline table with an exhaustive machine-readable lifetime
+registry and hostile-client merge tests. It must not infer new authority from
+the table alone.
+
+T0 proof completed on 2026-08-04:
+
+- 174 focused Node/browser/CLI/MV3 contract tests passed, including pinned
+  runtime seams, singleton-root ownership, host-parity recovery, state lifetime,
+  event privacy, continuation fencing, and worker dispatch.
+- Full workspace typecheck, the production extension build, output/CSP audit,
+  tracked-tree research privacy scan, and all 33 packed MV3 research tests
+  passed.
+- A read-only exact-page DOCSY live run completed through dynamic graph pruning,
+  one focused reader, a terminal checkpoint continuation, and the dedicated
+  synthesizer. It read one of one admitted pages in detail without truncation,
+  used no Jira capability, emitted canonical source links, and produced the
+  external Markdown artifact with 3 PTC calls, 2 HTTP attempts, 113,743 input
+  tokens, 1,582 output tokens, and a reported active duration of 46,948 ms.
+- The live run exposed an existing exact-anchor retrieval-completeness defect:
+  it still performed one search and rendered an inconsistent search-completion
+  warning. This is not hidden as T0 success; T4 owns the direct-anchor and
+  truthful completion proof gates before retrieval quality can be accepted.
 
 ### T1 — Decouple quality policy from provider controls
 
@@ -929,9 +984,9 @@ until calibrated in T10.
       (supervisor, children, broker, pagination, and scope catalog) and expose
       the same cancellation state to the non-signal-aware interpreter bridge.
 - [ ] Run QuickJS orchestration as short one-shot/continuation slices, poll the
-      durable control mailbox in bridge dispatch, and measure/enforce a maximum
-      stop/steering acknowledgement latency far below the current 30-second eval
-      timeout.
+  durable control mailbox in bridge dispatch, and measure/enforce a maximum
+  stop/steering acknowledgement latency far below the current explicitly
+  configured 60-second worker-eval ceiling.
 - [ ] Quarantine late results from cancelled/obsolete graph revisions using the
       existing journal vocabulary; do not add a competing `superseded` state.
 - [ ] Persist ambiguous post-dispatch/pre-commit attempts as the journal's

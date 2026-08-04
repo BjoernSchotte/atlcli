@@ -129,7 +129,7 @@ Sources: [Design issue](https://example.atlassian.net/browse/DEMO-1), [Design pa
 
 ## Inferences
 
-_None._
+_None reported._
 
 ## Relationship hypotheses
 

@@ -918,5 +918,25 @@ describe("research-owned native task dispatch interception", () => {
       codeBytes: 779,
       taskIds: ["deep-jira", "deep-wiki"],
     });
+    expect(result.runtimeInvariants).toEqual({
+      subagentMergeKey: "subAgentMiddleware",
+      middlewareNames: [
+        "FilesystemMiddleware",
+        "subAgentMiddleware",
+        "SummarizationMiddleware",
+        "patchToolCallsMiddleware",
+        "dispatchWrapperCharacterization",
+        "CodeInterpreterMiddleware",
+      ],
+      delegatedTaskToolCount: 1,
+      quickChatTaskToolCount: 0,
+      wrappedToolNames: ["eval"],
+      quickjsDefaults: {
+        executionTimeoutMs: 5_000,
+        memoryLimitBytes: 64 * 1024 * 1024,
+        maxStackSizeBytes: 320 * 1024,
+        maxPtcCalls: 256,
+      },
+    });
   });
 });

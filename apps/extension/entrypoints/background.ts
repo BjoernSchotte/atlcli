@@ -1812,8 +1812,12 @@ export default defineBackground({
   const cancelResearchSession = async (runId: string): Promise<boolean> => {
     const active = activeResearchRuns.get(runId);
     if (!active) return false;
-    const interrupted = await cancelResearch(runId);
-    if (!interrupted) return false;
+    // The worker may acknowledge its terminal abort and disappear between the
+    // routing lookup above and the offscreen interrupt response. The captured
+    // run-to-session binding is still authoritative for this deliberate UI
+    // cancellation, so persist the terminal checkpoint even when the worker
+    // reports that there is no longer anything left to interrupt.
+    await cancelResearch(runId);
     const store = await IndexedDbResearchSessionStoreV1.open();
     try {
       const current = await store.read(active.sessionId);

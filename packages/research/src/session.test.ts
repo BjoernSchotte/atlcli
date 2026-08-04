@@ -81,6 +81,18 @@ function scopeCandidate(input: Partial<ResearchScopeCandidateV1> = {}): Research
   };
 }
 
+test("persists a deliberate cancellation before the first brief is accepted", () => {
+  const current = session();
+  const cancelled = update(current, { kind: "cancel" }, "2026-08-01T09:00:01.000Z");
+
+  expect(cancelled).toMatchObject({
+    status: "cancelled",
+    revision: current.revision + 1,
+    updatedAt: "2026-08-01T09:00:01.000Z",
+    turns: [],
+  });
+});
+
 function admittedTask(current: ResearchSessionV1): ResearchTaskAttemptV1 {
   const node = current.turns[0]!.graph!.nodes.find((candidate) => candidate.status === "ready")!;
   return {
