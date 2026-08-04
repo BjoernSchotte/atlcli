@@ -222,10 +222,22 @@ the stable prefix. Providers without caching support must preserve correctness.
 
 ## 5. Shared agentic workflow architecture
 
-There is one root `createDeepAgent` supervisor per active turn. Do not create a
-second root agent instance for planning, routing, critique, or synthesis.
-Compiled depth-one child profiles are dispatched by that supervisor through the
-host control plane; they are not independent root conversations.
+There is one logical root `createDeepAgent` supervisor execution per active
+turn. Do not create a second root execution for planning, routing, critique, or
+synthesis. Compiled depth-one child profiles are dispatched by that supervisor
+through the host control plane; they are not independent root conversations.
+
+Logical execution count and physical graph construction are separate concerns.
+A host may construct the root once per turn or reuse an already compiled,
+immutable root graph across compatible turns/sessions when its DeepAgentsJS
+runtime supports that safely. Every mutable or identity-bearing value—tenant,
+profile, thread, revision, selected scope/tools, credentials, provider/cache
+headers, model role, cancellation signal, steering mailbox, checkpointer, and
+workspace handle—must still be resolved from typed per-run context. A reused
+graph may retain no user, source, credential, budget, or conversation state in
+closures or middleware instances. Per-turn construction remains the safe
+fallback and reuse is adopted only when isolation tests and measurements prove a
+material benefit.
 
 ```mermaid
 flowchart TD
@@ -308,6 +320,37 @@ validator depth. Large Confluence/Jira bodies remain in the evidence store;
 guest code filters and reduces IDs/metadata rather than copying complete bodies
 into QuickJS or child prompts. Boundary and near-limit fixtures must fail closed
 with a typed limitation instead of silent truncation.
+
+### Architecture invariants
+
+Cross-cutting assumptions are executable contracts rather than comments. A
+focused invariant suite must fail loudly when any of these change:
+
+- exactly one logical root execution owns a turn; when delegation is enabled,
+  exactly one authorized `task` surface owns child dispatch, while Quick Chat
+  exposes none;
+- the pinned `subAgentMiddleware` replacement remains in its documented stack
+  position and no built-in/custom middleware double-registers `task`, filesystem,
+  HITL, summarization, prompt caching, or patch-tool behavior;
+- middleware ordering preserves authorization and privacy outside execution,
+  lifecycle/journal projection around accepted calls, and provider optimization
+  at the model boundary;
+- reusable graph objects and shared model/tool descriptors remain immutable and
+  user-neutral; all identity, authorization, provider-cache, workspace, and
+  control data comes from typed run context;
+- static prompt, skills, memory, tool-schema, and provider-cache segments are
+  injected once, while turn-specific text/evidence remains outside reusable
+  prefixes;
+- every persisted state field has one declared lifetime and resume owner, and
+  client-supplied snapshots cannot overwrite checkpoint-owned authority;
+- public DeepAgentsJS/QuickJS kwargs, middleware merge names, bridge behavior,
+  browser/Node exports, event schemas, and checkpoint semantics still match the
+  exact pinned revision.
+
+The suite runs in Node and browser conditions. Where physical root reuse is
+supported, the same trajectory is executed with per-turn construction and a
+reused compiled root across distinct users, threads, scopes, and abort/steering
+states; outputs and authorized calls must match without cross-run leakage.
 
 ## 6. Retrieval quality policy
 
@@ -493,6 +536,28 @@ type ChatControlV1 =
   | { kind: "stop"; reason?: string };
 ```
 
+### State lifetimes and resume ownership
+
+The shared state schema must classify every field into exactly one lifetime.
+Classification is machine-readable and exhaustively tested; adding an
+unclassified field fails CI.
+
+| Lifetime | Examples | Authority on resume |
+| --- | --- | --- |
+| Durable, model-visible | bounded conversation context, accepted compact evidence packets, durable filesystem references | Host checkpoint; never replaced by a client snapshot |
+| Durable, UI restore | final answers, HITL questions, queue items, safe activity events, report/artifact references | Host checkpoint/event store |
+| Durable orchestration | turn/revision IDs, accepted workflow, task attempts, candidate/evidence ledgers, budgets, controls, checkpoints, `outcome_unknown` | Host journal/checkpoint only; not model or presenter authority |
+| Client-provided per turn | current visible-page context, newly selected chips, locale, presenter capabilities | Fresh authenticated client input after scope validation |
+| Transient progress | active animation, current phase label, partial child status, uncommitted provider chunks | Recomputed from durable state or replaced by the active run |
+| Observability | trace/span IDs and private diagnostic correlation | Server/runtime; never authorization evidence |
+
+Resume merging is allowlisted by lifetime. Checkpoint-owned fields are scrubbed
+from inbound client state before execution; fresh per-turn context may narrow but
+never widen host authorization. Durable model-visible context remains bounded and
+compacted. Raw source bodies, hidden reasoning, QuickJS variables, transient token
+chunks, credentials, and provider request objects are never promoted into durable
+conversation state merely because a presenter observed them.
+
 - Normal Enter queues a follow-up while a turn is active.
 - Queued follow-ups are FIFO and remain editable/deletable until admitted as a
   new turn. Adding more messages stacks them; it does not overwrite the queue.
@@ -663,6 +728,10 @@ separate user-visible gate and does not imply unexercised later checkboxes.
       built-in registry behavior, direct `createBridgeDispatch` task invocation,
       ToolNode/`wrapToolCall`/`interruptOn` bypass, eval timeout behavior, event
       projection, result/memory bounds, and browser exports.
+- [ ] Establish the architecture-invariant suite: singleton root/task ownership,
+      middleware order/no double registration, single prompt/memory/skill
+      injection, typed per-run binding, a baseline inventory of persisted fields
+      and resume ownership, and exact pinned public API/event/checkpoint contracts.
 - [ ] Record the exact preview package revision and generated lockfile identity
       used by the characterization suite.
 - [ ] Record numeric Auto/Deep deadline defaults as explicitly unresolved and
@@ -671,9 +740,9 @@ separate user-visible gate and does not imply unexercised later checkboxes.
 - [ ] Add the accepted invariants and later measured deadline decision to the
       main issue-138 plan without duplicating implementation tasks.
 
-Proof: pinned-package contract suite in Node and browser conditions plus explicit
-product review showing the deadline numbers remain unresolved. No runtime feature
-is implemented merely by checking T0.
+Proof: pinned-package and architecture-invariant suites in Node and browser
+conditions plus explicit product review showing the deadline numbers remain
+unresolved. No runtime feature is implemented merely by checking T0.
 
 ### T1 — Decouple quality policy from provider controls
 
@@ -702,7 +771,13 @@ fake providers.
       synthesis from research-only naming into an internal host-neutral
       agentic-workflow core. Do not claim fair-share allocation or FIFO queueing
       through extraction; T6/T8 introduce those missing primitives explicitly.
-- [ ] Retain one `createDeepAgent` supervisor construction per active turn.
+- [ ] Retain one logical `createDeepAgent` supervisor execution per active turn;
+      never create separate root executions for routing, critique, repair, or
+      synthesis.
+- [ ] Separate immutable graph construction from typed per-run binding. Keep
+      per-turn construction as the baseline, then optionally reuse a compiled root
+      within a compatible host only if cross-user/thread/scope/control isolation
+      and measured startup/latency benefit are proven.
 - [ ] Add `conversation-answer` and `research-report` completion objectives.
 - [ ] Replace the pinned built-in middleware by name with the repository-owned
       `subAgentMiddleware`; resolve only host-registered, depth-one profiles.
@@ -719,7 +794,10 @@ fake providers.
 Proof: current Deep Research graph tests remain unchanged and green; new Chat
 tests exercise the same core with the answer objective, reject an unknown
 `subagent_type`, and prove a bridged QuickJS task cannot bypass authorization,
-HITL, budget, cancellation, or the dispatch journal.
+HITL, budget, cancellation, or the dispatch journal. A differential harness runs
+the same turns with fresh and reused graph construction across distinct users,
+threads, scopes, provider-cache identities, abort signals, and steering state;
+reuse is disabled unless trajectories match and no cross-run value leaks.
 
 ### T3 — Dynamic agentic Chat composition
 
@@ -829,6 +907,14 @@ until calibrated in T10.
 
 ### T6 — Durable execution and steering
 
+- [ ] Introduce one machine-readable state-lifetime registry covering durable
+      model-visible, durable UI-restore, durable orchestration, client-per-turn,
+      transient-progress, and observability fields; fail CI for missing or
+      multiply classified fields.
+- [ ] Implement lifetime-aware resume merging: checkpoint/journal authority wins
+      for durable fields, fresh authenticated client context may only narrow
+      authorized scope, and transient progress is reconstructed rather than
+      accepted as authority.
 - [ ] Extend the durable session model with Chat workflow revisions, frontiers,
       task attempts, accepted packets, quality assessments, and resumable
       deadline checkpoints.
@@ -859,7 +945,8 @@ until calibrated in T10.
 - [ ] Preserve existing conversation summarization, provider prompt caching, and
       compact long-turn context in durable host state rather than QuickJS vars.
 
-Proof: fault injection before/after task start, external invocation, result
+Proof: exhaustive state-classification and hostile-client resume tests plus fault
+injection before/after task start, external invocation, result
 commit, checkpoint, steering commit/application, and synthesis is covered by a
 deterministic unit/property state-machine suite. Durable-beta E2E is limited to
 five representative boundaries: crash before dispatch; crash after external
@@ -968,6 +1055,9 @@ the full CLI/MV3 fault matrix. All shapes preserve the same product semantics.
       contribution, latency, model tokens, and Atlassian call count.
 - [ ] Evaluate trajectory, final answer, durable state, single decisions, full
       turns, and multi-turn sessions.
+- [ ] Run architecture-invariant and fresh-versus-reused-root differential tests
+      as release-blocking non-quality gates; benchmark construction reuse
+      separately and keep the safe per-turn fallback when benefit is immaterial.
 - [ ] Calibrate every rubric/LLM judge against hand-labelled anchors, publish
       agreement/error/confusion metrics, and keep it diagnostic until the review
       accepts a release-gate threshold.
@@ -997,7 +1087,8 @@ feedback text, tenant-derived report, or evaluation trace is committed.
       bridge/interrupt/stream limitations, and a deliberate upgrade policy.
 - [ ] Make upstream upgrades conditional on the T0 seam contract suite covering
       middleware merge-by-name, registry closure, bridge dispatch, cancellation,
-      interpreter limits, checkpointer behavior, and event/stream shapes.
+      interpreter limits, checkpointer behavior, state-lifetime completeness,
+      per-run binding isolation, and event/stream shapes.
 - [ ] After durable-beta user testing, decide whether seamless mid-token reconnect
       justifies exact committed chunk/cursor replay. If accepted, prove no
       duplicate/missing Markdown across MV3 recycle; otherwise document the
@@ -1063,6 +1154,17 @@ Recommended defaults for approval:
     candidate ledger, measurable completion signals, and gap-directed repair as
     release-blocking answer-quality contracts. Search-result count or a fixed
     read cap can never stand in for coverage.
+13. **Root construction:** require one logical root execution per turn, but do not
+    confuse that invariant with mandatory per-turn graph compilation. Reuse an
+    immutable compiled root only behind typed per-run binding, isolation proof,
+    and a measured material latency benefit; otherwise retain the safe per-turn
+    construction path.
+14. **State ownership:** classify every state field by lifetime and resume owner.
+    Host checkpoint/journal state cannot be overwritten by presenter snapshots,
+    and transient UI/provider data never becomes durable authority implicitly.
+15. **Architecture regression:** keep a focused Node/browser invariant suite for
+    tool ownership, middleware order, prompt/memory injection, per-run isolation,
+    state classification, pinned APIs, events, and checkpoint behavior.
 
 ## 13. Finding traceability
 
@@ -1087,5 +1189,8 @@ Recommended defaults for approval:
 | P3.1 pragmatic eval start and feedback | Evaluation gate | T10 | Initial hand-labelled set, single-step metrics, privacy-safe feedback contract |
 | P3.2 checkpoint restore only at committed boundaries | Durability section | T6 | Fault injection including `outcome_unknown`; no mid-call resume claim |
 | P3.3 optional cheap domain detection | Dynamic composition | T3, T10 | Adopt only after baseline A/B routing data meets quality gate |
+| A.1 logical root execution versus physical graph construction | Shared architecture | T0, T2, T10 | Fresh/reused differential isolation and latency proof with safe fallback |
+| A.2 state lifetime and resume ownership | Durability section | T0, T6, T9 | Exhaustive classification plus hostile/stale client snapshot resume tests |
+| A.3 cross-cutting architecture drift | Architecture invariants | T0, T2, T6, T11 | Node/browser invariant suite for ownership, ordering, injection, binding, APIs, events, and checkpoints |
 
 Implementation starts only after these decisions and this plan are reviewed.
