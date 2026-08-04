@@ -20,6 +20,7 @@ import {
   RESEARCH_REPORT_ARTIFACT_PATH_V1,
   ResearchContractError,
   type ResearchOneShotEventV1,
+  type ResearchOneShotPolicyV1,
   type ResearchProduct,
   type ResearchProgressV1,
   type ResearchReport,
@@ -2751,7 +2752,8 @@ export function createResearchCheckpointTranscriptCompactionMiddleware(options: 
 function createAnthropicModel(
   apiKey: string,
   maxTokens: number,
-  effort?: "low" | "medium",
+  effort?: "low" | "medium" | "high",
+  adaptiveThinking = false,
 ): ChatAnthropic {
   const normalized = apiKey.trim();
   if (!normalized) {
@@ -2763,12 +2765,40 @@ function createAnthropicModel(
   return new ChatAnthropic({
     model: RESEARCH_MODEL_ID,
     apiKey: normalized,
-    temperature: 0,
     maxTokens,
     maxRetries: 0,
     streaming: false,
+    ...(adaptiveThinking
+      ? { thinking: { type: "adaptive" as const } }
+      : { temperature: 0 }),
     ...(effort ? { outputConfig: { effort } } : {}),
   });
+}
+
+export interface AnthropicChatReasoningV1 {
+  effort: "low" | "medium" | "high";
+  adaptiveThinking: boolean;
+}
+
+/**
+ * Translate host-owned chat policy into Anthropic's provider controls.
+ * `auto` uses adaptive thinking at Anthropic's recommended Sonnet 4.6 balance;
+ * `quick` prioritizes latency without thinking blocks; `deep` enables adaptive
+ * thinking at high effort. None of these modes changes the chat workflow.
+ */
+export function resolveAnthropicChatReasoningV1(
+  policy?: Pick<ResearchOneShotPolicyV1, "requestedEffort">,
+): AnthropicChatReasoningV1 {
+  switch (policy?.requestedEffort ?? "auto") {
+    case "lookup":
+      return { effort: "low", adaptiveThinking: false };
+    case "analysis":
+      return { effort: "medium", adaptiveThinking: true };
+    case "deep":
+      return { effort: "high", adaptiveThinking: true };
+    case "auto":
+      return { effort: "medium", adaptiveThinking: true };
+  }
 }
 
 function createAnthropicSubagentModels(
@@ -3649,11 +3679,17 @@ async function runResearchAgentWithBindings(
     maxCalls: input.request.limits.maxPtcCalls,
   });
 
+  const chatReasoning =
+    !isDynamic && input.options?.mode === "chat"
+      ? resolveAnthropicChatReasoningV1(input.options.policy)
+      : undefined;
   const model =
     input.model ??
     createAnthropicModel(
       input.apiKey ?? "",
       input.request.limits.maxModelOutputTokens,
+      chatReasoning?.effort,
+      chatReasoning?.adaptiveThinking,
     );
   const modelsByRole = input.model
     ? undefined

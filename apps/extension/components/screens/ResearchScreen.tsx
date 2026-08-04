@@ -23,12 +23,14 @@ import type {
 } from "../../utils/screens/registry.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  chatPolicyForThinkingModeV1,
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
   ResearchContractError,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   type ResearchOneShotEventV1,
+  type ChatThinkingModeV1,
   type ResearchPort,
   type ResearchRequestedEffortV1,
   type ResearchRequestedPlanApprovalV1,
@@ -90,7 +92,7 @@ type ResearchInteractionMode = "chat" | "deep";
 
 const RESEARCH_INTERACTION_MODE_POLICY = {
   chat: {
-    requestedEffort: "lookup",
+    requestedEffort: "auto",
     requestedPlanApproval: "automatic",
     scopeExpansionMode: "ask",
     requestedReconciliation: "off",
@@ -876,6 +878,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [composerAddMenuOpen, setComposerAddMenuOpen] = useState(false);
   const [conversationMenuOpen, setConversationMenuOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<ResearchInteractionMode>("chat");
+  const [chatThinkingMode, setChatThinkingMode] = useState<ChatThinkingModeV1>("auto");
   const [jiraProjects, setJiraProjects] = useState("");
   const [confluenceSpaces, setConfluenceSpaces] = useState("");
   const [includeCurrentContext, setIncludeCurrentContext] = useState(true);
@@ -2092,8 +2095,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     else setConfluenceSpaces(next);
   }
 
-  function selectInteractionMode(mode: ResearchInteractionMode): void {
-    const policy = RESEARCH_INTERACTION_MODE_POLICY[mode];
+  function selectInteractionMode(
+    mode: ResearchInteractionMode,
+    thinkingMode: ChatThinkingModeV1 = chatThinkingMode,
+  ): void {
+    const policy = mode === "chat"
+      ? chatPolicyForThinkingModeV1(thinkingMode)
+      : RESEARCH_INTERACTION_MODE_POLICY.deep;
     setInteractionMode(mode);
     setEffort(policy.requestedEffort);
     setPlanApproval(policy.requestedPlanApproval);
@@ -2101,10 +2109,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     setReconciliation(policy.requestedReconciliation);
   }
 
+  function selectChatThinkingMode(mode: ChatThinkingModeV1): void {
+    setChatThinkingMode(mode);
+    if (interactionMode === "chat") {
+      setEffort(chatPolicyForThinkingModeV1(mode).requestedEffort);
+    }
+  }
+
   async function startNewConversation(): Promise<void> {
     if (running) return;
     await port?.resetChatConversation?.();
-    selectInteractionMode("chat");
+    setChatThinkingMode("auto");
+    selectInteractionMode("chat", "auto");
     setQuestion("");
     setChatTurns([]);
     setQueuedChatMessages([]);
@@ -2615,6 +2631,23 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                     {t("research.chat.mode.deepShort")}
                   </button>
                 </div>
+                {interactionMode === "chat" && (
+                  <Select
+                    value={chatThinkingMode}
+                    onChange={(event) => selectChatThinkingMode(
+                      event.target.value as ChatThinkingModeV1,
+                    )}
+                    disabled={running}
+                    aria-label={t("research.chat.thinking.label")}
+                    title={t("research.chat.thinking.label")}
+                    className="h-7 w-[7.75rem] min-w-0 rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid="research-chat-thinking"
+                  >
+                    <option value="auto">{t("research.chat.thinking.auto")}</option>
+                    <option value="quick">{t("research.chat.thinking.quick")}</option>
+                    <option value="deep">{t("research.chat.thinking.deep")}</option>
+                  </Select>
+                )}
                 <div className="ml-auto">
                   <ComposerSendButton
                     disabled={running ? false : question.trim().length === 0}
@@ -2718,62 +2751,66 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="research-effort">{t("research.effort")}</Label>
-              <Select
-                id="research-effort"
-                data-testid="research-effort"
-                value={effort}
-                onChange={(event) => setEffort(event.target.value as ResearchRequestedEffortV1)}
-                disabled={running}
-              >
-                <option value="auto">{t("research.effort.auto")}</option>
-                <option value="lookup">{t("research.effort.lookup")}</option>
-                <option value="analysis">{t("research.effort.analysis")}</option>
-                <option value="deep">{t("research.effort.deep")}</option>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="research-plan-approval">{t("research.planApproval")}</Label>
-              <Select
-                id="research-plan-approval"
-                data-testid="research-plan-approval"
-                value={planApproval}
-                onChange={(event) => setPlanApproval(event.target.value as ResearchRequestedPlanApprovalV1)}
-                disabled={running}
-              >
-                <option value="default">{t("research.planApproval.default")}</option>
-                <option value="automatic">{t("research.planApproval.automatic")}</option>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="research-scope-expansion">{t("research.scopeExpansion")}</Label>
-              <Select
-                id="research-scope-expansion"
-                data-testid="research-scope-expansion"
-                value={scopeExpansion}
-                onChange={(event) => setScopeExpansion(event.target.value as ResearchScopeExpansionModeV1)}
-                disabled={running}
-              >
-                <option value="strict">{t("research.scopeExpansion.strict")}</option>
-                <option value="ask">{t("research.scopeExpansion.ask")}</option>
-                <option value="exact-linked">{t("research.scopeExpansion.exactLinked")}</option>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="research-reconciliation">{t("research.reconciliation")}</Label>
-              <Select
-                id="research-reconciliation"
-                data-testid="research-reconciliation"
-                value={reconciliation}
-                onChange={(event) => setReconciliation(event.target.value as ResearchRequestedReconciliationV1)}
-                disabled={running}
-              >
-                <option value="off">{t("research.reconciliation.off")}</option>
-                <option value="auto">{t("research.reconciliation.auto")}</option>
-                <option value="required">{t("research.reconciliation.required")}</option>
-              </Select>
-            </div>
+            {interactionMode === "deep" && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="research-effort">{t("research.effort")}</Label>
+                  <Select
+                    id="research-effort"
+                    data-testid="research-effort"
+                    value={effort}
+                    onChange={(event) => setEffort(event.target.value as ResearchRequestedEffortV1)}
+                    disabled={running}
+                  >
+                    <option value="auto">{t("research.effort.auto")}</option>
+                    <option value="lookup">{t("research.effort.lookup")}</option>
+                    <option value="analysis">{t("research.effort.analysis")}</option>
+                    <option value="deep">{t("research.effort.deep")}</option>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="research-plan-approval">{t("research.planApproval")}</Label>
+                  <Select
+                    id="research-plan-approval"
+                    data-testid="research-plan-approval"
+                    value={planApproval}
+                    onChange={(event) => setPlanApproval(event.target.value as ResearchRequestedPlanApprovalV1)}
+                    disabled={running}
+                  >
+                    <option value="default">{t("research.planApproval.default")}</option>
+                    <option value="automatic">{t("research.planApproval.automatic")}</option>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="research-scope-expansion">{t("research.scopeExpansion")}</Label>
+                  <Select
+                    id="research-scope-expansion"
+                    data-testid="research-scope-expansion"
+                    value={scopeExpansion}
+                    onChange={(event) => setScopeExpansion(event.target.value as ResearchScopeExpansionModeV1)}
+                    disabled={running}
+                  >
+                    <option value="strict">{t("research.scopeExpansion.strict")}</option>
+                    <option value="ask">{t("research.scopeExpansion.ask")}</option>
+                    <option value="exact-linked">{t("research.scopeExpansion.exactLinked")}</option>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="research-reconciliation">{t("research.reconciliation")}</Label>
+                  <Select
+                    id="research-reconciliation"
+                    data-testid="research-reconciliation"
+                    value={reconciliation}
+                    onChange={(event) => setReconciliation(event.target.value as ResearchRequestedReconciliationV1)}
+                    disabled={running}
+                  >
+                    <option value="off">{t("research.reconciliation.off")}</option>
+                    <option value="auto">{t("research.reconciliation.auto")}</option>
+                    <option value="required">{t("research.reconciliation.required")}</option>
+                  </Select>
+                </div>
+              </>
+            )}
             <div className="flex flex-col gap-1">
               <Label htmlFor="research-max-cost-usd">{t("research.maxCost")}</Label>
               <Input

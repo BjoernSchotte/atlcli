@@ -805,13 +805,19 @@ describe("research CLI one-shot contract", () => {
     expect(parsed.question).toBe("Summarize DOCSY");
     expect(parsed.spaceKeys).toEqual(["DOCSY"]);
     expect(parsed.policy).toMatchObject({
-      requestedEffort: "lookup",
+      requestedEffort: "auto",
       requestedPlanApproval: "automatic",
       requestedReconciliation: "off",
     });
     expect(() =>
       parseChatCliInput(["question"], { effort: "deep" }),
     ).toThrow("Use `atlcli research`");
+    expect(parseChatCliInput(["question"], { thinking: "quick" }).policy)
+      .toMatchObject({ requestedEffort: "lookup" });
+    expect(parseChatCliInput(["question"], { thinking: "deep" }).policy)
+      .toMatchObject({ requestedEffort: "deep" });
+    expect(() => parseChatCliInput(["question"], { thinking: "maximum" }))
+      .toThrow("--thinking must be one of");
   });
 
   test("keeps ordinary chat bounded below the deep-research envelope", () => {
@@ -829,9 +835,17 @@ describe("research CLI one-shot contract", () => {
       maxDetailItemsPerProduct: 6,
       maxPtcCalls: 16,
       maxHttpCalls: 20,
-      maxModelOutputTokens: 4_096,
+      maxModelOutputTokens: 8_000,
       maxModelCostMicros: 500_000,
     });
+    const quickRequest = buildChatRequest(
+      parseChatCliInput(["Summarize DOCSY"], {
+        space: "DOCSY",
+        thinking: "quick",
+      }),
+      profile,
+    );
+    expect(quickRequest.limits.maxModelOutputTokens).toBe(4_096);
   });
 
   test("runs Confluence-only CLI chat without a research graph or Jira scope", async () => {
@@ -847,6 +861,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.chatRunInputs[0]).toMatchObject({
       sessionId: "research-session:cli-plan",
       conversation: { sessionId: "research-session:cli-plan" },
+      policy: { requestedEffort: "auto" },
       request: {
         scope: {
           jiraProjectKeys: [],
@@ -868,7 +883,7 @@ describe("research CLI one-shot contract", () => {
     );
     await handleChat(
       ["Which part matters most?"],
-      { session: "research-session:cli-plan" },
+      { session: "research-session:cli-plan", thinking: "deep" },
       { json: false },
       harness.dependencies,
     );
@@ -882,6 +897,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.chatRunInputs[1]?.request.question).toBe(
       "Which part matters most?",
     );
+    expect(harness.chatRunInputs[1]?.policy.requestedEffort).toBe("deep");
     expect(harness.chatRunInputs[1]?.request.scope).toMatchObject({
       jiraProjectKeys: [],
       confluenceSpaceKeys: ["DOCSY"],

@@ -373,9 +373,13 @@ describe("portable Research screen", () => {
     expect(dom.find("research-context-chips").textContent).toContain("Design");
     expect(dom.find("research-context-chips").textContent).not.toContain("confluence: KB");
     expect(dom.find("research-mode-chat").getAttribute("aria-pressed")).toBe("true");
+    expect((dom.find("research-chat-thinking") as HTMLSelectElement).value).toBe("auto");
+    await dom.setValue("research-chat-thinking", "deep");
+    expect((dom.find("research-chat-thinking") as HTMLSelectElement).value).toBe("deep");
     expect(dom.find("research-run").getAttribute("aria-label")).toBe("Send answer");
     await dom.click("research-mode-deep");
     expect(dom.find("research-mode-deep").getAttribute("aria-pressed")).toBe("true");
+    expect(dom.maybeFind("research-chat-thinking")).toBeNull();
     expect(dom.find("research-run").getAttribute("aria-label")).toBe("Run research");
     expect((dom.find("research-effort") as HTMLSelectElement).value).toBe("deep");
     expect((dom.find("research-plan-approval") as HTMLSelectElement).value).toBe("default");
@@ -383,6 +387,7 @@ describe("portable Research screen", () => {
     await openConversationMenu();
     await dom.click("research-new-conversation");
     expect(dom.find("research-mode-chat").getAttribute("aria-pressed")).toBe("true");
+    expect((dom.find("research-chat-thinking") as HTMLSelectElement).value).toBe("auto");
 
     expect(dom.maybeFind("research-composer-add-menu")).toBeNull();
     expect(dom.find("research-composer-add-menu-toggle").getAttribute("aria-expanded")).toBe("false");
@@ -454,7 +459,7 @@ describe("portable Research screen", () => {
 
     expect((dom.find("research-settings") as HTMLDetailsElement).open).toBe(false);
     expect(dom.find("research-chat-welcome").textContent).toContain("Ask a research question");
-    await dom.setValue("research-effort", "lookup");
+    await dom.setValue("research-chat-thinking", "quick");
     await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "How are DEMO-1 and KB related?");
     await dom.click("research-run");
@@ -524,7 +529,7 @@ describe("portable Research screen", () => {
       </I18nProvider>,
     );
 
-    await dom.setValue("research-effort", "lookup");
+    await dom.setValue("research-chat-thinking", "quick");
     await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "Remember this first turn.");
     await dom.click("research-run");
@@ -568,7 +573,7 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>,
     );
-    await dom.setValue("research-effort", "lookup");
+    await dom.setValue("research-chat-thinking", "quick");
     await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "How are DEMO-1 and KB related?");
     await dom.click("research-run");
@@ -613,7 +618,7 @@ describe("portable Research screen", () => {
         <ResearchScreen {...screenProps(port)} />
       </I18nProvider>,
     );
-    await dom.setValue("research-effort", "lookup");
+    await dom.setValue("research-chat-thinking", "quick");
     await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "How are DEMO-1 and KB related?");
     await dom.click("research-run");
@@ -793,6 +798,7 @@ describe("portable Research screen", () => {
     );
     await dom.setValue("research-max-cost-usd", "1.25");
     await dom.setValue("research-max-run-minutes", "7");
+    await dom.setValue("research-chat-thinking", "quick");
     await dom.toggle("research-disclosure");
     await dom.click("research-run");
     await dom.flush();

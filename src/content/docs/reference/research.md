@@ -43,6 +43,7 @@ ANTHROPIC_API_KEY=... atlcli chat \
   "Summarize the most important changes in DOCS." \
   --profile work \
   --space DOCS \
+  --thinking auto \
   --language en \
   --json
 ```
@@ -63,6 +64,14 @@ unambiguous project, space, issue, page, or URL named in the question. This
 prevents a Confluence-only question from silently creating Jira work. Use
 `research` when the task needs broader discovery or a planned multi-source
 investigation.
+
+Chat thinking is independent from Deep Research. `--thinking auto` enables
+adaptive thinking and lets the model decide how much reasoning the current
+turn needs. Use `--thinking quick` for the lowest-latency chat path or
+`--thinking deep` for a more thorough direct answer. All three remain ordinary
+chat: they create no research graph, subagents, plan review, or reconciliation.
+The extension exposes the same **Automatic**, **Quick**, and **Think deeper**
+choices inside **Chat**; **Deep Research** remains a separate top-level mode.
 
 ## Run from the CLI
 

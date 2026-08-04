@@ -5051,6 +5051,9 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
     { includeScope: false },
   );
   await expect(page.getByTestId("research-mode-chat")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("research-chat-thinking")).toHaveValue("auto");
+  await page.getByTestId("research-chat-thinking").selectOption("quick");
+  await expect(page.getByTestId("research-chat-thinking")).toHaveValue("quick");
   await page.getByTestId("research-run").click();
 
   try {

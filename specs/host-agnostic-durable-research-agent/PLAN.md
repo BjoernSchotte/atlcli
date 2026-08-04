@@ -4306,6 +4306,12 @@ CLI:
       approved test page restored the same checkpoint, performed one exact
       Confluence detail read per turn, produced sourced Markdown, and
       dispatched neither Jira nor subagent work (2026-08-04).
+- [x] Keep workflow mode and model reasoning depth orthogonal. CLI and browser
+      expose `auto`, `quick`, and `deep` thinking inside ordinary Chat; all
+      three stay graphless and subagent-free, while Deep Research remains the
+      separate planned workflow. The Anthropic adapter maps them to adaptive
+      medium, non-thinking low, and adaptive high effort respectively
+      (2026-08-04).
 - [ ] Finalize one-shot, retained-session, resume, list, show, and delete help
       and documentation.
 - [ ] Finalize `--plan-only`, effort/approval flags, plan inspection,

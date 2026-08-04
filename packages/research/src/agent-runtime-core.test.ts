@@ -26,6 +26,7 @@ import {
   hostSearchFreshnessLimitationsV1,
   projectExactDetailReportRequestV1,
   rehydrateResearchCheckpointRunInputV1,
+  resolveAnthropicChatReasoningV1,
   validatedResearchGraphRequiredV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
   type ResearchAgentRuntimeBindings,
@@ -130,6 +131,21 @@ test("permits only explicitly selected direct chat to run without a production g
   expect(validatedResearchGraphRequiredV1({ options: { mode: "research" } })).toBe(true);
   expect(validatedResearchGraphRequiredV1({})).toBe(true);
   expect(validatedResearchGraphRequiredV1({ model: fakeModel() })).toBe(false);
+});
+
+test("maps chat thinking modes to real Anthropic effort and adaptive-thinking controls", () => {
+  expect(resolveAnthropicChatReasoningV1({ requestedEffort: "lookup" })).toEqual({
+    effort: "low",
+    adaptiveThinking: false,
+  });
+  expect(resolveAnthropicChatReasoningV1({ requestedEffort: "auto" })).toEqual({
+    effort: "medium",
+    adaptiveThinking: true,
+  });
+  expect(resolveAnthropicChatReasoningV1({ requestedEffort: "deep" })).toEqual({
+    effort: "high",
+    adaptiveThinking: true,
+  });
 });
 
 test("projects a body-free novelty baseline from accepted V1 and V2 packets", () => {

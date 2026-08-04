@@ -97,6 +97,22 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CHAT_THINKING_MODES_V1
+export declare const CHAT_THINKING_MODES_V1: readonly [
+    "auto",
+    "quick",
+    "deep"
+];
+
+// export: chatPolicyForThinkingModeV1
+export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: chatThinkingModeFromPolicyV1
+export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
+
+// export: ChatThinkingModeV1
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
     code: ResearchErrorCode;
@@ -5233,6 +5249,22 @@ export declare function buildResearchTurnContextV1(input: {
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
 
+// export: CHAT_THINKING_MODES_V1
+export declare const CHAT_THINKING_MODES_V1: readonly [
+    "auto",
+    "quick",
+    "deep"
+];
+
+// export: chatPolicyForThinkingModeV1
+export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: chatThinkingModeFromPolicyV1
+export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
+
+// export: ChatThinkingModeV1
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
     code: ResearchErrorCode;
@@ -10348,6 +10380,22 @@ export declare function buildResearchTurnContextV1(input: {
     turn?: ResearchSessionTurnV1;
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
+
+// export: CHAT_THINKING_MODES_V1
+export declare const CHAT_THINKING_MODES_V1: readonly [
+    "auto",
+    "quick",
+    "deep"
+];
+
+// export: chatPolicyForThinkingModeV1
+export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: chatThinkingModeFromPolicyV1
+export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
+
+// export: ChatThinkingModeV1
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -15493,6 +15541,22 @@ export declare function buildResearchTurnContextV1(input: {
     turn?: ResearchSessionTurnV1;
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
+
+// export: CHAT_THINKING_MODES_V1
+export declare const CHAT_THINKING_MODES_V1: readonly [
+    "auto",
+    "quick",
+    "deep"
+];
+
+// export: chatPolicyForThinkingModeV1
+export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: chatThinkingModeFromPolicyV1
+export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
+
+// export: ChatThinkingModeV1
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -21021,6 +21085,22 @@ export declare function buildResearchTurnContextV1(input: {
     turn?: ResearchSessionTurnV1;
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
+
+// export: CHAT_THINKING_MODES_V1
+export declare const CHAT_THINKING_MODES_V1: readonly [
+    "auto",
+    "quick",
+    "deep"
+];
+
+// export: chatPolicyForThinkingModeV1
+export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: chatThinkingModeFromPolicyV1
+export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
+
+// export: ChatThinkingModeV1
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -26645,6 +26725,22 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: CHAT_THINKING_MODES_V1
+export declare const CHAT_THINKING_MODES_V1: readonly [
+    "auto",
+    "quick",
+    "deep"
+];
+
+// export: chatPolicyForThinkingModeV1
+export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: chatThinkingModeFromPolicyV1
+export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
+
+// export: ChatThinkingModeV1
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -27848,6 +27944,22 @@ export declare function buildResearchTurnContextV1(input: {
     turn?: ResearchSessionTurnV1;
     lineage: ResearchMessageLineageStoreV1;
 }): Promise<ResearchTurnContextV1>;
+
+// export: CHAT_THINKING_MODES_V1
+export declare const CHAT_THINKING_MODES_V1: readonly [
+    "auto",
+    "quick",
+    "deep"
+];
+
+// export: chatPolicyForThinkingModeV1
+export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: chatThinkingModeFromPolicyV1
+export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
+
+// export: ChatThinkingModeV1
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {

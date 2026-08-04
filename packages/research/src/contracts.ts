@@ -21,6 +21,7 @@ export const RESEARCH_REQUESTED_EFFORTS_V1 = [
   "analysis",
   "deep",
 ] as const;
+export const CHAT_THINKING_MODES_V1 = ["auto", "quick", "deep"] as const;
 export const RESEARCH_REQUESTED_PLAN_APPROVALS_V1 = [
   "default",
   "automatic",
@@ -40,6 +41,7 @@ export const RESEARCH_REPORT_LANGUAGES_V1 = ["en", "de"] as const;
 
 export type ResearchRequestedEffortV1 =
   (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number];
+export type ChatThinkingModeV1 = (typeof CHAT_THINKING_MODES_V1)[number];
 export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto">;
 export type ResearchRequestedPlanApprovalV1 =
   (typeof RESEARCH_REQUESTED_PLAN_APPROVALS_V1)[number];
@@ -76,6 +78,38 @@ export const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneShotPolicy
   scopeExpansionMode: "ask",
   requestedReconciliation: "auto",
 };
+
+/**
+ * Project one user-facing chat thinking mode onto the existing host-owned
+ * policy envelope. Chat thinking controls provider reasoning only; it never
+ * enables a research graph, subagents, plan review, or reconciliation.
+ */
+export function chatPolicyForThinkingModeV1(
+  mode: ChatThinkingModeV1,
+): ResearchOneShotPolicyV1 {
+  return {
+    schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+    requestedEffort:
+      mode === "quick" ? "lookup" : mode === "deep" ? "deep" : "auto",
+    requestedPlanApproval: "automatic",
+    scopeExpansionMode: "ask",
+    requestedReconciliation: "off",
+  };
+}
+
+/** Recover the stable presenter label from a normalized direct-chat policy. */
+export function chatThinkingModeFromPolicyV1(
+  policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">,
+): ChatThinkingModeV1 {
+  if (policy.requestedEffort === "lookup") return "quick";
+  if (
+    policy.requestedEffort === "analysis" ||
+    policy.requestedEffort === "deep"
+  ) {
+    return "deep";
+  }
+  return "auto";
+}
 
 export const RESEARCH_TOOL_IDS = [
   "jira.issue.search",

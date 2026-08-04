@@ -18,6 +18,7 @@ import type { Profile } from "@atlcli/core";
 import {
   DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
+  CHAT_THINKING_MODES_V1,
   FileSystemResearchWorkspace,
   RESEARCH_MODEL_ID,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
@@ -47,6 +48,8 @@ import {
   prepareResearchScopePreflightV1,
   prepareDirectChatRequestV1,
   openDurableChatConversationWorkspaceV1,
+  chatPolicyForThinkingModeV1,
+  chatThinkingModeFromPolicyV1,
   runResearchAgent,
   type ResearchBriefPreflightOutcomeV1,
   type ResearchBriefV1,
@@ -171,14 +174,6 @@ const T2_BOOLEAN_FLAGS = [
 const RESEARCH_SESSION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/;
 const CHAT_CONTEXT_REQUEST_PATH_V1 = "/.atlcli/chat-context/v1/request.json";
 
-const CHAT_POLICY_V1 = normalizeResearchOneShotPolicyV1({
-  schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
-  requestedEffort: "lookup",
-  requestedPlanApproval: "automatic",
-  scopeExpansionMode: "ask",
-  requestedReconciliation: "off",
-});
-
 export interface ResearchCliWorkspace extends ResearchWorkspace {
   readonly root: string;
   dispose(): Promise<void>;
@@ -209,6 +204,7 @@ export interface ResearchCliChatAgentInput {
   workspace: ResearchWorkspace;
   sessionId: string;
   conversation: { sessionId: string };
+  policy: ResearchOneShotPolicyV1;
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   writeDiagnostic: (message: string) => void;
@@ -573,6 +569,14 @@ export function parseChatCliInput(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
 ): ResearchCliInput {
+  const thinkingMode = enumFlag(
+    flags,
+    "thinking",
+    CHAT_THINKING_MODES_V1,
+    "auto",
+  );
+  const researchFlags = { ...flags };
+  delete researchFlags.thinking;
   const researchOnly = [
     "from",
     "to",
@@ -590,8 +594,12 @@ export function parseChatCliInput(
       `Chat does not accept research workflow options: ${researchOnly.map((key) => `--${key}`).join(", ")}. Use \`atlcli research\` for a planned deep-research run.`,
     );
   }
-  const parsed = parseResearchCliInput(args, flags);
-  return { ...parsed, policy: CHAT_POLICY_V1, planOnly: false };
+  const parsed = parseResearchCliInput(args, researchFlags);
+  return {
+    ...parsed,
+    policy: chatPolicyForThinkingModeV1(thinkingMode),
+    planOnly: false,
+  };
 }
 
 function requireSessionId(value: string | undefined): string {
@@ -2319,7 +2327,7 @@ export function buildChatRequest(
       maxHttpCalls: Math.min(request.limits.maxHttpCalls, 20),
       maxModelOutputTokens: Math.min(
         request.limits.maxModelOutputTokens,
-        4_096,
+        input.policy.requestedEffort === "lookup" ? 4_096 : 8_000,
       ),
       maxModelCostMicros:
         input.maxCostUsd === undefined
@@ -2457,6 +2465,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       conversation: input.conversation,
       options: {
         mode: "chat",
+        policy: input.policy,
         signal: input.signal,
         onEvent: input.onEvent,
       },
@@ -2939,7 +2948,7 @@ async function runDirectChatCliConversation(input: {
   );
   try {
     input.dependencies.writeStderr(
-      `[chat] model=${RESEARCH_MODEL_ID} profile=${input.profile.name} session=${input.sessionId}\n`,
+      `[chat] model=${RESEARCH_MODEL_ID} thinking=${chatThinkingModeFromPolicyV1(input.cli.policy)} profile=${input.profile.name} session=${input.sessionId}\n`,
     );
     input.dependencies.writeStderr("[chat] running — press Ctrl+C to stop\n");
     const report = await input.dependencies.runChatAgent({
@@ -2949,6 +2958,7 @@ async function runDirectChatCliConversation(input: {
       workspace: input.workspace,
       sessionId: input.sessionId,
       conversation: { sessionId: input.sessionId },
+      policy: input.cli.policy,
       signal: controller.signal,
       writeDiagnostic: (message) =>
         input.dependencies.writeStderr(`[chat] ${message}\n`),
@@ -3416,6 +3426,7 @@ Options:
   --project <key>        Explicit Jira project context (repeatable)
   --space <key>          Explicit Confluence space context (repeatable)
   --session <id>         Continue a retained ordinary chat conversation
+  --thinking <mode>      auto|quick|deep (default: auto)
   --language <en|de>     Response language (default: en)
   --max-run-minutes <n>  Turn deadline, 1-10 (default: 10)
   --max-cost-usd <n>     Conservative model-cost ceiling, $0 < n <= $25
