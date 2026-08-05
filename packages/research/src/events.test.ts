@@ -193,6 +193,15 @@ describe("research one-shot events", () => {
       complete: undefined,
       truncated: false,
     }))).toBe(true);
+    expect(isResearchOneShotEventV1(capabilityEvent({
+      callId: "atlassian.bound.section.read:2",
+      toolId: "atlassian.bound.section.read",
+      inputKind: "detail",
+      itemCount: 1,
+      itemLabels: ["Attached page: Current decision"],
+      complete: undefined,
+      truncated: false,
+    }))).toBe(true);
   });
 
   it("rejects unknown capability and input identifiers", () => {

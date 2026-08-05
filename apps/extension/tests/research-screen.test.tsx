@@ -168,6 +168,24 @@ describe("research activity timeline", () => {
     expect(steps.some((step) => step.kind === "confluence-search" || step.kind === "ranking"))
       .toBe(false);
   });
+
+  it("presents a selected long-page section as a readable activity step", () => {
+    const steps = researchTimelineSteps([{
+      kind: "capability",
+      seq: 1,
+      at: "2026-08-05T12:00:00.000Z",
+      callId: "atlassian.bound.section.read:1",
+      toolId: "atlassian.bound.section.read",
+      inputKind: "detail",
+      status: "completed",
+      itemCount: 1,
+      itemLabels: ["Attached page: Current decision"],
+    }], false);
+
+    expect(steps).toEqual([expect.objectContaining({ kind: "confluence-section-read" })]);
+    expect(steps.some((step) => step.kind === "confluence-search" || step.kind === "ranking"))
+      .toBe(false);
+  });
 });
 
 const v2Report: ResearchReportV2 = {

@@ -171,6 +171,66 @@ describe("Chat answer contract", () => {
     expect(answer.citations).toEqual([]);
     expect(answer.gaps[0]?.sourceIds).toEqual(["wiki:1002"]);
   });
+
+  test("requires a material coverage gap for a cited partial document projection", () => {
+    const source = {
+      id: "wiki:1001",
+      product: "confluence" as const,
+      title: "Long synthetic page",
+      url: "https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001",
+      contentId: "1001",
+      spaceKey: "SPACE",
+    };
+    const base = {
+      sources: [source],
+      detailEvidence: [{
+        source,
+        content: {
+          text: "A visible excerpt supports the positive statement.",
+          inputBytes: 40_000,
+          truncated: true,
+          linkTargets: [],
+        },
+        coverage: {
+          sourceTruncated: false,
+          outlineTruncated: false,
+          projectionTruncated: false,
+          unreadSections: 3,
+          completeDocumentRead: false,
+        },
+      }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+    };
+    const bounded = finalizeChatAnswerV1({
+      ...base,
+      draft: {
+        messageMarkdown: "The complete page contains no other constraint. [[source:wiki:1001]]",
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+    });
+    expect(bounded.messageMarkdown).toContain("Coverage limit");
+    expect(bounded.gaps).toEqual([expect.objectContaining({
+      code: "incomplete-coverage",
+      sourceIds: ["wiki:1001"],
+    })]);
+
+    const answer = finalizeChatAnswerV1({
+      ...base,
+      draft: {
+        messageMarkdown: "The visible section supports the positive statement. [[source:wiki:1001]]",
+        citationSourceIds: ["wiki:1001"],
+        gaps: [{
+          code: "incomplete-coverage",
+          message: "Three unrelated sections were not read.",
+          sourceIds: ["wiki:1001"],
+        }],
+      },
+    });
+    expect(answer.messageMarkdown).toContain("positive statement");
+    expect(answer.gaps).toHaveLength(1);
+  });
 });
 
 describe("separate Chat root", () => {

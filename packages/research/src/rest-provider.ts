@@ -26,6 +26,7 @@ import {
   prependBoundedDetailText,
   type ContentProjectionLimits,
 } from "./content-projection.js";
+import { navigateConfluenceStorageV1 } from "./document-navigation.js";
 
 export interface RestResearchProviderOptions {
   /**
@@ -409,11 +410,17 @@ export function createRestResearchProviders(
           relationIds: ancestors.values,
           commentSummary: comments?.summary,
         });
+        const navigation = navigateConfluenceStorageV1({
+          storage: page.storage,
+          siteOrigin: request.scope.siteOrigin,
+          projectionLimits: limits,
+        });
         return {
           contentId: page.id,
           spaceKey: page.spaceKey ?? "",
           title: page.title,
           ...(page.modified ? { updatedAt: page.modified } : {}),
+          ...(navigation ? { navigation } : {}),
           content: appendBoundedDetailLinks(
             comments
               ? appendBoundedDetailProjection(

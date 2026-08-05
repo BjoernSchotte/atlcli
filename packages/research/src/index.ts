@@ -19,6 +19,7 @@ export * from "./budget.js";
 export * from "./redaction.js";
 export * from "./query.js";
 export * from "./content-projection.js";
+export * from "./document-navigation.js";
 export * from "./cursor-vault.js";
 export * from "./entity-vault.js";
 export * from "./candidate-ranking.js";

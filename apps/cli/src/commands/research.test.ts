@@ -864,6 +864,7 @@ describe("research CLI one-shot contract", () => {
       maxSearchPagesPerProduct: 2,
       maxItemsPerProduct: 20,
       maxDetailItemsPerProduct: 6,
+      maxBodyCharsPerItem: 8_000,
       maxPtcCalls: 16,
       maxHttpCalls: 20,
       maxModelOutputTokens: 8_000,

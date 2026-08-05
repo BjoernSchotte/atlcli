@@ -155,6 +155,7 @@ type ResearchTimelineStepKind =
   | "planning"
   | "confluence-search"
   | "confluence-read"
+  | "confluence-section-read"
   | "bound-read"
   | "jira-search"
   | "jira-read"
@@ -192,6 +193,12 @@ function researchActivityDetailMessages(
           return event.itemLabels.map((label) => t("research.chat.detail.boundRead", { label }));
         }
         return [t("research.chat.detail.boundReadGeneric")];
+      }
+      if (event.toolId === "atlassian.bound.section.read") {
+        if (event.itemLabels?.length) {
+          return event.itemLabels.map((label) => t("research.chat.detail.sectionRead", { label }));
+        }
+        return [t("research.chat.detail.sectionReadGeneric")];
       }
       if (event.toolId === "jira.issue.search" || event.toolId === "jira.project.search") {
         if (event.itemLabels?.length) {
@@ -233,6 +240,7 @@ function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKi
   if (event.kind === "brief" || event.kind === "plan") return "planning";
   if (event.kind === "capability") {
     if (event.toolId === "atlassian.bound.read") return "bound-read";
+    if (event.toolId === "atlassian.bound.section.read") return "confluence-section-read";
     if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
       return "confluence-search";
     }
@@ -794,6 +802,7 @@ function ResearchStreamingTurn({
       case "confluence-read": return exactPage
         ? t("research.chat.phase.confluenceContextRead", { name: exactPage.name })
         : t("research.chat.phase.confluenceRead");
+      case "confluence-section-read": return t("research.chat.phase.confluenceSectionRead");
       case "bound-read": return exactPage
         ? t("research.chat.phase.confluenceContextRead", { name: exactPage.name })
         : exactIssue
@@ -815,6 +824,7 @@ function ResearchStreamingTurn({
         ? t("research.chat.phase.confluenceContext.description")
         : t("research.chat.phase.confluenceSearch.description");
       case "confluence-read": return t("research.chat.phase.confluenceRead.description");
+      case "confluence-section-read": return t("research.chat.phase.confluenceSectionRead.description");
       case "bound-read": return t("research.chat.phase.boundRead.description");
       case "jira-search": return t("research.chat.phase.jiraSearch.description");
       case "jira-read": return t("research.chat.phase.jiraRead.description");

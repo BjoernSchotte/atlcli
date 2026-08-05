@@ -2361,6 +2361,11 @@ export function buildChatRequest(
         request.limits.maxDetailItemsPerProduct,
         6,
       ),
+      // Ordinary Chat starts with a compact page preview plus the bounded
+      // outline. Relevant late sections are selected through opaque refs;
+      // inheriting Research's 50k body projection wastes context and bypasses
+      // the navigable-document path entirely.
+      maxBodyCharsPerItem: Math.min(request.limits.maxBodyCharsPerItem, 8_000),
       maxPtcCalls: Math.min(request.limits.maxPtcCalls, 16),
       maxHttpCalls: Math.min(request.limits.maxHttpCalls, 20),
       maxModelOutputTokens: Math.min(
@@ -2490,6 +2495,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       scope: input.request.scope,
       limits: input.request.limits,
       wikiProvider: input.request.wikiProvider,
+      ...(input.request.reportLanguage ? { locale: input.request.reportLanguage } : {}),
       ...(input.request.scopeSeeds ? { scopeSeeds: input.request.scopeSeeds } : {}),
       ...(input.request.exactContextProducts
         ? { exactContextProducts: input.request.exactContextProducts }

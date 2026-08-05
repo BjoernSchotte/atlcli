@@ -139,6 +139,12 @@ export const BOUND_ENTITY_READ_INPUT_SCHEMA_V1 =
   "atlcli.ptc/atlassian.bound.read.input/v1" as const;
 export const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1 =
   "atlcli.ptc/atlassian.bound.read.output/v1" as const;
+export const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 =
+  "atlassian.bound.section.read" as const;
+export const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1 =
+  "atlcli.ptc/atlassian.bound.section.read.input/v1" as const;
+export const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1 =
+  "atlcli.ptc/atlassian.bound.section.read.output/v1" as const;
 
 /** Body-free, host-issued handle for one already authorized exact entity. */
 export interface BoundEntityAnchorV1 {
@@ -158,6 +164,62 @@ export interface BoundEntityReadOutputV1 {
   source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
   content: BoundedContentProjectionV1;
   /** Exact links observed in the verified body; still usable only by opaque ref. */
+  relatedAnchors: BoundEntityAnchorV1[];
+  /** Present for a navigable Confluence page; contains no section bodies. */
+  document?: BoundDocumentOutlineV1;
+  budget: ResearchBudgetSnapshotV1;
+}
+
+export interface BoundDocumentSectionOutlineV1 {
+  sectionRef: string;
+  sectionId: string;
+  heading: string;
+  level: number;
+  order: number;
+  contentBytes: number;
+  metadata: {
+    macroNames: string[];
+    macroCount: number;
+    macrosTruncated: boolean;
+    linkCount: number;
+    linksTruncated: boolean;
+    jiraIssueKeys: string[];
+  };
+}
+
+export interface BoundDocumentOutlineV1 {
+  sourceTruncated: boolean;
+  outlineTruncated: boolean;
+  projectionTruncated: boolean;
+  genuinelyEmpty: boolean;
+  totalSections: number;
+  unreadSections: number;
+  sections: BoundDocumentSectionOutlineV1[];
+}
+
+export interface BoundEntitySectionReadInputV1 {
+  schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+  sectionRef: string;
+}
+
+export interface BoundEntitySectionReadOutputV1 {
+  schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+  source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+  section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+  content: BoundedContentProjectionV1;
+  support: {
+    sectionId: string;
+    start: number;
+    end: number;
+    evidenceId?: string;
+  };
+  coverage: {
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    unreadSections: number;
+    completeDocumentRead: boolean;
+  };
   relatedAnchors: BoundEntityAnchorV1[];
   budget: ResearchBudgetSnapshotV1;
 }
@@ -366,4 +428,24 @@ export function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInp
     invalid("Bound entity anchor reference is invalid.");
   }
   return { schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1, anchorRef: value.anchorRef };
+}
+
+export function decodeBoundEntitySectionReadInputV1(
+  value: unknown,
+): BoundEntitySectionReadInputV1 {
+  assertRecord(value, "Bound entity section read input");
+  assertExactKeys(value, ["schema", "sectionRef"], "Bound entity section read input");
+  if (value.schema !== BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1) {
+    invalid("Bound entity section read input schema is invalid.");
+  }
+  if (
+    typeof value.sectionRef !== "string" ||
+    !/^research-section:[A-Za-z0-9-]{1,200}$/.test(value.sectionRef)
+  ) {
+    invalid("Bound entity section reference is invalid.");
+  }
+  return {
+    schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+    sectionRef: value.sectionRef,
+  };
 }

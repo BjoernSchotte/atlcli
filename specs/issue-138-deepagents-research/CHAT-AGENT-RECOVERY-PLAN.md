@@ -382,44 +382,54 @@ an unhelpful truncated excerpt.
 
 Implementation:
 
-- [ ] Add a bounded document-outline projection containing canonical section
+- [x] Add a bounded document-outline projection containing canonical section
       identities, headings, ordering, content byte estimates, and structured
       macro/link metadata without full bodies.
-- [ ] Add an authorized section/chunk read capability using only host-issued
+- [x] Add an authorized section/chunk read capability using only host-issued
       section references.
-- [ ] Let the direct Chat root choose relevant sections from the outline and fetch
+- [x] Let the direct Chat root choose relevant sections from the outline and fetch
       additional sections until the question is supported or the Chat budget
       enters finalization reserve.
-- [ ] Preserve exact visible support spans and section identity for citations.
-- [ ] Distinguish source truncation, projection truncation, unread sections, and
+- [x] Preserve exact visible support spans and section identity for citations.
+- [x] Distinguish source truncation, projection truncation, unread sections, and
       genuinely empty content. Do not turn any of them into a claim that content
       is absent from the complete page.
-- [ ] Bound section count, characters, bytes, nodes, depth, calls, concurrency,
+- [x] Bound section count, characters, bytes, nodes, depth, calls, concurrency,
       and cumulative retained evidence.
 
 Automated proof:
 
-- [ ] The relevant evidence exists only in a late section and is still found.
-- [ ] A large irrelevant section is not loaded when the outline identifies a
+- [x] The relevant evidence exists only in a late section and is still found.
+- [x] A large irrelevant section is not loaded when the outline identifies a
       narrower relevant section.
-- [ ] Section references cannot be forged, replayed across tenants, or used after
+- [x] Section references cannot be forged, replayed across tenants, or used after
       their turn/scope revision is obsolete.
-- [ ] Truncation tests distinguish a supported positive excerpt from an
+- [x] Truncation tests distinguish a supported positive excerpt from an
       unsupported whole-document negative claim.
-- [ ] Near-limit and overflow cases fail with a supported partial answer or typed
+- [x] Near-limit and overflow cases fail with a supported partial answer or typed
       gap, never silent clipping or an invented completion claim.
 
 Live acceptance:
 
-- [ ] CLI and MV3 correctly answer a question whose support is beyond the first
+- [x] CLI and MV3 correctly answer a question whose support is beyond the first
       projection of a long read-only page.
-- [ ] The answer cites the correct page and states only material residual coverage
+- [x] The answer cites the correct page and states only material residual coverage
       gaps in user language.
 
 Acceptance criteria:
 
-- [ ] A long attached page can produce a useful supported answer without treating
+- [x] A long attached page can produce a useful supported answer without treating
       the whole page as unusable solely because one projection was truncated.
+
+Proof record (2026-08-05): 151 focused document-navigation, exact-section,
+answer-contract, CLI, event, evidence, extension UI, and broker tests pass,
+including late-section selection, irrelevant-section exclusion, hostile,
+cross-tenant, and stale opaque references, and typed overflow/coverage behavior.
+The workspace typecheck, production MV3 build, output/CSP gate, privacy scan, and
+packed MV3 long-page lifecycle pass. One approved private read-only CLI run used
+one exact bound-page read followed by one opaque late-section read with no search
+or ranking, returned the sole canonical citation, and disclosed the material
+residual coverage limit; its artifact remains outside Git.
 
 ### C4 — Implement real `quick`, `auto`, and `deep` Chat strategies
 

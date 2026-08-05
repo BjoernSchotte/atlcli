@@ -7,8 +7,10 @@ import {
 } from "../contracts.js";
 import {
   BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+  BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
   type BoundEntityReadOutputV1,
 } from "../capability-contracts.js";
+import { navigateConfluenceStorageV1 } from "../document-navigation.js";
 import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
@@ -23,12 +25,14 @@ function seed(input: {
   key: string;
   name: string;
   id: string;
+  origin?: string;
 }): ResearchScopeSeedV1 {
+  const origin = input.origin ?? ORIGIN;
   return {
     binding: {
       schema: "atlcli.research-scope-binding/v1",
       id: `scope-binding:current:${input.id}`,
-      tenantOrigin: ORIGIN,
+      tenantOrigin: origin,
       product: input.product,
       entityKind: input.entityKind,
       entityRef: `research-scope-entity:${input.id}`,
@@ -46,12 +50,14 @@ function request(input: {
   jira?: string[];
   wiki?: string[];
   exact: Array<"jira" | "confluence">;
+  origin?: string;
 }): ResearchRequestV1 {
+  const origin = input.origin ?? ORIGIN;
   return {
     schema: RESEARCH_REQUEST_SCHEMA_V1,
     question: "Summarize the attached entity.",
     scope: {
-      siteOrigin: ORIGIN,
+      siteOrigin: origin,
       jiraProjectKeys: input.jira ?? [],
       confluenceSpaceKeys: input.wiki ?? [],
     },
@@ -230,6 +236,7 @@ describe("Chat exact-anchor retrieval", () => {
     })
       .map((candidate) => candidate.name)).toEqual([
         "atlassian_bound_read",
+        "atlassian_bound_section_read",
       ]);
     expect(calls).toEqual([]);
   });
@@ -295,5 +302,147 @@ describe("Chat exact-anchor retrieval", () => {
     broker.cancel();
     await expect(invokeDirect(broker, anchor.anchorRef)).rejects.toBeDefined();
     expect(calls).toEqual([]);
+  });
+
+  test("selects a late section from a body-free outline without loading a large irrelevant section", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    const irrelevant = "Irrelevant historical detail. ".repeat(900);
+    const storage = [
+      "<h1>Historical background</h1>",
+      `<p>${irrelevant}</p>`,
+      "<h1>Current decision</h1>",
+      "<p>The decisive late-section fact is approved for the synthetic rollout.</p>",
+    ].join("");
+    const navigation = navigateConfluenceStorageV1({
+      storage,
+      siteOrigin: ORIGIN,
+      projectionLimits: {
+        maxTextChars: 4_000,
+        maxTextBytes: 16_000,
+        maxLinks: 20,
+        maxNodes: 20_000,
+        maxDepth: 64,
+      },
+    })!;
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Long synthetic page",
+        content: {
+          text: `${irrelevant}\nThe initial projection ends before the decisive fact.`,
+          linkTargets: [],
+          truncated: true,
+          inputBytes: new TextEncoder().encode(storage).byteLength,
+        },
+        navigation,
+      };
+    };
+    let sectionSequence = 0;
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Long page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, {
+      createAnchorId: () => "page-anchor",
+      createSectionId: () => `section-${++sectionSequence}`,
+    });
+
+    const page = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+    expect(page.content.text.length).toBeLessThanOrEqual(1_200);
+    expect(page.document).toMatchObject({
+      projectionTruncated: true,
+      sourceTruncated: false,
+      outlineTruncated: false,
+      genuinelyEmpty: false,
+      unreadSections: 2,
+    });
+    const target = page.document!.sections.find((section) => section.heading === "Current decision")!;
+    expect(target).toBeDefined();
+    expect(target).not.toHaveProperty("content");
+    const section = await broker.readExactSection({
+      schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+      sectionRef: target.sectionRef,
+    });
+    expect(section.content.text).toContain("decisive late-section fact");
+    expect(section.content.text).not.toContain("Irrelevant historical detail");
+    expect(section.support).toMatchObject({
+      sectionId: target.sectionId,
+      start: 0,
+      end: section.content.text.length,
+    });
+    expect(section.coverage).toMatchObject({
+      sourceTruncated: false,
+      outlineTruncated: false,
+      unreadSections: 1,
+      completeDocumentRead: false,
+    });
+    expect(calls).toEqual(["wiki.get:1001"]);
+  });
+
+  test("rejects forged, cross-tenant, and stale section refs", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async ({ contentId }) => ({
+      contentId,
+      spaceKey: "~account-id",
+      title: "Navigable page",
+      content: { text: "Preview", linkTargets: [], truncated: true, inputBytes: 2_000 },
+      navigation: navigateConfluenceStorageV1({
+        storage: "<h1>Late section</h1><p>Bound evidence.</p>",
+        siteOrigin: ORIGIN,
+        projectionLimits: {
+          maxTextChars: 1_000,
+          maxTextBytes: 4_000,
+          maxLinks: 10,
+          maxNodes: 1_000,
+          maxDepth: 32,
+        },
+      }),
+    });
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, {
+      createAnchorId: () => "anchor",
+      createSectionId: () => "real-section",
+    });
+    const page = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+    await expect(broker.readExactSection({
+      schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+      sectionRef: "research-section:forged",
+    })).rejects.toMatchObject({ code: "invalid-request" });
+    const ref = page.document!.sections[0]!.sectionRef;
+
+    const foreignOrigin = "https://tenant-b.atlassian.net";
+    const foreignBroker = new ResearchCapabilityBroker(request({
+      seeds: [seed({
+        product: "confluence",
+        entityKind: "page",
+        key: "1001",
+        name: "Foreign page",
+        id: "foreign-page-1001",
+        origin: foreignOrigin,
+      })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+      origin: foreignOrigin,
+    }), providers([]), {
+      createAnchorId: () => "foreign-anchor",
+      createSectionId: () => "foreign-section",
+    });
+    await expect(foreignBroker.readExactSection({
+      schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+      sectionRef: ref,
+    })).rejects.toMatchObject({ code: "invalid-request" });
+
+    broker.cancel();
+    await expect(broker.readExactSection({
+      schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+      sectionRef: ref,
+    })).rejects.toBeDefined();
   });
 });

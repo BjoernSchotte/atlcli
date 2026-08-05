@@ -146,6 +146,7 @@ export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 export const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1 = [
   ...RESEARCH_TOOL_IDS,
   "atlassian.bound.read",
+  "atlassian.bound.section.read",
   "jira.project.search",
   "wiki.space.search",
   "atlassian.reference.resolve",

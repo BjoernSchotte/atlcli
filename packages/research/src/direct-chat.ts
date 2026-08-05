@@ -5,7 +5,7 @@ import {
   type ResearchScopeSeedV1,
 } from "./contracts.js";
 
-const DIRECT_CONTEXT_BODY_CHARS_V1 = 50_000;
+const DIRECT_CONTEXT_PREVIEW_CHARS_V1 = 8_000;
 
 function isWholeScopeSeed(
   seed: ResearchScopeSeedV1,
@@ -64,9 +64,9 @@ export function prepareDirectChatRequestV1(
     ...(exactContextProducts.length > 0 ? { exactContextProducts } : {}),
     limits: {
       ...input.limits,
-      maxBodyCharsPerItem: Math.max(
+      maxBodyCharsPerItem: Math.min(
         input.limits.maxBodyCharsPerItem,
-        DIRECT_CONTEXT_BODY_CHARS_V1,
+        DIRECT_CONTEXT_PREVIEW_CHARS_V1,
       ),
     },
   } satisfies ResearchRequestV1;

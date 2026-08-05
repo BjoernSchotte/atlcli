@@ -499,3 +499,20 @@ export function projectConfluenceStorage(
     );
   }
 }
+
+/**
+ * Project an already parsed, host-owned block slice through the same bounded
+ * collector used for a complete Confluence page. Document navigation uses
+ * this to expose one selected section without reparsing or publishing the
+ * remainder of the page.
+ */
+export function projectConfluenceBlocks(
+  blocks: readonly ExportBlock[],
+  siteOrigin: string,
+  limits: ContentProjectionLimits,
+  inputBytes: number,
+): BoundedContentProjectionV1 {
+  const collector = new ProjectionCollector(siteOrigin, limits);
+  walkUnknownBlocks(blocks, collector, 1);
+  return collector.finish(inputBytes);
+}

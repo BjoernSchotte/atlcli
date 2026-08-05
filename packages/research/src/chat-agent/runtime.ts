@@ -104,7 +104,7 @@ function evalResultDiagnostic(value: unknown): {
     ? undefined
     : /\btools\b[^\n]*(?:not defined|unavailable)/iu.test(rendered)
       ? "tools-unavailable"
-      : /\b(?:atlassianBoundRead|jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
+      : /\b(?:atlassianBoundRead|atlassianBoundSectionRead|jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
         ? "capability-unavailable"
         : /not defined/iu.test(rendered)
           ? "undefined-symbol"
@@ -149,6 +149,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         "wikiPageGet",
         "researchCandidateRank",
         "atlassianBoundRead",
+        "atlassianBoundSectionRead",
       ].filter((name) => new RegExp(`\\b${name}\\b`, "u").test(code));
       const searchInputShapes = [
         ["jiraIssueSearch", "jira"],
@@ -464,6 +465,7 @@ export function createKiteweaveChatAgent(
           sources: broker.sourceLedger(),
           detailEvidence: broker.detailEvidenceLedger(),
           qualityPolicy,
+          ...(turn.locale ? { locale: turn.locale } : {}),
           run: {
             model: modelBinding.modelId,
             startedAt: new Date(startedAtMs).toISOString(),

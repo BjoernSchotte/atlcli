@@ -11,13 +11,17 @@ import {
 import {
   RESEARCH_CAPABILITY_SCHEMAS,
   BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1,
+  BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1,
   decodeResearchCandidateRankInputV1,
   decodeBoundEntityReadInputV1,
+  decodeBoundEntitySectionReadInputV1,
   decodeResearchGetInputV1,
   decodeResearchSearchInputV1,
   type BoundedContentProjectionV1,
   type BoundEntityAnchorV1,
   type BoundEntityReadOutputV1,
+  type BoundEntitySectionReadOutputV1,
+  type BoundDocumentOutlineV1,
   type ResearchCandidateRankOutputV1,
   type ResearchEntitySummaryV1,
   type ResearchGetOutputV1,
@@ -25,6 +29,7 @@ import {
   type ResearchSearchQueryV1,
   type ResearchTerminationCode,
 } from "./capability-contracts.js";
+import type { BoundedDocumentSourceV1 } from "./document-navigation.js";
 import { rankResearchCandidatesV1 } from "./candidate-ranking.js";
 import { ResearchRunBudget } from "./budget.js";
 import {
@@ -71,6 +76,8 @@ export interface JiraResearchDetail extends JiraResearchSummary {
 
 export interface WikiResearchDetail extends WikiResearchSummary {
   content: BoundedContentProjectionV1;
+  /** Host-private parsed document snapshot; never returned directly to QuickJS. */
+  navigation?: BoundedDocumentSourceV1;
 }
 
 export interface ResearchProviderPage<T> {
@@ -113,6 +120,15 @@ export interface ResearchDetailEvidenceV1 {
   retrieval?: ResearchEvidenceRetrievalV1;
   /** Present only when the detail is durably retained under an approved binding. */
   evidenceId?: string;
+  /** Exact section identity for a navigated page projection. */
+  section?: { sectionId: string; heading: string; order: number };
+  coverage?: {
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    unreadSections: number;
+    completeDocumentRead: boolean;
+  };
 }
 
 /** Body-free outcome of host-side freshness checks before report finalization. */
@@ -131,6 +147,7 @@ interface BrokerOptions {
   createCursorId?: () => string;
   createEntityId?: () => string;
   createAnchorId?: () => string;
+  createSectionId?: () => string;
   budget?: ResearchRunBudget;
   /** Optional private evidence sink for durable session-backed detail reads. */
   evidence?: {
@@ -152,6 +169,22 @@ interface ExactEntityBindingV1 {
   binding: ResearchScopeBindingV1;
   product: ResearchProduct;
   entityId: string;
+}
+
+interface ExactDocumentStateV1 {
+  source: ResearchSourceReferenceV1;
+  sourceTruncated: boolean;
+  outlineTruncated: boolean;
+  projectionTruncated: boolean;
+  genuinelyEmpty: boolean;
+  totalSections: number;
+  sectionRefs: string[];
+  readSectionIds: Set<string>;
+}
+
+interface ExactSectionBindingV1 {
+  document: ExactDocumentStateV1;
+  section: BoundedDocumentSourceV1["sections"][number];
 }
 
 class ConcurrencyGate {
@@ -202,6 +235,20 @@ function cleanOptionalText(value: string | undefined, maximum: number): string |
     .trim()
     .slice(0, maximum);
   return cleaned || undefined;
+}
+
+function navigableInitialProjection(
+  content: BoundedContentProjectionV1,
+  navigation: BoundedDocumentSourceV1 | undefined,
+): BoundedContentProjectionV1 {
+  if (!navigation || !content.truncated) return content;
+  const text = [...content.text].slice(0, 1_200).join("");
+  return {
+    text,
+    linkTargets: content.linkTargets.slice(0, 20),
+    truncated: true,
+    inputBytes: content.inputBytes,
+  };
 }
 
 const OBSERVED_JIRA_KEY_PATTERN_V1 = /\b[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}\b/g;
@@ -287,6 +334,8 @@ export class ResearchCapabilityBroker {
   readonly #exactAnchorBindings = new Map<string, ExactEntityBindingV1>();
   readonly #exactAnchorRefs = new Map<string, string>();
   readonly #createAnchorId: () => string;
+  readonly #exactSectionBindings = new Map<string, ExactSectionBindingV1>();
+  readonly #createSectionId: () => string;
   readonly #exactSearchEmitted = new Set<ResearchProduct>();
   readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
   readonly #searchAttempts: Record<ResearchProduct, number> = {
@@ -324,6 +373,12 @@ export class ResearchCapabilityBroker {
     this.#createAnchorId = options.createAnchorId ?? (() => {
       if (typeof crypto?.randomUUID !== "function") {
         throw new ResearchContractError("unknown", "Secure exact-anchor refs are unavailable.");
+      }
+      return crypto.randomUUID();
+    });
+    this.#createSectionId = options.createSectionId ?? (() => {
+      if (typeof crypto?.randomUUID !== "function") {
+        throw new ResearchContractError("unknown", "Secure exact-section refs are unavailable.");
       }
       return crypto.randomUUID();
     });
@@ -407,6 +462,7 @@ export class ResearchCapabilityBroker {
     this.#rankedEntityRefs.clear();
     this.#exactAnchorBindings.clear();
     this.#exactAnchorRefs.clear();
+    this.#exactSectionBindings.clear();
     this.#successfulDetailReads.length = 0;
   }
 
@@ -467,6 +523,8 @@ export class ResearchCapabilityBroker {
       },
       ...(entry.retrieval ? { retrieval: { ...entry.retrieval } } : {}),
       ...(entry.evidenceId === undefined ? {} : { evidenceId: entry.evidenceId }),
+      ...(entry.section ? { section: { ...entry.section } } : {}),
+      ...(entry.coverage ? { coverage: { ...entry.coverage } } : {}),
     }));
   }
 
@@ -497,6 +555,57 @@ export class ResearchCapabilityBroker {
             (exact.product === "jira" ? "Bound Jira issue" : "Bound Confluence page"),
         };
       });
+  }
+
+  #registerExactDocument(
+    source: ResearchSourceReferenceV1,
+    navigation: BoundedDocumentSourceV1 | undefined,
+    projectionTruncated: boolean,
+  ): BoundDocumentOutlineV1 | undefined {
+    if (!navigation) return undefined;
+    const document: ExactDocumentStateV1 = {
+      source,
+      sourceTruncated: navigation.sourceTruncated,
+      outlineTruncated: navigation.outlineTruncated,
+      projectionTruncated,
+      genuinelyEmpty: navigation.genuinelyEmpty,
+      totalSections: navigation.totalSections,
+      sectionRefs: [],
+      readSectionIds: new Set(
+        projectionTruncated ? [] : navigation.sections.map((section) => section.sectionId),
+      ),
+    };
+    const sections = navigation.sections.map((section) => {
+      const sectionRef = `research-section:${this.#createSectionId()}`;
+      if (!/^research-section:[A-Za-z0-9-]{1,200}$/.test(sectionRef) ||
+          this.#exactSectionBindings.has(sectionRef)) {
+        throw new ResearchContractError("unknown", "A secure exact-section ref is invalid or reused.");
+      }
+      document.sectionRefs.push(sectionRef);
+      this.#exactSectionBindings.set(sectionRef, { document, section });
+      return {
+        sectionRef,
+        sectionId: section.sectionId,
+        heading: section.heading,
+        level: section.level,
+        order: section.order,
+        contentBytes: section.contentBytes,
+        metadata: {
+          ...section.metadata,
+          macroNames: [...section.metadata.macroNames],
+          jiraIssueKeys: [...section.metadata.jiraIssueKeys],
+        },
+      };
+    });
+    return {
+      sourceTruncated: document.sourceTruncated,
+      outlineTruncated: document.outlineTruncated,
+      projectionTruncated: document.projectionTruncated,
+      genuinelyEmpty: document.genuinelyEmpty,
+      totalSections: document.totalSections,
+      unreadSections: Math.max(0, sections.length - document.readSectionIds.size),
+      sections,
+    };
   }
 
   /** Direct detail read for one host-issued exact anchor; no search or ranking. */
@@ -554,16 +663,125 @@ export class ResearchCapabilityBroker {
         );
       }
       const source = this.#wikiSource(detail);
-      this.#registerObservedJiraReferences(detail.content);
-      await this.#recordDetailEvidence(source, detail.content, {
+      const visibleContent = navigableInitialProjection(detail.content, detail.navigation);
+      this.#registerObservedJiraReferences(visibleContent);
+      const document = this.#registerExactDocument(
+        source,
+        detail.navigation,
+        visibleContent.truncated,
+      );
+      await this.#recordDetailEvidence(source, visibleContent, {
         sourceId: source.id,
         reason: "exact_anchor",
         rank: 1,
-      });
+      }, source.id, undefined, document
+        ? {
+            sourceTruncated: document.sourceTruncated,
+            outlineTruncated: document.outlineTruncated,
+            projectionTruncated: document.projectionTruncated,
+            unreadSections: document.unreadSections,
+            completeDocumentRead: !document.sourceTruncated &&
+              !document.outlineTruncated &&
+              !document.projectionTruncated,
+          }
+        : {
+            sourceTruncated: false,
+            outlineTruncated: false,
+            projectionTruncated: visibleContent.truncated,
+            unreadSections: 0,
+            completeDocumentRead: !visibleContent.truncated,
+          });
       return {
         schema: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1,
         source: publicSource(source),
-        content: detail.content,
+        content: visibleContent,
+        relatedAnchors: this.exactAnchors().filter((anchor) => anchor.product === "jira"),
+        ...(document ? { document } : {}),
+        budget: this.budget.snapshot(),
+      };
+    });
+    this.budget.completePtc(output);
+    return output;
+  }
+
+  /** Read one section from the verified page snapshot through an opaque turn-local ref. */
+  async readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1> {
+    const decoded = decodeBoundEntitySectionReadInputV1(input);
+    this.budget.beginPtc(decoded);
+    const output = await this.#gate.run(this.signal, async () => {
+      const bound = this.#exactSectionBindings.get(decoded.sectionRef);
+      if (!bound) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The exact-section reference is unknown or belongs to another turn.",
+        );
+      }
+      this.budget.beginDetail("confluence");
+      const { document, section } = bound;
+      document.readSectionIds.add(section.sectionId);
+      this.#registerObservedJiraReferences(section.content);
+      const evidenceId = await this.#recordDetailEvidence(
+        document.source,
+        section.content,
+        {
+          sourceId: document.source.id,
+          reason: "exact_anchor",
+          rank: section.order + 1,
+        },
+        `${document.source.id}#${section.sectionId}`,
+        {
+          sectionId: section.sectionId,
+          heading: section.heading,
+          order: section.order,
+        },
+        {
+          sourceTruncated: document.sourceTruncated,
+          outlineTruncated: document.outlineTruncated,
+          projectionTruncated: section.content.truncated,
+          unreadSections: Math.max(
+            0,
+            document.sectionRefs.length - document.readSectionIds.size,
+          ),
+          completeDocumentRead: !document.sourceTruncated &&
+            !document.outlineTruncated &&
+            (!document.projectionTruncated ||
+              document.sectionRefs.length === document.readSectionIds.size),
+        },
+      );
+      const unreadSections = Math.max(
+        0,
+        document.sectionRefs.length - document.readSectionIds.size,
+      );
+      const completeDocumentRead = !document.sourceTruncated &&
+        !document.outlineTruncated &&
+        (!document.projectionTruncated || unreadSections === 0);
+      return {
+        schema: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1,
+        source: publicSource(document.source),
+        section: {
+          sectionId: section.sectionId,
+          heading: section.heading,
+          level: section.level,
+          order: section.order,
+          contentBytes: section.contentBytes,
+        },
+        content: {
+          ...section.content,
+          linkTargets: [...section.content.linkTargets],
+        },
+        support: {
+          sectionId: section.sectionId,
+          start: 0,
+          end: section.content.text.length,
+          ...(evidenceId ? { evidenceId } : {}),
+        },
+        coverage: {
+          sourceTruncated: document.sourceTruncated,
+          outlineTruncated: document.outlineTruncated,
+          projectionTruncated: section.content.truncated,
+          unreadSections,
+          completeDocumentRead,
+        },
         relatedAnchors: this.exactAnchors().filter((anchor) => anchor.product === "jira"),
         budget: this.budget.snapshot(),
       };
@@ -713,7 +931,10 @@ export class ResearchCapabilityBroker {
     source: ResearchSourceReferenceV1,
     content: BoundedContentProjectionV1,
     retrieval: ResearchEvidenceRetrievalV1 | undefined,
-  ): Promise<void> {
+    ledgerKey = source.id,
+    section?: ResearchDetailEvidenceV1["section"],
+    coverage?: ResearchDetailEvidenceV1["coverage"],
+  ): Promise<string | undefined> {
     let evidenceId: string | undefined;
     if (this.#evidence) {
       const evidence = await createResearchEvidenceRecordV1({
@@ -743,7 +964,7 @@ export class ResearchCapabilityBroker {
       await this.#evidence.store.put(evidence.record, evidence.chunks);
       evidenceId = evidence.record.id;
     }
-    this.#detailEvidence.set(source.id, {
+    this.#detailEvidence.set(ledgerKey, {
       source,
       content: {
         ...content,
@@ -751,8 +972,11 @@ export class ResearchCapabilityBroker {
       },
       ...(retrieval ? { retrieval: { ...retrieval } } : {}),
       ...(evidenceId === undefined ? {} : { evidenceId }),
+      ...(section ? { section: { ...section } } : {}),
+      ...(coverage ? { coverage: { ...coverage } } : {}),
     });
     this.#successfulDetailReads.push({ product: source.product, sourceId: source.id });
+    return evidenceId;
   }
 
   /**
