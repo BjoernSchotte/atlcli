@@ -682,7 +682,7 @@ export function chromeResearchPort(): ResearchPort {
       return response.outcome;
     },
 
-    async prepareScopeClarificationReview(request, policy) {
+    async prepareScopeClarificationReview(request, policy, options) {
       const window = await chrome.windows.getCurrent();
       if (window.id === undefined) {
         throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
@@ -692,6 +692,7 @@ export function chromeResearchPort(): ResearchPort {
         windowId: window.id,
         request,
         policy,
+        ...(options?.purpose ? { purpose: options.purpose } : {}),
       }) as
         | {
             kind: "research:prepare-scope-clarification-review-result";

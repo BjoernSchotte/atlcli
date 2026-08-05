@@ -184,10 +184,37 @@ export interface BoundDocumentSectionOutlineV1 {
     linkCount: number;
     linksTruncated: boolean;
     jiraIssueKeys: string[];
+    structures: BoundDocumentStructureSummaryV1;
   };
 }
 
+export interface BoundDocumentStructureSummaryV1 {
+  tables: number;
+  expands: number;
+  jiraMacros: number;
+  smartLinks: number;
+  excerpts: number;
+  includes: number;
+  unresolvedIncludes: number;
+  unsupportedMacros: number;
+}
+
+export type BoundDocumentCoverageIssueV1 =
+  | "source_limit"
+  | "parse_budget"
+  | "outline_limit"
+  | "projection_limit"
+  | "unresolved_include"
+  | "unsupported_structure";
+
 export interface BoundDocumentOutlineV1 {
+  snapshot: {
+    sourceId: string;
+    representation: "storage";
+    sourceVersion: number;
+    captureRef: string;
+  };
+  coverageIssues: BoundDocumentCoverageIssueV1[];
   sourceTruncated: boolean;
   outlineTruncated: boolean;
   projectionTruncated: boolean;
@@ -214,6 +241,8 @@ export interface BoundEntitySectionReadOutputV1 {
     evidenceId?: string;
   };
   coverage: {
+    snapshot: BoundDocumentOutlineV1["snapshot"];
+    issues: BoundDocumentCoverageIssueV1[];
     sourceTruncated: boolean;
     outlineTruncated: boolean;
     projectionTruncated: boolean;

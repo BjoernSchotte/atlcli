@@ -74,6 +74,7 @@ import {
   recoverResearchSessionForResumeV1,
   resolveResearchSessionClarificationsV1,
   resolveResearchSessionScopeClarificationV1,
+  resolveChatScopeClarificationV1,
   refreshResearchSessionScopeClarificationV1,
   researchRequestFromBriefV1,
   researchPolicyFromBriefV1,
@@ -1333,6 +1334,7 @@ export default defineBackground({
     windowId: number,
     value: ResearchRequestV1,
     policyValue: ResearchOneShotPolicyV1,
+    purpose: "chat" | "research" = "research",
   ) => {
     const request = normalizeResearchRequestV1(value);
     const policy = normalizeResearchOneShotPolicyV1(policyValue);
@@ -1364,6 +1366,7 @@ export default defineBackground({
         }),
         request,
         policy,
+        purpose,
         clarification: scopeOutcome.clarification,
         candidateChoices: scopeOutcome.candidateChoices,
         at: now,
@@ -1442,6 +1445,22 @@ export default defineBackground({
           throw new ResearchContractError("provider-error", "The refreshed research scope clarification could not be projected.");
         }
         return { kind: "scope_clarification" as const, review: next };
+      }
+      if (scopeClarification.purpose === "chat") {
+        const resolved = await resolveChatScopeClarificationV1({
+          store,
+          sessionId: stored.sessionId,
+          expectedRevision: input.action.revision,
+          expectedLeaseEpoch: stored.lease.epoch,
+          selection: input.action.selection,
+          resolvedRequest: scopeOutcome.request,
+          at,
+        });
+        return {
+          kind: "chat_ready" as const,
+          request: resolved.request,
+          conversationId: resolved.conversationSession.sessionId,
+        };
       }
       const committed = await resolveResearchSessionScopeClarificationV1({
         store,

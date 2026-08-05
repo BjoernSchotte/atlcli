@@ -1,6 +1,6 @@
 # Kiteweave Chat Agent Recovery Plan
 
-Status: **In progress; C0-C3 proven, C3A next**
+Status: **In progress; C0-C3A proven, C4 next**
 
 ## Contents
 
@@ -440,76 +440,90 @@ search or clarification ceremony.
 
 Implementation:
 
-- [ ] Pin every outline and section projection to one verified content identity,
+- [x] Pin every outline and section projection to one verified content identity,
       version, representation, and capture boundary. A section reference must
       become stale when any of these change and mixed-version evidence must fail
       closed.
-- [ ] Add conformance projections for tables, Expand macros, Jira Live macros,
+- [x] Add conformance projections for tables, Expand macros, Jira Live macros,
       Smart Links, and Include/Excerpt structures. Preserve semantic structure,
       link/macro identity, and explicit unresolved content without flattening it
       into misleading prose.
-- [ ] Keep Storage as the required baseline representation. Isolate the parser
+- [x] Keep Storage as the required baseline representation. Isolate the parser
       behind a representation-neutral document port so a later measured ADF or
       AGG adapter can supply the same normalized outline/section contracts
       without changing Chat tools or prompts. The deferred provider experiment
       is specified in
       [`CONFLUENCE-REST-AGG-AB-PLAN.md`](./CONFLUENCE-REST-AGG-AB-PLAN.md).
-- [ ] Enforce question-directed auxiliary acquisition: comments, attachments,
+- [x] Enforce question-directed auxiliary acquisition: comments, attachments,
       labels, ancestors, properties, and versions are absent from the default
       tool surface and may be admitted only by an explicit typed need derived
       from the question or a material evidence gap.
-- [ ] Implement a context-sensitive clarification policy: consume exact anchors,
+- [x] Implement a context-sensitive clarification policy: consume exact anchors,
       explicit IDs/URLs/keys, already approved scope, and safe catalog resolvers
       before asking. Create a durable, revision-fenced HITL checkpoint only when
       the remaining ambiguity would materially change authorized scope or the
       answer. Exact page/issue anchors never trigger title resolution or HITL.
-- [ ] Project typed coverage states for source-limit overflow, parse-budget
+- [x] Project typed coverage states for source-limit overflow, parse-budget
       overflow, unsupported structures, unresolved includes, projection
       truncation, and unread sections. None may be represented as empty content
       or as proof that information is absent from the complete page.
 
 Automated proof:
 
-- [ ] Outline and section reads are rejected if their source identity, page
+- [x] Outline and section reads are rejected if their source identity, page
       version, representation, tenant, turn, or scope revision differs from the
       captured document snapshot.
-- [ ] A section read performs zero additional search calls and zero additional
+- [x] A section read performs zero additional search calls and zero additional
       page-detail HTTP calls; it reads only the retained verified snapshot under
       the existing PTC, byte, concurrency, cancellation, and evidence limits.
-- [ ] An exact anchor with an ambiguous or renamed title still reads the bound
+- [x] An exact anchor with an ambiguous or renamed title still reads the bound
       entity directly and performs neither title search nor clarification.
-- [ ] A missing term in the visible projection or selected sections cannot become
+- [x] A missing term in the visible projection or selected sections cannot become
       a negative whole-document claim while any section, include, or structural
       projection remains unread or unresolved.
-- [ ] Source and parser limits produce a supported partial answer plus a typed,
+- [x] Source and parser limits produce a supported partial answer plus a typed,
       user-meaningful gap; they never produce `genuinelyEmpty`, silent clipping,
       or an invented completeness claim.
-- [ ] Auxiliary reads are admitted only for gold questions that require them and
+- [x] Auxiliary reads are admitted only for gold questions that require them and
       remain at zero for ordinary page-summary and exact-section cases.
-- [ ] Synthetic Storage fixtures cover tables, nested Expand macros, Jira Live
+- [x] Synthetic Storage fixtures cover tables, nested Expand macros, Jira Live
       macros, Smart Links, and Include/Excerpt structures with exact normalized
       metadata, visible support spans, and explicit unresolved-state assertions.
-- [ ] HITL tests cover no-question exact anchors, safe automatic resolution,
+- [x] HITL tests cover no-question exact anchors, safe automatic resolution,
       ambiguous material scope, free-text and multiple-choice answers, stale
       answers, cancellation, reload, and identical CLI/MV3 continuation.
 
 Live acceptance:
 
-- [ ] CLI and packed MV3 answer an approved read-only structurally complex page
+- [x] CLI and packed MV3 answer an approved read-only structurally complex page
       question from the same normalized evidence and canonical source without an
       unnecessary search, auxiliary read, or clarification.
-- [ ] CLI and packed MV3 pause on one genuinely material ambiguity, present the
+- [x] CLI and packed MV3 pause on one genuinely material ambiguity, present the
       same user-facing question, durably resume after an answer, and do not start
       provider or Atlassian work before the accepted revision.
-- [ ] A private read-only structured-page run confirms useful answer quality,
+- [x] A private read-only structured-page run confirms useful answer quality,
       correct source identity, honest residual gaps, and body-free diagnostics;
       its inputs and artifacts remain outside Git.
 
 Acceptance criteria:
 
-- [ ] Structured Confluence content is preserved well enough for supported Chat
+- [x] Structured Confluence content is preserved well enough for supported Chat
       answers, and clarification is evidence-driven rather than a default escape
       from retrieval or scope resolution.
+
+Proof record (2026-08-05): 730 focused browser-boundary, Confluence-structure,
+document-navigation, Chat contract, durable session, CLI, and extension tests
+pass, including tables, nested Expand macros, Jira macros, Smart Links,
+Include/Excerpt gaps, capture/version invalidation, zero-HTTP section reads,
+auxiliary-read admission, and revision-fenced clarification lifecycles. The root
+typecheck, all 29 browser-entrypoint gates, research privacy scan, production MV3
+build, and output/CSP gate pass. Three packed MV3 lifecycle tests pass against
+the production build for same-session scope choice, direct exact anchors, and a
+late long-page section. Approved private read-only CLI runs proved direct
+structured reading and durable ambiguity/resume without constructing Research;
+their inputs, source material, diagnostics, and answer artifacts remain outside
+Git. The browser gate also has a regression proof that quoted dependency help
+text is not confused with an executable Node import.
 
 ### C4 — Implement real `quick`, `auto`, and `deep` Chat strategies
 

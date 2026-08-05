@@ -21,6 +21,7 @@ import {
   type BoundEntityAnchorV1,
   type BoundEntityReadOutputV1,
   type BoundEntitySectionReadOutputV1,
+  type BoundDocumentCoverageIssueV1,
   type BoundDocumentOutlineV1,
   type ResearchCandidateRankOutputV1,
   type ResearchEntitySummaryV1,
@@ -30,6 +31,7 @@ import {
   type ResearchTerminationCode,
 } from "./capability-contracts.js";
 import type { BoundedDocumentSourceV1 } from "./document-navigation.js";
+import type { ChatAuxiliaryReadNeedV1 } from "./chat-agent/auxiliary.js";
 import { rankResearchCandidatesV1 } from "./candidate-ranking.js";
 import { ResearchRunBudget } from "./budget.js";
 import {
@@ -95,6 +97,8 @@ export interface ResearchReadProviders {
     }): Promise<ResearchProviderPage<JiraResearchSummary>>;
     getIssue(input: {
       issueKey: string;
+      includeComments?: boolean;
+      includeMetadata?: boolean;
       signal: AbortSignal;
     }): Promise<JiraResearchDetail>;
   };
@@ -108,6 +112,7 @@ export interface ResearchReadProviders {
     getPage(input: {
       contentId: string;
       includeComments?: boolean;
+      includeMetadata?: boolean;
       signal: AbortSignal;
     }): Promise<WikiResearchDetail>;
   };
@@ -123,6 +128,8 @@ export interface ResearchDetailEvidenceV1 {
   /** Exact section identity for a navigated page projection. */
   section?: { sectionId: string; heading: string; order: number };
   coverage?: {
+    snapshot?: BoundDocumentOutlineV1["snapshot"];
+    issues: BoundDocumentCoverageIssueV1[];
     sourceTruncated: boolean;
     outlineTruncated: boolean;
     projectionTruncated: boolean;
@@ -148,6 +155,8 @@ interface BrokerOptions {
   createEntityId?: () => string;
   createAnchorId?: () => string;
   createSectionId?: () => string;
+  createCaptureId?: () => string;
+  exactAuxiliaryNeeds?: readonly ChatAuxiliaryReadNeedV1[];
   budget?: ResearchRunBudget;
   /** Optional private evidence sink for durable session-backed detail reads. */
   evidence?: {
@@ -173,6 +182,8 @@ interface ExactEntityBindingV1 {
 
 interface ExactDocumentStateV1 {
   source: ResearchSourceReferenceV1;
+  snapshot: BoundDocumentOutlineV1["snapshot"];
+  coverageIssues: BoundDocumentCoverageIssueV1[];
   sourceTruncated: boolean;
   outlineTruncated: boolean;
   projectionTruncated: boolean;
@@ -335,7 +346,11 @@ export class ResearchCapabilityBroker {
   readonly #exactAnchorRefs = new Map<string, string>();
   readonly #createAnchorId: () => string;
   readonly #exactSectionBindings = new Map<string, ExactSectionBindingV1>();
+  readonly #activeExactDocuments = new Map<string, ExactDocumentStateV1>();
+  readonly #captureRefs = new Set<string>();
   readonly #createSectionId: () => string;
+  readonly #createCaptureId: () => string;
+  readonly #exactAuxiliaryNeeds: ReadonlySet<ChatAuxiliaryReadNeedV1>;
   readonly #exactSearchEmitted = new Set<ResearchProduct>();
   readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
   readonly #searchAttempts: Record<ResearchProduct, number> = {
@@ -382,6 +397,13 @@ export class ResearchCapabilityBroker {
       }
       return crypto.randomUUID();
     });
+    this.#createCaptureId = options.createCaptureId ?? (() => {
+      if (typeof crypto?.randomUUID !== "function") {
+        throw new ResearchContractError("unknown", "Secure document capture refs are unavailable.");
+      }
+      return crypto.randomUUID();
+    });
+    this.#exactAuxiliaryNeeds = new Set(options.exactAuxiliaryNeeds ?? []);
     this.#evidence = options.evidence;
     this.#scopeBindings = [...(options.scopeBindings ?? options.evidence?.scopeBindings ??
       request.scopeSeeds?.map((seed) => seed.binding) ?? [])];
@@ -463,6 +485,7 @@ export class ResearchCapabilityBroker {
     this.#exactAnchorBindings.clear();
     this.#exactAnchorRefs.clear();
     this.#exactSectionBindings.clear();
+    this.#activeExactDocuments.clear();
     this.#successfulDetailReads.length = 0;
   }
 
@@ -524,7 +547,15 @@ export class ResearchCapabilityBroker {
       ...(entry.retrieval ? { retrieval: { ...entry.retrieval } } : {}),
       ...(entry.evidenceId === undefined ? {} : { evidenceId: entry.evidenceId }),
       ...(entry.section ? { section: { ...entry.section } } : {}),
-      ...(entry.coverage ? { coverage: { ...entry.coverage } } : {}),
+      ...(entry.coverage ? {
+        coverage: {
+          ...entry.coverage,
+          issues: [...entry.coverage.issues],
+          ...(entry.coverage.snapshot
+            ? { snapshot: { ...entry.coverage.snapshot } }
+            : {}),
+        },
+      } : {}),
     }));
   }
 
@@ -557,14 +588,36 @@ export class ResearchCapabilityBroker {
       });
   }
 
+  #invalidateExactDocument(sourceId: string): void {
+    const previous = this.#activeExactDocuments.get(sourceId);
+    if (!previous) return;
+    for (const sectionRef of previous.sectionRefs) {
+      this.#exactSectionBindings.delete(sectionRef);
+    }
+    this.#activeExactDocuments.delete(sourceId);
+  }
+
   #registerExactDocument(
     source: ResearchSourceReferenceV1,
     navigation: BoundedDocumentSourceV1 | undefined,
     projectionTruncated: boolean,
   ): BoundDocumentOutlineV1 | undefined {
+    this.#invalidateExactDocument(source.id);
     if (!navigation) return undefined;
+    const captureRef = `research-capture:${this.#createCaptureId()}`;
+    if (!/^research-capture:[A-Za-z0-9-]{1,200}$/.test(captureRef) ||
+        this.#captureRefs.has(captureRef)) {
+      throw new ResearchContractError("unknown", "A secure document capture ref is invalid or reused.");
+    }
+    this.#captureRefs.add(captureRef);
     const document: ExactDocumentStateV1 = {
       source,
+      snapshot: {
+        sourceId: source.id,
+        ...navigation.snapshot,
+        captureRef,
+      },
+      coverageIssues: [...navigation.coverageIssues],
       sourceTruncated: navigation.sourceTruncated,
       outlineTruncated: navigation.outlineTruncated,
       projectionTruncated,
@@ -594,10 +647,14 @@ export class ResearchCapabilityBroker {
           ...section.metadata,
           macroNames: [...section.metadata.macroNames],
           jiraIssueKeys: [...section.metadata.jiraIssueKeys],
+          structures: { ...section.metadata.structures },
         },
       };
     });
+    this.#activeExactDocuments.set(source.id, document);
     return {
+      snapshot: { ...document.snapshot },
+      coverageIssues: [...document.coverageIssues],
       sourceTruncated: document.sourceTruncated,
       outlineTruncated: document.outlineTruncated,
       projectionTruncated: document.projectionTruncated,
@@ -624,6 +681,8 @@ export class ResearchCapabilityBroker {
       if (exact.product === "jira") {
         const detail = await this.#providers.jira.getIssue({
           issueKey: exact.entityId,
+          ...(this.#exactAuxiliaryNeeds.has("comments") ? { includeComments: true } : {}),
+          ...(this.#exactAuxiliaryNeeds.has("metadata") ? { includeMetadata: true } : {}),
           signal: this.signal,
         });
         const allowedProjects = this.#request.scope.jiraProjectKeys;
@@ -650,6 +709,8 @@ export class ResearchCapabilityBroker {
 
       const detail = await this.#providers.wiki.getPage({
         contentId: exact.entityId,
+        ...(this.#exactAuxiliaryNeeds.has("comments") ? { includeComments: true } : {}),
+        ...(this.#exactAuxiliaryNeeds.has("metadata") ? { includeMetadata: true } : {}),
         signal: this.signal,
       });
       const allowedSpaces = this.#request.scope.confluenceSpaceKeys;
@@ -676,15 +737,19 @@ export class ResearchCapabilityBroker {
         rank: 1,
       }, source.id, undefined, document
         ? {
+            snapshot: { ...document.snapshot },
+            issues: [...document.coverageIssues],
             sourceTruncated: document.sourceTruncated,
             outlineTruncated: document.outlineTruncated,
             projectionTruncated: document.projectionTruncated,
             unreadSections: document.unreadSections,
-            completeDocumentRead: !document.sourceTruncated &&
+            completeDocumentRead: document.coverageIssues.length === 0 &&
+              !document.sourceTruncated &&
               !document.outlineTruncated &&
               !document.projectionTruncated,
           }
         : {
+            issues: visibleContent.truncated ? ["projection_limit"] : [],
             sourceTruncated: false,
             outlineTruncated: false,
             projectionTruncated: visibleContent.truncated,
@@ -716,7 +781,6 @@ export class ResearchCapabilityBroker {
           "The exact-section reference is unknown or belongs to another turn.",
         );
       }
-      this.budget.beginDetail("confluence");
       const { document, section } = bound;
       document.readSectionIds.add(section.sectionId);
       this.#registerObservedJiraReferences(section.content);
@@ -735,6 +799,8 @@ export class ResearchCapabilityBroker {
           order: section.order,
         },
         {
+          snapshot: { ...document.snapshot },
+          issues: [...document.coverageIssues],
           sourceTruncated: document.sourceTruncated,
           outlineTruncated: document.outlineTruncated,
           projectionTruncated: section.content.truncated,
@@ -742,7 +808,8 @@ export class ResearchCapabilityBroker {
             0,
             document.sectionRefs.length - document.readSectionIds.size,
           ),
-          completeDocumentRead: !document.sourceTruncated &&
+          completeDocumentRead: document.coverageIssues.length === 0 &&
+            !document.sourceTruncated &&
             !document.outlineTruncated &&
             (!document.projectionTruncated ||
               document.sectionRefs.length === document.readSectionIds.size),
@@ -752,7 +819,8 @@ export class ResearchCapabilityBroker {
         0,
         document.sectionRefs.length - document.readSectionIds.size,
       );
-      const completeDocumentRead = !document.sourceTruncated &&
+      const completeDocumentRead = document.coverageIssues.length === 0 &&
+        !document.sourceTruncated &&
         !document.outlineTruncated &&
         (!document.projectionTruncated || unreadSections === 0);
       return {
@@ -776,6 +844,8 @@ export class ResearchCapabilityBroker {
           ...(evidenceId ? { evidenceId } : {}),
         },
         coverage: {
+          snapshot: { ...document.snapshot },
+          issues: [...document.coverageIssues],
           sourceTruncated: document.sourceTruncated,
           outlineTruncated: document.outlineTruncated,
           projectionTruncated: section.content.truncated,
@@ -973,7 +1043,13 @@ export class ResearchCapabilityBroker {
       ...(retrieval ? { retrieval: { ...retrieval } } : {}),
       ...(evidenceId === undefined ? {} : { evidenceId }),
       ...(section ? { section: { ...section } } : {}),
-      ...(coverage ? { coverage: { ...coverage } } : {}),
+      ...(coverage ? {
+        coverage: {
+          ...coverage,
+          issues: [...coverage.issues],
+          ...(coverage.snapshot ? { snapshot: { ...coverage.snapshot } } : {}),
+        },
+      } : {}),
     });
     this.#successfulDetailReads.push({ product: source.product, sourceId: source.id });
     return evidenceId;
@@ -1382,6 +1458,8 @@ export class ResearchCapabilityBroker {
     this.budget.beginDetail("jira");
     const detail = await this.#providers.jira.getIssue({
       issueKey: entity.entityId,
+      includeComments: true,
+      includeMetadata: true,
       signal: this.signal,
     });
     const exact = this.#exactEntityBindings.get(`jira:${entity.entityId}`);
@@ -1418,6 +1496,7 @@ export class ResearchCapabilityBroker {
     const detail = await this.#providers.wiki.getPage({
       contentId: entity.entityId,
       ...(decoded.includeComments ? { includeComments: true } : {}),
+      includeMetadata: true,
       signal: this.signal,
     });
     const exact = this.#exactEntityBindings.get(`confluence:${entity.entityId}`);

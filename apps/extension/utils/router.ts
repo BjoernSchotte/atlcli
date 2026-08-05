@@ -158,6 +158,7 @@ export interface RouterDeps {
     windowId: number,
     request: ResearchRequestV1,
     policy: ResearchOneShotPolicyV1,
+    purpose?: "chat" | "research",
   ) => Promise<ResearchSessionScopeClarificationReviewV1>;
   listResearchScopeClarificationReviews?: (
     windowId: number,
@@ -790,6 +791,7 @@ export async function routeMessage(
           msg.windowId,
           msg.request,
           msg.policy,
+          msg.purpose,
         );
         return { kind: "research:prepare-scope-clarification-review-result", ok: true, review };
       } catch (error) {

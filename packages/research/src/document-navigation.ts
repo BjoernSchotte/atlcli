@@ -3,7 +3,11 @@ import {
   storageToBlocks,
   type ExportBlock,
 } from "@atlcli/confluence/research";
-import type { BoundDocumentSectionOutlineV1 } from "./capability-contracts.js";
+import type {
+  BoundDocumentCoverageIssueV1,
+  BoundDocumentSectionOutlineV1,
+  BoundDocumentStructureSummaryV1,
+} from "./capability-contracts.js";
 import {
   projectConfluenceBlocks,
   type ContentProjectionLimits,
@@ -29,11 +33,64 @@ export interface BoundedDocumentSectionSourceV1 {
 }
 
 export interface BoundedDocumentSourceV1 {
+  snapshot: {
+    representation: "storage";
+    sourceVersion: number;
+  };
+  coverageIssues: BoundDocumentCoverageIssueV1[];
   sourceTruncated: boolean;
   outlineTruncated: boolean;
   genuinelyEmpty: boolean;
   totalSections: number;
   sections: BoundedDocumentSectionSourceV1[];
+}
+
+const EMPTY_STRUCTURES_V1: BoundDocumentStructureSummaryV1 = {
+  tables: 0,
+  expands: 0,
+  jiraMacros: 0,
+  smartLinks: 0,
+  excerpts: 0,
+  includes: 0,
+  unresolvedIncludes: 0,
+  unsupportedMacros: 0,
+};
+
+function emptyStructures(): BoundDocumentStructureSummaryV1 {
+  return { ...EMPTY_STRUCTURES_V1 };
+}
+
+function collectStructures(
+  value: unknown,
+  summary: BoundDocumentStructureSummaryV1,
+): void {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectStructures(entry, summary);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  const record = value as Record<string, unknown>;
+  if (record.type === "table") summary.tables += 1;
+  if (record.type === "expand") summary.expands += 1;
+  if (record.type === "smartCard") summary.smartLinks += 1;
+  if (record.type === "unknown" && typeof record.macroName === "string") {
+    const macroName = record.macroName.toLocaleLowerCase("en-US");
+    if (macroName === "jira") summary.jiraMacros += 1;
+    else if (macroName === "excerpt") summary.excerpts += 1;
+    else if (macroName === "include" || macroName === "excerpt-include") {
+      summary.includes += 1;
+      summary.unresolvedIncludes += 1;
+    } else {
+      summary.unsupportedMacros += 1;
+    }
+  }
+  for (const nested of Object.values(record)) collectStructures(nested, summary);
+}
+
+function uniqueCoverageIssues(
+  issues: readonly BoundDocumentCoverageIssueV1[],
+): BoundDocumentCoverageIssueV1[] {
+  return [...new Set(issues)];
 }
 
 function bytes(value: string): number {
@@ -86,16 +143,26 @@ function headingText(block: Extract<ExportBlock, { type: "heading" }>, siteOrigi
  * bounded private section projections. No model-authored identity participates
  * in this operation; section capabilities are added by the broker afterwards.
  */
-export function navigateConfluenceStorageV1(input: {
+function navigateConfluenceStorageDocumentV1(input: {
   storage: string;
+  sourceVersion: number;
   siteOrigin: string;
   projectionLimits: ContentProjectionLimits;
 }): BoundedDocumentSourceV1 | undefined {
+  if (!Number.isInteger(input.sourceVersion) || input.sourceVersion < 1) {
+    throw new TypeError("A navigable Confluence document requires a positive source version.");
+  }
+  const snapshot = {
+    representation: "storage" as const,
+    sourceVersion: input.sourceVersion,
+  };
   const sourceBytes = bytes(input.storage);
   const sourceTruncated = sourceBytes > MAX_DOCUMENT_SOURCE_BYTES_V1 ||
     input.storage.length > MAX_DOCUMENT_SOURCE_CHARS_V1;
   if (sourceTruncated) {
     return {
+      snapshot,
+      coverageIssues: ["source_limit", "outline_limit"],
       sourceTruncated: true,
       outlineTruncated: true,
       genuinelyEmpty: false,
@@ -116,6 +183,8 @@ export function navigateConfluenceStorageV1(input: {
   } catch (error) {
     if (error instanceof StorageParseError) {
       return {
+        snapshot,
+        coverageIssues: ["parse_budget"],
         sourceTruncated: false,
         outlineTruncated: true,
         genuinelyEmpty: false,
@@ -185,6 +254,8 @@ export function navigateConfluenceStorageV1(input: {
     macroNames(group.blocks, names, macroCounter);
     const jiraIssueKeys = [...new Set(content.text.match(JIRA_KEY_V1) ?? [])]
       .slice(0, MAX_OUTLINE_JIRA_KEYS_V1);
+    const structures = emptyStructures();
+    collectStructures(group.blocks, structures);
     return {
       sectionId: `section:${String(order).padStart(3, "0")}:${boundedSlug(group.heading)}`,
       heading: group.heading,
@@ -199,14 +270,71 @@ export function navigateConfluenceStorageV1(input: {
         linkCount: content.linkTargets.length,
         linksTruncated: content.truncated,
         jiraIssueKeys,
+        structures,
       },
     };
   });
+  const coverageIssues: BoundDocumentCoverageIssueV1[] = [];
+  if (outlineTruncated) coverageIssues.push("outline_limit");
+  if (sections.some((section) => section.content.truncated)) {
+    coverageIssues.push("projection_limit");
+  }
+  if (sections.some((section) => section.metadata.structures.unresolvedIncludes > 0)) {
+    coverageIssues.push("unresolved_include");
+  }
+  if (sections.some((section) => section.metadata.structures.unsupportedMacros > 0)) {
+    coverageIssues.push("unsupported_structure");
+  }
   return {
+    snapshot,
+    coverageIssues: uniqueCoverageIssues(coverageIssues),
     sourceTruncated: false,
     outlineTruncated,
     genuinelyEmpty: sections.length === 0,
     totalSections: nonEmptyGroups.length,
     sections,
   };
+}
+
+export type ConfluenceDocumentInputV1 = {
+  representation: "storage";
+  value: string;
+  sourceVersion: number;
+  siteOrigin: string;
+  projectionLimits: ContentProjectionLimits;
+};
+
+/**
+ * Representation-neutral document boundary. Storage is the only admitted
+ * representation today; future ADF or curated AGG adapters must normalize to
+ * the same bounded outline contract before the broker can expose section refs.
+ */
+export function navigateConfluenceDocumentV1(
+  input: ConfluenceDocumentInputV1,
+): BoundedDocumentSourceV1 | undefined {
+  switch (input.representation) {
+    case "storage":
+      return navigateConfluenceStorageDocumentV1({
+        storage: input.value,
+        sourceVersion: input.sourceVersion,
+        siteOrigin: input.siteOrigin,
+        projectionLimits: input.projectionLimits,
+      });
+  }
+}
+
+/** Compatibility wrapper for existing Storage callers and focused fixtures. */
+export function navigateConfluenceStorageV1(input: {
+  storage: string;
+  sourceVersion: number;
+  siteOrigin: string;
+  projectionLimits: ContentProjectionLimits;
+}): BoundedDocumentSourceV1 | undefined {
+  return navigateConfluenceDocumentV1({
+    representation: "storage",
+    value: input.storage,
+    sourceVersion: input.sourceVersion,
+    siteOrigin: input.siteOrigin,
+    projectionLimits: input.projectionLimits,
+  });
 }

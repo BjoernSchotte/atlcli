@@ -64,6 +64,7 @@
  */
 import { existsSync } from "node:fs";
 import { dirname, join, parse as parsePath } from "node:path";
+import ts from "typescript";
 
 /** The entrypoints that MUST build for the browser (spec 001 §6). */
 export const BROWSER_ENTRYPOINTS = [
@@ -143,14 +144,6 @@ const HOST_ONLY_SPECIFIER_RE = new RegExp(
  */
 const BUN_POLYFILL_IMPORTER_PREFIX = "/bun-vfs$$/";
 
-/**
- * Matches a *quoted* `node:`/`bun:` module specifier — i.e. an actual import
- * or require target (including the ones Bun externalizes verbatim, e.g.
- * `require("node:fs")`). Bare (unquoted) matches are avoided on bundled output
- * because Bun inlines diagnostic strings like `"… not implemented for node:buffer …"`
- * into its browser polyfill shims, which are self-contained, not real imports.
- */
-const SPECIFIER_RE = /["'](node|bun):[A-Za-z0-9_./-]*["']/g;
 /** Looser scan used only on build-failure diagnostics, where quoting is unreliable. */
 const BARE_SPECIFIER_RE = /\b(node|bun):[A-Za-z0-9_./-]+/g;
 
@@ -250,12 +243,48 @@ function uniqueHostGraphViolations(
  * Extract disallowed specifiers.
  * @param includeBare - also match unquoted forms (only safe for failure logs).
  */
-function uniqueSpecifiers(text: string, includeBare = false): string[] {
+function uniqueDiagnosticSpecifiers(text: string): string[] {
   const found = new Set<string>();
-  for (const m of text.matchAll(SPECIFIER_RE)) found.add(m[0].slice(1, -1));
-  if (includeBare) {
-    for (const m of text.matchAll(BARE_SPECIFIER_RE)) found.add(m[0]);
-  }
+  for (const m of text.matchAll(BARE_SPECIFIER_RE)) found.add(m[0]);
+  return [...found];
+}
+
+/**
+ * Read only syntactic import/export/require targets from a completed bundle.
+ *
+ * A text regex is not sufficient here: dependencies may include documentation
+ * strings such as `set File to import('node:buffer').File`. That text contains
+ * a perfectly quoted specifier but is not executable module syntax. Parsing the
+ * emitted JavaScript preserves the belt-and-suspenders output check without
+ * turning dependency error messages into false positives.
+ */
+export function uniqueOutputSpecifiers(text: string): string[] {
+  const source = ts.createSourceFile(
+    "browser-bundle.js",
+    text,
+    ts.ScriptTarget.ESNext,
+    false,
+    ts.ScriptKind.JS,
+  );
+  const found = new Set<string>();
+  const collect = (literal: ts.Expression | undefined): void => {
+    if (!literal || !ts.isStringLiteralLike(literal)) return;
+    if (/^(?:node|bun):[A-Za-z0-9_./-]*$/u.test(literal.text)) {
+      found.add(literal.text);
+    }
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      collect(node.moduleSpecifier);
+    } else if (ts.isCallExpression(node) && node.arguments.length === 1) {
+      if (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+          (ts.isIdentifier(node.expression) && node.expression.text === "require")) {
+        collect(node.arguments[0]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return [...found];
 }
 
@@ -385,7 +414,7 @@ export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckRes
       entrypoint,
       ok: false,
       buildFailed: true,
-      specifiers: uniqueSpecifiers(logs.join("\n"), true),
+      specifiers: uniqueDiagnosticSpecifiers(logs.join("\n")),
       builtinImports: uniqueBuiltinImports(found),
       bunGlobals: [],
       hostGraphViolations: uniqueHostGraphViolations(hostGraphViolations),
@@ -399,7 +428,7 @@ export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckRes
       entrypoint,
       ok: false,
       buildFailed: true,
-      specifiers: uniqueSpecifiers(logs.join("\n"), true),
+      specifiers: uniqueDiagnosticSpecifiers(logs.join("\n")),
       builtinImports: uniqueBuiltinImports(found),
       bunGlobals: [],
       hostGraphViolations: uniqueHostGraphViolations(hostGraphViolations),
@@ -409,7 +438,7 @@ export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckRes
 
   let output = "";
   for (const artifact of result.outputs) output += await artifact.text();
-  const specifiers = uniqueSpecifiers(output);
+  const specifiers = uniqueOutputSpecifiers(output);
   const bunGlobals = [...new Set([...output.matchAll(BUN_GLOBAL_RE)].map((m) => m[0]))];
   const builtinImports = uniqueBuiltinImports(found);
   const uniqueHostViolations =

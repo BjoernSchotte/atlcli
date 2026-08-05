@@ -251,6 +251,7 @@ export type ExtRequest =
       windowId: number;
       request: ResearchRequestV1;
       policy: ResearchOneShotPolicyV1;
+      purpose?: "chat" | "research";
     }
   | { kind: "research:list-scope-clarification-reviews"; windowId: number }
   | ({ kind: "research:resolve-scope-clarification-review"; windowId: number } & ResearchScopeClarificationReviewActionRequest)
@@ -824,9 +825,10 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       isResearchRevision(action.graphRevision);
   }
   if (kind === "research:prepare-plan-review") {
-    const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown };
-    return hasOnlyKeys(value, ["kind", "windowId", "request", "policy"]) &&
+    const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown; purpose?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "request", "policy", "purpose"]) &&
       isWindowId(prepare.windowId) &&
+      (prepare.purpose === undefined || prepare.purpose === "chat" || prepare.purpose === "research") &&
       typeof prepare.request === "object" && prepare.request !== null &&
       typeof prepare.policy === "object" && prepare.policy !== null;
   }
@@ -904,9 +906,10 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       isResearchRevision(action.briefRevision);
   }
   if (kind === "research:prepare-scope-clarification-review") {
-    const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown };
-    return hasOnlyKeys(value, ["kind", "windowId", "request", "policy"]) &&
+    const prepare = value as { windowId?: unknown; request?: unknown; policy?: unknown; purpose?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "request", "policy", "purpose"]) &&
       isWindowId(prepare.windowId) &&
+      (prepare.purpose === undefined || prepare.purpose === "chat" || prepare.purpose === "research") &&
       typeof prepare.request === "object" && prepare.request !== null &&
       typeof prepare.policy === "object" && prepare.policy !== null;
   }

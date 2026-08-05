@@ -3356,6 +3356,26 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
       );
       return display;
     }
+    const authoredAppearance = el.attrs["data-card-appearance"];
+    if (
+      authoredAppearance === "inline" ||
+      authoredAppearance === "block" ||
+      authoredAppearance === "embed"
+    ) {
+      return [{
+        type: "smartCard",
+        card: {
+          appearance: authoredAppearance,
+          source: "url",
+          url: href,
+          target: { kind: "external", href },
+          ...(inlineText(display).trim() ? { title: inlineText(display).trim() } : {}),
+          ...(el.attrs["local-id"] !== undefined
+            ? { localId: el.attrs["local-id"] }
+            : {}),
+        },
+      }];
+    }
     return [{ type: "link", target: { kind: "external", href }, content: display }];
   }
 

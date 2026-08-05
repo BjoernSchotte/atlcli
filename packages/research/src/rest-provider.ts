@@ -26,7 +26,7 @@ import {
   prependBoundedDetailText,
   type ContentProjectionLimits,
 } from "./content-projection.js";
-import { navigateConfluenceStorageV1 } from "./document-navigation.js";
+import { navigateConfluenceDocumentV1 } from "./document-navigation.js";
 
 export interface RestResearchProviderOptions {
   /**
@@ -309,6 +309,10 @@ export function createRestResearchProviders(
         };
       },
       async getIssue(input) {
+        const optionalFields = [
+          ...(input.includeMetadata ? ["labels"] : []),
+          ...(input.includeComments ? ["comment"] : []),
+        ];
         const [issue, remoteLinks] = await Promise.all([
           jira.getIssue(input.issueKey, {
             fields: [
@@ -317,11 +321,10 @@ export function createRestResearchProviders(
               "project",
               "status",
               "updated",
-              "labels",
               "parent",
               "subtasks",
               "issuelinks",
-              "comment",
+              ...optionalFields,
             ],
             signal: input.signal,
           }),
@@ -334,14 +337,16 @@ export function createRestResearchProviders(
         );
         const relations = jiraRelationKeys(issue);
         const remoteWikiLinks = jiraRemoteWikiLinks(remoteLinks, request.scope.siteOrigin);
-        const comments = projectJiraComments(issue, request.scope.siteOrigin, limits);
+        const comments = input.includeComments
+          ? projectJiraComments(issue, request.scope.siteOrigin, limits)
+          : undefined;
         const detailFields = detailPrefix({
           summary: issue.fields.summary ?? issue.key,
           status: issue.fields.status?.name,
-          labels: issue.fields.labels,
+          labels: input.includeMetadata ? issue.fields.labels : undefined,
           relationLabel: "Related issue keys",
           relationIds: relations.values,
-          commentSummary: comments.summary,
+          commentSummary: comments?.summary,
         });
         return {
           issueKey: issue.key,
@@ -349,11 +354,13 @@ export function createRestResearchProviders(
           title: issue.fields.summary ?? issue.key,
           ...(issue.fields.updated ? { updatedAt: issue.fields.updated } : {}),
           content: appendBoundedDetailLinks(
-            appendBoundedDetailProjection(
-              prependBoundedDetailText(description, detailFields, limits),
-              comments.projection,
-              limits,
-            ),
+            comments
+              ? appendBoundedDetailProjection(
+                  prependBoundedDetailText(description, detailFields, limits),
+                  comments.projection,
+                  limits,
+                )
+              : prependBoundedDetailText(description, detailFields, limits),
             [
               ...relations.values.map((issueKey) => jiraIssueUrl(request.scope.siteOrigin, issueKey)),
               ...remoteWikiLinks.values,
@@ -393,7 +400,9 @@ export function createRestResearchProviders(
         const page = await wiki.getPageDetails(input.contentId, {
           signal: input.signal,
         });
-        const ancestors = wikiAncestorIds(page);
+        const ancestors = input.includeMetadata
+          ? wikiAncestorIds(page)
+          : { values: [] as string[], truncated: false };
         const inlineComments = input.includeComments
           ? await wiki.listPageInlineCommentsForExport(page.id, {
               signal: input.signal,
@@ -405,13 +414,18 @@ export function createRestResearchProviders(
           ? projectWikiInlineComments(inlineComments, request.scope.siteOrigin, limits)
           : undefined;
         const detailFields = detailPrefix({
-          labels: page.labels,
+          labels: input.includeMetadata ? page.labels : undefined,
           relationLabel: "Ancestor page IDs",
           relationIds: ancestors.values,
           commentSummary: comments?.summary,
         });
-        const navigation = navigateConfluenceStorageV1({
-          storage: page.storage,
+        if (!Number.isInteger(page.version) || (page.version ?? 0) < 1) {
+          throw new Error("Confluence page detail has no verified source version.");
+        }
+        const navigation = navigateConfluenceDocumentV1({
+          representation: "storage",
+          value: page.storage,
+          sourceVersion: page.version!,
           siteOrigin: request.scope.siteOrigin,
           projectionLimits: limits,
         });

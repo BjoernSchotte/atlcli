@@ -22,6 +22,7 @@ import {
 } from "../quality-policy.js";
 import type { ResearchWorkspace } from "../workspace.js";
 import { finalizeChatAnswerV1 } from "./answer.js";
+import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V1,
   CHAT_SESSION_STATE_PATH_V1,
@@ -337,6 +338,7 @@ export function createKiteweaveChatAgent(
         {
           budget,
           scopeBindings: input.brokerRequest.scopeSeeds?.map((seed) => seed.binding),
+          exactAuxiliaryNeeds: deriveChatAuxiliaryReadNeedsV1(turn.question),
         },
       );
       const controller = new AbortController();

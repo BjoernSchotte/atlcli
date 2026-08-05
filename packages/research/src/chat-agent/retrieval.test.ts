@@ -254,6 +254,38 @@ describe("Chat exact-anchor retrieval", () => {
     expect(calls).toEqual(["wiki.get:1001"]);
   });
 
+  test("keeps auxiliary projections off by default and admits an explicit typed need", async () => {
+    const seen: Array<{ includeComments?: boolean; includeMetadata?: boolean }> = [];
+    const fake = providers([]);
+    fake.wiki.getPage = async (input) => {
+      seen.push({
+        ...(input.includeComments ? { includeComments: true } : {}),
+        ...(input.includeMetadata ? { includeMetadata: true } : {}),
+      });
+      return {
+        contentId: input.contentId,
+        spaceKey: "~account-id",
+        title: "Bound page",
+        content: { text: "Synthetic body.", linkTargets: [], truncated: false, inputBytes: 15 },
+      };
+    };
+    const makeBroker = (exactAuxiliaryNeeds?: Array<"comments" | "metadata">) =>
+      new ResearchCapabilityBroker(request({
+        seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Page", id: "page-1001" })],
+        wiki: ["~account-id"],
+        exact: ["confluence"],
+      }), fake, {
+        createAnchorId: () => exactAuxiliaryNeeds ? "aux-anchor" : "plain-anchor",
+        exactAuxiliaryNeeds,
+      });
+
+    const ordinary = makeBroker();
+    await invokeDirect(ordinary, ordinary.exactAnchors()[0]!.anchorRef);
+    const explicit = makeBroker(["comments"]);
+    await invokeDirect(explicit, explicit.exactAnchors()[0]!.anchorRef);
+    expect(seen).toEqual([{}, { includeComments: true }]);
+  });
+
   test("returns an opaque Jira anchor only after a verified page exposes its key", async () => {
     const calls: string[] = [];
     const fake = providers(calls);
@@ -316,6 +348,7 @@ describe("Chat exact-anchor retrieval", () => {
     ].join("");
     const navigation = navigateConfluenceStorageV1({
       storage,
+      sourceVersion: 7,
       siteOrigin: ORIGIN,
       projectionLimits: {
         maxTextChars: 4_000,
@@ -341,11 +374,13 @@ describe("Chat exact-anchor retrieval", () => {
       };
     };
     let sectionSequence = 0;
-    const broker = new ResearchCapabilityBroker(request({
+    const directRequest = request({
       seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Long page", id: "page-1001" })],
       wiki: ["~account-id"],
       exact: ["confluence"],
-    }), fake, {
+    });
+    directRequest.limits.maxDetailItemsPerProduct = 1;
+    const broker = new ResearchCapabilityBroker(directRequest, fake, {
       createAnchorId: () => "page-anchor",
       createSectionId: () => `section-${++sectionSequence}`,
     });
@@ -379,6 +414,7 @@ describe("Chat exact-anchor retrieval", () => {
       unreadSections: 1,
       completeDocumentRead: false,
     });
+    expect(broker.budget.state().details.confluence).toBe(1);
     expect(calls).toEqual(["wiki.get:1001"]);
   });
 
@@ -392,6 +428,7 @@ describe("Chat exact-anchor retrieval", () => {
       content: { text: "Preview", linkTargets: [], truncated: true, inputBytes: 2_000 },
       navigation: navigateConfluenceStorageV1({
         storage: "<h1>Late section</h1><p>Bound evidence.</p>",
+        sourceVersion: 7,
         siteOrigin: ORIGIN,
         projectionLimits: {
           maxTextChars: 1_000,
@@ -444,5 +481,65 @@ describe("Chat exact-anchor retrieval", () => {
       schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
       sectionRef: ref,
     })).rejects.toBeDefined();
+  });
+
+  test("invalidates section refs when the bound page snapshot is captured again", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    let sourceVersion = 7;
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}:v${sourceVersion}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Versioned page",
+        content: { text: "Preview", linkTargets: [], truncated: true, inputBytes: 2_000 },
+        navigation: navigateConfluenceStorageV1({
+          storage: `<h1>Decision</h1><p>Snapshot version ${sourceVersion}.</p>`,
+          sourceVersion,
+          siteOrigin: ORIGIN,
+          projectionLimits: {
+            maxTextChars: 1_000,
+            maxTextBytes: 4_000,
+            maxLinks: 10,
+            maxNodes: 1_000,
+            maxDepth: 32,
+          },
+        }),
+      };
+    };
+    let sectionSequence = 0;
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, {
+      createAnchorId: () => "anchor",
+      createSectionId: () => `section-${++sectionSequence}`,
+      createCaptureId: () => `capture-${sourceVersion}`,
+    });
+    const anchor = broker.exactAnchors()[0]!.anchorRef;
+    const first = await invokeDirect(broker, anchor);
+    const staleRef = first.document!.sections[0]!.sectionRef;
+
+    sourceVersion = 8;
+    const second = await invokeDirect(broker, anchor);
+    const currentRef = second.document!.sections[0]!.sectionRef;
+    expect(second.document!.snapshot).toEqual({
+      sourceId: "wiki:1001",
+      representation: "storage",
+      sourceVersion: 8,
+      captureRef: "research-capture:capture-8",
+    });
+    await expect(broker.readExactSection({
+      schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+      sectionRef: staleRef,
+    })).rejects.toMatchObject({ code: "invalid-request" });
+    const current = await broker.readExactSection({
+      schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+      sectionRef: currentRef,
+    });
+    expect(current.content.text).toContain("Snapshot version 8");
+    expect(calls).toEqual(["wiki.get:1001:v7", "wiki.get:1001:v8"]);
   });
 });

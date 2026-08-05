@@ -403,7 +403,9 @@ interface PendingScopeClarification {
 
 interface ScopePreflightRetry {
   request: ResearchRequestV1;
-  selection: ResearchScopeCandidateSelectionV1;
+  selection?: ResearchScopeCandidateSelectionV1;
+  alreadyResolved?: boolean;
+  conversationId?: string;
 }
 
 export function ResearchBriefClarificationNotice({
@@ -1313,13 +1315,23 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             scopeExpansionMode: scopeExpansion,
             requestedReconciliation: reconciliation,
           });
-      const scopeOutcome = await port!.resolveScope(
-        initialRequest,
-        retry ? { candidateSelections: [retry.selection] } : undefined,
-      );
+      const scopeOutcome = retry?.alreadyResolved
+        ? {
+            schema: "atlcli.research-scope-preflight-outcome/v1" as const,
+            kind: "ready" as const,
+            request: initialRequest,
+            mentions: [],
+            resolutions: [],
+          }
+        : await port!.resolveScope(
+            initialRequest,
+            retry?.selection ? { candidateSelections: [retry.selection] } : undefined,
+          );
       if (scopeOutcome.kind === "clarification_required") {
         if (port!.prepareScopeClarificationReview) {
-          const review = await port!.prepareScopeClarificationReview(initialRequest, policy);
+          const review = await port!.prepareScopeClarificationReview(initialRequest, policy, {
+            purpose: interactionMode === "chat" ? "chat" : "research",
+          });
           setScopeClarificationReviews((current) => [
             review,
             ...current.filter((candidate) => candidate.sessionId !== review.sessionId),
@@ -1410,8 +1422,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       const result = await port!.run(request, {
         signal: controller.signal,
         mode: interactionMode === "chat" ? "chat" : "research",
-        ...(interactionMode === "chat" && activeChatConversationIdRef.current
-          ? { conversationId: activeChatConversationIdRef.current }
+        ...(interactionMode === "chat" && (retry?.conversationId ?? activeChatConversationIdRef.current)
+          ? { conversationId: retry?.conversationId ?? activeChatConversationIdRef.current! }
           : {}),
         policy,
         ...(interactionMode === "chat"
@@ -1979,6 +1991,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     setScopeClarificationReviews((current) => current.filter((candidate) =>
       candidate.sessionId !== review.sessionId,
     ));
+    if (outcome.kind === "chat_ready") return;
     if (outcome.kind === "scope_clarification") {
       setScopeClarificationReviews((current) => [
         outcome.review,
@@ -2030,6 +2043,19 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           candidateId,
         },
       });
+      if (outcome.kind === "chat_ready") {
+        setScopeClarificationReviews((current) => current.filter((candidate) =>
+          candidate.sessionId !== review.sessionId,
+        ));
+        activeChatConversationIdRef.current = outcome.conversationId;
+        await run({
+          request: outcome.request,
+          alreadyResolved: true,
+          conversationId: outcome.conversationId,
+        });
+        await refreshScopeClarificationReviews();
+        return;
+      }
       applyScopeClarificationOutcome(review, outcome);
       await refreshScopeClarificationReviews();
       void refreshClarificationReviews();

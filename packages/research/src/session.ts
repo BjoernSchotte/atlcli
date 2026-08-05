@@ -149,6 +149,8 @@ export interface ResearchSessionAssumptionDecisionV1 {
  */
 export interface ResearchSessionScopeClarificationV1 {
   schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+  /** Completion root selected before the wait; legacy records imply research. */
+  purpose?: "chat" | "research";
   state: "waiting_choice" | "choice_resolved";
   request: ResearchRequestV1;
   policy: ResearchOneShotPolicyV1;
@@ -452,6 +454,7 @@ export type ResearchSessionUpdateV1 =
   | (ResearchSessionFencedUpdateV1 & {
       /** Persist an unresolved natural-language scope before any brief exists. */
       kind: "record_scope_clarification";
+      purpose?: "chat" | "research";
       request: ResearchRequestV1;
       policy: ResearchOneShotPolicyV1;
       clarification: ResearchScopeClarificationRequiredV1;
@@ -714,6 +717,7 @@ function validateScopeClarification(
   value: ResearchSessionScopeClarificationV1,
 ): void {
   if (value.schema !== RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1 ||
+      (value.purpose !== undefined && value.purpose !== "chat" && value.purpose !== "research") ||
       (value.state !== "waiting_choice" && value.state !== "choice_resolved")) {
     invalid("Research session scope clarification is invalid.");
   }
@@ -748,7 +752,9 @@ function validateScopeClarification(
     invalid("Research session scope clarification candidates are invalid.");
   }
   if (value.state === "waiting_choice") {
-    if (session.status !== "waiting_scope_clarification" || session.activeTurnId ||
+    const validAuditStatus = session.status === "waiting_scope_clarification" ||
+      session.status === "cancelled" || session.status === "deleted";
+    if (!validAuditStatus || session.activeTurnId ||
         value.selection !== undefined || value.resolvedRequest !== undefined) {
       invalid("Research session scope clarification wait is invalid.");
     }
@@ -766,8 +772,10 @@ function validateScopeClarification(
   } catch (error) {
     invalid(error instanceof Error ? error.message : "Research session scope clarification resolution is invalid.");
   }
+  const validResolvedStatus = session.status === "idle" ||
+    session.status === "cancelled" || session.status === "deleted";
   if (!sameScopeClarificationRequest(request, resolved) ||
-      (!session.activeTurnId && session.status !== "idle")) {
+      (!session.activeTurnId && !validResolvedStatus)) {
     invalid("Research session scope clarification resolution is invalid.");
   }
 }
@@ -1148,6 +1156,7 @@ export function reduceResearchSessionV1(
     }
     const next: ResearchSessionScopeClarificationV1 = {
       schema: RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1,
+      purpose: update.purpose ?? "research",
       state: "waiting_choice",
       request: clone(normalizeResearchRequestV1(update.request)),
       policy: clone(normalizeResearchOneShotPolicyV1(update.policy)),
@@ -2377,7 +2386,8 @@ export function reduceResearchSessionV1(
     // is created but before the first turn/brief is accepted. Preserve that
     // user intent as a terminal checkpoint instead of leaving an orphaned idle
     // session that appears resumable after a browser-worker race.
-    if (session.status === "idle") {
+    if (session.status === "idle" ||
+        (session.status === "waiting_scope_clarification" && !session.activeTurnId)) {
       return withNext(session, update, { status: "cancelled" });
     }
     const current = ensureActive(session, ["planning", "waiting_clarification", "waiting_plan_approval", "waiting_plan_revision", "waiting_scope_approval", "waiting_steering", "pause_requested", "paused", "running", "waiting_authentication", "waiting_quota"]);

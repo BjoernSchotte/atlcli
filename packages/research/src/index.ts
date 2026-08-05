@@ -61,3 +61,5 @@ export * from "./chat-agent/answer.js";
 export * from "./chat-agent/prompts.js";
 export * from "./chat-agent/retrieval.js";
 export * from "./chat-agent/model.js";
+export * from "./chat-agent/auxiliary.js";
+export * from "./chat-agent/scope-clarification.js";

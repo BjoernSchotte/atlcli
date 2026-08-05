@@ -849,6 +849,20 @@ describe("research CLI one-shot contract", () => {
       .toMatchObject({ mode: "deep", delegation: "strategy-required" });
     expect(() => parseChatCliInput(["question"], { thinking: "maximum" }))
       .toThrow("--thinking must be one of");
+    expect(parseChatCliInput(["continue"], {
+      session: "research-session:scope-review",
+      "scope-revision": "2",
+      "scope-mention": "mention:scope-1",
+      "scope-candidate": "research-scope-candidate:space-1",
+    }).chatScopeSelection).toEqual({
+      revision: 2,
+      mentionId: "mention:scope-1",
+      candidateId: "research-scope-candidate:space-1",
+    });
+    expect(() => parseChatCliInput(["continue"], {
+      session: "research-session:scope-review",
+      "scope-revision": "2",
+    })).toThrow("requires --scope-revision, --scope-mention, and --scope-candidate together");
   });
 
   test("keeps ordinary chat bounded below the deep-research envelope", () => {
@@ -938,6 +952,105 @@ describe("research CLI one-shot contract", () => {
       jiraProjectKeys: [],
       confluenceSpaceKeys: ["DOCSY"],
     });
+  });
+
+  test("durably pauses and resolves ambiguous Chat scope without constructing Research", async () => {
+    const harness = cliHarness();
+    let scopeCalls = 0;
+    let keyReads = 0;
+    let sessionSequence = 0;
+    harness.dependencies.createDurableSessionId = () =>
+      `research-session:chat-scope-${++sessionSequence}`;
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "synthetic-chat-provider-key";
+    };
+    const candidate = {
+      schema: "atlcli.research-scope-candidate/v1" as const,
+      id: "research-scope-candidate:space-1",
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      product: "confluence" as const,
+      entityKind: "space" as const,
+      entityRef: "research-scope-entity:space-1",
+      key: "SPACE",
+      name: "Synthetic account space",
+      accessible: true as const,
+      providerFreshnessAt: "2026-08-05T10:00:00.000Z",
+    };
+    harness.dependencies.resolveScope = async ({ request, options }) => {
+      scopeCalls += 1;
+      if (options?.candidateSelections) {
+        return {
+          schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+          kind: "ready" as const,
+          request: {
+            ...request,
+            scope: { ...request.scope, confluenceSpaceKeys: ["SPACE"] },
+          },
+          mentions: [],
+          resolutions: [],
+        };
+      }
+      return {
+        schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+        kind: "clarification_required" as const,
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1" as const,
+          reason: "ambiguous" as const,
+          mentionId: "mention:scope-1",
+          candidateIds: [candidate.id],
+          rerunGuidance: ["Choose the intended space."],
+        },
+        candidateChoices: [candidate],
+        mentions: [],
+        resolutions: [],
+      };
+    };
+
+    await expect(handleChat(
+      ["Summarize the account space."],
+      {},
+      { json: false },
+      harness.dependencies,
+    )).rejects.toThrow("durable candidate choice");
+    expect(keyReads).toBe(0);
+    expect(harness.chatRunInputs).toEqual([]);
+    expect(harness.runInputs).toEqual([]);
+    expect(harness.stdout).toEqual([]);
+    expect(harness.stderr.join("")).toContain(
+      "Scope clarification required before content or model work.",
+    );
+    expect(harness.stderr.join("")).toContain("Session: research-session:chat-scope-1");
+    expect(harness.stderr.join("")).toContain(`  - ${candidate.id}: confluence Synthetic account space (SPACE)`);
+    expect(harness.stderr.join("")).toContain(
+      `--scope-revision 2 --scope-mention mention:scope-1 --scope-candidate <candidate-id> continue`,
+    );
+
+    harness.stdout.length = 0;
+    await handleChat(
+      ["continue"],
+      {
+        session: "research-session:chat-scope-1",
+        "scope-revision": "2",
+        "scope-mention": "mention:scope-1",
+        "scope-candidate": candidate.id,
+      },
+      { json: false },
+      harness.dependencies,
+    );
+    expect(scopeCalls).toBe(2);
+    expect(keyReads).toBe(1);
+    expect(harness.runInputs).toEqual([]);
+    expect(harness.chatRunInputs).toHaveLength(1);
+    expect(harness.chatRunInputs[0]).toMatchObject({
+      sessionId: "research-session:chat-scope-1",
+      request: {
+        question: "Summarize the account space.",
+        scope: { confluenceSpaceKeys: ["SPACE"] },
+      },
+    });
+    await expect(harness.durableStore.read("research-session:chat-scope-1"))
+      .resolves.toMatchObject({ status: "idle", turns: [] });
   });
 
   test("rebinds retained exact chat scope before a fresh-host follow-up", async () => {

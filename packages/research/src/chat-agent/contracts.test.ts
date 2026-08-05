@@ -192,6 +192,7 @@ describe("Chat answer contract", () => {
           linkTargets: [],
         },
         coverage: {
+          issues: ["projection_limit" as const],
           sourceTruncated: false,
           outlineTruncated: false,
           projectionTruncated: false,
@@ -210,6 +211,8 @@ describe("Chat answer contract", () => {
         gaps: [],
       },
     });
+    expect(bounded.messageMarkdown).not.toContain("contains no other constraint");
+    expect(bounded.messageMarkdown).toContain("does not establish what is absent");
     expect(bounded.messageMarkdown).toContain("Coverage limit");
     expect(bounded.gaps).toEqual([expect.objectContaining({
       code: "incomplete-coverage",
@@ -230,6 +233,95 @@ describe("Chat answer contract", () => {
     });
     expect(answer.messageMarkdown).toContain("positive statement");
     expect(answer.gaps).toHaveLength(1);
+  });
+
+  test("removes only unsupported whole-document negatives from a supported partial answer", () => {
+    const source = {
+      id: "wiki:1001",
+      product: "confluence" as const,
+      title: "Long synthetic page",
+      url: "https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001",
+      contentId: "1001",
+      spaceKey: "SPACE",
+    };
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "The visible section establishes the approved rollout.",
+          "The entire page has no other constraint. [[source:wiki:1001]]",
+        ].join(" "),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [source],
+      detailEvidence: [{
+        source,
+        content: {
+          text: "The visible section establishes the approved rollout.",
+          inputBytes: 50_000,
+          truncated: true,
+          linkTargets: [],
+        },
+        coverage: {
+          issues: ["unresolved_include"],
+          sourceTruncated: false,
+          outlineTruncated: false,
+          projectionTruncated: true,
+          unreadSections: 2,
+          completeDocumentRead: false,
+        },
+      }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+    });
+    expect(answer.messageMarkdown).toContain("visible section establishes");
+    expect(answer.messageMarkdown).not.toContain("entire page has no other constraint");
+    expect(answer.messageMarkdown).toContain("included Confluence item was not resolved");
+  });
+
+  test("renders parser and source limits as a material localized gap", () => {
+    const source = {
+      id: "wiki:1001",
+      product: "confluence" as const,
+      title: "Bounded synthetic page",
+      url: "https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001",
+      contentId: "1001",
+      spaceKey: "SPACE",
+    };
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: "Der lesbare Ausschnitt belegt den sichtbaren Beschluss. [[source:wiki:1001]]",
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [source],
+      detailEvidence: [{
+        source,
+        content: {
+          text: "Der sichtbare Beschluss ist freigegeben.",
+          inputBytes: 4_500_000,
+          truncated: true,
+          linkTargets: [],
+        },
+        coverage: {
+          issues: ["parse_budget"],
+          sourceTruncated: false,
+          outlineTruncated: true,
+          projectionTruncated: true,
+          unreadSections: 0,
+          completeDocumentRead: false,
+        },
+      }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+      locale: "de",
+    });
+    expect(answer.messageMarkdown).toContain("sichtbaren Beschluss");
+    expect(answer.messageMarkdown).toContain("nur teilweise verarbeitet");
+    expect(answer.gaps).toEqual([expect.objectContaining({
+      code: "incomplete-coverage",
+      sourceIds: ["wiki:1001"],
+    })]);
   });
 });
 

@@ -451,6 +451,27 @@ describe("storageToBlocks — links & mentions", () => {
     ]);
   });
 
+  test("preserves an authored Storage smart-link appearance", () => {
+    const out = blocks(
+      '<p><a href="https://tenant-a.atlassian.net/wiki/spaces/DEMO/pages/1001" data-card-appearance="inline" local-id="card-1">Decision page</a></p>',
+    );
+    const content = (out[0] as { content: InlineNode[] }).content;
+    expect(content).toEqual([{
+      type: "smartCard",
+      card: {
+        appearance: "inline",
+        source: "url",
+        url: "https://tenant-a.atlassian.net/wiki/spaces/DEMO/pages/1001",
+        target: {
+          kind: "external",
+          href: "https://tenant-a.atlassian.net/wiki/spaces/DEMO/pages/1001",
+        },
+        title: "Decision page",
+        localId: "card-1",
+      },
+    }]);
+  });
+
   test("Confluence ri:url link preserves its target and rich display text", () => {
     const out = blocks(
       '<p>See <ac:link><ri:url ri:value="https://x.test/y"/>' +

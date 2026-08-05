@@ -55,6 +55,7 @@ import {
   type ResearchBriefPreflightOutcomeV1,
   type ChatQualityPolicyV1,
   type ChatAnswerV1,
+  type ChatScopeClarificationReviewV1,
   type ChatTurnRequestV1,
   type ResearchBriefV1,
   type ResearchOneShotPolicyV1,
@@ -83,6 +84,8 @@ import {
   recoverResearchSessionForResumeV1,
   isRecoverableConsumedRetrievalContinuationV1,
   resolveResearchSessionScopeClarificationV1,
+  projectChatScopeClarificationReviewV1,
+  resolveChatScopeClarificationV1,
 } from "@atlcli/research/node";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
@@ -119,6 +122,12 @@ export interface ResearchCliInput {
   policy: ResearchOneShotPolicyV1;
   /** Present only for direct Chat; research workflow policy remains separate. */
   qualityPolicy?: ChatQualityPolicyV1;
+  /** Revision-fenced answer to a durable Chat scope choice. */
+  chatScopeSelection?: {
+    revision: number;
+    mentionId: string;
+    candidateId: string;
+  };
 }
 
 const DEFAULT_MAX_RUN_MINUTES = 10;
@@ -611,6 +620,12 @@ export function parseChatCliInput(
   );
   const researchFlags = { ...flags };
   delete researchFlags.thinking;
+  const scopeRevision = getFlag(flags, "scope-revision");
+  const scopeMention = getFlag(flags, "scope-mention");
+  const scopeCandidate = getFlag(flags, "scope-candidate");
+  delete researchFlags["scope-revision"];
+  delete researchFlags["scope-mention"];
+  delete researchFlags["scope-candidate"];
   const researchOnly = [
     "from",
     "to",
@@ -629,12 +644,65 @@ export function parseChatCliInput(
     );
   }
   const parsed = parseResearchCliInput(args, researchFlags);
+  const scopeParts = [scopeRevision, scopeMention, scopeCandidate];
+  if (scopeParts.some((value) => value !== undefined) &&
+      scopeParts.some((value) => value === undefined)) {
+    throw new Error(
+      "Chat scope clarification requires --scope-revision, --scope-mention, and --scope-candidate together.",
+    );
+  }
+  if (scopeRevision !== undefined && !parsed.newTurnSessionId) {
+    throw new Error("Chat scope clarification requires the retained --session ID.");
+  }
+  const revision = scopeRevision === undefined ? undefined : Number(scopeRevision);
+  if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1)) {
+    throw new Error("--scope-revision must be a positive integer.");
+  }
   return {
     ...parsed,
     policy: chatPolicyForThinkingModeV1(thinkingMode),
     qualityPolicy: chatQualityPolicyForModeV1(thinkingMode),
     planOnly: false,
+    ...(revision === undefined ? {} : {
+      chatScopeSelection: {
+        revision,
+        mentionId: scopeMention!,
+        candidateId: scopeCandidate!,
+      },
+    }),
   };
+}
+
+function oneLineChatLabel(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+export function formatChatScopeClarificationForCliV1(
+  review: ChatScopeClarificationReviewV1,
+): string {
+  const candidates = review.clarification.candidates.map((candidate) => {
+    const label = oneLineChatLabel(candidate.name);
+    const key = candidate.key ? ` (${candidate.key})` : "";
+    const status = candidate.status === "archived" ? " [archived]" : "";
+    return `  - ${candidate.id}: ${candidate.product} ${label}${key}${status}`;
+  });
+  const resolution = candidates.length > 0
+    ? [
+        "Resume with one listed candidate ID:",
+        `  atlcli chat --session ${review.sessionId} --scope-revision ${review.revision} --scope-mention ${review.clarification.mentionId} --scope-candidate <candidate-id> continue`,
+      ]
+    : ["Rerun the original question with an exact --project <KEY> or --space <KEY> context."];
+  return [
+    "[chat] Scope clarification required before content or model work.",
+    `Prompt: ${oneLineChatLabel(review.clarification.rerunGuidance[0] ?? "Choose the intended Atlassian scope.")}`,
+    `Session: ${review.sessionId}`,
+    `Revision: ${review.revision}`,
+    `Mention: ${review.clarification.mentionId}`,
+    "Candidates:",
+    ...(candidates.length > 0 ? candidates : ["  - No selectable candidate is currently available."]),
+    ...resolution,
+    "",
+  ].join("\n");
 }
 
 function requireSessionId(value: string | undefined): string {
@@ -3079,50 +3147,106 @@ export async function handleChat(
       { profile: input.profile },
     );
   }
-  const apiKey = readApiKey(dependencies);
-  if (!apiKey) {
-    throw new Error(
-      "ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.",
-    );
-  }
   const opened = await dependencies.openSessionStore();
   try {
     let request: ResearchRequestV1;
     let workspace: ResearchWorkspace;
     let sessionId: string;
     if (input.newTurnSessionId) {
-      sessionId = input.newTurnSessionId;
-      const stored = await opened.store.read(sessionId);
+      const stored = await opened.store.read(input.newTurnSessionId);
       if (!stored) {
         throw new Error("The requested chat conversation does not exist.");
       }
-      workspace = await opened.store.workspace(sessionId);
-      const retained = await workspace.readFile(CHAT_CONTEXT_REQUEST_PATH_V1);
-      if (!retained) {
-        throw new Error("The retained session is not an ordinary chat conversation.");
-      }
-      const previous = normalizeResearchRequestV1(JSON.parse(retained));
-      if (new URL(profile.baseUrl).origin !== previous.scope.siteOrigin) {
-        throw new Error(
-          "The selected profile belongs to a different Atlassian tenant than the retained chat conversation.",
+      if (input.chatScopeSelection) {
+        const state = stored.scopeClarification;
+        const review = projectChatScopeClarificationReviewV1(
+          stored,
+          new URL(profile.baseUrl).origin,
         );
+        if (!state || !review || stored.revision !== input.chatScopeSelection.revision ||
+            review.clarification.mentionId !== input.chatScopeSelection.mentionId ||
+            !review.clarification.candidates.some((candidate) =>
+              candidate.id === input.chatScopeSelection!.candidateId
+            )) {
+          throw new Error("Chat scope clarification is stale; inspect the current review and retry.");
+        }
+        const selection = {
+          schema: "atlcli.research-scope-candidate-selection/v1" as const,
+          mentionId: input.chatScopeSelection.mentionId,
+          candidateId: input.chatScopeSelection.candidateId,
+        };
+        const scopeOutcome = await dependencies.resolveScope({
+          profile,
+          request: state.request,
+          options: { candidateSelections: [selection] },
+        });
+        if (scopeOutcome.kind === "clarification_required") {
+          const refreshed = await refreshResearchSessionScopeClarificationV1({
+            store: opened.store,
+            sessionId: stored.sessionId,
+            expectedRevision: stored.revision,
+            expectedLeaseEpoch: stored.lease.epoch,
+            clarification: scopeOutcome.clarification,
+            candidateChoices: scopeOutcome.candidateChoices,
+            at: new Date().toISOString(),
+          });
+          const review = projectChatScopeClarificationReviewV1(
+            refreshed,
+            state.request.scope.siteOrigin,
+          );
+          if (review && !opts.json) {
+            dependencies.writeStderr(formatChatScopeClarificationForCliV1(review));
+          }
+          dependencies.fail(
+            opts,
+            2,
+            ERROR_CODES.VALIDATION,
+            "Chat scope still requires a candidate choice.",
+            { review },
+          );
+        }
+        const resolved = await resolveChatScopeClarificationV1({
+          store: opened.store,
+          sessionId: stored.sessionId,
+          expectedRevision: stored.revision,
+          expectedLeaseEpoch: stored.lease.epoch,
+          selection,
+          resolvedRequest: scopeOutcome.request,
+          at: new Date().toISOString(),
+        });
+        request = prepareDirectChatRequestV1(resolved.request);
+        sessionId = resolved.conversationSession.sessionId;
+        const now = new Date().toISOString();
+        workspace = await openDurableChatConversationWorkspaceV1({
+          store: opened.store,
+          sessionId,
+          ownerId: `owner:cli-chat-${process.pid}`,
+          createdAt: now,
+          leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+        });
+        await workspace.writeFile(CHAT_CONTEXT_REQUEST_PATH_V1, JSON.stringify(request));
+      } else {
+        sessionId = input.newTurnSessionId;
+        workspace = await opened.store.workspace(sessionId);
+        const retained = await workspace.readFile(CHAT_CONTEXT_REQUEST_PATH_V1);
+        if (!retained) {
+          throw new Error("The retained session is not an ordinary chat conversation.");
+        }
+        const previous = normalizeResearchRequestV1(JSON.parse(retained));
+        if (new URL(profile.baseUrl).origin !== previous.scope.siteOrigin) {
+          throw new Error(
+            "The selected profile belongs to a different Atlassian tenant than the retained chat conversation.",
+          );
+        }
+        const rebound = await dependencies.resolveScope({
+          profile,
+          request: normalizeResearchRequestV1({ ...previous, question: input.question }),
+        });
+        if (rebound.kind === "clarification_required") {
+          throw new Error("The retained chat scope could not be revalidated unambiguously.");
+        }
+        request = prepareDirectChatRequestV1({ ...rebound.request, question: input.question });
       }
-      const rebound = await dependencies.resolveScope({
-        profile,
-        request: normalizeResearchRequestV1({
-          ...previous,
-          question: input.question,
-        }),
-      });
-      if (rebound.kind === "clarification_required") {
-        throw new Error(
-          "The retained chat scope could not be revalidated unambiguously.",
-        );
-      }
-      request = prepareDirectChatRequestV1({
-        ...rebound.request,
-        question: input.question,
-      });
     } else {
       const initial = buildChatRequest(input, profile);
       const scopeOutcome = await dependencies.resolveScope({
@@ -3130,12 +3254,35 @@ export async function handleChat(
         request: initial,
       });
       if (scopeOutcome.kind === "clarification_required") {
+        const now = new Date().toISOString();
+        const waiting = await initializeResearchSessionScopeClarificationWaitV1({
+          store: opened.store,
+          session: createResearchSessionV1({
+            sessionId: dependencies.createDurableSessionId(),
+            ownerId: `owner:cli-chat-scope-${process.pid}`,
+            createdAt: now,
+            leaseExpiresAt: new Date(Date.parse(now) + initial.limits.maxRunMs).toISOString(),
+          }),
+          request: initial,
+          policy: input.policy,
+          purpose: "chat",
+          clarification: scopeOutcome.clarification,
+          candidateChoices: scopeOutcome.candidateChoices,
+          at: now,
+        });
+        const review = projectChatScopeClarificationReviewV1(
+          waiting,
+          initial.scope.siteOrigin,
+        );
+        if (review && !opts.json) {
+          dependencies.writeStderr(formatChatScopeClarificationForCliV1(review));
+        }
         dependencies.fail(
           opts,
           2,
           ERROR_CODES.VALIDATION,
-          "Chat scope is ambiguous. Name an exact project or space, choose --project/--space, or provide an exact Jira/Confluence URL.",
-          { outcome: scopeOutcome },
+          "Chat scope requires a durable candidate choice. Resume the retained session with its exact revision, mention, and candidate IDs.",
+          { review },
         );
       }
       request = prepareDirectChatRequestV1(scopeOutcome.request);
@@ -3153,6 +3300,12 @@ export async function handleChat(
       await workspace.writeFile(
         CHAT_CONTEXT_REQUEST_PATH_V1,
         JSON.stringify(request),
+      );
+    }
+    const apiKey = readApiKey(dependencies);
+    if (!apiKey) {
+      throw new Error(
+        "ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.",
       );
     }
     await runDirectChatCliConversation({
@@ -3483,6 +3636,9 @@ Options:
   --project <key>        Explicit Jira project context (repeatable)
   --space <key>          Explicit Confluence space context (repeatable)
   --session <id>         Continue a retained ordinary chat conversation
+  --scope-revision <n>   Resolve a retained ambiguous scope at this exact revision
+  --scope-mention <id>   Scope mention ID from the retained Chat review
+  --scope-candidate <id> Candidate ID selected from the retained Chat review
   --thinking <mode>      auto|quick|deep (default: auto)
   --language <en|de>     Response language (default: en)
   --max-run-minutes <n>  Turn deadline, 1-10 (default: 10)

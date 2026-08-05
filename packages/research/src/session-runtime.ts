@@ -136,6 +136,7 @@ export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
   policy: ResearchOneShotPolicyV1;
   clarification: ResearchScopeClarificationRequiredV1;
   candidateChoices: ResearchScopeCandidateV1[];
+  purpose?: "chat" | "research";
   at: string;
 }
 
@@ -476,6 +477,7 @@ export async function initializeResearchSessionScopeClarificationWaitV1(
   if (!current) throw new Error("Research scope clarification session was not created.");
   const persisted = (await input.store.commit(current.sessionId, {
     kind: "record_scope_clarification",
+    purpose: input.purpose ?? "research",
     request,
     policy,
     clarification: input.clarification,

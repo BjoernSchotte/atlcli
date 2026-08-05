@@ -863,6 +863,7 @@ export interface ResearchPort {
   prepareScopeClarificationReview?(
     request: ResearchRequestV1,
     policy: ResearchOneShotPolicyV1,
+    options?: { purpose?: "chat" | "research" },
   ): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
   /** Tenant-bound discovery of pending scope-choice and post-choice checkpoints. */
   listScopeClarificationReviews?(): Promise<

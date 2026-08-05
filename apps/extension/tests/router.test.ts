@@ -924,4 +924,45 @@ describe("routeMessage (pure router)", () => {
     expect(JSON.stringify(request)).not.toContain("tenantOrigin");
     expect(JSON.stringify(request)).not.toContain("scope:");
   });
+
+  it("preserves the Chat purpose while preparing a durable scope clarification", async () => {
+    const review = {
+      schema: "atlcli.research-session-scope-clarification-review/v1" as const,
+      sessionId: "research-session:chat-scope-choice",
+      purpose: "chat" as const,
+      revision: 3,
+      status: "waiting_scope_clarification" as const,
+      stage: "choice_required" as const,
+      updatedAt: "2026-08-05T12:00:00.000Z",
+      clarification: {
+        mentionId: "mention:space",
+        reason: "ambiguous" as const,
+        rerunGuidance: ["Choose the intended space."],
+        candidates: [],
+      },
+    };
+    const request = {
+      kind: "research:prepare-scope-clarification-review" as const,
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" } as ResearchRequestV1,
+      policy: { schema: "atlcli.research-one-shot-policy/v1" } as ResearchOneShotPolicyV1,
+      purpose: "chat" as const,
+    };
+    expect(await routeMessage(request, {
+      ...okDeps,
+      prepareResearchScopeClarificationReview: async (windowId, input, policy, purpose) => {
+        expect({ windowId, input, policy, purpose }).toEqual({
+          windowId: 7,
+          input: request.request,
+          policy: request.policy,
+          purpose: "chat",
+        });
+        return review;
+      },
+    })).toEqual({
+      kind: "research:prepare-scope-clarification-review-result",
+      ok: true,
+      review,
+    });
+  });
 });

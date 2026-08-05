@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   BROWSER_ENTRYPOINTS,
   checkEntrypoint,
+  uniqueOutputSpecifiers,
   type EntryCheckResult,
 } from "./check-browser-build.js";
 
@@ -185,6 +186,19 @@ describe("browser-build gate (spec 001 task 6)", () => {
     const result = await checkEntrypoint(file);
     expect(result.ok).toBe(true);
     expect(result.specifiers).toEqual([]);
+  });
+
+  test("the output scan distinguishes executable imports from import examples inside strings", () => {
+    const output = [
+      `throw new Error("set File to import('node:buffer').File");`,
+      `const fs = require("node:fs");`,
+      `export * from "bun:test";`,
+    ].join("\n");
+
+    expect(uniqueOutputSpecifiers(output).sort()).toEqual([
+      "bun:test",
+      "node:fs",
+    ]);
   });
 });
 

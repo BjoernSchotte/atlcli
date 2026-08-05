@@ -97,6 +97,27 @@ describe("research scope preflight", () => {
     ]);
   });
 
+  test("recognizes ordinary English and German Chat summary phrasing", () => {
+    const english = "Summarize the Account Management space.";
+    const german = "Fasse den Bereich Account Management zusammen.";
+    expect(proposeResearchScopeMentionsV1({
+      question: english,
+      expectedTenantOrigin: origin,
+    })).toMatchObject([{
+      text: "Account Management",
+      productHint: "confluence",
+      entityKindHint: "space",
+    }]);
+    expect(proposeResearchScopeMentionsV1({
+      question: german,
+      expectedTenantOrigin: origin,
+    })).toMatchObject([{
+      text: "Account Management",
+      productHint: "confluence",
+      entityKindHint: "space",
+    }]);
+  });
+
   test("does not mistake the Jira product qualifier for a project name", () => {
     const question = "Research Jira project DEMO.";
     const mentions = proposeResearchScopeMentionsV1({

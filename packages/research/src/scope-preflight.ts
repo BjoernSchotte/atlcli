@@ -70,7 +70,7 @@ function collectNamedMatches(
     for (const match of question.matchAll(expression)) {
       const text = match[1];
       if (!text || match.index === undefined) continue;
-      if (/\b(?:space|project)\b/i.test(text)) continue;
+      if (/\b(?:space|project|bereich|projekt)\b/i.test(text)) continue;
       if (new RegExp(`^(?:${productPrefix})$`, "iu").test(text.trim())) continue;
       if (/^(?:and|und|for|für|to|with|mit)$/i.test(text.trim())) continue;
       const relative = match[0].indexOf(text);
@@ -88,8 +88,10 @@ function collectNamedMatches(
   const name = "([\\p{L}\\p{N}][\\p{L}\\p{N} &._'’/-]{0,119}?)";
   addGroup(new RegExp(`["“]([^"”\\n]{1,120})["”]\\s+(?:${productPrefix}\\s+)?${noun}\\b`, "giu"));
   addGroup(new RegExp(`\\b(?:in|from|within|using|use|nutze|im|aus|für|for|and|und)\\s+(?:(?:the|dem|den|der|die|das)\\s+)?${name}\\s+(?:${productPrefix}\\s+)?${noun}\\b`, "giu"));
-  addGroup(new RegExp(`^\\s*(?:research|analyze|analyse|untersuche|prüfe)\\s+(?:(?:the|den|dem|der|die|das)\\s+)?${name}\\s+(?:${productPrefix}\\s+)?${noun}\\b`, "giu"));
-  addGroup(new RegExp(`^\\s*(?!(?:research|analyze|analyse|untersuche|prüfe)\\b)${name}\\s+(?:${productPrefix}\\s+)?${noun}\\b`, "giu"));
+  addGroup(new RegExp(`^\\s*(?:research|analyze|analyse|summari[sz]e|untersuche|prüfe)\\s+(?:(?:the|den|dem|der|die|das)\\s+)?${name}\\s+(?:${productPrefix}\\s+)?${noun}\\b`, "giu"));
+  addGroup(new RegExp(`^\\s*fasse\\s+(?:(?:den|dem|der|die|das)\\s+)?${name}\\s+(?:${productPrefix}\\s+)?${noun}\\s+zusammen\\b`, "giu"));
+  addGroup(new RegExp(`^\\s*fasse\\s+(?:(?:den|dem|der|die|das)\\s+)?(?:${productPrefix}\\s+)?${noun}\\s+${name}\\s+zusammen\\b`, "giu"));
+  addGroup(new RegExp(`^\\s*(?!(?:research|analyze|analyse|summari[sz]e|untersuche|prüfe|fasse)\\b)${name}\\s+(?:${productPrefix}\\s+)?${noun}\\b`, "giu"));
   addGroup(new RegExp(`\\b(?:${productPrefix}\\s+)?${noun}(?:\\s*key)?\\s*(?::|=)?\\s+(?:named\\s+|called\\s+|namens\\s+|mit\\s+dem\\s+namen\\s+)?["“]?([A-Za-z][A-Za-z0-9._~-]{1,79})["”]?\\b`, "giu"));
   return matches;
 }
@@ -166,8 +168,8 @@ export function proposeResearchScopeMentionsV1(input: {
   );
   const candidates = [
     ...collectExactReferenceMatches(input.question, input.expectedTenantOrigin),
-    ...collectNamedMatches(input.question, "jira", "project", "project", "jira"),
-    ...collectNamedMatches(input.question, "confluence", "space", "space", "(?:confluence|wiki)"),
+    ...collectNamedMatches(input.question, "jira", "project", "(?:project|projekt)", "jira"),
+    ...collectNamedMatches(input.question, "confluence", "space", "(?:space|bereich)", "(?:confluence|wiki)"),
   ]
     .filter((match) => !lockedKinds.has(`${match.productHint}:${match.entityKindHint}`))
     .sort((left, right) => left.start - right.start || right.end - left.end);

@@ -15,6 +15,8 @@ export const RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1 =
 export interface ResearchSessionScopeClarificationReviewV1 {
   schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
   sessionId: string;
+  /** Legacy projections omit this and are treated as Research. */
+  purpose?: "chat" | "research";
   revision: number;
   status: "waiting_scope_clarification" | "idle" | "planning";
   stage: "choice_required" | "brief_required" | "plan_required";
@@ -52,6 +54,11 @@ export interface ResearchScopeClarificationPlanningActionV1 {
  * policy, graph, or tenant through this boundary.
  */
 export type ResearchScopeClarificationReviewResolutionV1 =
+  | {
+      kind: "chat_ready";
+      request: import("./contracts.js").ResearchRequestV1;
+      conversationId: string;
+    }
   | { kind: "scope_clarification"; review: ResearchSessionScopeClarificationReviewV1 }
   | { kind: "clarification_review"; review: ResearchSessionClarificationReviewV1 }
   | { kind: "plan_review"; review: ResearchSessionPlanReviewV1 }
@@ -77,10 +84,11 @@ export function projectResearchSessionScopeClarificationReviewV1(
   }
   const waitingForChoice = session.status === "waiting_scope_clarification" &&
     scopeClarification.state === "waiting_choice" && !session.activeTurnId;
-  const waitingForBrief = session.status === "idle" &&
+  const purpose = scopeClarification.purpose ?? "research";
+  const waitingForBrief = purpose === "research" && session.status === "idle" &&
     scopeClarification.state === "choice_resolved" && !session.activeTurnId;
   const turn = activeTurn(session);
-  const waitingForPlan = session.status === "planning" &&
+  const waitingForPlan = purpose === "research" && session.status === "planning" &&
     scopeClarification.state === "choice_resolved" &&
     turn?.brief && !turn.graph && !briefRequiresClarificationV1(turn.brief);
   if (!waitingForChoice && !waitingForBrief && !waitingForPlan) return undefined;
@@ -88,6 +96,7 @@ export function projectResearchSessionScopeClarificationReviewV1(
   return {
     schema: RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1,
     sessionId: session.sessionId,
+    purpose,
     revision: session.revision,
     status: session.status as "waiting_scope_clarification" | "idle" | "planning",
     stage: waitingForChoice
