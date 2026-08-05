@@ -1,6 +1,6 @@
 # Kiteweave Chat Agent Recovery Plan
 
-Status: **Proposed corrective implementation track; implementation has not started**
+Status: **In progress; C0 baseline proven**
 
 ## Contents
 
@@ -220,41 +220,46 @@ Goal: make the current failure observable before replacing the path.
 
 Implementation:
 
-- [ ] Define a versioned Chat evaluation observation containing answer outcome,
+- [x] Define a versioned Chat evaluation observation containing answer outcome,
       selected sources, detail reads, citations, gaps, mode, strategy, model/PTC/
       HTTP calls, tokens, latency, and final Markdown length.
-- [ ] Add customer-free gold cases for an attached page, attached issue, long
+- [x] Add customer-free gold cases for an attached page, attached issue, long
       page, follow-up, Jira reference in a page, multi-source comparison,
       contradiction, no-evidence abstention, and context switch.
-- [ ] Capture the current direct Chat result as the `legacy-chat` comparison
+- [x] Capture the current direct Chat result as the `legacy-chat` comparison
       variant without freezing its implementation as desired behavior.
-- [ ] Record provider-effort-only `quick`, `auto`, and `deep` trajectories so the
+- [x] Record provider-effort-only `quick`, `auto`, and `deep` trajectories so the
       recovery work can prove that workflow changes, not only token increases,
       improve quality.
 
 Automated proof:
 
-- [ ] Gold labels and metric calculations are deterministic and reject unknown
+- [x] Gold labels and metric calculations are deterministic and reject unknown
       source IDs, unsupported citations, or non-normalized requests.
-- [ ] The comparison harness proves that every variant receives the same scope,
+- [x] The comparison harness proves that every variant receives the same scope,
       source corpus, question, and root budget envelope.
-- [ ] Evaluation artifacts cannot contain credentials, raw private source bodies,
+- [x] Evaluation artifacts cannot contain credentials, raw private source bodies,
       hidden reasoning, or committed private tenant identifiers.
 
 Live acceptance:
 
-- [ ] Run one private read-only CLI baseline and one MV3 baseline through the
+- [x] Run one private read-only CLI baseline and one MV3 baseline through the
       production Chat path; retain artifacts only in the external artifact root.
-- [ ] Human review records the concrete wrong-source, answer-shape, retrieval,
+- [x] Human review records the concrete wrong-source, answer-shape, retrieval,
       citation, completeness, latency, and follow-up defects without committing
       private input or output.
 
 Acceptance criteria:
 
-- [ ] We can reproduce and score the current quality failure before changing the
+- [x] We can reproduce and score the current quality failure before changing the
       runtime.
-- [ ] The baseline distinguishes provider reasoning effort from orchestration and
+- [x] The baseline distinguishes provider reasoning effort from orchestration and
       retrieval quality.
+
+Proof record (2026-08-05): the focused Chat evaluation suite and workspace
+typecheck pass; the production extension builds and passes its output gate; the
+packed MV3 Chat E2E passes; private read-only CLI, follow-up, effort-comparison,
+and installed-MV3 observations are retained only in the external artifact root.
 
 ### C1 — Split the Chat root from the Research root
 
