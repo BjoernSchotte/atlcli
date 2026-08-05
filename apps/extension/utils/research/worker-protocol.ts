@@ -1,5 +1,6 @@
 import type {
   ChatQualityPolicyV1,
+  ChatAnswerV1,
   ResearchErrorCode,
   ResearchOneShotEventV1,
   ResearchOneShotPolicyV1,
@@ -49,6 +50,13 @@ export type ResearchWorkerResponseV1 =
       kind: "research-worker:complete";
       runId: string;
       report: ResearchReport;
+      answer?: never;
+    }
+  | {
+      kind: "research-worker:complete";
+      runId: string;
+      answer: ChatAnswerV1;
+      report?: never;
     }
   | {
       kind: "research-worker:error";

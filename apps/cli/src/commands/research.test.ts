@@ -26,6 +26,7 @@ import {
   prepareResearchBriefPreflightV1,
   assessResearchRetrievalV1,
   type ResearchReportV1,
+  type ChatAnswerV1,
   type ResearchSessionV1,
 } from "@atlcli/research";
 import {
@@ -79,6 +80,27 @@ const report: ResearchReportV1 = {
     warnings: [],
   },
   markdown: "# Synthetic report\n\nExact bytes.",
+};
+
+const chatAnswer: ChatAnswerV1 = {
+  schema: "atlcli.chat-answer/v1",
+  messageMarkdown: "Synthetic chat answer.",
+  citations: [],
+  evidenceRefs: [],
+  gaps: [],
+  strategy: {
+    qualityMode: "auto",
+    path: "direct",
+    delegated: false,
+    reasonCode: "auto-direct",
+  },
+  run: {
+    model: "claude-sonnet-4-6",
+    startedAt: "2026-07-31T12:00:00.000Z",
+    completedAt: "2026-07-31T12:00:01.000Z",
+    durationMs: 1_000,
+    counts: { ptcCalls: 0, httpCalls: 0, jiraItems: 0, confluenceItems: 0 },
+  },
 };
 
 interface CliHarness {
@@ -220,7 +242,7 @@ function cliHarness(
         );
       }
       if (options.runError) throw options.runError;
-      return options.result ?? report;
+      return chatAnswer;
     },
     async writeAtomic(path, contents) {
       writes.set(path, contents);

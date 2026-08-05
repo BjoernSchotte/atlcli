@@ -325,6 +325,13 @@ const PACKED_JIRA_ONLY_REPORT_INPUT = {
   limitations: ["Synthetic packed Jira-only evidence only."],
 };
 
+const PACKED_JIRA_ONLY_CHAT_DRAFT = {
+  messageMarkdown:
+    "DEMO-1 documents the packed design location and was read in detail. [[source:jira:DEMO-1]]",
+  citationSourceIds: ["jira:DEMO-1"],
+  gaps: [],
+};
+
 const PACKED_WORKFLOW_CODE = `
 const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
   basedOnBriefRevision: 1,
@@ -1109,6 +1116,7 @@ function anthropicMessage(content, stopReason, call) {
 
 const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
 const packedJiraOnlyReportInput = ${JSON.stringify(PACKED_JIRA_ONLY_REPORT_INPUT)};
+const packedJiraOnlyChatDraft = ${JSON.stringify(PACKED_JIRA_ONLY_CHAT_DRAFT)};
 const packedHostParityPacket = ${JSON.stringify(HOST_PARITY_PACKET)};
 const packedSentinelPacket = ${JSON.stringify(PACKED_SENTINEL_PACKET)};
 const packedHostParityModelPacket = ${JSON.stringify(HOST_PARITY_MODEL_PACKET_V2)};
@@ -1300,7 +1308,7 @@ globalThis.fetch = async (input, init) => {
 
     const packedJiraOnlyDirectChat =
       serializedRequest.includes("packed-jira-only") &&
-      serializedRequest.includes("Answer directly. Use only the read-only tools needed");
+      serializedRequest.includes("Answer as a normal chat response");
     if (packedJiraOnlyDirectChat) {
       packedJiraOnlyRun = true;
       if (!packedJiraOnlyAcquisitionRequested) {
@@ -1316,7 +1324,7 @@ globalThis.fetch = async (input, init) => {
           modelCalls,
         );
       }
-      return structured(packedJiraOnlyReportInput);
+      return structured(packedJiraOnlyChatDraft);
     }
 
     if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
@@ -5151,7 +5159,10 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
   }
   await expect(page.getByTestId("research-chat-report")).toBeVisible();
   const answer = await page.getByTestId("research-chat-answer").innerText();
-  if (!answer.includes("DEMO-1 documents the packed research design location.")) {
+  if (
+    !answer.includes("DEMO-1 documents the packed design location") ||
+    !answer.includes("https://packed-research.atlassian.net/browse/DEMO-1")
+  ) {
     throw new Error(JSON.stringify({
       answer,
       events: await harnessEvents(page),
@@ -5553,14 +5564,24 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await installEventCapture(page);
   const cancelledObjective = "cancel-before-ptc: Search Jira project DEMO and Confluence space KB.";
   await excludeCurrentContext(page);
-  await page.getByTestId("research-mode-chat").click();
-  await expect(page.getByTestId("research-mode-chat")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("research-mode-deep").click();
+  await expect(page.getByTestId("research-mode-deep")).toHaveAttribute("aria-pressed", "true");
   await fillResearchForm(
     page,
     cancelledObjective,
     { includeKey: false, includeScope: false }
   );
+  const cancellationPlanReviewCount = await planReviewCards.count();
   await page.getByTestId("research-run").click();
+  await expect(planReviewCards).toHaveCount(cancellationPlanReviewCount + 1);
+  await planReviewCards.first().locator('button[data-testid^="research-plan-review-approve-"]').click();
+  await expect(planReviewCards).toHaveCount(cancellationPlanReviewCount);
+  await page.getByTestId("research-conversation-menu-toggle").click();
+  const cancellationResumableCard = page.locator('div[data-testid^="research-resumable-session-"]')
+    .filter({ hasText: cancelledObjective });
+  await expect(cancellationResumableCard).toHaveCount(1);
+  await cancellationResumableCard.locator('button[data-testid^="research-resume-"]').click();
+  await page.getByTestId("research-conversation-menu-toggle").click();
   await page.waitForFunction(
     () =>
       (
@@ -5578,9 +5599,14 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     .poll(async () => (await researchWorkerTargets(cancelRoot)).length)
     .toBe(1);
   await page.getByTestId("research-run").click();
-  await expect(page.getByTestId("research-action-status")).toContainText(/stopped/i);
-  await expect(page.getByTestId("research-error")).toHaveCount(0);
   await expect(page.getByTestId("research-run")).toBeEnabled();
+  const cancellationError = page.getByTestId("research-error");
+  if (await cancellationError.count()) {
+    throw new Error(JSON.stringify({
+      cancellationError: await cancellationError.textContent(),
+      events: await harnessEvents(page),
+    }, null, 2));
+  }
   await expect
     .poll(async () => (await researchWorkerTargets(cancelRoot)).length)
     .toBe(0);

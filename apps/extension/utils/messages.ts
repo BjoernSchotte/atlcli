@@ -25,6 +25,7 @@ import type {
   ResearchReport,
   ResearchRequestV1,
 } from "./research/contracts.js";
+import type { ChatAnswerV1 } from "@atlcli/research/chat-contracts";
 import type {
   ResearchResumableSessionV1,
   ResearchRetainedSessionV1,
@@ -281,7 +282,12 @@ export type ExtResponse =
       code: ResearchErrorCode;
       error: string;
     }
-  | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReport }
+  | {
+      kind: "research:run-result";
+      runId: string;
+      ok: true;
+      report: ResearchReport | ChatAnswerV1;
+    }
   | {
       kind: "research:run-result";
       runId: string;
@@ -625,7 +631,7 @@ export type OffscreenResponse =
       kind: "offscreen:research-run-result";
       runId: string;
       ok: true;
-      report: ResearchReport;
+      report: ResearchReport | ChatAnswerV1;
     }
   | {
       kind: "offscreen:research-run-result";

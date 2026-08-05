@@ -23,8 +23,9 @@ import {
   type ResearchProgressV1,
   type ResearchRequestV1,
   type ResearchSessionV1,
+  type ChatTurnRequestV1,
 } from "@atlcli/research/browser";
-import { runResearchAgent } from "@atlcli/research/browser/agent";
+import { runChatAgent, runResearchAgent } from "@atlcli/research/browser/agent";
 import {
   assertResearchGraphExecutableV1,
   composeResearchGraphV1,
@@ -67,7 +68,6 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         const request = prepareDirectChatRequestV1(
           normalizeResearchRequestV1(message.request),
         );
-        const policy = normalizeResearchOneShotPolicyV1(message.policy);
         const profile: Profile = {
           name: "chat-session",
           baseUrl: request.scope.siteOrigin,
@@ -76,13 +76,6 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         };
         const budget = new ResearchRunBudget(request.limits);
         const providers = createRestResearchProviders(profile, request, budget);
-        const scopeCatalog = {
-          tenantOrigin: request.scope.siteOrigin,
-          broker: new ResearchScopeCatalogBroker({
-            tenantOrigin: request.scope.siteOrigin,
-            providers: createRestScopeCatalogProviders(profile, request.scope.siteOrigin),
-          }),
-        };
         const onProgress = (progress: ResearchProgressV1): void =>
           post({ kind: "research-worker:progress", runId, progress });
         const onEvent = (event: ResearchOneShotEventV1): void =>
@@ -99,26 +92,33 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
               Date.parse(now) + request.limits.maxRunMs,
             ).toISOString(),
           });
-          const report = await runResearchAgent({
+          const turn: ChatTurnRequestV1 = {
+            schema: "atlcli.chat-turn-request/v1",
+            conversationId: sessionId,
+            turnId,
+            question: request.question,
+            scope: request.scope,
+            limits: request.limits,
+            wikiProvider: request.wikiProvider,
+            ...(request.scopeSeeds ? { scopeSeeds: request.scopeSeeds } : {}),
+            ...(request.exactContextProducts
+              ? { exactContextProducts: request.exactContextProducts }
+              : {}),
+          };
+          const answer = await runChatAgent({
             apiKey,
-            request,
+            turn,
+            brokerRequest: request,
             providers,
             budget,
-            scopeCatalog,
-            runId,
             workspace,
-            conversation: { sessionId },
-            options: {
-              mode: "chat",
-              onProgress,
-              onEvent,
-              policy,
-              ...(message.qualityPolicy
-                ? { qualityPolicy: normalizeChatQualityPolicyV1(message.qualityPolicy) }
-                : {}),
-            },
+            ...(message.qualityPolicy
+              ? { qualityPolicy: normalizeChatQualityPolicyV1(message.qualityPolicy) }
+              : {}),
+            onProgress,
+            onEvent,
           });
-          post({ kind: "research-worker:complete", runId, report });
+          post({ kind: "research-worker:complete", runId, answer });
         } finally {
           store.close();
         }

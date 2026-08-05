@@ -6208,3 +6208,6 @@ export function createResearchAgentRuntime(
     },
   };
 }
+
+/** Explicit Research-root factory; ordinary Chat uses a separate module. */
+export const createKiteweaveResearchAgent = createResearchAgentRuntime;

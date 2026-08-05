@@ -268,43 +268,52 @@ finalization.
 
 Implementation:
 
-- [ ] Add `ChatTurnRequestV1`, `ChatQualityPolicyV1`, `ChatAnswerV1`, citation,
+- [x] Add `ChatTurnRequestV1`, `ChatQualityPolicyV1`, `ChatAnswerV1`, citation,
       gap, strategy, continuation, and typed error contracts.
-- [ ] Add `createKiteweaveChatAgent` and `runChatAgent` as a separate root runtime.
-- [ ] Rename or wrap the existing production entry as
+- [x] Add `createKiteweaveChatAgent` and `runChatAgent` as a separate root runtime.
+- [x] Rename or wrap the existing production entry as
       `createKiteweaveResearchAgent`/`runResearchAgent` without changing Research
       semantics.
-- [ ] Give Chat its own system prompt and user-turn prompt. Remove the terms
+- [x] Give Chat its own system prompt and user-turn prompt. Remove the terms
       research brief, research graph, report outline, research coverage, and
       canonical report from the Chat prompt.
-- [ ] Add a Chat finalizer that validates evidence/citations and returns
+- [x] Add a Chat finalizer that validates evidence/citations and returns
       `ChatAnswerV1` without invoking Research report schemas or finalizers.
-- [ ] Route CLI and extension Chat worker calls to `runChatAgent`; keep Deep
+- [x] Route CLI and extension Chat worker calls to `runChatAgent`; keep Deep
       Research routed to `runResearchAgent`.
-- [ ] Version persisted Chat state so an old Research-shaped Chat checkpoint
+- [x] Version persisted Chat state so an old Research-shaped Chat checkpoint
       cannot be resumed under the new contract as though it were compatible.
 
 Automated proof:
 
-- [ ] Import-boundary test proves the Chat runtime does not import
+- [x] Import-boundary test proves the Chat runtime does not import
       `ResearchBriefV1`, Research graph composition, Research draft schemas, or
       Research report finalization.
-- [ ] Root-spy tests prove one Chat `createDeepAgent` root per turn and a separate
+- [x] Root-spy tests prove one Chat `createDeepAgent` root per turn and a separate
       Research root factory.
-- [ ] Chat structured-output repair returns only `ChatAnswerV1`; it cannot fall
+- [x] Chat structured-output repair returns only `ChatAnswerV1`; it cannot fall
       back to findings/relationships/limitations arrays.
-- [ ] Existing Deep Research graph, report, resume, and privacy tests remain green.
+- [x] Existing Deep Research graph, report, resume, and privacy tests remain green.
 
 Live acceptance:
 
-- [ ] CLI and MV3 answer a simple synthetic question as natural Chat Markdown.
-- [ ] The response contains no research-report heading or empty report sections.
-- [ ] Explicit Deep Research still produces its canonical report artifact.
+- [x] CLI and MV3 answer a simple synthetic question as natural Chat Markdown.
+- [x] The response contains no research-report heading or empty report sections.
+- [x] Explicit Deep Research still produces its canonical report artifact.
 
 Acceptance criteria:
 
-- [ ] Chat and Research have separate roots, prompts, completion objectives, and
+- [x] Chat and Research have separate roots, prompts, completion objectives, and
       finalizers while sharing the same secure host infrastructure.
+
+Proof record (2026-08-05): 184 focused contract, CLI, extension, Chat-root,
+Research graph/report/resume, host-parity, and privacy regressions pass; root
+typecheck, the production MV3 build, output/CSP audit, and privacy scan pass. A
+read-only CLI Chat run produced natural cited Markdown through the new root. In
+one packed production-bundle sequence, the separate Chat path produced a
+natural cited answer while explicit Deep Research produced and durably retained
+its canonical report across reload/resume; its deliberate stop was persisted as
+cancelled without being presented as a provider failure.
 
 ### C2 — Prove exact-context direct reading
 

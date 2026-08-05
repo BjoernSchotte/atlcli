@@ -1,7 +1,9 @@
 import {
   ResearchContractError,
   normalizeResearchOneShotPolicyV1,
+  type ChatAnswerV1,
   type ResearchPort,
+  type ResearchReport,
 } from "../../../utils/research/contracts.js";
 import type {
   ResearchResumableSessionV1,
@@ -848,22 +850,12 @@ export function chromeResearchPort(): ResearchPort {
       options?.signal?.addEventListener("abort", cancel, { once: true });
       const timeoutId = setTimeout(cancel, request.limits.maxRunMs);
       try {
-        const response = (await chrome.runtime.sendMessage({
-          kind: "research:run",
-          runId,
-          sessionId,
-          turnId,
-          windowId: window.id,
-          mode: options?.mode ?? "research",
-          request,
-          policy,
-          ...(options?.qualityPolicy ? { qualityPolicy: options.qualityPolicy } : {}),
-        })) as
+        let response:
           | {
               kind: "research:run-result";
               runId: string;
               ok: true;
-              report: Awaited<ReturnType<ResearchPort["run"]>>;
+              report: ResearchReport | ChatAnswerV1;
             }
           | {
               kind: "research:run-result";
@@ -873,6 +865,27 @@ export function chromeResearchPort(): ResearchPort {
               error: string;
             }
           | undefined;
+        try {
+          response = (await chrome.runtime.sendMessage({
+            kind: "research:run",
+            runId,
+            sessionId,
+            turnId,
+            windowId: window.id,
+            mode: options?.mode ?? "research",
+            request,
+            policy,
+            ...(options?.qualityPolicy ? { qualityPolicy: options.qualityPolicy } : {}),
+          })) as typeof response;
+        } catch (error) {
+          if (options?.signal?.aborted) {
+            throw new ResearchContractError("cancelled", "The research run was cancelled.");
+          }
+          throw error;
+        }
+        if (options?.signal?.aborted) {
+          throw new ResearchContractError("cancelled", "The research run was cancelled.");
+        }
         if (
           !response ||
           response.kind !== "research:run-result" ||
@@ -934,17 +947,12 @@ export function chromeResearchPort(): ResearchPort {
       options?.signal?.addEventListener("abort", cancel, { once: true });
       const timeoutId = setTimeout(cancel, MAX_RESEARCH_RESUME_MS);
       try {
-        const response = await chrome.runtime.sendMessage({
-          kind: "research:resume",
-          runId,
-          sessionId,
-          windowId: window.id,
-        }) as
+        let response:
           | {
               kind: "research:resume-result";
               runId: string;
               ok: true;
-              report: Awaited<ReturnType<ResearchPort["run"]>>;
+              report: ResearchReport;
             }
           | {
               kind: "research:resume-result";
@@ -954,6 +962,22 @@ export function chromeResearchPort(): ResearchPort {
               error: string;
             }
           | undefined;
+        try {
+          response = await chrome.runtime.sendMessage({
+            kind: "research:resume",
+            runId,
+            sessionId,
+            windowId: window.id,
+          }) as typeof response;
+        } catch (error) {
+          if (options?.signal?.aborted) {
+            throw new ResearchContractError("cancelled", "The research run was cancelled.");
+          }
+          throw error;
+        }
+        if (options?.signal?.aborted) {
+          throw new ResearchContractError("cancelled", "The research run was cancelled.");
+        }
         if (
           !response ||
           response.kind !== "research:resume-result" ||

@@ -985,7 +985,9 @@ describe("portable Research screen", () => {
         resolutions: [],
       }),
       run: async (_request, options) => new Promise<ResearchReportV1>((_resolve, reject) => {
-        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+        options?.signal?.addEventListener("abort", () => reject(
+          new Error("The research run was cancelled."),
+        ), { once: true });
       }),
       copyMarkdown: async () => undefined,
       downloadMarkdown: async () => undefined,

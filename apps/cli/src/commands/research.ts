@@ -51,8 +51,11 @@ import {
   chatPolicyForThinkingModeV1,
   chatQualityPolicyForModeV1,
   runResearchAgent,
+  runChatAgent as runKiteweaveChatAgent,
   type ResearchBriefPreflightOutcomeV1,
   type ChatQualityPolicyV1,
+  type ChatAnswerV1,
+  type ChatTurnRequestV1,
   type ResearchBriefV1,
   type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
@@ -211,6 +214,7 @@ export interface ResearchCliChatAgentInput {
   request: ResearchRequestV1;
   workspace: ResearchWorkspace;
   sessionId: string;
+  turnId: string;
   conversation: { sessionId: string };
   policy: ResearchOneShotPolicyV1;
   qualityPolicy: ChatQualityPolicyV1;
@@ -240,7 +244,7 @@ export interface ResearchCliDependencies {
   readApiKey(): string | undefined;
   createWorkspace(): Promise<ResearchCliWorkspace>;
   runAgent(input: ResearchCliAgentInput): Promise<ResearchReport>;
-  runChatAgent(input: ResearchCliChatAgentInput): Promise<ResearchReport>;
+  runChatAgent(input: ResearchCliChatAgentInput): Promise<ChatAnswerV1>;
   writeAtomic(path: string, contents: string): Promise<void>;
   artifactPath(): string;
   createDurableSessionId(): string;
@@ -2478,31 +2482,39 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       budget,
       { allowProfileAuth: true },
     );
-    return runResearchAgent({
+    const turn: ChatTurnRequestV1 = {
+      schema: "atlcli.chat-turn-request/v1",
+      conversationId: input.sessionId,
+      turnId: input.turnId,
+      question: input.request.question,
+      scope: input.request.scope,
+      limits: input.request.limits,
+      wikiProvider: input.request.wikiProvider,
+      ...(input.request.scopeSeeds ? { scopeSeeds: input.request.scopeSeeds } : {}),
+      ...(input.request.exactContextProducts
+        ? { exactContextProducts: input.request.exactContextProducts }
+        : {}),
+    };
+    return runKiteweaveChatAgent({
       apiKey: input.apiKey,
-      request: input.request,
+      turn,
+      brokerRequest: input.request,
       providers,
       budget,
-      scopeCatalog: {
-        tenantOrigin: input.request.scope.siteOrigin,
-        broker: new ResearchScopeCatalogBroker({
-          tenantOrigin: input.request.scope.siteOrigin,
-          providers: createRestScopeCatalogProviders(
-            input.profile,
-            input.request.scope.siteOrigin,
-            { allowProfileAuth: true },
-          ),
-        }),
-      },
-      runId: input.sessionId,
       workspace: input.workspace,
-      conversation: input.conversation,
-      options: {
-        mode: "chat",
-        policy: input.policy,
-        qualityPolicy: input.qualityPolicy,
-        signal: input.signal,
-        onEvent: input.onEvent,
+      qualityPolicy: input.qualityPolicy,
+      signal: input.signal,
+      onEvent: input.onEvent,
+      onAgentDiagnostic: (diagnostic) => {
+        if (diagnostic.kind === "model-step") {
+          input.writeDiagnostic(
+            `model tools=${diagnostic.toolNames.join(",") || "none"}${diagnostic.stopReason ? ` stop=${diagnostic.stopReason}` : ""}`,
+          );
+          return;
+        }
+        input.writeDiagnostic(
+          `eval status=${diagnostic.status}${diagnostic.codeChars === undefined ? "" : ` code_chars=${diagnostic.codeChars}`}${diagnostic.capabilityNames === undefined ? "" : ` capabilities=${diagnostic.capabilityNames.join(",") || "none"}`}${diagnostic.usesToolsNamespace === undefined ? "" : ` tools_namespace=${diagnostic.usesToolsNamespace}`}${diagnostic.searchInputShapes === undefined ? "" : ` shapes=${diagnostic.searchInputShapes.join(",") || "none"}`}${diagnostic.resultChars === undefined ? "" : ` chars=${diagnostic.resultChars}`}${diagnostic.errorKind ? ` error=${diagnostic.errorKind}` : ""}${diagnostic.errorCode ? ` code=${diagnostic.errorCode}` : ""}`,
+        );
       },
     });
   },
@@ -2971,6 +2983,7 @@ async function runDirectChatCliConversation(input: {
   request: ResearchRequestV1;
   workspace: ResearchWorkspace;
   sessionId: string;
+  turnId: string;
   apiKey: string;
 }): Promise<void> {
   const controller = new AbortController();
@@ -2986,12 +2999,13 @@ async function runDirectChatCliConversation(input: {
       `[chat] model=${RESEARCH_MODEL_ID} quality=${input.cli.qualityPolicy?.mode ?? "auto"} profile=${input.profile.name} session=${input.sessionId}\n`,
     );
     input.dependencies.writeStderr("[chat] running — press Ctrl+C to stop\n");
-    const report = await input.dependencies.runChatAgent({
+    const answer = await input.dependencies.runChatAgent({
       apiKey: input.apiKey,
       profile: input.profile,
       request: input.request,
       workspace: input.workspace,
       sessionId: input.sessionId,
+      turnId: input.turnId,
       conversation: { sessionId: input.sessionId },
       policy: input.cli.policy,
       qualityPolicy: input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto"),
@@ -3014,7 +3028,7 @@ async function runDirectChatCliConversation(input: {
     });
     const artifactPath = input.dependencies.artifactPath();
     try {
-      await input.dependencies.writeAtomic(artifactPath, report.markdown);
+      await input.dependencies.writeAtomic(artifactPath, answer.messageMarkdown);
       input.dependencies.writeStderr(`[chat] artifact=${artifactPath}\n`);
     } catch (error) {
       input.dependencies.writeStderr(
@@ -3022,15 +3036,15 @@ async function runDirectChatCliConversation(input: {
       );
     }
     if (input.cli.outputPath) {
-      await input.dependencies.writeAtomic(input.cli.outputPath, report.markdown);
+      await input.dependencies.writeAtomic(input.cli.outputPath, answer.messageMarkdown);
     }
     if (input.opts.json) {
       input.dependencies.emitOutput(
-        { sessionId: input.sessionId, artifactPath, report },
+        { sessionId: input.sessionId, artifactPath, answer },
         input.opts,
       );
     } else {
-      input.dependencies.writeStdout(report.markdown);
+      input.dependencies.writeStdout(answer.messageMarkdown);
     }
   } finally {
     input.dependencies.cancelScheduledAbort(timeout);
@@ -3143,6 +3157,7 @@ export async function handleChat(
       request,
       workspace,
       sessionId,
+      turnId: dependencies.createDurableTurnId(),
       apiKey,
     });
   } finally {

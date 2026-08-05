@@ -1,5 +1,6 @@
 import {
   ResearchContractError,
+  type ChatAnswerV1,
   type ChatQualityPolicyV1,
   type ResearchOneShotPolicyV1,
   type ResearchOneShotEventV1,
@@ -25,6 +26,20 @@ interface ActiveRun {
   reject: (reason: unknown) => void;
 }
 
+interface ResearchAgentWorkerRunInput {
+  runId: string;
+  sessionId: string;
+  turnId: string;
+  apiKey: string;
+  mode?: "chat" | "research";
+  request?: ResearchRequestV1;
+  policy?: ResearchOneShotPolicyV1;
+  qualityPolicy?: ChatQualityPolicyV1;
+  resume?: true;
+  onProgress?: (progress: ResearchProgressV1) => void;
+  onEvent?: (event: ResearchOneShotEventV1) => void;
+}
+
 export class ResearchAgentWorkerHost {
   readonly #createWorker: () => WorkerLike;
   readonly #active = new Map<string, ActiveRun>();
@@ -33,24 +48,15 @@ export class ResearchAgentWorkerHost {
     this.#createWorker = options.createWorker;
   }
 
-  run(input: {
-    runId: string;
-    sessionId: string;
-    turnId: string;
-    apiKey: string;
-    mode?: "chat" | "research";
-    request?: ResearchRequestV1;
-    policy?: ResearchOneShotPolicyV1;
-    qualityPolicy?: ChatQualityPolicyV1;
-    resume?: true;
-    onProgress?: (progress: ResearchProgressV1) => void;
-    onEvent?: (event: ResearchOneShotEventV1) => void;
-  }): Promise<ResearchReport> {
+  run(input: ResearchAgentWorkerRunInput & { mode: "chat"; resume?: false }): Promise<ChatAnswerV1>;
+  run(input: ResearchAgentWorkerRunInput & ({ mode?: "research" } | { resume: true })): Promise<ResearchReport>;
+  run(input: ResearchAgentWorkerRunInput): Promise<ResearchReport | ChatAnswerV1>;
+  run(input: ResearchAgentWorkerRunInput): Promise<ResearchReport | ChatAnswerV1> {
     if (this.#active.has(input.runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
     }
     const worker = this.#createWorker();
-    return new Promise<ResearchReport>((resolve, reject) => {
+    return new Promise<ResearchReport | ChatAnswerV1>((resolve, reject) => {
       this.#active.set(input.runId, { worker, reject });
       worker.onmessage = (event) => {
         const message = event.data;
@@ -64,7 +70,9 @@ export class ResearchAgentWorkerHost {
           return;
         }
         if (message.kind === "research-worker:complete") {
-          resolve(message.report);
+          if ("answer" in message && message.answer) resolve(message.answer);
+          else if ("report" in message && message.report) resolve(message.report);
+          else reject(new ResearchContractError("provider-error", "The worker returned an empty completion."));
           return;
         }
         reject(new ResearchContractError(message.code, message.error));

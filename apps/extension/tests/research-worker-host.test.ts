@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type {
+  ChatAnswerV1,
   ResearchOneShotEventV1,
   ResearchProgressV1,
   ResearchReportV1,
@@ -38,6 +39,31 @@ const request = {
 const report = {
   schema: "atlcli.research-report/v1",
 } as ResearchReportV1;
+const answer = {
+  schema: "atlcli.chat-answer/v1",
+  messageMarkdown: "A concise answer.",
+  citations: [],
+  evidenceRefs: [],
+  gaps: [],
+  strategy: {
+    qualityMode: "quick",
+    path: "direct",
+    delegated: false,
+    reasonCode: "quick-direct",
+  },
+  run: {
+    model: "synthetic-model",
+    startedAt: "2026-08-05T08:00:00.000Z",
+    completedAt: "2026-08-05T08:00:00.001Z",
+    durationMs: 1,
+    counts: {
+      ptcCalls: 0,
+      httpCalls: 0,
+      jiraItems: 0,
+      confluenceItems: 0,
+    },
+  },
+} as ChatAnswerV1;
 const policy = {
   schema: "atlcli.research-one-shot-policy/v1",
   requestedEffort: "analysis",
@@ -55,6 +81,31 @@ const qualityPolicy = {
 } as const;
 
 describe("dedicated research worker host", () => {
+  it("returns a Chat answer only for an explicitly routed Chat run", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const resultPromise = host.run({
+      runId: "chat-run-1",
+      sessionId: "chat-session:run-1",
+      turnId: "chat-turn:run-1",
+      apiKey: "synthetic-key",
+      mode: "chat",
+      request,
+      qualityPolicy,
+    });
+
+    expect(worker.posted).toEqual([expect.objectContaining({
+      kind: "research-worker:run",
+      mode: "chat",
+      runId: "chat-run-1",
+      qualityPolicy,
+    })]);
+    worker.emit({ kind: "research-worker:complete", runId: "chat-run-1", answer });
+
+    expect(await resultPromise).toBe(answer);
+    expect(worker.terminated).toBe(true);
+  });
+
   it("forwards progress and terminates the fresh worker after completion", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
@@ -154,7 +205,7 @@ describe("dedicated research worker host", () => {
   it("forwards a durable resume without caller-controlled request or policy", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
-    const resultPromise = host.run({
+    const hostileResume = {
       runId: "run-resume",
       sessionId: "research-session:resume",
       turnId: "research-turn:resume",
@@ -165,7 +216,8 @@ describe("dedicated research worker host", () => {
       request,
       policy,
       sessionSnapshot: { revision: 999, status: "complete" },
-    } as never);
+    } as unknown as Parameters<typeof host.run>[0];
+    const resultPromise = host.run(hostileResume);
 
     expect(worker.posted).toEqual([{
       kind: "research-worker:run",

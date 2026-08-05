@@ -20,6 +20,7 @@ import {
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
   ChatQualityPolicyV1,
+  ChatAnswerV1,
   ResearchReport,
   ResearchRequestV1,
   ResearchOneShotPolicyV1,
@@ -52,7 +53,7 @@ export interface OffscreenListenerDeps {
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
     qualityPolicy?: ChatQualityPolicyV1,
-  ) => Promise<ResearchReport>;
+  ) => Promise<ResearchReport | ChatAnswerV1>;
   resumeResearch?: (
     runId: string,
     sessionId: string,

@@ -32,6 +32,7 @@ import {
   normalizeResearchRequestV1,
   type ResearchOneShotEventV1,
   type ChatThinkingModeV1,
+  type ChatAnswerV1,
   type ResearchPort,
   type ResearchRequestedEffortV1,
   type ResearchRequestedPlanApprovalV1,
@@ -136,6 +137,17 @@ function splitScopeValues(value: string): string[] {
   return [...new Set(
     value.split(/[\s,;]+/).map((entry) => entry.trim()).filter(Boolean),
   )];
+}
+
+function researchErrorCodeV1(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  if ("code" in value && typeof value.code === "string") return value.code;
+  if (value instanceof Error) {
+    if (value.name === "AbortError" || /\b(?:abort(?:ed)?|cancel(?:led|ed)?)\b/iu.test(value.message)) {
+      return "cancelled";
+    }
+  }
+  return undefined;
 }
 
 type ResearchTimelineStepKind =
@@ -684,7 +696,33 @@ function FormattedReport({ report }: { report: ResearchReport }): React.JSX.Elem
     : <V1FormattedReport report={report} />;
 }
 
-function ChatAnswer({ report }: { report: ResearchReport }): React.JSX.Element {
+function ChatAnswer({ answer }: { answer: ChatAnswerV1 }): React.JSX.Element {
+  const t = useT();
+  return (
+    <article className="space-y-3 text-sm leading-6" data-testid="research-chat-answer">
+      <p className="m-0 whitespace-pre-wrap">{answer.messageMarkdown}</p>
+      {answer.citations.length > 0 && (
+        <details className="rounded-lg border border-border/70 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+            {t("research.chat.sources", { count: answer.citations.length })}
+          </summary>
+          <ol className="mb-0 mt-2 space-y-1 pl-5 text-xs">
+            {answer.citations.map((source) => (
+              <li key={source.sourceId}>
+                <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
+                  {source.title}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+    </article>
+  );
+}
+
+/** Presenter-only compatibility for retained pre-C1 results; new Chat runs never create this shape. */
+function LegacyChatAnswer({ report }: { report: ResearchReport }): React.JSX.Element {
   const t = useT();
   const statements = report.schema === "atlcli.research-report/v2"
     ? report.executiveSummaryClaimIds
@@ -696,27 +734,9 @@ function ChatAnswer({ report }: { report: ResearchReport }): React.JSX.Element {
   const fallback = report.limitations[0] ?? t("research.chat.answerUnavailable");
   return (
     <article className="space-y-3 text-sm leading-6" data-testid="research-chat-answer">
-      <div className="space-y-2">
-        {(statements.length > 0 ? statements : [fallback]).map((statement) => (
-          <p className="m-0" key={statement}>{statement}</p>
-        ))}
-      </div>
-      {report.sources.length > 0 && (
-        <details className="rounded-lg border border-border/70 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-            {t("research.chat.sources", { count: report.sources.length })}
-          </summary>
-          <ol className="mb-0 mt-2 space-y-1 pl-5 text-xs">
-            {report.sources.map((source) => (
-              <li key={source.id}>
-                <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
-                  {source.title}
-                </a>
-              </li>
-            ))}
-          </ol>
-        </details>
-      )}
+      {(statements.length > 0 ? statements : [fallback]).map((statement) => (
+        <p className="m-0" key={statement}>{statement}</p>
+      ))}
     </article>
   );
 }
@@ -906,7 +926,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [pauseRequested, setPauseRequested] = useState(false);
   const [progress, setProgress] = useState("");
   const [activity, setActivity] = useState<ResearchOneShotEventV1[]>([]);
-  const [report, setReport] = useState<ResearchReport | null>(null);
+  const [report, setReport] = useState<ResearchReport | ChatAnswerV1 | null>(null);
   const [raw, setRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [planApprovalRequired, setPlanApprovalRequired] =
@@ -1384,14 +1404,14 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setProgress("");
       return true;
     } catch (value) {
+      const errorCode = researchErrorCodeV1(value);
       if (expectedDirectSteeringAbort.current) {
         setProgress("");
-      } else if (value instanceof ResearchContractError && value.code === "cancelled") {
+      } else if (errorCode === "cancelled") {
         setActionStatus(t("research.stopped"));
         setProgress("");
-      } else if (value instanceof ResearchContractError &&
-        (value.code === "paused" || value.code === "scope-approval-required")) {
-        setActionStatus(t(value.code === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
+      } else if (errorCode === "paused" || errorCode === "scope-approval-required") {
+        setActionStatus(t(errorCode === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
         setProgress("");
       } else {
         setError(value instanceof Error ? value.message : t("research.error"));
@@ -1443,9 +1463,12 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setReport(result);
       setProgress("");
     } catch (value) {
-      if (value instanceof ResearchContractError &&
-        (value.code === "paused" || value.code === "scope-approval-required")) {
-        setActionStatus(t(value.code === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
+      const errorCode = researchErrorCodeV1(value);
+      if (errorCode === "cancelled") {
+        setActionStatus(t("research.stopped"));
+        setProgress("");
+      } else if (errorCode === "paused" || errorCode === "scope-approval-required") {
+        setActionStatus(t(errorCode === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
         setProgress("");
       } else {
         setError(value instanceof Error ? value.message : t("research.error"));
@@ -2515,14 +2538,20 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             )}
             {report && (
               <div className="rounded-lg border border-border/70 bg-card px-3 py-2" data-testid="research-chat-report">
-                {interactionMode === "chat"
-                  ? <ChatAnswer report={report} />
-                  : <FormattedReport report={report} />}
+                {report.schema === "atlcli.chat-answer/v1"
+                  ? <ChatAnswer answer={report} />
+                  : interactionMode === "chat"
+                    ? <LegacyChatAnswer report={report} />
+                    : <FormattedReport report={report} />}
                 <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void port.copyMarkdown(report.markdown).then(() => setActionStatus(t("research.copied")))}
+                    onClick={() => void port.copyMarkdown(
+                      report.schema === "atlcli.chat-answer/v1"
+                        ? report.messageMarkdown
+                        : report.markdown,
+                    ).then(() => setActionStatus(t("research.copied")))}
                     data-testid="research-copy"
                   >
                     {t("research.copy")}
@@ -2530,7 +2559,14 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void port.downloadMarkdown(report.markdown, `${report.title}.md`).then(() => setActionStatus(t("research.downloaded")))}
+                    onClick={() => void port.downloadMarkdown(
+                      report.schema === "atlcli.chat-answer/v1"
+                        ? report.messageMarkdown
+                        : report.markdown,
+                      report.schema === "atlcli.chat-answer/v1"
+                        ? "chat-answer.md"
+                        : `${report.title}.md`,
+                    ).then(() => setActionStatus(t("research.downloaded")))}
                     data-testid="research-download"
                   >
                     {t("research.download")}
@@ -3457,7 +3493,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         <ResearchBriefClarificationNotice clarification={briefClarification} />
       )}
 
-      {report && (
+      {report && report.schema !== "atlcli.chat-answer/v1" && (
         <details className="rounded-lg border bg-muted/20" data-testid="research-report">
           <summary className="cursor-pointer px-3 py-2 text-sm font-medium">{t("research.diagnostics")}</summary>
           <Card>

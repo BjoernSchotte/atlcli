@@ -44,6 +44,11 @@
       "types": "./dist/contracts.d.ts",
       "default": "./dist/contracts.js"
     },
+    "./chat-contracts": {
+      "development": "./src/chat-agent/contracts.ts",
+      "types": "./dist/chat-agent/contracts.d.ts",
+      "default": "./dist/chat-agent/contracts.js"
+    },
     "./events": {
       "development": "./src/events.ts",
       "types": "./dist/events.d.ts",

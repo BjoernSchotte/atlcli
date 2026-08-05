@@ -754,7 +754,10 @@ export interface ResearchPort {
     revision: number;
     instruction: string;
   }): Promise<void>;
-  run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+  run(
+    request: ResearchRequestV1,
+    options?: ResearchRunOptions,
+  ): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
   resume?(
     sessionId: string,
     options?: Omit<ResearchRunOptions, "policy">,
