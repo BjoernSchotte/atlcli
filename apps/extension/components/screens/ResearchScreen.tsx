@@ -155,6 +155,7 @@ type ResearchTimelineStepKind =
   | "planning"
   | "confluence-search"
   | "confluence-read"
+  | "bound-read"
   | "jira-search"
   | "jira-read"
   | "ranking"
@@ -185,6 +186,12 @@ function researchActivityDetailMessages(
       }
       if (event.toolId === "wiki.page.get") {
         return [t("research.chat.detail.confluenceRead")];
+      }
+      if (event.toolId === "atlassian.bound.read") {
+        if (event.itemLabels?.length) {
+          return event.itemLabels.map((label) => t("research.chat.detail.boundRead", { label }));
+        }
+        return [t("research.chat.detail.boundReadGeneric")];
       }
       if (event.toolId === "jira.issue.search" || event.toolId === "jira.project.search") {
         if (event.itemLabels?.length) {
@@ -225,6 +232,7 @@ function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKi
   }
   if (event.kind === "brief" || event.kind === "plan") return "planning";
   if (event.kind === "capability") {
+    if (event.toolId === "atlassian.bound.read") return "bound-read";
     if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
       return "confluence-search";
     }
@@ -762,6 +770,13 @@ function ResearchStreamingTurn({
       seed.binding.entityKind === "page",
     )?.binding
     : undefined;
+  const exactIssue = request?.exactContextProducts?.includes("jira")
+    ? request.scopeSeeds?.find((seed) =>
+      seed.binding.source === "current_context" &&
+      seed.binding.product === "jira" &&
+      seed.binding.entityKind === "issue",
+    )?.binding
+    : undefined;
   // Ranking validates the one host-bound entity reference internally, but it
   // is not a user-visible discovery step when there is only one exact page.
   // Showing it as "relevant results selected" suggested a broad search that
@@ -779,6 +794,11 @@ function ResearchStreamingTurn({
       case "confluence-read": return exactPage
         ? t("research.chat.phase.confluenceContextRead", { name: exactPage.name })
         : t("research.chat.phase.confluenceRead");
+      case "bound-read": return exactPage
+        ? t("research.chat.phase.confluenceContextRead", { name: exactPage.name })
+        : exactIssue
+          ? t("research.chat.phase.jiraContextRead", { name: exactIssue.name })
+          : t("research.chat.phase.boundRead");
       case "jira-search": return t("research.chat.phase.jiraSearch");
       case "jira-read": return t("research.chat.phase.jiraRead");
       case "ranking": return t("research.chat.phase.ranking");
@@ -795,6 +815,7 @@ function ResearchStreamingTurn({
         ? t("research.chat.phase.confluenceContext.description")
         : t("research.chat.phase.confluenceSearch.description");
       case "confluence-read": return t("research.chat.phase.confluenceRead.description");
+      case "bound-read": return t("research.chat.phase.boundRead.description");
       case "jira-search": return t("research.chat.phase.jiraSearch.description");
       case "jira-read": return t("research.chat.phase.jiraRead.description");
       case "ranking": return t("research.chat.phase.ranking.description");

@@ -58,4 +58,5 @@ export * from "./chat-conversation.js";
 export * from "./chat-agent/contracts.js";
 export * from "./chat-agent/answer.js";
 export * from "./chat-agent/prompts.js";
+export * from "./chat-agent/retrieval.js";
 export * from "./chat-agent/model.js";

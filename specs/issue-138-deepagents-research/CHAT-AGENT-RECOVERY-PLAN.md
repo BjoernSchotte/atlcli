@@ -322,50 +322,58 @@ adding agentic complexity.
 
 Implementation:
 
-- [ ] Add a host-issued exact-anchor reference for the bound Confluence page or
+- [x] Add a host-issued exact-anchor reference for the bound Confluence page or
       Jira issue. The model may use the opaque reference but may not substitute an
       arbitrary page ID, issue key, URL, tenant, or scope.
-- [ ] Add a direct bound-entity read capability that validates tenant, binding,
+- [x] Add a direct bound-entity read capability that validates tenant, binding,
       entity kind, authorization, byte budget, timeout, and cancellation before
       HTTP.
-- [ ] Remove search and candidate ranking from the exact-anchor path.
-- [ ] Treat the containing project/space only as validation authority; do not
+- [x] Remove search and candidate ranking from the exact-anchor path.
+- [x] Treat the containing project/space only as validation authority; do not
       search it unless the question or an explicit added context requests a
       broader scope.
-- [ ] Trigger Jira acquisition from a Confluence-only turn only when the question
+- [x] Trigger Jira acquisition from a Confluence-only turn only when the question
       requires Jira or the retrieved page exposes a Jira key, structured Jira
       macro, or Jira link that is material to the answer.
-- [ ] Preserve the canonical URL and exact source identity from the host response;
+- [x] Preserve the canonical URL and exact source identity from the host response;
       never let the model construct them.
 
 Automated proof:
 
-- [ ] Attached-page test performs one matching detail read and zero search HTTP
+- [x] Attached-page test performs one matching detail read and zero search HTTP
       calls.
-- [ ] Attached-issue test performs one matching detail read and zero search HTTP
+- [x] Attached-issue test performs one matching detail read and zero search HTTP
       calls.
-- [ ] A hostile or stale presenter-supplied anchor cannot widen or replace the
+- [x] A hostile or stale presenter-supplied anchor cannot widen or replace the
       host binding.
-- [ ] A mismatched detail response fails closed and cannot fall back to another
+- [x] A mismatched detail response fails closed and cannot fall back to another
       search result.
-- [ ] Confluence-only input produces zero Jira calls unless an admitted Jira
+- [x] Confluence-only input produces zero Jira calls unless an admitted Jira
       signal is observed and relevant.
-- [ ] Canonical URL tests cover personal-space keys, renamed titles, encoded
+- [x] Canonical URL tests cover personal-space keys, renamed titles, encoded
       paths, and issue keys without trusting model-authored URLs.
 
 Live acceptance:
 
-- [ ] In CLI and MV3, summarize one exact attached page correctly with its
+- [x] In CLI and MV3, summarize one exact attached page correctly with its
       canonical citation and no unrelated source.
-- [ ] In CLI and MV3, answer one exact issue question correctly with no unrelated
+- [x] In CLI and MV3, answer one exact issue question correctly with no unrelated
       page or project search.
-- [ ] The user-visible activity says the named attached entity is being read; it
+- [x] The user-visible activity says the named attached entity is being read; it
       does not claim that the containing space/project is being searched.
 
 Acceptance criteria:
 
-- [ ] Exact-context wrong-source rate is zero in the committed gold set.
-- [ ] Exact-context retrieval performs no unnecessary search operation.
+- [x] Exact-context wrong-source rate is zero in the committed gold set.
+- [x] Exact-context retrieval performs no unnecessary search operation.
+
+Proof record (2026-08-05): focused exact-anchor broker, QuickJS, UI, event, and
+evaluation tests, the workspace typecheck, the production extension build and
+output/privacy checks, and a packed MV3 exact-page/exact-issue lifecycle test
+passed. Separate approved private read-only CLI exact-page and exact-issue runs
+each used the opaque direct-read capability, performed no search or ranking,
+returned the correct sole canonical source, and retained their outputs only
+outside Git.
 
 ### C3 — Add navigable long-document reading
 

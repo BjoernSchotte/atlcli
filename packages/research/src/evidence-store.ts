@@ -44,7 +44,7 @@ export interface ResearchEvidenceAuthorityV1 {
  */
 export interface ResearchEvidenceRetrievalV1 {
   sourceId: string;
-  reason: "question_relevance_rank";
+  reason: "question_relevance_rank" | "exact_anchor";
   rank: number;
 }
 
@@ -298,13 +298,13 @@ function validateRetrieval(
   if (
     Object.keys(candidate).some((key) => !["sourceId", "reason", "rank"].includes(key)) ||
     candidate.sourceId !== sourceId ||
-    candidate.reason !== "question_relevance_rank"
+    (candidate.reason !== "question_relevance_rank" && candidate.reason !== "exact_anchor")
   ) {
     invalid("Evidence retrieval provenance is invalid.");
   }
   return {
     sourceId,
-    reason: "question_relevance_rank",
+    reason: candidate.reason,
     rank: boundedInteger(candidate.rank, "Evidence retrieval rank", 1, 4_096),
   };
 }

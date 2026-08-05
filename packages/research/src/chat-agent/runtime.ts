@@ -2,7 +2,7 @@ import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
 import type { AIMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { createResearchPtcTools, type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
+import { type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
 import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
@@ -35,6 +35,7 @@ import {
   type ChatTurnRequestV1,
 } from "./contracts.js";
 import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
+import { createChatPtcToolsV1 } from "./retrieval.js";
 import type { ChatModelBindingV1, ChatModelFactoryV1 } from "./model.js";
 
 export function chatRecursionLimitV1(maxPtcCalls: number): number {
@@ -103,7 +104,7 @@ function evalResultDiagnostic(value: unknown): {
     ? undefined
     : /\btools\b[^\n]*(?:not defined|unavailable)/iu.test(rendered)
       ? "tools-unavailable"
-      : /\b(?:jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
+      : /\b(?:atlassianBoundRead|jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
         ? "capability-unavailable"
         : /not defined/iu.test(rendered)
           ? "undefined-symbol"
@@ -147,6 +148,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         "wikiSearch",
         "wikiPageGet",
         "researchCandidateRank",
+        "atlassianBoundRead",
       ].filter((name) => new RegExp(`\\b${name}\\b`, "u").test(code));
       const searchInputShapes = [
         ["jiraIssueSearch", "jira"],
@@ -294,7 +296,11 @@ function emitPtcEventFactory(input: {
       callId: diagnostic.callId,
       toolId: diagnostic.tool,
       inputKind: diagnostic.inputKind,
-      status: diagnostic.outcome,
+      status: diagnostic.outcome === "started"
+        ? "started"
+        : diagnostic.outcome === "success"
+          ? "completed"
+          : "failed",
       ...(diagnostic.itemCount === undefined ? {} : { itemCount: diagnostic.itemCount }),
       ...(diagnostic.itemLabels ? { itemLabels: diagnostic.itemLabels } : {}),
       ...(diagnostic.complete === undefined ? {} : { complete: diagnostic.complete }),
@@ -354,8 +360,14 @@ export function createKiteweaveChatAgent(
           completedCalls: 0,
           maxCalls: turn.limits.maxPtcCalls,
         });
-        const ptcTools = createResearchPtcTools(broker, {
+        const anchors = broker.exactAnchors();
+        const ptcTools = createChatPtcToolsV1(broker, {
           now,
+          exactContextProducts: turn.exactContextProducts,
+          searchProducts: [
+            ...(turn.scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
+            ...(turn.scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
+          ],
           onDiagnostic: emitPtcEventFactory({
             onEvent: input.onEvent,
             onDiagnostic: input.onPtcDiagnostic,
@@ -435,6 +447,7 @@ export function createKiteweaveChatAgent(
                 question: turn.question,
                 jiraProjectKeys: turn.scope.jiraProjectKeys,
                 confluenceSpaceKeys: turn.scope.confluenceSpaceKeys,
+                anchors,
               }),
             }],
           },

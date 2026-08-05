@@ -5,7 +5,7 @@ import {
   RESEARCH_CAPABILITY_SCHEMAS,
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "./capability-contracts.js";
-import type { ResearchToolId } from "./contracts.js";
+import type { ResearchCapabilityEventToolIdV1, ResearchToolId } from "./contracts.js";
 import type { ResearchGraphCapabilityV1 } from "./graph.js";
 
 const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") =>
@@ -68,7 +68,7 @@ function jsonResult(value: unknown): string {
 
 export interface ResearchPtcDiagnosticV1 {
   callId: string;
-  tool: ResearchGraphCapabilityV1;
+  tool: ResearchCapabilityEventToolIdV1;
   inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
   outcome: "started" | "success" | "error";
   durationMs?: number;

@@ -10,10 +10,14 @@ import {
 } from "./contracts.js";
 import {
   RESEARCH_CAPABILITY_SCHEMAS,
+  BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1,
   decodeResearchCandidateRankInputV1,
+  decodeBoundEntityReadInputV1,
   decodeResearchGetInputV1,
   decodeResearchSearchInputV1,
   type BoundedContentProjectionV1,
+  type BoundEntityAnchorV1,
+  type BoundEntityReadOutputV1,
   type ResearchCandidateRankOutputV1,
   type ResearchEntitySummaryV1,
   type ResearchGetOutputV1,
@@ -126,6 +130,7 @@ export interface ResearchEvidenceRevalidationOutcomeV1 {
 interface BrokerOptions {
   createCursorId?: () => string;
   createEntityId?: () => string;
+  createAnchorId?: () => string;
   budget?: ResearchRunBudget;
   /** Optional private evidence sink for durable session-backed detail reads. */
   evidence?: {
@@ -279,6 +284,9 @@ export class ResearchCapabilityBroker {
   readonly #rankedEntityRefs = new Map<string, RankedDetailAdmissionV1>();
   readonly #scopeBindings: ResearchScopeBindingV1[];
   readonly #exactEntityBindings = new Map<string, ExactEntityBindingV1>();
+  readonly #exactAnchorBindings = new Map<string, ExactEntityBindingV1>();
+  readonly #exactAnchorRefs = new Map<string, string>();
+  readonly #createAnchorId: () => string;
   readonly #exactSearchEmitted = new Set<ResearchProduct>();
   readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
   readonly #searchAttempts: Record<ResearchProduct, number> = {
@@ -312,6 +320,12 @@ export class ResearchCapabilityBroker {
     this.#entityVault = new ResearchEntityVault({
       maxEntries: request.limits.maxItemsPerProduct * 2,
       createId: options.createEntityId,
+    });
+    this.#createAnchorId = options.createAnchorId ?? (() => {
+      if (typeof crypto?.randomUUID !== "function") {
+        throw new ResearchContractError("unknown", "Secure exact-anchor refs are unavailable.");
+      }
+      return crypto.randomUUID();
     });
     this.#evidence = options.evidence;
     this.#scopeBindings = [...(options.scopeBindings ?? options.evidence?.scopeBindings ??
@@ -391,6 +405,8 @@ export class ResearchCapabilityBroker {
     this.#sources.clear();
     this.#detailEvidence.clear();
     this.#rankedEntityRefs.clear();
+    this.#exactAnchorBindings.clear();
+    this.#exactAnchorRefs.clear();
     this.#successfulDetailReads.length = 0;
   }
 
@@ -452,6 +468,108 @@ export class ResearchCapabilityBroker {
       ...(entry.retrieval ? { retrieval: { ...entry.retrieval } } : {}),
       ...(entry.evidenceId === undefined ? {} : { evidenceId: entry.evidenceId }),
     }));
+  }
+
+  /**
+   * Issue body-free, turn-local capabilities for host-accepted exact bindings.
+   * The binding's raw page ID, issue key, URL, tenant, and containing scope are
+   * deliberately absent; QuickJS receives only the opaque ref and display data.
+   */
+  exactAnchors(): BoundEntityAnchorV1[] {
+    return [...this.#exactEntityBindings.entries()]
+      .sort(([left], [right]) => left.localeCompare(right, "en-US"))
+      .map(([key, exact]) => {
+        let anchorRef = this.#exactAnchorRefs.get(key);
+        if (!anchorRef) {
+          anchorRef = `research-anchor:${this.#createAnchorId()}`;
+          if (!/^research-anchor:[A-Za-z0-9-]{1,200}$/.test(anchorRef) ||
+              this.#exactAnchorBindings.has(anchorRef)) {
+            throw new ResearchContractError("unknown", "A secure exact-anchor ref is invalid or reused.");
+          }
+          this.#exactAnchorRefs.set(key, anchorRef);
+          this.#exactAnchorBindings.set(anchorRef, exact);
+        }
+        return {
+          anchorRef,
+          product: exact.product,
+          entityKind: exact.product === "jira" ? "issue" : "page",
+          name: cleanOptionalText(exact.binding.name, 2_000) ??
+            (exact.product === "jira" ? "Bound Jira issue" : "Bound Confluence page"),
+        };
+      });
+  }
+
+  /** Direct detail read for one host-issued exact anchor; no search or ranking. */
+  async readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1> {
+    const decoded = decodeBoundEntityReadInputV1(input);
+    this.budget.beginPtc(decoded);
+    const output = await this.#gate.run(this.signal, async () => {
+      const exact = this.#exactAnchorBindings.get(decoded.anchorRef);
+      if (!exact) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The exact-anchor reference is unknown or belongs to another turn.",
+        );
+      }
+      this.budget.beginDetail(exact.product);
+      if (exact.product === "jira") {
+        const detail = await this.#providers.jira.getIssue({
+          issueKey: exact.entityId,
+          signal: this.signal,
+        });
+        const allowedProjects = this.#request.scope.jiraProjectKeys;
+        if (
+          detail.issueKey !== exact.entityId ||
+          (allowedProjects.length > 0 && !allowedProjects.includes(detail.projectKey))
+        ) {
+          throw new ResearchContractError("access-denied", "Jira detail does not match the bound entity.");
+        }
+        const source = this.#jiraSource(detail);
+        await this.#recordDetailEvidence(source, detail.content, {
+          sourceId: source.id,
+          reason: "exact_anchor",
+          rank: 1,
+        });
+        return {
+          schema: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1,
+          source: publicSource(source),
+          content: detail.content,
+          relatedAnchors: [],
+          budget: this.budget.snapshot(),
+        };
+      }
+
+      const detail = await this.#providers.wiki.getPage({
+        contentId: exact.entityId,
+        signal: this.signal,
+      });
+      const allowedSpaces = this.#request.scope.confluenceSpaceKeys;
+      if (
+        detail.contentId !== exact.entityId ||
+        (allowedSpaces.length > 0 && !allowedSpaces.includes(detail.spaceKey))
+      ) {
+        throw new ResearchContractError(
+          "access-denied",
+          "Confluence detail does not match the bound entity.",
+        );
+      }
+      const source = this.#wikiSource(detail);
+      this.#registerObservedJiraReferences(detail.content);
+      await this.#recordDetailEvidence(source, detail.content, {
+        sourceId: source.id,
+        reason: "exact_anchor",
+        rank: 1,
+      });
+      return {
+        schema: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1,
+        source: publicSource(source),
+        content: detail.content,
+        relatedAnchors: this.exactAnchors().filter((anchor) => anchor.product === "jira"),
+        budget: this.budget.snapshot(),
+      };
+    });
+    this.budget.completePtc(output);
+    return output;
   }
 
   /**

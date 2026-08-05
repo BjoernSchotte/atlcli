@@ -38,6 +38,7 @@ import {
   normalizeResearchOneShotPolicyV1,
   reduceResearchSessionV1,
   type ResearchOneShotEventV1,
+  type ChatAnswerV1,
   type ResearchReport,
   type ResearchRequestV1,
   type ResearchScopePreflightOutcomeV1,
@@ -51,6 +52,7 @@ import {
   stageResearchGraphForDurableSessionV1,
 } from "@atlcli/research/graph";
 import {
+  createResearchEntityScopeSeedV1,
   createResearchKeyScopeSeedV1,
   createResearchScopeExpansionProposalV1,
 } from "@atlcli/research/scope-discovery";
@@ -328,6 +330,20 @@ const PACKED_JIRA_ONLY_REPORT_INPUT = {
 const PACKED_JIRA_ONLY_CHAT_DRAFT = {
   messageMarkdown:
     "DEMO-1 documents the packed design location and was read in detail. [[source:jira:DEMO-1]]",
+  citationSourceIds: ["jira:DEMO-1"],
+  gaps: [],
+};
+
+const PACKED_EXACT_PAGE_CHAT_DRAFT = {
+  messageMarkdown:
+    "The attached page directly establishes the packed implementation statement. [[source:wiki:1001]]",
+  citationSourceIds: ["wiki:1001"],
+  gaps: [],
+};
+
+const PACKED_EXACT_ISSUE_CHAT_DRAFT = {
+  messageMarkdown:
+    "The attached issue directly establishes the packed implementation task. [[source:jira:DEMO-1]]",
   citationSourceIds: ["jira:DEMO-1"],
   gaps: [],
 };
@@ -1117,6 +1133,8 @@ function anthropicMessage(content, stopReason, call) {
 const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
 const packedJiraOnlyReportInput = ${JSON.stringify(PACKED_JIRA_ONLY_REPORT_INPUT)};
 const packedJiraOnlyChatDraft = ${JSON.stringify(PACKED_JIRA_ONLY_CHAT_DRAFT)};
+const packedExactPageChatDraft = ${JSON.stringify(PACKED_EXACT_PAGE_CHAT_DRAFT)};
+const packedExactIssueChatDraft = ${JSON.stringify(PACKED_EXACT_ISSUE_CHAT_DRAFT)};
 const packedHostParityPacket = ${JSON.stringify(HOST_PARITY_PACKET)};
 const packedSentinelPacket = ${JSON.stringify(PACKED_SENTINEL_PACKET)};
 const packedHostParityModelPacket = ${JSON.stringify(HOST_PARITY_MODEL_PACKET_V2)};
@@ -1325,6 +1343,39 @@ globalThis.fetch = async (input, init) => {
         );
       }
       return structured(packedJiraOnlyChatDraft);
+    }
+
+    const packedExactPageChat = serializedRequest.includes("packed-exact-page:") &&
+      serializedRequest.includes("Answer as a normal chat response");
+    const packedExactIssueChat = serializedRequest.includes("packed-exact-issue:") &&
+      serializedRequest.includes("Answer as a normal chat response");
+    if (packedExactPageChat || packedExactIssueChat) {
+      const anchorRef = serializedRequest.match(/research-anchor:[A-Za-z0-9-]{1,200}/)?.[0];
+      if (!anchorRef) {
+        return anthropicMessage(
+          [{ type: "text", text: "Packed exact-context fixture could not find a host anchor." }],
+          "end_turn",
+          modelCalls,
+        );
+      }
+      if (!serializedMessages.includes("atlcli.ptc/atlassian.bound.read.output/v1")) {
+        return anthropicMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_exact_anchor_eval_" + modelCalls,
+            name: "eval",
+            input: {
+              code: "JSON.parse(await tools.atlassianBoundRead({ anchorRef: " +
+                JSON.stringify(anchorRef) + " }))",
+            },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      return structured(packedExactPageChat
+        ? packedExactPageChatDraft
+        : packedExactIssueChatDraft);
     }
 
     if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
@@ -1929,6 +1980,44 @@ function packedSentinelRequest(): ResearchRequestV1 {
   };
 }
 
+function packedExactContextRequest(product: "jira" | "confluence"): ResearchRequestV1 {
+  const jira = product === "jira";
+  const key = jira ? "DEMO-1" : "1001";
+  const containingKey = jira ? "DEMO" : "KB";
+  return {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question: jira
+      ? "packed-exact-issue: Summarize only the attached issue."
+      : "packed-exact-page: Summarize only the attached page.",
+    scope: {
+      siteOrigin: SITE_ORIGIN,
+      jiraProjectKeys: jira ? [containingKey] : [],
+      confluenceSpaceKeys: jira ? [] : [containingKey],
+    },
+    scopeSeeds: [
+      createResearchKeyScopeSeedV1({
+        tenantOrigin: SITE_ORIGIN,
+        product,
+        key: containingKey,
+        source: "current_context",
+        authority: "approved",
+      }),
+      createResearchEntityScopeSeedV1({
+        tenantOrigin: SITE_ORIGIN,
+        product,
+        entityKind: jira ? "issue" : "page",
+        key,
+        name: jira ? "Packed attached issue" : "Packed attached page",
+        source: "current_context",
+        authority: "approved",
+      }),
+    ],
+    exactContextProducts: [product],
+    limits: { ...DEFAULT_RESEARCH_LIMITS_V1, ...NON_BILLABLE_PACKED_MODEL_LIMITS },
+    wikiProvider: "rest",
+  };
+}
+
 function updatePackedResearchSession<
   T extends Omit<ResearchSessionUpdateV1, "expectedRevision" | "expectedLeaseEpoch" | "at">
 >(
@@ -2300,6 +2389,10 @@ type PackedRunResponse =
   | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReport }
   | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
 
+type PackedChatRunResponse =
+  | { kind: "research:run-result"; runId: string; ok: true; report: ChatAnswerV1 }
+  | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
+
 type PackedResumeResponse =
   | { kind: "research:resume-result"; runId: string; ok: true; report: ResearchReport }
   | { kind: "research:resume-result"; runId: string; ok: false; code: string; error: string };
@@ -2365,12 +2458,24 @@ function canonicalConcurrentCompletions(
     .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
 }
 
+function runPackedResearchInBackground(
+  page: Page,
+  request: ResearchRequestV1,
+  runId: string,
+  mode: "chat",
+): Promise<PackedChatRunResponse>;
+function runPackedResearchInBackground(
+  page: Page,
+  request: ResearchRequestV1,
+  runId: string,
+  mode?: "research",
+): Promise<PackedRunResponse>;
 async function runPackedResearchInBackground(
   page: Page,
   request: ResearchRequestV1,
   runId: string,
   mode: "chat" | "research" = "research",
-): Promise<PackedRunResponse> {
+): Promise<PackedRunResponse | PackedChatRunResponse> {
   return page.evaluate(async ({ request, runId, mode, policy }) => {
     const window = await chrome.windows.getCurrent();
     if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
@@ -2384,7 +2489,9 @@ async function runPackedResearchInBackground(
       request,
       policy,
     });
-  }, { request, runId, mode, policy: HOST_PARITY_POLICY }) as Promise<PackedRunResponse>;
+  }, { request, runId, mode, policy: HOST_PARITY_POLICY }) as Promise<
+    PackedRunResponse | PackedChatRunResponse
+  >;
 }
 
 async function resumePackedResearchInBackground(
@@ -5190,6 +5297,42 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
   const fetches = events.filter((event) => event.kind === "fetch");
   expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(true);
   expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
+  expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("reads exact page and issue anchors in packed MV3 without search or ranking", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  const pageResult = await runPackedResearchInBackground(
+    page,
+    packedExactContextRequest("confluence"),
+    "packed-exact-page",
+    "chat",
+  );
+  const issueResult = await runPackedResearchInBackground(
+    page,
+    packedExactContextRequest("jira"),
+    "packed-exact-issue",
+    "chat",
+  );
+
+  expect(pageResult.ok, JSON.stringify(pageResult)).toBe(true);
+  expect(issueResult.ok, JSON.stringify(issueResult)).toBe(true);
+  const serialized = JSON.stringify({ pageResult, issueResult });
+  expect(serialized).toContain(`${SITE_ORIGIN}/wiki/spaces/KB/pages/1001`);
+  expect(serialized).toContain(`${SITE_ORIGIN}/browse/DEMO-1`);
+
+  const events = await harnessEvents(page);
+  const fetches = events.filter((event) => event.kind === "fetch");
+  expect(fetches.filter((event) => event.url?.includes("/wiki/rest/api/content/1001")))
+    .toHaveLength(1);
+  expect(fetches.filter((event) => event.url?.includes("/rest/api/3/issue/DEMO-1") &&
+    !event.url?.includes("/remotelink"))).toHaveLength(1);
+  expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
+  expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(false);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
 });
 

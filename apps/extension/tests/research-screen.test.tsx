@@ -150,6 +150,24 @@ describe("research activity timeline", () => {
     expect(steps[0]?.kind).toBe("thinking");
     expect(steps[0]?.events).toHaveLength(0);
   });
+
+  it("presents an exact anchor read as one direct entity read, not a search", () => {
+    const steps = researchTimelineSteps([{
+      kind: "capability",
+      seq: 1,
+      at: "2026-08-05T12:00:00.000Z",
+      callId: "atlassian.bound.read:1",
+      toolId: "atlassian.bound.read",
+      inputKind: "detail",
+      status: "completed",
+      itemCount: 1,
+      itemLabels: ["Confluence 1001: Attached page"],
+    }], false);
+
+    expect(steps).toEqual([expect.objectContaining({ kind: "bound-read" })]);
+    expect(steps.some((step) => step.kind === "confluence-search" || step.kind === "ranking"))
+      .toBe(false);
+  });
 });
 
 const v2Report: ResearchReportV2 = {
@@ -1891,20 +1909,9 @@ describe("portable Research screen", () => {
           kind: "capability",
           seq: 1,
           at: "2026-08-03T12:00:00.000Z",
-          callId: "wiki.search:1",
-          toolId: "wiki.search",
-          inputKind: "search",
-          status: "completed",
-          itemCount: 1,
-          itemLabels: ["Confluence 1001: Design"],
-        });
-        options?.onEvent?.({
-          kind: "capability",
-          seq: 2,
-          at: "2026-08-03T12:00:01.000Z",
-          callId: "research.candidate.rank:1",
-          toolId: "research.candidate.rank",
-          inputKind: "ranking",
+          callId: "atlassian.bound.read:1",
+          toolId: "atlassian.bound.read",
+          inputKind: "detail",
           status: "completed",
           itemCount: 1,
           itemLabels: ["Confluence 1001: Design"],
@@ -1931,8 +1938,9 @@ describe("portable Research screen", () => {
     expect(submitted?.exactContextProducts).toEqual(["confluence"]);
     expect(submitted?.scope.confluenceSpaceKeys).toEqual(["KB"]);
     expect(dom.maybeFind("research-clarification-reviews")).toBeNull();
+    expect(dom.find("research-activity").textContent).toContain("is being read");
     expect(dom.find("research-activity").textContent).toContain(
-      "The page ID was taken directly from the attached context; no Confluence search was run.",
+      "no search or ranking is needed",
     );
     expect(dom.find("research-activity").textContent).not.toContain("Confluence search returned");
     expect(dom.find("research-activity").textContent).not.toContain("Relevant results");

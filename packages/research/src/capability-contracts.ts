@@ -134,6 +134,34 @@ export interface ResearchGetOutputV1 {
   budget: ResearchBudgetSnapshotV1;
 }
 
+export const BOUND_ENTITY_READ_CAPABILITY_ID_V1 = "atlassian.bound.read" as const;
+export const BOUND_ENTITY_READ_INPUT_SCHEMA_V1 =
+  "atlcli.ptc/atlassian.bound.read.input/v1" as const;
+export const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1 =
+  "atlcli.ptc/atlassian.bound.read.output/v1" as const;
+
+/** Body-free, host-issued handle for one already authorized exact entity. */
+export interface BoundEntityAnchorV1 {
+  anchorRef: string;
+  product: "jira" | "confluence";
+  entityKind: "issue" | "page";
+  name: string;
+}
+
+export interface BoundEntityReadInputV1 {
+  schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+  anchorRef: string;
+}
+
+export interface BoundEntityReadOutputV1 {
+  schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+  source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+  content: BoundedContentProjectionV1;
+  /** Exact links observed in the verified body; still usable only by opaque ref. */
+  relatedAnchors: BoundEntityAnchorV1[];
+  budget: ResearchBudgetSnapshotV1;
+}
+
 export interface ResearchCandidateRankInputV1 {
   schema: string;
   product: "jira" | "confluence";
@@ -323,4 +351,19 @@ export function decodeResearchCandidateRankInputV1(
     invalid("Candidate-rank entity references must be unique.");
   }
   return { schema: expectedSchema, product: value.product, entityRefs };
+}
+
+export function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1 {
+  assertRecord(value, `${BOUND_ENTITY_READ_CAPABILITY_ID_V1} input`);
+  assertExactKeys(value, ["schema", "anchorRef"], `${BOUND_ENTITY_READ_CAPABILITY_ID_V1} input`);
+  if (value.schema !== BOUND_ENTITY_READ_INPUT_SCHEMA_V1) {
+    invalid(`Unsupported ${BOUND_ENTITY_READ_CAPABILITY_ID_V1} input schema.`);
+  }
+  if (
+    typeof value.anchorRef !== "string" ||
+    !/^research-anchor:[A-Za-z0-9-]{1,200}$/.test(value.anchorRef)
+  ) {
+    invalid("Bound entity anchor reference is invalid.");
+  }
+  return { schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1, anchorRef: value.anchorRef };
 }

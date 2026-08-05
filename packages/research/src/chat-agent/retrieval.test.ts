@@ -1,0 +1,299 @@
+import { describe, expect, test } from "bun:test";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_REQUEST_SCHEMA_V1,
+  type ResearchRequestV1,
+  type ResearchScopeSeedV1,
+} from "../contracts.js";
+import {
+  BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+  type BoundEntityReadOutputV1,
+} from "../capability-contracts.js";
+import {
+  ResearchCapabilityBroker,
+  type ResearchReadProviders,
+} from "../broker.js";
+import { createChatPtcToolsV1 } from "./retrieval.js";
+
+const ORIGIN = "https://tenant-a.atlassian.net";
+
+function seed(input: {
+  product: "jira" | "confluence";
+  entityKind: "issue" | "page" | "project" | "space";
+  key: string;
+  name: string;
+  id: string;
+}): ResearchScopeSeedV1 {
+  return {
+    binding: {
+      schema: "atlcli.research-scope-binding/v1",
+      id: `scope-binding:current:${input.id}`,
+      tenantOrigin: ORIGIN,
+      product: input.product,
+      entityKind: input.entityKind,
+      entityRef: `research-scope-entity:${input.id}`,
+      key: input.key,
+      name: input.name,
+      source: "current_context",
+      authority: "approved",
+    },
+    precedence: 300,
+  };
+}
+
+function request(input: {
+  seeds: ResearchScopeSeedV1[];
+  jira?: string[];
+  wiki?: string[];
+  exact: Array<"jira" | "confluence">;
+}): ResearchRequestV1 {
+  return {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question: "Summarize the attached entity.",
+    scope: {
+      siteOrigin: ORIGIN,
+      jiraProjectKeys: input.jira ?? [],
+      confluenceSpaceKeys: input.wiki ?? [],
+    },
+    scopeSeeds: input.seeds,
+    exactContextProducts: input.exact,
+    limits: {
+      ...DEFAULT_RESEARCH_LIMITS_V1,
+      maxDetailItemsPerProduct: 4,
+      maxPtcCalls: 8,
+    },
+    wikiProvider: "rest",
+  };
+}
+
+function providers(calls: string[]): ResearchReadProviders {
+  return {
+    jira: {
+      async searchPage() {
+        calls.push("jira.search");
+        return { items: [] };
+      },
+      async getIssue({ issueKey, signal }) {
+        signal.throwIfAborted();
+        calls.push(`jira.get:${issueKey}`);
+        return {
+          issueKey,
+          projectKey: "DEMO",
+          title: "Encoded / issue title",
+          content: {
+            text: "The bound issue establishes the accepted change.",
+            linkTargets: [],
+            truncated: false,
+            inputBytes: 49,
+          },
+        };
+      },
+    },
+    wiki: {
+      async searchPage() {
+        calls.push("wiki.search");
+        return { items: [] };
+      },
+      async getPage({ contentId, signal }) {
+        signal.throwIfAborted();
+        calls.push(`wiki.get:${contentId}`);
+        return {
+          contentId,
+          spaceKey: "~account-id",
+          title: "Renamed / title ä",
+          content: {
+            text: "The bound page establishes the current synthetic decision.",
+            linkTargets: [],
+            truncated: false,
+            inputBytes: 58,
+          },
+        };
+      },
+    },
+  };
+}
+
+async function invokeDirect(
+  broker: ResearchCapabilityBroker,
+  anchorRef: string,
+): Promise<BoundEntityReadOutputV1> {
+  return broker.readExactAnchor({
+    schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+    anchorRef,
+  });
+}
+
+describe("Chat exact-anchor retrieval", () => {
+  test("reads an attached page once without search or ranking", async () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [
+        seed({ product: "confluence", entityKind: "space", key: "~account-id", name: "Personal space", id: "space-personal" }),
+        seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" }),
+      ],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "page-anchor" });
+
+    const anchors = broker.exactAnchors();
+    expect(anchors).toEqual([{
+      anchorRef: "research-anchor:page-anchor",
+      product: "confluence",
+      entityKind: "page",
+      name: "Attached page",
+    }]);
+    const output = await invokeDirect(broker, anchors[0]!.anchorRef);
+
+    expect(calls).toEqual(["wiki.get:1001"]);
+    expect(output.source).toMatchObject({
+      sourceId: "wiki:1001",
+      title: "Renamed / title ä",
+      url: `${ORIGIN}/wiki/spaces/~account-id/pages/1001`,
+      contentId: "1001",
+      spaceKey: "~account-id",
+    });
+    expect(broker.detailEvidenceLedger()[0]?.retrieval).toMatchObject({
+      reason: "exact_anchor",
+      rank: 1,
+    });
+  });
+
+  test("reads an attached Jira issue once and preserves its host canonical URL", async () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [
+        seed({ product: "jira", entityKind: "project", key: "DEMO", name: "Demo project", id: "project-demo" }),
+        seed({ product: "jira", entityKind: "issue", key: "DEMO-42", name: "Attached issue", id: "issue-demo-42" }),
+      ],
+      jira: ["DEMO"],
+      exact: ["jira"],
+    }), providers(calls), { createAnchorId: () => "issue-anchor" });
+
+    const output = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+    expect(calls).toEqual(["jira.get:DEMO-42"]);
+    expect(output.source).toMatchObject({
+      sourceId: "jira:DEMO-42",
+      url: `${ORIGIN}/browse/DEMO-42`,
+      issueKey: "DEMO-42",
+      projectKey: "DEMO",
+    });
+  });
+
+  test("rejects forged, stale, and cross-turn anchor refs before provider IO", async () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "real-anchor" });
+    broker.exactAnchors();
+
+    await expect(invokeDirect(broker, "research-anchor:forged-anchor"))
+      .rejects.toMatchObject({ code: "invalid-request" });
+    expect(calls).toEqual([]);
+  });
+
+  test("fails closed on a mismatched page and never falls back to search", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async () => {
+      calls.push("wiki.get:1001");
+      return {
+        contentId: "9999",
+        spaceKey: "~account-id",
+        title: "Wrong page",
+        content: { text: "wrong", linkTargets: [], truncated: false, inputBytes: 5 },
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, { createAnchorId: () => "page-anchor" });
+
+    await expect(invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef))
+      .rejects.toMatchObject({ code: "access-denied" });
+    expect(calls).toEqual(["wiki.get:1001"]);
+    expect(broker.sourceLedger()).toEqual([]);
+  });
+
+  test("does not expose same-product search tools for an exact-only context", () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "page-anchor" });
+    expect(createChatPtcToolsV1(broker, {
+      exactContextProducts: ["confluence"],
+      searchProducts: ["confluence"],
+    })
+      .map((candidate) => candidate.name)).toEqual([
+        "atlassian_bound_read",
+      ]);
+    expect(calls).toEqual([]);
+  });
+
+  test("keeps Jira dormant until an admitted Jira signal is observed", async () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "page-anchor" });
+
+    const output = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+    expect(output.relatedAnchors).toEqual([]);
+    expect(calls).toEqual(["wiki.get:1001"]);
+  });
+
+  test("returns an opaque Jira anchor only after a verified page exposes its key", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Attached page",
+        content: {
+          text: "The material implementation status is tracked in DEMO-42.",
+          linkTargets: [],
+          truncated: false,
+          inputBytes: 57,
+        },
+      };
+    };
+    let anchorSequence = 0;
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, { createAnchorId: () => `anchor-${++anchorSequence}` });
+
+    const page = broker.exactAnchors()[0]!;
+    const pageOutput = await invokeDirect(broker, page.anchorRef);
+    expect(pageOutput.relatedAnchors).toEqual([{
+      anchorRef: "research-anchor:anchor-2",
+      product: "jira",
+      entityKind: "issue",
+      name: "DEMO-42",
+    }]);
+    const issue = await invokeDirect(broker, pageOutput.relatedAnchors[0]!.anchorRef);
+    expect(issue.source.sourceId).toBe("jira:DEMO-42");
+    expect(calls).toEqual(["wiki.get:1001", "jira.get:DEMO-42"]);
+  });
+
+  test("stops before HTTP when the turn has already been cancelled", async () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "page-anchor" });
+    const anchor = broker.exactAnchors()[0]!;
+    broker.cancel();
+    await expect(invokeDirect(broker, anchor.anchorRef)).rejects.toBeDefined();
+    expect(calls).toEqual([]);
+  });
+});

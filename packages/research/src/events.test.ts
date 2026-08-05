@@ -183,6 +183,18 @@ describe("research one-shot events", () => {
     }))).toBe(false);
   });
 
+  it("admits the body-free direct bound-entity read event", () => {
+    expect(isResearchOneShotEventV1(capabilityEvent({
+      callId: "atlassian.bound.read:1",
+      toolId: "atlassian.bound.read",
+      inputKind: "detail",
+      itemCount: 1,
+      itemLabels: ["Confluence 1001: Attached page"],
+      complete: undefined,
+      truncated: false,
+    }))).toBe(true);
+  });
+
   it("rejects unknown capability and input identifiers", () => {
     expect(isResearchOneShotEventV1(capabilityEvent({
       toolId: "atlassian.raw.fetch",
