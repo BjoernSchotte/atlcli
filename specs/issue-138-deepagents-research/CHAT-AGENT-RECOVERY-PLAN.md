@@ -1,6 +1,6 @@
 # Kiteweave Chat Agent Recovery Plan
 
-Status: **In progress; C0 baseline proven**
+Status: **In progress; C0-C3 proven, C3A next**
 
 ## Contents
 
@@ -431,6 +431,86 @@ one exact bound-page read followed by one opaque late-section read with no searc
 or ranking, returned the sole canonical citation, and disclosed the material
 residual coverage limit; its artifact remains outside Git.
 
+### C3A — Harden structured Confluence reading and context-sensitive HITL
+
+Goal: preserve the meaning and identity of structurally complex Confluence
+content before agentic Chat strategies multiply retrieval paths. Ask the user
+only when unresolved ambiguity is material; never replace an exact anchor with
+search or clarification ceremony.
+
+Implementation:
+
+- [ ] Pin every outline and section projection to one verified content identity,
+      version, representation, and capture boundary. A section reference must
+      become stale when any of these change and mixed-version evidence must fail
+      closed.
+- [ ] Add conformance projections for tables, Expand macros, Jira Live macros,
+      Smart Links, and Include/Excerpt structures. Preserve semantic structure,
+      link/macro identity, and explicit unresolved content without flattening it
+      into misleading prose.
+- [ ] Keep Storage as the required baseline representation. Isolate the parser
+      behind a representation-neutral document port so a later measured ADF or
+      AGG adapter can supply the same normalized outline/section contracts
+      without changing Chat tools or prompts. The deferred provider experiment
+      is specified in
+      [`CONFLUENCE-REST-AGG-AB-PLAN.md`](./CONFLUENCE-REST-AGG-AB-PLAN.md).
+- [ ] Enforce question-directed auxiliary acquisition: comments, attachments,
+      labels, ancestors, properties, and versions are absent from the default
+      tool surface and may be admitted only by an explicit typed need derived
+      from the question or a material evidence gap.
+- [ ] Implement a context-sensitive clarification policy: consume exact anchors,
+      explicit IDs/URLs/keys, already approved scope, and safe catalog resolvers
+      before asking. Create a durable, revision-fenced HITL checkpoint only when
+      the remaining ambiguity would materially change authorized scope or the
+      answer. Exact page/issue anchors never trigger title resolution or HITL.
+- [ ] Project typed coverage states for source-limit overflow, parse-budget
+      overflow, unsupported structures, unresolved includes, projection
+      truncation, and unread sections. None may be represented as empty content
+      or as proof that information is absent from the complete page.
+
+Automated proof:
+
+- [ ] Outline and section reads are rejected if their source identity, page
+      version, representation, tenant, turn, or scope revision differs from the
+      captured document snapshot.
+- [ ] A section read performs zero additional search calls and zero additional
+      page-detail HTTP calls; it reads only the retained verified snapshot under
+      the existing PTC, byte, concurrency, cancellation, and evidence limits.
+- [ ] An exact anchor with an ambiguous or renamed title still reads the bound
+      entity directly and performs neither title search nor clarification.
+- [ ] A missing term in the visible projection or selected sections cannot become
+      a negative whole-document claim while any section, include, or structural
+      projection remains unread or unresolved.
+- [ ] Source and parser limits produce a supported partial answer plus a typed,
+      user-meaningful gap; they never produce `genuinelyEmpty`, silent clipping,
+      or an invented completeness claim.
+- [ ] Auxiliary reads are admitted only for gold questions that require them and
+      remain at zero for ordinary page-summary and exact-section cases.
+- [ ] Synthetic Storage fixtures cover tables, nested Expand macros, Jira Live
+      macros, Smart Links, and Include/Excerpt structures with exact normalized
+      metadata, visible support spans, and explicit unresolved-state assertions.
+- [ ] HITL tests cover no-question exact anchors, safe automatic resolution,
+      ambiguous material scope, free-text and multiple-choice answers, stale
+      answers, cancellation, reload, and identical CLI/MV3 continuation.
+
+Live acceptance:
+
+- [ ] CLI and packed MV3 answer an approved read-only structurally complex page
+      question from the same normalized evidence and canonical source without an
+      unnecessary search, auxiliary read, or clarification.
+- [ ] CLI and packed MV3 pause on one genuinely material ambiguity, present the
+      same user-facing question, durably resume after an answer, and do not start
+      provider or Atlassian work before the accepted revision.
+- [ ] A private read-only structured-page run confirms useful answer quality,
+      correct source identity, honest residual gaps, and body-free diagnostics;
+      its inputs and artifacts remain outside Git.
+
+Acceptance criteria:
+
+- [ ] Structured Confluence content is preserved well enough for supported Chat
+      answers, and clarification is evidence-driven rather than a default escape
+      from retrieval or scope resolution.
+
 ### C4 — Implement real `quick`, `auto`, and `deep` Chat strategies
 
 Goal: make quality modes change host-validated workflow behavior rather than only
@@ -853,7 +933,7 @@ Acceptance criteria:
 
 ### Stage A — Correct direct Chat
 
-Tasks: C0-C3.
+Tasks: C0-C3A.
 
 Exit gate:
 
@@ -862,6 +942,10 @@ Exit gate:
 - [ ] Long-page questions can fetch relevant sections instead of failing solely
       on one truncated projection.
 - [ ] CLI and MV3 production paths pass the same direct-answer acceptance.
+- [ ] Complex Storage structures preserve their source/version identity and
+      unresolved portions become typed gaps rather than false negatives.
+- [ ] Exact context never asks a ceremonial question; material unresolved scope
+      pauses and resumes through the shared durable HITL contract.
 
 Commit boundaries:
 
@@ -869,6 +953,7 @@ Commit boundaries:
 2. `refactor(chat): separate chat and research roots`
 3. `feat(chat): read exact context directly`
 4. `feat(chat): navigate long confluence content`
+5. `feat(chat): preserve structured confluence evidence`
 
 ### Stage B — Real agentic Chat quality
 
@@ -884,10 +969,10 @@ Exit gate:
 
 Commit boundaries:
 
-5. `feat(chat): implement provider-neutral chat strategies`
-6. `feat(chat): compose dynamic specialist workflows`
-7. `feat(chat): add accountable retrieval planning`
-8. `feat(chat): validate and repair chat answers`
+6. `feat(chat): implement provider-neutral chat strategies`
+7. `feat(chat): compose dynamic specialist workflows`
+8. `feat(chat): add accountable retrieval planning`
+9. `feat(chat): validate and repair chat answers`
 
 ### Stage C — Durable multi-turn product parity
 
@@ -902,10 +987,10 @@ Exit gate:
 
 Commit boundaries:
 
-9. `feat(chat): persist conversation and evidence memory`
-10. `feat(chat): add durable interactive controls and streaming`
-11. `feat(chat): align cli and browser chat shapes`
-12. `feat(chat): enforce quality gates and remove legacy routing`
+10. `feat(chat): persist conversation and evidence memory`
+11. `feat(chat): add durable interactive controls and streaming`
+12. `feat(chat): align cli and browser chat shapes`
+13. `feat(chat): enforce quality gates and remove legacy routing`
 
 ## 8. Decisions deliberately deferred to measurement
 
@@ -921,6 +1006,8 @@ documented experiment before their production defaults are frozen:
   complexity beyond durable checkpoint continuation.
 - Whether a cheap pre-supervisor Auto classifier materially reduces latency
   without harming routing or scope quality.
+- Whether either curated Confluence AGG operation passes the frozen REST/AGG
+  A/B GO gates after C3A and C6.
 
 Until measurement is accepted, correctness uses safe explicit limits, one-model
 fallback, per-turn root construction, and honest resumable interruption.
