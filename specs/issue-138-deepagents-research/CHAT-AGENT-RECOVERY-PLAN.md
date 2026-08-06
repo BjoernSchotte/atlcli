@@ -758,39 +758,39 @@ unsupported interpretation without an independent quality boundary.
 
 Implementation:
 
-- [ ] Define a versioned groundedness rubric for question coverage, claim support,
+- [x] Define a versioned groundedness rubric for question coverage, claim support,
       citation correctness, source authority/freshness, contradiction handling,
       wrong-source risk, uncovered candidates, and false completeness.
-- [ ] Run deterministic host checks before any model critic: known source IDs,
+- [x] Run deterministic host checks before any model critic: known source IDs,
       canonical URLs, admitted details, scope, evidence version, and citation
       references.
-- [ ] Schedule an independent critic conditionally for Auto and for every
+- [x] Schedule an independent critic conditionally for Auto and for every
       materially complex agentic Deep path. Skip it only when an accepted direct
       single-source assessment proves low risk.
-- [ ] Return typed defects such as unsupported claim, wrong source, missing
+- [x] Return typed defects such as unsupported claim, wrong source, missing
       context, incomplete retrieval, unresolved contradiction, or question not
       answered.
-- [ ] Convert material defects into one bounded targeted repair wave; do not repeat
+- [x] Convert material defects into one bounded targeted repair wave; do not repeat
       generic discovery or allow unbounded self-critique loops.
-- [ ] Reserve time and model budget for final synthesis before admitting repair.
-- [ ] Give the final Chat synthesizer only the user objective, accepted evidence/
+- [x] Reserve time and model budget for final synthesis before admitting repair.
+- [x] Give the final Chat synthesizer only the user objective, accepted evidence/
       claim references, supported spans, dispositions, explicit gaps, and answer
       style contract.
-- [ ] At deadline, publish supported partial findings plus explicit material gaps
+- [x] At deadline, publish supported partial findings plus explicit material gaps
       and an optional continuation; never fabricate completeness.
 
 Automated proof:
 
-- [ ] Gold cases cover unsupported claim, wrong source, missing detail,
+- [x] Gold cases cover unsupported claim, wrong source, missing detail,
       truncation, contradiction, stale/duplicate sources, irrelevant candidates,
       prompt injection, repair success, and repair-budget exhaustion.
-- [ ] The critic catches an intentionally wrong citation and the repair improves
+- [x] The critic catches an intentionally wrong citation and the repair improves
       the final scored answer.
-- [ ] Maximum critic/repair iterations and synthesis reserve are host-enforced,
+- [x] Maximum critic/repair iterations and synthesis reserve are host-enforced,
       not prompt-only.
-- [ ] Retrieved content cannot alter tools, scope, models, workflow, HITL, secrets,
+- [x] Retrieved content cannot alter tools, scope, models, workflow, HITL, secrets,
       mutation policy, or rubric decisions.
-- [ ] A synthesizer cannot cite rejected evidence or omit a blocking unresolved
+- [x] A synthesizer cannot cite rejected evidence or omit a blocking unresolved
       gap without deterministic rejection.
 
 Live acceptance:
@@ -802,8 +802,31 @@ Live acceptance:
 
 Acceptance criteria:
 
-- [ ] Agentic Chat has an independent quality loop and a single coherent final
+- [x] Agentic Chat has an independent quality loop and a single coherent final
       author without becoming a fixed always-on pipeline.
+
+Proof record (2026-08-06): agentic Auto and Deep paths require exactly one
+provisional answer drafter, one independent answer critic, a host-owned quality
+checkpoint, at most one host-admitted targeted repair, and one final synthesizer.
+Accepted direct single-source paths bypass this graph. The versioned rubric and
+pre-critic checks deterministically validate source identity, same-tenant
+canonical URLs, admitted detail evidence, version/partial-read state, candidate
+coverage, contradictions, false-completeness risk, and instruction-like source
+content. Child packets remain body-free, schema-bounded dependency projections;
+the synthesizer receives only the accepted packets and the host quality
+disposition, and finalization strips rejected evidence and rejects omitted
+required gaps.
+
+The synthetic gold suites cover unsupported and unanswered claims, wrong or
+forged sources, missing detail, truncation, stale/duplicate versions,
+contradictions, accounted irrelevant candidates, prompt-injection text,
+repair success, and deadline/model-budget repair exhaustion. An intentionally
+wrong-citation draft is now scored against a gold outcome: the critic emits the
+typed defect, the host admits exactly one repair containing that defect ID, and
+the sole synthesizer produces the corrected partial answer with its material
+gap. A denied repair still preserves the synthesis reserve and converts the
+unrepaired defect into a required gap. The focused 54-test C7 suite passes. Only
+the private CLI/MV3 live acceptance and human comparison remain open.
 
 ### C8 — Add durable multi-turn Chat and evidence memory
 

@@ -13,7 +13,10 @@ import { DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY } from "../dispatch-adapter.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 import type { ChatWorkflowDispatchV1 } from "./workflow.js";
-import { providerCompatibleChatJsonSchemaV1 } from "./contracts.js";
+import {
+  providerCompatibleChatJsonSchemaV1,
+  type ChatAgentDraftV1,
+} from "./contracts.js";
 import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
 import type { ChatQualityDispositionV1 } from "./quality.js";
 import {
@@ -729,12 +732,32 @@ describe("Chat agentic workflow runtime", () => {
       .rejects.toThrow(/exceeds|invalid structured packet/u);
   });
 
-  test("admits exactly one targeted repair for a critic citation defect before synthesis", async () => {
+  test("improves an intentionally wrong-citation gold answer through one targeted repair", async () => {
     const invoked: string[] = [];
+    const seenDescriptions = new Map<string, string>();
+    const wrongDraft: ChatAgentDraftV1 = {
+      messageMarkdown: "The rollout is complete according to the wrong source.",
+      citationSourceIds: [],
+      gaps: [],
+    };
+    const repairedDraft: ChatAgentDraftV1 = {
+      messageMarkdown: "The available evidence does not establish that the rollout is complete.",
+      citationSourceIds: [],
+      gaps: [{
+        code: "unresolved-reference",
+        message: "The claimed rollout status is not supported by the admitted evidence.",
+        sourceIds: [],
+      }],
+    };
+    const goldScore = (draft: ChatAgentDraftV1): number =>
+      Number(!draft.messageMarkdown.includes("according to the wrong source")) +
+      Number(draft.messageMarkdown.includes("does not establish")) +
+      Number(draft.gaps.some((gap) => gap.code === "unresolved-reference"));
     const harness = createHarness({
       withRetrievalAssessment: true,
       async invoke(taskInput) {
         invoked.push(taskInput.subagent_type);
+        seenDescriptions.set(taskInput.subagent_type, taskInput.description);
         if (taskInput.subagent_type === "chat-answer-critic-v1") {
           return {
             schema: "atlcli.chat-critique-packet/v1",
@@ -749,11 +772,9 @@ describe("Chat agentic workflow runtime", () => {
             readyForSynthesis: false,
           };
         }
-        if (
-          taskInput.subagent_type === "chat-answer-drafter-v1" ||
-          taskInput.subagent_type === "chat-answer-repairer-v1" ||
-          taskInput.subagent_type === "chat-synthesizer-v1"
-        ) return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return wrongDraft;
+        if (taskInput.subagent_type === "chat-answer-repairer-v1") return repairedDraft;
+        if (taskInput.subagent_type === "chat-synthesizer-v1") return repairedDraft;
         return analysisPacket();
       },
     });
@@ -786,7 +807,12 @@ describe("Chat agentic workflow runtime", () => {
       .rejects.toThrow("exactly once");
     expect(invoked.filter((name) => name === "chat-answer-repairer-v1"))
       .toHaveLength(1);
-    expect(harness.runtime.assertComplete()).toMatchObject(answerDraft());
+    expect(seenDescriptions.get("chat-answer-repairer-v1"))
+      .toContain("chat-defect:wrong-citation");
+    const finalDraft = harness.runtime.assertComplete();
+    expect(goldScore(wrongDraft)).toBe(0);
+    expect(goldScore(finalDraft)).toBe(3);
+    expect(finalDraft).toEqual(repairedDraft);
   });
 
   test("preserves synthesis when the host denies repair to protect the deadline reserve", async () => {
