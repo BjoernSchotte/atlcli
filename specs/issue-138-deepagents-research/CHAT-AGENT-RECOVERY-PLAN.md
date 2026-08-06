@@ -875,7 +875,7 @@ state or hidden reasoning.
 
 Implementation:
 
-- [ ] Add the shared durable `askUserQuestion` tool for multiple-choice, free-text,
+- [x] Add the shared durable `askUserQuestion` tool for multiple-choice, free-text,
       constrained mixed answers, and declared-assumption continuation.
 - [ ] Add one host-neutral FIFO queue with edit/delete-before-admission and a
       separate immediate steering command applied at a durable checkpoint.
@@ -903,7 +903,7 @@ Implementation:
 
 Automated proof:
 
-- [ ] HITL pause/reload/answer/resume works with every supported question shape.
+- [x] HITL pause/reload/answer/resume works with every supported question shape.
 - [ ] Queue messages remain FIFO and separately editable/deletable; immediate
       steering does not become an ordinary queued follow-up.
 - [ ] Steering revises only eligible remaining work and re-runs scope/HITL checks.
@@ -937,7 +937,7 @@ thinking is intentionally not forced because it is
 incompatible with forced tool choices and is not needed on the native path.
 Durable interruption semantics and the remaining interactive controls stay open.
 
-Core HITL checkpoint proof (2026-08-06): ordinary Chat now owns a dedicated
+Core and packed-MV3 HITL checkpoint proof (2026-08-06): ordinary Chat now owns a dedicated
 workspace-backed LangGraph checkpoint thread, separate from every Deep Research
 checkpoint namespace. The host-neutral interaction state revision-fences the
 FIFO queue, immediate steering, stop request, pending question, and resolved
@@ -945,9 +945,16 @@ answers. A production Chat-root test pauses through the native
 `ask_user_question` tool, recreates the complete DeepAgentsJS host and
 checkpointer, resumes the same tool node with `Command(resume=...)`, invokes the
 model only once after resume, and completes the waiting turn. All five supported
-question shapes validate durably. CLI/MV3 protocol controls and presenter proof
-remain open, so the parent implementation and acceptance boxes are not yet
-checked.
+question shapes pause and resume through fresh-host checkpoints. The production
+Chat model surface exposes only `eval` and `ask_user_question`, never the
+DeepAgents filesystem/task scaffold or direct Atlassian reads. Typed questions,
+answers, and exact resume envelopes now cross worker, offscreen, background, and
+sidepanel boundaries. The sidepanel restores a pending question from IndexedDB,
+blocks queued-message admission while waiting, and supports free text, single
+choice, multiple choice, mixed, and declared-assumption presentation. A packed
+production MV3 E2E pauses on a model-selected question and resumes the same turn
+through a freshly constructed worker. CLI interactive presentation and the other
+controls remain open, so the parent live-acceptance boxes stay unchecked.
 
 Live acceptance:
 

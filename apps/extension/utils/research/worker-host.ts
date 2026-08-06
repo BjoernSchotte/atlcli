@@ -9,7 +9,12 @@ import {
   type ResearchReport,
   type ResearchRequestV1,
 } from "./contracts.js";
-import { classifyResearchError, type ChatHostIdentityV1 } from "@atlcli/research";
+import {
+  ChatUserQuestionRequiredError,
+  classifyResearchError,
+  type ChatHostIdentityV1,
+  type ChatUserQuestionAnswerV1,
+} from "@atlcli/research";
 import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
@@ -37,6 +42,7 @@ interface ResearchAgentWorkerRunInput {
   policy?: ResearchOneShotPolicyV1;
   qualityPolicy?: ChatQualityPolicyV1;
   hostIdentity?: ChatHostIdentityV1;
+  resumeAnswer?: ChatUserQuestionAnswerV1;
   resume?: true;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
@@ -82,6 +88,10 @@ export class ResearchAgentWorkerHost {
           else reject(new ResearchContractError("provider-error", "The worker returned an empty completion."));
           return;
         }
+        if (message.kind === "research-worker:hitl") {
+          reject(new ChatUserQuestionRequiredError(message.question));
+          return;
+        }
         reject(new ResearchContractError(message.code, message.error));
       };
       worker.onerror = (event) => {
@@ -117,6 +127,7 @@ export class ResearchAgentWorkerHost {
         ...(input.policy ? { policy: input.policy } : {}),
         ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
         ...(input.hostIdentity ? { hostIdentity: input.hostIdentity } : {}),
+        ...(input.resumeAnswer ? { resumeAnswer: input.resumeAnswer } : {}),
       });
     }).finally(() => {
       const active = this.#active.get(input.runId);

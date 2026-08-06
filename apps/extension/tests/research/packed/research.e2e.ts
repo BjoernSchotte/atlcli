@@ -1651,6 +1651,30 @@ globalThis.fetch = async (input, init) => {
       serializedRequest.includes("Answer as a normal chat response");
     const packedLongPageChat = serializedCurrentQuestion.includes("packed-long-page:") &&
       serializedRequest.includes("Answer as a normal chat response");
+    if (
+      serializedCurrentQuestion.includes("packed-hitl:") &&
+      toolNames.includes("ask_user_question") &&
+      !serializedMessages.includes('"status":"answered"')
+    ) {
+      return providerMessage(
+        [{
+          type: "tool_use",
+          id: "toolu_packed_chat_hitl_" + modelCalls,
+          name: "ask_user_question",
+          input: {
+            responseKind: "single_choice",
+            prompt: "Which approved audience should the summary address?",
+            required: true,
+            options: [
+              { id: "audience:team", label: "The project team" },
+              { id: "audience:leadership", label: "Leadership" },
+            ],
+          },
+        }],
+        "tool_use",
+        modelCalls,
+      );
+    }
     if (packedExactPageChat || packedExactIssueChat || packedLongPageChat) {
       const strategyRequired = serializedRequest.includes(
         "make the first eval step exactly one await tools.chatStrategyDecide({})",
@@ -2815,7 +2839,14 @@ type PackedRunResponse =
 
 type PackedChatRunResponse =
   | { kind: "research:run-result"; runId: string; ok: true; report: ChatAnswerV1 }
-  | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
+  | {
+      kind: "research:run-result";
+      runId: string;
+      ok: false;
+      code: string;
+      error: string;
+      question?: import("@atlcli/research").ChatUserQuestionV1;
+    };
 
 type PackedResumeResponse =
   | { kind: "research:resume-result"; runId: string; ok: true; report: ResearchReport }
@@ -2937,6 +2968,7 @@ async function runPackedChatTurnInBackground(
     sessionId: string;
     turnId: string;
     qualityPolicy?: ChatQualityPolicyV1;
+    resumeAnswer?: import("@atlcli/research").ChatUserQuestionAnswerV1;
   },
 ): Promise<PackedChatRunResponse> {
   return page.evaluate(async ({ input, policy, hostIdentity }) => {
@@ -2953,6 +2985,7 @@ async function runPackedChatTurnInBackground(
       policy,
       hostIdentity,
       ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
+      ...(input.resumeAnswer ? { resumeAnswer: input.resumeAnswer } : {}),
     });
   }, {
     input,
@@ -6150,6 +6183,60 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
   expect(streamedAnswer).toContain("packed implementation statement");
   expect(streamedAnswer).not.toContain('"messageMarkdown"');
   expect(streamedAnswer).not.toContain("packed-provider-signature");
+  expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV3 workers", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  const request = {
+    ...packedExactContextRequest("confluence"),
+    question: "packed-exact-page: packed-hitl: Summarize the attached page for the approved audience.",
+  };
+  const sessionId = "research-session:packed-chat-hitl";
+  const turnId = "research-turn:packed-chat-hitl";
+  const interrupted = await runPackedChatTurnInBackground(page, {
+    request,
+    runId: "packed-chat-hitl-first",
+    sessionId,
+    turnId,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+  expect(interrupted.ok, JSON.stringify({ interrupted, events: await harnessEvents(page) })).toBe(false);
+  if (interrupted.ok || !interrupted.question) return;
+  expect(interrupted).toMatchObject({
+    code: "clarification-required",
+    question: {
+      responseKind: "single_choice",
+      prompt: "Which approved audience should the summary address?",
+    },
+  });
+
+  const resumed = await runPackedChatTurnInBackground(page, {
+    request,
+    runId: "packed-chat-hitl-resume",
+    sessionId,
+    turnId,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+    resumeAnswer: {
+      schema: "atlcli.chat-user-question-answer/v1",
+      questionId: interrupted.question.id,
+      value: { kind: "selection", optionIds: ["audience:leadership"] },
+    },
+  });
+  expect(resumed.ok, JSON.stringify(resumed)).toBe(true);
+  if (!resumed.ok) return;
+  expect(resumed.report.schema).toBe("atlcli.chat-answer/v1");
+  expect(resumed.report.messageMarkdown).toContain("packed implementation statement");
+
+  const events = await harnessEvents(page);
+  const modelWorkers = new Set(events
+    .filter((event) => event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com"))
+    .map((event) => event.workerId)
+    .filter((workerId): workerId is string => typeof workerId === "string"));
+  expect(modelWorkers.size).toBeGreaterThanOrEqual(2);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
 });
 

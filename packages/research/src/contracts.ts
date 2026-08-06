@@ -710,6 +710,11 @@ export interface ResearchRunOptions {
   policy?: ResearchOneShotPolicyV1;
   /** Canonical provider-neutral quality semantics for a direct Chat turn. */
   qualityPolicy?: ChatQualityPolicyV1;
+  /** Resume exactly one durable ordinary-Chat HITL checkpoint. */
+  chatResume?: {
+    turnId: string;
+    answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+  };
   /**
    * The host owns durable session identity. Presenters may use this opaque
    * reference to associate a streamed user turn with its later continuation,
@@ -757,6 +762,14 @@ export interface ResearchPort {
   hasApiKey(): Promise<boolean>;
   setApiKey(apiKey: string): Promise<void>;
   clearApiKey(): Promise<void>;
+  /** Restore a durable ordinary-Chat question after presenter/worker recreation. */
+  getPendingChatQuestion?(siteOrigin: string): Promise<{
+    conversationId: string;
+    turnId: string;
+    question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+  } | null>;
   /**
    * Start the next direct-chat turn in a fresh durable conversation. The host
    * clears only its active-conversation pointer; retained conversation state

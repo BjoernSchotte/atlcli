@@ -10,6 +10,8 @@ import {
 } from "./interaction.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
+import { DEFAULT_RESEARCH_LIMITS_V1, RESEARCH_REQUEST_SCHEMA_V1 } from "../contracts.js";
+import { chatQualityPolicyV1 } from "../quality-policy.js";
 
 const conversationId = "chat-conversation:hitl";
 const turnId = "chat-turn:hitl";
@@ -19,6 +21,88 @@ const binding = {
   threadId: conversationId,
   tenantOrigin: "https://example.atlassian.net",
 } as const;
+const resume = {
+  request: {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question: "Summarize the approved reporting period.",
+    scope: { siteOrigin: binding.tenantOrigin, jiraProjectKeys: [], confluenceSpaceKeys: [] },
+    reportLanguage: "en" as const,
+    limits: DEFAULT_RESEARCH_LIMITS_V1,
+    wikiProvider: "rest" as const,
+  },
+  qualityPolicy: chatQualityPolicyV1("auto"),
+};
+
+const scenarios = [
+  {
+    name: "free text",
+    proposal: {
+      responseKind: "free_text",
+      prompt: "Which approved reporting window should I use?",
+      required: true,
+      maxLength: 120,
+    },
+    value: { kind: "text", text: "Use the last seven days." },
+  },
+  {
+    name: "single choice",
+    proposal: {
+      responseKind: "single_choice",
+      prompt: "Which approved reporting window should I use?",
+      required: true,
+      options: [
+        { id: "window:seven", label: "Seven days" },
+        { id: "window:thirty", label: "Thirty days" },
+      ],
+    },
+    value: { kind: "selection", optionIds: ["window:seven"] },
+  },
+  {
+    name: "multiple choice",
+    proposal: {
+      responseKind: "multiple_choice",
+      prompt: "Which approved sources should I include?",
+      required: true,
+      options: [
+        { id: "source:jira", label: "Jira" },
+        { id: "source:wiki", label: "Confluence" },
+      ],
+      minSelections: 1,
+      maxSelections: 2,
+    },
+    value: { kind: "selection", optionIds: ["source:jira", "source:wiki"] },
+  },
+  {
+    name: "mixed choice and text",
+    proposal: {
+      responseKind: "mixed",
+      prompt: "Which source and optional focus should I use?",
+      required: true,
+      options: [
+        { id: "source:jira", label: "Jira" },
+        { id: "source:wiki", label: "Confluence" },
+      ],
+      minSelections: 1,
+      maxSelections: 2,
+      maxLength: 120,
+    },
+    value: {
+      kind: "mixed",
+      optionIds: ["source:wiki"],
+      text: "Focus on the current process.",
+    },
+  },
+  {
+    name: "declared assumption",
+    proposal: {
+      responseKind: "assumption",
+      prompt: "May I continue with the current space only?",
+      required: true,
+      assumption: "Use only the current Confluence space.",
+    },
+    value: { kind: "assumption", decision: "accepted" },
+  },
+] as const;
 
 async function controller(workspace: ReturnType<typeof createMemoryResearchWorkspace>) {
   return WorkspaceChatInteractionControllerV1.bind({
@@ -30,7 +114,8 @@ async function controller(workspace: ReturnType<typeof createMemoryResearchWorks
 }
 
 describe("DeepAgentsJS durable Chat HITL", () => {
-  test("pauses in a tool checkpoint and resumes in a fresh host without replaying the model decision", async () => {
+  for (const scenario of scenarios) {
+    test(`pauses and fresh-host resumes ${scenario.name} without replaying the model decision`, async () => {
     const workspace = createMemoryResearchWorkspace();
     const firstInteractions = await controller(workspace);
     const questionToolCall = new AIMessage({
@@ -39,15 +124,7 @@ describe("DeepAgentsJS durable Chat HITL", () => {
         id: "ask:one",
         name: "ask_user_question",
         type: "tool_call",
-        args: {
-          responseKind: "single_choice",
-          prompt: "Which approved reporting window should I use?",
-          required: true,
-          options: [
-            { id: "window:seven", label: "Seven days" },
-            { id: "window:thirty", label: "Thirty days" },
-          ],
-        },
+        args: scenario.proposal,
       }],
     });
     const firstModel = fakeModel().respond(questionToolCall);
@@ -62,6 +139,7 @@ describe("DeepAgentsJS durable Chat HITL", () => {
       tools: [createChatAskUserQuestionToolV1({
         turnId,
         interactions: firstInteractions,
+        resume,
         now: () => Date.parse("2026-08-06T12:00:01.000Z"),
       })],
       checkpointer: firstCheckpointer,
@@ -71,10 +149,10 @@ describe("DeepAgentsJS durable Chat HITL", () => {
       messages: [new HumanMessage("Summarize the approved reporting period.")],
     }, config);
     expect(interrupted).toMatchObject({
-      __interrupt__: [{ value: { responseKind: "single_choice" } }],
+      __interrupt__: [{ value: { responseKind: scenario.proposal.responseKind } }],
     });
     const pending = firstInteractions.snapshot().pendingQuestion;
-    expect(pending?.question.prompt).toBe("Which approved reporting window should I use?");
+    expect(pending?.question.prompt).toBe(scenario.proposal.prompt);
     expect(firstModel.callCount).toBe(1);
 
     const secondInteractions = await controller(workspace);
@@ -90,6 +168,7 @@ describe("DeepAgentsJS durable Chat HITL", () => {
       tools: [createChatAskUserQuestionToolV1({
         turnId,
         interactions: secondInteractions,
+        resume,
         now: () => Date.parse("2026-08-06T12:00:02.000Z"),
       })],
       checkpointer: secondCheckpointer,
@@ -98,7 +177,7 @@ describe("DeepAgentsJS durable Chat HITL", () => {
       resume: {
         schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
         questionId: pending!.question.id,
-        value: { kind: "selection", optionIds: ["window:seven"] },
+        value: scenario.value,
       },
     }), { configurable: { thread_id: secondCheckpointer.threadId } });
 
@@ -108,8 +187,9 @@ describe("DeepAgentsJS durable Chat HITL", () => {
     expect(secondInteractions.snapshot()).toMatchObject({
       resolvedQuestions: [{
         turnId,
-        answer: { value: { kind: "selection", optionIds: ["window:seven"] } },
+        answer: { value: scenario.value },
       }],
     });
-  });
+    });
+  }
 });

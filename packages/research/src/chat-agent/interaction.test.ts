@@ -19,6 +19,8 @@ import {
   type ChatUserQuestionV1,
 } from "./interaction.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
+import { DEFAULT_RESEARCH_LIMITS_V1, RESEARCH_REQUEST_SCHEMA_V1 } from "../contracts.js";
+import { chatQualityPolicyV1 } from "../quality-policy.js";
 
 const binding = {
   userId: "principal:interaction-test",
@@ -27,6 +29,17 @@ const binding = {
   tenantOrigin: "https://example.atlassian.net",
 } as const;
 const at = (second: number) => `2026-08-06T10:00:${String(second).padStart(2, "0")}.000Z`;
+const resume = {
+  request: {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question: "Which bounded direction should Kiteweave use?",
+    scope: { siteOrigin: binding.tenantOrigin, jiraProjectKeys: [], confluenceSpaceKeys: [] },
+    reportLanguage: "en" as const,
+    limits: DEFAULT_RESEARCH_LIMITS_V1,
+    wikiProvider: "rest" as const,
+  },
+  qualityPolicy: chatQualityPolicyV1("auto"),
+};
 
 function state() {
   return createChatInteractionStateV1({
@@ -218,6 +231,7 @@ describe("durable Chat interaction state", () => {
         expectedRevision: initial.revision,
         turnId: `research-turn:${responseKind}`,
         question: question(responseKind),
+        resume,
         at: at(index + 1),
       });
       const value = responseKind === "free_text"
@@ -253,6 +267,7 @@ describe("durable Chat interaction state", () => {
       expectedRevision: 1,
       turnId: "research-turn:pending",
       question: question("single_choice"),
+      resume,
       at: at(1),
     });
     expect(() => assertChatInteractionBindingV1({

@@ -23,10 +23,10 @@ import {
   assertChatFinalReviewReserveV1,
   createKiteweaveChatAgent,
 } from "./runtime.js";
-import { ChatUserQuestionRequiredError } from "./hitl.js";
 import {
   CHAT_INTERACTION_STATE_PATH_V1,
   CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  ChatUserQuestionRequiredError,
   type ChatInteractionStateV1,
 } from "./interaction.js";
 import { CHAT_SESSION_PATH_V1, type ChatSessionV1 } from "./session.js";

@@ -2458,4 +2458,82 @@ describe("portable Research screen", () => {
       "confluence:ACCOUNT2",
     );
   });
+
+  it("restores a durable Chat question after presenter recreation and resumes the exact turn", async () => {
+    const request: ResearchRequestV1 = {
+      schema: "atlcli.research-request/v1",
+      question: "Summarize the current page for the approved audience.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: ["KB"],
+      },
+      reportLanguage: "en",
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      wikiProvider: "rest",
+    };
+    const pending = {
+      conversationId: "research-session:chat-hitl",
+      turnId: "research-turn:chat-hitl",
+      question: {
+        schema: "atlcli.chat-user-question/v1" as const,
+        id: "chat-question:audience",
+        prompt: "Which audience should the summary address?",
+        required: true,
+        responseKind: "single_choice" as const,
+        options: [
+          { id: "audience:team", label: "The project team" },
+          { id: "audience:leadership", label: "Leadership" },
+        ],
+      },
+      request,
+      qualityPolicy: {
+        mode: "auto" as const,
+        delegation: "adaptive" as const,
+        completionTarget: "sufficient-validated" as const,
+        planning: "automatic" as const,
+        scopeExpansion: "ask" as const,
+        providerReasoningPreference: "balanced" as const,
+      },
+    };
+    let resumeOptions: Parameters<ResearchPort["run"]>[1];
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      getPendingChatQuestion: async () => pending,
+      resolveScope: async () => { throw new Error("resume must not repeat scope resolution"); },
+      run: async (_request, options) => {
+        resumeOptions = options;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    expect(dom.find("research-chat-question").textContent)
+      .toContain("Which audience should the summary address?");
+    await dom.click("research-chat-question-option-1");
+    await dom.click("research-chat-question-submit");
+    await dom.flush();
+
+    expect(resumeOptions).toMatchObject({
+      mode: "chat",
+      conversationId: pending.conversationId,
+      chatResume: {
+        turnId: pending.turnId,
+        answer: {
+          questionId: pending.question.id,
+          value: { kind: "selection", optionIds: ["audience:leadership"] },
+        },
+      },
+    });
+    expect(dom.maybeFind("research-chat-question")).toBeNull();
+  });
 });

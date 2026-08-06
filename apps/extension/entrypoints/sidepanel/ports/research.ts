@@ -5,7 +5,9 @@ import {
   type ResearchPort,
   type ResearchReport,
 } from "../../../utils/research/contracts.js";
+import { ChatUserQuestionRequiredError } from "@atlcli/research";
 import type {
+  ChatHostIdentityV1,
   ResearchResumableSessionV1,
   ResearchRetainedSessionV1,
   ResearchClarificationReviewResolutionV1,
@@ -14,8 +16,14 @@ import type {
   ResearchSessionScopeClarificationReviewV1,
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
-  ChatHostIdentityV1,
+  ChatUserQuestionV1,
 } from "@atlcli/research";
+import {
+  assertChatInteractionBindingV1,
+  CHAT_INTERACTION_STATE_PATH_V1,
+  IndexedDbResearchSessionStoreV1,
+  parseChatInteractionStateV1,
+} from "@atlcli/research/browser";
 import {
   RESEARCH_ANTHROPIC_SESSION_KEY,
   normalizeAnthropicApiKey,
@@ -80,6 +88,42 @@ export function chromeResearchPort(): ResearchPort {
 
     async clearApiKey() {
       await chrome.storage.session.remove(RESEARCH_ANTHROPIC_SESSION_KEY);
+    },
+
+    async getPendingChatQuestion(siteOrigin) {
+      const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
+      const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+      if (typeof conversationId !== "string" || !RESEARCH_SESSION_ID_PATTERN.test(conversationId)) {
+        return null;
+      }
+      const identity = await browserChatHostIdentityV1();
+      const store = await IndexedDbResearchSessionStoreV1.open();
+      try {
+        if (!await store.read(conversationId)) return null;
+        const workspace = await store.workspace(conversationId);
+        const serialized = await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1);
+        if (serialized === undefined) return null;
+        const state = parseChatInteractionStateV1(JSON.parse(serialized));
+        assertChatInteractionBindingV1({
+          state,
+          conversationId,
+          binding: {
+            ...identity,
+            threadId: conversationId,
+            tenantOrigin: siteOrigin,
+          },
+        });
+        if (!state.pendingQuestion) return null;
+        return {
+          conversationId,
+          turnId: state.pendingQuestion.turnId,
+          question: state.pendingQuestion.question,
+          request: state.pendingQuestion.resume.request,
+          qualityPolicy: state.pendingQuestion.resume.qualityPolicy,
+        };
+      } finally {
+        store.close();
+      }
     },
 
     async resetChatConversation() {
@@ -841,7 +885,7 @@ export function chromeResearchPort(): ResearchPort {
         );
         await chrome.storage.local.set({ [ACTIVE_CHAT_CONVERSATION_KEY]: sessionId });
       }
-      const turnId = `research-turn:${crypto.randomUUID()}`;
+      const turnId = options?.chatResume?.turnId ?? `research-turn:${crypto.randomUUID()}`;
       const policy = normalizeResearchOneShotPolicyV1(options?.policy);
       const hostIdentity = options?.mode === "chat"
         ? await browserChatHostIdentityV1()
@@ -890,6 +934,7 @@ export function chromeResearchPort(): ResearchPort {
               ok: false;
               code: ConstructorParameters<typeof ResearchContractError>[0];
               error: string;
+              question?: ChatUserQuestionV1;
             }
           | undefined;
         try {
@@ -904,6 +949,7 @@ export function chromeResearchPort(): ResearchPort {
             policy,
             ...(hostIdentity ? { hostIdentity } : {}),
             ...(options?.qualityPolicy ? { qualityPolicy: options.qualityPolicy } : {}),
+            ...(options?.chatResume ? { resumeAnswer: options.chatResume.answer } : {}),
           })) as typeof response;
         } catch (error) {
           if (options?.signal?.aborted) {
@@ -925,6 +971,9 @@ export function chromeResearchPort(): ResearchPort {
           );
         }
         if (!response.ok) {
+          if (response.question) {
+            throw new ChatUserQuestionRequiredError(response.question);
+          }
           throw new ResearchContractError(response.code, response.error);
         }
         return response.report;

@@ -1,6 +1,11 @@
 import { ChatContractError } from "./contracts.js";
 import type { ChatSessionBindingV1 } from "./session.js";
 import type { ResearchWorkspace } from "../workspace.js";
+import { normalizeResearchRequestV1, type ResearchRequestV1 } from "../contracts.js";
+import {
+  normalizeChatQualityPolicyV1,
+  type ChatQualityPolicyV1,
+} from "../quality-policy.js";
 
 export const CHAT_INTERACTION_STATE_SCHEMA_V1 =
   "atlcli.chat-interaction-state/v1" as const;
@@ -63,6 +68,22 @@ export interface ChatUserQuestionAnswerV1 {
   value: ChatUserQuestionAnswerValueV1;
 }
 
+export interface ChatResumeEnvelopeV1 {
+  request: ResearchRequestV1;
+  qualityPolicy: ChatQualityPolicyV1;
+}
+
+/** Portable pause signal projected by every Chat host shape. */
+export class ChatUserQuestionRequiredError extends ChatContractError {
+  readonly question: ChatUserQuestionV1;
+
+  constructor(question: ChatUserQuestionV1) {
+    super("clarification-required", "Chat requires a durable user answer before it can continue.");
+    this.name = "ChatUserQuestionRequiredError";
+    this.question = structuredClone(question);
+  }
+}
+
 export interface ChatQueuedFollowUpV1 {
   id: string;
   revision: number;
@@ -97,6 +118,7 @@ export interface ChatInteractionStateV1 {
     turnId: string;
     question: ChatUserQuestionV1;
     askedAt: string;
+    resume: ChatResumeEnvelopeV1;
   };
   resolvedQuestions: Array<{
     turnId: string;
@@ -522,6 +544,7 @@ export function recordChatUserQuestionV1(input: {
   expectedRevision: number;
   turnId: string;
   question: ChatUserQuestionV1;
+  resume: ChatResumeEnvelopeV1;
   at: string;
 }): ChatInteractionStateV1 {
   assertRevision(input.state, input.expectedRevision);
@@ -534,6 +557,10 @@ export function recordChatUserQuestionV1(input: {
       turnId: id(input.turnId, "Chat turn ID"),
       question,
       askedAt: iso(input.at, "Chat question time"),
+      resume: {
+        request: normalizeResearchRequestV1(input.resume.request),
+        qualityPolicy: normalizeChatQualityPolicyV1(input.resume.qualityPolicy),
+      },
     },
   });
 }
@@ -605,6 +632,11 @@ export function parseChatInteractionStateV1(value: unknown): ChatInteractionStat
     id(state.pendingQuestion.turnId, "Chat pending question turn ID");
     normalizeChatUserQuestionV1(state.pendingQuestion.question);
     iso(state.pendingQuestion.askedAt, "Chat question time");
+    if (!state.pendingQuestion.resume || typeof state.pendingQuestion.resume !== "object") {
+      throw new ChatContractError("invalid-request", "Chat resume envelope is invalid.");
+    }
+    normalizeResearchRequestV1(state.pendingQuestion.resume.request);
+    normalizeChatQualityPolicyV1(state.pendingQuestion.resume.qualityPolicy);
   }
   for (const resolved of state.resolvedQuestions) {
     id(resolved.turnId, "Chat resolved question turn ID");

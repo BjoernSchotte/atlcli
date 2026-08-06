@@ -9,7 +9,11 @@ import type {
   ResearchReport,
   ResearchRequestV1,
 } from "./contracts.js";
-import type { ChatHostIdentityV1 } from "@atlcli/research";
+import type {
+  ChatHostIdentityV1,
+  ChatUserQuestionAnswerV1,
+  ChatUserQuestionV1,
+} from "@atlcli/research";
 
 export type ResearchWorkerRequestV1 =
   | {
@@ -23,6 +27,7 @@ export type ResearchWorkerRequestV1 =
       policy?: ResearchOneShotPolicyV1;
       qualityPolicy?: ChatQualityPolicyV1;
       hostIdentity?: ChatHostIdentityV1;
+      resumeAnswer?: ChatUserQuestionAnswerV1;
       resume?: false;
     }
   | {
@@ -65,6 +70,11 @@ export type ResearchWorkerResponseV1 =
       runId: string;
       answer: ChatAnswerV1;
       report?: never;
+    }
+  | {
+      kind: "research-worker:hitl";
+      runId: string;
+      question: ChatUserQuestionV1;
     }
   | {
       kind: "research-worker:error";

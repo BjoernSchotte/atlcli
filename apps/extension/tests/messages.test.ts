@@ -57,6 +57,27 @@ describe("message guards", () => {
         providerCacheIdentity: "provider-cache:synthetic",
       },
     })).toBe(true);
+    const resumeAnswer = {
+      schema: "atlcli.chat-user-question-answer/v1",
+      questionId: "chat-question:scope",
+      value: { kind: "selection", optionIds: ["scope:one"] },
+    } as const;
+    expect(isExtRequest({
+      ...panelChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+      resumeAnswer,
+    })).toBe(true);
+    expect(isExtRequest({
+      ...panelChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+      resumeAnswer: { ...resumeAnswer, value: { kind: "raw-chain-of-thought" } },
+    })).toBe(false);
     expect(isExtRequest({
       ...panelChatRun,
       mode: "research",

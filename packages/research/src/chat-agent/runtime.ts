@@ -68,11 +68,11 @@ import {
   type ChatSessionV1,
 } from "./session.js";
 import {
+  ChatUserQuestionRequiredError,
   WorkspaceChatInteractionControllerV1,
   type ChatUserQuestionAnswerV1,
 } from "./interaction.js";
 import {
-  ChatUserQuestionRequiredError,
   createChatAskUserQuestionToolV1,
 } from "./hitl.js";
 import { createChatDurableSummarizationMiddlewareV1 } from "./summarization.js";
@@ -244,9 +244,13 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         const response = await handler({
           ...request,
           // createDeepAgent always assembles filesystem and task scaffolding.
-          // Direct Chat deliberately exposes only the host-audited QuickJS bridge;
-          // structured-output tools are bound by LangChain after this middleware.
-          tools: request.tools.filter((candidate) => candidate.name === "eval"),
+          // Direct Chat deliberately exposes only the host-audited QuickJS bridge
+          // and its durable HITL control. Atlassian reads remain available only
+          // behind eval/PTC; structured-output tools are bound by LangChain after
+          // this middleware.
+          tools: request.tools.filter((candidate) =>
+            candidate.name === "eval" || candidate.name === "ask_user_question"
+          ),
         });
         onDiagnostic?.({
           kind: "model-step",
@@ -1164,6 +1168,10 @@ export function createKiteweaveChatAgent(
         const askUserQuestion = createChatAskUserQuestionToolV1({
           turnId: turn.turnId,
           interactions: interactionController,
+          resume: {
+            request: input.brokerRequest,
+            qualityPolicy,
+          },
           now,
           onQuestion: () => emitPhase("waiting-user"),
           onResolved: () => emitPhase("user-answer-accepted"),

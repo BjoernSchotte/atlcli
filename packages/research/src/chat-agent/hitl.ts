@@ -7,19 +7,10 @@ import {
   resolveChatUserQuestionV1,
   type ChatUserQuestionAnswerV1,
   type ChatUserQuestionV1,
+  type ChatResumeEnvelopeV1,
   type WorkspaceChatInteractionControllerV1,
 } from "./interaction.js";
 import { ChatContractError } from "./contracts.js";
-
-export class ChatUserQuestionRequiredError extends ChatContractError {
-  readonly question: ChatUserQuestionV1;
-
-  constructor(question: ChatUserQuestionV1) {
-    super("clarification-required", "Chat requires a durable user answer before it can continue.");
-    this.name = "ChatUserQuestionRequiredError";
-    this.question = structuredClone(question);
-  }
-}
 
 const optionSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$/u),
@@ -78,6 +69,7 @@ function stableQuestionId(value: unknown): string {
 export function createChatAskUserQuestionToolV1(input: {
   turnId: string;
   interactions: WorkspaceChatInteractionControllerV1;
+  resume: ChatResumeEnvelopeV1;
   now?: () => number;
   onQuestion?: (question: ChatUserQuestionV1) => void;
   onResolved?: (answer: ChatUserQuestionAnswerV1) => void;
@@ -111,6 +103,7 @@ export function createChatAskUserQuestionToolV1(input: {
           expectedRevision: state.revision,
           turnId: input.turnId,
           question,
+          resume: input.resume,
           at: new Date(now()).toISOString(),
         })
       );

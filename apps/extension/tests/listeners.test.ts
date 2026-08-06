@@ -10,6 +10,10 @@ import type {
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
 import type { RouterDeps } from "../utils/router.js";
+import {
+  CHAT_USER_QUESTION_SCHEMA_V1,
+  ChatUserQuestionRequiredError,
+} from "@atlcli/research";
 
 const preparation = {
   totalMs: 12,
@@ -427,6 +431,42 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       ok: true,
       report,
     }]);
+  });
+
+  it("returns a typed durable Chat question from the offscreen host", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    const question = {
+      schema: CHAT_USER_QUESTION_SCHEMA_V1,
+      id: "chat-question:scope",
+      prompt: "Which approved scope should I use?",
+      required: true,
+      responseKind: "free_text" as const,
+      maxLength: 200,
+    };
+    expect(handleOffscreenMessage({
+      kind: "offscreen:research-run",
+      runId: "run-hitl",
+      sessionId: "research-session:hitl",
+      turnId: "research-turn:hitl",
+      apiKey: "sk-ant-test-listener",
+      mode: "chat",
+      request: { schema: "atlcli.research-request/v1" } as ResearchRequestV1,
+      hostIdentity: {
+        userId: "browser-principal:hitl",
+        providerCacheIdentity: "provider-cache:hitl",
+      },
+    }, cap.sendResponse, {
+      ...okOffscreenDeps,
+      runResearch: async () => { throw new ChatUserQuestionRequiredError(question); },
+    })).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([expect.objectContaining({
+      kind: "offscreen:research-run-result",
+      runId: "run-hitl",
+      ok: false,
+      code: "clarification-required",
+      question,
+    })]);
   });
 
   it("passes only opaque IDs and the transient key to the offscreen resume host", async () => {

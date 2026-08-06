@@ -10,6 +10,10 @@ import type {
   ResearchScopePreflightOutcomeV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
+import {
+  CHAT_USER_QUESTION_SCHEMA_V1,
+  ChatUserQuestionRequiredError,
+} from "@atlcli/research";
 
 const noEntity: EntityDetection = { windowId: 7, url: null, entity: null, seq: 0 };
 const preparation = {
@@ -296,6 +300,39 @@ describe("routeMessage (pure router)", () => {
       policy,
     })).not.toContain("apiKey");
     expect(observed).toEqual(["chat", policy, qualityPolicy]);
+  });
+
+  it("preserves a typed Chat question instead of flattening it into a research error", async () => {
+    const question = {
+      schema: CHAT_USER_QUESTION_SCHEMA_V1,
+      id: "chat-question:window",
+      prompt: "Which reporting window should I use?",
+      required: true,
+      responseKind: "free_text" as const,
+      maxLength: 120,
+    };
+    const response = await routeMessage({
+      kind: "research:run",
+      runId: "run-hitl",
+      sessionId: "research-session:hitl",
+      turnId: "research-turn:hitl",
+      windowId: 7,
+      mode: "chat",
+      request: { schema: "atlcli.research-request/v1" } as ResearchRequestV1,
+      hostIdentity: {
+        userId: "browser-principal:hitl",
+        providerCacheIdentity: "provider-cache:hitl",
+      },
+    }, {
+      ...okDeps,
+      runResearch: async () => { throw new ChatUserQuestionRequiredError(question); },
+    });
+    expect(response).toMatchObject({
+      kind: "research:run-result",
+      ok: false,
+      code: "clarification-required",
+      question,
+    });
   });
 
   it("routes a durable research resume with opaque identifiers only", async () => {

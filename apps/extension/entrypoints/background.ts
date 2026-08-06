@@ -13,7 +13,11 @@ import { defineBackground } from "wxt/utils/define-background";
 // scan then proves this pulls in zero node:/bun: specifiers.
 import { extractEntityFromUrl } from "@atlcli/core";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
-import type { ChatHostIdentityV1 } from "@atlcli/research";
+import {
+  ChatUserQuestionRequiredError,
+  type ChatHostIdentityV1,
+  type ChatUserQuestionAnswerV1,
+} from "@atlcli/research";
 import {
   type EntityChanged,
   type EntityDetection,
@@ -500,6 +504,7 @@ export default defineBackground({
     policyValue?: ResearchOneShotPolicyV1,
     qualityPolicyValue?: ChatQualityPolicyV1,
     hostIdentity?: ChatHostIdentityV1,
+    resumeAnswer?: ChatUserQuestionAnswerV1,
   ) => {
     const request = normalizeResearchRequestV1(value);
     const policy = normalizeResearchOneShotPolicyV1(policyValue);
@@ -538,6 +543,7 @@ export default defineBackground({
         policy,
         ...(hostIdentity ? { hostIdentity } : {}),
         ...(qualityPolicy ? { qualityPolicy } : {}),
+        ...(resumeAnswer ? { resumeAnswer } : {}),
       })) as OffscreenResponse | undefined;
       if (
         !response ||
@@ -550,6 +556,9 @@ export default defineBackground({
         );
       }
       if (!response.ok) {
+        if (response.question) {
+          throw new ChatUserQuestionRequiredError(response.question);
+        }
         throw new ResearchContractError(response.code, response.error);
       }
       return response.report;

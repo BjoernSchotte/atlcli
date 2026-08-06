@@ -173,6 +173,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       policy,
       qualityPolicy,
       hostIdentity,
+      resumeAnswer,
     ) => {
       const apiKey = normalizeAnthropicApiKey(key);
       return researchHost.run({
@@ -185,6 +186,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
         policy,
         ...(qualityPolicy ? { qualityPolicy } : {}),
         ...(hostIdentity ? { hostIdentity } : {}),
+        ...(resumeAnswer ? { resumeAnswer } : {}),
         onProgress: (progress) => {
           void chrome.runtime.sendMessage({
             kind: "research:progress",

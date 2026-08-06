@@ -44,8 +44,9 @@ import type {
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
   ChatHostIdentityV1,
+  ChatUserQuestionAnswerV1,
 } from "@atlcli/research";
-import { classifyResearchError } from "@atlcli/research";
+import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
@@ -83,6 +84,7 @@ export interface RouterDeps {
     policy?: ResearchOneShotPolicyV1,
     qualityPolicy?: ChatQualityPolicyV1,
     hostIdentity?: ChatHostIdentityV1,
+    resumeAnswer?: ChatUserQuestionAnswerV1,
   ) => Promise<ResearchReport | ChatAnswerV1>;
   resumeResearch?: (
     runId: string,
@@ -290,6 +292,7 @@ export async function routeMessage(
           msg.policy,
           msg.qualityPolicy,
           msg.hostIdentity,
+          msg.resumeAnswer,
         );
         return { kind: "research:run-result", runId: msg.runId, ok: true, report };
       } catch (error) {
@@ -300,6 +303,9 @@ export async function routeMessage(
           ok: false,
           code: classified.code,
           error: classified.message,
+          ...(error instanceof ChatUserQuestionRequiredError
+            ? { question: error.question }
+            : {}),
         };
       }
     }

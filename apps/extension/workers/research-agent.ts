@@ -26,6 +26,7 @@ import {
   type ChatTurnRequestV1,
   type ChatPresentationStreamEventV1,
   type ChatHostIdentityV1,
+  ChatUserQuestionRequiredError,
 } from "@atlcli/research/browser";
 import { runChatAgent, runResearchAgent } from "@atlcli/research/browser/agent";
 import {
@@ -126,6 +127,9 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             hostIdentity,
             ...(message.qualityPolicy
               ? { qualityPolicy: normalizeChatQualityPolicyV1(message.qualityPolicy) }
+              : {}),
+            ...(message.resumeAnswer
+              ? { resumeAnswer: message.resumeAnswer }
               : {}),
             onProgress,
             onEvent,
@@ -250,6 +254,14 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         store.close();
       }
     } catch (error) {
+      if (error instanceof ChatUserQuestionRequiredError) {
+        post({
+          kind: "research-worker:hitl",
+          runId,
+          question: error.question,
+        });
+        return;
+      }
       const classified = classifyResearchError(error);
       post({
         kind: "research-worker:error",

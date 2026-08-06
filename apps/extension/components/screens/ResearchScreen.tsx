@@ -49,6 +49,8 @@ import {
   createResearchKeyScopeSeedV1,
 } from "@atlcli/research/scope-discovery";
 import {
+  CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  ChatUserQuestionRequiredError,
   prepareDirectChatRequestV1,
   prepareResearchBriefPreflightV1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
@@ -64,6 +66,9 @@ import type {
   ResearchScopeCandidateSelectionV1,
   ResearchScopeCandidateV1,
   ResearchScopeClarificationRequiredV1,
+  ChatQualityPolicyV1,
+  ChatUserQuestionAnswerV1,
+  ChatUserQuestionV1,
 } from "@atlcli/research";
 import {
   composeResearchGraphV1,
@@ -93,6 +98,14 @@ const MIN_RESEARCH_RUN_MINUTES = 1;
 const MAX_RESEARCH_RUN_MINUTES = 10;
 
 type ResearchInteractionMode = "chat" | "deep";
+
+interface PendingChatQuestionState {
+  conversationId: string;
+  turnId: string;
+  question: ChatUserQuestionV1;
+  request: ResearchRequestV1;
+  qualityPolicy: ChatQualityPolicyV1;
+}
 
 const RESEARCH_INTERACTION_MODE_POLICY = {
   chat: {
@@ -1292,6 +1305,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [report, setReport] = useState<ResearchReport | ChatAnswerV1 | null>(null);
   const [raw, setRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingChatQuestion, setPendingChatQuestion] =
+    useState<PendingChatQuestionState | null>(null);
+  const [chatQuestionText, setChatQuestionText] = useState("");
+  const [chatQuestionSelections, setChatQuestionSelections] = useState<string[]>([]);
   const [planApprovalRequired, setPlanApprovalRequired] =
     useState<ResearchPlanApprovalRequiredV1 | null>(null);
   const [scopeClarification, setScopeClarification] =
@@ -1350,6 +1367,24 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       active = false;
     };
   }, [port]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.getPendingChatQuestion || !site?.origin) return () => { active = false; };
+    void port.getPendingChatQuestion(site.origin)
+      .then((pending) => {
+        if (!active || !pending) return;
+        activeChatConversationIdRef.current = pending.conversationId;
+        setPendingChatQuestion(pending);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [port, site?.origin]);
+
+  useEffect(() => {
+    setChatQuestionText("");
+    setChatQuestionSelections([]);
+  }, [pendingChatQuestion?.question.id]);
 
   useEffect(() => {
     let active = true;
@@ -1578,6 +1613,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     turnPresentation?: ResearchChatTurnPresentation,
     interactionModeOverride?: ResearchInteractionMode,
   ): Promise<boolean> {
+    let startedChatSession: { sessionId: string; turnId?: string } | undefined;
+    let resolvedChatRequest: ResearchRequestV1 | undefined;
+    let resolvedChatQualityPolicy: ChatQualityPolicyV1 | undefined;
     setError(null);
     setPlanApprovalRequired(null);
     setScopeClarification(null);
@@ -1691,6 +1729,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         ? prepareDirectChatRequestV1(scopeOutcome.request)
         : scopeOutcome.request;
       setSubmittedRequest(structuredClone(request));
+      if (activeInteractionMode === "chat") {
+        resolvedChatRequest = request;
+        resolvedChatQualityPolicy = chatQualityPolicyForModeV1(chatThinkingMode);
+      }
       if (activeInteractionMode === "deep") {
         const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
           scope: request.scope,
@@ -1761,10 +1803,11 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           : {}),
         policy,
         ...(activeInteractionMode === "chat"
-          ? { qualityPolicy: chatQualityPolicyForModeV1(chatThinkingMode) }
+          ? { qualityPolicy: resolvedChatQualityPolicy! }
           : {}),
         onSessionStart: (session) => {
           if (activeInteractionMode === "chat") {
+            startedChatSession = session;
             activeChatConversationIdRef.current = session.sessionId;
           } else {
             trackActiveSession(session.sessionId);
@@ -1784,6 +1827,24 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setProgress("");
       return true;
     } catch (value) {
+      if (value instanceof ChatUserQuestionRequiredError) {
+        const recovered = port?.getPendingChatQuestion && site?.origin
+          ? await port.getPendingChatQuestion(site.origin).catch(() => null)
+          : null;
+        const fallback = startedChatSession?.turnId && resolvedChatRequest && resolvedChatQualityPolicy
+          ? {
+              conversationId: startedChatSession.sessionId,
+              turnId: startedChatSession.turnId,
+              question: value.question,
+              request: resolvedChatRequest,
+              qualityPolicy: resolvedChatQualityPolicy,
+            }
+          : null;
+        setPendingChatQuestion(recovered ?? fallback);
+        setProgress("");
+        setActionStatus(t("research.chat.question.waiting"));
+        return true;
+      }
       const errorCode = researchErrorCodeV1(value);
       if (expectedDirectSteeringAbort.current) {
         setProgress("");
@@ -1810,6 +1871,67 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       void refreshPlanReviews();
       void refreshClarificationReviews();
       void refreshScopeClarificationReviews();
+    }
+  }
+
+  async function submitChatQuestionAnswer(): Promise<void> {
+    const pending = pendingChatQuestion;
+    if (!pending || !port || running) return;
+    let value: ChatUserQuestionAnswerV1["value"];
+    if (pending.question.responseKind === "free_text") {
+      value = { kind: "text", text: chatQuestionText.trim() };
+    } else if (pending.question.responseKind === "assumption") {
+      const decision = chatQuestionSelections[0];
+      if (decision !== "accepted" && decision !== "rejected") return;
+      value = { kind: "assumption", decision };
+    } else if (pending.question.responseKind === "mixed") {
+      value = {
+        kind: "mixed",
+        optionIds: chatQuestionSelections,
+        ...(chatQuestionText.trim() ? { text: chatQuestionText.trim() } : {}),
+      };
+    } else {
+      value = { kind: "selection", optionIds: chatQuestionSelections };
+    }
+    const answer: ChatUserQuestionAnswerV1 = {
+      schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+      questionId: pending.question.id,
+      value,
+    };
+    setError(null);
+    setRunning(true);
+    setProgress(t("research.chat.running"));
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const result = await port.run(pending.request, {
+        signal: controller.signal,
+        mode: "chat",
+        conversationId: pending.conversationId,
+        qualityPolicy: pending.qualityPolicy,
+        chatResume: { turnId: pending.turnId, answer },
+        onSessionStart: (session) => {
+          activeChatConversationIdRef.current = session.sessionId;
+        },
+        onProgress: () => setProgress(t("research.chat.running")),
+        onEvent: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+        onChatPresentation: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+      });
+      setPendingChatQuestion(null);
+      setReport(result);
+      setProgress("");
+    } catch (value) {
+      if (value instanceof ChatUserQuestionRequiredError) {
+        const next = await port.getPendingChatQuestion?.(pending.request.scope.siteOrigin)
+          .catch(() => null);
+        if (next) setPendingChatQuestion(next);
+        setActionStatus(t("research.chat.question.waiting"));
+      } else {
+        setError(value instanceof Error ? value.message : t("research.error"));
+      }
+    } finally {
+      abortRef.current = null;
+      setRunning(false);
     }
   }
 
@@ -1885,7 +2007,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   async function submitChatMessage(value: string): Promise<void> {
     const content = value.trim();
     if (!content) return;
-    if (running) {
+    if (running || pendingChatQuestion) {
       chatTurnSequence.current += 1;
       const queued = {
         id: `research-user-turn:${chatTurnSequence.current}`,
@@ -2031,7 +2153,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     const session = activeSessionId
       ? retainedSessions.find((candidate) => candidate.sessionId === activeSessionId)
       : undefined;
-    if (running || !queued || queueDrainInFlight.current || failedQueuedTurnId.current === queued.id) return;
+    if (running || pendingChatQuestion || !queued || queueDrainInFlight.current || failedQueuedTurnId.current === queued.id) return;
 
     if (interactionMode === "chat" && !session) {
       queueDrainInFlight.current = true;
@@ -2106,6 +2228,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     interactionMode,
     port,
     queuedChatMessages,
+    pendingChatQuestion,
     report,
     retainedSessions,
     running,
@@ -2146,6 +2269,14 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       void refreshResumableSessions();
       void refreshPlanReviews();
     }
+  }
+
+  function toggleChatQuestionSelection(optionId: string, single: boolean): void {
+    setChatQuestionSelections((current) => single
+      ? [optionId]
+      : current.includes(optionId)
+        ? current.filter((candidate) => candidate !== optionId)
+        : [...current, optionId]);
   }
 
   async function requestSteering(session: ResearchResumableSessionV1): Promise<void> {
@@ -2654,7 +2785,21 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     );
   }
 
-  const hasConversation = chatTurns.length > 0 || running || Boolean(report) || Boolean(error);
+  const hasConversation = chatTurns.length > 0 || running || Boolean(report) ||
+    Boolean(error) || Boolean(pendingChatQuestion);
+  const pendingChatQuestionCanSubmit = (() => {
+    const pending = pendingChatQuestion?.question;
+    if (!pending) return false;
+    if (pending.responseKind === "free_text") return chatQuestionText.trim().length > 0;
+    if (pending.responseKind === "assumption") {
+      return chatQuestionSelections[0] === "accepted" || chatQuestionSelections[0] === "rejected";
+    }
+    if (pending.responseKind === "mixed") {
+      return chatQuestionSelections.length >= pending.minSelections || chatQuestionText.trim().length > 0;
+    }
+    const minimum = pending.responseKind === "single_choice" ? 1 : pending.minSelections;
+    return chatQuestionSelections.length >= minimum;
+  })();
   const currentContextLabel = site?.contextLabel;
   const currentContextSourceId = site?.activeEntity
     ? `${site.activeEntity.product === "confluence" ? "wiki" : "jira"}:${site.activeEntity.key}`
@@ -2955,6 +3100,102 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               running={running}
               request={submittedRequest}
             />
+            {pendingChatQuestion && (
+              <section
+                className="border-y border-border/70 py-4"
+                aria-labelledby="research-chat-question-title"
+                data-testid="research-chat-question"
+              >
+                <p className="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {t("research.chat.question.eyebrow")}
+                </p>
+                <h3 id="research-chat-question-title" className="mb-0 mt-1 text-sm font-semibold leading-5 text-foreground">
+                  {pendingChatQuestion.question.prompt}
+                </h3>
+                {pendingChatQuestion.question.responseKind === "assumption" && (
+                  <p className="mb-0 mt-2 text-sm leading-5 text-muted-foreground">
+                    {pendingChatQuestion.question.assumption}
+                  </p>
+                )}
+                {"options" in pendingChatQuestion.question && (
+                  <div className="mt-3 flex flex-col gap-1.5">
+                    {pendingChatQuestion.question.options.map((option, optionIndex) => {
+                      const single = pendingChatQuestion.question.responseKind === "single_choice";
+                      const checked = chatQuestionSelections.includes(option.id);
+                      return (
+                        <label
+                          key={option.id}
+                          className={cn(
+                            "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors",
+                            checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60",
+                          )}
+                        >
+                          <input
+                            type={single ? "radio" : "checkbox"}
+                            name={`chat-question-${pendingChatQuestion.question.id}`}
+                            checked={checked}
+                            onChange={() => toggleChatQuestionSelection(option.id, single)}
+                            className="mt-0.5 accent-primary"
+                            data-testid={`research-chat-question-option-${optionIndex}`}
+                          />
+                          <span className="min-w-0">
+                            <span className="block font-medium text-foreground">{option.label}</span>
+                            {option.description && (
+                              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
+                                {option.description}
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                {(pendingChatQuestion.question.responseKind === "free_text" ||
+                  pendingChatQuestion.question.responseKind === "mixed") && (
+                  <textarea
+                    value={chatQuestionText}
+                    onChange={(event) => setChatQuestionText(event.currentTarget.value)}
+                    maxLength={pendingChatQuestion.question.maxLength}
+                    placeholder={t("research.chat.question.placeholder")}
+                    aria-label={t("research.chat.question.placeholder")}
+                    className="mt-3 min-h-20 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-5 outline-none focus:border-ring"
+                    data-testid="research-chat-question-text"
+                  />
+                )}
+                {pendingChatQuestion.question.responseKind === "assumption" && (
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant={chatQuestionSelections[0] === "accepted" ? "default" : "outline"}
+                      onClick={() => setChatQuestionSelections(["accepted"])}
+                    >
+                      {t("research.chat.question.accept")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={chatQuestionSelections[0] === "rejected" ? "default" : "outline"}
+                      onClick={() => setChatQuestionSelections(["rejected"])}
+                    >
+                      {t("research.chat.question.reject")}
+                    </Button>
+                  </div>
+                )}
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="m-0 text-xs leading-4 text-muted-foreground">
+                    {t("research.chat.question.durable")}
+                  </p>
+                  <Button
+                    size="sm"
+                    disabled={!pendingChatQuestionCanSubmit || running}
+                    onClick={() => void submitChatQuestionAnswer()}
+                    data-testid="research-chat-question-submit"
+                  >
+                    {t("research.chat.question.continue")}
+                  </Button>
+                </div>
+              </section>
+            )}
             {error && (
               <Alert tone="danger" role="alert" data-testid="research-error">
                 <AlertTitle>{t("research.error")}</AlertTitle>
@@ -3154,7 +3395,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
                   checked={disclosed}
                   onChange={(event) => setDisclosed(event.target.checked)}
-                  disabled={running}
+                  disabled={running || Boolean(pendingChatQuestion)}
                   data-testid="research-disclosure"
                 />
                 <span>{t("research.disclosure")}</span>

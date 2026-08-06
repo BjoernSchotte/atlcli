@@ -789,7 +789,7 @@ describe("separate Chat root", () => {
       .toBeUndefined();
   });
 
-  test("hides DeepAgents filesystem and task tools from the direct Chat model", async () => {
+  test("exposes only eval and durable HITL while hiding DeepAgents scaffolding", async () => {
     const middleware = createChatDirectToolSurfaceMiddlewareV1();
     let visibleNames: string[] = [];
     await middleware.wrapModelCall?.(
@@ -798,6 +798,7 @@ describe("separate Chat root", () => {
           { name: "ls" },
           { name: "task" },
           { name: "eval" },
+          { name: "ask_user_question" },
           { name: "write_file" },
         ],
       } as never,
@@ -806,7 +807,7 @@ describe("separate Chat root", () => {
         return {} as never;
       },
     );
-    expect(visibleNames).toEqual(["eval"]);
+    expect(visibleNames).toEqual(["eval", "ask_user_question"]);
   });
 
   test("closes an accepted agentic workflow without a supervisor rewrite", async () => {

@@ -27,8 +27,8 @@ import type {
 } from "./research/contracts.js";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
-import { classifyResearchError } from "@atlcli/research";
-import type { ChatHostIdentityV1 } from "@atlcli/research";
+import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
+import type { ChatHostIdentityV1, ChatUserQuestionAnswerV1 } from "@atlcli/research";
 
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {
@@ -55,6 +55,7 @@ export interface OffscreenListenerDeps {
     policy?: ResearchOneShotPolicyV1,
     qualityPolicy?: ChatQualityPolicyV1,
     hostIdentity?: ChatHostIdentityV1,
+    resumeAnswer?: ChatUserQuestionAnswerV1,
   ) => Promise<ResearchReport | ChatAnswerV1>;
   resumeResearch?: (
     runId: string,
@@ -402,6 +403,7 @@ export function handleOffscreenMessage(
           message.policy,
           message.qualityPolicy,
           message.hostIdentity,
+          message.resumeAnswer,
         )
         : Promise.reject(new Error("Research worker host is not configured.")))
         .then((report) => sendResponse({
@@ -418,6 +420,9 @@ export function handleOffscreenMessage(
             ok: false,
             code: classified.code,
             error: classified.message,
+            ...(error instanceof ChatUserQuestionRequiredError
+              ? { question: error.question }
+              : {}),
           });
         });
       break;

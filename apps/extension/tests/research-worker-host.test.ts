@@ -8,6 +8,11 @@ import type {
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
 import { ResearchAgentWorkerHost } from "../utils/research/worker-host.js";
+import {
+  CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  CHAT_USER_QUESTION_SCHEMA_V1,
+  ChatUserQuestionRequiredError,
+} from "@atlcli/research";
 import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
@@ -87,6 +92,59 @@ const qualityPolicy = {
 } as const;
 
 describe("dedicated research worker host", () => {
+  it("transports a durable Chat question and its exact resume answer", async () => {
+    const question = {
+      schema: CHAT_USER_QUESTION_SCHEMA_V1,
+      id: "chat-question:scope",
+      prompt: "Which approved scope should I use?",
+      required: true,
+      responseKind: "single_choice" as const,
+      options: [
+        { id: "scope:one", label: "First scope" },
+        { id: "scope:two", label: "Second scope" },
+      ],
+    };
+    const firstWorker = new FakeWorker();
+    const firstHost = new ResearchAgentWorkerHost({ createWorker: () => firstWorker });
+    const interrupted = firstHost.run({
+      runId: "chat-hitl-1",
+      sessionId: "chat-session:hitl",
+      turnId: "chat-turn:hitl",
+      apiKey: "synthetic-key",
+      mode: "chat",
+      request,
+      qualityPolicy,
+    });
+    firstWorker.emit({ kind: "research-worker:hitl", runId: "chat-hitl-1", question });
+    await expect(interrupted).rejects.toBeInstanceOf(ChatUserQuestionRequiredError);
+    expect(firstWorker.terminated).toBe(true);
+
+    const answerValue = {
+      schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+      questionId: question.id,
+      value: { kind: "selection" as const, optionIds: ["scope:one"] },
+    };
+    const secondWorker = new FakeWorker();
+    const secondHost = new ResearchAgentWorkerHost({ createWorker: () => secondWorker });
+    const resumed = secondHost.run({
+      runId: "chat-hitl-2",
+      sessionId: "chat-session:hitl",
+      turnId: "chat-turn:hitl",
+      apiKey: "synthetic-key",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      resumeAnswer: answerValue,
+    });
+    expect(secondWorker.posted[0]).toMatchObject({
+      kind: "research-worker:run",
+      turnId: "chat-turn:hitl",
+      resumeAnswer: answerValue,
+    });
+    secondWorker.emit({ kind: "research-worker:complete", runId: "chat-hitl-2", answer });
+    expect(await resumed).toBe(answer);
+  });
+
   it("returns a Chat answer only for an explicitly routed Chat run", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
