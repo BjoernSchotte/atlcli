@@ -30,6 +30,8 @@ interface WorkerLike {
 interface ActiveRun {
   worker: WorkerLike;
   reject: (reason: unknown) => void;
+  interruption?: ResearchContractError;
+  fallback?: ReturnType<typeof globalThis.setTimeout>;
 }
 
 interface ResearchAgentWorkerRunInput {
@@ -70,6 +72,17 @@ export class ResearchAgentWorkerHost {
       worker.onmessage = (event) => {
         const message = event.data;
         if (message.runId !== input.runId) return;
+        const active = this.#active.get(input.runId);
+        if (active?.interruption) {
+          if (
+            message.kind === "research-worker:complete" ||
+            message.kind === "research-worker:error" ||
+            message.kind === "research-worker:hitl"
+          ) {
+            active.reject(active.interruption);
+          }
+          return;
+        }
         if (message.kind === "research-worker:progress") {
           input.onProgress?.(message.progress);
           return;
@@ -131,7 +144,10 @@ export class ResearchAgentWorkerHost {
       });
     }).finally(() => {
       const active = this.#active.get(input.runId);
-      if (active?.worker === worker) this.#active.delete(input.runId);
+      if (active?.worker === worker) {
+        if (active.fallback) globalThis.clearTimeout(active.fallback);
+        this.#active.delete(input.runId);
+      }
       worker.terminate();
     });
   }
@@ -153,10 +169,20 @@ export class ResearchAgentWorkerHost {
 
   #interrupt(runId: string, reason: ResearchContractError): boolean {
     const active = this.#active.get(runId);
-    if (!active) return false;
-    this.#active.delete(runId);
-    active.worker.terminate();
-    active.reject(reason);
+    if (!active || active.interruption) return false;
+    active.interruption = reason;
+    active.worker.postMessage({
+      kind: "research-worker:interrupt",
+      runId,
+      disposition: reason.code === "paused" ? "paused" : "cancelled",
+    });
+    active.fallback = globalThis.setTimeout(() => {
+      const retained = this.#active.get(runId);
+      if (retained !== active) return;
+      active.reject(reason);
+      active.worker.terminate();
+      this.#active.delete(runId);
+    }, 2_000);
     return true;
   }
 }

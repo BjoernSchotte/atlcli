@@ -70,6 +70,8 @@ import {
 import {
   ChatUserQuestionRequiredError,
   WorkspaceChatInteractionControllerV1,
+  acknowledgeChatStopV1,
+  requestChatStopV1,
   type ChatUserQuestionAnswerV1,
 } from "./interaction.js";
 import {
@@ -1534,6 +1536,33 @@ export function createKiteweaveChatAgent(
       } catch (error) {
         if (error instanceof ChatUserQuestionRequiredError) {
           throw error;
+        }
+        if (controller.signal.aborted && interactionController) {
+          try {
+            let interaction = interactionController.snapshot();
+            if (!interaction.stop || interaction.stop.acknowledgedAt) {
+              interaction = await interactionController.update((state) =>
+                requestChatStopV1({
+                  state,
+                  expectedRevision: state.revision,
+                  at: new Date(now()).toISOString(),
+                })
+              );
+            }
+            if (interaction.stop && !interaction.stop.acknowledgedAt) {
+              await interactionController.update((state) =>
+                acknowledgeChatStopV1({
+                  state,
+                  expectedRevision: state.revision,
+                  expectedStopRevision: interaction.stop!.revision,
+                  at: new Date(now()).toISOString(),
+                })
+              );
+            }
+          } catch {
+            // Cancellation remains authoritative even if its best-effort
+            // interaction acknowledgement cannot be published.
+          }
         }
         if (durableChatSession) {
           try {

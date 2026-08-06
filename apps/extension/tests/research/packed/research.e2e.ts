@@ -2994,6 +2994,31 @@ async function runPackedChatTurnInBackground(
   }) as Promise<PackedChatRunResponse>;
 }
 
+async function readPackedWorkspaceJson<T>(
+  page: Page,
+  sessionId: string,
+  path: string,
+): Promise<T | undefined> {
+  return page.evaluate(async ({ sessionId, path }) => {
+    const open = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("atlcli-research-sessions");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const row = await new Promise<{ contents?: string } | undefined>((resolve, reject) => {
+        const request = open.transaction("workspace", "readonly")
+          .objectStore("workspace").get([sessionId, path]);
+        request.onsuccess = () => resolve(request.result as { contents?: string } | undefined);
+        request.onerror = () => reject(request.error);
+      });
+      return row?.contents ? JSON.parse(row.contents) : undefined;
+    } finally {
+      open.close();
+    }
+  }, { sessionId, path }) as Promise<T | undefined>;
+}
+
 async function resumePackedResearchInBackground(
   page: Page,
   sessionId: string,
@@ -6238,6 +6263,52 @@ test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV
     .filter((workerId): workerId is string => typeof workerId === "string"));
   expect(modelWorkers.size).toBeGreaterThanOrEqual(2);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("cooperatively stops packed Chat and durably acknowledges the cancellation", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  const runId = "packed-chat-cooperative-stop";
+  const sessionId = `research-session:${runId}`;
+  const running = runPackedChatTurnInBackground(page, {
+    request: {
+      ...packedExactContextRequest("confluence"),
+      question: "cancel-before-ptc: Summarize the attached page.",
+    },
+    runId,
+    sessionId,
+    turnId: `research-turn:${runId}`,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+
+  await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+    event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com")
+  ), { timeout: 20_000 }).toBe(true);
+  const cancelled = await page.evaluate(async (runId) =>
+    chrome.runtime.sendMessage({ kind: "research:cancel-session", runId }),
+  runId);
+  expect(cancelled).toEqual({
+    kind: "research:cancel-session-result",
+    runId,
+    cancelled: true,
+  });
+  await expect(running).resolves.toMatchObject({
+    kind: "research:run-result",
+    runId,
+    ok: false,
+    code: "cancelled",
+  });
+
+  const interaction = await readPackedWorkspaceJson<{
+    stop?: { requestedAt?: string; acknowledgedAt?: string };
+  }>(page, sessionId, "/.atlcli/chat/v1/interaction.json");
+  expect(interaction?.stop).toMatchObject({
+    requestedAt: expect.any(String),
+    acknowledgedAt: expect.any(String),
+  });
+  expect((await harnessEvents(page)).some((event) => event.kind === "worker-error")).toBe(false);
 });
 
 test("reads a late section from a long attached page in packed MV3", async () => {

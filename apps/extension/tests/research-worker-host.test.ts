@@ -268,7 +268,7 @@ describe("dedicated research worker host", () => {
     expect(await resultPromise).toBe(answer);
   });
 
-  it("terminates and rejects an active run on cancellation", async () => {
+  it("cooperatively cancels an active run and quarantines a late completion", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
     const resultPromise = host.run({
@@ -280,6 +280,13 @@ describe("dedicated research worker host", () => {
     });
 
     expect(host.cancel("run-cancel")).toBe(true);
+    expect(worker.posted.at(-1)).toEqual({
+      kind: "research-worker:interrupt",
+      runId: "run-cancel",
+      disposition: "cancelled",
+    });
+    expect(worker.terminated).toBe(false);
+    worker.emit({ kind: "research-worker:complete", runId: "run-cancel", report });
     await expect(resultPromise).rejects.toMatchObject({ code: "cancelled" });
     expect(worker.terminated).toBe(true);
     expect(host.cancel("run-cancel")).toBe(false);
@@ -297,6 +304,17 @@ describe("dedicated research worker host", () => {
     });
 
     expect(host.pause("run-pause")).toBe(true);
+    expect(worker.posted.at(-1)).toEqual({
+      kind: "research-worker:interrupt",
+      runId: "run-pause",
+      disposition: "paused",
+    });
+    worker.emit({
+      kind: "research-worker:error",
+      runId: "run-pause",
+      code: "paused",
+      error: "Paused.",
+    });
     await expect(resultPromise).rejects.toMatchObject({ code: "paused" });
     expect(worker.terminated).toBe(true);
     expect(host.pause("run-pause")).toBe(false);

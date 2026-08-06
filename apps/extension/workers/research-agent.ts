@@ -45,8 +45,23 @@ function post(message: ResearchWorkerResponseV1): void {
   globalThis.postMessage(message);
 }
 
+let activeRun: { runId: string; controller: AbortController } | undefined;
+
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   const message = event.data as Partial<ResearchWorkerRequestV1> | null;
+  if (message?.kind === "research-worker:interrupt" &&
+      typeof message.runId === "string" &&
+      (message.disposition === "cancelled" || message.disposition === "paused")) {
+    if (activeRun?.runId === message.runId && !activeRun.controller.signal.aborted) {
+      activeRun.controller.abort(new ResearchContractError(
+        message.disposition,
+        message.disposition === "paused"
+          ? "The research run reached a durable pause checkpoint."
+          : "The research run was cancelled.",
+      ));
+    }
+    return;
+  }
   if (
     !message ||
     message.kind !== "research-worker:run" ||
@@ -62,6 +77,8 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   const turnId = message.turnId;
   const apiKey = message.apiKey;
   const resume = message.resume === true;
+  const controller = new AbortController();
+  activeRun = { runId, controller };
   void (async () => {
     try {
       if (!resume && "mode" in message && message.mode === "chat") {
@@ -131,6 +148,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             ...(message.resumeAnswer
               ? { resumeAnswer: message.resumeAnswer }
               : {}),
+            signal: controller.signal,
             onProgress,
             onEvent,
             onChatPresentation,
@@ -247,7 +265,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             sessionId,
             turnId,
           },
-          options: { onProgress, onEvent, policy },
+          options: { onProgress, onEvent, policy, signal: controller.signal },
         });
         post({ kind: "research-worker:complete", runId, report });
       } finally {
@@ -269,6 +287,8 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         code: classified.code,
         error: classified.message,
       });
+    } finally {
+      if (activeRun?.runId === runId) activeRun = undefined;
     }
   })();
 });

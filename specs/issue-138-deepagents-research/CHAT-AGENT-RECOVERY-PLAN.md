@@ -907,7 +907,7 @@ Automated proof:
 - [ ] Queue messages remain FIFO and separately editable/deletable; immediate
       steering does not become an ordinary queued follow-up.
 - [ ] Steering revises only eligible remaining work and re-runs scope/HITL checks.
-- [ ] Stop acknowledgement meets an evidence-backed bound and no cancelled result
+- [x] Stop acknowledgement meets an evidence-backed bound and no cancelled result
       can enter synthesis.
 - [ ] Event snapshots contain no raw private/debug/reasoning fields and cover both
       locales.
@@ -959,6 +959,20 @@ resumes the exact conversation and turn with the accepted answer; focused CLI
 integration tests prove this without constructing a second agent. A manual CLI
 terminal demonstration and the other controls remain open, so the parent
 live-acceptance boxes stay unchecked.
+
+Cooperative stop proof (2026-08-06): cancellation now crosses the extension
+boundary as a worker control message instead of immediately terminating the
+worker. The shared Chat AbortSignal reaches the root model stream, agentic child
+runtime, QuickJS bridge, and capability broker; the broker propagates it to
+pagination and REST provider calls. The Chat runtime durably records and
+acknowledges the stop before returning its typed cancelled result. The host drops
+all post-cancel progress, presentation, and completion messages and has a
+two-second hard-termination fallback. A packed production MV3 test completed the
+cooperative cancellation and durable acknowledgement in 120 ms, while a worker-
+host regression test proves that a late completion cannot enter the result. All
+41 packed lifecycle tests pass after the transport change. Catalog cancellation
+and the remaining implementation-wide propagation box stay open pending the
+shared host-port slice.
 
 Live acceptance:
 

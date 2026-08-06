@@ -17,6 +17,11 @@ import type {
 
 export type ResearchWorkerRequestV1 =
   | {
+      kind: "research-worker:interrupt";
+      runId: string;
+      disposition: "cancelled" | "paused";
+    }
+  | {
       kind: "research-worker:run";
       runId: string;
       sessionId: string;
