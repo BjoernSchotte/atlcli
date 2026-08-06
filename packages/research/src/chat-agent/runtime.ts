@@ -20,6 +20,7 @@ import {
 import { createResearchModelBudgetMiddlewareV1 } from "../model-budget-middleware.js";
 import type {
   ChatPresentationStreamEventV1,
+  ResearchActivityCodeV1,
   ResearchOneShotEventV1,
   ResearchProgressV1,
   ResearchRequestV1,
@@ -35,6 +36,7 @@ import type { ResearchWorkspace } from "../workspace.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
 import { finalizeChatAnswerV1 } from "./answer.js";
+import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V1,
@@ -695,6 +697,7 @@ export function createKiteweaveChatAgent(
       const evidenceStore = new WorkspaceResearchEvidenceStoreV1(input.workspace);
       let durableChatSession: ChatSessionV1 | undefined;
       let interactionController: WorkspaceChatInteractionControllerV1 | undefined;
+      let activityJournal: WorkspaceChatActivityJournalV1 | undefined;
       let durableContext = "";
       let eventSequence = 0;
       const nextEventSequence = (): number => ++eventSequence;
@@ -706,29 +709,44 @@ export function createKiteweaveChatAgent(
           phase,
         });
       };
+      const emitActivity = (
+        code: ResearchActivityCodeV1,
+        status: "started" | "completed" | "failed",
+      ): void => {
+        const at = new Date(now()).toISOString();
+        activityJournal?.record({ turnId: turn.turnId, at, code, status });
+        input.onEvent?.({
+          kind: "activity",
+          seq: nextEventSequence(),
+          at,
+          code,
+          status,
+        });
+      };
       const emitAgentDiagnostic = (diagnostic: ChatAgentDiagnosticV1): void => {
         input.onAgentDiagnostic?.(diagnostic);
         const activity = diagnostic.kind === "model-step"
-          ? diagnostic.status === "started"
-            ? diagnostic.purpose === "answer-drafting"
-              ? { code: "answer-drafting" as const, status: "started" as const }
-              : { code: "model-assessing" as const, status: "started" as const }
-            : diagnostic.status === "failed"
-              ? { code: "model-assessing" as const, status: "failed" as const }
-              : diagnostic.toolNames?.includes("eval")
-                ? { code: "next-step-ready" as const, status: "completed" as const }
-                : { code: "answer-draft-ready" as const, status: "completed" as const }
+          ? {
+              code: diagnostic.purpose === "answer-drafting"
+                ? "synthesis" as const
+                : "model-assessing" as const,
+              status: diagnostic.status,
+            }
           : diagnostic.status === "started"
             ? { code: "bounded-workflow-running" as const, status: "started" as const }
             : diagnostic.status === "success"
               ? { code: "bounded-workflow-complete" as const, status: "completed" as const }
               : { code: "bounded-workflow-failed" as const, status: "failed" as const };
-        input.onEvent?.({
-          kind: "activity",
-          seq: nextEventSequence(),
-          at: new Date(now()).toISOString(),
-          ...activity,
-        });
+        emitActivity(activity.code, activity.status);
+        if (
+          diagnostic.kind === "model-step" &&
+          diagnostic.status === "completed" &&
+          diagnostic.purpose !== "answer-drafting" &&
+          !diagnostic.toolNames?.some((name) => name === "eval" || name === "ask_user_question")
+        ) {
+          emitActivity("synthesis", "started");
+          emitActivity("synthesis", "completed");
+        }
       };
       let assertStrategyAccepted: (() => void) | undefined;
       let retrievalLedger: ChatCandidateLedgerControllerV1 | undefined;
@@ -778,7 +796,10 @@ export function createKiteweaveChatAgent(
         () => controller.abort(new ChatContractError("limit-exceeded", "The Chat turn reached its maximum duration.")),
         turn.limits.maxRunMs,
       );
-      const onAbort = (): void => broker.cancel(controller.signal.reason);
+      const onAbort = (): void => {
+        broker.cancel(controller.signal.reason);
+        if (input.signal?.aborted) emitActivity("stop", "started");
+      };
       controller.signal.addEventListener("abort", onAbort, { once: true });
       try {
         const durable = await bindChatSessionStateV1({
@@ -801,6 +822,10 @@ export function createKiteweaveChatAgent(
           conversationId: turn.conversationId,
           binding: durableChatSession.binding,
           at: startedAt,
+        });
+        activityJournal = await WorkspaceChatActivityJournalV1.open({
+          workspace: input.workspace,
+          conversationId: turn.conversationId,
         });
         input.onInteractionReady?.(interactionController);
         if (input.resumeAnswer &&
@@ -859,6 +884,7 @@ export function createKiteweaveChatAgent(
             CHAT_STRATEGY_STATE_PATH_V1,
             JSON.stringify(record),
           );
+          emitActivity("strategy", "completed");
           input.onEvent?.({
             kind: "decision",
             seq: nextEventSequence(),
@@ -876,6 +902,7 @@ export function createKiteweaveChatAgent(
               decision: strategyDecision,
               budget,
             });
+        emitActivity("strategy", "started");
         await persistAcceptedStrategy(strategyDecision);
         assertStrategyAccepted = strategyController?.assertAcknowledged;
         const strategyReviewController = strategyDecision.execution === "agentic"
@@ -964,6 +991,21 @@ export function createKiteweaveChatAgent(
         const emitPtcDiagnostic = emitPtcEventFactory({
           onEvent: (event) => {
             input.onEvent?.(event);
+            if (event.kind === "capability") {
+              const activityCode: ResearchActivityCodeV1 = event.inputKind === "ranking"
+                ? "source-selection"
+                : event.inputKind === "search" || event.inputKind === "continuation"
+                  ? "search"
+                  : "direct-read";
+              emitActivity(
+                activityCode,
+                event.status === "started"
+                  ? "started"
+                  : event.status === "completed"
+                    ? "completed"
+                    : "failed",
+              );
+            }
             if (
               event.kind === "capability" &&
               event.status === "completed" &&
@@ -1100,6 +1142,24 @@ export function createKiteweaveChatAgent(
               onDispatchDiagnostic: (diagnostic) => {
                 input.onDispatchDiagnostic?.(diagnostic);
                 if (!diagnostic.taskId) return;
+                const profileId = agenticWorkflow?.acceptedWorkflow()?.tasks.find(
+                  (task) => task.taskId === diagnostic.taskId,
+                )?.profileId;
+                const activityCode: ResearchActivityCodeV1 = profileId === "answer-critic"
+                  ? "critique"
+                  : profileId === "answer-repairer"
+                    ? "repair"
+                    : profileId === "chat-synthesizer"
+                      ? "synthesis"
+                      : "child-work";
+                emitActivity(
+                  activityCode,
+                  diagnostic.status === "started"
+                    ? "started"
+                    : diagnostic.status === "completed"
+                      ? "completed"
+                      : "failed",
+                );
                 input.onEvent?.({
                   kind: "task",
                   seq: nextEventSequence(),
@@ -1178,8 +1238,14 @@ export function createKiteweaveChatAgent(
             qualityPolicy,
           },
           now,
-          onQuestion: () => emitPhase("waiting-user"),
-          onResolved: () => emitPhase("user-answer-accepted"),
+          onQuestion: () => {
+            emitPhase("waiting-user");
+            emitActivity("hitl", "started");
+          },
+          onResolved: () => {
+            emitPhase("user-answer-accepted");
+            emitActivity("hitl", "completed");
+          },
         });
         const agent = runtime.createDeepAgent({
           name: "kiteweave-chat-agent",
@@ -1276,6 +1342,7 @@ export function createKiteweaveChatAgent(
               }),
             }],
           };
+        if (input.resumeAnswer) emitActivity("continuation", "started");
         const run = await agent.streamEvents(
           runInput,
           {
@@ -1452,8 +1519,10 @@ export function createKiteweaveChatAgent(
             CHAT_SESSION_PATH_V1,
             JSON.stringify(durableChatSession),
           );
+          await activityJournal.flush();
           throw new ChatUserQuestionRequiredError(pending.question);
         }
+        if (input.resumeAnswer) emitActivity("continuation", "completed");
         controller.signal.throwIfAborted();
         emitPhase("checking");
         if (strategyController && !strategyController.acknowledgedDecision()) {
@@ -1508,6 +1577,9 @@ export function createKiteweaveChatAgent(
         const evidenceRecords = (await Promise.all(
           [...acceptedEvidenceIds].map((evidenceId) => evidenceStore.get(evidenceId)),
         )).filter((record): record is ResearchEvidenceRecordV1 => record !== undefined);
+        if (answer.gaps.length > 0) emitActivity("gap", "completed");
+        emitActivity("completion", "completed");
+        await activityJournal.flush();
         durableChatSession = completeChatTurnV1({
           session: durableChatSession!,
           expectedSessionRevision: durableChatSession!.revision,
@@ -1517,10 +1589,7 @@ export function createKiteweaveChatAgent(
           ...(agenticWorkflow
             ? { acceptedWorkflowRef: `chat-workflow:${turn.turnId}` }
             : {}),
-          activityRefs: [
-            `chat-activity:strategy:${answer.strategy.reasonCode}`,
-            ...evidenceRecords.map((record) => `chat-activity:evidence:${record.id}`),
-          ],
+          activityRefs: activityJournal.referencesForTurn(turn.turnId),
           evidenceRecords,
           completedAt: new Date(completedAtMs).toISOString(),
         });
@@ -1562,6 +1631,7 @@ export function createKiteweaveChatAgent(
                 })
               );
             }
+            if (input.signal?.aborted) emitActivity("stop", "completed");
           } catch {
             // Cancellation remains authoritative even if its best-effort
             // interaction acknowledgement cannot be published.
@@ -1593,6 +1663,12 @@ export function createKiteweaveChatAgent(
         }
         throw error;
       } finally {
+        try {
+          await activityJournal?.flush();
+        } catch {
+          // A causal provider/runtime failure remains authoritative. Successful
+          // completion awaits the journal before publishing the final turn.
+        }
         globalThis.clearTimeout(timeout);
         input.signal?.removeEventListener("abort", forwardAbort);
         controller.signal.removeEventListener("abort", onAbort);

@@ -10,8 +10,10 @@ import {
 } from "deepagents/node";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  type ResearchOneShotEventV1,
   type ResearchRequestV1,
 } from "../contracts.js";
+import { isResearchOneShotEventV1 } from "../events.js";
 import { ResearchRunBudget } from "../budget.js";
 import {
   CAPABILITY_FREE_QUALITY_ADAPTER_V1,
@@ -19,6 +21,7 @@ import {
 } from "../quality-policy.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
 import type { ChatTurnRequestV1 } from "./contracts.js";
+import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import {
   assertChatFinalReviewReserveV1,
   createKiteweaveChatAgent,
@@ -332,22 +335,45 @@ describe("real QuickJS Chat strategy trajectory", () => {
   test("emits durable user-facing milestones around analysis and answer validation", async () => {
     const input = request("Answer this simple conversational question.");
     const events: Array<{ kind: string; phase?: string; code?: string; status?: string }> = [];
+    const workspace = createMemoryResearchWorkspace();
 
     await runtime.runChatAgent({
       ...input,
       model: model(false),
       providers,
-      workspace: createMemoryResearchWorkspace(),
+      workspace,
       qualityPolicy: chatQualityPolicyV1("quick"),
       onEvent: (event) => events.push(event),
     });
 
     expect(events.filter((event) => event.kind === "phase").map((event) => event.phase))
       .toEqual(["preparing", "checking", "rendering"]);
-    expect(events.filter((event) => event.kind === "activity")).toEqual([
-      expect.objectContaining({ code: "model-assessing", status: "started" }),
-      expect.objectContaining({ code: "answer-draft-ready", status: "completed" }),
+    expect(events.filter((event) => event.kind === "activity").map((event) => [
+      event.code,
+      event.status,
+    ])).toEqual([
+      ["strategy", "started"],
+      ["strategy", "completed"],
+      ["model-assessing", "started"],
+      ["model-assessing", "completed"],
+      ["synthesis", "started"],
+      ["synthesis", "completed"],
+      ["completion", "completed"],
     ]);
+    const session = JSON.parse((await workspace.readFile(CHAT_SESSION_PATH_V1))!) as ChatSessionV1;
+    const completedTurn = session.conversation.recentTurns.at(-1)!;
+    expect(completedTurn.finalAnswer?.messageMarkdown).toBe("A bounded synthetic Chat answer.");
+    const journal = await WorkspaceChatActivityJournalV1.open({
+      workspace,
+      conversationId: input.turn.conversationId,
+    });
+    const replayedActivity: Array<[string, string]> = journal
+      .eventsForReferences(completedTurn.activityRefs)
+      .map((event) => [event.code, event.status]);
+    const emittedActivity: Array<[string, string]> = events
+      .filter((event) => event.kind === "activity")
+      .map((event) => [event.code!, event.status!]);
+    expect(replayedActivity).toEqual(emittedActivity);
   });
 
   test("Auto records a host-accepted direct strategy through QuickJS", async () => {
@@ -415,12 +441,14 @@ describe("real QuickJS Chat strategy trajectory", () => {
     for (const mode of ["auto", "deep"] as const) {
       const input = request("Compare the two policy positions and check for contradictions.");
       const workspace = createMemoryResearchWorkspace();
+      const events: ResearchOneShotEventV1[] = [];
       const answer = await runtime.runChatAgent({
         ...input,
         model: model(true, true),
         providers,
         workspace,
         qualityPolicy: chatQualityPolicyV1(mode),
+        onEvent: (event) => events.push(event),
       });
       expect(answer.strategy).toMatchObject({
         qualityMode: mode,
@@ -435,6 +463,15 @@ describe("real QuickJS Chat strategy trajectory", () => {
         "contradiction-risk",
       ]);
       expect(answer.run.counts.ptcCalls).toBe(4);
+      expect(events.every(isResearchOneShotEventV1)).toBe(true);
+      expect(events.filter((event) => event.kind === "activity").map((event) => event.code))
+        .toEqual(expect.arrayContaining([
+          "strategy",
+          "child-work",
+          "critique",
+          "synthesis",
+          "completion",
+        ]));
     }
   });
 

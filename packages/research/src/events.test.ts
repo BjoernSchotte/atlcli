@@ -5,6 +5,7 @@ import {
   isResearchOneShotEventV1,
 } from "./events.js";
 import {
+  CHAT_SEMANTIC_ACTIVITY_CODES_V1,
   RESEARCH_REPORT_ARTIFACT_PATH_V1,
   type ResearchOneShotEventV1,
 } from "./contracts.js";
@@ -27,6 +28,22 @@ const capabilityEvent = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("research one-shot events", () => {
+  it("admits every body-free semantic Chat activity and rejects hidden fields", () => {
+    for (const code of CHAT_SEMANTIC_ACTIVITY_CODES_V1) {
+      for (const status of ["started", "completed", "failed"] as const) {
+        const event = {
+          kind: "activity",
+          seq: 1,
+          at: "2026-08-06T12:00:00.000Z",
+          code,
+          status,
+        };
+        expect(isResearchOneShotEventV1(event), `${code}:${status}`).toBe(true);
+        expect(isResearchOneShotEventV1({ ...event, reasoning: "hidden" })).toBe(false);
+      }
+    }
+  });
+
   it("keeps provider-approved reasoning summaries on a separate bounded presentation channel", () => {
     const base = {
       kind: "chat-presentation",

@@ -18,12 +18,17 @@ import type {
   ResearchSessionScopeReviewV1,
   ChatUserQuestionV1,
   ChatInteractionStateV1,
+  ChatActivityEventV1,
 } from "@atlcli/research";
 import {
+  assertChatSessionBindingV1,
   assertChatInteractionBindingV1,
+  CHAT_SESSION_PATH_V1,
   CHAT_INTERACTION_STATE_PATH_V1,
   IndexedDbResearchSessionStoreV1,
+  parseChatSessionV1,
   parseChatInteractionStateV1,
+  WorkspaceChatActivityJournalV1,
 } from "@atlcli/research/browser";
 import {
   RESEARCH_ANTHROPIC_SESSION_KEY,
@@ -89,6 +94,51 @@ async function readActiveChatInteractionV1(siteOrigin: string): Promise<{
   }
 }
 
+async function readActiveChatReplayV1(siteOrigin: string): Promise<{
+  conversationId: string;
+  turnId: string;
+  objective: string;
+  events: ChatActivityEventV1[];
+  finalAnswer?: ChatAnswerV1;
+} | null> {
+  const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
+  const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+  if (typeof conversationId !== "string" || !RESEARCH_SESSION_ID_PATTERN.test(conversationId)) {
+    return null;
+  }
+  const identity = await browserChatHostIdentityV1();
+  const store = await IndexedDbResearchSessionStoreV1.open();
+  try {
+    if (!await store.read(conversationId)) return null;
+    const workspace = await store.workspace(conversationId);
+    const serialized = await workspace.readFile(CHAT_SESSION_PATH_V1);
+    if (serialized === undefined) return null;
+    const session = parseChatSessionV1(JSON.parse(serialized));
+    assertChatSessionBindingV1({
+      session,
+      conversationId,
+      identity,
+      tenantOrigin: siteOrigin,
+    });
+    const turn = session.conversation.recentTurns.at(-1);
+    if (!turn) return null;
+    const journal = await WorkspaceChatActivityJournalV1.open({
+      workspace,
+      conversationId,
+      persistIfMissing: false,
+    });
+    return {
+      conversationId,
+      turnId: turn.id,
+      objective: turn.objective,
+      events: journal.eventsForReferences(turn.activityRefs),
+      ...(turn.finalAnswer ? { finalAnswer: turn.finalAnswer } : {}),
+    };
+  } finally {
+    store.close();
+  }
+}
+
 function safeFilename(value: string): string {
   const normalized = value
     .normalize("NFKD")
@@ -137,6 +187,10 @@ export function chromeResearchPort(): ResearchPort {
 
     async getChatInteraction(siteOrigin) {
       return (await readActiveChatInteractionV1(siteOrigin))?.state ?? null;
+    },
+
+    async getChatReplay(siteOrigin) {
+      return readActiveChatReplayV1(siteOrigin);
     },
 
     async controlActiveChat(command) {

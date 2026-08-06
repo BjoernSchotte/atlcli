@@ -122,7 +122,16 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       "relationshipCount", "gapCount", "defectCount",
     ]) &&
       boundedToken(event.taskId) &&
-      ["planned", "packet-accepted"].includes(String(event.status)) &&
+      [
+        "planned",
+        "packet-accepted",
+        "started",
+        "completed",
+        "failed",
+        "cancelled",
+        "quarantined",
+        "rejected",
+      ].includes(String(event.status)) &&
       (event.roleId === undefined || boundedToken(event.roleId)) &&
       (event.wave === undefined || positiveInteger(event.wave)) &&
       (event.dependencyTaskIds === undefined || tokenArray(event.dependencyTaskIds, 16)) &&

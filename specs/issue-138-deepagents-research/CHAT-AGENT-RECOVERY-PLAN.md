@@ -881,7 +881,7 @@ Implementation:
       separate immediate steering command applied at a durable checkpoint.
 - [ ] Propagate stop through root, children, broker, pagination, catalog,
       interpreter bridge, and provider calls; quarantine obsolete late results.
-- [ ] Project semantic events for strategy, direct read, search, selected sources,
+- [x] Project semantic events for strategy, direct read, search, selected sources,
       child work, critique, repair, synthesis, gap, HITL, steering, stop,
       continuation, and completion.
 - [x] Consume DeepAgentsJS v3 message streams concurrently and project only an
@@ -895,10 +895,10 @@ Implementation:
       with the host-validated final answer. Do not stream hidden reasoning,
       unsummarized chain of thought, raw child output, credentials, raw source
       bodies, provider payloads, or budget/debug counters to the normal user view.
-- [ ] Persist replayable activity and the completed final answer atomically. Treat
+- [x] Persist replayable activity and the completed final answer atomically. Treat
       exact mid-provider token replay as later hardening unless evidence justifies
       its cost.
-- [ ] Provide complete German/English presentation copy and deterministic fallback
+- [x] Provide complete German/English presentation copy and deterministic fallback
       for every event and error state.
 
 Automated proof:
@@ -909,7 +909,7 @@ Automated proof:
 - [ ] Steering revises only eligible remaining work and re-runs scope/HITL checks.
 - [x] Stop acknowledgement meets an evidence-backed bound and no cancelled result
       can enter synthesis.
-- [ ] Event snapshots contain no raw private/debug/reasoning fields and cover both
+- [x] Event snapshots contain no raw private/debug/reasoning fields and cover both
       locales.
 - [x] Synthetic Anthropic SSE, DeepAgentsJS v3, runtime-gate, UI, and packed-MV3
       tests prove that summarized thinking and the projected Markdown field
@@ -987,6 +987,21 @@ worker, cancelled the run cooperatively, then reopened the workspace and found
 the edited message with its durable revision. The complete production bundle
 passes all 42 packed lifecycle tests after this change. Steering-directed
 replanning and user-language semantic event replay remain separate open gates.
+
+Semantic stream and replay proof (2026-08-06): the Chat runtime now consumes the
+native DeepAgentsJS v3 stream throughout model and child-agent execution. It
+projects provider-approved reasoning summaries and provisional Markdown only as
+ephemeral live presentation, while a separate strict journal retains body-free
+strategy, direct-read, search, selection, child-work, critique, repair,
+synthesis, gap, HITL, steering, stop, continuation, and completion milestones.
+The accepted final answer and its stable activity references are committed in
+the same durable Chat-session revision. Reopening a legacy conversation remains
+read-only and does not create a journal as a side effect. Exact-key validators,
+German and English catalogue coverage, React replay, and runtime trajectory
+tests pass. A packed production MV3 E2E restored the third connected turn,
+semantic activity, and final answer after offscreen-worker recreation without
+persisting reasoning summaries, source bodies, or credentials. The complete
+packed production extension suite passes all 42 lifecycle tests.
 
 Live acceptance:
 

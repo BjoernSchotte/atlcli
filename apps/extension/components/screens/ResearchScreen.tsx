@@ -219,6 +219,25 @@ function researchActivityMessage(
   event: Extract<ResearchOneShotEventV1, { kind: "activity" }>,
   t: ReturnType<typeof useT>,
 ): string {
+  const semanticKey = `research.chat.activity.${event.code}.${event.status}`;
+  if ([
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
+  ].includes(event.code)) {
+    return t(semanticKey as Parameters<typeof t>[0]);
+  }
   if (event.code === "model-assessing") {
     if (event.status === "started") return t("research.chat.activity.model-assessing.started");
     if (event.status === "completed") return t("research.chat.activity.model-assessing.completed");
@@ -381,9 +400,10 @@ function timelineStepKind(event: ResearchTimelineEventV1): ResearchTimelineStepK
   if (event.kind === "retrieval") return null;
   if (event.kind === "artifact") return null;
   if (event.kind === "activity") {
-    if (event.code === "answer-drafting" || event.code === "answer-draft-ready") {
-      return "synthesizing";
-    }
+    if (event.code === "strategy" || event.code === "steering" || event.code === "continuation") return "planning";
+    if (event.code === "model-assessing" || event.code === "child-work") return "analyzing";
+    if (event.code === "critique" || event.code === "repair" || event.code === "gap") return "checking";
+    if (event.code === "synthesis" || event.code === "answer-drafting" || event.code === "answer-draft-ready") return "synthesizing";
     return null;
   }
   if (event.kind === "decision") {
@@ -1468,6 +1488,33 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     void port.getChatInteraction(site.origin)
       .then((state) => {
         if (active) publishChatInteraction(state);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [port, site?.origin]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.getChatReplay || !site?.origin) return () => { active = false; };
+    void port.getChatReplay(site.origin)
+      .then((replay) => {
+        if (!active || !replay) return;
+        activeChatConversationIdRef.current = replay.conversationId;
+        setActivity(replay.events.map((event) => ({
+          kind: "activity" as const,
+          seq: event.revision,
+          at: event.at,
+          code: event.code,
+          status: event.status,
+        })));
+        setChatTurns((current) => current.some((turn) => turn.id === `replay:${replay.turnId}`)
+          ? current
+          : [{
+              id: `replay:${replay.turnId}`,
+              content: replay.objective,
+              state: "sent" as const,
+            }, ...current]);
+        if (replay.finalAnswer) setReport(replay.finalAnswer);
       })
       .catch(() => undefined);
     return () => { active = false; };

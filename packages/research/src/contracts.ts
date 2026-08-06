@@ -473,7 +473,25 @@ export interface ResearchProgressV1 {
   maxCalls: number;
 }
 
+export const CHAT_SEMANTIC_ACTIVITY_CODES_V1 = [
+  "strategy",
+  "direct-read",
+  "search",
+  "source-selection",
+  "child-work",
+  "critique",
+  "repair",
+  "synthesis",
+  "gap",
+  "hitl",
+  "steering",
+  "stop",
+  "continuation",
+  "completion",
+] as const;
+
 export const RESEARCH_ACTIVITY_CODES_V1 = [
+  ...CHAT_SEMANTIC_ACTIVITY_CODES_V1,
   "model-assessing",
   "answer-drafting",
   "next-step-ready",
@@ -774,6 +792,14 @@ export interface ResearchPort {
   getChatInteraction?(siteOrigin: string): Promise<
     import("./chat-agent/interaction.js").ChatInteractionStateV1 | null
   >;
+  /** Restore the latest body-free activity and host-validated Chat answer. */
+  getChatReplay?(siteOrigin: string): Promise<{
+    conversationId: string;
+    turnId: string;
+    objective: string;
+    events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+    finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+  } | null>;
   /**
    * Apply one presenter command through the host that owns the active worker
    * or, when no turn is running, directly through the retained workspace.

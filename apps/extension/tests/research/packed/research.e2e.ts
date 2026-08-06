@@ -6087,7 +6087,14 @@ test("resumes three connected Chat turns across MV3 worker recreation and reuses
   expect(sessionFile?.contents).toBeDefined();
   const chatSession = JSON.parse(sessionFile!.contents!) as {
     schema?: string;
-    conversation?: { recentTurns?: Array<{ id?: string; status?: string }> };
+    conversation?: {
+      recentTurns?: Array<{
+        id?: string;
+        status?: string;
+        activityRefs?: string[];
+        finalAnswer?: { messageMarkdown?: string };
+      }>;
+    };
   };
   expect(chatSession.schema).toBe("atlcli.chat-session/v1");
   expect(chatSession.conversation?.recentTurns).toEqual([
@@ -6104,6 +6111,24 @@ test("resumes three connected Chat turns across MV3 worker recreation and reuses
       status: "complete",
     }),
   ]);
+  const activityFile = persisted.workspace?.find((entry) =>
+    entry.sessionId === sessionId && entry.path === "/.atlcli/chat/v1/activity.json"
+  );
+  expect(activityFile?.contents).toBeDefined();
+  const activity = JSON.parse(activityFile!.contents!) as {
+    events?: Array<{ id?: string; turnId?: string; code?: string; status?: string }>;
+  };
+  const lastTurn = chatSession.conversation?.recentTurns?.at(-1);
+  expect(lastTurn?.finalAnswer?.messageMarkdown).toContain("packed");
+  expect(lastTurn?.activityRefs?.length).toBeGreaterThan(0);
+  expect(activity.events?.filter((event) => lastTurn?.activityRefs?.includes(event.id ?? "")))
+    .toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "strategy", status: "completed" }),
+      expect.objectContaining({ code: "completion", status: "completed" }),
+    ]));
+  expect(activityFile!.contents).not.toContain("reasoning-summary");
+  expect(activityFile!.contents).not.toContain("sourceBody");
+  expect(activityFile!.contents).not.toContain(FAKE_KEY);
 });
 
 test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat strategies in packed MV3", async () => {

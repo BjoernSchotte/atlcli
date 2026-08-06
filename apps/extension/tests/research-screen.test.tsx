@@ -829,6 +829,74 @@ describe("portable Research screen", () => {
     expect(dom.find("research-chat").textContent).not.toContain("Queued for the current research session.");
   });
 
+  it("replays durable semantic Chat activity after presenter recreation", async () => {
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      getChatReplay: async () => ({
+        conversationId: "research-session:activity-replay",
+        turnId: "chat-turn:activity-replay",
+        objective: "Summarize the attached page.",
+        events: [
+          {
+            schema: "atlcli.chat-activity-event/v1",
+            id: "chat-activity:chat-turn:activity-replay:1",
+            conversationId: "research-session:activity-replay",
+            turnId: "chat-turn:activity-replay",
+            revision: 1,
+            at: "2026-08-06T10:00:00.000Z",
+            code: "strategy",
+            status: "completed",
+          },
+          {
+            schema: "atlcli.chat-activity-event/v1",
+            id: "chat-activity:chat-turn:activity-replay:2",
+            conversationId: "research-session:activity-replay",
+            turnId: "chat-turn:activity-replay",
+            revision: 2,
+            at: "2026-08-06T10:00:01.000Z",
+            code: "model-assessing",
+            status: "completed",
+          },
+          {
+            schema: "atlcli.chat-activity-event/v1",
+            id: "chat-activity:chat-turn:activity-replay:3",
+            conversationId: "research-session:activity-replay",
+            turnId: "chat-turn:activity-replay",
+            revision: 3,
+            at: "2026-08-06T10:00:02.000Z",
+            code: "synthesis",
+            status: "completed",
+          },
+        ],
+      }),
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.flush(6);
+
+    expect(dom.find("research-chat").textContent).toContain("Summarize the attached page.");
+    const steps = dom.find("research-activity").querySelectorAll("details");
+    expect(steps).toHaveLength(3);
+    expect(steps[0]?.textContent).toContain("approach");
+    expect(steps[1]?.textContent).toContain("read content");
+    expect(steps[2]?.textContent).toContain("answer");
+  });
+
   it("lets a queued follow-up be edited or removed without touching the live turn", async () => {
     let releaseRun: ((value: ResearchReportV1) => void) | undefined;
     const port: ResearchPort = {
