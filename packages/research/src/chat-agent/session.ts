@@ -575,7 +575,7 @@ export function interruptChatTurnV1(input: {
   session: ChatSessionV1;
   expectedSessionRevision: number;
   turnId: string;
-  status: "failed" | "cancelled" | "waiting";
+  status: "failed" | "cancelled";
   at: string;
 }): ChatSessionV1 {
   if (input.expectedSessionRevision !== input.session.revision) {
@@ -603,6 +603,81 @@ export function interruptChatTurnV1(input: {
       ...input.session.operations,
       revision: input.session.operations.revision + 1,
       activeTurnId: undefined,
+    },
+  };
+}
+
+/** Pause one active Chat turn at a durable LangGraph HITL checkpoint. */
+export function pauseChatTurnV1(input: {
+  session: ChatSessionV1;
+  expectedSessionRevision: number;
+  turnId: string;
+  at: string;
+}): ChatSessionV1 {
+  if (input.expectedSessionRevision !== input.session.revision) {
+    throw new ChatContractError("invalid-request", "Chat session revision is stale.");
+  }
+  if (input.session.operations.activeTurnId !== input.turnId) {
+    throw new ChatContractError("invalid-request", "Chat HITL pause does not own the active turn.");
+  }
+  let matched = false;
+  const recentTurns = input.session.conversation.recentTurns.map((turn) => {
+    if (turn.id !== input.turnId || turn.status !== "running") return turn;
+    matched = true;
+    return { ...turn, revision: turn.revision + 1, status: "waiting" as const };
+  });
+  if (!matched) throw new ChatContractError("invalid-request", "Chat turn is not running.");
+  return {
+    ...input.session,
+    revision: input.session.revision + 1,
+    updatedAt: iso(input.at, "Chat HITL pause time"),
+    conversation: { ...input.session.conversation, recentTurns },
+    operations: {
+      ...input.session.operations,
+      revision: input.session.operations.revision + 1,
+    },
+  };
+}
+
+/** Re-open only the same waiting turn before submitting Command(resume=...). */
+export function resumeChatTurnV1(input: {
+  session: ChatSessionV1;
+  expectedSessionRevision: number;
+  turnId: string;
+  objective: string;
+  qualityMode: ChatQualityModeV1;
+  scopeFingerprint: string;
+  at: string;
+}): ChatSessionV1 {
+  if (input.expectedSessionRevision !== input.session.revision) {
+    throw new ChatContractError("invalid-request", "Chat session revision is stale.");
+  }
+  if (input.session.operations.activeTurnId !== input.turnId) {
+    throw new ChatContractError("invalid-request", "Chat HITL resume does not own the active turn.");
+  }
+  let matched = false;
+  const recentTurns = input.session.conversation.recentTurns.map((turn) => {
+    if (turn.id !== input.turnId || turn.status !== "waiting") return turn;
+    if (turn.objective !== input.objective ||
+        turn.qualityMode !== input.qualityMode ||
+        turn.scopeFingerprint !== input.scopeFingerprint) {
+      throw new ChatContractError(
+        "invalid-request",
+        "Chat HITL resume request does not match the waiting turn.",
+      );
+    }
+    matched = true;
+    return { ...turn, revision: turn.revision + 1, status: "running" as const };
+  });
+  if (!matched) throw new ChatContractError("invalid-request", "Chat turn is not waiting for an answer.");
+  return {
+    ...input.session,
+    revision: input.session.revision + 1,
+    updatedAt: iso(input.at, "Chat HITL resume time"),
+    conversation: { ...input.session.conversation, recentTurns },
+    operations: {
+      ...input.session.operations,
+      revision: input.session.operations.revision + 1,
     },
   };
 }
@@ -753,7 +828,7 @@ export function parseChatSessionV1(value: unknown): ChatSessionV1 {
     64,
   );
   const turnIds = new Set<string>();
-  let runningTurns = 0;
+  let activeTurns = 0;
   for (const turn of session.conversation.recentTurns) {
     if (turn.schema !== CHAT_TURN_SCHEMA_V1) {
       throw new ChatContractError("invalid-request", "Stored Chat turn is invalid.");
@@ -783,15 +858,16 @@ export function parseChatSessionV1(value: unknown): ChatSessionV1 {
     );
     uniqueBounded(turn.activityRefs, "Chat activity reference", MAXIMUM_ACTIVITY_REFS_V1, 256);
     uniqueBounded(turn.evidenceRefs, "Chat evidence reference", MAXIMUM_EVIDENCE_REFS_V1, 96);
-    if (turn.status === "running") runningTurns += 1;
+    if (turn.status === "running" || turn.status === "waiting") activeTurns += 1;
   }
   if (
-    runningTurns > 1 ||
+    activeTurns > 1 ||
     (session.operations.activeTurnId !== undefined &&
       !session.conversation.recentTurns.some((turn) =>
-        turn.id === session.operations.activeTurnId && turn.status === "running"
+        turn.id === session.operations.activeTurnId &&
+          (turn.status === "running" || turn.status === "waiting")
       )) ||
-    (runningTurns === 1 && session.operations.activeTurnId === undefined)
+    (activeTurns === 1 && session.operations.activeTurnId === undefined)
   ) {
     throw new ChatContractError("invalid-request", "Stored Chat active turn fence is invalid.");
   }

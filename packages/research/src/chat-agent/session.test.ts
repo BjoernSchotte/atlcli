@@ -15,7 +15,9 @@ import {
   completeChatTurnV1,
   createChatSessionV1,
   parseChatSessionV1,
+  pauseChatTurnV1,
   renderChatTurnContextV1,
+  resumeChatTurnV1,
 } from "./session.js";
 
 const TENANT = "https://example.atlassian.net";
@@ -268,6 +270,55 @@ describe("durable Chat session state", () => {
       abortEpoch: 1,
       steeringRevision: 1,
     });
+  });
+
+  test("retains one waiting HITL turn as active and resumes only that checkpoint", async () => {
+    const initial = session();
+    const fingerprint = await chatScopeFingerprintV1({
+      scope: scope("DEMO"),
+      scopeBindings: [binding("DEMO")],
+    });
+    const running = beginChatTurnV1({
+      session: initial,
+      expectedSessionRevision: initial.revision,
+      turnId: "research-turn:hitl",
+      objective: "Ask only if a material choice remains.",
+      qualityMode: "auto",
+      scopeFingerprint: fingerprint,
+      startedAt: "2026-08-06T08:00:00.000Z",
+    });
+    const waiting = pauseChatTurnV1({
+      session: running,
+      expectedSessionRevision: running.revision,
+      turnId: "research-turn:hitl",
+      at: "2026-08-06T08:00:01.000Z",
+    });
+    expect(parseChatSessionV1(JSON.parse(JSON.stringify(waiting)))).toEqual(waiting);
+    expect(waiting.operations.activeTurnId).toBe("research-turn:hitl");
+    expect(waiting.conversation.recentTurns.at(-1)?.status).toBe("waiting");
+    expect(waiting.conversation.recentTurns.at(-1)?.completedAt).toBeUndefined();
+    expect(() => beginChatTurnV1({
+      session: waiting,
+      expectedSessionRevision: waiting.revision,
+      turnId: "research-turn:other",
+      objective: "Do not overtake the waiting turn.",
+      qualityMode: "quick",
+      scopeFingerprint: fingerprint,
+      startedAt: "2026-08-06T08:00:02.000Z",
+    })).toThrow("already has an active turn");
+
+    const resumed = resumeChatTurnV1({
+      session: waiting,
+      expectedSessionRevision: waiting.revision,
+      turnId: "research-turn:hitl",
+      objective: "Ask only if a material choice remains.",
+      qualityMode: "auto",
+      scopeFingerprint: fingerprint,
+      at: "2026-08-06T08:00:03.000Z",
+    });
+    expect(resumed.conversation.recentTurns.at(-1)?.status).toBe("running");
+    expect(buildChatTurnContextV1(resumed, "research-turn:hitl").current.turnId)
+      .toBe("research-turn:hitl");
   });
 
   test("does not carry obsolete evidence authority across a scope switch", async () => {

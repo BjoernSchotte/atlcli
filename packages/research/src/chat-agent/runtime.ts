@@ -1,6 +1,7 @@
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
 import { AIMessage } from "@langchain/core/messages";
+import { Command } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
 import {
@@ -31,6 +32,7 @@ import {
   type ChatQualityPolicyV1,
 } from "../quality-policy.js";
 import type { ResearchWorkspace } from "../workspace.js";
+import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
 import { finalizeChatAnswerV1 } from "./answer.js";
 import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
@@ -58,11 +60,21 @@ import {
   createChatSessionV1,
   interruptChatTurnV1,
   normalizeChatHostIdentityV1,
+  pauseChatTurnV1,
   parseChatSessionV1,
   renderChatTurnContextV1,
+  resumeChatTurnV1,
   type ChatHostIdentityV1,
   type ChatSessionV1,
 } from "./session.js";
+import {
+  WorkspaceChatInteractionControllerV1,
+  type ChatUserQuestionAnswerV1,
+} from "./interaction.js";
+import {
+  ChatUserQuestionRequiredError,
+  createChatAskUserQuestionToolV1,
+} from "./hitl.js";
 import { createChatDurableSummarizationMiddlewareV1 } from "./summarization.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
 import {
@@ -399,6 +411,8 @@ export interface RunChatAgentInput {
   /** Opaque host-owned principal/cache fences; never credentials or email addresses. */
   hostIdentity: ChatHostIdentityV1;
   qualityPolicy?: ChatQualityPolicyV1;
+  /** Resume exactly this turn's durable askUserQuestion checkpoint. */
+  resumeAnswer?: ChatUserQuestionAnswerV1;
   signal?: AbortSignal;
   now?: () => number;
   onProgress?: (progress: ResearchProgressV1) => void;
@@ -530,6 +544,7 @@ async function bindChatSessionStateV1(input: {
   scope: import("../contracts.js").ResearchScopeV1;
   hostIdentity: ChatHostIdentityV1;
   startedAt: string;
+  resume: boolean;
 }): Promise<{ session: ChatSessionV1; context: string }> {
   const stored = await input.workspace.readFile(CHAT_SESSION_STATE_PATH_V1);
   let session: ChatSessionV1;
@@ -557,6 +572,12 @@ async function bindChatSessionStateV1(input: {
       // A compatible pre-C8 state carried only the conversation ID and quality
       // policy. It contains no evidence or transcript and can be migrated
       // without importing any Research checkpoint semantics.
+      if (input.resume) {
+        throw new ChatContractError(
+          "invalid-request",
+          "A legacy Chat state has no resumable HITL checkpoint.",
+        );
+      }
       normalizeStoredChatSessionStateV1(parsed, input.conversationId);
       session = createChatSessionV1({
         conversationId: input.conversationId,
@@ -566,6 +587,9 @@ async function bindChatSessionStateV1(input: {
       });
     }
   } else {
+    if (input.resume) {
+      throw new ChatContractError("invalid-request", "Chat HITL checkpoint is unavailable.");
+    }
     session = createChatSessionV1({
       conversationId: input.conversationId,
       identity: input.hostIdentity,
@@ -577,15 +601,25 @@ async function bindChatSessionStateV1(input: {
     scope: input.scope,
     scopeBindings: input.scopeBindings,
   });
-  session = beginChatTurnV1({
-    session,
-    expectedSessionRevision: session.revision,
-    turnId: input.turnId,
-    objective: input.objective,
-    qualityMode: input.qualityPolicy.mode,
-    scopeFingerprint,
-    startedAt: input.startedAt,
-  });
+  session = input.resume
+    ? resumeChatTurnV1({
+        session,
+        expectedSessionRevision: session.revision,
+        turnId: input.turnId,
+        objective: input.objective,
+        qualityMode: input.qualityPolicy.mode,
+        scopeFingerprint,
+        at: input.startedAt,
+      })
+    : beginChatTurnV1({
+        session,
+        expectedSessionRevision: session.revision,
+        turnId: input.turnId,
+        objective: input.objective,
+        qualityMode: input.qualityPolicy.mode,
+        scopeFingerprint,
+        startedAt: input.startedAt,
+      });
   await input.workspace.writeFile(
     CHAT_SESSION_PATH_V1,
     JSON.stringify(session),
@@ -652,6 +686,7 @@ export function createKiteweaveChatAgent(
       const scopeBindings = input.brokerRequest.scopeSeeds?.map((seed) => seed.binding) ?? [];
       const evidenceStore = new WorkspaceResearchEvidenceStoreV1(input.workspace);
       let durableChatSession: ChatSessionV1 | undefined;
+      let interactionController: WorkspaceChatInteractionControllerV1 | undefined;
       let durableContext = "";
       let eventSequence = 0;
       const nextEventSequence = (): number => ++eventSequence;
@@ -749,9 +784,24 @@ export function createKiteweaveChatAgent(
           scope: turn.scope,
           hostIdentity,
           startedAt,
+          resume: input.resumeAnswer !== undefined,
         });
         durableChatSession = durable.session;
         durableContext = durable.context;
+        interactionController = await WorkspaceChatInteractionControllerV1.bind({
+          workspace: input.workspace,
+          conversationId: turn.conversationId,
+          binding: durableChatSession.binding,
+          at: startedAt,
+        });
+        if (input.resumeAnswer &&
+            interactionController.snapshot().pendingQuestion?.question.id !==
+              input.resumeAnswer.questionId) {
+          throw new ChatContractError(
+            "invalid-request",
+            "Chat HITL answer does not match the waiting question.",
+          );
+        }
         const retainedEvidenceIds = buildChatTurnContextV1(
           durableChatSession,
           turn.turnId,
@@ -1106,11 +1156,24 @@ export function createKiteweaveChatAgent(
             workspace: input.workspace,
             model,
           });
+        const checkpoint = new ChatTurnWorkspaceCheckpointerV1({
+          conversationId: turn.conversationId,
+          turnId: turn.turnId,
+          workspace: input.workspace,
+        });
+        const askUserQuestion = createChatAskUserQuestionToolV1({
+          turnId: turn.turnId,
+          interactions: interactionController,
+          now,
+          onQuestion: () => emitPhase("waiting-user"),
+          onResolved: () => emitPhase("user-answer-accepted"),
+        });
         const agent = runtime.createDeepAgent({
           name: "kiteweave-chat-agent",
           model,
           backend: new runtime.StateBackend(),
-          tools: [],
+          tools: [askUserQuestion],
+          checkpointer: checkpoint,
           subagents: [],
           systemPrompt: buildChatSystemPromptV1({
             qualityMode: qualityPolicy.mode,
@@ -1186,8 +1249,9 @@ export function createKiteweaveChatAgent(
           completedCalls: 0,
           maxCalls: turn.limits.maxPtcCalls,
         });
-        const run = await agent.streamEvents(
-          {
+        const runInput = input.resumeAnswer
+          ? new Command({ resume: input.resumeAnswer })
+          : {
             messages: [{
               role: "user",
               content: buildChatTurnPromptV1({
@@ -1198,10 +1262,12 @@ export function createKiteweaveChatAgent(
                 durableContext,
               }),
             }],
-          },
+          };
+        const run = await agent.streamEvents(
+          runInput,
           {
             version: "v3",
-            configurable: { thread_id: `chat-turn:${turn.turnId}` },
+            configurable: { thread_id: checkpoint.threadId },
             recursionLimit: chatRecursionLimitV1(turn.limits.maxPtcCalls),
             signal: controller.signal,
           },
@@ -1351,6 +1417,30 @@ export function createKiteweaveChatAgent(
         })();
         const [result] = await Promise.all([run.output, streamPresentation]);
         await modelBudgetWrite;
+        const interrupts = result && typeof result === "object" &&
+          "__interrupt__" in result && Array.isArray(result.__interrupt__)
+          ? result.__interrupt__
+          : [];
+        if (interrupts.length > 0) {
+          const pending = interactionController.snapshot().pendingQuestion;
+          if (!pending || pending.turnId !== turn.turnId) {
+            throw new ChatContractError(
+              "invalid-request",
+              "Chat graph interrupted without a durable user question.",
+            );
+          }
+          durableChatSession = pauseChatTurnV1({
+            session: durableChatSession!,
+            expectedSessionRevision: durableChatSession!.revision,
+            turnId: turn.turnId,
+            at: new Date(now()).toISOString(),
+          });
+          await input.workspace.writeFile(
+            CHAT_SESSION_PATH_V1,
+            JSON.stringify(durableChatSession),
+          );
+          throw new ChatUserQuestionRequiredError(pending.question);
+        }
         controller.signal.throwIfAborted();
         emitPhase("checking");
         if (strategyController && !strategyController.acknowledgedDecision()) {
@@ -1434,6 +1524,9 @@ export function createKiteweaveChatAgent(
         });
         return answer;
       } catch (error) {
+        if (error instanceof ChatUserQuestionRequiredError) {
+          throw error;
+        }
         if (durableChatSession) {
           try {
             durableChatSession = interruptChatTurnV1({

@@ -937,6 +937,18 @@ thinking is intentionally not forced because it is
 incompatible with forced tool choices and is not needed on the native path.
 Durable interruption semantics and the remaining interactive controls stay open.
 
+Core HITL checkpoint proof (2026-08-06): ordinary Chat now owns a dedicated
+workspace-backed LangGraph checkpoint thread, separate from every Deep Research
+checkpoint namespace. The host-neutral interaction state revision-fences the
+FIFO queue, immediate steering, stop request, pending question, and resolved
+answers. A production Chat-root test pauses through the native
+`ask_user_question` tool, recreates the complete DeepAgentsJS host and
+checkpointer, resumes the same tool node with `Command(resume=...)`, invokes the
+model only once after resume, and completes the waiting turn. All five supported
+question shapes validate durably. CLI/MV3 protocol controls and presenter proof
+remain open, so the parent implementation and acceptance boxes are not yet
+checked.
+
 Live acceptance:
 
 - [ ] Demonstrate queue, edit, delete, steering, stop, HITL, and resume in CLI and

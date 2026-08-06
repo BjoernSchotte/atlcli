@@ -23,6 +23,13 @@ import {
   assertChatFinalReviewReserveV1,
   createKiteweaveChatAgent,
 } from "./runtime.js";
+import { ChatUserQuestionRequiredError } from "./hitl.js";
+import {
+  CHAT_INTERACTION_STATE_PATH_V1,
+  CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  type ChatInteractionStateV1,
+} from "./interaction.js";
+import { CHAT_SESSION_PATH_V1, type ChatSessionV1 } from "./session.js";
 import {
   CHAT_STRATEGY_STATE_PATH_V1,
   deriveChatStrategyDecisionV1,
@@ -257,6 +264,69 @@ describe("real QuickJS Chat strategy trajectory", () => {
       (await workspace.readFile(CHAT_STRATEGY_STATE_PATH_V1))!,
     ) as ChatStrategyRecordV1;
     expect(record.decision).toMatchObject({ execution: "direct" });
+  });
+
+  test("pauses and resumes the production Chat root through one durable askUserQuestion checkpoint", async () => {
+    const input = request("Use the approved reporting window.");
+    const workspace = createMemoryResearchWorkspace();
+    const askingModel = fakeModel().respondWithTools([{
+      name: "ask_user_question",
+      args: {
+        responseKind: "single_choice",
+        prompt: "Which approved reporting window should I use?",
+        required: true,
+        options: [
+          { id: "window:seven", label: "Seven days" },
+          { id: "window:thirty", label: "Thirty days" },
+        ],
+      },
+    }]);
+    let required: ChatUserQuestionRequiredError | undefined;
+    try {
+      await runtime.runChatAgent({
+        ...input,
+        model: askingModel,
+        providers,
+        workspace,
+        qualityPolicy: chatQualityPolicyV1("quick"),
+      });
+    } catch (error) {
+      if (!(error instanceof ChatUserQuestionRequiredError)) throw error;
+      required = error;
+    }
+    expect(required?.question.responseKind).toBe("single_choice");
+    expect(askingModel.callCount).toBe(1);
+    const waitingSession = JSON.parse(
+      (await workspace.readFile(CHAT_SESSION_PATH_V1))!,
+    ) as ChatSessionV1;
+    expect(waitingSession.operations.activeTurnId).toBe(input.turn.turnId);
+    expect(waitingSession.conversation.recentTurns.at(-1)?.status).toBe("waiting");
+    const waitingInteraction = JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ) as ChatInteractionStateV1;
+    expect(waitingInteraction.pendingQuestion?.question.id).toBe(required?.question.id);
+
+    const resumedModel = model(false);
+    const answer = await runtime.runChatAgent({
+      ...input,
+      model: resumedModel,
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      resumeAnswer: {
+        schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+        questionId: required!.question.id,
+        value: { kind: "selection", optionIds: ["window:seven"] },
+      },
+    });
+    expect(answer.messageMarkdown).toBe("A bounded synthetic Chat answer.");
+    expect(resumedModel.callCount).toBe(1);
+    const completedInteraction = JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ) as ChatInteractionStateV1;
+    expect(completedInteraction.pendingQuestion).toBeUndefined();
+    expect(completedInteraction.resolvedQuestions.at(-1)?.answer.value)
+      .toEqual({ kind: "selection", optionIds: ["window:seven"] });
   });
 
   test("emits durable user-facing milestones around analysis and answer validation", async () => {

@@ -58,6 +58,7 @@ export * from "./quality-policy.js";
 export * from "./chat-conversation.js";
 export * from "./chat-agent/contracts.js";
 export * from "./chat-agent/session.js";
+export * from "./chat-agent/interaction.js";
 export * from "./chat-agent/answer.js";
 export * from "./chat-agent/prompts.js";
 export * from "./chat-agent/retrieval.js";

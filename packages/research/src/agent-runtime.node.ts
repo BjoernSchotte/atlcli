@@ -40,6 +40,7 @@ export {
   createKiteweaveResearchAgent,
 } from "./agent-runtime-core.js";
 export { createKiteweaveChatAgent } from "./chat-agent/runtime.js";
+export { ChatUserQuestionRequiredError } from "./chat-agent/hitl.js";
 export type {
   RunResearchAgentInput,
   ResearchAgentRuntimeBindings,

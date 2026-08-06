@@ -14,7 +14,10 @@ import {
   researchSupervisorThreadIdForSessionV1,
   researchThreadIdForSessionV1,
 } from "./checkpoint-identity.js";
-import type { ResearchWorkspace } from "./workspace.js";
+import {
+  normalizeResearchWorkspacePath,
+  type ResearchWorkspace,
+} from "./workspace.js";
 
 /**
  * Private, session-local storage for the LangGraph checkpoint journal. These
@@ -213,7 +216,7 @@ function rejectForeignThread(config: RunnableConfig, expectedThreadId: string): 
  * same workspace replays that journal exactly, so SQLite/filesystem and
  * IndexedDB hosts resume the same thread without a Node-only dependency.
  */
-export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
+export class WorkspaceLangGraphCheckpointerV1 extends MemorySaver {
   readonly #threadId: string;
   readonly #workspace: ResearchWorkspace;
   readonly #rootPath: string;
@@ -224,21 +227,19 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
   #writeFailure: unknown;
 
   constructor(
-    sessionId: string,
+    identity: { threadId: string; rootPath: string },
     workspace: ResearchWorkspace,
-    options?: { supervisorPhaseId?: string },
   ) {
     super();
-    this.#threadId = options?.supervisorPhaseId === undefined
-      ? researchThreadIdForSessionV1(sessionId)
-      : researchSupervisorThreadIdForSessionV1(
-          sessionId,
-          options.supervisorPhaseId,
-        );
+    if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,511}$/u.test(identity.threadId)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "LangGraph checkpoint thread identity is invalid.",
+      );
+    }
+    this.#threadId = identity.threadId;
     this.#workspace = workspace;
-    this.#rootPath = options?.supervisorPhaseId === undefined
-      ? ROOT_PATH
-      : `${ROOT_PATH}/supervisor/${options.supervisorPhaseId}`;
+    this.#rootPath = normalizeResearchWorkspacePath(identity.rootPath);
     this.#indexPath = `${this.#rootPath}/index.json`;
     this.#index = { schema: SCHEMA, threadId: this.#threadId, payloadBytes: 0, operations: [] };
   }
@@ -624,5 +625,51 @@ export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
         return this.#failWrite(error);
       }
     });
+  }
+}
+
+/** Durable LangGraph checkpoint journal for one Deep Research session. */
+export class ResearchSessionWorkspaceCheckpointerV1 extends WorkspaceLangGraphCheckpointerV1 {
+  constructor(
+    sessionId: string,
+    workspace: ResearchWorkspace,
+    options?: { supervisorPhaseId?: string },
+  ) {
+    const threadId = options?.supervisorPhaseId === undefined
+      ? researchThreadIdForSessionV1(sessionId)
+      : researchSupervisorThreadIdForSessionV1(sessionId, options.supervisorPhaseId);
+    const rootPath = options?.supervisorPhaseId === undefined
+      ? ROOT_PATH
+      : `${ROOT_PATH}/supervisor/${options.supervisorPhaseId}`;
+    super({ threadId, rootPath }, workspace);
+  }
+}
+
+/**
+ * Durable LangGraph checkpoint journal for exactly one ordinary Chat turn.
+ * Chat deliberately owns a distinct thread and storage subtree; it never
+ * reuses a Deep Research session identity or checkpoint namespace.
+ */
+export class ChatTurnWorkspaceCheckpointerV1 extends WorkspaceLangGraphCheckpointerV1 {
+  readonly threadId: string;
+
+  constructor(input: {
+    conversationId: string;
+    turnId: string;
+    workspace: ResearchWorkspace;
+  }) {
+    const valid = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$/u;
+    if (!valid.test(input.conversationId) || !valid.test(input.turnId)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Chat checkpoint identity is invalid.",
+      );
+    }
+    const threadId = `atlcli:chat:${input.conversationId}:${input.turnId}`;
+    super({
+      threadId,
+      rootPath: `/.atlcli/chat/v1/checkpoints/${input.conversationId}/${input.turnId}`,
+    }, input.workspace);
+    this.threadId = threadId;
   }
 }
