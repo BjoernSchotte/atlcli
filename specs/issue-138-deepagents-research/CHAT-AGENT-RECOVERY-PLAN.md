@@ -1137,6 +1137,16 @@ CLI agent or workflow. The complete cross-adapter scenario matrix, user-language
 activity projection, history/source presentation, and live parity gates remain
 open.
 
+CLI activity projection proof (2026-08-06): every durable semantic Chat activity
+code now has concise English and German terminal copy. Started, completed, and
+failed work uses visible status markers; approved search/read outcomes expose
+only useful counts or source kinds. Raw phase names, tool IDs, call counters,
+model tool lists, eval diagnostics, and provider-internal status lines are no
+longer printed by the ordinary CLI presenter. Provider-approved reasoning
+summaries and provisional answer Markdown still stream incrementally on their
+separate presentation channel. Mapping coverage and a real CLI command path are
+regression-tested; the installed-MV3 human-language review remains a live gate.
+
 Live acceptance:
 
 - [ ] The same read-only question and context produce equivalent source choice,

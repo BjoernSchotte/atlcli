@@ -301,8 +301,15 @@ function cliHarness(
         status: "completed",
       });
       input.onEvent({
-        kind: "capability",
+        kind: "activity",
         seq: 1,
+        at: "2026-07-31T12:00:00.000Z",
+        code: "search",
+        status: "started",
+      });
+      input.onEvent({
+        kind: "capability",
+        seq: 2,
         at: "2026-07-31T12:00:00.000Z",
         callId: "wiki.search:1",
         toolId: "wiki.search",
@@ -1121,8 +1128,12 @@ describe("research CLI one-shot contract", () => {
     expect(harness.runInputs).toHaveLength(0);
     expect(harness.stderr.join("")).not.toContain("subagent=");
     expect(harness.stderr.join("")).toContain(
-      "[chat] reasoning-summary Checking the selected evidence.\n",
+      "[chat] Kiteweave: Checking the selected evidence.\n",
     );
+    expect(harness.stderr.join("")).toContain(
+      "[chat] ◇ Searching the approved scope\n",
+    );
+    expect(harness.stderr.join("")).not.toContain("tool=wiki.search");
   });
 
   test("continues ordinary CLI chat from the same durable conversation", async () => {

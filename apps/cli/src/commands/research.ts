@@ -98,6 +98,10 @@ import {
 } from "@atlcli/research/node";
 import { createCliChatAgentPortV1 } from "./chat-agent-port.js";
 import { handleCliChatControlLineV1 } from "./chat-controls.js";
+import {
+  formatCliChatActivityV1,
+  formatCliChatCapabilityDetailV1,
+} from "./chat-activity.js";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
   composeResearchGraphV1,
@@ -3269,8 +3273,7 @@ async function runDirectChatCliConversation(input: {
             ? { resumeCheckpoint: execution.resumeCheckpoint }
             : {}),
           signal: execution.signal,
-          writeDiagnostic: (message) =>
-            input.dependencies.writeStderr(`[chat] ${message}\n`),
+          writeDiagnostic: () => {},
           onEvent: execution.stream?.onEvent ?? (() => {}),
           onChatPresentation: execution.stream?.onPresentation ?? (() => {}),
           onInteractionReady: execution.onInteractionReady,
@@ -3310,26 +3313,23 @@ async function runDirectChatCliConversation(input: {
         checkpoint = session;
       },
       onEvent(event: ResearchOneShotEventV1) {
-        if (event.kind === "phase") {
-          input.dependencies.writeStderr(`[chat] phase=${event.phase}\n`);
+        const locale = input.request.reportLanguage === "de" ? "de" : "en";
+        if (event.kind === "activity") {
+          input.dependencies.writeStderr(
+            `[chat] ${formatCliChatActivityV1(event, locale)}\n`,
+          );
         } else if (event.kind === "capability") {
-          input.dependencies.writeStderr(
-            `[chat] tool=${event.toolId} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}\n`,
-          );
-        } else if (event.kind === "progress") {
-          input.dependencies.writeStderr(
-            `[chat] calls=${event.completed}/${event.maximum}\n`,
-          );
-        } else if (event.kind === "decision" &&
-            event.decisionId.startsWith("chat-strategy:")) {
-          input.dependencies.writeStderr(
-            `[chat] strategy=${event.reasonCode}\n`,
-          );
+          const detail = formatCliChatCapabilityDetailV1(event, locale);
+          if (detail) input.dependencies.writeStderr(`[chat]   ${detail}\n`);
         }
       },
       onPresentation(event: ChatPresentationStreamEventV1) {
         if (event.status === "started") {
-          input.dependencies.writeStderr(`[chat] ${event.channel} `);
+          input.dependencies.writeStderr(
+            event.channel === "reasoning-summary"
+              ? "[chat] Kiteweave: "
+              : "[chat] Answer: ",
+          );
         } else if (event.status === "delta") {
           input.dependencies.writeStderr(event.delta ?? "");
         } else {
