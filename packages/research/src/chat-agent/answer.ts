@@ -160,6 +160,18 @@ function markdownHeadingV1(line: string): { level: number; text: string } | unde
   return match ? { level: match[1]!.length, text: match[2]! } : undefined;
 }
 
+function removeEmptyMarkdownHeadingsV1(markdown: string): string {
+  const lines = markdown.split("\n");
+  return lines.filter((line, index) => {
+    const heading = markdownHeadingV1(line);
+    if (!heading) return true;
+    const next = lines.slice(index + 1).find((candidate) => candidate.trim().length > 0);
+    if (!next) return false;
+    const nextHeading = markdownHeadingV1(next);
+    return !nextHeading || nextHeading.level > heading.level;
+  }).join("\n").replace(/\n{3,}/gu, "\n\n").trim();
+}
+
 function removeUnsupportedMissingProductClaimsV1(
   markdown: string,
   missingProducts: readonly ("jira" | "confluence")[],
@@ -243,18 +255,31 @@ function removeUncitedJiraKeyLinesV1(
   sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
 ): { markdown: string; removedLines: number } {
   let removedLines = 0;
-  const lines = markdown.split("\n").filter((line) => {
+  const inputLines = markdown.split("\n");
+  const lines = inputLines.flatMap((line, index): string[] => {
     const issueKeys = [...line.matchAll(JIRA_ISSUE_KEY_V1)].map((match) => match[0]!);
-    if (issueKeys.length === 0) return true;
-    const supported = issueKeys.every((issueKey) =>
-      [...sources.values()].some((source) =>
-        source.product === "jira" &&
-        source.issueKey === issueKey &&
-        lineHasSourcePlaceholderV1(line, source.id)
+    if (issueKeys.length === 0) return [line];
+    const issueSources = issueKeys.map((issueKey) =>
+      [...sources.values()].find((source) =>
+        source.product === "jira" && source.issueKey === issueKey
       )
     );
-    if (!supported) removedLines += 1;
-    return supported;
+    if (issueSources.some((source) => source === undefined)) {
+      removedLines += 1;
+      return [];
+    }
+    const missingSourceIds = [...new Set(issueSources.flatMap((source) =>
+      source && !lineHasSourcePlaceholderV1(line, source.id) ? [source.id] : []
+    ))];
+    if (missingSourceIds.length === 0) return [line];
+    const isHeading = /^#{1,6}\s+/u.test(line.trim());
+    const isTableHeader = line.includes("|") &&
+      /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/u.test(inputLines[index + 1] ?? "");
+    if (isHeading || isTableHeader) return [line];
+    const placeholders = missingSourceIds.map((sourceId) => `[[source:${sourceId}]]`).join(" ");
+    return [line.trimEnd().endsWith("|")
+      ? line.replace(/\|\s*$/u, ` ${placeholders} |`)
+      : `${line} ${placeholders}`];
   });
   return {
     markdown: lines.join("\n").replace(/\n{3,}/gu, "\n\n").trim(),
@@ -383,7 +408,9 @@ export function finalizeChatAnswerV1(input: {
   }
   const jiraClaimProjection = removeUncitedJiraKeyLinesV1(
     messageMarkdown,
-    sourceById,
+    new Map([...sourceById].filter(([sourceId]) =>
+      detailedIds.has(sourceId) && !rejectedIds.has(sourceId)
+    )),
   );
   messageMarkdown = jiraClaimProjection.markdown;
   const documentationAbsenceProjection = removeUncitedDocumentationAbsenceLinesV1(
@@ -593,6 +620,7 @@ export function finalizeChatAnswerV1(input: {
     messageMarkdown,
     missingProducts,
   );
+  messageMarkdown = removeEmptyMarkdownHeadingsV1(messageMarkdown);
   const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
   if (messageMarkdown.replace(/^#+\s.*$/gmu, "").trim().length === 0) {
     messageMarkdown = german

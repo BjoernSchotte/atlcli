@@ -417,7 +417,7 @@ describe("Chat answer contract", () => {
     })]);
   });
 
-  test("removes Jira-key claims that lack a same-line detailed citation", () => {
+  test("cites known Jira-key lines and removes keys without detail evidence", () => {
     const jiraSource = {
       id: "jira:DEMO-1",
       product: "jira" as const,
@@ -429,7 +429,11 @@ describe("Chat answer contract", () => {
     const answer = finalizeChatAnswerV1({
       draft: {
         messageMarkdown: [
-          "DEMO-1 belegt die Umsetzung. [[source:jira:DEMO-1]]",
+          "| Artefakt | Rolle |",
+          "|---|---|",
+          "| DEMO-1 | Umsetzung |",
+          "",
+          "DEMO-1 belegt die Umsetzung.",
           "DEMO-2 scheint ebenfalls zu passen.",
         ].join("\n"),
         citationSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
@@ -460,10 +464,38 @@ describe("Chat answer contract", () => {
       locale: "de",
     });
     expect(answer.messageMarkdown).toContain("DEMO-1");
+    expect(answer.messageMarkdown).toContain("| Artefakt | Rolle |");
+    expect(answer.messageMarkdown).toContain("|---|---|");
+    expect(answer.messageMarkdown).toContain("[Detailed issue]");
     expect(answer.messageMarkdown).not.toContain("DEMO-2");
     expect(answer.gaps).toEqual([expect.objectContaining({
       code: "no-detail-evidence",
     })]);
+  });
+
+  test("removes an empty answer heading before the next peer section", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "## Findings",
+          "Supported detail. [[source:wiki:1001]]",
+          "",
+          "### Evidence gaps",
+          "",
+          "### Limits",
+          "The bounded source does not establish complete space coverage. [[source:wiki:1001]]",
+        ].join("\n"),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).not.toContain("### Evidence gaps");
+    expect(answer.messageMarkdown).toContain("### Limits");
   });
 
   test("allows a gap to identify a discovered source without treating it as citation evidence", () => {
