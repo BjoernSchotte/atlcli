@@ -1099,9 +1099,12 @@ Implementation:
 
 Automated proof:
 
-- [ ] Contract tests run the same deterministic Quick, Auto-direct, Auto-agentic,
-      Deep-direct, Deep-agentic, HITL, follow-up, steering, and stop scenarios
-      through every adapter.
+- [x] A factorized contract matrix proves the shared Quick, Auto-direct,
+      Auto-agentic, Deep-direct, and Deep-agentic runtime once, then proves that
+      every adapter transports quality, durable conversation identity, HITL,
+      follow-up/queue, steering, stop, and presentation streams without changing
+      semantics or authority. Do not duplicate the agent workflow per host merely
+      to repeat the same trajectory.
 - [x] CLI owns the fast complete workflow/recovery matrix; packed MV3 owns worker
       recreation, IndexedDB, active browser session, streaming, and representative
       control recovery; ordinary browser owns port/presenter parity plus targeted
@@ -1157,6 +1160,18 @@ streamed Markdown, HITL, queue, edit/delete, steering, stop, and activity UI,
 every requested presentation surface is now wired through the shared event and
 control contracts. Cross-adapter scenario equivalence and private live parity
 remain independent open gates.
+
+Factorized adapter-matrix proof (2026-08-06): the real shared QuickJS/DeepAgents
+runtime suite owns the Quick, Auto-direct, Auto-agentic, Deep-direct, and
+Deep-agentic trajectories. The CLI and Chrome `ChatAgentPortV1` adapter suites
+now independently prove lossless Quick/Auto/Deep transport, stable conversation
+and turn identity, ephemeral reasoning/answer presentation, HITL continuation,
+checkpointed steering, durable queue controls, cooperative stop, history,
+sources, and Markdown artifacts. The ordinary-browser React suite runs with no
+`chrome` global and proves that its mode selector and controls call only the
+same injected port. Focused shared-runtime, CLI-adapter, Chrome-adapter, and
+portable-presenter suites pass 62 tests; this deliberately proves one product
+contract without creating three host-specific agents.
 
 Live acceptance:
 

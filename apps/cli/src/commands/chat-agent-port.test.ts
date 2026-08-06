@@ -77,6 +77,48 @@ async function fixture() {
 }
 
 describe("CLI ChatAgentPortV1 adapter", () => {
+  test("forwards every provider-neutral quality mode through the same durable conversation", async () => {
+    const { store, workspace } = await fixture();
+    const observed: Array<{ mode: string; conversationId: string; turnId: string }> = [];
+    let turnSequence = 0;
+    const port = createCliChatAgentPortV1({
+      store,
+      workspace,
+      conversationId,
+      siteOrigin,
+      hostIdentity: identity,
+      createTurnId: () => `research-turn:cli-quality-${++turnSequence}`,
+      async execute(input) {
+        observed.push({
+          mode: input.qualityPolicy.mode,
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+        });
+        return {
+          ...answer,
+          strategy: {
+            ...answer.strategy,
+            qualityMode: input.qualityPolicy.mode,
+          },
+        };
+      },
+    });
+
+    for (const mode of ["quick", "auto", "deep"] as const) {
+      await port.startTurn({
+        request,
+        conversationId,
+        qualityPolicy: chatQualityPolicyForModeV1(mode),
+      });
+    }
+
+    expect(observed).toEqual([
+      { mode: "quick", conversationId, turnId: "research-turn:cli-quality-1" },
+      { mode: "auto", conversationId, turnId: "research-turn:cli-quality-2" },
+      { mode: "deep", conversationId, turnId: "research-turn:cli-quality-3" },
+    ]);
+  });
+
   test("projects the same history, replay, artifact, sources and controls contract", async () => {
     const { store, workspace } = await fixture();
     const port = createCliChatAgentPortV1({
