@@ -1,9 +1,9 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import {
-  createMiddleware,
   providerStrategy,
   toolStrategy,
+  createMiddleware,
   type AgentMiddleware,
 } from "langchain";
 import {
@@ -63,6 +63,7 @@ import {
   type ResearchModelBudgetStateV1,
   type ResearchRunBudget,
 } from "./budget.js";
+import { createResearchModelBudgetMiddlewareV1 } from "./model-budget-middleware.js";
 import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import {
   createResearchScopeDiscoveryV1,
@@ -3080,46 +3081,6 @@ function createAnthropicSubagentModels(
   };
 }
 
-function createResearchModelBudgetMiddleware(
-  budget: ResearchModelRunBudget,
-  options: {
-    name: string;
-    maxOutputTokens: number;
-    onSnapshot: (
-      snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>,
-      state: ResearchModelBudgetStateV1,
-    ) => Promise<void>;
-  },
-): AgentMiddleware {
-  return createMiddleware({
-    name: options.name,
-    wrapModelCall: async (request, handler) => {
-      const reservation = budget.reserve(request, options.maxOutputTokens);
-      await options.onSnapshot(budget.snapshot(), budget.state());
-      let settled = false;
-      try {
-        const response = await handler(request);
-        const snapshot = budget.settle(reservation, response);
-        await options.onSnapshot(snapshot, budget.state());
-        settled = true;
-        if (budget.exceedsLimits()) {
-          throw new ResearchContractError(
-            "limit-exceeded",
-            "The model session budget was exhausted by the provider response.",
-          );
-        }
-        return response;
-      } catch (error) {
-        // Retain an unsuccessful reservation: the provider may have received
-        // the request, and a subsequent retry must not create unbounded cost.
-        if (!settled)
-          await options.onSnapshot(budget.snapshot(), budget.state());
-        throw error;
-      }
-    },
-  });
-}
-
 function providerHttpStatus(error: unknown): number | undefined {
   if (error && typeof error === "object") {
     const status = (error as { status?: unknown }).status;
@@ -3999,7 +3960,7 @@ async function runResearchAgentWithBindings(
     });
   };
   const supervisorModelBudgetMiddleware = modelRunBudget
-    ? createResearchModelBudgetMiddleware(modelRunBudget, {
+    ? createResearchModelBudgetMiddlewareV1(modelRunBudget, {
         name: "ResearchSupervisorModelBudgetMiddleware",
         maxOutputTokens: input.request.limits.maxModelOutputTokens,
         onSnapshot: emitModelBudget,
@@ -4384,7 +4345,7 @@ async function runResearchAgentWithBindings(
         ...(modelRunBudget
           ? {
               createModelBudgetMiddleware: (node) =>
-                createResearchModelBudgetMiddleware(modelRunBudget, {
+                createResearchModelBudgetMiddlewareV1(modelRunBudget, {
                   name: `ResearchModelBudgetMiddleware:${node.id}`,
                   maxOutputTokens:
                     RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1[node.roleId],

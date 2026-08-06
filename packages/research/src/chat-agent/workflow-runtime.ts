@@ -1,12 +1,16 @@
 import { createCodeInterpreterMiddleware, toCamelCase } from "@langchain/quickjs";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
-import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
+import { createMiddleware, providerStrategy, toolStrategy, type AgentMiddleware } from "langchain";
 import { z } from "zod/v4";
 import type { SubAgent } from "deepagents/browser";
 import type { ResearchPtcDiagnosticV1 } from "../agent-tools.js";
 import type { ResearchCapabilityBroker } from "../broker.js";
-import type { ResearchRunBudget } from "../budget.js";
+import type {
+  ResearchModelBudgetStateV1,
+  ResearchModelRunBudget,
+  ResearchRunBudget,
+} from "../budget.js";
 import {
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "../capability-contracts.js";
@@ -19,6 +23,7 @@ import {
   type ResearchDispatchDiagnosticV1,
 } from "../dispatch-adapter.js";
 import type { ResearchWorkspace } from "../workspace.js";
+import { createResearchModelBudgetMiddlewareV1 } from "../model-budget-middleware.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V1,
   ChatContractError,
@@ -29,15 +34,28 @@ import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 import {
   CHAT_SUBAGENT_PROFILES_V1,
+  chatSubagentProfileByIdV1,
+  createChatWorkflowDispatchV1,
   createChatWorkflowProposalControllerV1,
   parseChatSubagentResultV1,
   type AcceptedChatWorkflowV1,
+  type ChatAnalysisPacketV1,
+  type ChatCritiquePacketV1,
   type ChatEvidencePacketV1,
   type ChatSubagentProfileIdV1,
   type ChatSubagentResultV1,
   type ChatWorkflowAdmissionResponseV1,
+  type ChatWorkflowDispatchV1,
   type ChatWorkflowProposalV1,
+  type ChatWorkflowTaskProposalV1,
 } from "./workflow.js";
+import {
+  assessChatGroundednessBeforeCriticV1,
+  createChatQualityDispositionV1,
+  persistChatQualityArtifactsV1,
+  type ChatGroundednessAssessmentV1,
+  type ChatQualityDispositionV1,
+} from "./quality.js";
 
 export const CHAT_WORKFLOW_STATE_PATH_V1 =
   "/.atlcli/chat/v1/workflow.json" as const;
@@ -57,6 +75,21 @@ export interface ChatWorkflowStateV1 {
   accepted?: ChatWorkflowAdmissionResponseV1;
   taskStatuses: Record<string, ChatWorkflowTaskStatusV1>;
   acceptedResults: Record<string, ChatSubagentResultV1>;
+}
+
+export interface ChatQualityReviewResponseV1 {
+  schema: "atlcli.chat-quality-review/v1";
+  repairRequired: boolean;
+  repairAdmitted: boolean;
+  synthesizerTaskId: string;
+  requiredGapCodes: string[];
+  rejectedSourceIds: string[];
+  dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+export interface ChatRepairAdmissionDecisionV1 {
+  admit: boolean;
+  reason?: "deadline-reserve" | "model-budget-reserve";
 }
 
 export interface ChatWorkflowRuntimeBindingsV1 {
@@ -311,6 +344,8 @@ function compileChatSubagentsV1(input: {
   onPtcDiagnostic?: (profileId: ChatSubagentProfileIdV1, diagnostic: ResearchPtcDiagnosticV1) => void;
   onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
   retrievalLedger?: ChatCandidateLedgerControllerV1;
+  modelBudget: ResearchModelRunBudget;
+  onModelBudgetSnapshot: (state: ResearchModelBudgetStateV1) => Promise<void>;
 }): SubAgent[] {
   return CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
     const grantedToolNames = profile.grantedCapabilityIds
@@ -441,6 +476,21 @@ function compileChatSubagentsV1(input: {
         }
       },
     });
+    const maxModelOutputTokens = Math.min(
+      input.limits.maxModelOutputTokens,
+      profile.modelPreference === "fast" ? 2_048 : profile.modelPreference === "balanced" ? 4_096 : 5_000,
+    );
+    const modelBudgetMiddleware: AgentMiddleware = createResearchModelBudgetMiddlewareV1(
+      input.modelBudget,
+      {
+        name: `ChatModelBudgetMiddleware:${profile.id}`,
+        maxOutputTokens: maxModelOutputTokens,
+        ...(profile.id === "chat-synthesizer"
+          ? {}
+          : { retain: { calls: 1, inputTokens: 4_096, outputTokens: 5_000 } }),
+        onSnapshot: async (_snapshot, state) => input.onModelBudgetSnapshot(state),
+      },
+    );
     return {
       name: profile.subagentType,
       description: profile.description,
@@ -456,7 +506,7 @@ function compileChatSubagentsV1(input: {
         queryVariantMode: input.retrievalLedger !== undefined,
       }),
       tools: [],
-      middleware: ptc.length === 0
+      middleware: [modelBudgetMiddleware, ...(ptc.length === 0
         ? []
         : [evalGuard, createCodeInterpreterMiddleware({
             ptc,
@@ -478,7 +528,7 @@ function compileChatSubagentsV1(input: {
               profile.maxResultBytes,
             ),
             captureConsole: false,
-          })],
+          })])],
     };
   });
 }
@@ -497,10 +547,14 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   ) => Readonly<Record<string, unknown>>;
   strategy: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
+  modelBudget: ResearchModelRunBudget;
+  onModelBudgetSnapshot: (state: ResearchModelBudgetStateV1) => Promise<void>;
   broker: ResearchCapabilityBroker;
   workspace: ResearchWorkspace;
   conversationId: string;
   turnId: string;
+  question: string;
+  siteOrigin: string;
   taskContext: string | (() => string);
   limits: ResearchLimitsV1;
   exactContextProducts: readonly ResearchProduct[];
@@ -510,7 +564,11 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   signal: AbortSignal;
   beforeProposal?: () => void;
   beforeWorkflowAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+  beforeCritic?: () => void | Promise<void>;
   beforeSynthesis?: () => void | Promise<void>;
+  decideRepairAdmission?: (
+    disposition: ChatQualityDispositionV1,
+  ) => ChatRepairAdmissionDecisionV1;
   now?: () => number;
   onPtcDiagnostic?: (profileId: ChatSubagentProfileIdV1, diagnostic: ResearchPtcDiagnosticV1) => void;
   onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
@@ -520,9 +578,11 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
 }): {
   middleware: ReturnType<ChatWorkflowRuntimeBindingsV1["createSubAgentMiddleware"]>;
   proposalTool: DynamicStructuredTool;
+  qualityReviewTool: DynamicStructuredTool;
   acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
   acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
   finalDraft(): ChatAgentDraftV1 | undefined;
+  qualityDisposition(): ChatQualityDispositionV1 | undefined;
   assertComplete(): ChatAgentDraftV1;
   dispatchSnapshot(): ReturnType<AgenticDispatchInterceptionAdapter["snapshot"]>;
 } {
@@ -551,7 +611,45 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   };
   let finalDraft: ChatAgentDraftV1 | undefined;
   let acceptedWorkflow: AcceptedChatWorkflowV1 | undefined;
+  let groundednessAssessment: ChatGroundednessAssessmentV1 | undefined;
+  let qualityDisposition: ChatQualityDispositionV1 | undefined;
+  let qualityReviewStarted = false;
   const profileByTaskId = new Map<string, ChatSubagentProfileIdV1>();
+
+  const referencedSourceIds = (): string[] => [...new Set(
+    Object.values(state.acceptedResults).flatMap(sourceIdsFromResult),
+  )].sort((left, right) => left.localeCompare(right, "en-US"));
+
+  const ensureGroundednessAssessment = async (): Promise<ChatGroundednessAssessmentV1> => {
+    if (groundednessAssessment) return groundednessAssessment;
+    await input.beforeCritic?.();
+    const retrieval = input.retrievalLedger?.assessment();
+    if (!retrieval) {
+      throw new ChatContractError(
+        "invalid-report",
+        "Agentic Chat quality review requires the host retrieval assessment.",
+      );
+    }
+    const contradictionCount = Object.values(state.acceptedResults)
+      .filter((result): result is ChatAnalysisPacketV1 => "contradictions" in result)
+      .reduce((total, result) => total + result.contradictions.length, 0);
+    groundednessAssessment = assessChatGroundednessBeforeCriticV1({
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      question: input.question,
+      siteOrigin: input.siteOrigin,
+      evidence: input.broker.detailEvidenceLedger(),
+      referencedSourceIds: referencedSourceIds(),
+      retrieval,
+      contradictionCount,
+      now,
+    });
+    await persistChatQualityArtifactsV1({
+      workspace: input.workspace,
+      assessment: groundednessAssessment,
+    });
+    return groundednessAssessment;
+  };
   const subagents = compileChatSubagentsV1({
     model: input.model,
     modelForPreference: input.modelForPreference,
@@ -565,6 +663,8 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     onPtcDiagnostic: input.onPtcDiagnostic,
     ...(input.onEvalDiagnostic ? { onEvalDiagnostic: input.onEvalDiagnostic } : {}),
     ...(input.retrievalLedger ? { retrievalLedger: input.retrievalLedger } : {}),
+    modelBudget: input.modelBudget,
+    onModelBudgetSnapshot: input.onModelBudgetSnapshot,
   });
   const upstream = input.runtime.createSubAgentMiddleware({
     defaultModel: input.model,
@@ -660,6 +760,19 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       : undefined,
     beforeInvoke: async ({ taskId }) => {
       const profileId = profileByTaskId.get(taskId);
+      if (profileId === "answer-critic") await ensureGroundednessAssessment();
+      if (profileId === "answer-repairer" && !qualityDisposition?.repairAdmitted) {
+        throw new ChatContractError(
+          "invalid-request",
+          "A Chat answer repair can run only after host quality admission.",
+        );
+      }
+      if (profileId === "chat-synthesizer" && !qualityDisposition?.synthesisAllowed) {
+        throw new ChatContractError(
+          "invalid-request",
+          "Chat synthesis is fenced until the host quality review completes.",
+        );
+      }
       if (profileId === "chat-synthesizer") await input.beforeSynthesis?.();
       state.taskStatuses[taskId] = "started";
       await persistState();
@@ -709,16 +822,168 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     beforeProposal: input.beforeProposal,
     beforeAdmission: input.beforeWorkflowAdmission,
     onAccepted: async (workflow, response) => {
-      dispatch.replaceAdmissions(workflow.admissions);
+      dispatch.replaceAdmissions(workflow.admissions.filter((admission) =>
+        admission.taskId !== workflow.synthesizerTaskId
+      ));
       dispatch.setMaxConcurrency(workflow.compiled.maxConcurrency);
       acceptedWorkflow = workflow;
       for (const task of workflow.tasks) {
         profileByTaskId.set(task.taskId, task.profileId);
-        state.taskStatuses[task.taskId] = "admitted";
+        if (task.taskId !== workflow.synthesizerTaskId) {
+          state.taskStatuses[task.taskId] = "admitted";
+        }
       }
       state.accepted = structuredClone(response);
       await persistState();
     },
+  });
+
+  const qualityReviewTool = tool(async () => {
+    if (qualityReviewStarted || qualityDisposition) {
+      throw new ChatContractError(
+        "invalid-request",
+        "The Chat quality review may run exactly once per agentic turn.",
+      );
+    }
+    qualityReviewStarted = true;
+    input.budget.beginPtc({ schema: "atlcli.chat-quality-review-request/v1" });
+    const workflow = acceptedWorkflow;
+    if (!workflow) {
+      throw new ChatContractError(
+        "invalid-request",
+        "The Chat quality review requires one accepted workflow.",
+      );
+    }
+    const snapshot = dispatch.snapshot();
+    const preSynthesisTasks = workflow.tasks.filter((task) =>
+      task.taskId !== workflow.synthesizerTaskId
+    );
+    if (preSynthesisTasks.some((task) => snapshot.taskStatuses[task.taskId] !== "completed")) {
+      throw new ChatContractError(
+        "invalid-request",
+        "The Chat quality review requires every provisional and critic task to be complete.",
+      );
+    }
+    const assessment = await ensureGroundednessAssessment();
+    const criticTask = workflow.tasks.find((task) => task.profileId === "answer-critic");
+    const critic = criticTask
+      ? state.acceptedResults[criticTask.taskId]
+      : undefined;
+    if (!critic || !("defects" in critic)) {
+      throw new ChatContractError(
+        "invalid-report",
+        "The Chat quality review requires one accepted typed critic packet.",
+      );
+    }
+    const criticPacket = critic as ChatCritiquePacketV1;
+    const preliminary = createChatQualityDispositionV1({
+      assessment,
+      criticDefects: criticPacket.defects,
+      repairAdmitted: false,
+      now,
+    });
+    const repairDecision = preliminary.repairRequired
+      ? input.decideRepairAdmission?.(preliminary) ?? { admit: true }
+      : { admit: false };
+    if (!repairDecision.admit && preliminary.repairRequired && !repairDecision.reason) {
+      throw new ChatContractError(
+        "invalid-request",
+        "A skipped Chat repair requires a host reserve reason.",
+      );
+    }
+    qualityDisposition = createChatQualityDispositionV1({
+      assessment,
+      criticDefects: criticPacket.defects,
+      repairAdmitted: repairDecision.admit,
+      ...(repairDecision.reason ? { repairSkippedReason: repairDecision.reason } : {}),
+      now,
+    });
+    await persistChatQualityArtifactsV1({
+      workspace: input.workspace,
+      assessment,
+      disposition: qualityDisposition,
+    });
+
+    const allInitialDependencyIds = preSynthesisTasks.map((task) => task.taskId);
+    const appendedTasks: ChatWorkflowTaskProposalV1[] = [];
+    if (qualityDisposition.repairAdmitted) {
+      const repairTask: ChatWorkflowTaskProposalV1 = {
+        taskId: `task:answer-repair:${input.turnId.replace(/[^A-Za-z0-9._-]/gu, "-").slice(-80)}`,
+        profileId: "answer-repairer",
+        objective: [
+          "Repair the provisional answer only for the host-admitted quality defects.",
+          JSON.stringify({
+            repairDefectIds: qualityDisposition.repairDefectIds,
+            requiredGapCodes: qualityDisposition.requiredGapCodes,
+            rejectedSourceIds: qualityDisposition.rejectedSourceIds,
+          }),
+        ].join("\n"),
+        dependencyTaskIds: allInitialDependencyIds,
+      };
+      appendedTasks.push(repairTask);
+    }
+    const originalSynth = workflow.tasks.find((task) =>
+      task.taskId === workflow.synthesizerTaskId
+    );
+    if (!originalSynth) {
+      throw new ChatContractError("invalid-report", "The Chat synthesizer definition is missing.");
+    }
+    const synthTask: ChatWorkflowTaskProposalV1 = {
+      ...originalSynth,
+      objective: [
+        originalSynth.objective,
+        "Host quality disposition:",
+        JSON.stringify({
+          requiredGapCodes: qualityDisposition.requiredGapCodes,
+          rejectedSourceIds: qualityDisposition.rejectedSourceIds,
+          repairAdmitted: qualityDisposition.repairAdmitted,
+          repairSkippedReason: qualityDisposition.repairSkippedReason,
+        }),
+      ].join("\n\n"),
+      dependencyTaskIds: [
+        ...allInitialDependencyIds,
+        ...appendedTasks.map((task) => task.taskId),
+      ],
+    };
+    appendedTasks.push(synthTask);
+    const admissions = appendedTasks.map((task) => {
+      const selected = chatSubagentProfileByIdV1(task.profileId);
+      profileByTaskId.set(task.taskId, task.profileId);
+      state.taskStatuses[task.taskId] = "admitted";
+      return {
+        taskId: task.taskId,
+        subagentType: selected.subagentType,
+        objective: task.objective,
+        dependsOnTaskIds: Object.freeze([...task.dependencyTaskIds]),
+        grantedCapabilityIds: selected.grantedCapabilityIds,
+        responseSchema: selected.responseSchema,
+        maxResultBytes: selected.maxResultBytes,
+        maxDurationMs: selected.maxDurationMs,
+      };
+    });
+    dispatch.appendAdmissions(admissions);
+    await persistState();
+    const response: ChatQualityReviewResponseV1 = {
+      schema: "atlcli.chat-quality-review/v1",
+      repairRequired: qualityDisposition.repairRequired,
+      repairAdmitted: qualityDisposition.repairAdmitted,
+      synthesizerTaskId: synthTask.taskId,
+      requiredGapCodes: [...qualityDisposition.requiredGapCodes],
+      rejectedSourceIds: [...qualityDisposition.rejectedSourceIds],
+      dispatches: Object.freeze(appendedTasks.map((task) =>
+        createChatWorkflowDispatchV1({
+          task,
+          profile: chatSubagentProfileByIdV1(task.profileId),
+        })
+      )),
+    };
+    input.budget.completePtc(response);
+    return JSON.stringify(response);
+  }, {
+    name: "chat_quality_review",
+    description:
+      "Run the mandatory host quality checkpoint exactly once after the provisional answer and independent critic complete. The host returns an optional single repair dispatch followed by the sole final synthesizer dispatch.",
+    schema: z.object({}).strict(),
   });
 
   const boundedTask = tool(
@@ -739,9 +1004,13 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   return {
     middleware,
     proposalTool: proposal.tool,
+    qualityReviewTool,
     acceptedWorkflow: proposal.acceptedWorkflow,
     acceptedResponse: proposal.acceptedResponse,
     finalDraft: () => finalDraft,
+    qualityDisposition: () => qualityDisposition
+      ? structuredClone(qualityDisposition)
+      : undefined,
     assertComplete() {
       proposal.assertAccepted();
       const workflow = acceptedWorkflow;
@@ -749,7 +1018,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         throw new ChatContractError("invalid-report", "The Chat workflow was not accepted.");
       }
       const snapshot = dispatch.snapshot();
-      if (workflow.tasks.some((task) => snapshot.taskStatuses[task.taskId] !== "completed")) {
+      if (Object.values(state.taskStatuses).some((status) => status !== "completed")) {
         throw new ChatContractError(
           "invalid-report",
           "The Chat workflow returned before every admitted task completed.",
@@ -759,6 +1028,12 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         throw new ChatContractError(
           "invalid-report",
           "The dedicated Chat synthesizer did not return the final answer draft.",
+        );
+      }
+      if (!qualityDisposition) {
+        throw new ChatContractError(
+          "invalid-report",
+          "The agentic Chat workflow completed without its mandatory quality disposition.",
         );
       }
       return structuredClone(finalDraft);

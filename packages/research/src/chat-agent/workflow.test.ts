@@ -41,6 +41,33 @@ function proposal(tasks: ChatWorkflowProposalV1["tasks"]): ChatWorkflowProposalV
   };
 }
 
+function qualityWorkflowTasks(
+  leading: ChatWorkflowProposalV1["tasks"],
+): ChatWorkflowProposalV1["tasks"] {
+  const leadingIds = leading.map((task) => task.taskId);
+  return [
+    ...leading,
+    {
+      taskId: "task:draft",
+      profileId: "answer-drafter",
+      objective: "Draft a provisional evidence-backed answer.",
+      dependencyTaskIds: leadingIds,
+    },
+    {
+      taskId: "task:critic",
+      profileId: "answer-critic",
+      objective: "Check the provisional answer independently.",
+      dependencyTaskIds: ["task:draft"],
+    },
+    {
+      taskId: "task:synth",
+      profileId: "chat-synthesizer",
+      objective: "Write the accepted conversational answer.",
+      dependencyTaskIds: ["task:critic"],
+    },
+  ];
+}
+
 describe("Chat dynamic workflow admission", () => {
   test("registers the exact host-owned profile catalog with least-privilege capabilities", () => {
     expect(CHAT_SUBAGENT_PROFILES_V1.map((entry) => entry.id)).toEqual([
@@ -50,7 +77,9 @@ describe("Chat dynamic workflow admission", () => {
       "relationship-tracer",
       "comparison-analyst",
       "contradiction-checker",
+      "answer-drafter",
       "answer-critic",
+      "answer-repairer",
       "chat-synthesizer",
     ]);
     expect(CHAT_SUBAGENT_PROFILES_V1.find((entry) => entry.id === "jira-search-reader")
@@ -69,7 +98,9 @@ describe("Chat dynamic workflow admission", () => {
       "relationship-tracer",
       "comparison-analyst",
       "contradiction-checker",
+      "answer-drafter",
       "answer-critic",
+      "answer-repairer",
       "chat-synthesizer",
     ]) {
       expect(CHAT_SUBAGENT_PROFILES_V1.find((entry) => entry.id === id)
@@ -98,7 +129,7 @@ describe("Chat dynamic workflow admission", () => {
   test("admits a dynamic two-sibling parallel frontier and one synthesizer", () => {
     const accepted = admitChatWorkflowProposalV1({
       strategy: agentic,
-      proposal: proposal([
+      proposal: proposal(qualityWorkflowTasks([
         {
           taskId: "task:jira",
           profileId: "jira-search-reader",
@@ -111,13 +142,7 @@ describe("Chat dynamic workflow admission", () => {
           objective: "Find relevant Confluence detail evidence.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write the conversational answer.",
-          dependencyTaskIds: ["task:jira", "task:wiki"],
-        },
-      ]),
+      ])),
     });
 
     expect(accepted?.compiled.completionObjective).toBe("conversation-answer");
@@ -151,6 +176,12 @@ describe("Chat dynamic workflow admission", () => {
           dependencyTaskIds: ["task:exact", "task:jira"],
         },
         {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft the evidence-backed answer.",
+          dependencyTaskIds: ["task:relationships"],
+        },
+        {
           taskId: "task:critic",
           profileId: "answer-critic",
           objective: "Check grounding and coverage.",
@@ -169,6 +200,7 @@ describe("Chat dynamic workflow admission", () => {
       "exact-context-reader",
       "jira-search-reader",
       "relationship-tracer",
+      "answer-drafter",
       "answer-critic",
       "chat-synthesizer",
     ]);
@@ -177,6 +209,7 @@ describe("Chat dynamic workflow admission", () => {
         "task:relationships",
         "task:exact",
         "task:jira",
+        "task:draft",
       ]);
     expect(accepted?.admissions.find((entry) => entry.taskId === "task:synth")
       ?.dependsOnTaskIds).toEqual([
@@ -184,45 +217,42 @@ describe("Chat dynamic workflow admission", () => {
         "task:exact",
         "task:jira",
         "task:relationships",
+        "task:draft",
       ]);
   });
 
   test("rejects forged fields, unknown profiles, duplicate profiles, and invalid phase dependencies", () => {
-    const base = [
+    const base = qualityWorkflowTasks([
       {
         taskId: "task:jira",
         profileId: "jira-search-reader" as const,
         objective: "Read Jira.",
         dependencyTaskIds: [],
       },
-      {
-        taskId: "task:synth",
-        profileId: "chat-synthesizer" as const,
-        objective: "Write answer.",
-        dependencyTaskIds: ["task:jira"],
-      },
-    ];
+    ]);
     expect(() => admitChatWorkflowProposalV1({
       strategy: agentic,
-      proposal: proposal([{ ...base[0]!, secret: "forged" } as never, base[1]!]),
+      proposal: proposal([{ ...base[0]!, secret: "forged" } as never, ...base.slice(1)]),
     })).toThrow("outside the host contract");
     expect(() => admitChatWorkflowProposalV1({
       strategy: agentic,
-      proposal: proposal([{ ...base[0]!, profileId: "invented" as never }, base[1]!]),
+      proposal: proposal([{ ...base[0]!, profileId: "invented" as never }, ...base.slice(1)]),
     })).toThrow("unknown profile");
     expect(() => admitChatWorkflowProposalV1({
       strategy: agentic,
       proposal: proposal([
         base[0]!,
         { ...base[0]!, taskId: "task:jira:2" },
-        { ...base[1]!, dependencyTaskIds: ["task:jira", "task:jira:2"] },
+        ...base.slice(1).map((task) => task.taskId === "task:draft"
+          ? { ...task, dependencyTaskIds: ["task:jira", "task:jira:2"] }
+          : task),
       ]),
     })).toThrow("at most once");
     expect(() => admitChatWorkflowProposalV1({
       strategy: agentic,
       proposal: proposal([
         { ...base[0]!, dependencyTaskIds: ["task:synth"] },
-        { ...base[1]!, dependencyTaskIds: [] },
+        ...base.slice(1),
       ]),
     })).toThrow(/phase order|cycle/u);
     const augmented = admitChatWorkflowProposalV1({
@@ -235,11 +265,16 @@ describe("Chat dynamic workflow admission", () => {
           objective: "Unused work.",
           dependencyTaskIds: [],
         },
-        base[1]!,
+        ...base.slice(1),
       ]),
     });
     expect(augmented?.admissions.find((entry) => entry.taskId === "task:synth")
-      ?.dependsOnTaskIds).toEqual(["task:jira", "task:orphan"]);
+      ?.dependsOnTaskIds).toEqual(expect.arrayContaining([
+        "task:jira",
+        "task:orphan",
+        "task:draft",
+        "task:critic",
+      ]));
   });
 
   test("admits one model proposal into exact generic dispatch envelopes after the strategy checkpoint", async () => {
@@ -257,20 +292,14 @@ describe("Chat dynamic workflow admission", () => {
       },
     });
     const proposed = {
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:compare",
           profileId: "comparison-analyst" as const,
           objective: "Compare the accepted claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer" as const,
-          objective: "Write the answer.",
-          dependencyTaskIds: ["task:compare"],
-        },
-      ],
+      ]),
       maxConcurrency: 2,
     };
     await expect(controller.tool.invoke(proposed)).rejects.toThrow("strategy pending");
@@ -281,7 +310,7 @@ describe("Chat dynamic workflow admission", () => {
       completionObjective: "conversation-answer",
       synthesizerTaskId: "task:synth",
     });
-    expect(response.dispatches).toHaveLength(2);
+    expect(response.dispatches).toHaveLength(3);
     expect(JSON.parse(response.dispatches[0].description)).toMatchObject({
       schema: "atlcli.agentic-task-dispatch/v1",
       taskId: "task:compare",
@@ -306,20 +335,14 @@ describe("Chat dynamic workflow admission", () => {
       },
     });
     const response = JSON.parse(await controller.tool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:wiki",
           profileId: "confluence-search-reader",
           objective: "Find the relevant evidence.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write the answer.",
-          dependencyTaskIds: ["task:wiki"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
       retrievalPlan: {
         searches: [{
@@ -346,23 +369,17 @@ describe("Chat dynamic workflow admission", () => {
     const controller = createChatWorkflowProposalControllerV1({
       strategy: agentic,
       budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
-      allowedProfileIds: ["answer-critic", "chat-synthesizer"],
+      allowedProfileIds: ["answer-drafter", "answer-critic", "chat-synthesizer"],
     });
     await expect(controller.tool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:jira",
           profileId: "jira-search-reader",
           objective: "Search Jira.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write the answer.",
-          dependencyTaskIds: ["task:jira"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     })).rejects.toThrow("capabilities are unavailable");
     expect(() => parseChatSubagentResultV1("answer-critic", {

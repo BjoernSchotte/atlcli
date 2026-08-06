@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AIMessage } from "@langchain/core/messages";
 import { fakeModel } from "@langchain/core/testing";
 import {
   StateBackend,
@@ -47,7 +48,17 @@ function request(question: string): {
     jiraProjectKeys: [] as string[],
     confluenceSpaceKeys: [] as string[],
   };
-  const limits = { ...DEFAULT_RESEARCH_LIMITS_V1, maxRunMs: 30_000 };
+  // FakeModel responses do not carry provider usage metadata, so the shared
+  // fail-closed budget intentionally retains each pessimistic reservation.
+  // Keep this trajectory test focused on orchestration while production/live
+  // tests exercise the normal cost ceiling with observed provider usage.
+  const limits = {
+    ...DEFAULT_RESEARCH_LIMITS_V1,
+    maxRunMs: 30_000,
+    maxTotalModelInputTokens: 1_000_000,
+    maxTotalModelOutputTokens: 128_000,
+    maxModelCostMicros: 100_000_000,
+  };
   return {
     turn: {
       schema: "atlcli.chat-turn-request/v1",
@@ -71,31 +82,64 @@ function request(question: string): {
 function model(requiresStrategy: boolean, requiresReview = false) {
   const built = fakeModel();
   if (requiresReview) {
-    const code = `
+    const proposalCode = `
 const acceptedStrategy = JSON.parse(await tools.chatStrategyDecide({}));
-const workflow = JSON.parse(await tools.chatWorkflowPropose({
+globalThis.syntheticWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   tasks: [
-    { taskId: "task:critic", profileId: "answer-critic", objective: "Check the bounded synthetic evidence state.", dependencyTaskIds: [] },
-    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the conversational answer.", dependencyTaskIds: ["task:critic"] }
+    { taskId: "task:compare", profileId: "comparison-analyst", objective: "Compare the bounded synthetic positions.", dependencyTaskIds: [] },
+    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft the bounded synthetic answer.", dependencyTaskIds: ["task:compare"] },
+    { taskId: "task:critic", profileId: "answer-critic", objective: "Check the bounded synthetic evidence state.", dependencyTaskIds: ["task:draft"] },
+    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the conversational answer.", dependencyTaskIds: ["task:draft", "task:critic"] }
   ],
   maxConcurrency: 1
 }));
-const criticDispatch = workflow.dispatches.find((entry) => entry.taskId === "task:critic");
-const critic = await task({
-  description: criticDispatch.description,
-  subagentType: criticDispatch.subagentType,
-  responseSchema: criticDispatch.responseSchema
-});
+syntheticWorkflow;`;
+    const taskCode = `
+const workflow = globalThis.syntheticWorkflow;
 const review = JSON.parse(await tools.chatStrategyReview({}));
-const synthDispatch = workflow.dispatches.find((entry) => entry.taskId === "task:synth");
-const finalDraft = await task({
-  description: synthDispatch.description,
-  subagentType: synthDispatch.subagentType,
-  responseSchema: synthDispatch.responseSchema
+const runDispatch = (dispatch) => task({
+  description: dispatch.description,
+  subagentType: dispatch.subagentType,
+  responseSchema: dispatch.responseSchema
 });
+await runDispatch(workflow.dispatches.find((entry) => entry.taskId === "task:compare"));
+await runDispatch(workflow.dispatches.find((entry) => entry.taskId === "task:draft"));
+await runDispatch(workflow.dispatches.find((entry) => entry.taskId === "task:critic"));
+const quality = JSON.parse(await tools.chatQualityReview({}));
+let finalDraft;
+for (const dispatch of quality.dispatches) {
+  finalDraft = await runDispatch(dispatch);
+}
 finalDraft;`;
     return built
-      .respondWithTools([{ name: "eval", args: { code } }])
+      .respondWithTools([{ name: "eval", args: { code: proposalCode } }])
+      .respondWithTools([{ name: "eval", args: { code: taskCode } }])
+      .respondWithTools([{
+        name: "ChatAnalysisPacketV1",
+        args: {
+          schema: "atlcli.chat-analysis-packet/v1",
+          claimRefs: [],
+          relationshipRefs: [],
+          contradictions: [],
+          gaps: [],
+        },
+      }])
+      .respondWithTools([{
+        name: "ChatProvisionalAnswerDraftV1",
+        args: {
+          messageMarkdown: "A bounded provisional synthetic answer.",
+          citationSourceIds: [],
+          gaps: [{
+            code: "no-detail-evidence",
+            message: "The synthetic agentic fixture has no detailed source evidence.",
+            sourceIds: [],
+          }, {
+            code: "incomplete-coverage",
+            message: "The synthetic agentic fixture cannot establish complete retrieval coverage.",
+            sourceIds: [],
+          }],
+        },
+      }])
       .respondWithTools([{
         name: "ChatCritiquePacketV1",
         args: {
@@ -110,12 +154,22 @@ finalDraft;`;
           messageMarkdown: "A bounded synthetic agentic Chat answer.",
           citationSourceIds: [],
           gaps: [{
-            code: "incomplete-coverage",
+            code: "no-detail-evidence",
             message: "The synthetic agentic fixture has no detailed source evidence.",
+            sourceIds: [],
+          }, {
+            code: "incomplete-coverage",
+            message: "The synthetic agentic fixture cannot establish complete retrieval coverage.",
             sourceIds: [],
           }],
         },
-      }]);
+      }])
+      // The deliberately verbose, real DeepAgents trajectory crosses the
+      // built-in summarization threshold of the profile-free FakeModel. Keep
+      // that middleware path realistic: first answer its compaction request,
+      // then let the root supervisor close the accepted workflow.
+      .respond(new AIMessage("The accepted workflow and quality disposition are preserved."))
+      .respond(new AIMessage("The host-admitted agentic workflow is complete."));
   }
   if (requiresStrategy) {
     built.respondWithTools([{
@@ -299,7 +353,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
         "multi-source-comparison",
         "contradiction-risk",
       ]);
-      expect(answer.run.counts.ptcCalls).toBe(3);
+      expect(answer.run.counts.ptcCalls).toBe(4);
     }
   });
 

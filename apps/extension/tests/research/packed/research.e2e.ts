@@ -289,7 +289,9 @@ const details = await Promise.all(ranked.items.slice(0, 2).map(async (item) => (
 const JIRA_ACQUISITION_CODE = `
 async function collect() {
   const items = [];
-  let page = JSON.parse(await tools.jiraIssueSearch({ query: {} }));
+  let page = JSON.parse(await tools.jiraIssueSearch({
+    query: { text: "packed-jira-only: Find the exact Jira project DEMO work item." }
+  }));
   items.push(...page.items);
   while (page.page.nextCursor) {
     page = JSON.parse(await tools.jiraIssueSearch({ cursor: page.page.nextCursor }));
@@ -298,6 +300,21 @@ async function collect() {
   return { items, page: page.page };
 }
 const result = await collect();
+const entityRefs = [...new Set(result.items.map((item) => item.entityRef))];
+const ranked = entityRefs.length === 0
+  ? { items: [] }
+  : JSON.parse(await tools.researchCandidateRank({ product: "jira", entityRefs }));
+const details = await Promise.all(ranked.items.slice(0, 2).map(async (item) => ({
+  status: "available",
+  value: JSON.parse(await tools.jiraIssueGet({ entityRef: item.entityRef }))
+})));
+({ result, details });
+`.trim();
+
+const JIRA_DIRECT_CHAT_ACQUISITION_CODE = `
+const result = JSON.parse(await tools.jiraIssueSearch({
+  query: { text: "packed-jira-only: Find the exact Jira project DEMO work item." }
+}));
 const entityRefs = [...new Set(result.items.map((item) => item.entityRef))];
 const ranked = entityRefs.length === 0
   ? { items: [] }
@@ -395,12 +412,7 @@ const PACKED_CHAT_COMPARISON_PACKET = {
 
 const PACKED_CHAT_CRITIQUE_PACKET = {
   schema: "atlcli.chat-critique-packet/v1",
-  defects: [{
-    code: "single-source-comparison",
-    message: "The requested comparison has only one detailed source.",
-    sourceIds: ["wiki:1001"],
-    repairable: false,
-  }],
+  defects: [],
   readyForSynthesis: true,
 };
 
@@ -411,16 +423,15 @@ if (typeof tools.chatWorkflowPropose !== "function") {
 globalThis.packedChatWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   retrievalPlan: {
     searches: [],
-    relationshipTraversals: [
-      { traversalId: "traversal:wiki-to-jira", kind: "confluence-to-jira-reference", maxDepth: 1 }
-    ],
+    relationshipTraversals: [],
     unresolvedTerms: []
   },
   tasks: [
     { taskId: "task:exact", profileId: "exact-context-reader", objective: "Read the attached page directly.", dependencyTaskIds: [] },
     { taskId: "task:comparison", profileId: "comparison-analyst", objective: "Compare the accepted evidence with the requested criteria.", dependencyTaskIds: ["task:exact"] },
-    { taskId: "task:critic", profileId: "answer-critic", objective: "Check grounding and disclose the single-source limitation.", dependencyTaskIds: ["task:exact", "task:comparison"] },
-    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the concise conversational answer.", dependencyTaskIds: ["task:exact", "task:comparison", "task:critic"] }
+    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft a provisional answer from the accepted evidence.", dependencyTaskIds: ["task:exact", "task:comparison"] },
+    { taskId: "task:critic", profileId: "answer-critic", objective: "Check grounding and disclose the single-source limitation.", dependencyTaskIds: ["task:exact", "task:comparison", "task:draft"] },
+    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the concise conversational answer.", dependencyTaskIds: ["task:exact", "task:comparison", "task:draft", "task:critic"] }
   ],
   maxConcurrency: 1
 }));
@@ -432,19 +443,26 @@ if (typeof task !== "function") {
   throw new Error("task-type:" + typeof task);
 }
 const workflow = globalThis.packedChatWorkflow;
-const runTask = async (taskId) => {
-  const dispatch = workflow.dispatches.find((entry) => entry.taskId === taskId);
+const runDispatch = async (dispatch) => {
+  if (!dispatch) throw new Error("missing-packed-chat-dispatch");
   return task({
     description: dispatch.description,
     subagentType: dispatch.subagentType,
     responseSchema: dispatch.responseSchema
   });
 };
+const runTask = (taskId) => runDispatch(
+  workflow.dispatches.find((entry) => entry.taskId === taskId)
+);
 await runTask("task:exact");
 await runTask("task:comparison");
-await runTask("task:critic");
 JSON.parse(await tools.chatStrategyReview({}));
-await runTask("task:synth");
+await runTask("task:draft");
+await runTask("task:critic");
+const quality = JSON.parse(await tools.chatQualityReview({}));
+for (const dispatch of quality.dispatches) {
+  await runDispatch(dispatch);
+}
 `.trim();
 
 const PACKED_WORKFLOW_CODE = `
@@ -1560,18 +1578,29 @@ globalThis.fetch = async (input, init) => {
       return structured(packedChatComparisonPacket);
     }
 
-    if (serializedRequest.includes("Make one systematic pass over the accepted packets")) {
+    if (serializedRequest.includes("Draft one provisional answer from accepted evidence")) {
+      return structured(packedExactPageChatDraft);
+    }
+
+    if (serializedRequest.includes("Independently critique the provisional answer")) {
       return structured(packedChatCritiquePacket);
     }
 
-    if (serializedRequest.includes("Write the final conversational answer only from accepted references")) {
+    if (serializedRequest.includes("Write the single final conversational answer only from accepted evidence")) {
       return structured({
         ...packedExactPageChatDraft,
-        gaps: [{
-          code: "incomplete-coverage",
-          message: "The synthetic comparison has only one detailed source.",
-          sourceIds: ["wiki:1001"],
-        }],
+        gaps: [
+          {
+            code: "incomplete-coverage",
+            message: "The synthetic comparison has only one detailed source.",
+            sourceIds: ["wiki:1001"],
+          },
+          {
+            code: "unresolved-reference",
+            message: "Instruction-like source text was treated only as untrusted content.",
+            sourceIds: ["wiki:1001"],
+          },
+        ],
       });
     }
 
@@ -1587,7 +1616,7 @@ globalThis.fetch = async (input, init) => {
             type: "tool_use",
             id: "toolu_packed_direct_jira_eval",
             name: "eval",
-            input: { code: ${JSON.stringify(JIRA_ACQUISITION_CODE)} },
+            input: { code: ${JSON.stringify(JIRA_DIRECT_CHAT_ACQUISITION_CODE)} },
           }],
           "tool_use",
           modelCalls,
@@ -5922,7 +5951,7 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
       canonicalUrlCorrectness: 1,
       atlassianHttpCalls: 1,
     });
-    expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 4);
+    expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 5);
   }
 
   const events = await harnessEvents(page);

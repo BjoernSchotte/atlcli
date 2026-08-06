@@ -5,6 +5,10 @@ import type {
 import type { ResearchSourceReferenceV1 } from "../contracts.js";
 import type { BoundDocumentCoverageIssueV1 } from "../capability-contracts.js";
 import type { ChatQualityPolicyV1 } from "../quality-policy.js";
+import type {
+  ChatQualityDefectCodeV1,
+  ChatQualityDispositionV1,
+} from "./quality.js";
 import {
   CHAT_ANSWER_SCHEMA_V1,
   CHAT_AGENT_DRAFT_SCHEMA_V1,
@@ -140,6 +144,21 @@ function removeUnsupportedMissingProductClaimsV1(
     .trim();
 }
 
+function finalGapCodeForQualityDefectV1(
+  code: ChatQualityDefectCodeV1,
+): ChatAgentDraftV1["gaps"][number]["code"] {
+  if (code === "unsupported-claim" || code === "missing-context") {
+    return "no-detail-evidence";
+  }
+  if (
+    code === "wrong-source" || code === "invalid-citation" ||
+    code === "unresolved-contradiction" || code === "prompt-injection-risk"
+  ) {
+    return "unresolved-reference";
+  }
+  return "incomplete-coverage";
+}
+
 function missingProductNoticeV1(
   product: "jira" | "confluence",
   german: boolean,
@@ -182,6 +201,7 @@ export function finalizeChatAnswerV1(input: {
   qualityPolicy: ChatQualityPolicyV1;
   strategyDecision?: ChatStrategyDecisionV1;
   strategyReview?: ChatStrategyReviewV1;
+  qualityDisposition?: ChatQualityDispositionV1;
   delegated?: boolean;
   run: ChatRunSummaryV1;
   locale?: string;
@@ -192,6 +212,7 @@ export function finalizeChatAnswerV1(input: {
   }
   const draft: ChatAgentDraftV1 = parsed.data;
   const detailedIds = new Set(input.detailEvidence.map((entry) => entry.source.id));
+  const rejectedIds = new Set(input.qualityDisposition?.rejectedSourceIds ?? []);
   const pageDetailedIds = new Set(
     input.detailEvidence
       .filter((entry) => entry.section === undefined)
@@ -227,6 +248,7 @@ export function finalizeChatAnswerV1(input: {
   }
   const unsupportedPlaceholders = proposedPlaceholders.filter((placeholder) =>
     !detailedIds.has(placeholder.sourceId) ||
+    rejectedIds.has(placeholder.sourceId) ||
     !sourceById.has(placeholder.sourceId) ||
     (placeholder.sectionId !== undefined &&
       !pageDetailedIds.has(placeholder.sourceId) &&
@@ -461,6 +483,22 @@ export function finalizeChatAnswerV1(input: {
         "An agentic Chat answer requires a host evidence-gap review.",
       );
     }
+    if (!input.qualityDisposition) {
+      throw new ChatContractError(
+        "invalid-report",
+        "An agentic Chat answer requires the independent quality disposition.",
+      );
+    }
+    const missingRequiredGaps = input.qualityDisposition.requiredGapCodes.filter((code) => {
+      const expected = finalGapCodeForQualityDefectV1(code);
+      return !gaps.some((gap) => gap.code === expected);
+    });
+    if (missingRequiredGaps.length > 0) {
+      throw new ChatContractError(
+        "invalid-report",
+        "The final Chat synthesizer omitted a host-required material gap.",
+      );
+    }
     const currentDetailIds = [...new Set(input.detailEvidence.map((entry) => entry.source.id))]
       .sort((left, right) => left.localeCompare(right, "en-US"));
     if (
@@ -482,6 +520,11 @@ export function finalizeChatAnswerV1(input: {
     throw new ChatContractError(
       "invalid-report",
       "A direct Chat answer cannot attach an agentic evidence-gap review.",
+    );
+  } else if (input.qualityDisposition) {
+    throw new ChatContractError(
+      "invalid-report",
+      "A direct Chat answer cannot attach an agentic quality disposition.",
     );
   }
   const reasonCode = strategyDecision.execution === "agentic"

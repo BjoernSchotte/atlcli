@@ -4,7 +4,7 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod/v4";
 import { ResearchCapabilityBroker } from "../broker.js";
-import { ResearchRunBudget } from "../budget.js";
+import { ResearchModelRunBudget, ResearchRunBudget } from "../budget.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ResearchRequestV1,
@@ -14,6 +14,8 @@ import { createMemoryResearchWorkspace } from "../workspace.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 import type { ChatWorkflowDispatchV1 } from "./workflow.js";
 import { providerCompatibleChatJsonSchemaV1 } from "./contracts.js";
+import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
+import type { ChatQualityDispositionV1 } from "./quality.js";
 import {
   CHAT_WORKFLOW_STATE_PATH_V1,
   createChatAgenticWorkflowRuntimeV1,
@@ -63,6 +65,57 @@ function analysisPacket() {
     contradictions: [],
     gaps: [],
   };
+}
+
+function answerDraft() {
+  return {
+    messageMarkdown: "A bounded synthetic answer.",
+    citationSourceIds: [],
+    gaps: [],
+  };
+}
+
+function critiquePacket() {
+  return {
+    schema: "atlcli.chat-critique-packet/v1" as const,
+    defects: [],
+    readyForSynthesis: true,
+  };
+}
+
+function qualityWorkflowTasks(
+  leading: Array<{
+    taskId: string;
+    profileId:
+      | "relationship-tracer"
+      | "comparison-analyst"
+      | "contradiction-checker";
+    objective: string;
+    dependencyTaskIds: string[];
+  }>,
+) {
+  const leadingIds = leading.map((task) => task.taskId);
+  return [
+    ...leading,
+    {
+      taskId: "task:draft",
+      profileId: "answer-drafter" as const,
+      objective: "Draft a provisional answer.",
+      dependencyTaskIds: leadingIds,
+    },
+    {
+      taskId: "task:critic",
+      profileId: "answer-critic" as const,
+      objective: "Critique the provisional answer.",
+      dependencyTaskIds: ["task:draft"],
+    },
+    {
+      taskId: "task:synth",
+      profileId: "chat-synthesizer" as const,
+      objective: "Write the accepted answer.",
+      dependencyTaskIds: ["task:critic"],
+    },
+  ];
 }
 
 function serializedBytes(value: unknown): number {
@@ -120,8 +173,13 @@ function createHarness(input: {
   ) => Readonly<Record<string, unknown>>;
   onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
   searchProducts?: Array<"jira" | "confluence">;
+  withRetrievalAssessment?: boolean;
+  decideRepairAdmission?: (
+    disposition: ChatQualityDispositionV1,
+  ) => { admit: boolean; reason?: "deadline-reserve" | "model-budget-reserve" };
 } = {}) {
   const budget = new ResearchRunBudget(request.limits);
+  const modelBudget = new ResearchModelRunBudget(request.limits);
   const broker = new ResearchCapabilityBroker(request, providers, { budget });
   const workspace = createMemoryResearchWorkspace();
   let compiledSubagents: Array<{
@@ -138,13 +196,13 @@ function createHarness(input: {
   const invoke = input.invoke ?? (async (taskInput: {
     description: string;
     subagent_type: string;
-  }) => taskInput.subagent_type === "chat-synthesizer-v1"
-    ? {
-        messageMarkdown: "A bounded synthetic answer.",
-        citationSourceIds: [],
-        gaps: [],
-      }
-    : analysisPacket());
+  }) => taskInput.subagent_type === "chat-synthesizer-v1" ||
+      taskInput.subagent_type === "chat-answer-drafter-v1" ||
+      taskInput.subagent_type === "chat-answer-repairer-v1"
+    ? answerDraft()
+    : taskInput.subagent_type === "chat-answer-critic-v1"
+      ? critiquePacket()
+      : analysisPacket());
   const upstreamTask = tool((taskInput, config) => invoke(taskInput, config), {
     name: "task",
     description: "synthetic upstream task",
@@ -170,10 +228,14 @@ function createHarness(input: {
       : {}),
     strategy,
     budget,
+    modelBudget,
+    onModelBudgetSnapshot: async () => {},
     broker,
     workspace,
     conversationId: "chat-conversation:workflow",
     turnId: "chat-turn:workflow",
+    question: request.question,
+    siteOrigin: request.scope.siteOrigin,
     taskContext: JSON.stringify({ question: request.question }),
     limits: request.limits,
     exactContextProducts: [],
@@ -182,6 +244,34 @@ function createHarness(input: {
     boundSpaceKeys: [],
     signal: new AbortController().signal,
     beforeSynthesis: input.beforeSynthesis,
+    ...(input.decideRepairAdmission
+      ? { decideRepairAdmission: input.decideRepairAdmission }
+      : {}),
+    ...(input.withRetrievalAssessment
+      ? {
+          retrievalLedger: {
+            assessment: () => ({
+              schema: "atlcli.chat-retrieval-assessment/v1",
+              sufficient: true,
+              reasons: [],
+              completionSignals: [],
+              metrics: {
+                discoveredCandidates: 0,
+                admittedCandidates: 0,
+                detailReadCandidates: 0,
+                excludedCandidates: 0,
+                deferredCandidates: 0,
+                detailReadCoverage: 1,
+                canonicalUrlCorrectness: 1,
+                observedRecall: null,
+                wrongSourceRate: null,
+                atlassianHttpCalls: 0,
+                latencyMs: 0,
+              },
+            }),
+          } as unknown as ChatCandidateLedgerControllerV1,
+        }
+      : {}),
     ...(input.onEvalDiagnostic ? { onEvalDiagnostic: input.onEvalDiagnostic } : {}),
   });
   return { runtime, workspace, compiledSubagents };
@@ -205,6 +295,15 @@ async function invokeDispatch(
       [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: dispatch.responseSchema,
     },
   });
+}
+
+async function invokeQualityReview(
+  runtime: ReturnType<typeof createHarness>["runtime"],
+): Promise<{
+  dispatches: ChatWorkflowDispatchV1[];
+  requiredGapCodes: string[];
+}> {
+  return JSON.parse(await runtime.qualityReviewTool.invoke({}));
 }
 
 describe("Chat agentic workflow runtime", () => {
@@ -243,7 +342,7 @@ describe("Chat agentic workflow runtime", () => {
     });
   });
 
-  test("compiles all eight depth-one profiles without a general-purpose or nested task surface", () => {
+  test("compiles all ten depth-one profiles without a general-purpose or nested task surface", () => {
     const harness = createHarness({ invoke: async () => analysisPacket() });
     expect(harness.compiledSubagents.map((entry) => entry.name)).toEqual([
       "chat-exact-context-reader-v1",
@@ -252,7 +351,9 @@ describe("Chat agentic workflow runtime", () => {
       "chat-relationship-tracer-v1",
       "chat-comparison-analyst-v1",
       "chat-contradiction-checker-v1",
+      "chat-answer-drafter-v1",
       "chat-answer-critic-v1",
+      "chat-answer-repairer-v1",
       "chat-synthesizer-v1",
     ]);
     for (const subagent of harness.compiledSubagents) {
@@ -334,43 +435,40 @@ describe("Chat agentic workflow runtime", () => {
     const projectedResponseFormats = new Map<string, unknown>();
     const harness = createHarness({
       structuredOutput: "native",
+      withRetrievalAssessment: true,
       projectResponseSchema: providerCompatibleChatJsonSchemaV1,
       async invoke(taskInput, config) {
         projectedResponseFormats.set(taskInput.subagent_type, config?.configurable?.[
           DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
         ]);
-        return taskInput.subagent_type === "chat-synthesizer-v1"
-          ? {
-              messageMarkdown: "A bounded synthetic answer.",
-              citationSourceIds: [],
-              gaps: [],
-            }
-          : analysisPacket();
+        if (
+          taskInput.subagent_type === "chat-synthesizer-v1" ||
+          taskInput.subagent_type === "chat-answer-drafter-v1"
+        ) return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        return analysisPacket();
       },
     });
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Compare accepted claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write one answer.",
-          dependencyTaskIds: ["task:analysis"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     }));
-    const dispatch = (response.dispatches as ChatWorkflowDispatchV1[])
-      .find((entry) => entry.taskId === "task:analysis");
-    if (!dispatch) throw new Error("missing analysis dispatch");
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    const dispatch = requireDispatch(byId, "task:analysis");
     await invokeDispatch(harness.runtime, dispatch);
-    const synthDispatch = (response.dispatches as ChatWorkflowDispatchV1[])
-      .find((entry) => entry.taskId === "task:synth");
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const synthDispatch = quality.dispatches.find((entry) => entry.taskId === "task:synth");
     if (!synthDispatch) throw new Error("missing synthesis dispatch");
     await invokeDispatch(harness.runtime, synthDispatch);
     const internalFormat = projectedResponseFormats.get("chat-comparison-analyst-v1");
@@ -400,6 +498,7 @@ describe("Chat agentic workflow runtime", () => {
     let reviewComplete = false;
     const seenDescriptions = new Map<string, string>();
     const harness = createHarness({
+      withRetrievalAssessment: true,
       beforeSynthesis: () => {
         if (!reviewComplete) throw new Error("review pending");
       },
@@ -409,18 +508,18 @@ describe("Chat agentic workflow runtime", () => {
         maximumActive = Math.max(maximumActive, active);
         await new Promise((resolve) => setTimeout(resolve, 10));
         active -= 1;
-        if (taskInput.subagent_type === "chat-synthesizer-v1") {
-          return {
-            messageMarkdown: "A bounded synthetic comparison.",
-            citationSourceIds: [],
-            gaps: [],
-          };
-        }
+        if (taskInput.subagent_type === "chat-synthesizer-v1") return {
+          messageMarkdown: "A bounded synthetic comparison.",
+          citationSourceIds: [],
+          gaps: [],
+        };
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
         return analysisPacket();
       },
     });
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:relationships",
           profileId: "relationship-tracer",
@@ -433,13 +532,7 @@ describe("Chat agentic workflow runtime", () => {
           objective: "Compare accepted claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write one answer.",
-          dependencyTaskIds: ["task:relationships", "task:comparison"],
-        },
-      ],
+      ]),
       maxConcurrency: 2,
     }));
     const byId = new Map<string, ChatWorkflowDispatchV1>(
@@ -454,22 +547,28 @@ describe("Chat agentic workflow runtime", () => {
       .not.toContain("Compare accepted claims");
     expect(seenDescriptions.get("chat-comparison-analyst-v1"))
       .not.toContain("Trace explicit relationships");
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
     reviewComplete = true;
-    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:synth"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const finalById = new Map(quality.dispatches.map((entry) => [entry.taskId, entry]));
+    await invokeDispatch(harness.runtime, requireDispatch(finalById, "task:synth"));
     const synthDescription = JSON.parse(
       seenDescriptions.get("chat-synthesizer-v1")!,
     );
     expect(synthDescription.dependencyResults.map((entry: { taskId: string }) => entry.taskId).sort())
-      .toEqual(["task:comparison", "task:relationships"]);
+      .toEqual(["task:comparison", "task:critic", "task:draft", "task:relationships"]);
     expect(harness.runtime.assertComplete()).toMatchObject({
       messageMarkdown: "A bounded synthetic comparison.",
     });
     expect(harness.runtime.dispatchSnapshot()).toMatchObject({
-      dispatchedTasks: 3,
+      dispatchedTasks: 5,
       activeInvocations: 0,
       taskStatuses: {
         "task:relationships": "completed",
         "task:comparison": "completed",
+        "task:draft": "completed",
+        "task:critic": "completed",
         "task:synth": "completed",
       },
     });
@@ -484,45 +583,33 @@ describe("Chat agentic workflow runtime", () => {
   test("fails closed when a child bypasses an incomplete dependency", async () => {
     const harness = createHarness();
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Compare claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write answer.",
-          dependencyTaskIds: ["task:analysis"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     }));
-    const synth = response.dispatches.find(
-      (entry: { taskId: string }) => entry.taskId === "task:synth",
+    const draft = response.dispatches.find(
+      (entry: { taskId: string }) => entry.taskId === "task:draft",
     );
-    await expect(invokeDispatch(harness.runtime, synth)).rejects.toThrow("incomplete dependency");
+    await expect(invokeDispatch(harness.runtime, draft)).rejects.toThrow("incomplete dependency");
   });
 
   test("fails closed on a forged schema and duplicate dispatch", async () => {
     const harness = createHarness();
     const forgedResponse = JSON.parse(await harness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Compare claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write answer.",
-          dependencyTaskIds: ["task:analysis"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     }));
     const forgedAnalysis = forgedResponse.dispatches.find(
@@ -556,20 +643,14 @@ describe("Chat agentic workflow runtime", () => {
       },
     });
     const acceptedResponse = JSON.parse(await acceptedHarness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Compare claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write answer.",
-          dependencyTaskIds: ["task:analysis"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     }));
     const acceptedById = new Map<string, ChatWorkflowDispatchV1>(
@@ -590,20 +671,14 @@ describe("Chat agentic workflow runtime", () => {
       },
     });
     const rejectedResponse = JSON.parse(await rejectedHarness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Compare claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write answer.",
-          dependencyTaskIds: ["task:analysis"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     }));
     const rejectedById = new Map<string, ChatWorkflowDispatchV1>(
@@ -617,6 +692,7 @@ describe("Chat agentic workflow runtime", () => {
 
   test("rejects an oversized synthesizer packet", async () => {
     const harness = createHarness({
+      withRetrievalAssessment: true,
       async invoke(taskInput) {
         if (taskInput.subagent_type === "chat-synthesizer-v1") {
           return {
@@ -625,32 +701,144 @@ describe("Chat agentic workflow runtime", () => {
             gaps: [],
           };
         }
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
         return analysisPacket();
       },
     });
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Compare claims.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write answer.",
-          dependencyTaskIds: ["task:analysis"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     }));
     const byId = new Map<string, ChatWorkflowDispatchV1>(
       response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
     );
     await invokeDispatch(harness.runtime, requireDispatch(byId, "task:analysis"));
-    await expect(invokeDispatch(harness.runtime, requireDispatch(byId, "task:synth")))
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const qualityById = new Map(quality.dispatches.map((entry) => [entry.taskId, entry]));
+    await expect(invokeDispatch(harness.runtime, requireDispatch(qualityById, "task:synth")))
       .rejects.toThrow(/exceeds|invalid structured packet/u);
+  });
+
+  test("admits exactly one targeted repair for a critic citation defect before synthesis", async () => {
+    const invoked: string[] = [];
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      async invoke(taskInput) {
+        invoked.push(taskInput.subagent_type);
+        if (taskInput.subagent_type === "chat-answer-critic-v1") {
+          return {
+            schema: "atlcli.chat-critique-packet/v1",
+            defects: [{
+              defectId: "chat-defect:wrong-citation",
+              code: "invalid-citation",
+              severity: "material",
+              sourceIds: [],
+              repairAction: "resynthesize",
+              message: "The provisional answer uses the wrong citation.",
+            }],
+            readyForSynthesis: false,
+          };
+        }
+        if (
+          taskInput.subagent_type === "chat-answer-drafter-v1" ||
+          taskInput.subagent_type === "chat-answer-repairer-v1" ||
+          taskInput.subagent_type === "chat-synthesizer-v1"
+        ) return answerDraft();
+        return analysisPacket();
+      },
+    });
+    const proposal = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted evidence.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const initial = new Map<string, ChatWorkflowDispatchV1>(
+      proposal.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:critic"));
+
+    const quality = await invokeQualityReview(harness.runtime);
+    expect(quality.dispatches.map((entry) => entry.subagentType)).toEqual([
+      "chat-answer-repairer-v1",
+      "chat-synthesizer-v1",
+    ]);
+    const repair = quality.dispatches[0]!;
+    const synth = quality.dispatches[1]!;
+    await invokeDispatch(harness.runtime, repair);
+    await invokeDispatch(harness.runtime, synth);
+    await expect(harness.runtime.qualityReviewTool.invoke({}))
+      .rejects.toThrow("exactly once");
+    expect(invoked.filter((name) => name === "chat-answer-repairer-v1"))
+      .toHaveLength(1);
+    expect(harness.runtime.assertComplete()).toMatchObject(answerDraft());
+  });
+
+  test("preserves synthesis when the host denies repair to protect the deadline reserve", async () => {
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      decideRepairAdmission: () => ({ admit: false, reason: "deadline-reserve" }),
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-answer-critic-v1") {
+          return {
+            schema: "atlcli.chat-critique-packet/v1",
+            defects: [{
+              defectId: "chat-defect:budgeted-repair",
+              code: "question-not-answered",
+              severity: "material",
+              sourceIds: [],
+              repairAction: "resynthesize",
+              message: "The provisional answer requires a bounded repair.",
+            }],
+            readyForSynthesis: false,
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        return analysisPacket();
+      },
+    });
+    const proposal = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted evidence.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const initial = new Map<string, ChatWorkflowDispatchV1>(
+      proposal.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+
+    expect(quality.dispatches.map((entry) => entry.subagentType)).toEqual([
+      "chat-synthesizer-v1",
+    ]);
+    expect(quality.requiredGapCodes).toContain("question-not-answered");
+    expect(harness.runtime.qualityDisposition()).toMatchObject({
+      repairRequired: true,
+      repairAdmitted: false,
+      repairSkippedReason: "deadline-reserve",
+      synthesisAllowed: true,
+    });
   });
 
   test("enforces the workflow's admitted concurrency below the host ceiling", async () => {
@@ -667,7 +855,7 @@ describe("Chat agentic workflow runtime", () => {
       },
     });
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
-      tasks: [
+      tasks: qualityWorkflowTasks([
         {
           taskId: "task:comparison",
           profileId: "comparison-analyst",
@@ -680,13 +868,7 @@ describe("Chat agentic workflow runtime", () => {
           objective: "Check contradictions.",
           dependencyTaskIds: [],
         },
-        {
-          taskId: "task:synth",
-          profileId: "chat-synthesizer",
-          objective: "Write answer.",
-          dependencyTaskIds: ["task:comparison", "task:contradictions"],
-        },
-      ],
+      ]),
       maxConcurrency: 1,
     }));
     const byId = new Map<string, ChatWorkflowDispatchV1>(

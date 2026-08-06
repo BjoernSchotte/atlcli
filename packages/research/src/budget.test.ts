@@ -212,4 +212,26 @@ describe("model run budget", () => {
       }, 4_096);
     }).not.toThrow();
   });
+
+  test("rejects non-final work that would consume the retained synthesis capacity", () => {
+    const budget = new ResearchModelRunBudget({
+      ...DEFAULT_RESEARCH_LIMITS_V1,
+      maxModelCalls: 2,
+      maxTotalModelInputTokens: 10_000,
+      maxTotalModelOutputTokens: 6_000,
+      maxModelCostMicros: 120_000,
+    });
+    const synthesis = { calls: 1, inputTokens: 2_000, outputTokens: 5_000 };
+    budget.reserve({ messages: [{ content: "Bounded analysis." }] }, 1_000, synthesis);
+
+    expect(() => budget.reserve(
+      { messages: [{ content: "Unplanned extra analysis." }] },
+      1,
+      synthesis,
+    )).toThrow("model run budget was exhausted before another provider call");
+    expect(() => budget.reserve(
+      { messages: [{ content: "Final synthesis." }] },
+      5_000,
+    )).not.toThrow();
+  });
 });

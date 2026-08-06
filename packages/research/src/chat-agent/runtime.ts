@@ -7,7 +7,12 @@ import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
 } from "../broker.js";
-import { ResearchRunBudget } from "../budget.js";
+import {
+  ResearchModelRunBudget,
+  ResearchRunBudget,
+  type ResearchModelBudgetStateV1,
+} from "../budget.js";
+import { createResearchModelBudgetMiddlewareV1 } from "../model-budget-middleware.js";
 import type {
   ChatPresentationStreamEventV1,
   ResearchOneShotEventV1,
@@ -380,6 +385,24 @@ export interface RunChatAgentInput {
   onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
 }
 
+export const CHAT_MODEL_BUDGET_STATE_PATH_V1 =
+  "/.atlcli/chat/v1/model-budget.json" as const;
+
+const CHAT_SYNTHESIS_MODEL_RESERVE_V1 = {
+  calls: 1,
+  inputTokens: 4_096,
+  outputTokens: 5_000,
+} as const;
+
+const CHAT_REPAIR_AND_SYNTHESIS_MODEL_RESERVE_V1 = {
+  calls: 2,
+  inputTokens: 8_192,
+  outputTokens: 10_000,
+} as const;
+
+const CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 = 15_000;
+const CHAT_REPAIR_TIME_RESERVE_MS_V1 = 15_000;
+
 function collectUsage(messages: unknown): ResearchRunUsageV1 | undefined {
   if (!Array.isArray(messages)) return undefined;
   let inputTokens = 0;
@@ -723,6 +746,20 @@ export function createKiteweaveChatAgent(
           );
         }
         const model = modelBinding.model;
+        const modelBudget = new ResearchModelRunBudget(turn.limits);
+        let modelBudgetWrite = Promise.resolve();
+        const persistModelBudget = (
+          state: ResearchModelBudgetStateV1,
+        ): Promise<void> => {
+          modelBudgetWrite = modelBudgetWrite.then(() =>
+            input.workspace.writeFile(
+              CHAT_MODEL_BUDGET_STATE_PATH_V1,
+              JSON.stringify(state),
+            )
+          );
+          return modelBudgetWrite;
+        };
+        await persistModelBudget(modelBudget.state());
         const searchProducts = [
           ...(turn.scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
           ...(turn.scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
@@ -780,10 +817,14 @@ export function createKiteweaveChatAgent(
                 : {}),
               strategy: strategyDecision,
               budget,
+              modelBudget,
+              onModelBudgetSnapshot: persistModelBudget,
               broker,
               workspace: input.workspace,
               conversationId: turn.conversationId,
               turnId: turn.turnId,
+              question: turn.question,
+              siteOrigin: turn.scope.siteOrigin,
               taskContext: () => {
                 const currentRetrievalPlan = retrievalLedger!.plan();
                 return JSON.stringify({
@@ -814,9 +855,29 @@ export function createKiteweaveChatAgent(
                 if (!proposal.retrievalPlan) return;
                 await retrievalLedger!.replacePlan(buildRetrievalPlan(proposal.retrievalPlan));
               },
+              beforeCritic: async () => {
+                strategyReviewController?.assertCurrent();
+                await retrievalLedger!.finalize();
+              },
               beforeSynthesis: async () => {
                 strategyReviewController?.assertCurrent();
                 await retrievalLedger!.finalize();
+              },
+              decideRepairAdmission: () => {
+                const elapsedMs = Math.max(0, now() - startedAtMs);
+                const remainingMs = Math.max(0, turn.limits.maxRunMs - elapsedMs);
+                if (
+                  remainingMs <
+                    CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 + CHAT_REPAIR_TIME_RESERVE_MS_V1
+                ) {
+                  return { admit: false, reason: "deadline-reserve" };
+                }
+                if (!modelBudget.canReserveCapacity(
+                  CHAT_REPAIR_AND_SYNTHESIS_MODEL_RESERVE_V1,
+                )) {
+                  return { admit: false, reason: "model-budget-reserve" };
+                }
+                return { admit: true };
               },
               retrievalLedger,
               now,
@@ -894,6 +955,7 @@ export function createKiteweaveChatAgent(
               ...(strategyController ? [strategyController.tool] : []),
               agenticWorkflow!.proposalTool,
               ...(strategyReviewController ? [strategyReviewController.tool] : []),
+              agenticWorkflow!.qualityReviewTool,
             ]
           : [
               ...(strategyController ? [strategyController.tool] : []),
@@ -911,6 +973,21 @@ export function createKiteweaveChatAgent(
               }),
             ];
         let structuredRepairAttempts = 0;
+        const rootModelOutputTokens = Math.min(
+          turn.limits.maxModelOutputTokens,
+          qualityPolicy.mode === "quick" ? 2_048 : qualityPolicy.mode === "auto" ? 4_096 : 5_000,
+        );
+        const rootModelBudgetMiddleware = createResearchModelBudgetMiddlewareV1(
+          modelBudget,
+          {
+            name: "ChatRootModelBudgetMiddleware",
+            maxOutputTokens: rootModelOutputTokens,
+            ...(strategyDecision.execution === "agentic"
+              ? { retain: CHAT_SYNTHESIS_MODEL_RESERVE_V1 }
+              : {}),
+            onSnapshot: async (_snapshot, state) => persistModelBudget(state),
+          },
+        );
         const agent = runtime.createDeepAgent({
           name: "kiteweave-chat-agent",
           model,
@@ -924,6 +1001,7 @@ export function createKiteweaveChatAgent(
             agenticWorkflowRequired: strategyDecision.execution === "agentic",
           }),
           middleware: [
+            rootModelBudgetMiddleware,
             agenticWorkflow?.middleware ?? createChatNoSubagentMiddlewareV1(),
             createChatCodeInterpreterMiddlewareV1({
               ptc: ptcTools,
@@ -1151,6 +1229,7 @@ export function createKiteweaveChatAgent(
           ]);
         })();
         const [result] = await Promise.all([run.output, streamPresentation]);
+        await modelBudgetWrite;
         controller.signal.throwIfAborted();
         emitPhase("checking");
         if (strategyController && !strategyController.acknowledgedDecision()) {
@@ -1182,6 +1261,7 @@ export function createKiteweaveChatAgent(
           qualityPolicy,
           strategyDecision: finalStrategy,
           strategyReview: strategyReviewController?.latestReview(),
+          qualityDisposition: agenticWorkflow?.qualityDisposition(),
           delegated: strategyDecision.execution === "agentic",
           ...(turn.locale ? { locale: turn.locale } : {}),
           run: {

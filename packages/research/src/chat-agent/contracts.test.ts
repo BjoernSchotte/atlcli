@@ -590,7 +590,7 @@ describe("Chat answer contract", () => {
           "|---|---|",
           "| Validierung | Kein Issue |",
           "Im Jira-Projekt existiert kein einziges passendes Ticket.",
-          "GROW-42 scheint die Umsetzung zu belegen.",
+          "DEMO-42 scheint die Umsetzung zu belegen.",
           "## Verbleibende Einordnung",
           "Die belegte Confluence-Maßnahme bleibt gültig.",
         ].join("\n"),
@@ -631,6 +631,21 @@ describe("Chat answer contract", () => {
         unmetCapabilityClasses: ["jira-discovery", "relationship-tracing"],
         readyForAnswer: false,
       },
+      qualityDisposition: {
+        schema: "atlcli.chat-quality-disposition/v1",
+        conversationId: "conversation:test",
+        turnId: "turn:test",
+        recordedAt: "2026-08-06T12:00:00.000Z",
+        defectIds: ["chat-defect:missing-jira"],
+        blockingDefectIds: [],
+        repairDefectIds: [],
+        repairRequired: false,
+        repairAdmitted: false,
+        synthesisAllowed: true,
+        requiredGapCodes: ["incomplete-retrieval"],
+        rejectedSourceIds: [],
+        repairAttemptsAllowed: 1,
+      },
       locale: "de",
       run,
     });
@@ -638,10 +653,120 @@ describe("Chat answer contract", () => {
     expect(answer.messageMarkdown).not.toContain("Keine Übereinstimmungen");
     expect(answer.messageMarkdown).not.toContain("Kein Issue");
     expect(answer.messageMarkdown).not.toContain("kein einziges");
-    expect(answer.messageMarkdown).not.toContain("GROW-42");
+    expect(answer.messageMarkdown).not.toContain("DEMO-42");
     expect(answer.messageMarkdown).toContain("bleibt gültig");
     expect(answer.messageMarkdown).toContain("belegt weder");
     expect(answer.gaps.some((gap) => gap.message.includes("belegt weder"))).toBe(true);
+  });
+
+  test("prevents final synthesis from citing evidence rejected by the quality disposition", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "## Antwort",
+          "Diese Aussage darf nicht erscheinen. [[source:wiki:1001]]",
+          "Die Qualitätsprüfung konnte die Quellenidentität nicht bestätigen.",
+        ].join("\n\n"),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [{
+          code: "unresolved-reference",
+          message: "Die angegebene Quellenidentität wurde verworfen.",
+          sourceIds: ["wiki:1001"],
+        }],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      strategyDecision: {
+        schema: "atlcli.chat-strategy-decision/v1",
+        qualityMode: "auto",
+        execution: "agentic",
+        reasonCodes: ["multi-source-comparison"],
+        ambiguityDisposition: "none",
+        requiredCapabilities: ["comparison-analysis", "quality-review", "chat-answer"],
+        expectedComplexity: "complex",
+        qualityRisks: ["multiple-sources"],
+      },
+      strategyReview: {
+        schema: "atlcli.chat-strategy-review/v1",
+        execution: "agentic",
+        detailedSourceIds: ["wiki:1001"],
+        detailedProducts: ["confluence"],
+        unmetCapabilityClasses: [],
+        readyForAnswer: false,
+      },
+      qualityDisposition: {
+        schema: "atlcli.chat-quality-disposition/v1",
+        conversationId: "conversation:test",
+        turnId: "turn:rejected-source",
+        recordedAt: "2026-08-06T12:00:00.000Z",
+        defectIds: ["chat-defect:wrong-source"],
+        blockingDefectIds: ["chat-defect:wrong-source"],
+        repairDefectIds: [],
+        repairRequired: false,
+        repairAdmitted: false,
+        synthesisAllowed: true,
+        requiredGapCodes: ["wrong-source"],
+        rejectedSourceIds: ["wiki:1001"],
+        repairAttemptsAllowed: 1,
+      },
+      locale: "de",
+      run,
+    });
+
+    expect(answer.messageMarkdown).not.toContain("Diese Aussage darf nicht erscheinen");
+    expect(answer.citations).toEqual([]);
+    expect(answer.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "unresolved-reference" }),
+    ]));
+  });
+
+  test("rejects a final synthesizer that omits a blocking quality gap", () => {
+    expect(() => finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: "Eine knappe Antwort ohne den vorgeschriebenen Hinweis.",
+        citationSourceIds: [],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      strategyDecision: {
+        schema: "atlcli.chat-strategy-decision/v1",
+        qualityMode: "auto",
+        execution: "agentic",
+        reasonCodes: ["multi-source-comparison"],
+        ambiguityDisposition: "none",
+        requiredCapabilities: ["comparison-analysis", "quality-review", "chat-answer"],
+        expectedComplexity: "complex",
+        qualityRisks: ["multiple-sources"],
+      },
+      strategyReview: {
+        schema: "atlcli.chat-strategy-review/v1",
+        execution: "agentic",
+        detailedSourceIds: ["wiki:1001"],
+        detailedProducts: ["confluence"],
+        unmetCapabilityClasses: [],
+        readyForAnswer: true,
+      },
+      qualityDisposition: {
+        schema: "atlcli.chat-quality-disposition/v1",
+        conversationId: "conversation:test",
+        turnId: "turn:missing-gap",
+        recordedAt: "2026-08-06T12:00:00.000Z",
+        defectIds: ["chat-defect:incomplete"],
+        blockingDefectIds: [],
+        repairDefectIds: [],
+        repairRequired: false,
+        repairAdmitted: false,
+        synthesisAllowed: true,
+        requiredGapCodes: ["incomplete-retrieval"],
+        rejectedSourceIds: [],
+        repairAttemptsAllowed: 1,
+      },
+      locale: "de",
+      run,
+    })).toThrow("omitted a host-required material gap");
   });
 });
 

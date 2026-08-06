@@ -26,6 +26,10 @@ import {
   type ChatRetrievalPlanProposalV1,
 } from "./retrieval-plan.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
+import {
+  CHAT_QUALITY_DEFECT_CODES_V1,
+  type ChatQualityDefectV1,
+} from "./quality.js";
 
 export const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 =
   "atlcli.chat-workflow-proposal/v1" as const;
@@ -37,7 +41,9 @@ export const CHAT_SUBAGENT_PROFILE_IDS_V1 = [
   "relationship-tracer",
   "comparison-analyst",
   "contradiction-checker",
+  "answer-drafter",
   "answer-critic",
+  "answer-repairer",
   "chat-synthesizer",
 ] as const;
 
@@ -168,12 +174,23 @@ const CHAT_CRITIQUE_PACKET_SCHEMA_V1 = Object.freeze({
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["code", "message", "sourceIds", "repairable"],
+        required: [
+          "defectId",
+          "code",
+          "severity",
+          "message",
+          "sourceIds",
+          "repairAction",
+        ],
         properties: {
-          code: { type: "string", minLength: 1, maxLength: 80 },
+          defectId: { type: "string", pattern: "^chat-defect:[A-Za-z0-9._:-]{1,160}$" },
+          code: { enum: CHAT_QUALITY_DEFECT_CODES_V1 },
+          severity: { enum: ["blocking", "material", "advisory"] },
           message: { type: "string", minLength: 1, maxLength: 800 },
           sourceIds: STRING_ARRAY,
-          repairable: { type: "boolean" },
+          repairAction: {
+            enum: ["resynthesize", "disclose-gap", "reject-evidence", "ask-user"],
+          },
         },
       },
     },
@@ -211,10 +228,17 @@ const chatAnalysisPacketSchemaV1 = z.object({
 const chatCritiquePacketSchemaV1 = z.object({
   schema: z.literal("atlcli.chat-critique-packet/v1"),
   defects: z.array(z.object({
-    code: z.string().min(1).max(80),
+    defectId: z.string().regex(/^chat-defect:[A-Za-z0-9._:-]{1,160}$/u),
+    code: z.enum(CHAT_QUALITY_DEFECT_CODES_V1),
+    severity: z.enum(["blocking", "material", "advisory"]),
     message: z.string().min(1).max(800),
     sourceIds: z.array(z.string().min(1).max(256)).max(100),
-    repairable: z.boolean(),
+    repairAction: z.enum([
+      "resynthesize",
+      "disclose-gap",
+      "reject-evidence",
+      "ask-user",
+    ]),
   }).strict()).max(40),
   readyForSynthesis: z.boolean(),
 }).strict();
@@ -222,6 +246,12 @@ const chatCritiquePacketSchemaV1 = z.object({
 export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+type CriticDefectShapeCompatibilityV1 =
+  ChatCritiquePacketV1["defects"][number] extends ChatQualityDefectV1
+    ? true
+    : never;
+const criticDefectShapeCompatibilityV1: CriticDefectShapeCompatibilityV1 = true;
+void criticDefectShapeCompatibilityV1;
 export type ChatSubagentResultV1 =
   | ChatEvidencePacketV1
   | ChatAnalysisPacketV1
@@ -274,7 +304,9 @@ export function parseChatSubagentResultV1(
   value: unknown,
 ): ChatSubagentResultV1 {
   const candidate = extractChatSubagentCandidateV1(value);
-  const schema = profileId === "chat-synthesizer"
+  const schema = profileId === "chat-synthesizer" ||
+      profileId === "answer-drafter" ||
+      profileId === "answer-repairer"
     ? CHAT_AGENT_DRAFT_SCHEMA_V1
     : profileId === "answer-critic"
       ? chatCritiquePacketSchemaV1
@@ -396,12 +428,30 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     maxDurationMs: 75_000,
   }),
   profile({
+    id: "answer-drafter",
+    subagentType: "chat-answer-drafter-v1",
+    roleId: "answer-drafter",
+    phase: "drafting",
+    description: "Create one provisional conversational answer for independent critique.",
+    systemPrompt: "Draft one provisional answer from accepted evidence and analysis packets. Use exact [[source:SOURCE_ID]] placeholders on every factual paragraph and preserve explicit gaps. This draft is not user-visible and is not the final answer. Do not retrieve, delegate, or produce a Deep Research report.",
+    grantedCapabilityIds: [],
+    responseSchemaId: "atlcli.chat-answer-draft/v1",
+    responseSchema: Object.freeze({
+      ...CHAT_AGENT_DRAFT_JSON_SCHEMA_V1,
+      title: "ChatProvisionalAnswerDraftV1",
+    }),
+    modelPreference: "balanced",
+    maxInputChars: 28_000,
+    maxResultBytes: 28_000,
+    maxDurationMs: 75_000,
+  }),
+  profile({
     id: "answer-critic",
     subagentType: "chat-answer-critic-v1",
     roleId: "answer-critic",
-    phase: "reconciliation",
+    phase: "critique",
     description: "Critique answer coverage, grounding, citations, and unresolved gaps.",
-    systemPrompt: "Make one systematic pass over the accepted packets and return at most four prioritized, actionable defects with one concise sentence each. Check grounding, relationship direction, contradiction, coverage, and citation validity once each. Treat unresolved interpretation as a gap instead of repeatedly debating it. Do not retrieve, delegate, repair, or author the final answer.",
+    systemPrompt: "Independently critique the provisional answer against the versioned host groundedness rubric and accepted evidence packets. Return at most four prioritized typed defects. Check question coverage, claim support, exact citation identity, source authority/freshness, contradiction handling, wrong-source risk, uncovered candidates, false completeness, and instruction isolation exactly once. Use only the closed defect, severity, and repair-action enums. Treat unresolved interpretation as a gap. Do not retrieve, delegate, repair, or author the final answer.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-critique-packet/v1",
     responseSchema: CHAT_CRITIQUE_PACKET_SCHEMA_V1,
@@ -411,12 +461,30 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     maxDurationMs: 75_000,
   }),
   profile({
+    id: "answer-repairer",
+    subagentType: "chat-answer-repairer-v1",
+    roleId: "answer-repairer",
+    phase: "repair",
+    description: "Repair only the host-selected defects in one provisional answer.",
+    systemPrompt: "Repair exactly the typed defects selected by the host. Preserve supported claims and exact [[source:SOURCE_ID]] placeholders, remove rejected evidence, and disclose required gaps. Return one corrected provisional answer. Do not retrieve, delegate, widen scope, or write the final user answer.",
+    grantedCapabilityIds: [],
+    responseSchemaId: "atlcli.chat-answer-draft/v1",
+    responseSchema: Object.freeze({
+      ...CHAT_AGENT_DRAFT_JSON_SCHEMA_V1,
+      title: "ChatRepairedAnswerDraftV1",
+    }),
+    modelPreference: "balanced",
+    maxInputChars: 28_000,
+    maxResultBytes: 28_000,
+    maxDurationMs: 60_000,
+  }),
+  profile({
     id: "chat-synthesizer",
     subagentType: "chat-synthesizer-v1",
     roleId: "synthesizer",
     phase: "synthesis",
     description: "Write one concise conversational answer from accepted evidence and analysis packets.",
-    systemPrompt: "Write the final conversational answer only from accepted references, defects, and gaps. Before writing, copy the canonical source IDs from the accepted dependency packets. Every paragraph containing an evidence-derived fact MUST end on that same line with one or more placeholders copied exactly as [[source:SOURCE_ID]]. Example: `The implementation is complete. [[source:jira:DEMO-1]]` Headings need no marker. Never use Markdown links or a separate source list in messageMarkdown. Put every used SOURCE_ID, without section suffixes, in citationSourceIds. If a factual paragraph cannot be cited this way, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
+    systemPrompt: "Write the single final conversational answer only from accepted evidence, the provisional draft, deterministic quality state, critic defects, the optional bounded repair packet, and explicit gaps. Correct or omit every defect before writing. Before writing, copy canonical source IDs from accepted dependency packets. Every paragraph containing an evidence-derived fact MUST end on that same line with one or more placeholders copied exactly as [[source:SOURCE_ID]]. Example: `The implementation is complete. [[source:jira:DEMO-1]]` Headings need no marker. Never use Markdown links or a separate source list in messageMarkdown. Put every used SOURCE_ID, without section suffixes, in citationSourceIds. If a factual paragraph cannot be cited this way, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -433,6 +501,16 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
 const PROFILE_BY_ID = new Map(
   CHAT_SUBAGENT_PROFILES_V1.map((entry) => [entry.id, entry]),
 );
+
+export function chatSubagentProfileByIdV1(
+  profileId: ChatSubagentProfileIdV1,
+): Readonly<ChatSubagentProfileV1> {
+  const selected = PROFILE_BY_ID.get(profileId);
+  if (!selected) {
+    throw new ChatContractError("invalid-request", "The Chat subagent profile is unknown.");
+  }
+  return selected;
+}
 
 export interface ChatWorkflowTaskProposalV1 {
   taskId: string;
@@ -470,7 +548,25 @@ export interface ChatWorkflowAdmissionResponseV1 {
   completionObjective: "conversation-answer";
   maxConcurrency: number;
   synthesizerTaskId: string;
+  qualityReviewRequired: true;
   dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+export function createChatWorkflowDispatchV1(input: {
+  task: Readonly<ChatWorkflowTaskProposalV1>;
+  profile: Readonly<ChatSubagentProfileV1>;
+}): Readonly<ChatWorkflowDispatchV1> {
+  return Object.freeze({
+    taskId: input.task.taskId,
+    subagentType: input.profile.subagentType,
+    objective: input.task.objective,
+    dependencyTaskIds: Object.freeze([...input.task.dependencyTaskIds]),
+    description: encodeAgenticTaskDescriptionV1({
+      taskId: input.task.taskId,
+      objective: input.task.objective,
+    }),
+    responseSchema: input.profile.responseSchema,
+  });
 }
 
 function invalid(message: string): never {
@@ -487,7 +583,15 @@ function boundedText(value: unknown, label: string, maximum: number): string {
 }
 
 function phaseRank(phase: AgenticWorkflowPhaseV1): number {
-  return ["acquisition", "analysis", "reconciliation", "synthesis"].indexOf(phase);
+  return [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
+    "synthesis",
+  ].indexOf(phase);
 }
 
 export function admitChatWorkflowProposalV1(input: {
@@ -506,7 +610,7 @@ export function admitChatWorkflowProposalV1(input: {
   if (!proposal || proposal.schema !== CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1) {
     invalid("An agentic Chat strategy requires a versioned workflow proposal.");
   }
-  const maxTasks = Math.max(2, Math.min(8, Math.trunc(input.maxTasks ?? 8)));
+  const maxTasks = Math.max(2, Math.min(9, Math.trunc(input.maxTasks ?? 9)));
   const maximumConcurrency = Math.max(
     1,
     Math.min(3, Math.trunc(input.maxConcurrency ?? 3)),
@@ -537,6 +641,9 @@ export function admitChatWorkflowProposalV1(input: {
     if (!CHAT_SUBAGENT_PROFILE_IDS_V1.includes(candidate.profileId)) {
       invalid("A Chat workflow task requested an unknown profile.");
     }
+    if (candidate.profileId === "answer-repairer") {
+      invalid("The answer repairer is admitted only by the host quality checkpoint.");
+    }
     if (profiles.has(candidate.profileId)) {
       invalid("A Chat workflow profile may be selected at most once per turn.");
     }
@@ -553,15 +660,23 @@ export function admitChatWorkflowProposalV1(input: {
       dependencyTaskIds: Object.freeze([...candidate.dependencyTaskIds]) as unknown as string[],
     });
   });
-  const acquisitionAndAnalysisTaskIds = proposedTasks
+  const preDraftTaskIds = proposedTasks
     .filter((task) => {
       const phase = PROFILE_BY_ID.get(task.profileId)!.phase;
-      return phase === "acquisition" || phase === "analysis";
+      return phaseRank(phase) < phaseRank("drafting");
+    })
+    .map((task) => task.taskId);
+  const preCriticTaskIds = proposedTasks
+    .filter((task) => {
+      const phase = PROFILE_BY_ID.get(task.profileId)!.phase;
+      return phaseRank(phase) < phaseRank("critique");
     })
     .map((task) => task.taskId);
   const tasks = proposedTasks.map((task) => {
-    const required = task.profileId === "answer-critic"
-      ? acquisitionAndAnalysisTaskIds.filter((taskId) => taskId !== task.taskId)
+    const required = task.profileId === "answer-drafter"
+      ? preDraftTaskIds.filter((taskId) => taskId !== task.taskId)
+      : task.profileId === "answer-critic"
+        ? preCriticTaskIds.filter((taskId) => taskId !== task.taskId)
       : task.profileId === "chat-synthesizer"
         ? proposedTasks
             .filter((candidate) => candidate.taskId !== task.taskId)
@@ -598,6 +713,14 @@ export function admitChatWorkflowProposalV1(input: {
     invalid("An agentic Chat workflow requires exactly one dedicated synthesizer.");
   }
   const synthesizer = synthesizers[0]!;
+  const drafters = tasks.filter((task) => task.profileId === "answer-drafter");
+  if (drafters.length !== 1) {
+    invalid("An agentic Chat workflow requires exactly one provisional answer drafter.");
+  }
+  const critics = tasks.filter((task) => task.profileId === "answer-critic");
+  if (critics.length !== 1) {
+    invalid("An agentic Chat workflow requires exactly one independent answer critic.");
+  }
   const ancestors = new Set<string>();
   const visiting = new Set<string>();
   const visited = new Set<string>();
@@ -754,20 +877,13 @@ export function createChatWorkflowProposalControllerV1(input: {
         completionObjective: "conversation-answer",
         maxConcurrency: workflow.compiled.maxConcurrency,
         synthesizerTaskId: workflow.synthesizerTaskId,
-        dispatches: Object.freeze(workflow.tasks.map((task) => {
-          const profile = workflow.profileByTaskId.get(task.taskId)!;
-          return Object.freeze({
-            taskId: task.taskId,
-            subagentType: profile.subagentType,
-            objective: task.objective,
-            dependencyTaskIds: Object.freeze([...task.dependencyTaskIds]),
-            description: encodeAgenticTaskDescriptionV1({
-              taskId: task.taskId,
-              objective: task.objective,
-            }),
-            responseSchema: profile.responseSchema,
-          });
-        })),
+        qualityReviewRequired: true,
+        dispatches: Object.freeze(workflow.tasks
+          .filter((task) => task.taskId !== workflow.synthesizerTaskId)
+          .map((task) => createChatWorkflowDispatchV1({
+            task,
+            profile: workflow.profileByTaskId.get(task.taskId)!,
+          }))),
       };
       await input.onAccepted?.(workflow, response);
       input.budget.completePtc(response);
@@ -780,9 +896,9 @@ export function createChatWorkflowProposalControllerV1(input: {
   }, {
     name: "chat_workflow_propose",
     description:
-      "Propose one bounded dependency graph from the eight documented Chat profiles after accepting an agentic strategy. Dependencies must move strictly from acquisition readers to parallel analysis profiles to answer-critic to chat-synthesizer; profiles in the same phase cannot depend on one another. The host returns exact task descriptions, types, and response schemas for dispatch.",
+      "Propose one bounded dependency graph from the nine model-selectable Chat profiles after accepting an agentic strategy. Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, and response schemas for dispatch.",
     schema: z.object({
-      tasks: z.array(workflowTaskProposalSchema).min(2).max(8),
+      tasks: z.array(workflowTaskProposalSchema).min(4).max(9),
       maxConcurrency: z.number().int().min(1).max(3),
       retrievalPlan: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1.optional(),
     }).strict(),

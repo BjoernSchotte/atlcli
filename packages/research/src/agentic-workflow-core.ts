@@ -15,6 +15,9 @@ export const AGENTIC_WORKFLOW_PHASES_V1 = [
   "acquisition",
   "analysis",
   "reconciliation",
+  "drafting",
+  "critique",
+  "repair",
   "synthesis",
 ] as const;
 

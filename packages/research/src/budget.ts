@@ -33,6 +33,12 @@ export interface ResearchModelBudgetSnapshotV1 {
   costMicros: number;
 }
 
+export interface ResearchModelBudgetCapacityV1 {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 /**
  * Body-free model-spend checkpoint. It retains the immutable ceiling chosen
  * when a durable session first dispatches a provider request, plus the
@@ -359,7 +365,27 @@ export class ResearchModelRunBudget {
     this.#costMicros = parsed.snapshot.costMicros;
   }
 
-  reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1 {
+  canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean {
+    if (
+      !Number.isSafeInteger(capacity.calls) || capacity.calls < 0 ||
+      !Number.isSafeInteger(capacity.inputTokens) || capacity.inputTokens < 0 ||
+      !Number.isSafeInteger(capacity.outputTokens) || capacity.outputTokens < 0
+    ) {
+      throw new ResearchContractError("invalid-request", "Research model reserve capacity is invalid.");
+    }
+    const costMicros = capacity.inputTokens * this.#inputCostMicrosPerToken +
+      capacity.outputTokens * this.#outputCostMicrosPerToken;
+    return this.#calls + capacity.calls <= this.#limits.maxModelCalls &&
+      this.#inputTokens + capacity.inputTokens <= this.#limits.maxTotalModelInputTokens &&
+      this.#outputTokens + capacity.outputTokens <= this.#limits.maxTotalModelOutputTokens &&
+      this.#costMicros + costMicros <= this.#limits.maxModelCostMicros;
+  }
+
+  reserve(
+    request: unknown,
+    maximumOutputTokens: number,
+    retain?: ResearchModelBudgetCapacityV1,
+  ): ResearchModelBudgetReservationV1 {
     if (!Number.isSafeInteger(maximumOutputTokens) || maximumOutputTokens < 1) {
       throw new ResearchContractError("invalid-request", "Research model output reservation is invalid.");
     }
@@ -369,12 +395,12 @@ export class ResearchModelRunBudget {
     const outputTokens = maximumOutputTokens;
     const costMicros = inputTokens * this.#inputCostMicrosPerToken +
       outputTokens * this.#outputCostMicrosPerToken;
-    if (
-      this.#calls + 1 > this.#limits.maxModelCalls ||
-      this.#inputTokens + inputTokens > this.#limits.maxTotalModelInputTokens ||
-      this.#outputTokens + outputTokens > this.#limits.maxTotalModelOutputTokens ||
-      this.#costMicros + costMicros > this.#limits.maxModelCostMicros
-    ) {
+    const retained = retain ?? { calls: 0, inputTokens: 0, outputTokens: 0 };
+    if (!this.canReserveCapacity({
+      calls: 1 + retained.calls,
+      inputTokens: inputTokens + retained.inputTokens,
+      outputTokens: outputTokens + retained.outputTokens,
+    })) {
       throw new ResearchContractError("limit-exceeded", "The model run budget was exhausted before another provider call.");
     }
     const reservation: ResearchModelBudgetReservationV1 = {
