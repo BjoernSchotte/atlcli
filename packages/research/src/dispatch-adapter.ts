@@ -306,6 +306,13 @@ export interface AgenticDispatchInterceptionOptionsV1 {
   maxConcurrency: number;
   /** Attach exact completed dependency projections after immutable admission. */
   allowHostDependencyHydration?: boolean;
+  /**
+   * Ignore the guest-copied response schema and bind the immutable admission
+   * schema in the host. Useful for persistent Chat workflows where taskId is
+   * already the sole dispatch authority; Research keeps strict guest-schema
+   * equality unless it explicitly opts in.
+   */
+  allowHostResponseSchemaHydration?: boolean;
   signal?: AbortSignal;
   invokeUpstream(
     input: AgenticTaskToolInputV1,
@@ -626,7 +633,8 @@ export function createAgenticDispatchInterceptionAdapter(
     const requestedSchema = config.configurable?.[
       DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
     ];
-    if (canonicalJson(requestedSchema) !== canonicalJson(admission.responseSchema)) {
+    if (!options.allowHostResponseSchemaHydration &&
+        canonicalJson(requestedSchema) !== canonicalJson(admission.responseSchema)) {
       reject(
         "response-schema-mismatch",
         `Research task ${taskId} did not request its admitted response schema.`,

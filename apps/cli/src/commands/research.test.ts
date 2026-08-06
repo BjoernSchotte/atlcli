@@ -981,7 +981,7 @@ describe("research CLI one-shot contract", () => {
       maxPtcCalls: 24,
       maxHttpCalls: 20,
       maxModelOutputTokens: 8_000,
-      maxModelCostMicros: 500_000,
+      maxModelCostMicros: 2_000_000,
     });
     const quickRequest = buildChatRequest(
       parseChatCliInput(["Summarize DOCSY"], {

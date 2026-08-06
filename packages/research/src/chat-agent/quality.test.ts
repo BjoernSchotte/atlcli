@@ -172,6 +172,35 @@ describe("Chat groundedness quality boundary", () => {
     expect(disposition.requiredGapCodes).toContain("wrong-source");
   });
 
+  test("turns a critic-only source rejection into repair without revoking host-valid evidence", () => {
+    const assessment = assessChatGroundednessBeforeCriticV1({
+      conversationId: "conversation:quality",
+      turnId: "turn:critic-source-authority",
+      question: "Compare the admitted sources.",
+      siteOrigin: ORIGIN,
+      evidence: [evidence()],
+      referencedSourceIds: ["wiki:1001"],
+      retrieval: retrieval(),
+      contradictionCount: 0,
+    });
+    const disposition = createChatQualityDispositionV1({
+      assessment,
+      criticDefects: [{
+        defectId: "chat-defect:model-reject",
+        code: "wrong-source",
+        severity: "material",
+        sourceIds: ["wiki:1001"],
+        repairAction: "reject-evidence",
+        message: "The provisional claim should be resynthesized against this source.",
+      }],
+      repairAdmitted: true,
+    });
+
+    expect(disposition.rejectedSourceIds).toEqual([]);
+    expect(disposition.repairRequired).toBe(true);
+    expect(disposition.repairDefectIds).toEqual(["chat-defect:model-reject"]);
+  });
+
   test("detects truncated and conflicting source versions while accepting an accounted irrelevant candidate", () => {
     const first = evidence({
       id: "wiki:version-a",

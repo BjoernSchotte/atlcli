@@ -45,3 +45,43 @@ test("records a body-free HTTP status when a subagent provider fails", async () 
     providerStatus: 529,
   });
 });
+
+test("host response-schema hydration ignores an untrusted guest copy", async () => {
+  const responseSchema = {
+    type: "object",
+    properties: { answer: { type: "string" } },
+    required: ["answer"],
+  };
+  let received: unknown;
+  const adapter = createResearchDispatchInterceptionAdapter({
+    admissions: [{
+      taskId: "task:chat-draft",
+      subagentType: "chat-drafter",
+      objective: "Draft the admitted answer.",
+      grantedCapabilityIds: [],
+      responseSchema,
+      maxResultBytes: 1_024,
+      maxDurationMs: 1_000,
+    }],
+    maxTasks: 1,
+    maxConcurrency: 1,
+    allowHostResponseSchemaHydration: true,
+    invokeUpstream: async (_input, config) => {
+      received = config.configurable?.[DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY];
+      return { answer: "host bound" };
+    },
+  });
+
+  await expect(adapter.invoke({
+    description: encodeResearchTaskDescriptionV1({
+      taskId: "task:chat-draft",
+      objective: "Draft the admitted answer.",
+    }),
+    subagent_type: "chat-drafter",
+  }, {
+    configurable: {
+      [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: { type: "array" },
+    },
+  })).resolves.toEqual({ answer: "host bound" });
+  expect(received).toEqual(responseSchema);
+});

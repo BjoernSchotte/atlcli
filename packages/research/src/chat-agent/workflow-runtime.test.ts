@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -18,12 +19,19 @@ import {
   type ChatAgentDraftV1,
 } from "./contracts.js";
 import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
+import {
+  ChatCandidateLedgerControllerV1 as CandidateLedgerController,
+  createChatRetrievalPlanV1,
+} from "./retrieval-plan.js";
+import { createChatPtcToolsV1 } from "./retrieval.js";
 import type { ChatQualityDispositionV1 } from "./quality.js";
 import {
   CHAT_WORKFLOW_STATE_PATH_V1,
   createChatAgenticWorkflowRuntimeV1,
+  createPlannedSearchAcquisitionToolV1,
   normalizeKnownSourceReferencesV1,
   type ChatSubagentEvalDiagnosticV1,
+  type ChatSubagentModelStreamEventV1,
 } from "./workflow-runtime.js";
 
 const strategy: ChatStrategyDecisionV1 = {
@@ -175,8 +183,12 @@ function createHarness(input: {
     schema: Readonly<Record<string, unknown>>,
   ) => Readonly<Record<string, unknown>>;
   onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
+  onModelStreamEvent?: (event: ChatSubagentModelStreamEventV1) => void;
   searchProducts?: Array<"jira" | "confluence">;
   withRetrievalAssessment?: boolean;
+  searchExhaustedWithoutCandidates?: boolean;
+  searchPlanSaturated?: boolean;
+  strategyReviewCurrent?: () => boolean;
   decideRepairAdmission?: (
     disposition: ChatQualityDispositionV1,
   ) => { admit: boolean; reason?: "deadline-reserve" | "model-budget-reserve" };
@@ -241,11 +253,15 @@ function createHarness(input: {
     siteOrigin: request.scope.siteOrigin,
     taskContext: JSON.stringify({ question: request.question }),
     limits: request.limits,
+    locale: "de-DE",
     exactContextProducts: [],
     searchProducts: input.searchProducts ?? [],
     boundProjectKeys: [],
     boundSpaceKeys: [],
     signal: new AbortController().signal,
+    ...(input.strategyReviewCurrent
+      ? { strategyReviewCurrent: input.strategyReviewCurrent }
+      : {}),
     beforeSynthesis: input.beforeSynthesis,
     ...(input.decideRepairAdmission
       ? { decideRepairAdmission: input.decideRepairAdmission }
@@ -253,6 +269,18 @@ function createHarness(input: {
     ...(input.withRetrievalAssessment
       ? {
           retrievalLedger: {
+            plan: () => ({
+              searches: (input.searchProducts ?? []).map((product) => ({
+                product,
+                maxPages: 1,
+              })),
+            }),
+            allowedInitialQueries: () => [{ text: "synthetic" }],
+            assertToolInput: () => {},
+            observe: async () => {},
+            isSearchExhaustedWithoutCandidates: () =>
+              input.searchExhaustedWithoutCandidates === true,
+            isSearchPlanSaturated: () => input.searchPlanSaturated === true,
             assessment: () => ({
               schema: "atlcli.chat-retrieval-assessment/v1",
               sufficient: true,
@@ -276,6 +304,7 @@ function createHarness(input: {
         }
       : {}),
     ...(input.onEvalDiagnostic ? { onEvalDiagnostic: input.onEvalDiagnostic } : {}),
+    ...(input.onModelStreamEvent ? { onModelStreamEvent: input.onModelStreamEvent } : {}),
   });
   return { runtime, workspace, compiledSubagents };
 }
@@ -390,10 +419,10 @@ describe("Chat agentic workflow runtime", () => {
     expect(byName.get("chat-jira-search-reader-v1")).toBe(fast);
     expect(byName.get("chat-comparison-analyst-v1")).toBe(balanced);
     expect(byName.get("chat-answer-critic-v1")).toBe(balanced);
-    expect(byName.get("chat-synthesizer-v1")).toBe(thorough);
+    expect(byName.get("chat-synthesizer-v1")).toBe(balanced);
   });
 
-  test("streams body-free child eval lifecycle and fails a looping ninth reader eval closed", async () => {
+  test("streams body-free child eval lifecycle and terminates a looping ninth reader eval", async () => {
     const diagnostics: ChatSubagentEvalDiagnosticV1[] = [];
     const harness = createHarness({
       onEvalDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -415,8 +444,11 @@ describe("Chat agentic workflow runtime", () => {
       await expect(guard.wrapToolCall(request, async () => ({ content: `step ${attempt}` })))
         .resolves.toEqual({ content: `step ${attempt}` });
     }
-    await expect(guard.wrapToolCall(request, async () => ({ content: "ignored" })))
-      .rejects.toThrow("bounded eval step limit");
+    const terminal = await guard.wrapToolCall({
+      toolCall: { ...request.toolCall, id: "eval:ninth" },
+    }, async () => ({ content: "ignored" }));
+    expect(terminal).toBeInstanceOf(ToolMessage);
+    expect((terminal as ToolMessage).content).toContain("EVAL_LIMIT_REACHED");
     expect(diagnostics.filter((entry) => entry.status === "started")
       .map((entry) => entry.attempt)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(diagnostics[0]).toMatchObject({
@@ -434,7 +466,342 @@ describe("Chat agentic workflow runtime", () => {
     });
   });
 
-  test("uses repairable tool packets internally and native streaming only for synthesis", async () => {
+  test("turns a terminal empty search into one structured stop instruction without another eval", async () => {
+    const diagnostics: ChatSubagentEvalDiagnosticV1[] = [];
+    const harness = createHarness({
+      onEvalDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      searchProducts: ["confluence"],
+      withRetrievalAssessment: true,
+      searchExhaustedWithoutCandidates: true,
+    });
+    const reader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    const guard = reader?.middleware?.find((entry) => entry.wrapToolCall !== undefined);
+    if (!guard?.wrapToolCall) throw new Error("missing child eval guard");
+    let invoked = false;
+    const result = await guard.wrapToolCall({
+      toolCall: {
+        id: "eval:terminal",
+        name: "eval",
+        args: { code: "await tools.wikiSearch({ query: { text: 'invented' } });" },
+      },
+    }, async () => {
+      invoked = true;
+      return { content: "should not run" };
+    });
+    expect(invoked).toBe(false);
+    expect(result).toBeInstanceOf(ToolMessage);
+    expect((result as ToolMessage).content).toContain("SEARCH_PLAN_COMPLETE_WITHOUT_CANDIDATES");
+    expect(diagnostics).toEqual([{
+      profileId: "confluence-search-reader",
+      status: "success",
+      attempt: 1,
+    }]);
+  });
+
+  test("bundles an admitted search, ranking, and detail path behind one reader capability", async () => {
+    const harness = createHarness({
+      searchProducts: ["confluence"],
+      withRetrievalAssessment: true,
+    });
+    const reader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    expect(reader?.systemPrompt).toContain("chatRetrievalAcquire");
+    expect(reader?.systemPrompt).not.toContain("wikiSearch");
+    const evaluator = reader?.middleware?.flatMap((entry) => entry.tools ?? [])
+      .find((candidate) => candidate.name === "eval") as {
+        description?: string;
+    } | undefined;
+    if (!evaluator) throw new Error("missing planned acquisition evaluator");
+    expect(evaluator.description).toContain("sandboxed REPL");
+  });
+
+  test("executes planned query variants within one product-wide page budget before ranking and detail reads", async () => {
+    const calls: string[] = [];
+    const search = tool(async (value: { query?: { text?: string }; cursor?: string }) => {
+      const label = value.query?.text ?? value.cursor ?? "unknown";
+      calls.push(`search:${label}`);
+      return JSON.stringify({
+        items: [{ entityRef: `research-entity:${label.replace(/[^A-Za-z0-9-]/gu, "-")}` }],
+        page: { complete: true },
+      });
+    }, {
+      name: "wiki_search",
+      description: "synthetic search",
+      schema: z.object({
+        query: z.object({ text: z.string() }).optional(),
+        cursor: z.string().optional(),
+      }).strict(),
+    });
+    const rank = tool(async (value: { entityRefs: string[] }) => {
+      calls.push(`rank:${value.entityRefs.length}`);
+      return JSON.stringify({
+        items: value.entityRefs.map((entityRef, index) => ({
+          entityRef,
+          sourceId: `wiki:${index + 1}`,
+          rank: index + 1,
+        })),
+      });
+    }, {
+      name: "research_candidate_rank",
+      description: "synthetic rank",
+      schema: z.object({
+        product: z.enum(["jira", "confluence"]),
+        entityRefs: z.array(z.string()),
+      }).strict(),
+    });
+    const detail = tool(async (value: { entityRef: string }) => {
+      calls.push(`detail:${value.entityRef}`);
+      return JSON.stringify({ source: { id: value.entityRef }, content: { text: "detail" } });
+    }, {
+      name: "wiki_page_get",
+      description: "synthetic detail",
+      schema: z.object({ entityRef: z.string() }).strict(),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: [search, rank, detail],
+      retrievalLedger: {
+        plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        allowedInitialQueries: () => [
+          { text: "first" },
+          { text: "second" },
+          { text: "third" },
+        ],
+      } as unknown as ChatCandidateLedgerControllerV1,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+
+    const outerResult = await acquisition.invoke({}, {
+      toolCall: { id: "outer-acquisition-call" },
+    } as unknown as RunnableConfig);
+    expect(outerResult).toBeInstanceOf(ToolMessage);
+    const result = JSON.parse(String((outerResult as ToolMessage).content));
+
+    expect(calls).toEqual([
+      "search:first",
+      "search:second",
+      "rank:2",
+      "detail:research-entity:first",
+      "detail:research-entity:second",
+    ]);
+    expect(result).toMatchObject({
+      pagesRead: 2,
+      discoveredCandidates: 2,
+      details: [
+        { source: { id: "research-entity:first" } },
+        { source: { id: "research-entity:second" } },
+      ],
+    });
+  });
+
+  test("runs the compound acquisition through the real broker and durable candidate ledger", async () => {
+    const limits = {
+      ...request.limits,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 2,
+    };
+    const scopedRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Compare atlcli installation and configuration paths.",
+      scope: {
+        ...request.scope,
+        confluenceSpaceKeys: ["DOCSY"],
+      },
+      limits,
+    };
+    const broker = new ResearchCapabilityBroker(scopedRequest, {
+      jira: providers.jira,
+      wiki: {
+        async searchPage(input) {
+          return {
+            items: input.cql.includes("atlcli")
+              ? [{
+                  contentId: "1001",
+                  spaceKey: "DOCSY",
+                  title: "Install atlcli",
+                  excerpt: "Install and configure atlcli.",
+                }]
+              : [],
+          };
+        },
+        async getPage(input) {
+          return {
+            contentId: input.contentId,
+            spaceKey: "DOCSY",
+            title: "Install atlcli",
+            content: {
+              text: "Install atlcli, then configure its profile.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 43,
+            },
+          };
+        },
+      },
+    }, { budget: new ResearchRunBudget(limits) });
+    const workspace = createMemoryResearchWorkspace();
+    const retrievalLedger = new CandidateLedgerController({
+      plan: createChatRetrievalPlanV1({
+        conversationId: "conversation:compound",
+        turnId: "turn:compound",
+        question: scopedRequest.question,
+        anchors: [],
+        scopeBindings: [],
+        boundSpaceKeys: ["DOCSY"],
+        searchProducts: ["confluence"],
+        exactContextProducts: [],
+        limits,
+        agentic: true,
+        proposal: {
+          searches: [{
+            searchId: "search:confluence",
+            product: "confluence",
+            variants: [
+              { variantId: "core", query: { text: "atlcli" } },
+              { variantId: "alternate", query: { text: "configuration" } },
+            ],
+            maxPages: 1,
+          }],
+        },
+      }),
+      workspace,
+      siteOrigin: scopedRequest.scope.siteOrigin,
+    });
+    await retrievalLedger.initialize();
+    const rawTools = createChatPtcToolsV1(broker, {
+      searchProducts: ["confluence"],
+      boundSpaceKeys: ["DOCSY"],
+      beforeInvoke: (capability, value) =>
+        retrievalLedger.assertToolInput(capability, value),
+      onResult: (capability, result, callId, value) =>
+        retrievalLedger.observe(capability, result, callId, value),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: rawTools,
+      retrievalLedger,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+
+    const result = JSON.parse(String(await acquisition.invoke({})));
+
+    expect(result).toMatchObject({
+      pagesRead: 2,
+      discoveredCandidates: 1,
+      details: [{
+        source: {
+          sourceId: "wiki:1001",
+          title: "Install atlcli",
+        },
+        content: { truncated: false },
+      }],
+      gaps: [],
+    });
+    expect(retrievalLedger.snapshot()).toMatchObject({
+      atlassianHttpCalls: 3,
+      candidates: [{
+        sourceId: "wiki:1001",
+        state: "detail-read",
+        admittedRank: 1,
+      }],
+    });
+  });
+
+  test("blocks another search after saturation while preserving later ranking and detail evals", async () => {
+    const harness = createHarness({
+      searchProducts: ["confluence"],
+      withRetrievalAssessment: true,
+      searchPlanSaturated: true,
+    });
+    const reader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    const guard = reader?.middleware?.find((entry) => entry.wrapToolCall !== undefined);
+    if (!guard?.wrapToolCall) throw new Error("missing child eval guard");
+    let searchInvoked = false;
+    const stopped = await guard.wrapToolCall({
+      toolCall: {
+        id: "eval:saturated",
+        name: "eval",
+        args: { code: "await tools.wikiSearch({ query: { text: 'another' } });" },
+      },
+    }, async () => {
+      searchInvoked = true;
+      return { content: "should not run" };
+    });
+    expect(searchInvoked).toBe(false);
+    expect((stopped as ToolMessage).content).toContain("SEARCH_PLAN_SATURATED");
+
+    await expect(guard.wrapToolCall({
+      toolCall: {
+        id: "eval:rank",
+        name: "eval",
+        args: { code: "await tools.researchCandidateRank({ candidates: [] });" },
+      },
+    }, async () => ({ content: "ranked" }))).resolves.toEqual({ content: "ranked" });
+  });
+
+  test("degrades only bounded empty-search acquisition failures to an explicit gap packet", async () => {
+    const harness = createHarness({
+      searchProducts: ["confluence"],
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-confluence-search-reader-v1") {
+          throw new Error("Chat search query is not an admitted retrieval-plan variant.");
+        }
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:search",
+          profileId: "confluence-search-reader",
+          objective: "Search the admitted Confluence scope.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft a provisional answer.",
+          dependencyTaskIds: ["task:search"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique the provisional answer.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the accepted answer.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:search"
+    );
+    if (!dispatch) throw new Error("missing search dispatch");
+    await expect(invokeDispatch(harness.runtime, dispatch)).resolves.toEqual({
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: [],
+      claims: [],
+      relationships: [],
+      gaps: [
+        "Confluence discovery exhausted every host-admitted query variant without detail evidence; no broader query or scope was attempted.",
+      ],
+    });
+    expect(harness.runtime.dispatchSnapshot().taskStatuses["task:search"]).toBe("completed");
+  });
+
+  test("uses repairable tool packets for every specialist including synthesis", async () => {
     const projectedResponseFormats = new Map<string, unknown>();
     const harness = createHarness({
       structuredOutput: "native",
@@ -478,12 +845,13 @@ describe("Chat agentic workflow runtime", () => {
     const synthesisFormat = projectedResponseFormats.get("chat-synthesizer-v1");
     expect(Array.isArray(internalFormat)).toBe(true);
     expect((internalFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
-    expect(synthesisFormat?.constructor.name).toBe("ProviderStrategy");
-    const providerSchema = (synthesisFormat as { schema: unknown }).schema;
+    expect(Array.isArray(synthesisFormat)).toBe(true);
+    expect((synthesisFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
+    const synthesisSchema = (synthesisFormat as Array<{ schema: unknown }>)[0]?.schema;
     expect(JSON.stringify(dispatch.responseSchema)).toContain("maxItems");
     expect(JSON.stringify((internalFormat as Array<{ schema: unknown }>)[0]?.schema)).toContain("maxItems");
-    expect(JSON.stringify(providerSchema)).not.toContain("maxItems");
-    expect(providerSchema).toMatchObject({
+    expect(JSON.stringify(synthesisSchema)).toContain("maxItems");
+    expect(synthesisSchema).toMatchObject({
       type: "object",
       properties: {
         messageMarkdown: {
@@ -493,6 +861,66 @@ describe("Chat agentic workflow runtime", () => {
         citationSourceIds: { type: "array" },
       },
     });
+  });
+
+  test("forwards model stream events from host-executed DeepAgents specialists", async () => {
+    const streamed: ChatSubagentModelStreamEventV1[] = [];
+    const harness = createHarness({
+      onModelStreamEvent: (event) => streamed.push(event),
+      async invoke(_taskInput, config) {
+        const callbacks = config?.callbacks as unknown as {
+          handlers?: Array<{
+            handleChatModelStreamEvent?: (event: unknown, runId: string) => Promise<void> | void;
+          }>;
+        };
+        const handlers = callbacks?.handlers ?? [];
+        for (const handler of handlers) {
+          await handler.handleChatModelStreamEvent?.({
+            event: "content-block-delta",
+            index: 0,
+            delta: {
+              type: "reasoning-delta",
+              reasoning: "Comparing the accepted evidence.",
+            },
+          }, "synthetic-specialist-model-run");
+          await handler.handleChatModelStreamEvent?.({
+            event: "message-finish",
+            reason: "stop",
+          }, "synthetic-specialist-model-run");
+        }
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted claims.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:analysis"
+    );
+    if (!dispatch) throw new Error("missing analysis dispatch");
+
+    await invokeDispatch(harness.runtime, dispatch);
+
+    expect(streamed).toEqual([
+      expect.objectContaining({
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        runId: "synthetic-specialist-model-run",
+        event: expect.objectContaining({ event: "content-block-delta" }),
+      }),
+      expect.objectContaining({
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        runId: "synthetic-specialist-model-run",
+        event: expect.objectContaining({ event: "message-finish" }),
+      }),
+    ]);
   });
 
   test("runs a real two-sibling frontier concurrently, hydrates only admitted dependencies, and persists one synthesizer", async () => {
@@ -560,7 +988,7 @@ describe("Chat agentic workflow runtime", () => {
       seenDescriptions.get("chat-synthesizer-v1")!,
     );
     expect(synthDescription.dependencyResults.map((entry: { taskId: string }) => entry.taskId).sort())
-      .toEqual(["task:comparison", "task:critic", "task:draft", "task:relationships"]);
+      .toEqual(["task:critic", "task:draft"]);
     expect(harness.runtime.assertComplete()).toMatchObject({
       messageMarkdown: "A bounded synthetic comparison.",
     });
@@ -583,6 +1011,78 @@ describe("Chat agentic workflow runtime", () => {
       });
   });
 
+  test("advances the dynamic graph through host-owned waves and explicit checkpoints", async () => {
+    let reviewCurrent = false;
+    let active = 0;
+    let maximumActive = 0;
+    const invoked: string[] = [];
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      strategyReviewCurrent: () => reviewCurrent,
+      async invoke(taskInput) {
+        invoked.push(taskInput.subagent_type);
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        if (taskInput.subagent_type === "chat-synthesizer-v1") return answerDraft();
+        return analysisPacket();
+      },
+    });
+    await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:relationships",
+          profileId: "relationship-tracer",
+          objective: "Trace explicit relationships.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:comparison",
+          profileId: "comparison-analyst",
+          objective: "Compare accepted claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    });
+
+    const beforeReview = JSON.parse(await harness.runtime.advanceTool.invoke({}));
+    expect(beforeReview).toMatchObject({
+      schema: "atlcli.chat-workflow-advance/v1",
+      status: "strategy-review-required",
+    });
+    expect(beforeReview.completedTaskIds.sort()).toEqual([
+      "task:comparison",
+      "task:relationships",
+    ]);
+    expect(maximumActive).toBe(2);
+
+    reviewCurrent = true;
+    const beforeQuality = JSON.parse(await harness.runtime.advanceTool.invoke({}));
+    expect(beforeQuality).toMatchObject({
+      status: "quality-review-required",
+      completedTaskIds: ["task:draft", "task:critic"],
+    });
+    await harness.runtime.qualityReviewTool.invoke({});
+    const complete = JSON.parse(await harness.runtime.advanceTool.invoke({}));
+    expect(complete).toMatchObject({
+      status: "complete",
+      completedTaskIds: ["task:synth"],
+      remainingTaskIds: [],
+    });
+    expect(invoked).toEqual([
+      "chat-relationship-tracer-v1",
+      "chat-comparison-analyst-v1",
+      "chat-answer-drafter-v1",
+      "chat-answer-critic-v1",
+      "chat-synthesizer-v1",
+    ]);
+    expect(harness.runtime.assertComplete()).toEqual(answerDraft());
+  });
+
   test("fails closed when a child bypasses an incomplete dependency", async () => {
     const harness = createHarness();
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
@@ -602,7 +1102,7 @@ describe("Chat agentic workflow runtime", () => {
     await expect(invokeDispatch(harness.runtime, draft)).rejects.toThrow("incomplete dependency");
   });
 
-  test("fails closed on a forged schema and duplicate dispatch", async () => {
+  test("hydrates the host schema and still rejects a duplicate dispatch", async () => {
     const harness = createHarness();
     const forgedResponse = JSON.parse(await harness.runtime.proposalTool.invoke({
       tasks: qualityWorkflowTasks([
@@ -621,11 +1121,9 @@ describe("Chat agentic workflow runtime", () => {
     await expect(invokeDispatch(harness.runtime, {
       ...forgedAnalysis,
       responseSchema: { type: "object" },
-    })).rejects.toThrow("response schema");
-    // Static rejection did not start an upstream task and therefore must not
-    // consume its immutable dispatch slot. The corrected admitted request may
-    // run once; a real duplicate remains rejected.
-    await invokeDispatch(harness.runtime, forgedAnalysis);
+    })).resolves.toEqual(analysisPacket());
+    // The guest copy is non-authoritative, but the immutable task slot remains
+    // single-use after the host-bound schema completed successfully.
     await expect(invokeDispatch(harness.runtime, forgedAnalysis))
       .rejects.toThrow("already dispatched");
   });
@@ -774,7 +1272,13 @@ describe("Chat agentic workflow runtime", () => {
         }
         if (taskInput.subagent_type === "chat-answer-drafter-v1") return wrongDraft;
         if (taskInput.subagent_type === "chat-answer-repairer-v1") return repairedDraft;
-        if (taskInput.subagent_type === "chat-synthesizer-v1") return repairedDraft;
+        if (taskInput.subagent_type === "chat-synthesizer-v1") {
+          return {
+            messageMarkdown: "## Empty synthesis regression",
+            citationSourceIds: repairedDraft.citationSourceIds,
+            gaps: [],
+          };
+        }
         return analysisPacket();
       },
     });
@@ -809,6 +1313,11 @@ describe("Chat agentic workflow runtime", () => {
       .toHaveLength(1);
     expect(seenDescriptions.get("chat-answer-repairer-v1"))
       .toContain("chat-defect:wrong-citation");
+    const synthDescription = JSON.parse(
+      seenDescriptions.get("chat-synthesizer-v1")!,
+    );
+    expect(synthDescription.dependencyResults.map((entry: { taskId: string }) => entry.taskId))
+      .toEqual([repair.taskId]);
     const finalDraft = harness.runtime.assertComplete();
     expect(goldScore(wrongDraft)).toBe(0);
     expect(goldScore(finalDraft)).toBe(3);

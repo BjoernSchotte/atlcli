@@ -69,6 +69,32 @@ function qualityWorkflowTasks(
 }
 
 describe("Chat dynamic workflow admission", () => {
+  test("isolates exact anchors while keeping same-product search acquisition bounded", () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: agentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+    });
+    expect(controller.tool.description).toContain(
+      "one parallel exact-context reader per bounded anchor",
+    );
+    expect(controller.tool.description).toContain(
+      "Keep admitted search variants for the same product in one search-reader task",
+    );
+  });
+
+  test("requires synthesis to omit irrelevant side facts and auxiliary gaps", () => {
+    const synthesizer = CHAT_SUBAGENT_PROFILES_V1.find((entry) =>
+      entry.id === "chat-synthesizer"
+    );
+    expect(synthesizer?.systemPrompt).toContain(
+      "Every factual paragraph must answer a requested comparison dimension",
+    );
+    expect(synthesizer?.systemPrompt).toContain(
+      "Include only material gaps that could change the requested answer",
+    );
+    expect(synthesizer?.systemPrompt).toContain("do not invent auxiliary gaps");
+  });
+
   test("registers the exact host-owned profile catalog with least-privilege capabilities", () => {
     expect(CHAT_SUBAGENT_PROFILES_V1.map((entry) => entry.id)).toEqual([
       "exact-context-reader",
@@ -106,6 +132,15 @@ describe("Chat dynamic workflow admission", () => {
       expect(CHAT_SUBAGENT_PROFILES_V1.find((entry) => entry.id === id)
         ?.grantedCapabilityIds).toEqual([]);
     }
+    const synthesizer = CHAT_SUBAGENT_PROFILES_V1.find((entry) =>
+      entry.id === "chat-synthesizer"
+    );
+    expect(synthesizer).toMatchObject({
+      modelPreference: "balanced",
+      maxResultBytes: 32_000,
+    });
+    expect(synthesizer?.systemPrompt).toContain("below 700 words");
+    expect(synthesizer?.systemPrompt).toContain("do not re-run the analysis");
     expect(JSON.stringify(CHAT_SUBAGENT_PROFILES_V1.map((entry) => entry.responseSchema))).not.toMatch(
       /sourceBody|rawBody|credential|fetch|graphql|mutation/iu,
     );
@@ -221,7 +256,7 @@ describe("Chat dynamic workflow admission", () => {
       ]);
   });
 
-  test("rejects forged fields, unknown profiles, duplicate profiles, and invalid phase dependencies", () => {
+  test("rejects forged fields, unknown profiles, and invalid phase dependencies", () => {
     const base = qualityWorkflowTasks([
       {
         taskId: "task:jira",
@@ -238,7 +273,7 @@ describe("Chat dynamic workflow admission", () => {
       strategy: agentic,
       proposal: proposal([{ ...base[0]!, profileId: "invented" as never }, ...base.slice(1)]),
     })).toThrow("unknown profile");
-    expect(() => admitChatWorkflowProposalV1({
+    const repeatedReaderWorkflow = admitChatWorkflowProposalV1({
       strategy: agentic,
       proposal: proposal([
         base[0]!,
@@ -247,7 +282,13 @@ describe("Chat dynamic workflow admission", () => {
           ? { ...task, dependencyTaskIds: ["task:jira", "task:jira:2"] }
           : task),
       ]),
-    })).toThrow("at most once");
+    });
+    expect(repeatedReaderWorkflow?.tasks.filter((task) =>
+      task.profileId === "jira-search-reader"
+    )).toHaveLength(2);
+    expect(repeatedReaderWorkflow?.admissions.filter((admission) =>
+      admission.subagentType === "chat-jira-search-reader-v1"
+    )).toHaveLength(2);
     expect(() => admitChatWorkflowProposalV1({
       strategy: agentic,
       proposal: proposal([
@@ -321,6 +362,66 @@ describe("Chat dynamic workflow admission", () => {
     await expect(controller.tool.invoke(proposed)).rejects.toThrow("already been accepted");
   });
 
+  test("repairs model-proposed backward phase edges without changing dynamic task selection", async () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: agentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+    });
+    await controller.tool.invoke({
+      tasks: [
+        {
+          taskId: "task:wiki",
+          profileId: "confluence-search-reader",
+          objective: "Read the bounded Confluence evidence.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:compare",
+          profileId: "comparison-analyst",
+          objective: "Compare the admitted claims.",
+          dependencyTaskIds: ["task:wiki", "task:contradiction"],
+        },
+        {
+          taskId: "task:contradiction",
+          profileId: "contradiction-checker",
+          objective: "Reconcile material contradictions.",
+          dependencyTaskIds: ["task:wiki", "task:compare"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft a provisional answer.",
+          dependencyTaskIds: ["task:compare", "task:contradiction"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique the provisional answer.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the final answer.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 2,
+    });
+
+    expect(controller.acceptedWorkflow()?.tasks.find((task) =>
+      task.taskId === "task:compare"
+    )?.dependencyTaskIds).toEqual(["task:wiki"]);
+    expect(controller.acceptedWorkflow()?.tasks.map((task) => task.profileId)).toEqual([
+      "confluence-search-reader",
+      "comparison-analyst",
+      "contradiction-checker",
+      "answer-drafter",
+      "answer-critic",
+      "chat-synthesizer",
+    ]);
+  });
+
   test("validates a bounded retrieval proposal before freezing dynamic task context", async () => {
     let context = JSON.stringify({ retrieval: { variants: ["initial"] } });
     const seenVariants: string[] = [];
@@ -365,6 +466,57 @@ describe("Chat dynamic workflow admission", () => {
     );
   });
 
+  test("merges duplicate model searches for one product before strict retrieval admission", async () => {
+    let admittedSearches: ChatWorkflowProposalV1["retrievalPlan"];
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: agentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      beforeAdmission: (workflowProposal) => {
+        admittedSearches = workflowProposal.retrievalPlan;
+      },
+    });
+
+    await expect(controller.tool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:wiki",
+        profileId: "confluence-search-reader",
+        objective: "Find relevant evidence.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+      retrievalPlan: {
+        searches: [
+          {
+            searchId: "search:wiki:first",
+            product: "confluence",
+            variants: [
+              { variantId: "primary", query: { text: "installation" }, expectedInformationGain: "high" },
+              { variantId: "duplicate", query: { text: "installation" }, expectedInformationGain: "low" },
+            ],
+            maxPages: 1,
+          },
+          {
+            searchId: "search:wiki:second",
+            product: "confluence",
+            variants: [
+              { variantId: "alternate", query: { text: "setup guide" }, expectedInformationGain: "medium" },
+            ],
+            maxPages: 2,
+          },
+        ],
+      },
+    })).resolves.toBeString();
+
+    expect(admittedSearches?.searches).toHaveLength(1);
+    expect(admittedSearches?.searches?.[0]).toEqual(expect.objectContaining({
+      searchId: "search:wiki:first",
+      product: "confluence",
+      maxPages: 2,
+    }));
+    expect(admittedSearches?.searches?.[0]?.variants.map((variant) => variant.variantId))
+      .toEqual(["primary", "alternate"]);
+  });
+
   test("rejects unavailable acquisition profiles and malformed child packets", async () => {
     const controller = createChatWorkflowProposalControllerV1({
       strategy: agentic,
@@ -381,7 +533,9 @@ describe("Chat dynamic workflow admission", () => {
         },
       ]),
       maxConcurrency: 1,
-    })).rejects.toThrow("capabilities are unavailable");
+    })).rejects.toThrow(
+      "unavailable profiles (jira-search-reader). Use only: answer-drafter, answer-critic, chat-synthesizer",
+    );
     expect(() => parseChatSubagentResultV1("answer-critic", {
       schema: "atlcli.chat-critique-packet/v1",
       defects: [],

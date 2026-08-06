@@ -30,6 +30,25 @@ export const CHAT_QUALITY_DEFECT_CODES_V1 = [
 
 export type ChatQualityDefectCodeV1 =
   (typeof CHAT_QUALITY_DEFECT_CODES_V1)[number];
+export type ChatFinalGapCodeV1 =
+  | "no-detail-evidence"
+  | "unresolved-reference"
+  | "incomplete-coverage";
+
+export function chatFinalGapCodeForQualityDefectV1(
+  code: ChatQualityDefectCodeV1,
+): ChatFinalGapCodeV1 {
+  if (code === "unsupported-claim" || code === "missing-context") {
+    return "no-detail-evidence";
+  }
+  if (
+    code === "wrong-source" || code === "invalid-citation" ||
+    code === "unresolved-contradiction" || code === "prompt-injection-risk"
+  ) {
+    return "unresolved-reference";
+  }
+  return "incomplete-coverage";
+}
 export type ChatQualityDefectSeverityV1 = "blocking" | "material" | "advisory";
 export type ChatQualityRepairActionV1 =
   | "resynthesize"
@@ -312,15 +331,23 @@ export function createChatQualityDispositionV1(input: {
   now?: () => number;
 }): ChatQualityDispositionV1 {
   const known = new Set(input.assessment.knownDetailedSourceIds);
-  const all = [...input.assessment.hostDefects, ...input.criticDefects].map((entry) => ({
-    ...entry,
-    sourceIds: uniqueSorted(entry.sourceIds),
-  }));
   if (input.criticDefects.some((entry) =>
     entry.sourceIds.some((sourceId) => !known.has(sourceId))
   )) {
     throw new Error("Chat quality defect references evidence that was not read in detail.");
   }
+  const hostDefectIds = new Set(
+    input.assessment.hostDefects.map((entry) => entry.defectId),
+  );
+  const normalizedCriticDefects = input.criticDefects.map((entry) =>
+    entry.repairAction === "reject-evidence"
+      ? { ...entry, repairAction: "resynthesize" as const }
+      : entry
+  );
+  const all = [...input.assessment.hostDefects, ...normalizedCriticDefects].map((entry) => ({
+    ...entry,
+    sourceIds: uniqueSorted(entry.sourceIds),
+  }));
   const byId = new Map(all.map((entry) => [entry.defectId, entry]));
   const defects = [...byId.values()].sort((left, right) =>
     left.defectId.localeCompare(right.defectId, "en-US")
@@ -344,7 +371,9 @@ export function createChatQualityDispositionV1(input: {
       (!repairAdmitted && entry.repairAction === "resynthesize"))
     .map((entry) => entry.code)) as ChatQualityDefectCodeV1[];
   const rejectedSourceIds = uniqueSorted(defects
-    .filter((entry) => entry.repairAction === "reject-evidence")
+    .filter((entry) =>
+      hostDefectIds.has(entry.defectId) && entry.repairAction === "reject-evidence"
+    )
     .flatMap((entry) => entry.sourceIds));
   return {
     schema: CHAT_QUALITY_DISPOSITION_SCHEMA_V1,

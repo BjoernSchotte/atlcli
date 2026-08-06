@@ -20,7 +20,7 @@ export function anthropicOutputTokensForPreferenceV1(
     ? 2_048
     : preference === "balanced"
       ? 4_096
-      : 5_000;
+      : 8_000;
   return Math.max(1, Math.min(rootLimit, profileLimit));
 }
 
@@ -69,11 +69,10 @@ export function createAnthropicChatModelBindingV1(
     model: modelForPreference(rootPreference),
     modelId: ANTHROPIC_CHAT_MODEL_ID,
     qualityAdapter: ANTHROPIC_QUALITY_ADAPTER_V1,
-    // Anthropic's native JSON-schema output keeps the terminal model step in
-    // the normal streamed response channel. A ToolStrategy would force the
-    // terminal response through a tool call, which suppresses summarized
-    // thinking and answer-text chunks on Sonnet 4.6. The stricter host Zod
-    // finalizer remains authoritative after LangChain parses this envelope.
+    // The binding advertises native schema support to the root. Depth-one
+    // specialists deliberately use LangChain ToolStrategy instead: its
+    // accumulated tool-argument stream is projected to answer Markdown while
+    // the strict host Zod finalizer remains authoritative.
     structuredOutput: "native",
     modelForPreference,
     projectResponseSchema: providerCompatibleChatJsonSchemaV1,

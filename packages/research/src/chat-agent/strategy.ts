@@ -96,12 +96,23 @@ export interface ChatStrategyReviewRecordV1 {
   review: ChatStrategyReviewV1;
 }
 
+export interface ChatAcquisitionProductsV1 {
+  searchProducts: Array<"jira" | "confluence">;
+  exactContextProducts: Array<"jira" | "confluence">;
+}
+
 const COMPARISON_INTENT_V1 =
   /\b(?:compare|comparison|contrast|difference|different|versus|vs\.?|vergleich(?:e|en)?|unterschied(?:e|en)?|gegenüberstellen)\b/iu;
 const RELATIONSHIP_INTENT_V1 =
   /\b(?:relationship|related|relate|linked?|links?|correspond|mapping|beziehung(?:en)?|zusammenhang|verknüpf(?:t|ung|ungen)|zugehörig|abbildung)\b/iu;
+const JIRA_INTENT_V1 =
+  /\b(?:jira|issue|issues|ticket|tickets|vorgang|vorgänge|arbeitselement|arbeitselemente)\b/iu;
 const CONTRADICTION_INTENT_V1 =
   /\b(?:contradict(?:ion|ions|ory|s|ed)?|conflict|disagree|inconsisten\w*|which is current|source of truth|widerspr(?:ech\w*|üch\w*)?|konflikt\w*|uneinig|inkonsisten\w*|welche.*aktuell|maßgeblich)\b/iu;
+const BROAD_SCOPE_INTENT_V1 =
+  /\b(?:across\s+(?:the\s+)?(?:space|project)|all\s+(?:pages|issues)|throughout\s+(?:the\s+)?(?:space|project)|whole\s+(?:space|project)|related\s+(?:pages|issues)|gesamte[nsr]?\s+(?:space|projekt)|alle\s+(?:seiten|vorgänge|tickets)|weitere\s+(?:seiten|vorgänge|tickets)|im\s+space|projektweit|spaceweit)\b/iu;
+const NO_NEW_SEARCH_INTENT_V1 =
+  /\b(?:do\s+not|don't|without)\s+(?:run\s+)?(?:a\s+)?(?:new\s+)?search\b|\b(?:keine|ohne)\s+(?:neue\s+)?suche\b|\bnicht\s+(?:erneut\s+|neu\s+)?suchen\b/iu;
 
 function orderedUnique<T extends string>(
   values: readonly T[],
@@ -124,16 +135,25 @@ export function deriveChatStrategyDecisionV1(input: {
 }): ChatStrategyDecisionV1 {
   const comparison = COMPARISON_INTENT_V1.test(input.question);
   const relationship = RELATIONSHIP_INTENT_V1.test(input.question);
+  const jiraIntent = JIRA_INTENT_V1.test(input.question);
   const contradiction = CONTRADICTION_INTENT_V1.test(input.question);
+  const noNewSearchIntent = NO_NEW_SEARCH_INTENT_V1.test(input.question);
+  const broadScopeIntent = BROAD_SCOPE_INTENT_V1.test(input.question) && !noNewSearchIntent;
   const anchorProducts = new Set(input.anchors.map((anchor) => anchor.product));
   const scopeProducts = new Set([
     ...(input.scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
     ...(input.scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
   ]);
-  const crossProduct = anchorProducts.size > 1 || scopeProducts.size > 1;
+  const activeProducts = new Set([
+    ...anchorProducts,
+    ...(input.anchors.length === 0 || broadScopeIntent ? scopeProducts : []),
+  ]);
+  const crossProduct = activeProducts.size > 1;
   const multiAnchor = input.anchors.length > 1;
-  const broadDiscovery = input.anchors.length === 0 && scopeProducts.size > 0;
-  const noAcquisition = input.anchors.length === 0 && scopeProducts.size === 0;
+  const broadDiscovery = !noNewSearchIntent && scopeProducts.size > 0 &&
+    (input.anchors.length === 0 || broadScopeIntent);
+  const noAcquisition = input.anchors.length === 0 &&
+    (scopeProducts.size === 0 || noNewSearchIntent);
   const unresolvedAmbiguity = input.unresolvedAmbiguity === true;
 
   const reasons: ChatStrategyReasonCodeV1[] = [];
@@ -164,10 +184,19 @@ export function deriveChatStrategyDecisionV1(input: {
 
   const capabilities: ChatStrategyCapabilityClassV1[] = [];
   if (input.anchors.length > 0) capabilities.push("exact-read");
-  if (input.scope.jiraProjectKeys.length > 0 || relationship) {
+  if (
+    !noNewSearchIntent &&
+    (relationship && jiraIntent) ||
+    (!noNewSearchIntent && input.scope.jiraProjectKeys.length > 0 &&
+      (!anchorProducts.has("jira") || broadScopeIntent))
+  ) {
     capabilities.push("jira-discovery");
   }
-  if (input.scope.confluenceSpaceKeys.length > 0 || input.anchors.some((anchor) => anchor.product === "confluence")) {
+  if (
+    !noNewSearchIntent &&
+    input.scope.confluenceSpaceKeys.length > 0 &&
+    (!anchorProducts.has("confluence") || broadScopeIntent)
+  ) {
     capabilities.push("confluence-discovery");
   }
   if (relationship || crossProduct) capabilities.push("relationship-tracing");
@@ -188,6 +217,40 @@ export function deriveChatStrategyDecisionV1(input: {
     ),
     expectedComplexity: complex ? "complex" : moderate ? "moderate" : "simple",
     qualityRisks: orderedUnique(risks, CHAT_STRATEGY_QUALITY_RISKS_V1),
+  };
+}
+
+/**
+ * Converts the accepted strategy into the product surface exposed to the
+ * model. Bound scope is an authorization ceiling, not an instruction to
+ * search. Exact products stay direct-only unless the strategy explicitly
+ * admitted discovery for that product.
+ */
+export function deriveChatAcquisitionProductsV1(input: {
+  decision: ChatStrategyDecisionV1;
+  scope: ResearchScopeV1;
+  anchors: readonly BoundEntityAnchorV1[];
+}): ChatAcquisitionProductsV1 {
+  const searchProducts: Array<"jira" | "confluence"> = [];
+  if (
+    input.scope.jiraProjectKeys.length > 0 &&
+    input.decision.requiredCapabilities.includes("jira-discovery")
+  ) {
+    searchProducts.push("jira");
+  }
+  if (
+    input.scope.confluenceSpaceKeys.length > 0 &&
+    input.decision.requiredCapabilities.includes("confluence-discovery")
+  ) {
+    searchProducts.push("confluence");
+  }
+  const searchSet = new Set(searchProducts);
+  const anchorProducts = new Set(input.anchors.map((anchor) => anchor.product));
+  return {
+    searchProducts,
+    exactContextProducts: (["jira", "confluence"] as const).filter(
+      (product) => anchorProducts.has(product) && !searchSet.has(product),
+    ),
   };
 }
 
@@ -272,9 +335,8 @@ export function assessChatStrategyReviewV1(input: {
   }
   if (
     required.has("relationship-tracing") &&
-    required.has("jira-discovery") &&
-    required.has("confluence-discovery") &&
-    products.length < 2
+    ((required.has("jira-discovery") && !products.includes("jira")) ||
+      (required.has("confluence-discovery") && !products.includes("confluence")))
   ) {
     unmet.push("relationship-tracing");
   }
@@ -337,7 +399,7 @@ export function createChatStrategyReviewControllerV1(input: {
   }, {
     name: "chat_strategy_review",
     description:
-      "Perform the bounded host-owned final evidence-gap review for an accepted agentic Chat trajectory. Call after acquisition and again only when the first review identified a repairable gap and more detail evidence was acquired.",
+      "Perform the bounded host-owned evidence-gap checkpoint only when chatWorkflowAdvance requests it. The accepted dynamic graph owns acquisition; after this review, call chatWorkflowAdvance even when capability gaps remain so the critic and synthesizer preserve them without an ad-hoc root search.",
     schema: z.object({}).strict(),
   });
   return {

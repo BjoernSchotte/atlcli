@@ -633,7 +633,7 @@ Automated proof:
 
 Live acceptance:
 
-- [ ] A real read-only complex CLI question produces a dynamically composed
+- [x] A real read-only complex CLI question produces a dynamically composed
       workflow whose child tasks materially match the question.
 - [x] The equivalent MV3 run uses the same accepted topology and capability
       closure.
@@ -645,7 +645,7 @@ Acceptance criteria:
 - [x] Dynamic composition reduces supervisor context and improves the complex
       answer without changing scope or exposing extra capabilities.
 
-Proof record (2026-08-06): the production Chat root now registers exactly eight
+Proof record (2026-08-06): the production Chat root now registers exactly ten
 host-owned, depth-one profiles. QuickJS proposes only profile IDs, objectives,
 and dependencies; the host admits the graph and returns immutable dispatch
 envelopes. The provider sees one `eval` surface while the host-audited `task()`
@@ -656,6 +656,17 @@ sibling concurrency, dependency hydration, cancellation, single-dispatch
 semantics, and one dedicated final synthesizer. Explicit tests accept schema and
 byte values at their limits and reject item, character, byte, and nested-shape
 overflow before synthesis.
+
+A private read-only Deep CLI comparison then selected two parallel isolated
+exact-context readers, one comparison path, independent critique, one bounded
+repair, and exactly one final synthesizer. The accepted run performed two HTTP
+reads for two admitted sources, reached 100% detail-read coverage and canonical
+URL correctness, made no Jira or search request, and completed in 130.6 seconds
+within the unchanged monetary and total-token ceilings. Its provisional Markdown
+stream and atomically validated final answer retained both canonical citations;
+the host surfaced the critic's remaining material support boundary instead of
+globally rejecting either host-validated source. Inputs, source material,
+trajectories, and artifacts remain local and outside Git.
 
 A complete provider-backed Deep CLI proof over synthetic read-only Jira and
 Confluence adapters dynamically dispatched acquisition, analysis, critique, and
@@ -944,20 +955,18 @@ Automated proof:
 
 Proof note (2026-08-06): the production MV3 bundle passes all 38 packed lifecycle
 tests, including the bounded ephemeral summary channel. A real Sonnet 4.6 model
-smoke emitted 1,619 summary characters through the native model stream. The
-Anthropic adapter now uses LangChain's native JSON-schema response path instead
-of forcing the terminal answer through a ToolStrategy call. A synthetic provider
-contract test proves that the request contains `output_config.format`, omits a
-forced `tool_choice`, streams the summarized reasoning through DeepAgentsJS v3,
-and still yields host-parseable structured output. A complete provider-backed
-Deep Chat run over hardcoded synthetic Jira and Confluence data then emitted eight
-summary deltas across multiple model steps while producing a host-finalized
-answer. The completed synthetic Deep Chat proof now emits eight reasoning-summary
-deltas and 42 provisional Markdown deltas in 49.1 seconds. The incremental JSON
-projector exposes only `messageMarkdown`; the final host validator remains
-authoritative and atomically replaces the provisional UI content. Manual extended
-thinking is intentionally not forced because it is
-incompatible with forced tool choices and is not needed on the native path.
+smoke proved summarized-reasoning delivery through the native model stream. The
+Anthropic root advertises native JSON-schema support, while depth-one specialists
+use LangChain's repairable ToolStrategy; the host incrementally projects only the
+accumulated `messageMarkdown` string and reserves both provider calls required to
+close each structured specialist. Provider-approved summary deltas are projected
+incrementally into bounded localized semantic milestones, so provider wording,
+tool names, opaque references, raw chain of thought, signatures, redacted blocks,
+and source bodies never cross the presentation boundary. Synthetic provider and
+packed-MV3 tests prove independent reasoning-summary and Markdown streams. The
+final host validator remains authoritative and atomically replaces provisional
+content; a private provider-backed Deep CLI run additionally proved localized
+progress, parallel exact reads, critique/repair, and a cited atomic final answer.
 The later durable-interruption proof below closes that gate; remaining live
 interactive-control acceptance stays open.
 

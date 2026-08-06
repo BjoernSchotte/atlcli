@@ -25,6 +25,7 @@ import type { ChatTurnRequestV1 } from "./contracts.js";
 import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import {
   assertChatFinalReviewReserveV1,
+  chatModelCallLimitV1,
   createKiteweaveChatAgent,
 } from "./runtime.js";
 import {
@@ -117,26 +118,17 @@ globalThis.syntheticWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   maxConcurrency: 1
 }));
 syntheticWorkflow;`;
-    const taskCode = `
-const workflow = globalThis.syntheticWorkflow;
-const review = JSON.parse(await tools.chatStrategyReview({}));
-const runDispatch = (dispatch) => task({
-  description: dispatch.description,
-  subagentType: dispatch.subagentType,
-  responseSchema: dispatch.responseSchema
-});
-await runDispatch(workflow.dispatches.find((entry) => entry.taskId === "task:compare"));
-await runDispatch(workflow.dispatches.find((entry) => entry.taskId === "task:draft"));
-await runDispatch(workflow.dispatches.find((entry) => entry.taskId === "task:critic"));
-const quality = JSON.parse(await tools.chatQualityReview({}));
-let finalDraft;
-for (const dispatch of quality.dispatches) {
-  finalDraft = await runDispatch(dispatch);
-}
-finalDraft;`;
+    const firstAdvanceCode =
+      `JSON.parse(await tools.chatWorkflowAdvance({}))`;
+    const reviewedAdvanceCode = `
+JSON.parse(await tools.chatStrategyReview({}));
+JSON.parse(await tools.chatWorkflowAdvance({}));`;
+    const finalAdvanceCode = `
+JSON.parse(await tools.chatQualityReview({}));
+JSON.parse(await tools.chatWorkflowAdvance({}));`;
     return built
       .respondWithTools([{ name: "eval", args: { code: proposalCode } }])
-      .respondWithTools([{ name: "eval", args: { code: taskCode } }])
+      .respondWithTools([{ name: "eval", args: { code: firstAdvanceCode } }])
       .respondWithTools([{
         name: "ChatAnalysisPacketV1",
         args: {
@@ -147,6 +139,7 @@ finalDraft;`;
           gaps: [],
         },
       }])
+      .respondWithTools([{ name: "eval", args: { code: reviewedAdvanceCode } }])
       .respondWithTools([{
         name: "ChatProvisionalAnswerDraftV1",
         args: {
@@ -171,6 +164,7 @@ finalDraft;`;
           readyForSynthesis: true,
         },
       }])
+      .respondWithTools([{ name: "eval", args: { code: finalAdvanceCode } }])
       .respondWithTools([{
         name: "ChatAnswerDraftV1",
         args: {
@@ -249,6 +243,8 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(middlewareNames.filter((name) => name === "subAgentMiddleware"))
       .toHaveLength(1);
     expect(taskToolCount).toBe(0);
+    expect(middlewareNames.indexOf("ChatDirectToolSurfaceMiddleware"))
+      .toBeLessThan(middlewareNames.indexOf("ChatRootModelBudgetMiddleware"));
   });
 
   test("Quick completes without constructing or calling a strategy/task bridge", async () => {
@@ -653,5 +649,23 @@ describe("real QuickJS Chat strategy trajectory", () => {
       maxPtcCalls: limits.maxPtcCalls,
     })).toThrow("reserved final evidence review");
     expect(() => budget.beginPtc({ control: "review" })).not.toThrow();
+  });
+
+  test("gives default agentic Chat enough calls for ToolStrategy repair and synthesis", () => {
+    expect(chatModelCallLimitV1({
+      configuredMaxModelCalls: DEFAULT_RESEARCH_LIMITS_V1.maxModelCalls,
+      qualityMode: "deep",
+      execution: "agentic",
+    })).toBe(28);
+    expect(chatModelCallLimitV1({
+      configuredMaxModelCalls: DEFAULT_RESEARCH_LIMITS_V1.maxModelCalls,
+      qualityMode: "auto",
+      execution: "agentic",
+    })).toBe(28);
+    expect(chatModelCallLimitV1({
+      configuredMaxModelCalls: 12,
+      qualityMode: "deep",
+      execution: "agentic",
+    })).toBe(12);
   });
 });

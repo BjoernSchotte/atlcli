@@ -47,6 +47,7 @@ function plan(input: {
   searchProducts?: Array<"jira" | "confluence">;
   exactProducts?: Array<"jira" | "confluence">;
   maxPtcCalls?: number;
+  relationshipTracing?: boolean;
 } = {}) {
   return createChatRetrievalPlanV1({
     conversationId: "conversation:synthetic",
@@ -76,6 +77,9 @@ function plan(input: {
       maxPtcCalls: input.maxPtcCalls ?? DEFAULT_RESEARCH_LIMITS_V1.maxPtcCalls,
     },
     agentic: true,
+    ...(input.relationshipTracing === undefined
+      ? {}
+      : { relationshipTracing: input.relationshipTracing }),
     ...(input.proposal ? { proposal: input.proposal } : {}),
     now: () => Date.parse("2026-08-06T10:00:00.000Z"),
   });
@@ -185,6 +189,12 @@ describe("Chat retrieval plan", () => {
       kind: "jira-to-confluence-remote-link",
       maxDepth: 1,
     }]);
+
+    const noRelationshipIntent = plan({
+      searchProducts: ["confluence"],
+      relationshipTracing: false,
+    });
+    expect(noRelationshipIntent.relationshipTraversals).toEqual([]);
   });
 
   test("orders bounded query variants by declared expected information gain", () => {
@@ -214,6 +224,140 @@ describe("Chat retrieval plan", () => {
       "direct-title",
       "fallback",
     ]);
+  });
+
+  test("clamps per-variant pagination so every admitted query fits the product root budget", () => {
+    const result = plan({
+      searchProducts: ["confluence"],
+      proposal: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [
+            { variantId: "primary", query: { text: "atlcli" } },
+            { variantId: "synonym", query: { text: "command line" } },
+            { variantId: "title", query: { text: "getting started" } },
+          ],
+          maxPages: 5,
+        }],
+      },
+    });
+    expect(result.searches[0]?.maxPages).toBe(1);
+    expect(
+      result.searches[0]!.maxPages * result.searches[0]!.variants.length,
+    ).toBeLessThanOrEqual(DEFAULT_RESEARCH_LIMITS_V1.maxSearchPagesPerProduct);
+  });
+
+  test("adds a concise shared core term when verbose model variants would miss exact content", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:synthetic",
+      turnId: "turn:synthetic",
+      question: "Welche Inhalte erklären Installation und erste Nutzung von atlcli?",
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:space",
+        product: "confluence",
+        entityKind: "space",
+        key: "KB",
+        name: "Knowledge base",
+      })],
+      searchProducts: ["confluence"],
+      exactContextProducts: [],
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      agentic: true,
+      proposal: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [
+            { variantId: "de", query: { text: "atlcli Installation erste Nutzung" } },
+            { variantId: "en", query: { text: "atlcli installation getting started" } },
+            { variantId: "docs", query: { text: "atlcli command line documentation" } },
+          ],
+          maxPages: 2,
+        }],
+      },
+    });
+    expect(result.searches[0]?.variants[0]).toMatchObject({
+      variantId: "host-core-term",
+      query: { text: "atlcli" },
+      expectedInformationGain: "high",
+    });
+    expect(result.searches[0]?.variants).toHaveLength(3);
+  });
+
+  test("preserves a technical identifier as a host core query beside one verbose variant", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:synthetic",
+      turnId: "turn:synthetic",
+      question: "Vergleiche die dokumentierten Installationswege für atlcli.",
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:space",
+        product: "confluence",
+        entityKind: "space",
+        key: "KB",
+        name: "Knowledge base",
+      })],
+      searchProducts: ["confluence"],
+      exactContextProducts: [],
+      limits: { ...DEFAULT_RESEARCH_LIMITS_V1, maxSearchPagesPerProduct: 2 },
+      agentic: true,
+      proposal: {
+        searches: [{
+          searchId: "search:confluence",
+          product: "confluence",
+          variants: [{
+            variantId: "model-installation",
+            query: { text: "Installation und Konfiguration" },
+            expectedInformationGain: "high",
+          }],
+          maxPages: 2,
+        }],
+      },
+    });
+    expect(result.searches[0]?.variants.map((variant) => variant.query.text)).toEqual([
+      "atlcli",
+      "Installation und Konfiguration",
+    ]);
+    expect(result.searches[0]?.maxPages).toBe(1);
+  });
+
+  test("drops low-value variants that cannot receive one page inside a compact Chat budget", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:compact",
+      turnId: "turn:compact",
+      question: "Welche Inhalte erklären Installation und erste Nutzung von atlcli?",
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:space",
+        product: "confluence",
+        entityKind: "space",
+        key: "KB",
+        name: "Knowledge base",
+      })],
+      searchProducts: ["confluence"],
+      exactContextProducts: [],
+      limits: { ...DEFAULT_RESEARCH_LIMITS_V1, maxSearchPagesPerProduct: 2 },
+      agentic: true,
+      proposal: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [
+            { variantId: "de", query: { text: "atlcli Installation erste Nutzung" } },
+            { variantId: "en", query: { text: "atlcli installation getting started" } },
+            { variantId: "docs", query: { text: "atlcli command line documentation" } },
+          ],
+          maxPages: 2,
+        }],
+      },
+    });
+    expect(result.searches[0]?.variants.map((variant) => variant.query.text)).toEqual([
+      "atlcli",
+      "atlcli Installation erste Nutzung",
+    ]);
+    expect(result.searches[0]?.maxPages).toBe(1);
   });
 
   test("rejects traversal depth, scope, cursor-like fields, and capability-budget overflow", () => {
@@ -348,6 +492,50 @@ describe("Chat candidate ledger", () => {
       termination: "index-exhausted",
     }), "wiki.search:replanned", query);
     await expect(ledger.replacePlan(initial)).rejects.toThrow("after acquisition began");
+  });
+
+  test("exposes a terminal empty-search signal only after every admitted variant completes", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const retrievalPlan = plan({
+      searchProducts: ["confluence"],
+      proposal: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [
+            { variantId: "primary", query: { text: "atlcli" } },
+            { variantId: "alternate", query: { text: "command line documentation" } },
+          ],
+          maxPages: 1,
+        }],
+        relationshipTraversals: [],
+      },
+    });
+    const ledger = new ChatCandidateLedgerControllerV1({
+      plan: retrievalPlan,
+      workspace,
+      siteOrigin: ORIGIN,
+    });
+    await ledger.initialize();
+
+    const primary = { query: { text: "atlcli" } };
+    ledger.assertToolInput("wiki.search", primary);
+    await ledger.observe("wiki.search", searchResult({
+      items: [],
+      complete: true,
+      termination: "index-exhausted",
+    }), "wiki.search:primary", primary);
+    expect(ledger.isSearchExhaustedWithoutCandidates("confluence")).toBe(false);
+
+    const alternate = { query: { text: "command line documentation" } };
+    ledger.assertToolInput("wiki.search", alternate);
+    await ledger.observe("wiki.search", searchResult({
+      items: [],
+      complete: true,
+      termination: "index-exhausted",
+    }), "wiki.search:alternate", alternate);
+    expect(ledger.isSearchExhaustedWithoutCandidates("confluence")).toBe(true);
+    expect(ledger.isSearchExhaustedWithoutCandidates("jira")).toBe(false);
   });
 
   test("accounts for later-page discovery, ranking, detail, duplicates, and canonical metrics", async () => {

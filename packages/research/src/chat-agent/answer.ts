@@ -6,9 +6,9 @@ import type { ResearchSourceReferenceV1 } from "../contracts.js";
 import type { BoundDocumentCoverageIssueV1 } from "../capability-contracts.js";
 import type { ChatQualityPolicyV1 } from "../quality-policy.js";
 import type {
-  ChatQualityDefectCodeV1,
   ChatQualityDispositionV1,
 } from "./quality.js";
+import { chatFinalGapCodeForQualityDefectV1 } from "./quality.js";
 import {
   CHAT_ANSWER_SCHEMA_V1,
   CHAT_AGENT_DRAFT_SCHEMA_V1,
@@ -63,6 +63,10 @@ const CONFLUENCE_CLAIM_SUBJECT_V1 =
 const JIRA_ISSUE_KEY_V1 = /\b[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]*\b/gu;
 const RELATIONSHIP_SECTION_V1 =
   /\b(?:comparison|relationship|mapping|agreement|contradiction|gap|vergleich|beziehung|zuordnung|übereinstimmung|widerspruch|lücke)\b/iu;
+const DOCUMENTATION_ABSENCE_SUBJECT_V1 =
+  /\b(?:documentation|documented|guide|instructions?|reference|configuration|setup|authentication|versioning|upgrade|environment variables?|api tokens?|dokumentiert|(?:dokumentations?|installations?|konfigurations?|authentifizierungs?|versionierungs?)[a-zäöüß-]*|anleitung|referenz|setup|upgrade|umgebungsvariablen|api-?token|befehle?)\b/iu;
+const RETRIEVAL_GAP_SUBJECT_V1 =
+  /\b(?:search|retrieval|candidate|coverage|index|suche|abruf|kandidat|abdeckung|suchindex)\b/iu;
 
 function removeUnsupportedWholeDocumentNegativesV1(
   markdown: string,
@@ -71,13 +75,27 @@ function removeUnsupportedWholeDocumentNegativesV1(
   citedLinks: readonly string[],
 ): string {
   if (!hasIncompleteCitedDocument) return markdown;
-  const retained = markdown
-    .split(/(?<=[.!?])\s+|\n+/u)
-    .map((part) => part.trim())
-    .filter((part) => !(
-      WHOLE_DOCUMENT_SUBJECT_V1.test(part) && NEGATIVE_ABSENCE_V1.test(part)
-    ));
-  const retainedMarkdown = retained.join("\n\n");
+  let removed = false;
+  const retainedMarkdown = markdown
+    .split("\n")
+    .map((line) => {
+      if (!(WHOLE_DOCUMENT_SUBJECT_V1.test(line) && NEGATIVE_ABSENCE_V1.test(line))) {
+        return line;
+      }
+      const retainedSentences = line
+        .split(/(?<=[.!?])\s+/u)
+        .filter((sentence) => {
+          const unsupported = WHOLE_DOCUMENT_SUBJECT_V1.test(sentence) &&
+            NEGATIVE_ABSENCE_V1.test(sentence);
+          removed ||= unsupported;
+          return !unsupported;
+        });
+      return retainedSentences.join(" ");
+    })
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+  if (!removed) return markdown;
   const retainedProse = retainedMarkdown
     .replace(/\[[^\]]*\]\([^)]*\)/gu, "")
     .replace(/\s+/gu, "")
@@ -88,6 +106,53 @@ function removeUnsupportedWholeDocumentNegativesV1(
   return german
     ? `Der gelesene Inhalt erlaubt keine Aussage darüber, was auf der vollständigen Seite fehlt.${sourceSuffix}`
     : `The content that was read does not establish what is absent from the complete page.${sourceSuffix}`;
+}
+
+function downgradeIncompleteScopeAbsenceClaimsV1(
+  markdown: string,
+  locale: string | undefined,
+): { markdown: string; downgradedClaims: number } {
+  const german = locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
+  let downgradedClaims = 0;
+  const replace = (
+    value: string,
+    pattern: RegExp,
+    replacement: string | ((substring: string, ...args: string[]) => string),
+  ): string => value.replace(pattern, (...args: string[]) => {
+    downgradedClaims += 1;
+    return typeof replacement === "string"
+      ? replacement
+      : replacement(args[0]!, ...args.slice(1));
+  });
+  const lines = markdown.split("\n").map((line) => {
+    let scoped = line;
+    if (german) {
+      scoped = replace(
+        scoped,
+        /\b(?:Im|In dem)\s+[^.!?\n|]{0,80}?\b(?:Space|Projekt)\s+(?:existiert|gibt es)\s+(kein(?:e[rmns]?)?)\s+([^.!?\n|]+)([.!?]?)/giu,
+        (_match, article, subject, punctuation) =>
+          `In den detailliert gelesenen Quellen wurde ${article} ${subject.trim()} gefunden${punctuation}`,
+      );
+      scoped = replace(
+        scoped,
+        /\bNicht\s+vorhanden\s+im\s+(?:gesamten\s+)?(?:Space|Projekt)\b/giu,
+        "In den detailliert gelesenen Quellen nicht gefunden",
+      );
+    } else {
+      scoped = replace(
+        scoped,
+        /\bNo\s+([^.!?\n|]+?)\s+(?:exists?|is present)\s+in\s+(?:the\s+)?[^.!?\n|]{0,80}?\b(?:space|project)\b/giu,
+        (_match, subject) => `No ${subject.trim()} was found in the sources read in detail`,
+      );
+      scoped = replace(
+        scoped,
+        /\bNot\s+present\s+in\s+(?:the\s+)?(?:whole\s+|entire\s+)?(?:space|project)\b/giu,
+        "Not found in the sources read in detail",
+      );
+    }
+    return scoped;
+  });
+  return { markdown: lines.join("\n"), downgradedClaims };
 }
 
 function markdownHeadingV1(line: string): { level: number; text: string } | undefined {
@@ -144,21 +209,6 @@ function removeUnsupportedMissingProductClaimsV1(
     .trim();
 }
 
-function finalGapCodeForQualityDefectV1(
-  code: ChatQualityDefectCodeV1,
-): ChatAgentDraftV1["gaps"][number]["code"] {
-  if (code === "unsupported-claim" || code === "missing-context") {
-    return "no-detail-evidence";
-  }
-  if (
-    code === "wrong-source" || code === "invalid-citation" ||
-    code === "unresolved-contradiction" || code === "prompt-injection-risk"
-  ) {
-    return "unresolved-reference";
-  }
-  return "incomplete-coverage";
-}
-
 function missingProductNoticeV1(
   product: "jira" | "confluence",
   german: boolean,
@@ -167,6 +217,25 @@ function missingProductNoticeV1(
   return german
     ? `Die ausgeführten ${label}-Abrufe lieferten keine detailliert gelesenen ${label}-Belege. Das belegt weder, dass im gebundenen Umfang keine passenden Inhalte existieren, noch dass die Suche vollständig war.`
     : `The attempted ${label} retrieval produced no detailed ${label} evidence. This does not establish that the bound scope contains no matching content or that discovery was complete.`;
+}
+
+function requiredQualityGapNoticeV1(
+  code: ChatAgentDraftV1["gaps"][number]["code"],
+  german: boolean,
+): string {
+  if (code === "no-detail-evidence") {
+    return german
+      ? "Mindestens eine im Qualitätscheck erkannte Aussage ließ sich mit den detailliert gelesenen Quellen nicht ausreichend belegen und wurde nicht als gesichert behandelt."
+      : "At least one claim identified by the quality check lacked sufficient detail evidence and was not treated as established.";
+  }
+  if (code === "unresolved-reference") {
+    return german
+      ? "Mindestens ein Quellenbezug blieb im Qualitätscheck ungeklärt und wurde nicht als gesicherter Beleg verwendet."
+      : "At least one source reference remained unresolved during quality review and was not used as established evidence.";
+  }
+  return german
+    ? "Der unabhängige Qualitätscheck hat eine verbleibende Abdeckungsgrenze festgestellt; die Antwort gilt nur für die tatsächlich detailliert gelesenen Quellen."
+    : "The independent quality check found a remaining coverage limit; the answer applies only to the sources that were actually read in detail.";
 }
 
 function removeUncitedJiraKeyLinesV1(
@@ -191,6 +260,53 @@ function removeUncitedJiraKeyLinesV1(
     markdown: lines.join("\n").replace(/\n{3,}/gu, "\n\n").trim(),
     removedLines,
   };
+}
+
+function removeUncitedDocumentationAbsenceLinesV1(
+  markdown: string,
+): { markdown: string; removedLines: number } {
+  let removedLines = 0;
+  const lines = markdown.split("\n").filter((line) => {
+    const unsupported = NEGATIVE_ABSENCE_V1.test(line) &&
+      DOCUMENTATION_ABSENCE_SUBJECT_V1.test(line) &&
+      !RETRIEVAL_GAP_SUBJECT_V1.test(line) &&
+      chatEvidencePlaceholdersV1(line).length === 0;
+    if (unsupported) removedLines += 1;
+    return !unsupported;
+  });
+  return {
+    markdown: lines.join("\n").replace(/\n{3,}/gu, "\n\n").trim(),
+    removedLines,
+  };
+}
+
+function correctRetrievalCountLanguageV1(
+  markdown: string,
+  retrieval: NonNullable<ChatRunSummaryV1["retrieval"]>,
+  german: boolean,
+): string {
+  const detail = retrieval.detailReadCandidates;
+  const admitted = retrieval.admittedCandidates;
+  if (german) {
+    return markdown
+      .replace(
+        new RegExp(`\\binsgesamt\\s+${detail}\\s+Seiten\\s+gefunden`, "giu"),
+        `${detail} Seiten im Detail gelesen`,
+      )
+      .replace(
+        new RegExp(`\\bDa die Suche auf maximal\\s+${detail}\\s+Seiten begrenzt war`, "giu"),
+        `Da ${detail} von ${admitted} zugelassenen Kandidaten im Detail gelesen wurden`,
+      );
+  }
+  return markdown
+    .replace(
+      new RegExp(`\\ba total of\\s+${detail}\\s+pages were found`, "giu"),
+      `${detail} pages were read in detail`,
+    )
+    .replace(
+      new RegExp(`\\bBecause the search was limited to\\s+${detail}\\s+pages`, "giu"),
+      `Because ${detail} of ${admitted} admitted candidates were read in detail`,
+    );
 }
 
 export function finalizeChatAnswerV1(input: {
@@ -270,6 +386,10 @@ export function finalizeChatAnswerV1(input: {
     sourceById,
   );
   messageMarkdown = jiraClaimProjection.markdown;
+  const documentationAbsenceProjection = removeUncitedDocumentationAbsenceLinesV1(
+    messageMarkdown,
+  );
+  messageMarkdown = documentationAbsenceProjection.markdown;
   const citationPlaceholders = chatEvidencePlaceholdersV1(messageMarkdown);
   const citationIds = [...new Set(citationPlaceholders.map((entry) => entry.sourceId))];
   const citationKeys = [...new Set(citationPlaceholders.map((entry) =>
@@ -317,6 +437,14 @@ export function finalizeChatAnswerV1(input: {
   }
   const gaps = draft.gaps.map((gap) => ({ ...gap, sourceIds: [...gap.sourceIds] }));
   const hostCoverageNotices: string[] = [];
+  const retrieval = input.run.retrieval;
+  const incompleteRetrieval = retrieval !== undefined &&
+    retrieval.admittedCandidates > 0 && (
+    retrieval.deferredCandidates > 0 ||
+    retrieval.detailReadCandidates < retrieval.admittedCandidates ||
+    retrieval.detailReadCoverage < 1 ||
+    (retrieval.observedRecall !== null && retrieval.observedRecall < 1)
+  );
   if (downgradedSectionPlaceholders.length > 0) {
     const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
     const sourceIds = [...new Set(
@@ -353,6 +481,42 @@ export function finalizeChatAnswerV1(input: {
       message: notice,
       sourceIds: [],
     });
+    hostCoverageNotices.push(notice);
+  }
+  if (documentationAbsenceProjection.removedLines > 0) {
+    const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
+    const notice = german
+      ? `${documentationAbsenceProjection.removedLines} Negativbehauptungen über fehlende Dokumentation ohne zeilengleichen Detailbeleg wurden aus der Antwort entfernt.`
+      : `${documentationAbsenceProjection.removedLines} documentation-absence claims without a same-line detail citation were removed from the answer.`;
+    gaps.push({
+      code: "no-detail-evidence",
+      message: notice,
+      sourceIds: [],
+    });
+    hostCoverageNotices.push(notice);
+  }
+  if (incompleteRetrieval) {
+    const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
+    messageMarkdown = correctRetrievalCountLanguageV1(
+      messageMarkdown,
+      retrieval,
+      german,
+    );
+    const scopedAbsence = downgradeIncompleteScopeAbsenceClaimsV1(
+      messageMarkdown,
+      input.locale,
+    );
+    messageMarkdown = scopedAbsence.markdown;
+    const notice = german
+      ? `${retrieval.detailReadCandidates} von ${retrieval.admittedCandidates} zugelassenen Kandidaten wurden im Detail gelesen. Aussagen über nicht gefundene Inhalte gelten deshalb nur für die detailliert gelesenen Quellen.`
+      : `${retrieval.detailReadCandidates} of ${retrieval.admittedCandidates} admitted candidates were read in detail. Claims about content not found therefore apply only to the sources read in detail.`;
+    if (!gaps.some((gap) => gap.message === notice)) {
+      gaps.push({
+        code: "incomplete-coverage",
+        message: notice,
+        sourceIds: [],
+      });
+    }
     hostCoverageNotices.push(notice);
   }
   for (const [sourceId, coverage] of citedCoverage) {
@@ -449,9 +613,6 @@ export function finalizeChatAnswerV1(input: {
   if (hostCoverageNotices.length > 0) {
     messageMarkdown += `\n\n> **${german ? "Abdeckungsgrenze" : "Coverage limit"}:** ${hostCoverageNotices.join(" ")}`;
   }
-  if (messageMarkdown.length === 0 || messageMarkdown.length > 24_000) {
-    throw new ChatContractError("limit-exceeded", "The Chat answer exceeds its bounded Markdown size.");
-  }
   const fallbackReason = input.qualityPolicy.mode === "quick"
     ? "quick-direct" as const
     : input.detailEvidence.length === 0
@@ -490,14 +651,21 @@ export function finalizeChatAnswerV1(input: {
       );
     }
     const missingRequiredGaps = input.qualityDisposition.requiredGapCodes.filter((code) => {
-      const expected = finalGapCodeForQualityDefectV1(code);
+      const expected = chatFinalGapCodeForQualityDefectV1(code);
       return !gaps.some((gap) => gap.code === expected);
     });
     if (missingRequiredGaps.length > 0) {
-      throw new ChatContractError(
-        "invalid-report",
-        "The final Chat synthesizer omitted a host-required material gap.",
-      );
+      const notices: string[] = [];
+      for (const defectCode of missingRequiredGaps) {
+        const gapCode = chatFinalGapCodeForQualityDefectV1(defectCode);
+        if (gaps.some((gap) => gap.code === gapCode)) continue;
+        const notice = requiredQualityGapNoticeV1(gapCode, german);
+        gaps.push({ code: gapCode, message: notice, sourceIds: [] });
+        notices.push(notice);
+      }
+      if (notices.length > 0) {
+        messageMarkdown += `\n\n> **${german ? "Qualitätsgrenze" : "Quality limit"}:** ${notices.join(" ")}`;
+      }
     }
     const currentDetailIds = [...new Set(input.detailEvidence.map((entry) => entry.source.id))]
       .sort((left, right) => left.localeCompare(right, "en-US"));
@@ -526,6 +694,29 @@ export function finalizeChatAnswerV1(input: {
       "invalid-report",
       "A direct Chat answer cannot attach an agentic quality disposition.",
     );
+  }
+  const visibleGapMessages = gaps
+    .map((gap) => gap.message.trim())
+    .filter((message, index, all) =>
+      message.length > 0 &&
+      all.indexOf(message) === index &&
+      !messageMarkdown.includes(message)
+    );
+  if (visibleGapMessages.length > 0) {
+    const visible = visibleGapMessages.slice(0, 6);
+    const remaining = visibleGapMessages.length - visible.length;
+    messageMarkdown += [
+      "",
+      `### ${german ? "Grenzen" : "Limits"}`,
+      "",
+      ...visible.map((message) => `- ${message}`),
+      ...(remaining > 0
+        ? [`- ${german ? `${remaining} weitere Abdeckungsgrenzen sind im Laufprotokoll festgehalten.` : `${remaining} additional coverage limits are recorded in the run metadata.`}`]
+        : []),
+    ].join("\n");
+  }
+  if (messageMarkdown.length === 0 || messageMarkdown.length > 24_000) {
+    throw new ChatContractError("limit-exceeded", "The Chat answer exceeds its bounded Markdown size.");
   }
   const reasonCode = strategyDecision.execution === "agentic"
     ? "agentic-required" as const

@@ -19,6 +19,14 @@ export interface AcceptedChatWorkflowV1 {
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: acknowledgeChatStopV1
+export declare function acknowledgeChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    expectedStopRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: admitChatWorkflowProposalV1
 export declare function admitChatWorkflowProposalV1(input: {
     strategy: ChatStrategyDecisionV1;
@@ -26,6 +34,24 @@ export declare function admitChatWorkflowProposalV1(input: {
     maxTasks?: number;
     maxConcurrency?: number;
 }): AcceptedChatWorkflowV1 | undefined;
+
+// export: admitNextChatFollowUpV1
+export declare function admitNextChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    message?: ChatQueuedFollowUpV1;
+};
+
+// export: advanceChatControlFenceV1
+export declare function advanceChatControlFenceV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    kind: "abort" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
@@ -41,6 +67,9 @@ export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
     "acquisition",
     "analysis",
     "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
     "synthesis"
 ];
 
@@ -79,6 +108,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
     maxTasks: number;
     maxConcurrency: number;
     allowHostDependencyHydration?: boolean;
+    allowHostResponseSchemaHydration?: boolean;
     signal?: AbortSignal;
     invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown, input: {
@@ -168,6 +198,9 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: applyChatInteractionControlV1
+export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -188,6 +221,21 @@ export interface ApproveResearchScopeExpansionInputV1 {
 
 // export: approveResearchScopeExpansionV1
 export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
+// export: assertChatInteractionBindingV1
+export declare function assertChatInteractionBindingV1(input: {
+    state: ChatInteractionStateV1;
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+}): void;
+
+// export: assertChatSessionBindingV1
+export declare function assertChatSessionBindingV1(input: {
+    session: ChatSessionV1;
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+}): void;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -217,8 +265,30 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: beginChatTurnV1
+export declare function beginChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    startedAt: string;
+}): ChatSessionV1;
+
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: bindChatSteeringResumeV1
+export declare function bindChatSteeringResumeV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
 export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
@@ -392,9 +462,14 @@ export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): bo
 export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
+    locale?: string;
     strategyDecisionRequired?: boolean;
     agenticWorkflowRequired?: boolean;
+    allowedAgenticProfileIds?: readonly string[];
 }): string;
+
+// export: buildChatTurnContextV1
+export declare function buildChatTurnContextV1(session: ChatSessionV1, currentTurnId: string): ChatTurnContextV1;
 
 // export: buildChatTurnPromptV1
 export declare function buildChatTurnPromptV1(input: {
@@ -402,6 +477,7 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    durableContext?: string;
 }): string;
 
 // export: buildResearchCql
@@ -420,6 +496,15 @@ export declare function buildResearchTurnContextV1(input: {
 
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_ACTIVITY_EVENT_SCHEMA_V1
+export declare const CHAT_ACTIVITY_EVENT_SCHEMA_V1: "atlcli.chat-activity-event/v1";
+
+// export: CHAT_ACTIVITY_JOURNAL_PATH_V1
+export declare const CHAT_ACTIVITY_JOURNAL_PATH_V1: "/.atlcli/chat/v1/activity.json";
+
+// export: CHAT_ACTIVITY_JOURNAL_SCHEMA_V1
+export declare const CHAT_ACTIVITY_JOURNAL_SCHEMA_V1: "atlcli.chat-activity-journal/v1";
 
 // export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
@@ -517,9 +602,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            clarification: "clarification";
             "follow-up": "follow-up";
             "deep-research": "deep-research";
+            clarification: "clarification";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -533,6 +618,21 @@ export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-
 
 // export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
 export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
+// export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
+export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
+
+// export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
+export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
+
+// export: CHAT_INTERACTION_STATE_PATH_V1
+export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interaction.json";
+
+// export: CHAT_INTERACTION_STATE_SCHEMA_V1
+export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
+export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -593,6 +693,30 @@ export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SEMANTIC_ACTIVITY_CODES_V1
+export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion"
+];
+
+// export: CHAT_SESSION_PATH_V1
+export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_SCHEMA_V1
+export declare const CHAT_SESSION_SCHEMA_V1: "atlcli.chat-session/v1";
 
 // export: CHAT_SESSION_STATE_PATH_V1
 export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
@@ -660,12 +784,16 @@ export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
     "relationship-tracer",
     "comparison-analyst",
     "contradiction-checker",
+    "answer-drafter",
     "answer-critic",
+    "answer-repairer",
     "chat-synthesizer"
 ];
 
 // export: CHAT_SUBAGENT_PROFILES_V1
 export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
@@ -687,11 +815,104 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_TURN_SCHEMA_V1
+export declare const CHAT_TURN_SCHEMA_V1: "atlcli.chat-turn/v1";
+
+// export: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-question-answer/v1";
+
+// export: CHAT_USER_QUESTION_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
 
+// export: ChatAcquisitionProductsV1
+export interface ChatAcquisitionProductsV1 {
+    searchProducts: Array<"jira" | "confluence">;
+    exactContextProducts: Array<"jira" | "confluence">;
+}
+
+// export: ChatActivityEventV1
+export interface ChatActivityEventV1 {
+    schema: typeof CHAT_ACTIVITY_EVENT_SCHEMA_V1;
+    id: string;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
+}
+
+// export: ChatActivityJournalV1
+export interface ChatActivityJournalV1 {
+    schema: typeof CHAT_ACTIVITY_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    events: ChatActivityEventV1[];
+}
+
+// export: ChatAgentAnswerQuestionV1
+export interface ChatAgentAnswerQuestionV1 extends ChatAgentCheckpointV1 {
+    answer: ChatUserQuestionAnswerV1;
+}
+
+// export: ChatAgentCheckpointV1
+export interface ChatAgentCheckpointV1 {
+    siteOrigin: string;
+    conversationId: string;
+    turnId: string;
+}
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentPortV1
+export interface ChatAgentPortV1 {
+    startTurn(input: ChatAgentStartTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    answerQuestion(input: ChatAgentAnswerQuestionV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    resumeTurn(input: ChatAgentResumeTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    getPendingQuestion(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: ChatUserQuestionV1;
+    } | null>;
+    getInteraction(siteOrigin: string): Promise<ChatInteractionStateV1 | null>;
+    control(command: ChatInteractionCommandV1): Promise<ChatInteractionStateV1>;
+    stop(): Promise<"stop_requested" | "stopped">;
+    listHistory(siteOrigin: string): Promise<ChatConversationHistoryItemV1[]>;
+    replay(input: {
+        siteOrigin: string;
+        conversationId?: string;
+    }): Promise<ChatConversationReplayV1 | null>;
+    artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
+    sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    resetConversation(): Promise<void>;
+}
+
+// export: ChatAgentResumeTurnV1
+export interface ChatAgentResumeTurnV1 extends ChatAgentCheckpointV1 {
+    kind: "stream-interruption" | "steering";
+}
+
+// export: ChatAgentStartTurnV1
+export interface ChatAgentStartTurnV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    conversationId?: string;
+}
+
+// export: ChatAgentStreamV1
+export interface ChatAgentStreamV1 {
+    signal?: AbortSignal;
+    onSessionStart?: (session: {
+        conversationId: string;
+        turnId: string;
+    }) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
+}
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
@@ -744,6 +965,8 @@ export declare class ChatCandidateLedgerControllerV1 {
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    isSearchExhaustedWithoutCandidates(product: ResearchProduct): boolean;
+    isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
     markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
@@ -809,11 +1032,166 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatConversationHistoryItemV1
+export interface ChatConversationHistoryItemV1 {
+    conversationId: string;
+    updatedAt: string;
+    latestTurnId?: string;
+    latestObjective?: string;
+    status?: "running" | "complete" | "failed" | "cancelled" | "waiting";
+}
+
+// export: ChatConversationMemoryV1
+export interface ChatConversationMemoryV1 {
+    schema: typeof CHAT_CONVERSATION_MEMORY_SCHEMA_V1;
+    summary: ChatConversationSummaryV1;
+    recentTurns: ChatTurnV1[];
+}
+
+// export: ChatConversationReplayV1
+export interface ChatConversationReplayV1 {
+    conversationId: string;
+    turnId: string;
+    objective: string;
+    events: ChatActivityEventV1[];
+    finalAnswer?: ChatAnswerV1;
+}
+
+// export: ChatConversationSummaryV1
+export interface ChatConversationSummaryV1 {
+    nonAuthoritative: true;
+    compactedTurnCount: number;
+    latestObjectives: string[];
+    unresolvedGapCodes: ChatAnswerGapV1["code"][];
+}
+
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
 
+// export: ChatEvidenceMemoryEntryV1
+export interface ChatEvidenceMemoryEntryV1 {
+    evidenceId: string;
+    tenantOrigin: string;
+    canonicalId: string;
+    product: "jira" | "confluence";
+    sourceId: string;
+    authorityBindingId: string;
+    authorityClass: "whole_scope" | "exact_entity";
+    capturedAt: string;
+    updatedAt?: string;
+    contentHash: string;
+    supportingClaimRefs: string[];
+    acceptedInTurnId: string;
+    acceptedScopeFingerprint: string;
+}
+
+// export: ChatEvidenceMemoryV1
+export interface ChatEvidenceMemoryV1 {
+    schema: typeof CHAT_EVIDENCE_MEMORY_SCHEMA_V1;
+    entries: ChatEvidenceMemoryEntryV1[];
+}
+
 // export: ChatEvidencePacketV1
 export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
+// export: ChatHostIdentityV1
+export interface ChatHostIdentityV1 {
+    userId: string;
+    providerCacheIdentity: string;
+}
+
+// export: ChatInteractionCommandV1
+export type ChatInteractionCommandV1 = Omit<Extract<ChatInteractionControlV1, {
+    kind: "enqueue";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "steer";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "consume_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove_steering";
+}>, "at">;
+
+// export: ChatInteractionControlV1
+export type ChatInteractionControlV1 = {
+    kind: "enqueue";
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+} | {
+    kind: "edit";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+} | {
+    kind: "remove";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+} | {
+    kind: "steer";
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+} | {
+    kind: "consume_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+} | {
+    kind: "edit_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+} | {
+    kind: "remove_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+};
+
+// export: ChatInteractionStateV1
+export interface ChatInteractionStateV1 {
+    schema: typeof CHAT_INTERACTION_STATE_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    binding: ChatSessionBindingV1;
+    updatedAt: string;
+    queue: ChatQueuedFollowUpV1[];
+    pendingSteering?: ChatPendingSteeringV1;
+    acceptedSteering?: ChatPendingSteeringV1 & {
+        turnId: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    streamInterruption?: ChatStreamInterruptionV1;
+    stop?: ChatStopRequestV1;
+    pendingQuestion?: {
+        turnId: string;
+        question: ChatUserQuestionV1;
+        askedAt: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    resolvedQuestions: Array<{
+        turnId: string;
+        question: ChatUserQuestionV1;
+        answer: ChatUserQuestionAnswerV1;
+        resolvedAt: string;
+    }>;
+}
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -835,6 +1213,26 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatOperationalMemoryV1
+export interface ChatOperationalMemoryV1 {
+    schema: typeof CHAT_OPERATIONAL_MEMORY_SCHEMA_V1;
+    revision: number;
+    abortEpoch: number;
+    steeringRevision: number;
+    activeTurnId?: string;
+    lastCompletedTurnId?: string;
+}
+
+// export: ChatPendingSteeringV1
+export interface ChatPendingSteeringV1 {
+    id: string;
+    revision: number;
+    instruction: string;
+    requestedAt: string;
+    turnId?: string;
+    resume?: ChatResumeEnvelopeV1;
+}
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -873,6 +1271,15 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatQueuedFollowUpV1
+export interface ChatQueuedFollowUpV1 {
+    id: string;
+    revision: number;
+    content: string;
+    enqueuedAt: string;
+    updatedAt: string;
+}
+
 // export: ChatRelatedScopeProposalV1
 export interface ChatRelatedScopeProposalV1 {
     proposalId: string;
@@ -906,6 +1313,13 @@ export interface ChatResolvedRetrievalEntityV1 {
     authority: "approved" | "locked" | "resolved";
     key?: string;
     name: string;
+}
+
+// export: ChatResumeEnvelopeV1
+export interface ChatResumeEnvelopeV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    exactAnchors?: ResearchExactAnchorResumeV1[];
 }
 
 // export: ChatRetrievalAnchorV1
@@ -1046,6 +1460,12 @@ export interface ChatScopeClarificationReviewV1 {
     };
 }
 
+// export: chatScopeFingerprintV1
+export declare function chatScopeFingerprintV1(input: {
+    scope: ResearchScopeV1;
+    scopeBindings: readonly ResearchScopeBindingV1[];
+}): Promise<string>;
+
 // export: ChatSearchLedgerEntryV1
 export interface ChatSearchLedgerEntryV1 {
     searchId: string;
@@ -1072,11 +1492,37 @@ export interface ChatSearchVariantProposalV1 {
     expectedInformationGain?: "high" | "medium" | "low";
 }
 
+// export: ChatSessionBindingV1
+export interface ChatSessionBindingV1 extends ChatHostIdentityV1 {
+    threadId: string;
+    tenantOrigin: string;
+}
+
 // export: ChatSessionStateV1
 export interface ChatSessionStateV1 {
     schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatSessionV1
+export interface ChatSessionV1 {
+    schema: typeof CHAT_SESSION_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    binding: ChatSessionBindingV1;
+    conversation: ChatConversationMemoryV1;
+    operations: ChatOperationalMemoryV1;
+    evidence: ChatEvidenceMemoryV1;
+}
+
+// export: ChatStopRequestV1
+export interface ChatStopRequestV1 {
+    revision: number;
+    requestedAt: string;
+    acknowledgedAt?: string;
 }
 
 // export: ChatStrategyCapabilityClassV1
@@ -1144,11 +1590,24 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatStreamInterruptionV1
+export interface ChatStreamInterruptionV1 {
+    kind: "stream-interruption";
+    revision: number;
+    turnId: string;
+    interruptedAt: string;
+    resumeAttempts: number;
+    resume: ChatResumeEnvelopeV1;
+}
+
 // export: ChatSubagentCapabilityIdV1
 export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
 
 // export: ChatSubagentPacketSchemaV1
 export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: chatSubagentProfileByIdV1
+export declare function chatSubagentProfileByIdV1(profileId: ChatSubagentProfileIdV1): Readonly<ChatSubagentProfileV1>;
 
 // export: ChatSubagentProfileIdV1
 export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
@@ -1180,6 +1639,48 @@ export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneSho
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
 
+// export: ChatTurnArtifactV1
+export interface ChatTurnArtifactV1 {
+    conversationId: string;
+    turnId: string;
+    mediaType: "text/markdown";
+    markdown: string;
+}
+
+// export: ChatTurnContextV1
+export interface ChatTurnContextV1 {
+    current: {
+        turnId: string;
+        objective: string;
+        qualityMode: ChatQualityModeV1;
+        scopeFingerprint: string;
+    };
+    conversationSummary: ChatConversationSummaryV1;
+    recentMessages: Array<{
+        turnId: string;
+        user: string;
+        assistant?: string;
+    }>;
+    acceptedEvidence: Array<{
+        evidenceId: string;
+        canonicalId: string;
+        product: "jira" | "confluence";
+        sourceId: string;
+        capturedAt: string;
+        updatedAt?: string;
+        supportingClaimRefs: string[];
+    }>;
+    unresolvedGaps: ChatAnswerGapV1[];
+    controls: {
+        tenantOrigin: string;
+        threadId: string;
+        providerCacheIdentity: string;
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+}
+
 // export: ChatTurnRequestV1
 export interface ChatTurnRequestV1 {
     schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
@@ -1194,12 +1695,109 @@ export interface ChatTurnRequestV1 {
     locale?: string;
 }
 
+// export: ChatTurnSourcesV1
+export interface ChatTurnSourcesV1 {
+    conversationId: string;
+    turnId: string;
+    sources: ChatCitationV1[];
+}
+
+// export: ChatTurnV1
+export interface ChatTurnV1 {
+    schema: typeof CHAT_TURN_SCHEMA_V1;
+    id: string;
+    revision: number;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    controlFence: {
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+    status: "running" | "complete" | "failed" | "cancelled" | "waiting";
+    waitingReason?: "hitl" | "stream-interruption" | "steering";
+    startedAt: string;
+    completedAt?: string;
+    acceptedStrategy?: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    finalAnswer?: ChatAnswerV1;
+    activityRefs: string[];
+    evidenceRefs: string[];
+    unresolvedGaps: ChatAnswerGapV1[];
+}
+
+// export: ChatUserQuestionAnswerV1
+export interface ChatUserQuestionAnswerV1 {
+    schema: typeof CHAT_USER_QUESTION_ANSWER_SCHEMA_V1;
+    questionId: string;
+    value: ChatUserQuestionAnswerValueV1;
+}
+
+// export: ChatUserQuestionAnswerValueV1
+export type ChatUserQuestionAnswerValueV1 = {
+    kind: "text";
+    text: string;
+} | {
+    kind: "selection";
+    optionIds: string[];
+} | {
+    kind: "mixed";
+    optionIds: string[];
+    text?: string;
+} | {
+    kind: "assumption";
+    decision: "accepted" | "rejected";
+};
+
+// export: ChatUserQuestionOptionV1
+export interface ChatUserQuestionOptionV1 {
+    id: string;
+    label: string;
+    description?: string;
+}
+
+// export: ChatUserQuestionRequiredError
+export declare class ChatUserQuestionRequiredError extends ChatContractError {
+    readonly question: ChatUserQuestionV1;
+    constructor(question: ChatUserQuestionV1);
+}
+
+// export: ChatUserQuestionV1
+export type ChatUserQuestionV1 = {
+    schema: typeof CHAT_USER_QUESTION_SCHEMA_V1;
+    id: string;
+    prompt: string;
+    required: boolean;
+} & ({
+    responseKind: "free_text";
+    maxLength: number;
+} | {
+    responseKind: "single_choice";
+    options: ChatUserQuestionOptionV1[];
+} | {
+    responseKind: "multiple_choice";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+} | {
+    responseKind: "mixed";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+    maxLength: number;
+} | {
+    responseKind: "assumption";
+    assumption: string;
+});
+
 // export: ChatWorkflowAdmissionResponseV1
 export interface ChatWorkflowAdmissionResponseV1 {
     schema: "atlcli.chat-workflow-admission/v1";
     completionObjective: "conversation-answer";
     maxConcurrency: number;
     synthesizerTaskId: string;
+    qualityReviewRequired: true;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -1250,6 +1848,37 @@ export interface CompiledAgenticWorkflowV1 {
     readonly compatibilityFingerprint: string;
 }
 
+// export: completeChatSteeringV1
+export declare function completeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatStreamInterruptionV1
+export declare function completeChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    expectedInterruptionRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatTurnV1
+export declare function completeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    answer: ChatAnswerV1;
+    acceptedStrategy: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    activityRefs: readonly string[];
+    evidenceRecords: readonly ResearchEvidenceRecordV1[];
+    completedAt: string;
+}): ChatSessionV1;
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -1276,6 +1905,18 @@ export type ConfluenceDocumentInputV1 = {
     sourceVersion: number;
     siteOrigin: string;
     projectionLimits: ContentProjectionLimits;
+};
+
+// export: consumeChatSteeringV1
+export declare function consumeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    steering: ChatPendingSteeringV1;
 };
 
 // export: ContentProjectionLimits
@@ -1325,6 +1966,13 @@ export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatch
 // export: createAgenticDispatchInterceptionAdapter
 export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
+// export: createChatInteractionStateV1
+export declare function createChatInteractionStateV1(input: {
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+    createdAt: string;
+}): ChatInteractionStateV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -1341,6 +1989,7 @@ export declare function createChatRetrievalPlanV1(input: {
     exactContextProducts: readonly ResearchProduct[];
     limits: ResearchLimitsV1;
     agentic: boolean;
+    relationshipTracing?: boolean;
     proposal?: ChatRetrievalPlanProposalV1;
     now?: () => number;
 }): ChatRetrievalPlanV1;
@@ -1350,6 +1999,14 @@ export declare function createChatSessionStateV1(input: {
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
 }): ChatSessionStateV1;
+
+// export: createChatSessionV1
+export declare function createChatSessionV1(input: {
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+    createdAt: string;
+}): ChatSessionV1;
 
 // export: createChatStrategyDecisionControllerV1
 export declare function createChatStrategyDecisionControllerV1(input: {
@@ -1374,6 +2031,12 @@ export declare function createChatStrategyReviewControllerV1(input: {
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
+
+// export: createChatWorkflowDispatchV1
+export declare function createChatWorkflowDispatchV1(input: {
+    task: Readonly<ChatWorkflowTaskProposalV1>;
+    profile: Readonly<ChatSubagentProfileV1>;
+}): Readonly<ChatWorkflowDispatchV1>;
 
 // export: createChatWorkflowProposalControllerV1
 export declare function createChatWorkflowProposalControllerV1(input: {
@@ -1579,6 +2242,16 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: defineChatAgentPortV1
+export declare function defineChatAgentPortV1(port: ChatAgentPortV1): ChatAgentPortV1;
+
+// export: deriveChatAcquisitionProductsV1
+export declare function deriveChatAcquisitionProductsV1(input: {
+    decision: ChatStrategyDecisionV1;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+}): ChatAcquisitionProductsV1;
+
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
@@ -1606,11 +2279,40 @@ export declare function directChatHasExactCurrentPageV1(request: ResearchRequest
 // export: directChatProductsV1
 export declare function directChatProductsV1(request: ResearchRequestV1): ResearchProduct[];
 
+// export: editChatFollowUpV1
+export declare function editChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: editChatSteeringV1
+export declare function editChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: encodeAgenticTaskDescriptionV1
 export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: enqueueChatFollowUpV1
+export declare function enqueueChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: escapeResearchCqlLiteral
 export declare function escapeResearchCqlLiteral(value: string): string;
@@ -1630,6 +2332,7 @@ export declare function finalizeChatAnswerV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
     strategyDecision?: ChatStrategyDecisionV1;
     strategyReview?: ChatStrategyReviewV1;
+    qualityDisposition?: ChatQualityDispositionV1;
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
@@ -1822,6 +2525,15 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: interruptChatTurnV1
+export declare function interruptChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    status: "failed" | "cancelled";
+    at: string;
+}): ChatSessionV1;
+
 // export: isChatPresentationStreamEventV1
 export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
 
@@ -1886,14 +2598,32 @@ export declare function navigateConfluenceStorageV1(input: {
     projectionLimits: ContentProjectionLimits;
 }): BoundedDocumentSourceV1 | undefined;
 
+// export: normalizeChatActivityEventV1
+export declare function normalizeChatActivityEventV1(value: unknown): ChatActivityEventV1;
+
+// export: normalizeChatActivityJournalV1
+export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
+// export: normalizeChatHostIdentityV1
+export declare function normalizeChatHostIdentityV1(value: ChatHostIdentityV1): ChatHostIdentityV1;
+
+// export: normalizeChatInteractionCommandV1
+export declare function normalizeChatInteractionCommandV1(value: unknown): ChatInteractionCommandV1;
+
+// export: normalizeChatInteractionControlV1
+export declare function normalizeChatInteractionControlV1(value: unknown): ChatInteractionControlV1;
 
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: normalizeChatTurnRequestV1
 export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
+
+// export: normalizeChatUserQuestionV1
+export declare function normalizeChatUserQuestionV1(value: unknown): ChatUserQuestionV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -1961,6 +2691,12 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
 
+// export: parseChatInteractionStateV1
+export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatSessionV1
+export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
+
 // export: parseChatSubagentResultV1
 export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
@@ -2015,6 +2751,15 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: pauseChatTurnV1
+export declare function pauseChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: persistChatQualityPolicyV1
 export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
@@ -2228,6 +2973,25 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: recordChatStreamInterruptionV1
+export declare function recordChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: recordChatUserQuestionV1
+export declare function recordChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    question: ChatUserQuestionV1;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
 export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
     store: ResearchSessionStoreV1;
@@ -2287,6 +3051,27 @@ export interface RefreshResearchSessionScopeClarificationInputV1 {
 // export: refreshResearchSessionScopeClarificationV1
 export declare function refreshResearchSessionScopeClarificationV1(input: RefreshResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: removeChatFollowUpV1
+export declare function removeChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: removeChatSteeringV1
+export declare function removeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: renderChatTurnContextV1
+export declare function renderChatTurnContextV1(context: ChatTurnContextV1): string;
+
 // export: renderResearchFindingSectionsMarkdown
 export declare function renderResearchFindingSectionsMarkdown(sections: readonly {
     title: string;
@@ -2316,11 +3101,41 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
 // export: renderResearchTurnContextV1
 export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
 
+// export: requestChatSteeringV1
+export declare function requestChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: requestChatStopV1
+export declare function requestChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
     "model-assessing",
     "answer-drafting",
     "next-step-ready",
@@ -3106,6 +3921,10 @@ export declare class ResearchCapabilityBroker {
     allowPreauthorizedExactEntity(binding: ResearchScopeBindingV1): void;
     get signal(): AbortSignal;
     cancel(reason?: unknown): void;
+    restoreRetainedEvidence(input: {
+        evidenceIds: readonly string[];
+        checkedAt: string;
+    }): Promise<ResearchRetainedEvidenceRestoreOutcomeV1>;
     restoreDetailedSourceObservations(observations: readonly {
         product: ResearchProduct;
         sourceId: string;
@@ -3114,6 +3933,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
@@ -3738,6 +4558,12 @@ export interface ResearchEvidenceVersionV1 {
     inputBytes: number;
 }
 
+// export: ResearchExactAnchorResumeV1
+export interface ResearchExactAnchorResumeV1 {
+    anchorRef: string;
+    bindingId: string;
+}
+
 // export: ResearchFindingCandidateV1
 export interface ResearchFindingCandidateV1 {
     id: string;
@@ -4105,6 +4931,13 @@ export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageL
     parentSummaryIds: string[];
 }
 
+// export: ResearchModelBudgetCapacityV1
+export interface ResearchModelBudgetCapacityV1 {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+}
+
 // export: ResearchModelBudgetSnapshotV1
 export interface ResearchModelBudgetSnapshotV1 {
     calls: number;
@@ -4131,7 +4964,8 @@ export declare class ResearchModelRunBudget {
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
-    reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
+    canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean;
+    reserve(request: unknown, maximumOutputTokens: number, retain?: ResearchModelBudgetCapacityV1): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
 
@@ -4378,6 +5212,22 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    getPendingChatQuestion?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+        request: ResearchRequestV1;
+        qualityPolicy: ChatQualityPolicyV1;
+    } | null>;
+    getChatInteraction?(siteOrigin: string): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1 | null>;
+    getChatReplay?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        objective: string;
+        events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+        finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+    } | null>;
+    controlActiveChat?(command: import("./chat-agent/interaction.js").ChatInteractionCommandV1): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
     resetChatConversation?(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
@@ -4816,6 +5666,15 @@ export interface ResearchResumableSessionV1 {
     };
 }
 
+// export: ResearchRetainedEvidenceRestoreOutcomeV1
+export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
+    considered: number;
+    staged: number;
+    stale: number;
+    unauthorized: number;
+    missing: number;
+}
+
 // export: ResearchRetainedSessionV1
 export interface ResearchRetainedSessionV1 {
     schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
@@ -4937,6 +5796,14 @@ export interface ResearchRunOptions {
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    chatResume?: {
+        turnId: string;
+        answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+    };
+    chatCheckpointResume?: {
+        turnId: string;
+        kind: "stream-interruption" | "steering";
+    };
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -6374,6 +7241,15 @@ export declare function resolveChatScopeClarificationV1(input: {
     conversationSession: ResearchSessionV1;
 }>;
 
+// export: resolveChatUserQuestionV1
+export declare function resolveChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    answer: ChatUserQuestionAnswerV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -6473,6 +7349,18 @@ export interface RestScopeCatalogProviderOptions {
     now?: () => string;
 }
 
+// export: resumeChatTurnV1
+export declare function resumeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
+
 // export: reviseResearchBriefPlanV1
 export declare function reviseResearchBriefPlanV1(input: {
     brief: ResearchBriefV1;
@@ -6492,6 +7380,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: stageResearchGraphForDurableSessionV1
 export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
+// export: stampChatInteractionCommandV1
+export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
 
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
@@ -6548,6 +7439,40 @@ export interface WikiResearchSummary {
     title: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: WorkspaceChatActivityJournalV1
+export declare class WorkspaceChatActivityJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        persistIfMissing?: boolean;
+    }): Promise<WorkspaceChatActivityJournalV1>;
+    record(input: {
+        turnId: string;
+        at: string;
+        code: ResearchActivityCodeV1;
+        status: ChatActivityEventV1["status"];
+    }): string;
+    referencesForTurn(turnId: string): string[];
+    eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
+    flush(): Promise<void>;
+}
+
+// export: WorkspaceChatInteractionControllerV1
+export declare class WorkspaceChatInteractionControllerV1 {
+    #private;
+    private constructor();
+    static bind(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        binding: ChatSessionBindingV1;
+        at: string;
+    }): Promise<WorkspaceChatInteractionControllerV1>;
+    snapshot(): ChatInteractionStateV1;
+    update(mutate: (state: ChatInteractionStateV1) => ChatInteractionStateV1): Promise<ChatInteractionStateV1>;
 }
 
 // export: WorkspaceResearchClaimLedgerV1
@@ -6683,6 +7608,14 @@ export interface AcceptedChatWorkflowV1 {
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: acknowledgeChatStopV1
+export declare function acknowledgeChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    expectedStopRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: admitChatWorkflowProposalV1
 export declare function admitChatWorkflowProposalV1(input: {
     strategy: ChatStrategyDecisionV1;
@@ -6690,6 +7623,24 @@ export declare function admitChatWorkflowProposalV1(input: {
     maxTasks?: number;
     maxConcurrency?: number;
 }): AcceptedChatWorkflowV1 | undefined;
+
+// export: admitNextChatFollowUpV1
+export declare function admitNextChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    message?: ChatQueuedFollowUpV1;
+};
+
+// export: advanceChatControlFenceV1
+export declare function advanceChatControlFenceV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    kind: "abort" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
@@ -6705,6 +7656,9 @@ export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
     "acquisition",
     "analysis",
     "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
     "synthesis"
 ];
 
@@ -6743,6 +7697,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
     maxTasks: number;
     maxConcurrency: number;
     allowHostDependencyHydration?: boolean;
+    allowHostResponseSchemaHydration?: boolean;
     signal?: AbortSignal;
     invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown, input: {
@@ -6832,6 +7787,9 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: applyChatInteractionControlV1
+export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -6852,6 +7810,21 @@ export interface ApproveResearchScopeExpansionInputV1 {
 
 // export: approveResearchScopeExpansionV1
 export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
+// export: assertChatInteractionBindingV1
+export declare function assertChatInteractionBindingV1(input: {
+    state: ChatInteractionStateV1;
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+}): void;
+
+// export: assertChatSessionBindingV1
+export declare function assertChatSessionBindingV1(input: {
+    session: ChatSessionV1;
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+}): void;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -6881,8 +7854,30 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: beginChatTurnV1
+export declare function beginChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    startedAt: string;
+}): ChatSessionV1;
+
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: bindChatSteeringResumeV1
+export declare function bindChatSteeringResumeV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
 export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
@@ -7056,9 +8051,14 @@ export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): bo
 export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
+    locale?: string;
     strategyDecisionRequired?: boolean;
     agenticWorkflowRequired?: boolean;
+    allowedAgenticProfileIds?: readonly string[];
 }): string;
+
+// export: buildChatTurnContextV1
+export declare function buildChatTurnContextV1(session: ChatSessionV1, currentTurnId: string): ChatTurnContextV1;
 
 // export: buildChatTurnPromptV1
 export declare function buildChatTurnPromptV1(input: {
@@ -7066,6 +8066,7 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    durableContext?: string;
 }): string;
 
 // export: buildResearchCql
@@ -7084,6 +8085,15 @@ export declare function buildResearchTurnContextV1(input: {
 
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_ACTIVITY_EVENT_SCHEMA_V1
+export declare const CHAT_ACTIVITY_EVENT_SCHEMA_V1: "atlcli.chat-activity-event/v1";
+
+// export: CHAT_ACTIVITY_JOURNAL_PATH_V1
+export declare const CHAT_ACTIVITY_JOURNAL_PATH_V1: "/.atlcli/chat/v1/activity.json";
+
+// export: CHAT_ACTIVITY_JOURNAL_SCHEMA_V1
+export declare const CHAT_ACTIVITY_JOURNAL_SCHEMA_V1: "atlcli.chat-activity-journal/v1";
 
 // export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
@@ -7181,9 +8191,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            clarification: "clarification";
             "follow-up": "follow-up";
             "deep-research": "deep-research";
+            clarification: "clarification";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -7197,6 +8207,21 @@ export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-
 
 // export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
 export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
+// export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
+export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
+
+// export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
+export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
+
+// export: CHAT_INTERACTION_STATE_PATH_V1
+export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interaction.json";
+
+// export: CHAT_INTERACTION_STATE_SCHEMA_V1
+export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
+export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -7257,6 +8282,30 @@ export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SEMANTIC_ACTIVITY_CODES_V1
+export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion"
+];
+
+// export: CHAT_SESSION_PATH_V1
+export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_SCHEMA_V1
+export declare const CHAT_SESSION_SCHEMA_V1: "atlcli.chat-session/v1";
 
 // export: CHAT_SESSION_STATE_PATH_V1
 export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
@@ -7324,12 +8373,16 @@ export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
     "relationship-tracer",
     "comparison-analyst",
     "contradiction-checker",
+    "answer-drafter",
     "answer-critic",
+    "answer-repairer",
     "chat-synthesizer"
 ];
 
 // export: CHAT_SUBAGENT_PROFILES_V1
 export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
@@ -7351,11 +8404,104 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_TURN_SCHEMA_V1
+export declare const CHAT_TURN_SCHEMA_V1: "atlcli.chat-turn/v1";
+
+// export: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-question-answer/v1";
+
+// export: CHAT_USER_QUESTION_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
 
+// export: ChatAcquisitionProductsV1
+export interface ChatAcquisitionProductsV1 {
+    searchProducts: Array<"jira" | "confluence">;
+    exactContextProducts: Array<"jira" | "confluence">;
+}
+
+// export: ChatActivityEventV1
+export interface ChatActivityEventV1 {
+    schema: typeof CHAT_ACTIVITY_EVENT_SCHEMA_V1;
+    id: string;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
+}
+
+// export: ChatActivityJournalV1
+export interface ChatActivityJournalV1 {
+    schema: typeof CHAT_ACTIVITY_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    events: ChatActivityEventV1[];
+}
+
+// export: ChatAgentAnswerQuestionV1
+export interface ChatAgentAnswerQuestionV1 extends ChatAgentCheckpointV1 {
+    answer: ChatUserQuestionAnswerV1;
+}
+
+// export: ChatAgentCheckpointV1
+export interface ChatAgentCheckpointV1 {
+    siteOrigin: string;
+    conversationId: string;
+    turnId: string;
+}
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentPortV1
+export interface ChatAgentPortV1 {
+    startTurn(input: ChatAgentStartTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    answerQuestion(input: ChatAgentAnswerQuestionV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    resumeTurn(input: ChatAgentResumeTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    getPendingQuestion(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: ChatUserQuestionV1;
+    } | null>;
+    getInteraction(siteOrigin: string): Promise<ChatInteractionStateV1 | null>;
+    control(command: ChatInteractionCommandV1): Promise<ChatInteractionStateV1>;
+    stop(): Promise<"stop_requested" | "stopped">;
+    listHistory(siteOrigin: string): Promise<ChatConversationHistoryItemV1[]>;
+    replay(input: {
+        siteOrigin: string;
+        conversationId?: string;
+    }): Promise<ChatConversationReplayV1 | null>;
+    artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
+    sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    resetConversation(): Promise<void>;
+}
+
+// export: ChatAgentResumeTurnV1
+export interface ChatAgentResumeTurnV1 extends ChatAgentCheckpointV1 {
+    kind: "stream-interruption" | "steering";
+}
+
+// export: ChatAgentStartTurnV1
+export interface ChatAgentStartTurnV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    conversationId?: string;
+}
+
+// export: ChatAgentStreamV1
+export interface ChatAgentStreamV1 {
+    signal?: AbortSignal;
+    onSessionStart?: (session: {
+        conversationId: string;
+        turnId: string;
+    }) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
+}
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
@@ -7408,6 +8554,8 @@ export declare class ChatCandidateLedgerControllerV1 {
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    isSearchExhaustedWithoutCandidates(product: ResearchProduct): boolean;
+    isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
     markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
@@ -7473,11 +8621,166 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatConversationHistoryItemV1
+export interface ChatConversationHistoryItemV1 {
+    conversationId: string;
+    updatedAt: string;
+    latestTurnId?: string;
+    latestObjective?: string;
+    status?: "running" | "complete" | "failed" | "cancelled" | "waiting";
+}
+
+// export: ChatConversationMemoryV1
+export interface ChatConversationMemoryV1 {
+    schema: typeof CHAT_CONVERSATION_MEMORY_SCHEMA_V1;
+    summary: ChatConversationSummaryV1;
+    recentTurns: ChatTurnV1[];
+}
+
+// export: ChatConversationReplayV1
+export interface ChatConversationReplayV1 {
+    conversationId: string;
+    turnId: string;
+    objective: string;
+    events: ChatActivityEventV1[];
+    finalAnswer?: ChatAnswerV1;
+}
+
+// export: ChatConversationSummaryV1
+export interface ChatConversationSummaryV1 {
+    nonAuthoritative: true;
+    compactedTurnCount: number;
+    latestObjectives: string[];
+    unresolvedGapCodes: ChatAnswerGapV1["code"][];
+}
+
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
 
+// export: ChatEvidenceMemoryEntryV1
+export interface ChatEvidenceMemoryEntryV1 {
+    evidenceId: string;
+    tenantOrigin: string;
+    canonicalId: string;
+    product: "jira" | "confluence";
+    sourceId: string;
+    authorityBindingId: string;
+    authorityClass: "whole_scope" | "exact_entity";
+    capturedAt: string;
+    updatedAt?: string;
+    contentHash: string;
+    supportingClaimRefs: string[];
+    acceptedInTurnId: string;
+    acceptedScopeFingerprint: string;
+}
+
+// export: ChatEvidenceMemoryV1
+export interface ChatEvidenceMemoryV1 {
+    schema: typeof CHAT_EVIDENCE_MEMORY_SCHEMA_V1;
+    entries: ChatEvidenceMemoryEntryV1[];
+}
+
 // export: ChatEvidencePacketV1
 export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
+// export: ChatHostIdentityV1
+export interface ChatHostIdentityV1 {
+    userId: string;
+    providerCacheIdentity: string;
+}
+
+// export: ChatInteractionCommandV1
+export type ChatInteractionCommandV1 = Omit<Extract<ChatInteractionControlV1, {
+    kind: "enqueue";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "steer";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "consume_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove_steering";
+}>, "at">;
+
+// export: ChatInteractionControlV1
+export type ChatInteractionControlV1 = {
+    kind: "enqueue";
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+} | {
+    kind: "edit";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+} | {
+    kind: "remove";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+} | {
+    kind: "steer";
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+} | {
+    kind: "consume_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+} | {
+    kind: "edit_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+} | {
+    kind: "remove_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+};
+
+// export: ChatInteractionStateV1
+export interface ChatInteractionStateV1 {
+    schema: typeof CHAT_INTERACTION_STATE_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    binding: ChatSessionBindingV1;
+    updatedAt: string;
+    queue: ChatQueuedFollowUpV1[];
+    pendingSteering?: ChatPendingSteeringV1;
+    acceptedSteering?: ChatPendingSteeringV1 & {
+        turnId: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    streamInterruption?: ChatStreamInterruptionV1;
+    stop?: ChatStopRequestV1;
+    pendingQuestion?: {
+        turnId: string;
+        question: ChatUserQuestionV1;
+        askedAt: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    resolvedQuestions: Array<{
+        turnId: string;
+        question: ChatUserQuestionV1;
+        answer: ChatUserQuestionAnswerV1;
+        resolvedAt: string;
+    }>;
+}
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -7499,6 +8802,26 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatOperationalMemoryV1
+export interface ChatOperationalMemoryV1 {
+    schema: typeof CHAT_OPERATIONAL_MEMORY_SCHEMA_V1;
+    revision: number;
+    abortEpoch: number;
+    steeringRevision: number;
+    activeTurnId?: string;
+    lastCompletedTurnId?: string;
+}
+
+// export: ChatPendingSteeringV1
+export interface ChatPendingSteeringV1 {
+    id: string;
+    revision: number;
+    instruction: string;
+    requestedAt: string;
+    turnId?: string;
+    resume?: ChatResumeEnvelopeV1;
+}
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -7537,6 +8860,15 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatQueuedFollowUpV1
+export interface ChatQueuedFollowUpV1 {
+    id: string;
+    revision: number;
+    content: string;
+    enqueuedAt: string;
+    updatedAt: string;
+}
+
 // export: ChatRelatedScopeProposalV1
 export interface ChatRelatedScopeProposalV1 {
     proposalId: string;
@@ -7570,6 +8902,13 @@ export interface ChatResolvedRetrievalEntityV1 {
     authority: "approved" | "locked" | "resolved";
     key?: string;
     name: string;
+}
+
+// export: ChatResumeEnvelopeV1
+export interface ChatResumeEnvelopeV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    exactAnchors?: ResearchExactAnchorResumeV1[];
 }
 
 // export: ChatRetrievalAnchorV1
@@ -7710,6 +9049,12 @@ export interface ChatScopeClarificationReviewV1 {
     };
 }
 
+// export: chatScopeFingerprintV1
+export declare function chatScopeFingerprintV1(input: {
+    scope: ResearchScopeV1;
+    scopeBindings: readonly ResearchScopeBindingV1[];
+}): Promise<string>;
+
 // export: ChatSearchLedgerEntryV1
 export interface ChatSearchLedgerEntryV1 {
     searchId: string;
@@ -7736,11 +9081,37 @@ export interface ChatSearchVariantProposalV1 {
     expectedInformationGain?: "high" | "medium" | "low";
 }
 
+// export: ChatSessionBindingV1
+export interface ChatSessionBindingV1 extends ChatHostIdentityV1 {
+    threadId: string;
+    tenantOrigin: string;
+}
+
 // export: ChatSessionStateV1
 export interface ChatSessionStateV1 {
     schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatSessionV1
+export interface ChatSessionV1 {
+    schema: typeof CHAT_SESSION_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    binding: ChatSessionBindingV1;
+    conversation: ChatConversationMemoryV1;
+    operations: ChatOperationalMemoryV1;
+    evidence: ChatEvidenceMemoryV1;
+}
+
+// export: ChatStopRequestV1
+export interface ChatStopRequestV1 {
+    revision: number;
+    requestedAt: string;
+    acknowledgedAt?: string;
 }
 
 // export: ChatStrategyCapabilityClassV1
@@ -7808,11 +9179,24 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatStreamInterruptionV1
+export interface ChatStreamInterruptionV1 {
+    kind: "stream-interruption";
+    revision: number;
+    turnId: string;
+    interruptedAt: string;
+    resumeAttempts: number;
+    resume: ChatResumeEnvelopeV1;
+}
+
 // export: ChatSubagentCapabilityIdV1
 export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
 
 // export: ChatSubagentPacketSchemaV1
 export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: chatSubagentProfileByIdV1
+export declare function chatSubagentProfileByIdV1(profileId: ChatSubagentProfileIdV1): Readonly<ChatSubagentProfileV1>;
 
 // export: ChatSubagentProfileIdV1
 export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
@@ -7844,6 +9228,48 @@ export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneSho
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
 
+// export: ChatTurnArtifactV1
+export interface ChatTurnArtifactV1 {
+    conversationId: string;
+    turnId: string;
+    mediaType: "text/markdown";
+    markdown: string;
+}
+
+// export: ChatTurnContextV1
+export interface ChatTurnContextV1 {
+    current: {
+        turnId: string;
+        objective: string;
+        qualityMode: ChatQualityModeV1;
+        scopeFingerprint: string;
+    };
+    conversationSummary: ChatConversationSummaryV1;
+    recentMessages: Array<{
+        turnId: string;
+        user: string;
+        assistant?: string;
+    }>;
+    acceptedEvidence: Array<{
+        evidenceId: string;
+        canonicalId: string;
+        product: "jira" | "confluence";
+        sourceId: string;
+        capturedAt: string;
+        updatedAt?: string;
+        supportingClaimRefs: string[];
+    }>;
+    unresolvedGaps: ChatAnswerGapV1[];
+    controls: {
+        tenantOrigin: string;
+        threadId: string;
+        providerCacheIdentity: string;
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+}
+
 // export: ChatTurnRequestV1
 export interface ChatTurnRequestV1 {
     schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
@@ -7858,12 +9284,109 @@ export interface ChatTurnRequestV1 {
     locale?: string;
 }
 
+// export: ChatTurnSourcesV1
+export interface ChatTurnSourcesV1 {
+    conversationId: string;
+    turnId: string;
+    sources: ChatCitationV1[];
+}
+
+// export: ChatTurnV1
+export interface ChatTurnV1 {
+    schema: typeof CHAT_TURN_SCHEMA_V1;
+    id: string;
+    revision: number;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    controlFence: {
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+    status: "running" | "complete" | "failed" | "cancelled" | "waiting";
+    waitingReason?: "hitl" | "stream-interruption" | "steering";
+    startedAt: string;
+    completedAt?: string;
+    acceptedStrategy?: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    finalAnswer?: ChatAnswerV1;
+    activityRefs: string[];
+    evidenceRefs: string[];
+    unresolvedGaps: ChatAnswerGapV1[];
+}
+
+// export: ChatUserQuestionAnswerV1
+export interface ChatUserQuestionAnswerV1 {
+    schema: typeof CHAT_USER_QUESTION_ANSWER_SCHEMA_V1;
+    questionId: string;
+    value: ChatUserQuestionAnswerValueV1;
+}
+
+// export: ChatUserQuestionAnswerValueV1
+export type ChatUserQuestionAnswerValueV1 = {
+    kind: "text";
+    text: string;
+} | {
+    kind: "selection";
+    optionIds: string[];
+} | {
+    kind: "mixed";
+    optionIds: string[];
+    text?: string;
+} | {
+    kind: "assumption";
+    decision: "accepted" | "rejected";
+};
+
+// export: ChatUserQuestionOptionV1
+export interface ChatUserQuestionOptionV1 {
+    id: string;
+    label: string;
+    description?: string;
+}
+
+// export: ChatUserQuestionRequiredError
+export declare class ChatUserQuestionRequiredError extends ChatContractError {
+    readonly question: ChatUserQuestionV1;
+    constructor(question: ChatUserQuestionV1);
+}
+
+// export: ChatUserQuestionV1
+export type ChatUserQuestionV1 = {
+    schema: typeof CHAT_USER_QUESTION_SCHEMA_V1;
+    id: string;
+    prompt: string;
+    required: boolean;
+} & ({
+    responseKind: "free_text";
+    maxLength: number;
+} | {
+    responseKind: "single_choice";
+    options: ChatUserQuestionOptionV1[];
+} | {
+    responseKind: "multiple_choice";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+} | {
+    responseKind: "mixed";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+    maxLength: number;
+} | {
+    responseKind: "assumption";
+    assumption: string;
+});
+
 // export: ChatWorkflowAdmissionResponseV1
 export interface ChatWorkflowAdmissionResponseV1 {
     schema: "atlcli.chat-workflow-admission/v1";
     completionObjective: "conversation-answer";
     maxConcurrency: number;
     synthesizerTaskId: string;
+    qualityReviewRequired: true;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -7914,6 +9437,37 @@ export interface CompiledAgenticWorkflowV1 {
     readonly compatibilityFingerprint: string;
 }
 
+// export: completeChatSteeringV1
+export declare function completeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatStreamInterruptionV1
+export declare function completeChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    expectedInterruptionRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatTurnV1
+export declare function completeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    answer: ChatAnswerV1;
+    acceptedStrategy: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    activityRefs: readonly string[];
+    evidenceRecords: readonly ResearchEvidenceRecordV1[];
+    completedAt: string;
+}): ChatSessionV1;
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -7940,6 +9494,18 @@ export type ConfluenceDocumentInputV1 = {
     sourceVersion: number;
     siteOrigin: string;
     projectionLimits: ContentProjectionLimits;
+};
+
+// export: consumeChatSteeringV1
+export declare function consumeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    steering: ChatPendingSteeringV1;
 };
 
 // export: ContentProjectionLimits
@@ -7989,6 +9555,13 @@ export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatch
 // export: createAgenticDispatchInterceptionAdapter
 export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
+// export: createChatInteractionStateV1
+export declare function createChatInteractionStateV1(input: {
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+    createdAt: string;
+}): ChatInteractionStateV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -8005,6 +9578,7 @@ export declare function createChatRetrievalPlanV1(input: {
     exactContextProducts: readonly ResearchProduct[];
     limits: ResearchLimitsV1;
     agentic: boolean;
+    relationshipTracing?: boolean;
     proposal?: ChatRetrievalPlanProposalV1;
     now?: () => number;
 }): ChatRetrievalPlanV1;
@@ -8014,6 +9588,14 @@ export declare function createChatSessionStateV1(input: {
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
 }): ChatSessionStateV1;
+
+// export: createChatSessionV1
+export declare function createChatSessionV1(input: {
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+    createdAt: string;
+}): ChatSessionV1;
 
 // export: createChatStrategyDecisionControllerV1
 export declare function createChatStrategyDecisionControllerV1(input: {
@@ -8038,6 +9620,12 @@ export declare function createChatStrategyReviewControllerV1(input: {
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
+
+// export: createChatWorkflowDispatchV1
+export declare function createChatWorkflowDispatchV1(input: {
+    task: Readonly<ChatWorkflowTaskProposalV1>;
+    profile: Readonly<ChatSubagentProfileV1>;
+}): Readonly<ChatWorkflowDispatchV1>;
 
 // export: createChatWorkflowProposalControllerV1
 export declare function createChatWorkflowProposalControllerV1(input: {
@@ -8234,6 +9822,16 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: defineChatAgentPortV1
+export declare function defineChatAgentPortV1(port: ChatAgentPortV1): ChatAgentPortV1;
+
+// export: deriveChatAcquisitionProductsV1
+export declare function deriveChatAcquisitionProductsV1(input: {
+    decision: ChatStrategyDecisionV1;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+}): ChatAcquisitionProductsV1;
+
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
@@ -8261,11 +9859,40 @@ export declare function directChatHasExactCurrentPageV1(request: ResearchRequest
 // export: directChatProductsV1
 export declare function directChatProductsV1(request: ResearchRequestV1): ResearchProduct[];
 
+// export: editChatFollowUpV1
+export declare function editChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: editChatSteeringV1
+export declare function editChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: encodeAgenticTaskDescriptionV1
 export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: enqueueChatFollowUpV1
+export declare function enqueueChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: escapeResearchCqlLiteral
 export declare function escapeResearchCqlLiteral(value: string): string;
@@ -8285,6 +9912,7 @@ export declare function finalizeChatAnswerV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
     strategyDecision?: ChatStrategyDecisionV1;
     strategyReview?: ChatStrategyReviewV1;
+    qualityDisposition?: ChatQualityDispositionV1;
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
@@ -8477,6 +10105,15 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: interruptChatTurnV1
+export declare function interruptChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    status: "failed" | "cancelled";
+    at: string;
+}): ChatSessionV1;
+
 // export: isChatPresentationStreamEventV1
 export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
 
@@ -8541,14 +10178,32 @@ export declare function navigateConfluenceStorageV1(input: {
     projectionLimits: ContentProjectionLimits;
 }): BoundedDocumentSourceV1 | undefined;
 
+// export: normalizeChatActivityEventV1
+export declare function normalizeChatActivityEventV1(value: unknown): ChatActivityEventV1;
+
+// export: normalizeChatActivityJournalV1
+export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
+// export: normalizeChatHostIdentityV1
+export declare function normalizeChatHostIdentityV1(value: ChatHostIdentityV1): ChatHostIdentityV1;
+
+// export: normalizeChatInteractionCommandV1
+export declare function normalizeChatInteractionCommandV1(value: unknown): ChatInteractionCommandV1;
+
+// export: normalizeChatInteractionControlV1
+export declare function normalizeChatInteractionControlV1(value: unknown): ChatInteractionControlV1;
 
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: normalizeChatTurnRequestV1
 export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
+
+// export: normalizeChatUserQuestionV1
+export declare function normalizeChatUserQuestionV1(value: unknown): ChatUserQuestionV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -8616,6 +10271,12 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
 
+// export: parseChatInteractionStateV1
+export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatSessionV1
+export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
+
 // export: parseChatSubagentResultV1
 export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
@@ -8670,6 +10331,15 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: pauseChatTurnV1
+export declare function pauseChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: persistChatQualityPolicyV1
 export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
@@ -8883,6 +10553,25 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: recordChatStreamInterruptionV1
+export declare function recordChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: recordChatUserQuestionV1
+export declare function recordChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    question: ChatUserQuestionV1;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
 export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
     store: ResearchSessionStoreV1;
@@ -8942,6 +10631,27 @@ export interface RefreshResearchSessionScopeClarificationInputV1 {
 // export: refreshResearchSessionScopeClarificationV1
 export declare function refreshResearchSessionScopeClarificationV1(input: RefreshResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: removeChatFollowUpV1
+export declare function removeChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: removeChatSteeringV1
+export declare function removeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: renderChatTurnContextV1
+export declare function renderChatTurnContextV1(context: ChatTurnContextV1): string;
+
 // export: renderResearchFindingSectionsMarkdown
 export declare function renderResearchFindingSectionsMarkdown(sections: readonly {
     title: string;
@@ -8971,11 +10681,41 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
 // export: renderResearchTurnContextV1
 export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
 
+// export: requestChatSteeringV1
+export declare function requestChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: requestChatStopV1
+export declare function requestChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
     "model-assessing",
     "answer-drafting",
     "next-step-ready",
@@ -9761,6 +11501,10 @@ export declare class ResearchCapabilityBroker {
     allowPreauthorizedExactEntity(binding: ResearchScopeBindingV1): void;
     get signal(): AbortSignal;
     cancel(reason?: unknown): void;
+    restoreRetainedEvidence(input: {
+        evidenceIds: readonly string[];
+        checkedAt: string;
+    }): Promise<ResearchRetainedEvidenceRestoreOutcomeV1>;
     restoreDetailedSourceObservations(observations: readonly {
         product: ResearchProduct;
         sourceId: string;
@@ -9769,6 +11513,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
@@ -10393,6 +12138,12 @@ export interface ResearchEvidenceVersionV1 {
     inputBytes: number;
 }
 
+// export: ResearchExactAnchorResumeV1
+export interface ResearchExactAnchorResumeV1 {
+    anchorRef: string;
+    bindingId: string;
+}
+
 // export: ResearchFindingCandidateV1
 export interface ResearchFindingCandidateV1 {
     id: string;
@@ -10760,6 +12511,13 @@ export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageL
     parentSummaryIds: string[];
 }
 
+// export: ResearchModelBudgetCapacityV1
+export interface ResearchModelBudgetCapacityV1 {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+}
+
 // export: ResearchModelBudgetSnapshotV1
 export interface ResearchModelBudgetSnapshotV1 {
     calls: number;
@@ -10786,7 +12544,8 @@ export declare class ResearchModelRunBudget {
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
-    reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
+    canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean;
+    reserve(request: unknown, maximumOutputTokens: number, retain?: ResearchModelBudgetCapacityV1): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
 
@@ -11033,6 +12792,22 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    getPendingChatQuestion?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+        request: ResearchRequestV1;
+        qualityPolicy: ChatQualityPolicyV1;
+    } | null>;
+    getChatInteraction?(siteOrigin: string): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1 | null>;
+    getChatReplay?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        objective: string;
+        events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+        finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+    } | null>;
+    controlActiveChat?(command: import("./chat-agent/interaction.js").ChatInteractionCommandV1): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
     resetChatConversation?(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
@@ -11471,6 +13246,15 @@ export interface ResearchResumableSessionV1 {
     };
 }
 
+// export: ResearchRetainedEvidenceRestoreOutcomeV1
+export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
+    considered: number;
+    staged: number;
+    stale: number;
+    unauthorized: number;
+    missing: number;
+}
+
 // export: ResearchRetainedSessionV1
 export interface ResearchRetainedSessionV1 {
     schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
@@ -11592,6 +13376,14 @@ export interface ResearchRunOptions {
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    chatResume?: {
+        turnId: string;
+        answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+    };
+    chatCheckpointResume?: {
+        turnId: string;
+        kind: "stream-interruption" | "steering";
+    };
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -13029,6 +14821,15 @@ export declare function resolveChatScopeClarificationV1(input: {
     conversationSession: ResearchSessionV1;
 }>;
 
+// export: resolveChatUserQuestionV1
+export declare function resolveChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    answer: ChatUserQuestionAnswerV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -13117,6 +14918,18 @@ export interface ResolveResearchSessionScopeClarificationInputV1 {
 // export: resolveResearchSessionScopeClarificationV1
 export declare function resolveResearchSessionScopeClarificationV1(input: ResolveResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: resumeChatTurnV1
+export declare function resumeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
+
 // export: reviseResearchBriefPlanV1
 export declare function reviseResearchBriefPlanV1(input: {
     brief: ResearchBriefV1;
@@ -13136,6 +14949,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: stageResearchGraphForDurableSessionV1
 export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
+// export: stampChatInteractionCommandV1
+export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
 
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
@@ -13192,6 +15008,40 @@ export interface WikiResearchSummary {
     title: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: WorkspaceChatActivityJournalV1
+export declare class WorkspaceChatActivityJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        persistIfMissing?: boolean;
+    }): Promise<WorkspaceChatActivityJournalV1>;
+    record(input: {
+        turnId: string;
+        at: string;
+        code: ResearchActivityCodeV1;
+        status: ChatActivityEventV1["status"];
+    }): string;
+    referencesForTurn(turnId: string): string[];
+    eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
+    flush(): Promise<void>;
+}
+
+// export: WorkspaceChatInteractionControllerV1
+export declare class WorkspaceChatInteractionControllerV1 {
+    #private;
+    private constructor();
+    static bind(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        binding: ChatSessionBindingV1;
+        at: string;
+    }): Promise<WorkspaceChatInteractionControllerV1>;
+    snapshot(): ChatInteractionStateV1;
+    update(mutate: (state: ChatInteractionStateV1) => ChatInteractionStateV1): Promise<ChatInteractionStateV1>;
 }
 
 // export: WorkspaceResearchClaimLedgerV1
@@ -13327,6 +15177,14 @@ export interface AcceptedChatWorkflowV1 {
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: acknowledgeChatStopV1
+export declare function acknowledgeChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    expectedStopRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: admitChatWorkflowProposalV1
 export declare function admitChatWorkflowProposalV1(input: {
     strategy: ChatStrategyDecisionV1;
@@ -13334,6 +15192,24 @@ export declare function admitChatWorkflowProposalV1(input: {
     maxTasks?: number;
     maxConcurrency?: number;
 }): AcceptedChatWorkflowV1 | undefined;
+
+// export: admitNextChatFollowUpV1
+export declare function admitNextChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    message?: ChatQueuedFollowUpV1;
+};
+
+// export: advanceChatControlFenceV1
+export declare function advanceChatControlFenceV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    kind: "abort" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
@@ -13349,6 +15225,9 @@ export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
     "acquisition",
     "analysis",
     "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
     "synthesis"
 ];
 
@@ -13387,6 +15266,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
     maxTasks: number;
     maxConcurrency: number;
     allowHostDependencyHydration?: boolean;
+    allowHostResponseSchemaHydration?: boolean;
     signal?: AbortSignal;
     invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown, input: {
@@ -13476,6 +15356,9 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: applyChatInteractionControlV1
+export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -13496,6 +15379,21 @@ export interface ApproveResearchScopeExpansionInputV1 {
 
 // export: approveResearchScopeExpansionV1
 export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
+// export: assertChatInteractionBindingV1
+export declare function assertChatInteractionBindingV1(input: {
+    state: ChatInteractionStateV1;
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+}): void;
+
+// export: assertChatSessionBindingV1
+export declare function assertChatSessionBindingV1(input: {
+    session: ChatSessionV1;
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+}): void;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -13525,8 +15423,30 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: beginChatTurnV1
+export declare function beginChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    startedAt: string;
+}): ChatSessionV1;
+
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: bindChatSteeringResumeV1
+export declare function bindChatSteeringResumeV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
 export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
@@ -13700,9 +15620,14 @@ export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): bo
 export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
+    locale?: string;
     strategyDecisionRequired?: boolean;
     agenticWorkflowRequired?: boolean;
+    allowedAgenticProfileIds?: readonly string[];
 }): string;
+
+// export: buildChatTurnContextV1
+export declare function buildChatTurnContextV1(session: ChatSessionV1, currentTurnId: string): ChatTurnContextV1;
 
 // export: buildChatTurnPromptV1
 export declare function buildChatTurnPromptV1(input: {
@@ -13710,6 +15635,7 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    durableContext?: string;
 }): string;
 
 // export: buildResearchCql
@@ -13728,6 +15654,15 @@ export declare function buildResearchTurnContextV1(input: {
 
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_ACTIVITY_EVENT_SCHEMA_V1
+export declare const CHAT_ACTIVITY_EVENT_SCHEMA_V1: "atlcli.chat-activity-event/v1";
+
+// export: CHAT_ACTIVITY_JOURNAL_PATH_V1
+export declare const CHAT_ACTIVITY_JOURNAL_PATH_V1: "/.atlcli/chat/v1/activity.json";
+
+// export: CHAT_ACTIVITY_JOURNAL_SCHEMA_V1
+export declare const CHAT_ACTIVITY_JOURNAL_SCHEMA_V1: "atlcli.chat-activity-journal/v1";
 
 // export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
@@ -13825,9 +15760,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            clarification: "clarification";
             "follow-up": "follow-up";
             "deep-research": "deep-research";
+            clarification: "clarification";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -13841,6 +15776,21 @@ export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-
 
 // export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
 export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
+// export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
+export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
+
+// export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
+export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
+
+// export: CHAT_INTERACTION_STATE_PATH_V1
+export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interaction.json";
+
+// export: CHAT_INTERACTION_STATE_SCHEMA_V1
+export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
+export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -13901,6 +15851,30 @@ export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SEMANTIC_ACTIVITY_CODES_V1
+export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion"
+];
+
+// export: CHAT_SESSION_PATH_V1
+export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_SCHEMA_V1
+export declare const CHAT_SESSION_SCHEMA_V1: "atlcli.chat-session/v1";
 
 // export: CHAT_SESSION_STATE_PATH_V1
 export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
@@ -13968,12 +15942,16 @@ export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
     "relationship-tracer",
     "comparison-analyst",
     "contradiction-checker",
+    "answer-drafter",
     "answer-critic",
+    "answer-repairer",
     "chat-synthesizer"
 ];
 
 // export: CHAT_SUBAGENT_PROFILES_V1
 export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
@@ -13995,11 +15973,104 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_TURN_SCHEMA_V1
+export declare const CHAT_TURN_SCHEMA_V1: "atlcli.chat-turn/v1";
+
+// export: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-question-answer/v1";
+
+// export: CHAT_USER_QUESTION_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
 
+// export: ChatAcquisitionProductsV1
+export interface ChatAcquisitionProductsV1 {
+    searchProducts: Array<"jira" | "confluence">;
+    exactContextProducts: Array<"jira" | "confluence">;
+}
+
+// export: ChatActivityEventV1
+export interface ChatActivityEventV1 {
+    schema: typeof CHAT_ACTIVITY_EVENT_SCHEMA_V1;
+    id: string;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
+}
+
+// export: ChatActivityJournalV1
+export interface ChatActivityJournalV1 {
+    schema: typeof CHAT_ACTIVITY_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    events: ChatActivityEventV1[];
+}
+
+// export: ChatAgentAnswerQuestionV1
+export interface ChatAgentAnswerQuestionV1 extends ChatAgentCheckpointV1 {
+    answer: ChatUserQuestionAnswerV1;
+}
+
+// export: ChatAgentCheckpointV1
+export interface ChatAgentCheckpointV1 {
+    siteOrigin: string;
+    conversationId: string;
+    turnId: string;
+}
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentPortV1
+export interface ChatAgentPortV1 {
+    startTurn(input: ChatAgentStartTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    answerQuestion(input: ChatAgentAnswerQuestionV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    resumeTurn(input: ChatAgentResumeTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    getPendingQuestion(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: ChatUserQuestionV1;
+    } | null>;
+    getInteraction(siteOrigin: string): Promise<ChatInteractionStateV1 | null>;
+    control(command: ChatInteractionCommandV1): Promise<ChatInteractionStateV1>;
+    stop(): Promise<"stop_requested" | "stopped">;
+    listHistory(siteOrigin: string): Promise<ChatConversationHistoryItemV1[]>;
+    replay(input: {
+        siteOrigin: string;
+        conversationId?: string;
+    }): Promise<ChatConversationReplayV1 | null>;
+    artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
+    sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    resetConversation(): Promise<void>;
+}
+
+// export: ChatAgentResumeTurnV1
+export interface ChatAgentResumeTurnV1 extends ChatAgentCheckpointV1 {
+    kind: "stream-interruption" | "steering";
+}
+
+// export: ChatAgentStartTurnV1
+export interface ChatAgentStartTurnV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    conversationId?: string;
+}
+
+// export: ChatAgentStreamV1
+export interface ChatAgentStreamV1 {
+    signal?: AbortSignal;
+    onSessionStart?: (session: {
+        conversationId: string;
+        turnId: string;
+    }) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
+}
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
@@ -14052,6 +16123,8 @@ export declare class ChatCandidateLedgerControllerV1 {
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    isSearchExhaustedWithoutCandidates(product: ResearchProduct): boolean;
+    isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
     markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
@@ -14117,11 +16190,166 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatConversationHistoryItemV1
+export interface ChatConversationHistoryItemV1 {
+    conversationId: string;
+    updatedAt: string;
+    latestTurnId?: string;
+    latestObjective?: string;
+    status?: "running" | "complete" | "failed" | "cancelled" | "waiting";
+}
+
+// export: ChatConversationMemoryV1
+export interface ChatConversationMemoryV1 {
+    schema: typeof CHAT_CONVERSATION_MEMORY_SCHEMA_V1;
+    summary: ChatConversationSummaryV1;
+    recentTurns: ChatTurnV1[];
+}
+
+// export: ChatConversationReplayV1
+export interface ChatConversationReplayV1 {
+    conversationId: string;
+    turnId: string;
+    objective: string;
+    events: ChatActivityEventV1[];
+    finalAnswer?: ChatAnswerV1;
+}
+
+// export: ChatConversationSummaryV1
+export interface ChatConversationSummaryV1 {
+    nonAuthoritative: true;
+    compactedTurnCount: number;
+    latestObjectives: string[];
+    unresolvedGapCodes: ChatAnswerGapV1["code"][];
+}
+
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
 
+// export: ChatEvidenceMemoryEntryV1
+export interface ChatEvidenceMemoryEntryV1 {
+    evidenceId: string;
+    tenantOrigin: string;
+    canonicalId: string;
+    product: "jira" | "confluence";
+    sourceId: string;
+    authorityBindingId: string;
+    authorityClass: "whole_scope" | "exact_entity";
+    capturedAt: string;
+    updatedAt?: string;
+    contentHash: string;
+    supportingClaimRefs: string[];
+    acceptedInTurnId: string;
+    acceptedScopeFingerprint: string;
+}
+
+// export: ChatEvidenceMemoryV1
+export interface ChatEvidenceMemoryV1 {
+    schema: typeof CHAT_EVIDENCE_MEMORY_SCHEMA_V1;
+    entries: ChatEvidenceMemoryEntryV1[];
+}
+
 // export: ChatEvidencePacketV1
 export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
+// export: ChatHostIdentityV1
+export interface ChatHostIdentityV1 {
+    userId: string;
+    providerCacheIdentity: string;
+}
+
+// export: ChatInteractionCommandV1
+export type ChatInteractionCommandV1 = Omit<Extract<ChatInteractionControlV1, {
+    kind: "enqueue";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "steer";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "consume_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove_steering";
+}>, "at">;
+
+// export: ChatInteractionControlV1
+export type ChatInteractionControlV1 = {
+    kind: "enqueue";
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+} | {
+    kind: "edit";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+} | {
+    kind: "remove";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+} | {
+    kind: "steer";
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+} | {
+    kind: "consume_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+} | {
+    kind: "edit_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+} | {
+    kind: "remove_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+};
+
+// export: ChatInteractionStateV1
+export interface ChatInteractionStateV1 {
+    schema: typeof CHAT_INTERACTION_STATE_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    binding: ChatSessionBindingV1;
+    updatedAt: string;
+    queue: ChatQueuedFollowUpV1[];
+    pendingSteering?: ChatPendingSteeringV1;
+    acceptedSteering?: ChatPendingSteeringV1 & {
+        turnId: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    streamInterruption?: ChatStreamInterruptionV1;
+    stop?: ChatStopRequestV1;
+    pendingQuestion?: {
+        turnId: string;
+        question: ChatUserQuestionV1;
+        askedAt: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    resolvedQuestions: Array<{
+        turnId: string;
+        question: ChatUserQuestionV1;
+        answer: ChatUserQuestionAnswerV1;
+        resolvedAt: string;
+    }>;
+}
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -14143,6 +16371,26 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatOperationalMemoryV1
+export interface ChatOperationalMemoryV1 {
+    schema: typeof CHAT_OPERATIONAL_MEMORY_SCHEMA_V1;
+    revision: number;
+    abortEpoch: number;
+    steeringRevision: number;
+    activeTurnId?: string;
+    lastCompletedTurnId?: string;
+}
+
+// export: ChatPendingSteeringV1
+export interface ChatPendingSteeringV1 {
+    id: string;
+    revision: number;
+    instruction: string;
+    requestedAt: string;
+    turnId?: string;
+    resume?: ChatResumeEnvelopeV1;
+}
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -14181,6 +16429,15 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatQueuedFollowUpV1
+export interface ChatQueuedFollowUpV1 {
+    id: string;
+    revision: number;
+    content: string;
+    enqueuedAt: string;
+    updatedAt: string;
+}
+
 // export: ChatRelatedScopeProposalV1
 export interface ChatRelatedScopeProposalV1 {
     proposalId: string;
@@ -14214,6 +16471,13 @@ export interface ChatResolvedRetrievalEntityV1 {
     authority: "approved" | "locked" | "resolved";
     key?: string;
     name: string;
+}
+
+// export: ChatResumeEnvelopeV1
+export interface ChatResumeEnvelopeV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    exactAnchors?: ResearchExactAnchorResumeV1[];
 }
 
 // export: ChatRetrievalAnchorV1
@@ -14354,6 +16618,12 @@ export interface ChatScopeClarificationReviewV1 {
     };
 }
 
+// export: chatScopeFingerprintV1
+export declare function chatScopeFingerprintV1(input: {
+    scope: ResearchScopeV1;
+    scopeBindings: readonly ResearchScopeBindingV1[];
+}): Promise<string>;
+
 // export: ChatSearchLedgerEntryV1
 export interface ChatSearchLedgerEntryV1 {
     searchId: string;
@@ -14380,11 +16650,37 @@ export interface ChatSearchVariantProposalV1 {
     expectedInformationGain?: "high" | "medium" | "low";
 }
 
+// export: ChatSessionBindingV1
+export interface ChatSessionBindingV1 extends ChatHostIdentityV1 {
+    threadId: string;
+    tenantOrigin: string;
+}
+
 // export: ChatSessionStateV1
 export interface ChatSessionStateV1 {
     schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatSessionV1
+export interface ChatSessionV1 {
+    schema: typeof CHAT_SESSION_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    binding: ChatSessionBindingV1;
+    conversation: ChatConversationMemoryV1;
+    operations: ChatOperationalMemoryV1;
+    evidence: ChatEvidenceMemoryV1;
+}
+
+// export: ChatStopRequestV1
+export interface ChatStopRequestV1 {
+    revision: number;
+    requestedAt: string;
+    acknowledgedAt?: string;
 }
 
 // export: ChatStrategyCapabilityClassV1
@@ -14452,11 +16748,24 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatStreamInterruptionV1
+export interface ChatStreamInterruptionV1 {
+    kind: "stream-interruption";
+    revision: number;
+    turnId: string;
+    interruptedAt: string;
+    resumeAttempts: number;
+    resume: ChatResumeEnvelopeV1;
+}
+
 // export: ChatSubagentCapabilityIdV1
 export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
 
 // export: ChatSubagentPacketSchemaV1
 export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: chatSubagentProfileByIdV1
+export declare function chatSubagentProfileByIdV1(profileId: ChatSubagentProfileIdV1): Readonly<ChatSubagentProfileV1>;
 
 // export: ChatSubagentProfileIdV1
 export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
@@ -14488,6 +16797,48 @@ export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneSho
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
 
+// export: ChatTurnArtifactV1
+export interface ChatTurnArtifactV1 {
+    conversationId: string;
+    turnId: string;
+    mediaType: "text/markdown";
+    markdown: string;
+}
+
+// export: ChatTurnContextV1
+export interface ChatTurnContextV1 {
+    current: {
+        turnId: string;
+        objective: string;
+        qualityMode: ChatQualityModeV1;
+        scopeFingerprint: string;
+    };
+    conversationSummary: ChatConversationSummaryV1;
+    recentMessages: Array<{
+        turnId: string;
+        user: string;
+        assistant?: string;
+    }>;
+    acceptedEvidence: Array<{
+        evidenceId: string;
+        canonicalId: string;
+        product: "jira" | "confluence";
+        sourceId: string;
+        capturedAt: string;
+        updatedAt?: string;
+        supportingClaimRefs: string[];
+    }>;
+    unresolvedGaps: ChatAnswerGapV1[];
+    controls: {
+        tenantOrigin: string;
+        threadId: string;
+        providerCacheIdentity: string;
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+}
+
 // export: ChatTurnRequestV1
 export interface ChatTurnRequestV1 {
     schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
@@ -14502,12 +16853,109 @@ export interface ChatTurnRequestV1 {
     locale?: string;
 }
 
+// export: ChatTurnSourcesV1
+export interface ChatTurnSourcesV1 {
+    conversationId: string;
+    turnId: string;
+    sources: ChatCitationV1[];
+}
+
+// export: ChatTurnV1
+export interface ChatTurnV1 {
+    schema: typeof CHAT_TURN_SCHEMA_V1;
+    id: string;
+    revision: number;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    controlFence: {
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+    status: "running" | "complete" | "failed" | "cancelled" | "waiting";
+    waitingReason?: "hitl" | "stream-interruption" | "steering";
+    startedAt: string;
+    completedAt?: string;
+    acceptedStrategy?: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    finalAnswer?: ChatAnswerV1;
+    activityRefs: string[];
+    evidenceRefs: string[];
+    unresolvedGaps: ChatAnswerGapV1[];
+}
+
+// export: ChatUserQuestionAnswerV1
+export interface ChatUserQuestionAnswerV1 {
+    schema: typeof CHAT_USER_QUESTION_ANSWER_SCHEMA_V1;
+    questionId: string;
+    value: ChatUserQuestionAnswerValueV1;
+}
+
+// export: ChatUserQuestionAnswerValueV1
+export type ChatUserQuestionAnswerValueV1 = {
+    kind: "text";
+    text: string;
+} | {
+    kind: "selection";
+    optionIds: string[];
+} | {
+    kind: "mixed";
+    optionIds: string[];
+    text?: string;
+} | {
+    kind: "assumption";
+    decision: "accepted" | "rejected";
+};
+
+// export: ChatUserQuestionOptionV1
+export interface ChatUserQuestionOptionV1 {
+    id: string;
+    label: string;
+    description?: string;
+}
+
+// export: ChatUserQuestionRequiredError
+export declare class ChatUserQuestionRequiredError extends ChatContractError {
+    readonly question: ChatUserQuestionV1;
+    constructor(question: ChatUserQuestionV1);
+}
+
+// export: ChatUserQuestionV1
+export type ChatUserQuestionV1 = {
+    schema: typeof CHAT_USER_QUESTION_SCHEMA_V1;
+    id: string;
+    prompt: string;
+    required: boolean;
+} & ({
+    responseKind: "free_text";
+    maxLength: number;
+} | {
+    responseKind: "single_choice";
+    options: ChatUserQuestionOptionV1[];
+} | {
+    responseKind: "multiple_choice";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+} | {
+    responseKind: "mixed";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+    maxLength: number;
+} | {
+    responseKind: "assumption";
+    assumption: string;
+});
+
 // export: ChatWorkflowAdmissionResponseV1
 export interface ChatWorkflowAdmissionResponseV1 {
     schema: "atlcli.chat-workflow-admission/v1";
     completionObjective: "conversation-answer";
     maxConcurrency: number;
     synthesizerTaskId: string;
+    qualityReviewRequired: true;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -14558,6 +17006,37 @@ export interface CompiledAgenticWorkflowV1 {
     readonly compatibilityFingerprint: string;
 }
 
+// export: completeChatSteeringV1
+export declare function completeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatStreamInterruptionV1
+export declare function completeChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    expectedInterruptionRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatTurnV1
+export declare function completeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    answer: ChatAnswerV1;
+    acceptedStrategy: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    activityRefs: readonly string[];
+    evidenceRecords: readonly ResearchEvidenceRecordV1[];
+    completedAt: string;
+}): ChatSessionV1;
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -14584,6 +17063,18 @@ export type ConfluenceDocumentInputV1 = {
     sourceVersion: number;
     siteOrigin: string;
     projectionLimits: ContentProjectionLimits;
+};
+
+// export: consumeChatSteeringV1
+export declare function consumeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    steering: ChatPendingSteeringV1;
 };
 
 // export: ContentProjectionLimits
@@ -14633,6 +17124,13 @@ export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatch
 // export: createAgenticDispatchInterceptionAdapter
 export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
 
+// export: createChatInteractionStateV1
+export declare function createChatInteractionStateV1(input: {
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+    createdAt: string;
+}): ChatInteractionStateV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -14649,6 +17147,7 @@ export declare function createChatRetrievalPlanV1(input: {
     exactContextProducts: readonly ResearchProduct[];
     limits: ResearchLimitsV1;
     agentic: boolean;
+    relationshipTracing?: boolean;
     proposal?: ChatRetrievalPlanProposalV1;
     now?: () => number;
 }): ChatRetrievalPlanV1;
@@ -14658,6 +17157,14 @@ export declare function createChatSessionStateV1(input: {
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
 }): ChatSessionStateV1;
+
+// export: createChatSessionV1
+export declare function createChatSessionV1(input: {
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+    createdAt: string;
+}): ChatSessionV1;
 
 // export: createChatStrategyDecisionControllerV1
 export declare function createChatStrategyDecisionControllerV1(input: {
@@ -14682,6 +17189,12 @@ export declare function createChatStrategyReviewControllerV1(input: {
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
+
+// export: createChatWorkflowDispatchV1
+export declare function createChatWorkflowDispatchV1(input: {
+    task: Readonly<ChatWorkflowTaskProposalV1>;
+    profile: Readonly<ChatSubagentProfileV1>;
+}): Readonly<ChatWorkflowDispatchV1>;
 
 // export: createChatWorkflowProposalControllerV1
 export declare function createChatWorkflowProposalControllerV1(input: {
@@ -14887,6 +17400,16 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: defineChatAgentPortV1
+export declare function defineChatAgentPortV1(port: ChatAgentPortV1): ChatAgentPortV1;
+
+// export: deriveChatAcquisitionProductsV1
+export declare function deriveChatAcquisitionProductsV1(input: {
+    decision: ChatStrategyDecisionV1;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+}): ChatAcquisitionProductsV1;
+
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
@@ -14914,11 +17437,40 @@ export declare function directChatHasExactCurrentPageV1(request: ResearchRequest
 // export: directChatProductsV1
 export declare function directChatProductsV1(request: ResearchRequestV1): ResearchProduct[];
 
+// export: editChatFollowUpV1
+export declare function editChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: editChatSteeringV1
+export declare function editChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: encodeAgenticTaskDescriptionV1
 export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: enqueueChatFollowUpV1
+export declare function enqueueChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: escapeResearchCqlLiteral
 export declare function escapeResearchCqlLiteral(value: string): string;
@@ -14938,6 +17490,7 @@ export declare function finalizeChatAnswerV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
     strategyDecision?: ChatStrategyDecisionV1;
     strategyReview?: ChatStrategyReviewV1;
+    qualityDisposition?: ChatQualityDispositionV1;
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
@@ -15130,6 +17683,15 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: interruptChatTurnV1
+export declare function interruptChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    status: "failed" | "cancelled";
+    at: string;
+}): ChatSessionV1;
+
 // export: isChatPresentationStreamEventV1
 export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
 
@@ -15194,14 +17756,32 @@ export declare function navigateConfluenceStorageV1(input: {
     projectionLimits: ContentProjectionLimits;
 }): BoundedDocumentSourceV1 | undefined;
 
+// export: normalizeChatActivityEventV1
+export declare function normalizeChatActivityEventV1(value: unknown): ChatActivityEventV1;
+
+// export: normalizeChatActivityJournalV1
+export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
+// export: normalizeChatHostIdentityV1
+export declare function normalizeChatHostIdentityV1(value: ChatHostIdentityV1): ChatHostIdentityV1;
+
+// export: normalizeChatInteractionCommandV1
+export declare function normalizeChatInteractionCommandV1(value: unknown): ChatInteractionCommandV1;
+
+// export: normalizeChatInteractionControlV1
+export declare function normalizeChatInteractionControlV1(value: unknown): ChatInteractionControlV1;
 
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: normalizeChatTurnRequestV1
 export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
+
+// export: normalizeChatUserQuestionV1
+export declare function normalizeChatUserQuestionV1(value: unknown): ChatUserQuestionV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -15269,6 +17849,12 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
 
+// export: parseChatInteractionStateV1
+export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatSessionV1
+export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
+
 // export: parseChatSubagentResultV1
 export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
@@ -15323,6 +17909,15 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: pauseChatTurnV1
+export declare function pauseChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: persistChatQualityPolicyV1
 export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
@@ -15536,6 +18131,25 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: recordChatStreamInterruptionV1
+export declare function recordChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: recordChatUserQuestionV1
+export declare function recordChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    question: ChatUserQuestionV1;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
 export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
     store: ResearchSessionStoreV1;
@@ -15595,6 +18209,27 @@ export interface RefreshResearchSessionScopeClarificationInputV1 {
 // export: refreshResearchSessionScopeClarificationV1
 export declare function refreshResearchSessionScopeClarificationV1(input: RefreshResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: removeChatFollowUpV1
+export declare function removeChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: removeChatSteeringV1
+export declare function removeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: renderChatTurnContextV1
+export declare function renderChatTurnContextV1(context: ChatTurnContextV1): string;
+
 // export: renderResearchFindingSectionsMarkdown
 export declare function renderResearchFindingSectionsMarkdown(sections: readonly {
     title: string;
@@ -15624,11 +18259,41 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
 // export: renderResearchTurnContextV1
 export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
 
+// export: requestChatSteeringV1
+export declare function requestChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: requestChatStopV1
+export declare function requestChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
     "model-assessing",
     "answer-drafting",
     "next-step-ready",
@@ -16414,6 +19079,10 @@ export declare class ResearchCapabilityBroker {
     allowPreauthorizedExactEntity(binding: ResearchScopeBindingV1): void;
     get signal(): AbortSignal;
     cancel(reason?: unknown): void;
+    restoreRetainedEvidence(input: {
+        evidenceIds: readonly string[];
+        checkedAt: string;
+    }): Promise<ResearchRetainedEvidenceRestoreOutcomeV1>;
     restoreDetailedSourceObservations(observations: readonly {
         product: ResearchProduct;
         sourceId: string;
@@ -16422,6 +19091,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
@@ -17046,6 +19716,12 @@ export interface ResearchEvidenceVersionV1 {
     inputBytes: number;
 }
 
+// export: ResearchExactAnchorResumeV1
+export interface ResearchExactAnchorResumeV1 {
+    anchorRef: string;
+    bindingId: string;
+}
+
 // export: ResearchFindingCandidateV1
 export interface ResearchFindingCandidateV1 {
     id: string;
@@ -17413,6 +20089,13 @@ export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageL
     parentSummaryIds: string[];
 }
 
+// export: ResearchModelBudgetCapacityV1
+export interface ResearchModelBudgetCapacityV1 {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+}
+
 // export: ResearchModelBudgetSnapshotV1
 export interface ResearchModelBudgetSnapshotV1 {
     calls: number;
@@ -17439,7 +20122,8 @@ export declare class ResearchModelRunBudget {
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
-    reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
+    canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean;
+    reserve(request: unknown, maximumOutputTokens: number, retain?: ResearchModelBudgetCapacityV1): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
 
@@ -17686,6 +20370,22 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    getPendingChatQuestion?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+        request: ResearchRequestV1;
+        qualityPolicy: ChatQualityPolicyV1;
+    } | null>;
+    getChatInteraction?(siteOrigin: string): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1 | null>;
+    getChatReplay?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        objective: string;
+        events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+        finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+    } | null>;
+    controlActiveChat?(command: import("./chat-agent/interaction.js").ChatInteractionCommandV1): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
     resetChatConversation?(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
@@ -18124,6 +20824,15 @@ export interface ResearchResumableSessionV1 {
     };
 }
 
+// export: ResearchRetainedEvidenceRestoreOutcomeV1
+export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
+    considered: number;
+    staged: number;
+    stale: number;
+    unauthorized: number;
+    missing: number;
+}
+
 // export: ResearchRetainedSessionV1
 export interface ResearchRetainedSessionV1 {
     schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
@@ -18245,6 +20954,14 @@ export interface ResearchRunOptions {
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    chatResume?: {
+        turnId: string;
+        answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+    };
+    chatCheckpointResume?: {
+        turnId: string;
+        kind: "stream-interruption" | "steering";
+    };
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -19682,6 +22399,15 @@ export declare function resolveChatScopeClarificationV1(input: {
     conversationSession: ResearchSessionV1;
 }>;
 
+// export: resolveChatUserQuestionV1
+export declare function resolveChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    answer: ChatUserQuestionAnswerV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -19781,6 +22507,18 @@ export interface RestScopeCatalogProviderOptions {
     now?: () => string;
 }
 
+// export: resumeChatTurnV1
+export declare function resumeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
+
 // export: reviseResearchBriefPlanV1
 export declare function reviseResearchBriefPlanV1(input: {
     brief: ResearchBriefV1;
@@ -19800,6 +22538,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: stageResearchGraphForDurableSessionV1
 export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
+// export: stampChatInteractionCommandV1
+export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
 
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
@@ -19856,6 +22597,40 @@ export interface WikiResearchSummary {
     title: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: WorkspaceChatActivityJournalV1
+export declare class WorkspaceChatActivityJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        persistIfMissing?: boolean;
+    }): Promise<WorkspaceChatActivityJournalV1>;
+    record(input: {
+        turnId: string;
+        at: string;
+        code: ResearchActivityCodeV1;
+        status: ChatActivityEventV1["status"];
+    }): string;
+    referencesForTurn(turnId: string): string[];
+    eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
+    flush(): Promise<void>;
+}
+
+// export: WorkspaceChatInteractionControllerV1
+export declare class WorkspaceChatInteractionControllerV1 {
+    #private;
+    private constructor();
+    static bind(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        binding: ChatSessionBindingV1;
+        at: string;
+    }): Promise<WorkspaceChatInteractionControllerV1>;
+    snapshot(): ChatInteractionStateV1;
+    update(mutate: (state: ChatInteractionStateV1) => ChatInteractionStateV1): Promise<ChatInteractionStateV1>;
 }
 
 // export: WorkspaceResearchClaimLedgerV1
@@ -19991,6 +22766,14 @@ export interface AcceptedChatWorkflowV1 {
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: acknowledgeChatStopV1
+export declare function acknowledgeChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    expectedStopRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: admitChatWorkflowProposalV1
 export declare function admitChatWorkflowProposalV1(input: {
     strategy: ChatStrategyDecisionV1;
@@ -19998,6 +22781,24 @@ export declare function admitChatWorkflowProposalV1(input: {
     maxTasks?: number;
     maxConcurrency?: number;
 }): AcceptedChatWorkflowV1 | undefined;
+
+// export: admitNextChatFollowUpV1
+export declare function admitNextChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    message?: ChatQueuedFollowUpV1;
+};
+
+// export: advanceChatControlFenceV1
+export declare function advanceChatControlFenceV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    kind: "abort" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
@@ -20013,6 +22814,9 @@ export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
     "acquisition",
     "analysis",
     "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
     "synthesis"
 ];
 
@@ -20051,6 +22855,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
     maxTasks: number;
     maxConcurrency: number;
     allowHostDependencyHydration?: boolean;
+    allowHostResponseSchemaHydration?: boolean;
     signal?: AbortSignal;
     invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown, input: {
@@ -20140,6 +22945,9 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: applyChatInteractionControlV1
+export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -20160,6 +22968,21 @@ export interface ApproveResearchScopeExpansionInputV1 {
 
 // export: approveResearchScopeExpansionV1
 export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
+// export: assertChatInteractionBindingV1
+export declare function assertChatInteractionBindingV1(input: {
+    state: ChatInteractionStateV1;
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+}): void;
+
+// export: assertChatSessionBindingV1
+export declare function assertChatSessionBindingV1(input: {
+    session: ChatSessionV1;
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+}): void;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -20189,8 +23012,30 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: beginChatTurnV1
+export declare function beginChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    startedAt: string;
+}): ChatSessionV1;
+
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: bindChatSteeringResumeV1
+export declare function bindChatSteeringResumeV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
 export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
@@ -20367,9 +23212,14 @@ export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): bo
 export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
+    locale?: string;
     strategyDecisionRequired?: boolean;
     agenticWorkflowRequired?: boolean;
+    allowedAgenticProfileIds?: readonly string[];
 }): string;
+
+// export: buildChatTurnContextV1
+export declare function buildChatTurnContextV1(session: ChatSessionV1, currentTurnId: string): ChatTurnContextV1;
 
 // export: buildChatTurnPromptV1
 export declare function buildChatTurnPromptV1(input: {
@@ -20377,6 +23227,7 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    durableContext?: string;
 }): string;
 
 // export: buildDynamicSupervisorPrompt
@@ -20401,6 +23252,15 @@ export declare function buildResearchTurnContextV1(input: {
 
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_ACTIVITY_EVENT_SCHEMA_V1
+export declare const CHAT_ACTIVITY_EVENT_SCHEMA_V1: "atlcli.chat-activity-event/v1";
+
+// export: CHAT_ACTIVITY_JOURNAL_PATH_V1
+export declare const CHAT_ACTIVITY_JOURNAL_PATH_V1: "/.atlcli/chat/v1/activity.json";
+
+// export: CHAT_ACTIVITY_JOURNAL_SCHEMA_V1
+export declare const CHAT_ACTIVITY_JOURNAL_SCHEMA_V1: "atlcli.chat-activity-journal/v1";
 
 // export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
@@ -20498,9 +23358,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            clarification: "clarification";
             "follow-up": "follow-up";
             "deep-research": "deep-research";
+            clarification: "clarification";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -20514,6 +23374,21 @@ export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-
 
 // export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
 export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
+// export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
+export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
+
+// export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
+export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
+
+// export: CHAT_INTERACTION_STATE_PATH_V1
+export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interaction.json";
+
+// export: CHAT_INTERACTION_STATE_SCHEMA_V1
+export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
+export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -20574,6 +23449,30 @@ export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SEMANTIC_ACTIVITY_CODES_V1
+export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion"
+];
+
+// export: CHAT_SESSION_PATH_V1
+export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_SCHEMA_V1
+export declare const CHAT_SESSION_SCHEMA_V1: "atlcli.chat-session/v1";
 
 // export: CHAT_SESSION_STATE_PATH_V1
 export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
@@ -20641,12 +23540,16 @@ export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
     "relationship-tracer",
     "comparison-analyst",
     "contradiction-checker",
+    "answer-drafter",
     "answer-critic",
+    "answer-repairer",
     "chat-synthesizer"
 ];
 
 // export: CHAT_SUBAGENT_PROFILES_V1
 export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
@@ -20668,18 +23571,112 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_TURN_SCHEMA_V1
+export declare const CHAT_TURN_SCHEMA_V1: "atlcli.chat-turn/v1";
+
+// export: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-question-answer/v1";
+
+// export: CHAT_USER_QUESTION_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
 
+// export: ChatAcquisitionProductsV1
+export interface ChatAcquisitionProductsV1 {
+    searchProducts: Array<"jira" | "confluence">;
+    exactContextProducts: Array<"jira" | "confluence">;
+}
+
+// export: ChatActivityEventV1
+export interface ChatActivityEventV1 {
+    schema: typeof CHAT_ACTIVITY_EVENT_SCHEMA_V1;
+    id: string;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
+}
+
+// export: ChatActivityJournalV1
+export interface ChatActivityJournalV1 {
+    schema: typeof CHAT_ACTIVITY_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    events: ChatActivityEventV1[];
+}
+
+// export: ChatAgentAnswerQuestionV1
+export interface ChatAgentAnswerQuestionV1 extends ChatAgentCheckpointV1 {
+    answer: ChatUserQuestionAnswerV1;
+}
+
+// export: ChatAgentCheckpointV1
+export interface ChatAgentCheckpointV1 {
+    siteOrigin: string;
+    conversationId: string;
+    turnId: string;
+}
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentPortV1
+export interface ChatAgentPortV1 {
+    startTurn(input: ChatAgentStartTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    answerQuestion(input: ChatAgentAnswerQuestionV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    resumeTurn(input: ChatAgentResumeTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    getPendingQuestion(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: ChatUserQuestionV1;
+    } | null>;
+    getInteraction(siteOrigin: string): Promise<ChatInteractionStateV1 | null>;
+    control(command: ChatInteractionCommandV1): Promise<ChatInteractionStateV1>;
+    stop(): Promise<"stop_requested" | "stopped">;
+    listHistory(siteOrigin: string): Promise<ChatConversationHistoryItemV1[]>;
+    replay(input: {
+        siteOrigin: string;
+        conversationId?: string;
+    }): Promise<ChatConversationReplayV1 | null>;
+    artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
+    sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    resetConversation(): Promise<void>;
+}
+
+// export: ChatAgentResumeTurnV1
+export interface ChatAgentResumeTurnV1 extends ChatAgentCheckpointV1 {
+    kind: "stream-interruption" | "steering";
+}
 
 // export: ChatAgentRuntimeBindings
 export interface ChatAgentRuntimeBindings {
     StateBackend: typeof import("deepagents/browser").StateBackend;
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
     createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+    createSummarizationMiddleware: typeof import("deepagents/browser").createSummarizationMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ChatAgentStartTurnV1
+export interface ChatAgentStartTurnV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    conversationId?: string;
+}
+
+// export: ChatAgentStreamV1
+export interface ChatAgentStreamV1 {
+    signal?: AbortSignal;
+    onSessionStart?: (session: {
+        conversationId: string;
+        turnId: string;
+    }) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
 // export: ChatAnalysisPacketV1
@@ -20733,6 +23730,8 @@ export declare class ChatCandidateLedgerControllerV1 {
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    isSearchExhaustedWithoutCandidates(product: ResearchProduct): boolean;
+    isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
     markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
@@ -20798,11 +23797,166 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatConversationHistoryItemV1
+export interface ChatConversationHistoryItemV1 {
+    conversationId: string;
+    updatedAt: string;
+    latestTurnId?: string;
+    latestObjective?: string;
+    status?: "running" | "complete" | "failed" | "cancelled" | "waiting";
+}
+
+// export: ChatConversationMemoryV1
+export interface ChatConversationMemoryV1 {
+    schema: typeof CHAT_CONVERSATION_MEMORY_SCHEMA_V1;
+    summary: ChatConversationSummaryV1;
+    recentTurns: ChatTurnV1[];
+}
+
+// export: ChatConversationReplayV1
+export interface ChatConversationReplayV1 {
+    conversationId: string;
+    turnId: string;
+    objective: string;
+    events: ChatActivityEventV1[];
+    finalAnswer?: ChatAnswerV1;
+}
+
+// export: ChatConversationSummaryV1
+export interface ChatConversationSummaryV1 {
+    nonAuthoritative: true;
+    compactedTurnCount: number;
+    latestObjectives: string[];
+    unresolvedGapCodes: ChatAnswerGapV1["code"][];
+}
+
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
 
+// export: ChatEvidenceMemoryEntryV1
+export interface ChatEvidenceMemoryEntryV1 {
+    evidenceId: string;
+    tenantOrigin: string;
+    canonicalId: string;
+    product: "jira" | "confluence";
+    sourceId: string;
+    authorityBindingId: string;
+    authorityClass: "whole_scope" | "exact_entity";
+    capturedAt: string;
+    updatedAt?: string;
+    contentHash: string;
+    supportingClaimRefs: string[];
+    acceptedInTurnId: string;
+    acceptedScopeFingerprint: string;
+}
+
+// export: ChatEvidenceMemoryV1
+export interface ChatEvidenceMemoryV1 {
+    schema: typeof CHAT_EVIDENCE_MEMORY_SCHEMA_V1;
+    entries: ChatEvidenceMemoryEntryV1[];
+}
+
 // export: ChatEvidencePacketV1
 export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
+// export: ChatHostIdentityV1
+export interface ChatHostIdentityV1 {
+    userId: string;
+    providerCacheIdentity: string;
+}
+
+// export: ChatInteractionCommandV1
+export type ChatInteractionCommandV1 = Omit<Extract<ChatInteractionControlV1, {
+    kind: "enqueue";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "steer";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "consume_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove_steering";
+}>, "at">;
+
+// export: ChatInteractionControlV1
+export type ChatInteractionControlV1 = {
+    kind: "enqueue";
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+} | {
+    kind: "edit";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+} | {
+    kind: "remove";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+} | {
+    kind: "steer";
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+} | {
+    kind: "consume_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+} | {
+    kind: "edit_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+} | {
+    kind: "remove_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+};
+
+// export: ChatInteractionStateV1
+export interface ChatInteractionStateV1 {
+    schema: typeof CHAT_INTERACTION_STATE_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    binding: ChatSessionBindingV1;
+    updatedAt: string;
+    queue: ChatQueuedFollowUpV1[];
+    pendingSteering?: ChatPendingSteeringV1;
+    acceptedSteering?: ChatPendingSteeringV1 & {
+        turnId: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    streamInterruption?: ChatStreamInterruptionV1;
+    stop?: ChatStopRequestV1;
+    pendingQuestion?: {
+        turnId: string;
+        question: ChatUserQuestionV1;
+        askedAt: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    resolvedQuestions: Array<{
+        turnId: string;
+        question: ChatUserQuestionV1;
+        answer: ChatUserQuestionAnswerV1;
+        resolvedAt: string;
+    }>;
+}
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -20824,6 +23978,26 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatOperationalMemoryV1
+export interface ChatOperationalMemoryV1 {
+    schema: typeof CHAT_OPERATIONAL_MEMORY_SCHEMA_V1;
+    revision: number;
+    abortEpoch: number;
+    steeringRevision: number;
+    activeTurnId?: string;
+    lastCompletedTurnId?: string;
+}
+
+// export: ChatPendingSteeringV1
+export interface ChatPendingSteeringV1 {
+    id: string;
+    revision: number;
+    instruction: string;
+    requestedAt: string;
+    turnId?: string;
+    resume?: ChatResumeEnvelopeV1;
+}
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -20862,6 +24036,15 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatQueuedFollowUpV1
+export interface ChatQueuedFollowUpV1 {
+    id: string;
+    revision: number;
+    content: string;
+    enqueuedAt: string;
+    updatedAt: string;
+}
+
 // export: ChatRelatedScopeProposalV1
 export interface ChatRelatedScopeProposalV1 {
     proposalId: string;
@@ -20895,6 +24078,13 @@ export interface ChatResolvedRetrievalEntityV1 {
     authority: "approved" | "locked" | "resolved";
     key?: string;
     name: string;
+}
+
+// export: ChatResumeEnvelopeV1
+export interface ChatResumeEnvelopeV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    exactAnchors?: ResearchExactAnchorResumeV1[];
 }
 
 // export: ChatRetrievalAnchorV1
@@ -21035,6 +24225,12 @@ export interface ChatScopeClarificationReviewV1 {
     };
 }
 
+// export: chatScopeFingerprintV1
+export declare function chatScopeFingerprintV1(input: {
+    scope: ResearchScopeV1;
+    scopeBindings: readonly ResearchScopeBindingV1[];
+}): Promise<string>;
+
 // export: ChatSearchLedgerEntryV1
 export interface ChatSearchLedgerEntryV1 {
     searchId: string;
@@ -21061,11 +24257,37 @@ export interface ChatSearchVariantProposalV1 {
     expectedInformationGain?: "high" | "medium" | "low";
 }
 
+// export: ChatSessionBindingV1
+export interface ChatSessionBindingV1 extends ChatHostIdentityV1 {
+    threadId: string;
+    tenantOrigin: string;
+}
+
 // export: ChatSessionStateV1
 export interface ChatSessionStateV1 {
     schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatSessionV1
+export interface ChatSessionV1 {
+    schema: typeof CHAT_SESSION_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    binding: ChatSessionBindingV1;
+    conversation: ChatConversationMemoryV1;
+    operations: ChatOperationalMemoryV1;
+    evidence: ChatEvidenceMemoryV1;
+}
+
+// export: ChatStopRequestV1
+export interface ChatStopRequestV1 {
+    revision: number;
+    requestedAt: string;
+    acknowledgedAt?: string;
 }
 
 // export: ChatStrategyCapabilityClassV1
@@ -21133,11 +24355,24 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatStreamInterruptionV1
+export interface ChatStreamInterruptionV1 {
+    kind: "stream-interruption";
+    revision: number;
+    turnId: string;
+    interruptedAt: string;
+    resumeAttempts: number;
+    resume: ChatResumeEnvelopeV1;
+}
+
 // export: ChatSubagentCapabilityIdV1
 export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
 
 // export: ChatSubagentPacketSchemaV1
 export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: chatSubagentProfileByIdV1
+export declare function chatSubagentProfileByIdV1(profileId: ChatSubagentProfileIdV1): Readonly<ChatSubagentProfileV1>;
 
 // export: ChatSubagentProfileIdV1
 export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
@@ -21169,6 +24404,48 @@ export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneSho
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
 
+// export: ChatTurnArtifactV1
+export interface ChatTurnArtifactV1 {
+    conversationId: string;
+    turnId: string;
+    mediaType: "text/markdown";
+    markdown: string;
+}
+
+// export: ChatTurnContextV1
+export interface ChatTurnContextV1 {
+    current: {
+        turnId: string;
+        objective: string;
+        qualityMode: ChatQualityModeV1;
+        scopeFingerprint: string;
+    };
+    conversationSummary: ChatConversationSummaryV1;
+    recentMessages: Array<{
+        turnId: string;
+        user: string;
+        assistant?: string;
+    }>;
+    acceptedEvidence: Array<{
+        evidenceId: string;
+        canonicalId: string;
+        product: "jira" | "confluence";
+        sourceId: string;
+        capturedAt: string;
+        updatedAt?: string;
+        supportingClaimRefs: string[];
+    }>;
+    unresolvedGaps: ChatAnswerGapV1[];
+    controls: {
+        tenantOrigin: string;
+        threadId: string;
+        providerCacheIdentity: string;
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+}
+
 // export: ChatTurnRequestV1
 export interface ChatTurnRequestV1 {
     schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
@@ -21183,12 +24460,119 @@ export interface ChatTurnRequestV1 {
     locale?: string;
 }
 
+// export: ChatTurnSourcesV1
+export interface ChatTurnSourcesV1 {
+    conversationId: string;
+    turnId: string;
+    sources: ChatCitationV1[];
+}
+
+// export: ChatTurnV1
+export interface ChatTurnV1 {
+    schema: typeof CHAT_TURN_SCHEMA_V1;
+    id: string;
+    revision: number;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    controlFence: {
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+    status: "running" | "complete" | "failed" | "cancelled" | "waiting";
+    waitingReason?: "hitl" | "stream-interruption" | "steering";
+    startedAt: string;
+    completedAt?: string;
+    acceptedStrategy?: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    finalAnswer?: ChatAnswerV1;
+    activityRefs: string[];
+    evidenceRefs: string[];
+    unresolvedGaps: ChatAnswerGapV1[];
+}
+
+// export: ChatTurnWorkspaceCheckpointerV1
+export declare class ChatTurnWorkspaceCheckpointerV1 extends WorkspaceLangGraphCheckpointerV1 {
+    readonly threadId: string;
+    constructor(input: {
+        conversationId: string;
+        turnId: string;
+        workspace: ResearchWorkspace;
+    });
+}
+
+// export: ChatUserQuestionAnswerV1
+export interface ChatUserQuestionAnswerV1 {
+    schema: typeof CHAT_USER_QUESTION_ANSWER_SCHEMA_V1;
+    questionId: string;
+    value: ChatUserQuestionAnswerValueV1;
+}
+
+// export: ChatUserQuestionAnswerValueV1
+export type ChatUserQuestionAnswerValueV1 = {
+    kind: "text";
+    text: string;
+} | {
+    kind: "selection";
+    optionIds: string[];
+} | {
+    kind: "mixed";
+    optionIds: string[];
+    text?: string;
+} | {
+    kind: "assumption";
+    decision: "accepted" | "rejected";
+};
+
+// export: ChatUserQuestionOptionV1
+export interface ChatUserQuestionOptionV1 {
+    id: string;
+    label: string;
+    description?: string;
+}
+
+// export: ChatUserQuestionRequiredError
+export declare class ChatUserQuestionRequiredError extends ChatContractError {
+    readonly question: ChatUserQuestionV1;
+    constructor(question: ChatUserQuestionV1);
+}
+
+// export: ChatUserQuestionV1
+export type ChatUserQuestionV1 = {
+    schema: typeof CHAT_USER_QUESTION_SCHEMA_V1;
+    id: string;
+    prompt: string;
+    required: boolean;
+} & ({
+    responseKind: "free_text";
+    maxLength: number;
+} | {
+    responseKind: "single_choice";
+    options: ChatUserQuestionOptionV1[];
+} | {
+    responseKind: "multiple_choice";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+} | {
+    responseKind: "mixed";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+    maxLength: number;
+} | {
+    responseKind: "assumption";
+    assumption: string;
+});
+
 // export: ChatWorkflowAdmissionResponseV1
 export interface ChatWorkflowAdmissionResponseV1 {
     schema: "atlcli.chat-workflow-admission/v1";
     completionObjective: "conversation-answer";
     maxConcurrency: number;
     synthesizerTaskId: string;
+    qualityReviewRequired: true;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -21242,6 +24626,37 @@ export interface CompiledAgenticWorkflowV1 {
 // export: compileDynamicResearchSubagents
 export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
 
+// export: completeChatSteeringV1
+export declare function completeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatStreamInterruptionV1
+export declare function completeChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    expectedInterruptionRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatTurnV1
+export declare function completeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    answer: ChatAnswerV1;
+    acceptedStrategy: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    activityRefs: readonly string[];
+    evidenceRecords: readonly ResearchEvidenceRecordV1[];
+    completedAt: string;
+}): ChatSessionV1;
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -21268,6 +24683,18 @@ export type ConfluenceDocumentInputV1 = {
     sourceVersion: number;
     siteOrigin: string;
     projectionLimits: ContentProjectionLimits;
+};
+
+// export: consumeChatSteeringV1
+export declare function consumeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    steering: ChatPendingSteeringV1;
 };
 
 // export: ContentProjectionLimits
@@ -21403,6 +24830,13 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
 };
 
+// export: createChatInteractionStateV1
+export declare function createChatInteractionStateV1(input: {
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+    createdAt: string;
+}): ChatInteractionStateV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -21419,6 +24853,7 @@ export declare function createChatRetrievalPlanV1(input: {
     exactContextProducts: readonly ResearchProduct[];
     limits: ResearchLimitsV1;
     agentic: boolean;
+    relationshipTracing?: boolean;
     proposal?: ChatRetrievalPlanProposalV1;
     now?: () => number;
 }): ChatRetrievalPlanV1;
@@ -21428,6 +24863,14 @@ export declare function createChatSessionStateV1(input: {
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
 }): ChatSessionStateV1;
+
+// export: createChatSessionV1
+export declare function createChatSessionV1(input: {
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+    createdAt: string;
+}): ChatSessionV1;
 
 // export: createChatStrategyDecisionControllerV1
 export declare function createChatStrategyDecisionControllerV1(input: {
@@ -21452,6 +24895,12 @@ export declare function createChatStrategyReviewControllerV1(input: {
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
+
+// export: createChatWorkflowDispatchV1
+export declare function createChatWorkflowDispatchV1(input: {
+    task: Readonly<ChatWorkflowTaskProposalV1>;
+    profile: Readonly<ChatSubagentProfileV1>;
+}): Readonly<ChatWorkflowDispatchV1>;
 
 // export: createChatWorkflowProposalControllerV1
 export declare function createChatWorkflowProposalControllerV1(input: {
@@ -21705,6 +25154,16 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: defineChatAgentPortV1
+export declare function defineChatAgentPortV1(port: ChatAgentPortV1): ChatAgentPortV1;
+
+// export: deriveChatAcquisitionProductsV1
+export declare function deriveChatAcquisitionProductsV1(input: {
+    decision: ChatStrategyDecisionV1;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+}): ChatAcquisitionProductsV1;
+
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
@@ -21775,11 +25234,40 @@ export interface DynamicResearchSubagentOptions {
     now?: () => number;
 }
 
+// export: editChatFollowUpV1
+export declare function editChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: editChatSteeringV1
+export declare function editChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: encodeAgenticTaskDescriptionV1
 export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: enqueueChatFollowUpV1
+export declare function enqueueChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: escapeResearchCqlLiteral
 export declare function escapeResearchCqlLiteral(value: string): string;
@@ -21802,6 +25290,7 @@ export declare function finalizeChatAnswerV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
     strategyDecision?: ChatStrategyDecisionV1;
     strategyReview?: ChatStrategyReviewV1;
+    qualityDisposition?: ChatQualityDispositionV1;
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
@@ -21994,6 +25483,15 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: interruptChatTurnV1
+export declare function interruptChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    status: "failed" | "cancelled";
+    at: string;
+}): ChatSessionV1;
+
 // export: isChatPresentationStreamEventV1
 export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
 
@@ -22058,14 +25556,32 @@ export declare function navigateConfluenceStorageV1(input: {
     projectionLimits: ContentProjectionLimits;
 }): BoundedDocumentSourceV1 | undefined;
 
+// export: normalizeChatActivityEventV1
+export declare function normalizeChatActivityEventV1(value: unknown): ChatActivityEventV1;
+
+// export: normalizeChatActivityJournalV1
+export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
+// export: normalizeChatHostIdentityV1
+export declare function normalizeChatHostIdentityV1(value: ChatHostIdentityV1): ChatHostIdentityV1;
+
+// export: normalizeChatInteractionCommandV1
+export declare function normalizeChatInteractionCommandV1(value: unknown): ChatInteractionCommandV1;
+
+// export: normalizeChatInteractionControlV1
+export declare function normalizeChatInteractionControlV1(value: unknown): ChatInteractionControlV1;
 
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: normalizeChatTurnRequestV1
 export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
+
+// export: normalizeChatUserQuestionV1
+export declare function normalizeChatUserQuestionV1(value: unknown): ChatUserQuestionV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -22133,6 +25649,12 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
 
+// export: parseChatInteractionStateV1
+export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatSessionV1
+export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
+
 // export: parseChatSubagentResultV1
 export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
@@ -22190,6 +25712,15 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: pauseChatTurnV1
+export declare function pauseChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: persistChatQualityPolicyV1
 export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
@@ -22409,6 +25940,25 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: recordChatStreamInterruptionV1
+export declare function recordChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: recordChatUserQuestionV1
+export declare function recordChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    question: ChatUserQuestionV1;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
 export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
     store: ResearchSessionStoreV1;
@@ -22468,6 +26018,27 @@ export interface RefreshResearchSessionScopeClarificationInputV1 {
 // export: refreshResearchSessionScopeClarificationV1
 export declare function refreshResearchSessionScopeClarificationV1(input: RefreshResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: removeChatFollowUpV1
+export declare function removeChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: removeChatSteeringV1
+export declare function removeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: renderChatTurnContextV1
+export declare function renderChatTurnContextV1(context: ChatTurnContextV1): string;
+
 // export: renderResearchFindingSectionsMarkdown
 export declare function renderResearchFindingSectionsMarkdown(sections: readonly {
     title: string;
@@ -22497,11 +26068,41 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
 // export: renderResearchTurnContextV1
 export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
 
+// export: requestChatSteeringV1
+export declare function requestChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: requestChatStopV1
+export declare function requestChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
     "model-assessing",
     "answer-drafting",
     "next-step-ready",
@@ -23342,6 +26943,10 @@ export declare class ResearchCapabilityBroker {
     allowPreauthorizedExactEntity(binding: ResearchScopeBindingV1): void;
     get signal(): AbortSignal;
     cancel(reason?: unknown): void;
+    restoreRetainedEvidence(input: {
+        evidenceIds: readonly string[];
+        checkedAt: string;
+    }): Promise<ResearchRetainedEvidenceRestoreOutcomeV1>;
     restoreDetailedSourceObservations(observations: readonly {
         product: ResearchProduct;
         sourceId: string;
@@ -23350,6 +26955,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
@@ -23993,6 +27599,12 @@ export interface ResearchEvidenceVersionV1 {
     inputBytes: number;
 }
 
+// export: ResearchExactAnchorResumeV1
+export interface ResearchExactAnchorResumeV1 {
+    anchorRef: string;
+    bindingId: string;
+}
+
 // export: ResearchFindingCandidateV1
 export interface ResearchFindingCandidateV1 {
     id: string;
@@ -24360,6 +27972,13 @@ export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageL
     parentSummaryIds: string[];
 }
 
+// export: ResearchModelBudgetCapacityV1
+export interface ResearchModelBudgetCapacityV1 {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+}
+
 // export: ResearchModelBudgetSnapshotV1
 export interface ResearchModelBudgetSnapshotV1 {
     calls: number;
@@ -24386,7 +28005,8 @@ export declare class ResearchModelRunBudget {
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
-    reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
+    canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean;
+    reserve(request: unknown, maximumOutputTokens: number, retain?: ResearchModelBudgetCapacityV1): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
 
@@ -24633,6 +28253,22 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    getPendingChatQuestion?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+        request: ResearchRequestV1;
+        qualityPolicy: ChatQualityPolicyV1;
+    } | null>;
+    getChatInteraction?(siteOrigin: string): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1 | null>;
+    getChatReplay?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        objective: string;
+        events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+        finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+    } | null>;
+    controlActiveChat?(command: import("./chat-agent/interaction.js").ChatInteractionCommandV1): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
     resetChatConversation?(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
@@ -25115,6 +28751,15 @@ export interface ResearchResumableSessionV1 {
     };
 }
 
+// export: ResearchRetainedEvidenceRestoreOutcomeV1
+export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
+    considered: number;
+    staged: number;
+    stale: number;
+    unauthorized: number;
+    missing: number;
+}
+
 // export: ResearchRetainedSessionV1
 export interface ResearchRetainedSessionV1 {
     schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
@@ -25236,6 +28881,14 @@ export interface ResearchRunOptions {
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    chatResume?: {
+        turnId: string;
+        answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+    };
+    chatCheckpointResume?: {
+        turnId: string;
+        kind: "stream-interruption" | "steering";
+    };
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -26429,20 +30082,10 @@ export interface ResearchSessionV1 {
 }
 
 // export: ResearchSessionWorkspaceCheckpointerV1
-export declare class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
-    #private;
+export declare class ResearchSessionWorkspaceCheckpointerV1 extends WorkspaceLangGraphCheckpointerV1 {
     constructor(sessionId: string, workspace: ResearchWorkspace, options?: {
         supervisorPhaseId?: string;
     });
-    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
-    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
-    getDeltaChannelHistory(options: {
-        config: RunnableConfig;
-        channels: string[];
-    }): Promise<Record<string, DeltaChannelHistory>>;
-    deleteThread(threadId: string): Promise<void>;
 }
 
 // export: ResearchSourceReferenceV1
@@ -26724,6 +30367,15 @@ export declare function resolveChatScopeClarificationV1(input: {
     conversationSession: ResearchSessionV1;
 }>;
 
+// export: resolveChatUserQuestionV1
+export declare function resolveChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    answer: ChatUserQuestionAnswerV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -26826,6 +30478,18 @@ export interface RestScopeCatalogProviderOptions {
     now?: () => string;
 }
 
+// export: resumeChatTurnV1
+export declare function resumeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
+
 // export: reviseResearchBriefPlanV1
 export declare function reviseResearchBriefPlanV1(input: {
     brief: ResearchBriefV1;
@@ -26850,7 +30514,12 @@ export interface RunChatAgentInput {
     providers: ResearchReadProviders;
     budget?: ResearchRunBudget;
     workspace: ResearchWorkspace;
+    hostIdentity: ChatHostIdentityV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    resumeAnswer?: ChatUserQuestionAnswerV1;
+    resumeCheckpoint?: {
+        kind: "stream-interruption" | "steering";
+    };
     signal?: AbortSignal;
     now?: () => number;
     onProgress?: (progress: ResearchProgressV1) => void;
@@ -26860,6 +30529,8 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
+    onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
 }
 
 // export: runResearchAgent
@@ -26904,6 +30575,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: stageResearchGraphForDurableSessionV1
 export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
+// export: stampChatInteractionCommandV1
+export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
 
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
@@ -26960,6 +30634,58 @@ export interface WikiResearchSummary {
     title: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: WorkspaceChatActivityJournalV1
+export declare class WorkspaceChatActivityJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        persistIfMissing?: boolean;
+    }): Promise<WorkspaceChatActivityJournalV1>;
+    record(input: {
+        turnId: string;
+        at: string;
+        code: ResearchActivityCodeV1;
+        status: ChatActivityEventV1["status"];
+    }): string;
+    referencesForTurn(turnId: string): string[];
+    eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
+    flush(): Promise<void>;
+}
+
+// export: WorkspaceChatInteractionControllerV1
+export declare class WorkspaceChatInteractionControllerV1 {
+    #private;
+    private constructor();
+    static bind(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        binding: ChatSessionBindingV1;
+        at: string;
+    }): Promise<WorkspaceChatInteractionControllerV1>;
+    snapshot(): ChatInteractionStateV1;
+    update(mutate: (state: ChatInteractionStateV1) => ChatInteractionStateV1): Promise<ChatInteractionStateV1>;
+}
+
+// export: WorkspaceLangGraphCheckpointerV1
+export declare class WorkspaceLangGraphCheckpointerV1 extends MemorySaver {
+    #private;
+    constructor(identity: {
+        threadId: string;
+        rootPath: string;
+    }, workspace: ResearchWorkspace);
+    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
+    getDeltaChannelHistory(options: {
+        config: RunnableConfig;
+        channels: string[];
+    }): Promise<Record<string, DeltaChannelHistory>>;
+    deleteThread(threadId: string): Promise<void>;
 }
 
 // export: WorkspaceResearchClaimLedgerV1
@@ -27095,6 +30821,14 @@ export interface AcceptedChatWorkflowV1 {
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: acknowledgeChatStopV1
+export declare function acknowledgeChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    expectedStopRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: admitChatWorkflowProposalV1
 export declare function admitChatWorkflowProposalV1(input: {
     strategy: ChatStrategyDecisionV1;
@@ -27102,6 +30836,24 @@ export declare function admitChatWorkflowProposalV1(input: {
     maxTasks?: number;
     maxConcurrency?: number;
 }): AcceptedChatWorkflowV1 | undefined;
+
+// export: admitNextChatFollowUpV1
+export declare function admitNextChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    message?: ChatQueuedFollowUpV1;
+};
+
+// export: advanceChatControlFenceV1
+export declare function advanceChatControlFenceV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    kind: "abort" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
@@ -27117,6 +30869,9 @@ export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
     "acquisition",
     "analysis",
     "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
     "synthesis"
 ];
 
@@ -27155,6 +30910,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
     maxTasks: number;
     maxConcurrency: number;
     allowHostDependencyHydration?: boolean;
+    allowHostResponseSchemaHydration?: boolean;
     signal?: AbortSignal;
     invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown, input: {
@@ -27244,6 +31000,9 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: applyChatInteractionControlV1
+export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -27264,6 +31023,21 @@ export interface ApproveResearchScopeExpansionInputV1 {
 
 // export: approveResearchScopeExpansionV1
 export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
+// export: assertChatInteractionBindingV1
+export declare function assertChatInteractionBindingV1(input: {
+    state: ChatInteractionStateV1;
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+}): void;
+
+// export: assertChatSessionBindingV1
+export declare function assertChatSessionBindingV1(input: {
+    session: ChatSessionV1;
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+}): void;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -27293,8 +31067,30 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: beginChatTurnV1
+export declare function beginChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    startedAt: string;
+}): ChatSessionV1;
+
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: bindChatSteeringResumeV1
+export declare function bindChatSteeringResumeV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
 export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
@@ -27471,9 +31267,14 @@ export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): bo
 export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
+    locale?: string;
     strategyDecisionRequired?: boolean;
     agenticWorkflowRequired?: boolean;
+    allowedAgenticProfileIds?: readonly string[];
 }): string;
+
+// export: buildChatTurnContextV1
+export declare function buildChatTurnContextV1(session: ChatSessionV1, currentTurnId: string): ChatTurnContextV1;
 
 // export: buildChatTurnPromptV1
 export declare function buildChatTurnPromptV1(input: {
@@ -27481,6 +31282,7 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    durableContext?: string;
 }): string;
 
 // export: buildDynamicSupervisorPrompt
@@ -27505,6 +31307,15 @@ export declare function buildResearchTurnContextV1(input: {
 
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_ACTIVITY_EVENT_SCHEMA_V1
+export declare const CHAT_ACTIVITY_EVENT_SCHEMA_V1: "atlcli.chat-activity-event/v1";
+
+// export: CHAT_ACTIVITY_JOURNAL_PATH_V1
+export declare const CHAT_ACTIVITY_JOURNAL_PATH_V1: "/.atlcli/chat/v1/activity.json";
+
+// export: CHAT_ACTIVITY_JOURNAL_SCHEMA_V1
+export declare const CHAT_ACTIVITY_JOURNAL_SCHEMA_V1: "atlcli.chat-activity-journal/v1";
 
 // export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
@@ -27602,9 +31413,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            clarification: "clarification";
             "follow-up": "follow-up";
             "deep-research": "deep-research";
+            clarification: "clarification";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -27618,6 +31429,21 @@ export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-
 
 // export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
 export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
+// export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
+export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
+
+// export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
+export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
+
+// export: CHAT_INTERACTION_STATE_PATH_V1
+export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interaction.json";
+
+// export: CHAT_INTERACTION_STATE_SCHEMA_V1
+export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
+export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -27678,6 +31504,30 @@ export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SEMANTIC_ACTIVITY_CODES_V1
+export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion"
+];
+
+// export: CHAT_SESSION_PATH_V1
+export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_SCHEMA_V1
+export declare const CHAT_SESSION_SCHEMA_V1: "atlcli.chat-session/v1";
 
 // export: CHAT_SESSION_STATE_PATH_V1
 export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
@@ -27745,12 +31595,16 @@ export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
     "relationship-tracer",
     "comparison-analyst",
     "contradiction-checker",
+    "answer-drafter",
     "answer-critic",
+    "answer-repairer",
     "chat-synthesizer"
 ];
 
 // export: CHAT_SUBAGENT_PROFILES_V1
 export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
@@ -27772,18 +31626,112 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_TURN_SCHEMA_V1
+export declare const CHAT_TURN_SCHEMA_V1: "atlcli.chat-turn/v1";
+
+// export: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-question-answer/v1";
+
+// export: CHAT_USER_QUESTION_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
 
+// export: ChatAcquisitionProductsV1
+export interface ChatAcquisitionProductsV1 {
+    searchProducts: Array<"jira" | "confluence">;
+    exactContextProducts: Array<"jira" | "confluence">;
+}
+
+// export: ChatActivityEventV1
+export interface ChatActivityEventV1 {
+    schema: typeof CHAT_ACTIVITY_EVENT_SCHEMA_V1;
+    id: string;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
+}
+
+// export: ChatActivityJournalV1
+export interface ChatActivityJournalV1 {
+    schema: typeof CHAT_ACTIVITY_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    events: ChatActivityEventV1[];
+}
+
+// export: ChatAgentAnswerQuestionV1
+export interface ChatAgentAnswerQuestionV1 extends ChatAgentCheckpointV1 {
+    answer: ChatUserQuestionAnswerV1;
+}
+
+// export: ChatAgentCheckpointV1
+export interface ChatAgentCheckpointV1 {
+    siteOrigin: string;
+    conversationId: string;
+    turnId: string;
+}
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentPortV1
+export interface ChatAgentPortV1 {
+    startTurn(input: ChatAgentStartTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    answerQuestion(input: ChatAgentAnswerQuestionV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    resumeTurn(input: ChatAgentResumeTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    getPendingQuestion(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: ChatUserQuestionV1;
+    } | null>;
+    getInteraction(siteOrigin: string): Promise<ChatInteractionStateV1 | null>;
+    control(command: ChatInteractionCommandV1): Promise<ChatInteractionStateV1>;
+    stop(): Promise<"stop_requested" | "stopped">;
+    listHistory(siteOrigin: string): Promise<ChatConversationHistoryItemV1[]>;
+    replay(input: {
+        siteOrigin: string;
+        conversationId?: string;
+    }): Promise<ChatConversationReplayV1 | null>;
+    artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
+    sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    resetConversation(): Promise<void>;
+}
+
+// export: ChatAgentResumeTurnV1
+export interface ChatAgentResumeTurnV1 extends ChatAgentCheckpointV1 {
+    kind: "stream-interruption" | "steering";
+}
 
 // export: ChatAgentRuntimeBindings
 export interface ChatAgentRuntimeBindings {
     StateBackend: typeof import("deepagents/browser").StateBackend;
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
     createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+    createSummarizationMiddleware: typeof import("deepagents/browser").createSummarizationMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ChatAgentStartTurnV1
+export interface ChatAgentStartTurnV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    conversationId?: string;
+}
+
+// export: ChatAgentStreamV1
+export interface ChatAgentStreamV1 {
+    signal?: AbortSignal;
+    onSessionStart?: (session: {
+        conversationId: string;
+        turnId: string;
+    }) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
 // export: ChatAnalysisPacketV1
@@ -27837,6 +31785,8 @@ export declare class ChatCandidateLedgerControllerV1 {
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    isSearchExhaustedWithoutCandidates(product: ResearchProduct): boolean;
+    isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
     markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
@@ -27902,11 +31852,166 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatConversationHistoryItemV1
+export interface ChatConversationHistoryItemV1 {
+    conversationId: string;
+    updatedAt: string;
+    latestTurnId?: string;
+    latestObjective?: string;
+    status?: "running" | "complete" | "failed" | "cancelled" | "waiting";
+}
+
+// export: ChatConversationMemoryV1
+export interface ChatConversationMemoryV1 {
+    schema: typeof CHAT_CONVERSATION_MEMORY_SCHEMA_V1;
+    summary: ChatConversationSummaryV1;
+    recentTurns: ChatTurnV1[];
+}
+
+// export: ChatConversationReplayV1
+export interface ChatConversationReplayV1 {
+    conversationId: string;
+    turnId: string;
+    objective: string;
+    events: ChatActivityEventV1[];
+    finalAnswer?: ChatAnswerV1;
+}
+
+// export: ChatConversationSummaryV1
+export interface ChatConversationSummaryV1 {
+    nonAuthoritative: true;
+    compactedTurnCount: number;
+    latestObjectives: string[];
+    unresolvedGapCodes: ChatAnswerGapV1["code"][];
+}
+
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
 
+// export: ChatEvidenceMemoryEntryV1
+export interface ChatEvidenceMemoryEntryV1 {
+    evidenceId: string;
+    tenantOrigin: string;
+    canonicalId: string;
+    product: "jira" | "confluence";
+    sourceId: string;
+    authorityBindingId: string;
+    authorityClass: "whole_scope" | "exact_entity";
+    capturedAt: string;
+    updatedAt?: string;
+    contentHash: string;
+    supportingClaimRefs: string[];
+    acceptedInTurnId: string;
+    acceptedScopeFingerprint: string;
+}
+
+// export: ChatEvidenceMemoryV1
+export interface ChatEvidenceMemoryV1 {
+    schema: typeof CHAT_EVIDENCE_MEMORY_SCHEMA_V1;
+    entries: ChatEvidenceMemoryEntryV1[];
+}
+
 // export: ChatEvidencePacketV1
 export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
+// export: ChatHostIdentityV1
+export interface ChatHostIdentityV1 {
+    userId: string;
+    providerCacheIdentity: string;
+}
+
+// export: ChatInteractionCommandV1
+export type ChatInteractionCommandV1 = Omit<Extract<ChatInteractionControlV1, {
+    kind: "enqueue";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "steer";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "consume_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove_steering";
+}>, "at">;
+
+// export: ChatInteractionControlV1
+export type ChatInteractionControlV1 = {
+    kind: "enqueue";
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+} | {
+    kind: "edit";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+} | {
+    kind: "remove";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+} | {
+    kind: "steer";
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+} | {
+    kind: "consume_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+} | {
+    kind: "edit_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+} | {
+    kind: "remove_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+};
+
+// export: ChatInteractionStateV1
+export interface ChatInteractionStateV1 {
+    schema: typeof CHAT_INTERACTION_STATE_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    binding: ChatSessionBindingV1;
+    updatedAt: string;
+    queue: ChatQueuedFollowUpV1[];
+    pendingSteering?: ChatPendingSteeringV1;
+    acceptedSteering?: ChatPendingSteeringV1 & {
+        turnId: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    streamInterruption?: ChatStreamInterruptionV1;
+    stop?: ChatStopRequestV1;
+    pendingQuestion?: {
+        turnId: string;
+        question: ChatUserQuestionV1;
+        askedAt: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    resolvedQuestions: Array<{
+        turnId: string;
+        question: ChatUserQuestionV1;
+        answer: ChatUserQuestionAnswerV1;
+        resolvedAt: string;
+    }>;
+}
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -27928,6 +32033,26 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatOperationalMemoryV1
+export interface ChatOperationalMemoryV1 {
+    schema: typeof CHAT_OPERATIONAL_MEMORY_SCHEMA_V1;
+    revision: number;
+    abortEpoch: number;
+    steeringRevision: number;
+    activeTurnId?: string;
+    lastCompletedTurnId?: string;
+}
+
+// export: ChatPendingSteeringV1
+export interface ChatPendingSteeringV1 {
+    id: string;
+    revision: number;
+    instruction: string;
+    requestedAt: string;
+    turnId?: string;
+    resume?: ChatResumeEnvelopeV1;
+}
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -27966,6 +32091,15 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatQueuedFollowUpV1
+export interface ChatQueuedFollowUpV1 {
+    id: string;
+    revision: number;
+    content: string;
+    enqueuedAt: string;
+    updatedAt: string;
+}
+
 // export: ChatRelatedScopeProposalV1
 export interface ChatRelatedScopeProposalV1 {
     proposalId: string;
@@ -27999,6 +32133,13 @@ export interface ChatResolvedRetrievalEntityV1 {
     authority: "approved" | "locked" | "resolved";
     key?: string;
     name: string;
+}
+
+// export: ChatResumeEnvelopeV1
+export interface ChatResumeEnvelopeV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    exactAnchors?: ResearchExactAnchorResumeV1[];
 }
 
 // export: ChatRetrievalAnchorV1
@@ -28139,6 +32280,12 @@ export interface ChatScopeClarificationReviewV1 {
     };
 }
 
+// export: chatScopeFingerprintV1
+export declare function chatScopeFingerprintV1(input: {
+    scope: ResearchScopeV1;
+    scopeBindings: readonly ResearchScopeBindingV1[];
+}): Promise<string>;
+
 // export: ChatSearchLedgerEntryV1
 export interface ChatSearchLedgerEntryV1 {
     searchId: string;
@@ -28165,11 +32312,37 @@ export interface ChatSearchVariantProposalV1 {
     expectedInformationGain?: "high" | "medium" | "low";
 }
 
+// export: ChatSessionBindingV1
+export interface ChatSessionBindingV1 extends ChatHostIdentityV1 {
+    threadId: string;
+    tenantOrigin: string;
+}
+
 // export: ChatSessionStateV1
 export interface ChatSessionStateV1 {
     schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatSessionV1
+export interface ChatSessionV1 {
+    schema: typeof CHAT_SESSION_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    binding: ChatSessionBindingV1;
+    conversation: ChatConversationMemoryV1;
+    operations: ChatOperationalMemoryV1;
+    evidence: ChatEvidenceMemoryV1;
+}
+
+// export: ChatStopRequestV1
+export interface ChatStopRequestV1 {
+    revision: number;
+    requestedAt: string;
+    acknowledgedAt?: string;
 }
 
 // export: ChatStrategyCapabilityClassV1
@@ -28237,11 +32410,24 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatStreamInterruptionV1
+export interface ChatStreamInterruptionV1 {
+    kind: "stream-interruption";
+    revision: number;
+    turnId: string;
+    interruptedAt: string;
+    resumeAttempts: number;
+    resume: ChatResumeEnvelopeV1;
+}
+
 // export: ChatSubagentCapabilityIdV1
 export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
 
 // export: ChatSubagentPacketSchemaV1
 export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: chatSubagentProfileByIdV1
+export declare function chatSubagentProfileByIdV1(profileId: ChatSubagentProfileIdV1): Readonly<ChatSubagentProfileV1>;
 
 // export: ChatSubagentProfileIdV1
 export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
@@ -28273,6 +32459,48 @@ export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneSho
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
 
+// export: ChatTurnArtifactV1
+export interface ChatTurnArtifactV1 {
+    conversationId: string;
+    turnId: string;
+    mediaType: "text/markdown";
+    markdown: string;
+}
+
+// export: ChatTurnContextV1
+export interface ChatTurnContextV1 {
+    current: {
+        turnId: string;
+        objective: string;
+        qualityMode: ChatQualityModeV1;
+        scopeFingerprint: string;
+    };
+    conversationSummary: ChatConversationSummaryV1;
+    recentMessages: Array<{
+        turnId: string;
+        user: string;
+        assistant?: string;
+    }>;
+    acceptedEvidence: Array<{
+        evidenceId: string;
+        canonicalId: string;
+        product: "jira" | "confluence";
+        sourceId: string;
+        capturedAt: string;
+        updatedAt?: string;
+        supportingClaimRefs: string[];
+    }>;
+    unresolvedGaps: ChatAnswerGapV1[];
+    controls: {
+        tenantOrigin: string;
+        threadId: string;
+        providerCacheIdentity: string;
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+}
+
 // export: ChatTurnRequestV1
 export interface ChatTurnRequestV1 {
     schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
@@ -28287,12 +32515,109 @@ export interface ChatTurnRequestV1 {
     locale?: string;
 }
 
+// export: ChatTurnSourcesV1
+export interface ChatTurnSourcesV1 {
+    conversationId: string;
+    turnId: string;
+    sources: ChatCitationV1[];
+}
+
+// export: ChatTurnV1
+export interface ChatTurnV1 {
+    schema: typeof CHAT_TURN_SCHEMA_V1;
+    id: string;
+    revision: number;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    controlFence: {
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+    status: "running" | "complete" | "failed" | "cancelled" | "waiting";
+    waitingReason?: "hitl" | "stream-interruption" | "steering";
+    startedAt: string;
+    completedAt?: string;
+    acceptedStrategy?: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    finalAnswer?: ChatAnswerV1;
+    activityRefs: string[];
+    evidenceRefs: string[];
+    unresolvedGaps: ChatAnswerGapV1[];
+}
+
+// export: ChatUserQuestionAnswerV1
+export interface ChatUserQuestionAnswerV1 {
+    schema: typeof CHAT_USER_QUESTION_ANSWER_SCHEMA_V1;
+    questionId: string;
+    value: ChatUserQuestionAnswerValueV1;
+}
+
+// export: ChatUserQuestionAnswerValueV1
+export type ChatUserQuestionAnswerValueV1 = {
+    kind: "text";
+    text: string;
+} | {
+    kind: "selection";
+    optionIds: string[];
+} | {
+    kind: "mixed";
+    optionIds: string[];
+    text?: string;
+} | {
+    kind: "assumption";
+    decision: "accepted" | "rejected";
+};
+
+// export: ChatUserQuestionOptionV1
+export interface ChatUserQuestionOptionV1 {
+    id: string;
+    label: string;
+    description?: string;
+}
+
+// export: ChatUserQuestionRequiredError
+export declare class ChatUserQuestionRequiredError extends ChatContractError {
+    readonly question: ChatUserQuestionV1;
+    constructor(question: ChatUserQuestionV1);
+}
+
+// export: ChatUserQuestionV1
+export type ChatUserQuestionV1 = {
+    schema: typeof CHAT_USER_QUESTION_SCHEMA_V1;
+    id: string;
+    prompt: string;
+    required: boolean;
+} & ({
+    responseKind: "free_text";
+    maxLength: number;
+} | {
+    responseKind: "single_choice";
+    options: ChatUserQuestionOptionV1[];
+} | {
+    responseKind: "multiple_choice";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+} | {
+    responseKind: "mixed";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+    maxLength: number;
+} | {
+    responseKind: "assumption";
+    assumption: string;
+});
+
 // export: ChatWorkflowAdmissionResponseV1
 export interface ChatWorkflowAdmissionResponseV1 {
     schema: "atlcli.chat-workflow-admission/v1";
     completionObjective: "conversation-answer";
     maxConcurrency: number;
     synthesizerTaskId: string;
+    qualityReviewRequired: true;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -28346,6 +32671,37 @@ export interface CompiledAgenticWorkflowV1 {
 // export: compileDynamicResearchSubagents
 export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
 
+// export: completeChatSteeringV1
+export declare function completeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatStreamInterruptionV1
+export declare function completeChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    expectedInterruptionRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatTurnV1
+export declare function completeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    answer: ChatAnswerV1;
+    acceptedStrategy: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    activityRefs: readonly string[];
+    evidenceRecords: readonly ResearchEvidenceRecordV1[];
+    completedAt: string;
+}): ChatSessionV1;
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -28372,6 +32728,18 @@ export type ConfluenceDocumentInputV1 = {
     sourceVersion: number;
     siteOrigin: string;
     projectionLimits: ContentProjectionLimits;
+};
+
+// export: consumeChatSteeringV1
+export declare function consumeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    steering: ChatPendingSteeringV1;
 };
 
 // export: ContentProjectionLimits
@@ -28507,6 +32875,13 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
 };
 
+// export: createChatInteractionStateV1
+export declare function createChatInteractionStateV1(input: {
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+    createdAt: string;
+}): ChatInteractionStateV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -28523,6 +32898,7 @@ export declare function createChatRetrievalPlanV1(input: {
     exactContextProducts: readonly ResearchProduct[];
     limits: ResearchLimitsV1;
     agentic: boolean;
+    relationshipTracing?: boolean;
     proposal?: ChatRetrievalPlanProposalV1;
     now?: () => number;
 }): ChatRetrievalPlanV1;
@@ -28532,6 +32908,14 @@ export declare function createChatSessionStateV1(input: {
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
 }): ChatSessionStateV1;
+
+// export: createChatSessionV1
+export declare function createChatSessionV1(input: {
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+    createdAt: string;
+}): ChatSessionV1;
 
 // export: createChatStrategyDecisionControllerV1
 export declare function createChatStrategyDecisionControllerV1(input: {
@@ -28556,6 +32940,12 @@ export declare function createChatStrategyReviewControllerV1(input: {
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
+
+// export: createChatWorkflowDispatchV1
+export declare function createChatWorkflowDispatchV1(input: {
+    task: Readonly<ChatWorkflowTaskProposalV1>;
+    profile: Readonly<ChatSubagentProfileV1>;
+}): Readonly<ChatWorkflowDispatchV1>;
 
 // export: createChatWorkflowProposalControllerV1
 export declare function createChatWorkflowProposalControllerV1(input: {
@@ -28809,6 +33199,16 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: defineChatAgentPortV1
+export declare function defineChatAgentPortV1(port: ChatAgentPortV1): ChatAgentPortV1;
+
+// export: deriveChatAcquisitionProductsV1
+export declare function deriveChatAcquisitionProductsV1(input: {
+    decision: ChatStrategyDecisionV1;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+}): ChatAcquisitionProductsV1;
+
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
@@ -28879,11 +33279,40 @@ export interface DynamicResearchSubagentOptions {
     now?: () => number;
 }
 
+// export: editChatFollowUpV1
+export declare function editChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: editChatSteeringV1
+export declare function editChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: encodeAgenticTaskDescriptionV1
 export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: enqueueChatFollowUpV1
+export declare function enqueueChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: escapeResearchCqlLiteral
 export declare function escapeResearchCqlLiteral(value: string): string;
@@ -28921,6 +33350,7 @@ export declare function finalizeChatAnswerV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
     strategyDecision?: ChatStrategyDecisionV1;
     strategyReview?: ChatStrategyReviewV1;
+    qualityDisposition?: ChatQualityDispositionV1;
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
@@ -29113,6 +33543,15 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: interruptChatTurnV1
+export declare function interruptChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    status: "failed" | "cancelled";
+    at: string;
+}): ChatSessionV1;
+
 // export: isChatPresentationStreamEventV1
 export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
 
@@ -29177,14 +33616,32 @@ export declare function navigateConfluenceStorageV1(input: {
     projectionLimits: ContentProjectionLimits;
 }): BoundedDocumentSourceV1 | undefined;
 
+// export: normalizeChatActivityEventV1
+export declare function normalizeChatActivityEventV1(value: unknown): ChatActivityEventV1;
+
+// export: normalizeChatActivityJournalV1
+export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
+// export: normalizeChatHostIdentityV1
+export declare function normalizeChatHostIdentityV1(value: ChatHostIdentityV1): ChatHostIdentityV1;
+
+// export: normalizeChatInteractionCommandV1
+export declare function normalizeChatInteractionCommandV1(value: unknown): ChatInteractionCommandV1;
+
+// export: normalizeChatInteractionControlV1
+export declare function normalizeChatInteractionControlV1(value: unknown): ChatInteractionControlV1;
 
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: normalizeChatTurnRequestV1
 export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
+
+// export: normalizeChatUserQuestionV1
+export declare function normalizeChatUserQuestionV1(value: unknown): ChatUserQuestionV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -29252,6 +33709,12 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
 
+// export: parseChatInteractionStateV1
+export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatSessionV1
+export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
+
 // export: parseChatSubagentResultV1
 export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
@@ -29309,6 +33772,15 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: pauseChatTurnV1
+export declare function pauseChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: persistChatQualityPolicyV1
 export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
@@ -29528,6 +34000,25 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: recordChatStreamInterruptionV1
+export declare function recordChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: recordChatUserQuestionV1
+export declare function recordChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    question: ChatUserQuestionV1;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
 export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
     store: ResearchSessionStoreV1;
@@ -29587,6 +34078,27 @@ export interface RefreshResearchSessionScopeClarificationInputV1 {
 // export: refreshResearchSessionScopeClarificationV1
 export declare function refreshResearchSessionScopeClarificationV1(input: RefreshResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: removeChatFollowUpV1
+export declare function removeChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: removeChatSteeringV1
+export declare function removeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: renderChatTurnContextV1
+export declare function renderChatTurnContextV1(context: ChatTurnContextV1): string;
+
 // export: renderResearchFindingSectionsMarkdown
 export declare function renderResearchFindingSectionsMarkdown(sections: readonly {
     title: string;
@@ -29616,11 +34128,41 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
 // export: renderResearchTurnContextV1
 export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
 
+// export: requestChatSteeringV1
+export declare function requestChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: requestChatStopV1
+export declare function requestChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
     "model-assessing",
     "answer-drafting",
     "next-step-ready",
@@ -30461,6 +35003,10 @@ export declare class ResearchCapabilityBroker {
     allowPreauthorizedExactEntity(binding: ResearchScopeBindingV1): void;
     get signal(): AbortSignal;
     cancel(reason?: unknown): void;
+    restoreRetainedEvidence(input: {
+        evidenceIds: readonly string[];
+        checkedAt: string;
+    }): Promise<ResearchRetainedEvidenceRestoreOutcomeV1>;
     restoreDetailedSourceObservations(observations: readonly {
         product: ResearchProduct;
         sourceId: string;
@@ -30469,6 +35015,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
@@ -31112,6 +35659,12 @@ export interface ResearchEvidenceVersionV1 {
     inputBytes: number;
 }
 
+// export: ResearchExactAnchorResumeV1
+export interface ResearchExactAnchorResumeV1 {
+    anchorRef: string;
+    bindingId: string;
+}
+
 // export: ResearchFindingCandidateV1
 export interface ResearchFindingCandidateV1 {
     id: string;
@@ -31479,6 +36032,13 @@ export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageL
     parentSummaryIds: string[];
 }
 
+// export: ResearchModelBudgetCapacityV1
+export interface ResearchModelBudgetCapacityV1 {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+}
+
 // export: ResearchModelBudgetSnapshotV1
 export interface ResearchModelBudgetSnapshotV1 {
     calls: number;
@@ -31505,7 +36065,8 @@ export declare class ResearchModelRunBudget {
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
-    reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
+    canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean;
+    reserve(request: unknown, maximumOutputTokens: number, retain?: ResearchModelBudgetCapacityV1): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
 
@@ -31752,6 +36313,22 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    getPendingChatQuestion?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+        request: ResearchRequestV1;
+        qualityPolicy: ChatQualityPolicyV1;
+    } | null>;
+    getChatInteraction?(siteOrigin: string): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1 | null>;
+    getChatReplay?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        objective: string;
+        events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+        finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+    } | null>;
+    controlActiveChat?(command: import("./chat-agent/interaction.js").ChatInteractionCommandV1): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
     resetChatConversation?(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
@@ -32234,6 +36811,15 @@ export interface ResearchResumableSessionV1 {
     };
 }
 
+// export: ResearchRetainedEvidenceRestoreOutcomeV1
+export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
+    considered: number;
+    staged: number;
+    stale: number;
+    unauthorized: number;
+    missing: number;
+}
+
 // export: ResearchRetainedSessionV1
 export interface ResearchRetainedSessionV1 {
     schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
@@ -32355,6 +36941,14 @@ export interface ResearchRunOptions {
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    chatResume?: {
+        turnId: string;
+        answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+    };
+    chatCheckpointResume?: {
+        turnId: string;
+        kind: "stream-interruption" | "steering";
+    };
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -33837,6 +38431,15 @@ export declare function resolveChatScopeClarificationV1(input: {
     conversationSession: ResearchSessionV1;
 }>;
 
+// export: resolveChatUserQuestionV1
+export declare function resolveChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    answer: ChatUserQuestionAnswerV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -33939,6 +38542,18 @@ export interface RestScopeCatalogProviderOptions {
     now?: () => string;
 }
 
+// export: resumeChatTurnV1
+export declare function resumeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
+
 // export: reviseResearchBriefPlanV1
 export declare function reviseResearchBriefPlanV1(input: {
     brief: ResearchBriefV1;
@@ -33963,7 +38578,12 @@ export interface RunChatAgentInput {
     providers: ResearchReadProviders;
     budget?: ResearchRunBudget;
     workspace: ResearchWorkspace;
+    hostIdentity: ChatHostIdentityV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    resumeAnswer?: ChatUserQuestionAnswerV1;
+    resumeCheckpoint?: {
+        kind: "stream-interruption" | "steering";
+    };
     signal?: AbortSignal;
     now?: () => number;
     onProgress?: (progress: ResearchProgressV1) => void;
@@ -33973,6 +38593,8 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
+    onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
 }
 
 // export: runResearchAgent
@@ -34057,6 +38679,9 @@ export declare class SqliteResearchSessionStoreV1 implements ResearchSessionStor
 // export: stageResearchGraphForDurableSessionV1
 export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
 
+// export: stampChatInteractionCommandV1
+export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
+
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
 
@@ -34112,6 +38737,40 @@ export interface WikiResearchSummary {
     title: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: WorkspaceChatActivityJournalV1
+export declare class WorkspaceChatActivityJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        persistIfMissing?: boolean;
+    }): Promise<WorkspaceChatActivityJournalV1>;
+    record(input: {
+        turnId: string;
+        at: string;
+        code: ResearchActivityCodeV1;
+        status: ChatActivityEventV1["status"];
+    }): string;
+    referencesForTurn(turnId: string): string[];
+    eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
+    flush(): Promise<void>;
+}
+
+// export: WorkspaceChatInteractionControllerV1
+export declare class WorkspaceChatInteractionControllerV1 {
+    #private;
+    private constructor();
+    static bind(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        binding: ChatSessionBindingV1;
+        at: string;
+    }): Promise<WorkspaceChatInteractionControllerV1>;
+    snapshot(): ChatInteractionStateV1;
+    update(mutate: (state: ChatInteractionStateV1) => ChatInteractionStateV1): Promise<ChatInteractionStateV1>;
 }
 
 // export: WorkspaceResearchClaimLedgerV1
@@ -34599,9 +39258,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            clarification: "clarification";
             "follow-up": "follow-up";
             "deep-research": "deep-research";
+            clarification: "clarification";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -34769,6 +39428,24 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
     "deep"
 ];
 
+// export: CHAT_SEMANTIC_ACTIVITY_CODES_V1
+export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion"
+];
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -34847,6 +39524,20 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
     "model-assessing",
     "answer-drafting",
     "next-step-ready",
@@ -35232,6 +39923,22 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    getPendingChatQuestion?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+        request: ResearchRequestV1;
+        qualityPolicy: ChatQualityPolicyV1;
+    } | null>;
+    getChatInteraction?(siteOrigin: string): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1 | null>;
+    getChatReplay?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        objective: string;
+        events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+        finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+    } | null>;
+    controlActiveChat?(command: import("./chat-agent/interaction.js").ChatInteractionCommandV1): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
     resetChatConversation?(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
@@ -35466,6 +40173,14 @@ export interface ResearchRunOptions {
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    chatResume?: {
+        turnId: string;
+        answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+    };
+    chatCheckpointResume?: {
+        turnId: string;
+        kind: "stream-interruption" | "steering";
+    };
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -35970,6 +40685,14 @@ export interface AcceptedChatWorkflowV1 {
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: acknowledgeChatStopV1
+export declare function acknowledgeChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    expectedStopRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: admitChatWorkflowProposalV1
 export declare function admitChatWorkflowProposalV1(input: {
     strategy: ChatStrategyDecisionV1;
@@ -35977,6 +40700,24 @@ export declare function admitChatWorkflowProposalV1(input: {
     maxTasks?: number;
     maxConcurrency?: number;
 }): AcceptedChatWorkflowV1 | undefined;
+
+// export: admitNextChatFollowUpV1
+export declare function admitNextChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    message?: ChatQueuedFollowUpV1;
+};
+
+// export: advanceChatControlFenceV1
+export declare function advanceChatControlFenceV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    kind: "abort" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
@@ -35992,6 +40733,9 @@ export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
     "acquisition",
     "analysis",
     "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
     "synthesis"
 ];
 
@@ -36030,6 +40774,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
     maxTasks: number;
     maxConcurrency: number;
     allowHostDependencyHydration?: boolean;
+    allowHostResponseSchemaHydration?: boolean;
     signal?: AbortSignal;
     invokeUpstream(input: AgenticTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown, input: {
@@ -36119,6 +40864,9 @@ export interface AppendResearchSessionTurnInputV1 {
 // export: appendResearchSessionTurnV1
 export declare function appendResearchSessionTurnV1(input: AppendResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
+// export: applyChatInteractionControlV1
+export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -36139,6 +40887,21 @@ export interface ApproveResearchScopeExpansionInputV1 {
 
 // export: approveResearchScopeExpansionV1
 export declare function approveResearchScopeExpansionV1(input: ApproveResearchScopeExpansionInputV1): Promise<ResearchSessionV1>;
+
+// export: assertChatInteractionBindingV1
+export declare function assertChatInteractionBindingV1(input: {
+    state: ChatInteractionStateV1;
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+}): void;
+
+// export: assertChatSessionBindingV1
+export declare function assertChatSessionBindingV1(input: {
+    session: ChatSessionV1;
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+}): void;
 
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
@@ -36168,8 +40931,30 @@ export interface AtlassianRelationshipV1 {
     sourceIds: string[];
 }
 
+// export: beginChatTurnV1
+export declare function beginChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    startedAt: string;
+}): ChatSessionV1;
+
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
+
+// export: bindChatSteeringResumeV1
+export declare function bindChatSteeringResumeV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
 export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
@@ -36346,9 +41131,14 @@ export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): bo
 export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
+    locale?: string;
     strategyDecisionRequired?: boolean;
     agenticWorkflowRequired?: boolean;
+    allowedAgenticProfileIds?: readonly string[];
 }): string;
+
+// export: buildChatTurnContextV1
+export declare function buildChatTurnContextV1(session: ChatSessionV1, currentTurnId: string): ChatTurnContextV1;
 
 // export: buildChatTurnPromptV1
 export declare function buildChatTurnPromptV1(input: {
@@ -36356,6 +41146,7 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    durableContext?: string;
 }): string;
 
 // export: buildDynamicSupervisorPrompt
@@ -36380,6 +41171,15 @@ export declare function buildResearchTurnContextV1(input: {
 
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
+
+// export: CHAT_ACTIVITY_EVENT_SCHEMA_V1
+export declare const CHAT_ACTIVITY_EVENT_SCHEMA_V1: "atlcli.chat-activity-event/v1";
+
+// export: CHAT_ACTIVITY_JOURNAL_PATH_V1
+export declare const CHAT_ACTIVITY_JOURNAL_PATH_V1: "/.atlcli/chat/v1/activity.json";
+
+// export: CHAT_ACTIVITY_JOURNAL_SCHEMA_V1
+export declare const CHAT_ACTIVITY_JOURNAL_SCHEMA_V1: "atlcli.chat-activity-journal/v1";
 
 // export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
@@ -36477,9 +41277,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            clarification: "clarification";
             "follow-up": "follow-up";
             "deep-research": "deep-research";
+            clarification: "clarification";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -36493,6 +41293,21 @@ export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-
 
 // export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
 export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
+// export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
+export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
+
+// export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
+export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
+
+// export: CHAT_INTERACTION_STATE_PATH_V1
+export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interaction.json";
+
+// export: CHAT_INTERACTION_STATE_SCHEMA_V1
+export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
+export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -36553,6 +41368,30 @@ export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SEMANTIC_ACTIVITY_CODES_V1
+export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion"
+];
+
+// export: CHAT_SESSION_PATH_V1
+export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_SCHEMA_V1
+export declare const CHAT_SESSION_SCHEMA_V1: "atlcli.chat-session/v1";
 
 // export: CHAT_SESSION_STATE_PATH_V1
 export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
@@ -36620,12 +41459,16 @@ export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
     "relationship-tracer",
     "comparison-analyst",
     "contradiction-checker",
+    "answer-drafter",
     "answer-critic",
+    "answer-repairer",
     "chat-synthesizer"
 ];
 
 // export: CHAT_SUBAGENT_PROFILES_V1
 export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
     Readonly<ChatSubagentProfileV1>,
@@ -36647,18 +41490,112 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_TURN_SCHEMA_V1
+export declare const CHAT_TURN_SCHEMA_V1: "atlcli.chat-turn/v1";
+
+// export: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-question-answer/v1";
+
+// export: CHAT_USER_QUESTION_SCHEMA_V1
+export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
 
+// export: ChatAcquisitionProductsV1
+export interface ChatAcquisitionProductsV1 {
+    searchProducts: Array<"jira" | "confluence">;
+    exactContextProducts: Array<"jira" | "confluence">;
+}
+
+// export: ChatActivityEventV1
+export interface ChatActivityEventV1 {
+    schema: typeof CHAT_ACTIVITY_EVENT_SCHEMA_V1;
+    id: string;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
+}
+
+// export: ChatActivityJournalV1
+export interface ChatActivityJournalV1 {
+    schema: typeof CHAT_ACTIVITY_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    events: ChatActivityEventV1[];
+}
+
+// export: ChatAgentAnswerQuestionV1
+export interface ChatAgentAnswerQuestionV1 extends ChatAgentCheckpointV1 {
+    answer: ChatUserQuestionAnswerV1;
+}
+
+// export: ChatAgentCheckpointV1
+export interface ChatAgentCheckpointV1 {
+    siteOrigin: string;
+    conversationId: string;
+    turnId: string;
+}
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentPortV1
+export interface ChatAgentPortV1 {
+    startTurn(input: ChatAgentStartTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    answerQuestion(input: ChatAgentAnswerQuestionV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    resumeTurn(input: ChatAgentResumeTurnV1, stream?: ChatAgentStreamV1): Promise<ChatAnswerV1>;
+    getPendingQuestion(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: ChatUserQuestionV1;
+    } | null>;
+    getInteraction(siteOrigin: string): Promise<ChatInteractionStateV1 | null>;
+    control(command: ChatInteractionCommandV1): Promise<ChatInteractionStateV1>;
+    stop(): Promise<"stop_requested" | "stopped">;
+    listHistory(siteOrigin: string): Promise<ChatConversationHistoryItemV1[]>;
+    replay(input: {
+        siteOrigin: string;
+        conversationId?: string;
+    }): Promise<ChatConversationReplayV1 | null>;
+    artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
+    sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    resetConversation(): Promise<void>;
+}
+
+// export: ChatAgentResumeTurnV1
+export interface ChatAgentResumeTurnV1 extends ChatAgentCheckpointV1 {
+    kind: "stream-interruption" | "steering";
+}
 
 // export: ChatAgentRuntimeBindings
 export interface ChatAgentRuntimeBindings {
     StateBackend: typeof import("deepagents/browser").StateBackend;
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
     createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+    createSummarizationMiddleware: typeof import("deepagents/browser").createSummarizationMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ChatAgentStartTurnV1
+export interface ChatAgentStartTurnV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    conversationId?: string;
+}
+
+// export: ChatAgentStreamV1
+export interface ChatAgentStreamV1 {
+    signal?: AbortSignal;
+    onSessionStart?: (session: {
+        conversationId: string;
+        turnId: string;
+    }) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
 // export: ChatAnalysisPacketV1
@@ -36712,6 +41649,8 @@ export declare class ChatCandidateLedgerControllerV1 {
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    isSearchExhaustedWithoutCandidates(product: ResearchProduct): boolean;
+    isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
     markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
@@ -36777,11 +41716,166 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatConversationHistoryItemV1
+export interface ChatConversationHistoryItemV1 {
+    conversationId: string;
+    updatedAt: string;
+    latestTurnId?: string;
+    latestObjective?: string;
+    status?: "running" | "complete" | "failed" | "cancelled" | "waiting";
+}
+
+// export: ChatConversationMemoryV1
+export interface ChatConversationMemoryV1 {
+    schema: typeof CHAT_CONVERSATION_MEMORY_SCHEMA_V1;
+    summary: ChatConversationSummaryV1;
+    recentTurns: ChatTurnV1[];
+}
+
+// export: ChatConversationReplayV1
+export interface ChatConversationReplayV1 {
+    conversationId: string;
+    turnId: string;
+    objective: string;
+    events: ChatActivityEventV1[];
+    finalAnswer?: ChatAnswerV1;
+}
+
+// export: ChatConversationSummaryV1
+export interface ChatConversationSummaryV1 {
+    nonAuthoritative: true;
+    compactedTurnCount: number;
+    latestObjectives: string[];
+    unresolvedGapCodes: ChatAnswerGapV1["code"][];
+}
+
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
 
+// export: ChatEvidenceMemoryEntryV1
+export interface ChatEvidenceMemoryEntryV1 {
+    evidenceId: string;
+    tenantOrigin: string;
+    canonicalId: string;
+    product: "jira" | "confluence";
+    sourceId: string;
+    authorityBindingId: string;
+    authorityClass: "whole_scope" | "exact_entity";
+    capturedAt: string;
+    updatedAt?: string;
+    contentHash: string;
+    supportingClaimRefs: string[];
+    acceptedInTurnId: string;
+    acceptedScopeFingerprint: string;
+}
+
+// export: ChatEvidenceMemoryV1
+export interface ChatEvidenceMemoryV1 {
+    schema: typeof CHAT_EVIDENCE_MEMORY_SCHEMA_V1;
+    entries: ChatEvidenceMemoryEntryV1[];
+}
+
 // export: ChatEvidencePacketV1
 export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
+// export: ChatHostIdentityV1
+export interface ChatHostIdentityV1 {
+    userId: string;
+    providerCacheIdentity: string;
+}
+
+// export: ChatInteractionCommandV1
+export type ChatInteractionCommandV1 = Omit<Extract<ChatInteractionControlV1, {
+    kind: "enqueue";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "steer";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "consume_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "edit_steering";
+}>, "at"> | Omit<Extract<ChatInteractionControlV1, {
+    kind: "remove_steering";
+}>, "at">;
+
+// export: ChatInteractionControlV1
+export type ChatInteractionControlV1 = {
+    kind: "enqueue";
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+} | {
+    kind: "edit";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+} | {
+    kind: "remove";
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+} | {
+    kind: "steer";
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+} | {
+    kind: "consume_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+} | {
+    kind: "edit_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+} | {
+    kind: "remove_steering";
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+};
+
+// export: ChatInteractionStateV1
+export interface ChatInteractionStateV1 {
+    schema: typeof CHAT_INTERACTION_STATE_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    binding: ChatSessionBindingV1;
+    updatedAt: string;
+    queue: ChatQueuedFollowUpV1[];
+    pendingSteering?: ChatPendingSteeringV1;
+    acceptedSteering?: ChatPendingSteeringV1 & {
+        turnId: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    streamInterruption?: ChatStreamInterruptionV1;
+    stop?: ChatStopRequestV1;
+    pendingQuestion?: {
+        turnId: string;
+        question: ChatUserQuestionV1;
+        askedAt: string;
+        resume: ChatResumeEnvelopeV1;
+    };
+    resolvedQuestions: Array<{
+        turnId: string;
+        question: ChatUserQuestionV1;
+        answer: ChatUserQuestionAnswerV1;
+        resolvedAt: string;
+    }>;
+}
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -36803,6 +41897,26 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatOperationalMemoryV1
+export interface ChatOperationalMemoryV1 {
+    schema: typeof CHAT_OPERATIONAL_MEMORY_SCHEMA_V1;
+    revision: number;
+    abortEpoch: number;
+    steeringRevision: number;
+    activeTurnId?: string;
+    lastCompletedTurnId?: string;
+}
+
+// export: ChatPendingSteeringV1
+export interface ChatPendingSteeringV1 {
+    id: string;
+    revision: number;
+    instruction: string;
+    requestedAt: string;
+    turnId?: string;
+    resume?: ChatResumeEnvelopeV1;
+}
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -36841,6 +41955,15 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatQueuedFollowUpV1
+export interface ChatQueuedFollowUpV1 {
+    id: string;
+    revision: number;
+    content: string;
+    enqueuedAt: string;
+    updatedAt: string;
+}
+
 // export: ChatRelatedScopeProposalV1
 export interface ChatRelatedScopeProposalV1 {
     proposalId: string;
@@ -36874,6 +41997,13 @@ export interface ChatResolvedRetrievalEntityV1 {
     authority: "approved" | "locked" | "resolved";
     key?: string;
     name: string;
+}
+
+// export: ChatResumeEnvelopeV1
+export interface ChatResumeEnvelopeV1 {
+    request: ResearchRequestV1;
+    qualityPolicy: ChatQualityPolicyV1;
+    exactAnchors?: ResearchExactAnchorResumeV1[];
 }
 
 // export: ChatRetrievalAnchorV1
@@ -37014,6 +42144,12 @@ export interface ChatScopeClarificationReviewV1 {
     };
 }
 
+// export: chatScopeFingerprintV1
+export declare function chatScopeFingerprintV1(input: {
+    scope: ResearchScopeV1;
+    scopeBindings: readonly ResearchScopeBindingV1[];
+}): Promise<string>;
+
 // export: ChatSearchLedgerEntryV1
 export interface ChatSearchLedgerEntryV1 {
     searchId: string;
@@ -37040,11 +42176,37 @@ export interface ChatSearchVariantProposalV1 {
     expectedInformationGain?: "high" | "medium" | "low";
 }
 
+// export: ChatSessionBindingV1
+export interface ChatSessionBindingV1 extends ChatHostIdentityV1 {
+    threadId: string;
+    tenantOrigin: string;
+}
+
 // export: ChatSessionStateV1
 export interface ChatSessionStateV1 {
     schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatSessionV1
+export interface ChatSessionV1 {
+    schema: typeof CHAT_SESSION_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    binding: ChatSessionBindingV1;
+    conversation: ChatConversationMemoryV1;
+    operations: ChatOperationalMemoryV1;
+    evidence: ChatEvidenceMemoryV1;
+}
+
+// export: ChatStopRequestV1
+export interface ChatStopRequestV1 {
+    revision: number;
+    requestedAt: string;
+    acknowledgedAt?: string;
 }
 
 // export: ChatStrategyCapabilityClassV1
@@ -37112,11 +42274,24 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatStreamInterruptionV1
+export interface ChatStreamInterruptionV1 {
+    kind: "stream-interruption";
+    revision: number;
+    turnId: string;
+    interruptedAt: string;
+    resumeAttempts: number;
+    resume: ChatResumeEnvelopeV1;
+}
+
 // export: ChatSubagentCapabilityIdV1
 export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
 
 // export: ChatSubagentPacketSchemaV1
 export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: chatSubagentProfileByIdV1
+export declare function chatSubagentProfileByIdV1(profileId: ChatSubagentProfileIdV1): Readonly<ChatSubagentProfileV1>;
 
 // export: ChatSubagentProfileIdV1
 export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
@@ -37148,6 +42323,48 @@ export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneSho
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
 
+// export: ChatTurnArtifactV1
+export interface ChatTurnArtifactV1 {
+    conversationId: string;
+    turnId: string;
+    mediaType: "text/markdown";
+    markdown: string;
+}
+
+// export: ChatTurnContextV1
+export interface ChatTurnContextV1 {
+    current: {
+        turnId: string;
+        objective: string;
+        qualityMode: ChatQualityModeV1;
+        scopeFingerprint: string;
+    };
+    conversationSummary: ChatConversationSummaryV1;
+    recentMessages: Array<{
+        turnId: string;
+        user: string;
+        assistant?: string;
+    }>;
+    acceptedEvidence: Array<{
+        evidenceId: string;
+        canonicalId: string;
+        product: "jira" | "confluence";
+        sourceId: string;
+        capturedAt: string;
+        updatedAt?: string;
+        supportingClaimRefs: string[];
+    }>;
+    unresolvedGaps: ChatAnswerGapV1[];
+    controls: {
+        tenantOrigin: string;
+        threadId: string;
+        providerCacheIdentity: string;
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+}
+
 // export: ChatTurnRequestV1
 export interface ChatTurnRequestV1 {
     schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
@@ -37162,12 +42379,109 @@ export interface ChatTurnRequestV1 {
     locale?: string;
 }
 
+// export: ChatTurnSourcesV1
+export interface ChatTurnSourcesV1 {
+    conversationId: string;
+    turnId: string;
+    sources: ChatCitationV1[];
+}
+
+// export: ChatTurnV1
+export interface ChatTurnV1 {
+    schema: typeof CHAT_TURN_SCHEMA_V1;
+    id: string;
+    revision: number;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    controlFence: {
+        sessionRevision: number;
+        abortEpoch: number;
+        steeringRevision: number;
+    };
+    status: "running" | "complete" | "failed" | "cancelled" | "waiting";
+    waitingReason?: "hitl" | "stream-interruption" | "steering";
+    startedAt: string;
+    completedAt?: string;
+    acceptedStrategy?: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    finalAnswer?: ChatAnswerV1;
+    activityRefs: string[];
+    evidenceRefs: string[];
+    unresolvedGaps: ChatAnswerGapV1[];
+}
+
+// export: ChatUserQuestionAnswerV1
+export interface ChatUserQuestionAnswerV1 {
+    schema: typeof CHAT_USER_QUESTION_ANSWER_SCHEMA_V1;
+    questionId: string;
+    value: ChatUserQuestionAnswerValueV1;
+}
+
+// export: ChatUserQuestionAnswerValueV1
+export type ChatUserQuestionAnswerValueV1 = {
+    kind: "text";
+    text: string;
+} | {
+    kind: "selection";
+    optionIds: string[];
+} | {
+    kind: "mixed";
+    optionIds: string[];
+    text?: string;
+} | {
+    kind: "assumption";
+    decision: "accepted" | "rejected";
+};
+
+// export: ChatUserQuestionOptionV1
+export interface ChatUserQuestionOptionV1 {
+    id: string;
+    label: string;
+    description?: string;
+}
+
+// export: ChatUserQuestionRequiredError
+export declare class ChatUserQuestionRequiredError extends ChatContractError {
+    readonly question: ChatUserQuestionV1;
+    constructor(question: ChatUserQuestionV1);
+}
+
+// export: ChatUserQuestionV1
+export type ChatUserQuestionV1 = {
+    schema: typeof CHAT_USER_QUESTION_SCHEMA_V1;
+    id: string;
+    prompt: string;
+    required: boolean;
+} & ({
+    responseKind: "free_text";
+    maxLength: number;
+} | {
+    responseKind: "single_choice";
+    options: ChatUserQuestionOptionV1[];
+} | {
+    responseKind: "multiple_choice";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+} | {
+    responseKind: "mixed";
+    options: ChatUserQuestionOptionV1[];
+    minSelections: number;
+    maxSelections: number;
+    maxLength: number;
+} | {
+    responseKind: "assumption";
+    assumption: string;
+});
+
 // export: ChatWorkflowAdmissionResponseV1
 export interface ChatWorkflowAdmissionResponseV1 {
     schema: "atlcli.chat-workflow-admission/v1";
     completionObjective: "conversation-answer";
     maxConcurrency: number;
     synthesizerTaskId: string;
+    qualityReviewRequired: true;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -37221,6 +42535,37 @@ export interface CompiledAgenticWorkflowV1 {
 // export: compileDynamicResearchSubagents
 export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
 
+// export: completeChatSteeringV1
+export declare function completeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatStreamInterruptionV1
+export declare function completeChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    expectedInterruptionRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: completeChatTurnV1
+export declare function completeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    answer: ChatAnswerV1;
+    acceptedStrategy: ChatStrategyV1;
+    acceptedWorkflowRef?: string;
+    activityRefs: readonly string[];
+    evidenceRecords: readonly ResearchEvidenceRecordV1[];
+    completedAt: string;
+}): ChatSessionV1;
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -37247,6 +42592,18 @@ export type ConfluenceDocumentInputV1 = {
     sourceVersion: number;
     siteOrigin: string;
     projectionLimits: ContentProjectionLimits;
+};
+
+// export: consumeChatSteeringV1
+export declare function consumeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): {
+    state: ChatInteractionStateV1;
+    steering: ChatPendingSteeringV1;
 };
 
 // export: ContentProjectionLimits
@@ -37382,6 +42739,13 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
 };
 
+// export: createChatInteractionStateV1
+export declare function createChatInteractionStateV1(input: {
+    conversationId: string;
+    binding: ChatSessionBindingV1;
+    createdAt: string;
+}): ChatInteractionStateV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -37398,6 +42762,7 @@ export declare function createChatRetrievalPlanV1(input: {
     exactContextProducts: readonly ResearchProduct[];
     limits: ResearchLimitsV1;
     agentic: boolean;
+    relationshipTracing?: boolean;
     proposal?: ChatRetrievalPlanProposalV1;
     now?: () => number;
 }): ChatRetrievalPlanV1;
@@ -37407,6 +42772,14 @@ export declare function createChatSessionStateV1(input: {
     conversationId: string;
     qualityPolicy: ChatQualityPolicyV1;
 }): ChatSessionStateV1;
+
+// export: createChatSessionV1
+export declare function createChatSessionV1(input: {
+    conversationId: string;
+    identity: ChatHostIdentityV1;
+    tenantOrigin: string;
+    createdAt: string;
+}): ChatSessionV1;
 
 // export: createChatStrategyDecisionControllerV1
 export declare function createChatStrategyDecisionControllerV1(input: {
@@ -37431,6 +42804,12 @@ export declare function createChatStrategyReviewControllerV1(input: {
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
+
+// export: createChatWorkflowDispatchV1
+export declare function createChatWorkflowDispatchV1(input: {
+    task: Readonly<ChatWorkflowTaskProposalV1>;
+    profile: Readonly<ChatSubagentProfileV1>;
+}): Readonly<ChatWorkflowDispatchV1>;
 
 // export: createChatWorkflowProposalControllerV1
 export declare function createChatWorkflowProposalControllerV1(input: {
@@ -37684,6 +43063,16 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: defineChatAgentPortV1
+export declare function defineChatAgentPortV1(port: ChatAgentPortV1): ChatAgentPortV1;
+
+// export: deriveChatAcquisitionProductsV1
+export declare function deriveChatAcquisitionProductsV1(input: {
+    decision: ChatStrategyDecisionV1;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+}): ChatAcquisitionProductsV1;
+
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
@@ -37754,11 +43143,40 @@ export interface DynamicResearchSubagentOptions {
     now?: () => number;
 }
 
+// export: editChatFollowUpV1
+export declare function editChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: editChatSteeringV1
+export declare function editChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: encodeAgenticTaskDescriptionV1
 export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
 
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: enqueueChatFollowUpV1
+export declare function enqueueChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    content: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: escapeResearchCqlLiteral
 export declare function escapeResearchCqlLiteral(value: string): string;
@@ -37796,6 +43214,7 @@ export declare function finalizeChatAnswerV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
     strategyDecision?: ChatStrategyDecisionV1;
     strategyReview?: ChatStrategyReviewV1;
+    qualityDisposition?: ChatQualityDispositionV1;
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
@@ -37988,6 +43407,15 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: interruptChatTurnV1
+export declare function interruptChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    status: "failed" | "cancelled";
+    at: string;
+}): ChatSessionV1;
+
 // export: isChatPresentationStreamEventV1
 export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
 
@@ -38052,14 +43480,32 @@ export declare function navigateConfluenceStorageV1(input: {
     projectionLimits: ContentProjectionLimits;
 }): BoundedDocumentSourceV1 | undefined;
 
+// export: normalizeChatActivityEventV1
+export declare function normalizeChatActivityEventV1(value: unknown): ChatActivityEventV1;
+
+// export: normalizeChatActivityJournalV1
+export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
+// export: normalizeChatHostIdentityV1
+export declare function normalizeChatHostIdentityV1(value: ChatHostIdentityV1): ChatHostIdentityV1;
+
+// export: normalizeChatInteractionCommandV1
+export declare function normalizeChatInteractionCommandV1(value: unknown): ChatInteractionCommandV1;
+
+// export: normalizeChatInteractionControlV1
+export declare function normalizeChatInteractionControlV1(value: unknown): ChatInteractionControlV1;
 
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
 
 // export: normalizeChatTurnRequestV1
 export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
+
+// export: normalizeChatUserQuestionV1
+export declare function normalizeChatUserQuestionV1(value: unknown): ChatUserQuestionV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -38127,6 +43573,12 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
 
+// export: parseChatInteractionStateV1
+export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatSessionV1
+export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
+
 // export: parseChatSubagentResultV1
 export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
@@ -38184,6 +43636,15 @@ export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: R
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: pauseChatTurnV1
+export declare function pauseChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
 
 // export: persistChatQualityPolicyV1
 export declare function persistChatQualityPolicyV1(workspace: ResearchWorkspace, policy: ChatQualityPolicyV1): Promise<void>;
@@ -38403,6 +43864,25 @@ export interface ReconciliationBodyV1 {
     proposedFollowUps: ResearchReconciliationFollowUpProposalV1[];
 }
 
+// export: recordChatStreamInterruptionV1
+export declare function recordChatStreamInterruptionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: recordChatUserQuestionV1
+export declare function recordChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    question: ChatUserQuestionV1;
+    resume: ChatResumeEnvelopeV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RecoverExpiredResearchSessionsAtSafeBoundaryInputV1
 export interface RecoverExpiredResearchSessionsAtSafeBoundaryInputV1 {
     store: ResearchSessionStoreV1;
@@ -38462,6 +43942,27 @@ export interface RefreshResearchSessionScopeClarificationInputV1 {
 // export: refreshResearchSessionScopeClarificationV1
 export declare function refreshResearchSessionScopeClarificationV1(input: RefreshResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: removeChatFollowUpV1
+export declare function removeChatFollowUpV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    messageId: string;
+    expectedMessageRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: removeChatSteeringV1
+export declare function removeChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    expectedSteeringRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: renderChatTurnContextV1
+export declare function renderChatTurnContextV1(context: ChatTurnContextV1): string;
+
 // export: renderResearchFindingSectionsMarkdown
 export declare function renderResearchFindingSectionsMarkdown(sections: readonly {
     title: string;
@@ -38491,11 +43992,41 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
 // export: renderResearchTurnContextV1
 export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
 
+// export: requestChatSteeringV1
+export declare function requestChatSteeringV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    steeringId: string;
+    instruction: string;
+    at: string;
+}): ChatInteractionStateV1;
+
+// export: requestChatStopV1
+export declare function requestChatStopV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "strategy",
+    "direct-read",
+    "search",
+    "source-selection",
+    "child-work",
+    "critique",
+    "repair",
+    "synthesis",
+    "gap",
+    "hitl",
+    "steering",
+    "stop",
+    "continuation",
+    "completion",
     "model-assessing",
     "answer-drafting",
     "next-step-ready",
@@ -39336,6 +44867,10 @@ export declare class ResearchCapabilityBroker {
     allowPreauthorizedExactEntity(binding: ResearchScopeBindingV1): void;
     get signal(): AbortSignal;
     cancel(reason?: unknown): void;
+    restoreRetainedEvidence(input: {
+        evidenceIds: readonly string[];
+        checkedAt: string;
+    }): Promise<ResearchRetainedEvidenceRestoreOutcomeV1>;
     restoreDetailedSourceObservations(observations: readonly {
         product: ResearchProduct;
         sourceId: string;
@@ -39344,6 +44879,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
@@ -39987,6 +45523,12 @@ export interface ResearchEvidenceVersionV1 {
     inputBytes: number;
 }
 
+// export: ResearchExactAnchorResumeV1
+export interface ResearchExactAnchorResumeV1 {
+    anchorRef: string;
+    bindingId: string;
+}
+
 // export: ResearchFindingCandidateV1
 export interface ResearchFindingCandidateV1 {
     id: string;
@@ -40354,6 +45896,13 @@ export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageL
     parentSummaryIds: string[];
 }
 
+// export: ResearchModelBudgetCapacityV1
+export interface ResearchModelBudgetCapacityV1 {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+}
+
 // export: ResearchModelBudgetSnapshotV1
 export interface ResearchModelBudgetSnapshotV1 {
     calls: number;
@@ -40380,7 +45929,8 @@ export declare class ResearchModelRunBudget {
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
-    reserve(request: unknown, maximumOutputTokens: number): ResearchModelBudgetReservationV1;
+    canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean;
+    reserve(request: unknown, maximumOutputTokens: number, retain?: ResearchModelBudgetCapacityV1): ResearchModelBudgetReservationV1;
     settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1;
 }
 
@@ -40627,6 +46177,22 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    getPendingChatQuestion?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        question: import("./chat-agent/interaction.js").ChatUserQuestionV1;
+        request: ResearchRequestV1;
+        qualityPolicy: ChatQualityPolicyV1;
+    } | null>;
+    getChatInteraction?(siteOrigin: string): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1 | null>;
+    getChatReplay?(siteOrigin: string): Promise<{
+        conversationId: string;
+        turnId: string;
+        objective: string;
+        events: import("./chat-agent/activity.js").ChatActivityEventV1[];
+        finalAnswer?: import("./chat-agent/contracts.js").ChatAnswerV1;
+    } | null>;
+    controlActiveChat?(command: import("./chat-agent/interaction.js").ChatInteractionCommandV1): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
     resetChatConversation?(): Promise<void>;
     resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     listResumableSessions?(): Promise<import("./session.js").ResearchResumableSessionV1[]>;
@@ -41109,6 +46675,15 @@ export interface ResearchResumableSessionV1 {
     };
 }
 
+// export: ResearchRetainedEvidenceRestoreOutcomeV1
+export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
+    considered: number;
+    staged: number;
+    stale: number;
+    unauthorized: number;
+    missing: number;
+}
+
 // export: ResearchRetainedSessionV1
 export interface ResearchRetainedSessionV1 {
     schema: typeof RESEARCH_RETAINED_SESSION_SCHEMA_V1;
@@ -41230,6 +46805,14 @@ export interface ResearchRunOptions {
     conversationId?: string;
     policy?: ResearchOneShotPolicyV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    chatResume?: {
+        turnId: string;
+        answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
+    };
+    chatCheckpointResume?: {
+        turnId: string;
+        kind: "stream-interruption" | "steering";
+    };
     onSessionStart?: (session: {
         sessionId: string;
         turnId?: string;
@@ -42712,6 +48295,15 @@ export declare function resolveChatScopeClarificationV1(input: {
     conversationSession: ResearchSessionV1;
 }>;
 
+// export: resolveChatUserQuestionV1
+export declare function resolveChatUserQuestionV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    answer: ChatUserQuestionAnswerV1;
+    at: string;
+}): ChatInteractionStateV1;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -42814,6 +48406,18 @@ export interface RestScopeCatalogProviderOptions {
     now?: () => string;
 }
 
+// export: resumeChatTurnV1
+export declare function resumeChatTurnV1(input: {
+    session: ChatSessionV1;
+    expectedSessionRevision: number;
+    turnId: string;
+    objective: string;
+    qualityMode: ChatQualityModeV1;
+    scopeFingerprint: string;
+    reason?: "hitl" | "stream-interruption" | "steering";
+    at: string;
+}): ChatSessionV1;
+
 // export: reviseResearchBriefPlanV1
 export declare function reviseResearchBriefPlanV1(input: {
     brief: ResearchBriefV1;
@@ -42838,7 +48442,12 @@ export interface RunChatAgentInput {
     providers: ResearchReadProviders;
     budget?: ResearchRunBudget;
     workspace: ResearchWorkspace;
+    hostIdentity: ChatHostIdentityV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    resumeAnswer?: ChatUserQuestionAnswerV1;
+    resumeCheckpoint?: {
+        kind: "stream-interruption" | "steering";
+    };
     signal?: AbortSignal;
     now?: () => number;
     onProgress?: (progress: ResearchProgressV1) => void;
@@ -42848,6 +48457,8 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
+    onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
 }
 
 // export: runResearchAgent
@@ -42892,6 +48503,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: stageResearchGraphForDurableSessionV1
 export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
+// export: stampChatInteractionCommandV1
+export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
 
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
@@ -42948,6 +48562,40 @@ export interface WikiResearchSummary {
     title: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: WorkspaceChatActivityJournalV1
+export declare class WorkspaceChatActivityJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        persistIfMissing?: boolean;
+    }): Promise<WorkspaceChatActivityJournalV1>;
+    record(input: {
+        turnId: string;
+        at: string;
+        code: ResearchActivityCodeV1;
+        status: ChatActivityEventV1["status"];
+    }): string;
+    referencesForTurn(turnId: string): string[];
+    eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
+    flush(): Promise<void>;
+}
+
+// export: WorkspaceChatInteractionControllerV1
+export declare class WorkspaceChatInteractionControllerV1 {
+    #private;
+    private constructor();
+    static bind(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+        binding: ChatSessionBindingV1;
+        at: string;
+    }): Promise<WorkspaceChatInteractionControllerV1>;
+    snapshot(): ChatInteractionStateV1;
+    update(mutate: (state: ChatInteractionStateV1) => ChatInteractionStateV1): Promise<ChatInteractionStateV1>;
 }
 
 // export: WorkspaceResearchClaimLedgerV1

@@ -80,7 +80,7 @@ describe("Anthropic Chat model binding", () => {
   it("bounds child output by role without exceeding the root token contract", () => {
     expect(anthropicOutputTokensForPreferenceV1("fast", 8_000)).toBe(2_048);
     expect(anthropicOutputTokensForPreferenceV1("balanced", 8_000)).toBe(4_096);
-    expect(anthropicOutputTokensForPreferenceV1("thorough", 8_000)).toBe(5_000);
+    expect(anthropicOutputTokensForPreferenceV1("thorough", 8_000)).toBe(8_000);
     expect(anthropicOutputTokensForPreferenceV1("thorough", 1_024)).toBe(1_024);
   });
 

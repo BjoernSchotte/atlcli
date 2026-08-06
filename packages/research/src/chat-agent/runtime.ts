@@ -18,13 +18,14 @@ import {
   type ResearchModelBudgetStateV1,
 } from "../budget.js";
 import { createResearchModelBudgetMiddlewareV1 } from "../model-budget-middleware.js";
-import type {
-  ChatPresentationStreamEventV1,
-  ResearchActivityCodeV1,
-  ResearchOneShotEventV1,
-  ResearchProgressV1,
-  ResearchRequestV1,
-  ResearchRunUsageV1,
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  type ChatPresentationStreamEventV1,
+  type ResearchActivityCodeV1,
+  type ResearchOneShotEventV1,
+  type ResearchProgressV1,
+  type ResearchRequestV1,
+  type ResearchRunUsageV1,
 } from "../contracts.js";
 import {
   CAPABILITY_FREE_QUALITY_ADAPTER_V1,
@@ -100,6 +101,7 @@ import {
   CHAT_STRATEGY_STATE_PATH_V1,
   createChatStrategyDecisionControllerV1,
   createChatStrategyReviewControllerV1,
+  deriveChatAcquisitionProductsV1,
   deriveChatStrategyDecisionV1,
   type ChatStrategyDecisionV1,
   type ChatStrategyRecordV1,
@@ -107,6 +109,7 @@ import {
 } from "./strategy.js";
 import {
   createChatAgenticWorkflowRuntimeV1,
+  type ChatSubagentModelStreamEventV1,
   type ChatSubagentResultDiagnosticV1,
 } from "./workflow-runtime.js";
 
@@ -164,6 +167,115 @@ export type ChatAgentDiagnosticV1 =
       searchInputShapes?: string[];
       argumentKeys?: string[];
     };
+
+/**
+ * Keep recoverable child eval mechanics in the host diagnostic channel. The
+ * child task and its actual capabilities already have semantic user-facing
+ * activities; projecting an internal retry as a failed workflow is misleading.
+ */
+export function projectChatAgentDiagnosticActivityV1(
+  diagnostic: ChatAgentDiagnosticV1,
+): {
+  code: ResearchActivityCodeV1;
+  status: "started" | "completed" | "failed";
+} | undefined {
+  if (diagnostic.kind === "eval-step" && diagnostic.profileId) return undefined;
+  if (diagnostic.kind === "model-step") {
+    return {
+      code: diagnostic.purpose === "answer-drafting"
+        ? "synthesis"
+        : "model-assessing",
+      status: diagnostic.status,
+    };
+  }
+  return diagnostic.status === "started"
+    ? { code: "bounded-workflow-running", status: "started" }
+    : diagnostic.status === "success"
+      ? { code: "bounded-workflow-complete", status: "completed" }
+      : { code: "bounded-workflow-failed", status: "failed" };
+}
+
+export interface ChatReasoningSummaryProjectionStateV1 {
+  accumulated: string;
+  emittedCodes: Set<string>;
+}
+
+const CHAT_REASONING_SUMMARY_MILESTONES_V1 = [
+  {
+    code: "intent",
+    pattern: /\b(user|question|request|context|scope|anchor|frage|kontext)\b/iu,
+    en: "The question and selected context are being interpreted.",
+    de: "Die Frage und der ausgewählte Kontext werden eingeordnet.",
+  },
+  {
+    code: "planning",
+    pattern: /(strategy|workflow|plan|decid|approach|vorgehen|schritt)\w*/iu,
+    en: "Kiteweave is choosing the necessary reading and validation steps.",
+    de: "Kiteweave legt die nötigen Lese- und Prüfschritte fest.",
+  },
+  {
+    code: "sources",
+    pattern: /\b(read|source|page|issue|search|retriev|quelle|seite|lesen|suche)\w*/iu,
+    en: "The required sources and direct reads are being identified.",
+    de: "Die benötigten Quellen und direkten Lesezugriffe werden bestimmt.",
+  },
+  {
+    code: "comparison",
+    pattern: /\b(compare|comparison|analy|difference|similar|vergleich|unterschied|gemeinsam)\w*/iu,
+    en: "The comparison criteria are being derived from the question.",
+    de: "Die Vergleichskriterien werden aus der Frage abgeleitet.",
+  },
+  {
+    code: "evidence",
+    pattern: /\b(evidence|support|citation|ground|claim|beleg|aussage|quelle)\w*/iu,
+    en: "Claims are being matched to the available evidence.",
+    de: "Aussagen werden den verfügbaren Belegen zugeordnet.",
+  },
+  {
+    code: "quality",
+    pattern: /\b(critic|gap|valid|check|review|widerspruch|lücke|prüf)\w*/iu,
+    en: "Remaining evidence gaps and possible contradictions are being checked.",
+    de: "Offene Beleglücken und mögliche Widersprüche werden geprüft.",
+  },
+  {
+    code: "synthesis",
+    pattern: /\b(answer|synth|formulat|draft|antwort|entwurf)\w*/iu,
+    en: "The evidence-backed answer is being structured.",
+    de: "Die belegte Antwort wird strukturiert.",
+  },
+] as const;
+
+/**
+ * Project provider-approved summarized reasoning into bounded semantic progress.
+ * Raw summary text, provider terminology, tool names, and opaque references do
+ * not cross the presentation boundary.
+ */
+export function projectChatReasoningSummaryDeltaV1(
+  state: ChatReasoningSummaryProjectionStateV1,
+  rawDelta: string,
+  locale?: string,
+): string {
+  if (!rawDelta) return "";
+  state.accumulated = `${state.accumulated}${rawDelta}`.slice(-12_000);
+  const localized = locale?.toLowerCase().startsWith("de") ? "de" : "en";
+  const messages: string[] = [];
+  for (const milestone of CHAT_REASONING_SUMMARY_MILESTONES_V1) {
+    if (
+      !state.emittedCodes.has(milestone.code) &&
+      milestone.pattern.test(state.accumulated)
+    ) {
+      state.emittedCodes.add(milestone.code);
+      messages.push(milestone[localized]);
+    }
+  }
+  if (messages.length === 0 && state.emittedCodes.size === 0) {
+    state.emittedCodes.add("progress");
+    messages.push(localized === "de"
+      ? "Kiteweave prüft den nächsten sinnvollen Schritt."
+      : "Kiteweave is checking the next useful step.");
+  }
+  return messages.length > 0 ? `${messages.join("\n")}\n` : "";
+}
 
 function diagnosticMessage(value: unknown): {
   toolNames: string[];
@@ -375,12 +487,14 @@ function createChatCodeInterpreterMiddlewareV1(
   const { taskBridgeTool, ...interpreterOptions } = options;
   const middleware = createCodeInterpreterMiddleware(interpreterOptions);
   const upstreamWrapModelCall = middleware.wrapModelCall;
-  if (taskBridgeTool && upstreamWrapModelCall) {
+  if ((taskBridgeTool || options.agentic) && upstreamWrapModelCall) {
     middleware.wrapModelCall = (request, handler) => {
-      const bridgeTool = taskBridgeTool as (typeof request.tools)[number];
-      const toolsForInterpreter = request.tools.some((candidate) => candidate.name === "task")
-        ? request.tools
-        : [...request.tools, bridgeTool];
+      const bridgeTool = taskBridgeTool as (typeof request.tools)[number] | undefined;
+      const toolsForInterpreter = taskBridgeTool
+        ? request.tools.some((candidate) => candidate.name === "task")
+          ? request.tools
+          : [...request.tools, bridgeTool!]
+        : request.tools.filter((candidate) => candidate.name !== "task");
       return upstreamWrapModelCall(
         { ...request, tools: toolsForInterpreter },
         (providerRequest) => handler({
@@ -403,9 +517,9 @@ function createChatCodeInterpreterMiddlewareV1(
     evaluator.description = [
       "Advance the host-bounded agentic Chat workflow in a persistent QuickJS session.",
       "First acknowledge chatStrategyDecide, then call chatWorkflowPropose exactly once. The calls may be separate eval steps; the host keeps their accepted state.",
-      "Execute only returned task dispatches in dependency order and run ready siblings with awaited Promise.all.",
-      "After every non-synthesizer task completes, call chatStrategyReview. Then execute the sole returned synthesizer dispatch.",
-      "Copy every task description, subagentType, and responseSchema exactly from the host response. Never invent a task, schema, dependency, or second synthesizer.",
+      "Then call chatWorkflowAdvance. The host executes every ready specialist wave from the accepted dynamic graph.",
+      "When advance requests chatStrategyReview or chatQualityReview, call that exact checkpoint once and then call chatWorkflowAdvance again.",
+      "Never construct, copy, or invoke a task dispatch yourself.",
     ].join(" ");
   }
   return middleware;
@@ -460,16 +574,35 @@ export const CHAT_MODEL_BUDGET_STATE_PATH_V1 =
   "/.atlcli/chat/v1/model-budget.json" as const;
 
 const CHAT_SYNTHESIS_MODEL_RESERVE_V1 = {
-  calls: 1,
-  inputTokens: 4_096,
-  outputTokens: 5_000,
+  // LangChain ToolStrategy uses one call to emit the schema tool and a second
+  // call to close the specialist after the tool result is accepted.
+  calls: 2,
+  inputTokens: 8_192,
+  outputTokens: 8_000,
 } as const;
 
 const CHAT_REPAIR_AND_SYNTHESIS_MODEL_RESERVE_V1 = {
-  calls: 2,
-  inputTokens: 8_192,
-  outputTokens: 10_000,
+  calls: 4,
+  inputTokens: 16_384,
+  outputTokens: 16_000,
 } as const;
+
+export function chatModelCallLimitV1(input: {
+  configuredMaxModelCalls: number;
+  qualityMode: ChatQualityPolicyV1["mode"];
+  execution: ChatStrategyDecisionV1["execution"];
+}): number {
+  if (
+    input.execution === "agentic" &&
+    input.configuredMaxModelCalls === DEFAULT_RESEARCH_LIMITS_V1.maxModelCalls
+  ) {
+    // Nine bounded depth-one tasks need at most two ToolStrategy calls each;
+    // the central supervisor retains capacity for strategy, workflow
+    // checkpoints, and closure. Monetary and token ceilings remain binding.
+    return 28;
+  }
+  return input.configuredMaxModelCalls;
+}
 
 const CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 = 15_000;
 const CHAT_REPAIR_TIME_RESERVE_MS_V1 = 15_000;
@@ -724,6 +857,7 @@ export function createKiteweaveChatAgent(
       let durableContext = "";
       let resumeEnvelope: ChatResumeEnvelopeV1 | undefined;
       let modelCheckpointEntered = false;
+      let resumableRootModelFailure = false;
       let eventSequence = 0;
       const nextEventSequence = (): number => ++eventSequence;
       const emitPhase = (phase: string): void => {
@@ -749,20 +883,17 @@ export function createKiteweaveChatAgent(
         });
       };
       const emitAgentDiagnostic = (diagnostic: ChatAgentDiagnosticV1): void => {
+        if (diagnostic.kind === "model-step") {
+          if (diagnostic.status === "started" || diagnostic.status === "completed") {
+            resumableRootModelFailure = false;
+          } else {
+            resumableRootModelFailure = diagnostic.errorCode === "provider-error" ||
+              diagnostic.errorCode === "rate-limited";
+          }
+        }
         input.onAgentDiagnostic?.(diagnostic);
-        const activity = diagnostic.kind === "model-step"
-          ? {
-              code: diagnostic.purpose === "answer-drafting"
-                ? "synthesis" as const
-                : "model-assessing" as const,
-              status: diagnostic.status,
-            }
-          : diagnostic.status === "started"
-            ? { code: "bounded-workflow-running" as const, status: "started" as const }
-            : diagnostic.status === "success"
-              ? { code: "bounded-workflow-complete" as const, status: "completed" as const }
-              : { code: "bounded-workflow-failed" as const, status: "failed" as const };
-        emitActivity(activity.code, activity.status);
+        const activity = projectChatAgentDiagnosticActivityV1(diagnostic);
+        if (activity) emitActivity(activity.code, activity.status);
         if (
           diagnostic.kind === "model-step" &&
           diagnostic.status === "completed" &&
@@ -1051,7 +1182,14 @@ export function createKiteweaveChatAgent(
           );
         }
         const model = modelBinding.model;
-        const modelBudget = new ResearchModelRunBudget(turn.limits);
+        const modelBudget = new ResearchModelRunBudget({
+          ...turn.limits,
+          maxModelCalls: chatModelCallLimitV1({
+            configuredMaxModelCalls: turn.limits.maxModelCalls,
+            qualityMode: qualityPolicy.mode,
+            execution: strategyDecision.execution,
+          }),
+        });
         let modelBudgetWrite = Promise.resolve();
         const persistModelBudget = (
           state: ResearchModelBudgetStateV1,
@@ -1065,10 +1203,12 @@ export function createKiteweaveChatAgent(
           return modelBudgetWrite;
         };
         await persistModelBudget(modelBudget.state());
-        const searchProducts = [
-          ...(turn.scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
-          ...(turn.scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
-        ];
+        const { searchProducts, exactContextProducts } =
+          deriveChatAcquisitionProductsV1({
+            decision: strategyDecision,
+            scope: turn.scope,
+            anchors,
+          });
         const buildRetrievalPlan = (
           proposal?: ChatRetrievalPlanProposalV1,
         ) => createChatRetrievalPlanV1({
@@ -1080,9 +1220,12 @@ export function createKiteweaveChatAgent(
           boundProjectKeys: turn.scope.jiraProjectKeys,
           boundSpaceKeys: turn.scope.confluenceSpaceKeys,
           searchProducts,
-          exactContextProducts: turn.exactContextProducts ?? [],
+          exactContextProducts,
           limits: turn.limits,
           agentic: strategyDecision.execution === "agentic",
+          relationshipTracing: strategyDecision.requiredCapabilities.includes(
+            "relationship-tracing",
+          ),
           ...(proposal ? { proposal } : {}),
           now,
         });
@@ -1094,6 +1237,134 @@ export function createKiteweaveChatAgent(
           now,
         });
         await retrievalLedger.initialize();
+        const subagentStreams = new Map<string, {
+          reasoningStarted: boolean;
+          reasoningProjection: ChatReasoningSummaryProjectionStateV1;
+          answerStarted: boolean;
+          structuredText: string;
+          emittedAnswerChars: number;
+        }>();
+        let emittedSubagentReasoningChars = 0;
+        const emitProjectedSubagentAnswer = (state: {
+          answerStarted: boolean;
+          structuredText: string;
+          emittedAnswerChars: number;
+        }): void => {
+          if (state.structuredText.length > turn.limits.maxReportChars * 4) return;
+          const projected = (
+            streamedJsonStringFieldV1(state.structuredText, "messageMarkdown") ?? ""
+          ).slice(0, turn.limits.maxReportChars);
+          if (projected.length <= state.emittedAnswerChars) return;
+          const delta = projected.slice(state.emittedAnswerChars);
+          if (!state.answerStarted) {
+            state.answerStarted = true;
+            input.onChatPresentation?.({
+              kind: "chat-presentation",
+              seq: nextEventSequence(),
+              at: new Date(now()).toISOString(),
+              channel: "answer-markdown",
+              status: "started",
+            });
+          }
+          state.emittedAnswerChars = projected.length;
+          input.onChatPresentation?.({
+            kind: "chat-presentation",
+            seq: nextEventSequence(),
+            at: new Date(now()).toISOString(),
+            channel: "answer-markdown",
+            status: "delta",
+            delta,
+          });
+        };
+        const emitSubagentModelStream = ({
+          profileId,
+          runId,
+          event,
+        }: ChatSubagentModelStreamEventV1): void => {
+          const state = subagentStreams.get(runId) ?? {
+            reasoningStarted: false,
+            reasoningProjection: { accumulated: "", emittedCodes: new Set<string>() },
+            answerStarted: false,
+            structuredText: "",
+            emittedAnswerChars: 0,
+          };
+          subagentStreams.set(runId, state);
+          if (event.event === "content-block-delta") {
+            if (
+              event.delta.type === "reasoning-delta" &&
+              modelBinding.reasoningPresentation === "summary" &&
+              emittedSubagentReasoningChars < 12_000
+            ) {
+              const delta = projectChatReasoningSummaryDeltaV1(
+                state.reasoningProjection,
+                event.delta.reasoning,
+                turn.locale,
+              ).slice(0, Math.min(1_024, 12_000 - emittedSubagentReasoningChars));
+              if (delta) {
+                if (!state.reasoningStarted) {
+                  state.reasoningStarted = true;
+                  input.onChatPresentation?.({
+                    kind: "chat-presentation",
+                    seq: nextEventSequence(),
+                    at: new Date(now()).toISOString(),
+                    channel: "reasoning-summary",
+                    status: "started",
+                  });
+                }
+                emittedSubagentReasoningChars += delta.length;
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "reasoning-summary",
+                  status: "delta",
+                  delta,
+                });
+              }
+            }
+            if (
+              event.delta.type === "text-delta" &&
+              profileId === "chat-synthesizer" &&
+              modelBinding.structuredOutput === "native"
+            ) {
+              state.structuredText += event.delta.text;
+              emitProjectedSubagentAnswer(state);
+            }
+            if (
+              event.delta.type === "block-delta" &&
+              profileId === "chat-synthesizer" &&
+              event.delta.fields.type === "tool_call_chunk" &&
+              typeof event.delta.fields.args === "string"
+            ) {
+              // LangChain standardizes tool-call argument deltas as a running
+              // JSON snapshot. Replacing instead of appending avoids duplicate
+              // prefixes while still projecting complete string units.
+              state.structuredText = event.delta.fields.args;
+              emitProjectedSubagentAnswer(state);
+            }
+            return;
+          }
+          if (event.event !== "message-finish" && event.event !== "error") return;
+          if (state.reasoningStarted) {
+            input.onChatPresentation?.({
+              kind: "chat-presentation",
+              seq: nextEventSequence(),
+              at: new Date(now()).toISOString(),
+              channel: "reasoning-summary",
+              status: "completed",
+            });
+          }
+          if (state.answerStarted) {
+            input.onChatPresentation?.({
+              kind: "chat-presentation",
+              seq: nextEventSequence(),
+              at: new Date(now()).toISOString(),
+              channel: "answer-markdown",
+              status: "completed",
+            });
+          }
+          subagentStreams.delete(runId);
+        };
         const emitPtcDiagnostic = emitPtcEventFactory({
           onEvent: (event) => {
             input.onEvent?.(event);
@@ -1165,7 +1436,8 @@ export function createKiteweaveChatAgent(
                 });
               },
               limits: turn.limits,
-              exactContextProducts: turn.exactContextProducts ?? [],
+              locale: turn.locale,
+              exactContextProducts,
               searchProducts,
               boundProjectKeys: turn.scope.jiraProjectKeys,
               boundSpaceKeys: turn.scope.confluenceSpaceKeys,
@@ -1174,6 +1446,14 @@ export function createKiteweaveChatAgent(
               beforeWorkflowAdmission: async (proposal) => {
                 if (!proposal.retrievalPlan) return;
                 await retrievalLedger!.replacePlan(buildRetrievalPlan(proposal.retrievalPlan));
+              },
+              strategyReviewCurrent: () => {
+                try {
+                  strategyReviewController?.assertCurrent();
+                  return strategyReviewController !== undefined;
+                } catch {
+                  return false;
+                }
               },
               beforeCritic: async () => {
                 strategyReviewController?.assertCurrent();
@@ -1245,6 +1525,7 @@ export function createKiteweaveChatAgent(
                 ...(diagnostic.errorCode ? { errorCode: "other" as const } : {}),
               }),
               onResultDiagnostic: input.onSubagentResultDiagnostic,
+              onModelStreamEvent: emitSubagentModelStream,
               onDispatchDiagnostic: (diagnostic) => {
                 input.onDispatchDiagnostic?.(diagnostic);
                 if (!diagnostic.taskId) return;
@@ -1282,7 +1563,7 @@ export function createKiteweaveChatAgent(
                 ) {
                   controller.abort(new ChatContractError(
                     diagnostic.code === "timeout" ? "limit-exceeded" : "invalid-report",
-                    "A bounded Chat specialist did not complete; the turn stopped before synthesis.",
+                    `A bounded Chat specialist did not complete (${diagnostic.taskId ?? "unknown"}, ${diagnostic.code ?? "unknown"}); the turn stopped before synthesis.`,
                   ));
                 }
               },
@@ -1292,6 +1573,7 @@ export function createKiteweaveChatAgent(
           ? [
               ...(strategyController ? [strategyController.tool] : []),
               agenticWorkflow!.proposalTool,
+              agenticWorkflow!.advanceTool,
               ...(strategyReviewController ? [strategyReviewController.tool] : []),
               agenticWorkflow!.qualityReviewTool,
             ]
@@ -1299,7 +1581,7 @@ export function createKiteweaveChatAgent(
               ...(strategyController ? [strategyController.tool] : []),
               ...createChatPtcToolsV1(broker, {
                 now,
-                exactContextProducts: turn.exactContextProducts,
+                exactContextProducts,
                 searchProducts,
                 boundProjectKeys: turn.scope.jiraProjectKeys,
                 boundSpaceKeys: turn.scope.confluenceSpaceKeys,
@@ -1360,41 +1642,14 @@ export function createKiteweaveChatAgent(
           systemPrompt: buildChatSystemPromptV1({
             qualityMode: qualityPolicy.mode,
             maxDetailItemsPerProduct: turn.limits.maxDetailItemsPerProduct,
+            locale: turn.locale,
             strategyDecisionRequired: strategyController !== undefined,
             agenticWorkflowRequired: strategyDecision.execution === "agentic",
+            ...(agenticWorkflow
+              ? { allowedAgenticProfileIds: agenticWorkflow.allowedProfileIds }
+              : {}),
           }),
           middleware: [
-            durableSummarizationMiddleware,
-            rootModelBudgetMiddleware,
-            ...createChatPromptCacheMiddlewareV1(),
-            agenticWorkflow?.middleware ?? createChatNoSubagentMiddlewareV1(),
-            createChatCodeInterpreterMiddlewareV1({
-              ptc: ptcTools,
-              subagents: strategyDecision.execution === "agentic",
-              ...(agenticWorkflow?.middleware.tools?.find((candidate) => candidate.name === "task")
-                ? {
-                    taskBridgeTool: agenticWorkflow.middleware.tools.find(
-                      (candidate) => candidate.name === "task",
-                    ),
-                  }
-                : {}),
-              toolName: "eval",
-              systemPrompt: strategyDecision.execution === "agentic"
-                ? "The eval tool advances an agentic Chat workflow in a persistent QuickJS REPL. Top-level await and the depth-one task() bridge are available. Strategy, proposal, task waves, review, and synthesis may use separate eval calls; accepted host state persists. Use only host-returned dispatch fields and documented tools.* controls. Console is unavailable."
-                : "The eval tool runs JavaScript in a persistent QuickJS REPL. Top-level await is available. Return the useful value as the final expression; console is intentionally unavailable. External reads are possible only through the documented tools.* functions. When chatStrategyDecide is present, call it exactly once before any Atlassian content capability.",
-              memoryLimitBytes: turn.limits.maxInterpreterMemoryBytes,
-              maxStackSizeBytes: 320 * 1024,
-              executionTimeoutMs: strategyDecision.execution === "agentic"
-                ? turn.limits.maxRunMs
-                : turn.limits.maxInterpreterMs,
-              maxPtcCalls: turn.limits.maxPtcCalls,
-              maxResultChars: Math.min(
-                turn.limits.maxPtcOutputBytes,
-                Math.max(24_000, turn.limits.maxReportChars),
-              ),
-              captureConsole: false,
-              agentic: strategyDecision.execution === "agentic",
-            }),
             createChatDirectToolSurfaceMiddlewareV1(emitAgentDiagnostic, {
               ...(agenticWorkflow
                 ? {
@@ -1408,6 +1663,30 @@ export function createKiteweaveChatAgent(
                     },
                   }
                 : {}),
+            }),
+            durableSummarizationMiddleware,
+            rootModelBudgetMiddleware,
+            ...createChatPromptCacheMiddlewareV1(),
+            agenticWorkflow?.middleware ?? createChatNoSubagentMiddlewareV1(),
+            createChatCodeInterpreterMiddlewareV1({
+              ptc: ptcTools,
+              subagents: strategyDecision.execution === "agentic",
+              toolName: "eval",
+              systemPrompt: strategyDecision.execution === "agentic"
+                ? "The eval tool advances an agentic Chat workflow in a persistent QuickJS REPL. Top-level await is available. Strategy, dynamic graph proposal, host-executed waves, review, and synthesis may use separate eval calls; accepted host state persists. Use only documented tools.* controls. The low-level task bridge is unavailable. Console is unavailable."
+                : "The eval tool runs JavaScript in a persistent QuickJS REPL. Top-level await is available. Return the useful value as the final expression; console is intentionally unavailable. External reads are possible only through the documented tools.* functions. When chatStrategyDecide is present, call it exactly once before any Atlassian content capability.",
+              memoryLimitBytes: turn.limits.maxInterpreterMemoryBytes,
+              maxStackSizeBytes: 320 * 1024,
+              executionTimeoutMs: strategyDecision.execution === "agentic"
+                ? turn.limits.maxRunMs
+                : turn.limits.maxInterpreterMs,
+              maxPtcCalls: turn.limits.maxPtcCalls,
+              maxResultChars: Math.min(
+                turn.limits.maxPtcOutputBytes,
+                Math.max(24_000, turn.limits.maxReportChars),
+              ),
+              captureConsole: false,
+              agentic: strategyDecision.execution === "agentic",
             }),
           ],
           ...(strategyDecision.execution === "agentic"
@@ -1495,12 +1774,17 @@ export function createKiteweaveChatAgent(
               return;
             }
             let started = false;
+            const projection: ChatReasoningSummaryProjectionStateV1 = {
+              accumulated: "",
+              emittedCodes: new Set<string>(),
+            };
             for await (const rawDelta of source) {
               if (emittedReasoningChars >= maximumReasoningChars) continue;
-              const delta = rawDelta.slice(
-                0,
-                Math.min(1_024, maximumReasoningChars - emittedReasoningChars),
-              );
+              const delta = projectChatReasoningSummaryDeltaV1(
+                projection,
+                rawDelta,
+                turn.locale,
+              ).slice(0, Math.min(1_024, maximumReasoningChars - emittedReasoningChars));
               if (!delta) continue;
               if (!started) {
                 started = true;
@@ -1596,29 +1880,6 @@ export function createKiteweaveChatAgent(
                     strategyDecision.execution !== "agentic",
                   ),
                 ]);
-              }
-            })(),
-            (async () => {
-              if (strategyDecision.execution !== "agentic") return;
-              const subagentStreams = (run as unknown as {
-                subagents: AsyncIterable<{
-                  name: string;
-                  messages: AsyncIterable<{
-                    reasoning: AsyncIterable<string>;
-                    text: AsyncIterable<string>;
-                  }>;
-                }>;
-              }).subagents;
-              for await (const subagent of subagentStreams) {
-                for await (const message of subagent.messages) {
-                  await Promise.all([
-                    consumeReasoning(message.reasoning),
-                    consumeAnswer(
-                      message.text,
-                      subagent.name === "chat-synthesizer-v1",
-                    ),
-                  ]);
-                }
               }
             })(),
           ]);
@@ -1765,6 +2026,7 @@ export function createKiteweaveChatAgent(
         const classified = classifyResearchError(error);
         const resumableStreamFailure = Boolean(
           modelCheckpointEntered &&
+          resumableRootModelFailure &&
           resumeEnvelope &&
           interactionController &&
           durableChatSession &&

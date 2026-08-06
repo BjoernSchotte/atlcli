@@ -1,7 +1,11 @@
 import { createCodeInterpreterMiddleware, toCamelCase } from "@langchain/quickjs";
+import { CallbackManager } from "@langchain/core/callbacks/manager";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import type { ChatModelStreamEvent } from "@langchain/core/language_models/event";
+import { ToolMessage } from "@langchain/core/messages";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
-import { createMiddleware, providerStrategy, toolStrategy, type AgentMiddleware } from "langchain";
+import { createMiddleware, toolStrategy, type AgentMiddleware } from "langchain";
 import { z } from "zod/v4";
 import type { SubAgent } from "deepagents/browser";
 import type { ResearchPtcDiagnosticV1 } from "../agent-tools.js";
@@ -51,6 +55,7 @@ import {
 } from "./workflow.js";
 import {
   assessChatGroundednessBeforeCriticV1,
+  chatFinalGapCodeForQualityDefectV1,
   createChatQualityDispositionV1,
   persistChatQualityArtifactsV1,
   type ChatGroundednessAssessmentV1,
@@ -85,6 +90,16 @@ export interface ChatQualityReviewResponseV1 {
   requiredGapCodes: string[];
   rejectedSourceIds: string[];
   dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+export interface ChatWorkflowAdvanceResponseV1 {
+  schema: "atlcli.chat-workflow-advance/v1";
+  status:
+    | "strategy-review-required"
+    | "quality-review-required"
+    | "complete";
+  completedTaskIds: string[];
+  remainingTaskIds: string[];
 }
 
 export interface ChatRepairAdmissionDecisionV1 {
@@ -124,6 +139,13 @@ export interface ChatSubagentResultDiagnosticV1 {
   objectKeys?: string[];
   referenceKinds?: string[];
   unknownReferenceKinds?: string[];
+}
+
+export interface ChatSubagentModelStreamEventV1 {
+  taskId: string;
+  profileId: ChatSubagentProfileIdV1;
+  runId: string;
+  event: ChatModelStreamEvent;
 }
 
 function resultShapeV1(value: unknown): Pick<
@@ -197,6 +219,25 @@ function classifyChildEvalToolResultV1(content: string): Pick<
         ? "timeout"
         : "tool-error";
   return { errorKind: match[1], errorCode };
+}
+
+function isBoundedSearchAcquisitionErrorV1(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /(?:search page budget was exhausted|search query is not an admitted retrieval-plan variant|search exceeds its admitted page or terminal boundary|search cursor is not part of the admitted retrieval plan|exceeded its bounded eval step limit)/iu
+    .test(message);
+}
+
+function exhaustedSearchGapPacketV1(product: ResearchProduct): ChatEvidencePacketV1 {
+  const label = product === "confluence" ? "Confluence" : "Jira";
+  return {
+    schema: "atlcli.chat-evidence-packet/v1",
+    sourceIds: [],
+    claims: [],
+    relationships: [],
+    gaps: [
+      `${label} discovery exhausted every host-admitted query variant without detail evidence; no broader query or scope was attempted.`,
+    ],
+  };
 }
 
 const taskInputSchema = z.object({
@@ -310,19 +351,23 @@ function profilePromptV1(input: {
   profile: (typeof CHAT_SUBAGENT_PROFILES_V1)[number];
   allowedToolNames: readonly string[];
   limits: ResearchLimitsV1;
+  locale?: string;
   queryVariantMode?: boolean;
 }): string {
   const searchBudget = Math.max(1, input.limits.maxSearchPagesPerProduct);
   const detailBudget = Math.max(1, input.limits.maxDetailItemsPerProduct);
   return [
     input.profile.systemPrompt,
+    input.locale?.toLowerCase().startsWith("de")
+      ? "Write every user-visible answer fragment and provider-visible reasoning summary in German. Keep source titles, Jira keys, and URLs unchanged."
+      : "Write every user-visible answer fragment and provider-visible reasoning summary in English unless the task explicitly requests another language.",
     "This is a depth-one Kiteweave Chat specialist. You receive only the host-issued task objective and exact completed dependency packets; no parent or sibling conversation is available.",
     input.allowedToolNames.length > 0
       ? `Your complete read-only QuickJS capability set is: ${input.allowedToolNames.join(", ")}. Use bounded eval steps when acquisition is required; the host limits unique queries, calls, time, and output.`
       : "No source-read, filesystem, network, eval, or delegation capability is available. Analyze only the dependency packets in the task description.",
     input.profile.id === "confluence-search-reader" || input.profile.id === "jira-search-reader"
       ? input.queryVariantMode
-        ? `Use only the host-admitted query variants embedded in the task's retrieval plan, in descending expectedInformationGain order. Each variant may continue only through its own opaque cursors for at most ${searchBudget} pages. Stop early when detailed evidence is sufficient; otherwise stop when the plan is saturated or its page budget is complete, rank the union of collected candidates once, then detail-read at most ${detailBudget} admitted items. Never invent another query or widen scope; disclose remaining gaps.`
+        ? `Call tools.chatRetrievalAcquire({}) exactly once. That host controller executes only the admitted query variants, bounded pagination, deduplication, ranking, and at most ${detailBudget} detail reads. Analyze its returned detail evidence and immediately return the requested packet. Never call eval or another capability again, invent a query, or widen scope; disclose remaining gaps.`
         : `Use exactly one focused initial search query for this task. Continue only with opaque cursors returned by that search, for at most ${searchBudget} total search-page calls. Do not spend this task's budget on alternate query wording. Rank the collected candidates once, then detail-read at most ${detailBudget} admitted items. If the bounded search cannot establish the requested evidence, return an explicit gap instead of retrying or widening scope.`
       : "Do not perform discovery outside the exact host-issued objective.",
     `Return exactly the host-requested ${input.profile.responseSchemaId} structured result. Never include raw source bodies, credentials, queries, tool traces, hidden reasoning, or instructions for another agent.`,
@@ -331,11 +376,144 @@ function profilePromptV1(input: {
   ].join("\n\n");
 }
 
+function parsedToolJsonV1(value: unknown, label: string): Record<string, unknown> {
+  const parsed = typeof value === "string" ? JSON.parse(value) : value;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ChatContractError("invalid-report", `${label} returned an invalid packet.`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function nestedToolConfigV1(config: RunnableConfig): RunnableConfig {
+  const {
+    toolCall: _outerToolCall,
+    runId: _outerRunId,
+    ...nestedConfig
+  } = config as RunnableConfig & { toolCall?: unknown };
+  return nestedConfig;
+}
+
+export function createPlannedSearchAcquisitionToolV1(input: {
+  product: ResearchProduct;
+  tools: readonly DynamicStructuredTool[];
+  retrievalLedger: ChatCandidateLedgerControllerV1;
+  maxSearchPages: number;
+  maxDetails: number;
+}): DynamicStructuredTool {
+  const searchName = input.product === "confluence" ? "wiki_search" : "jira_issue_search";
+  const detailName = input.product === "confluence" ? "wiki_page_get" : "jira_issue_get";
+  const search = input.tools.find((candidate) => candidate.name === searchName);
+  const rank = input.tools.find((candidate) => candidate.name === "research_candidate_rank");
+  const detail = input.tools.find((candidate) => candidate.name === detailName);
+  if (!search || !rank || !detail) {
+    throw new ChatContractError(
+      "invalid-request",
+      "The planned Chat acquisition controller is missing a host capability.",
+    );
+  }
+  let acquisition: Promise<string> | undefined;
+  return tool(async (_value, config) => {
+    if (acquisition) return acquisition;
+    acquisition = (async () => {
+      const nestedConfig = nestedToolConfigV1(config);
+      let phase = "search";
+      try {
+        const entityRefs = new Set<string>();
+        let pagesRead = 0;
+        const planSearch = input.retrievalLedger.plan().searches.find((candidate) =>
+          candidate.product === input.product
+        );
+        const maxPages = planSearch?.maxPages ?? 1;
+        for (const query of input.retrievalLedger.allowedInitialQueries(input.product)) {
+          if (pagesRead >= input.maxSearchPages) break;
+          let page = parsedToolJsonV1(
+            await search.invoke({ query }, nestedConfig),
+            "Chat search",
+          );
+          for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+            pagesRead += 1;
+            const items = Array.isArray(page.items) ? page.items : [];
+            for (const candidate of items) {
+              if (candidate && typeof candidate === "object" &&
+                  typeof (candidate as { entityRef?: unknown }).entityRef === "string") {
+                entityRefs.add((candidate as { entityRef: string }).entityRef);
+              }
+            }
+            const pageState = page.page && typeof page.page === "object"
+              ? page.page as { nextCursor?: unknown; complete?: unknown }
+              : {};
+            if (pageState.complete === true || typeof pageState.nextCursor !== "string" ||
+                pageNumber >= maxPages || pagesRead >= input.maxSearchPages) break;
+            page = parsedToolJsonV1(
+              await search.invoke({ cursor: pageState.nextCursor }, nestedConfig),
+              "Chat search",
+            );
+          }
+        }
+        if (entityRefs.size === 0) {
+          return JSON.stringify({
+            schema: "atlcli.chat-planned-acquisition/v1",
+            product: input.product,
+            pagesRead,
+            discoveredCandidates: 0,
+            details: [],
+            gaps: ["The admitted search variants returned no candidates."],
+          });
+        }
+        phase = "candidate-ranking";
+        const ranked = parsedToolJsonV1(await rank.invoke({
+          product: input.product,
+          entityRefs: [...entityRefs],
+        }, nestedConfig), "Chat candidate ranking");
+        const rankedItems = Array.isArray(ranked.items) ? ranked.items : [];
+        const admittedRefs = rankedItems.flatMap((candidate): string[] =>
+          candidate && typeof candidate === "object" &&
+            typeof (candidate as { entityRef?: unknown }).entityRef === "string"
+            ? [(candidate as { entityRef: string }).entityRef]
+            : []
+        ).slice(0, Math.max(1, input.maxDetails));
+        phase = "detail-read";
+        const details = await Promise.all(admittedRefs.map(async (entityRef) =>
+          parsedToolJsonV1(await detail.invoke({ entityRef }, nestedConfig), "Chat detail read")
+        ));
+        return JSON.stringify({
+          schema: "atlcli.chat-planned-acquisition/v1",
+          product: input.product,
+          pagesRead,
+          discoveredCandidates: entityRefs.size,
+          details,
+          gaps: details.length === 0
+            ? ["Candidates were discovered but none could be read in detail."]
+            : [],
+        });
+      } catch (error) {
+        const errorCode = error && typeof error === "object" && "code" in error &&
+            typeof error.code === "string"
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : "unknown";
+        throw new ChatContractError(
+          "invalid-report",
+          `Planned Chat ${input.product} acquisition failed during ${phase} (${errorCode}).`,
+        );
+      }
+    })();
+    return acquisition;
+  }, {
+    name: "chat_retrieval_acquire",
+    description:
+      "Execute the complete host-admitted search, pagination, deduplication, ranking, and bounded detail-read plan exactly once. Return its detailed evidence for analysis.",
+    schema: z.object({}).strict(),
+  });
+}
+
 function compileChatSubagentsV1(input: {
   model: BaseChatModel;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   broker: ResearchCapabilityBroker;
   limits: ResearchLimitsV1;
+  locale?: string;
   exactContextProducts: readonly ResearchProduct[];
   searchProducts: readonly ResearchProduct[];
   boundProjectKeys: readonly string[];
@@ -348,11 +526,16 @@ function compileChatSubagentsV1(input: {
   onModelBudgetSnapshot: (state: ResearchModelBudgetStateV1) => Promise<void>;
 }): SubAgent[] {
   return CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
+    const searchProduct = profile.id === "confluence-search-reader"
+      ? "confluence" as const
+      : profile.id === "jira-search-reader"
+        ? "jira" as const
+        : undefined;
     const grantedToolNames = profile.grantedCapabilityIds
       .map(toolNameForCapability)
       .filter((name): name is string => name !== undefined);
     const granted = new Set(grantedToolNames);
-    const ptc = granted.size === 0
+    const rawPtc = granted.size === 0
       ? []
       : createChatPtcToolsV1(input.broker, {
           now: input.now,
@@ -371,6 +554,20 @@ function compileChatSubagentsV1(input: {
               }
             : {}),
         }).filter((candidate) => granted.has(candidate.name));
+    const plannedSearchAvailable = searchProduct !== undefined &&
+      input.retrievalLedger !== undefined &&
+      input.searchProducts.includes(searchProduct);
+    const boundedAcquisitionResultAvailable = plannedSearchAvailable ||
+      profile.id === "exact-context-reader";
+    const ptc = plannedSearchAvailable
+      ? [createPlannedSearchAcquisitionToolV1({
+          product: searchProduct!,
+          tools: rawPtc,
+          retrievalLedger: input.retrievalLedger!,
+          maxSearchPages: input.limits.maxSearchPagesPerProduct,
+          maxDetails: input.limits.maxDetailItemsPerProduct,
+        })]
+      : rawPtc;
     if (profile.id === "confluence-search-reader" || profile.id === "jira-search-reader") {
       const searchToolName = profile.id === "confluence-search-reader"
         ? "wiki_search"
@@ -388,13 +585,32 @@ function compileChatSubagentsV1(input: {
     let evalAttempts = 0;
     const maxEvalAttempts = profile.id === "confluence-search-reader" ||
         profile.id === "jira-search-reader"
-      ? 8
+      ? plannedSearchAvailable ? 2 : 8
       : 4;
     const evalGuard = createMiddleware({
       name: `ChatSubagentEvalGuard:${profile.id}`,
       async wrapToolCall(request, handler) {
         if (request.toolCall.name !== "eval") return handler(request);
         evalAttempts += 1;
+        if (
+          searchProduct &&
+          input.retrievalLedger?.isSearchExhaustedWithoutCandidates(searchProduct)
+        ) {
+          input.onEvalDiagnostic?.({
+            profileId: profile.id,
+            status: "success",
+            attempt: evalAttempts,
+          });
+          return new ToolMessage({
+            tool_call_id: request.toolCall.id ?? `eval:${profile.id}:${evalAttempts}`,
+            name: "eval",
+            content: [
+              "SEARCH_PLAN_COMPLETE_WITHOUT_CANDIDATES.",
+              "Do not call eval again and do not invent or widen a query.",
+              "Return the requested evidence packet now with empty sourceIds, claims, and relationships, plus one explicit retrieval gap.",
+            ].join(" "),
+          });
+        }
         const code = request.toolCall.args && typeof request.toolCall.args === "object" &&
           "code" in request.toolCall.args && typeof request.toolCall.args.code === "string"
           ? request.toolCall.args.code
@@ -408,6 +624,35 @@ function compileChatSubagentsV1(input: {
           "wikiPageGet",
           "researchCandidateRank",
         ].filter((name) => new RegExp(`\\b${name}\\b`, "u").test(code));
+        const searchCapabilityName = searchProduct === "confluence"
+          ? "wikiSearch"
+          : searchProduct === "jira"
+            ? "jiraIssueSearch"
+            : undefined;
+        if (
+          searchProduct &&
+          searchCapabilityName &&
+          capabilityNames.includes(searchCapabilityName) &&
+          input.retrievalLedger?.isSearchPlanSaturated(searchProduct)
+        ) {
+          input.onEvalDiagnostic?.({
+            profileId: profile.id,
+            status: "success",
+            attempt: evalAttempts,
+            codeChars: code.length,
+            usesToolsNamespace: /\\btools\\s*\\./u.test(code),
+            capabilityNames,
+          });
+          return new ToolMessage({
+            tool_call_id: request.toolCall.id ?? `eval:${profile.id}:${evalAttempts}`,
+            name: "eval",
+            content: [
+              "SEARCH_PLAN_SATURATED.",
+              "Do not call search again and do not invent a query.",
+              "Rank and detail-read already discovered candidates if needed; otherwise return the requested evidence packet with an explicit gap.",
+            ].join(" "),
+          });
+        }
         const searchInputShapes = [
           ["jiraIssueSearch", "jira"],
           ["wikiSearch", "wiki"],
@@ -446,10 +691,15 @@ function compileChatSubagentsV1(input: {
             attempt: evalAttempts,
             errorCode: "eval-attempt-exceeded",
           });
-          throw new ChatContractError(
-            "limit-exceeded",
-            `Chat specialist ${profile.id} exceeded its bounded eval step limit.`,
-          );
+          return new ToolMessage({
+            tool_call_id: request.toolCall.id ?? `eval:${profile.id}:${evalAttempts}`,
+            name: "eval",
+            content: [
+              "EVAL_LIMIT_REACHED.",
+              "Do not call eval again.",
+              "Return the requested structured packet now and disclose any incomplete work as a gap.",
+            ].join(" "),
+          });
         }
         try {
           const response = await handler(request);
@@ -466,19 +716,31 @@ function compileChatSubagentsV1(input: {
           });
           return response;
         } catch (error) {
+          const boundaryError = searchProduct && isBoundedSearchAcquisitionErrorV1(error);
           input.onEvalDiagnostic?.({
             profileId: profile.id,
             status: "error",
             attempt: evalAttempts,
             ...classifyChildEvalErrorV1(error),
           });
+          if (boundaryError) {
+            return new ToolMessage({
+              tool_call_id: request.toolCall.id ?? `eval:${profile.id}:${evalAttempts}`,
+              name: "eval",
+              content: [
+                "SEARCH_REQUEST_REJECTED_AT_HOST_BOUNDARY.",
+                "Do not repeat that request or invent another query.",
+                "Use only a still-untried exact query variant from the host context; otherwise return the requested evidence packet with an explicit retrieval gap.",
+              ].join(" "),
+            });
+          }
           throw error;
         }
       },
     });
     const maxModelOutputTokens = Math.min(
       input.limits.maxModelOutputTokens,
-      profile.modelPreference === "fast" ? 2_048 : profile.modelPreference === "balanced" ? 4_096 : 5_000,
+      profile.modelPreference === "fast" ? 2_048 : profile.modelPreference === "balanced" ? 4_096 : 8_000,
     );
     const modelBudgetMiddleware: AgentMiddleware = createResearchModelBudgetMiddlewareV1(
       input.modelBudget,
@@ -503,6 +765,7 @@ function compileChatSubagentsV1(input: {
         // fail before the host capability is reached.
         allowedToolNames: ptc.map((candidate) => toCamelCase(candidate.name)),
         limits: input.limits,
+        ...(input.locale ? { locale: input.locale } : {}),
         queryVariantMode: input.retrievalLedger !== undefined,
       }),
       tools: [],
@@ -525,7 +788,9 @@ function compileChatSubagentsV1(input: {
             ),
             maxResultChars: Math.min(
               input.limits.maxPtcOutputBytes,
-              profile.maxResultBytes,
+              boundedAcquisitionResultAvailable
+                ? input.limits.maxPtcOutputBytes
+                : profile.maxResultBytes,
             ),
             captureConsole: false,
           })])],
@@ -557,6 +822,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   siteOrigin: string;
   taskContext: string | (() => string);
   limits: ResearchLimitsV1;
+  locale?: string;
   exactContextProducts: readonly ResearchProduct[];
   searchProducts: readonly ResearchProduct[];
   boundProjectKeys: readonly string[];
@@ -574,11 +840,15 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
   onResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
   onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+  onModelStreamEvent?: (event: ChatSubagentModelStreamEventV1) => void;
   retrievalLedger?: ChatCandidateLedgerControllerV1;
+  strategyReviewCurrent?: () => boolean;
 }): {
   middleware: ReturnType<ChatWorkflowRuntimeBindingsV1["createSubAgentMiddleware"]>;
   proposalTool: DynamicStructuredTool;
+  advanceTool: DynamicStructuredTool;
   qualityReviewTool: DynamicStructuredTool;
+  allowedProfileIds: readonly ChatSubagentProfileIdV1[];
   acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
   acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
   finalDraft(): ChatAgentDraftV1 | undefined;
@@ -614,7 +884,10 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   let groundednessAssessment: ChatGroundednessAssessmentV1 | undefined;
   let qualityDisposition: ChatQualityDispositionV1 | undefined;
   let qualityReviewStarted = false;
+  let advancing = false;
   const profileByTaskId = new Map<string, ChatSubagentProfileIdV1>();
+  const taskById = new Map<string, ChatWorkflowTaskProposalV1>();
+  const modelStreamErrorByTaskId = new Map<string, { code?: string; message: string }>();
 
   const referencedSourceIds = (): string[] => [...new Set(
     Object.values(state.acceptedResults).flatMap(sourceIdsFromResult),
@@ -655,6 +928,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     modelForPreference: input.modelForPreference,
     broker: input.broker,
     limits: input.limits,
+    ...(input.locale ? { locale: input.locale } : {}),
     exactContextProducts: input.exactContextProducts,
     searchProducts: input.searchProducts,
     boundProjectKeys: input.boundProjectKeys,
@@ -682,14 +956,96 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       "DeepAgentsJS did not provide the declarative Chat task tool.",
     );
   }
+  const allowedProfileIds = CHAT_SUBAGENT_PROFILES_V1
+    .filter((profile) => {
+      if (profile.id === "exact-context-reader") {
+        return input.exactContextProducts.length > 0;
+      }
+      if (profile.id === "jira-search-reader") {
+        return input.searchProducts.includes("jira");
+      }
+      if (profile.id === "confluence-search-reader") {
+        return input.searchProducts.includes("confluence");
+      }
+      return true;
+    })
+    .map((profile) => profile.id);
 
   const dispatch = createAgenticDispatchInterceptionAdapter({
     admissions: [],
     maxTasks: CHAT_SUBAGENT_PROFILES_V1.length,
     maxConcurrency: 3,
     allowHostDependencyHydration: true,
+    allowHostResponseSchemaHydration: true,
     signal: input.signal,
-    invokeUpstream: (taskInput, config) => upstreamTask.invoke(taskInput, config),
+    invokeUpstream: async (taskInput, config) => {
+      const taskId = JSON.parse(taskInput.description) as { taskId?: string };
+      const profileId = taskId.taskId
+        ? profileByTaskId.get(taskId.taskId)
+        : undefined;
+      const streamCallback = profileId && taskId.taskId && input.onModelStreamEvent
+        ? {
+            name: `ChatSubagentModelStream:${taskId.taskId}`,
+            handleChatModelStreamEvent: (
+              event: ChatModelStreamEvent,
+              runId: string,
+            ) => input.onModelStreamEvent?.({
+              taskId: taskId.taskId!,
+              profileId,
+              runId,
+              event,
+            }),
+          }
+        : undefined;
+      const diagnosticStreamCallback = streamCallback
+        ? {
+            ...streamCallback,
+            handleChatModelStreamEvent: (event: ChatModelStreamEvent, runId: string) => {
+              if (event.event === "error") {
+                modelStreamErrorByTaskId.set(taskId.taskId!, {
+                  ...(event.code ? { code: event.code } : {}),
+                  message: event.message,
+                });
+              }
+              streamCallback.handleChatModelStreamEvent(event, runId);
+            },
+          }
+        : undefined;
+      const callbacks = diagnosticStreamCallback
+        ? Array.isArray(config.callbacks)
+          ? [...config.callbacks, diagnosticStreamCallback]
+          : config.callbacks instanceof CallbackManager
+            ? config.callbacks.copy([
+                CallbackManager.fromHandlers(diagnosticStreamCallback).handlers[0]!,
+              ], true)
+            : [diagnosticStreamCallback]
+        : config.callbacks;
+      try {
+        return await upstreamTask.invoke(taskInput, {
+          ...config,
+          ...(callbacks ? { callbacks } : {}),
+        });
+      } catch (error) {
+        const product = taskInput.subagent_type === "chat-confluence-search-reader-v1"
+          ? "confluence" as const
+          : taskInput.subagent_type === "chat-jira-search-reader-v1"
+            ? "jira" as const
+            : undefined;
+        if (product && isBoundedSearchAcquisitionErrorV1(error)) {
+          return exhaustedSearchGapPacketV1(product);
+        }
+        const streamError = taskId.taskId
+          ? modelStreamErrorByTaskId.get(taskId.taskId)
+          : undefined;
+        if (streamError) {
+          throw new ChatContractError(
+            streamError.code === "rate_limit_error" ? "rate-limited" : "provider-error",
+            `Chat specialist ${taskId.taskId} failed during model streaming: ${streamError.message}`,
+          );
+        }
+        throw error;
+      }
+    },
     projectResult: (raw, task) => {
       const profileId = profileByTaskId.get(task.taskId);
       if (!profileId) {
@@ -736,27 +1092,13 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     },
     projectDependencyResult: (_taskId, result) => structuredClone(result),
     projectResponseFormat: input.structuredOutput === "native"
-      ? (schema, admission) => {
-          const selected = CHAT_SUBAGENT_PROFILES_V1.find((profile) =>
-            profile.subagentType === admission.subagentType
-          );
-          if (selected?.id !== "chat-synthesizer") {
-            return toolStrategy(schema as {
-              type: "object";
-              properties?: Record<string, unknown>;
-              required?: string[];
-              additionalProperties?: boolean;
-              [key: string]: unknown;
-            });
-          }
-          return providerStrategy((input.projectResponseSchema?.(schema) ?? schema) as {
-            type: "object";
-            properties?: Record<string, unknown>;
-            required?: string[];
-            additionalProperties?: boolean;
-            [key: string]: unknown;
-          });
-        }
+      ? (schema) => toolStrategy(schema as {
+          type: "object";
+          properties?: Record<string, unknown>;
+          required?: string[];
+          additionalProperties?: boolean;
+          [key: string]: unknown;
+        })
       : undefined,
     beforeInvoke: async ({ taskId }) => {
       const profileId = profileByTaskId.get(taskId);
@@ -786,7 +1128,47 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       state.acceptedResults[taskId] = structuredClone(accepted);
       state.taskStatuses[taskId] = "completed";
       if (profileId === "chat-synthesizer") {
-        finalDraft = CHAT_AGENT_DRAFT_SCHEMA_V1.parse(accepted);
+        const synthesized = CHAT_AGENT_DRAFT_SCHEMA_V1.parse(accepted);
+        const hasEvidenceParagraph = /\[\[source:[^\]]+\]\]/u.test(
+          synthesized.messageMarkdown,
+        );
+        const fallbackProfile = qualityDisposition?.repairAdmitted
+          ? "answer-repairer"
+          : qualityDisposition?.repairRequired
+            ? undefined
+            : "answer-drafter";
+        const fallbackTaskId = fallbackProfile
+          ? [...profileByTaskId.entries()].find(([, candidateProfile]) =>
+              candidateProfile === fallbackProfile
+            )?.[0]
+          : undefined;
+        const fallback = fallbackTaskId
+          ? CHAT_AGENT_DRAFT_SCHEMA_V1.safeParse(state.acceptedResults[fallbackTaskId])
+          : undefined;
+        const synthesizedSubstance = synthesized.messageMarkdown
+          .replace(/^#+\s.*$/gmu, "")
+          .replace(/^\s*---+\s*$/gmu, "")
+          .trim().length;
+        const fallbackHasEvidence = fallback?.success &&
+          /\[\[source:[^\]]+\]\]/u.test(fallback.data.messageMarkdown);
+        const fallbackHasSubstance = fallback?.success &&
+          fallback.data.messageMarkdown.replace(/^#+\s.*$/gmu, "").trim().length >= 20;
+        if (
+          fallback?.success &&
+          ((!hasEvidenceParagraph && fallbackHasEvidence) ||
+            (synthesizedSubstance < 20 && fallbackHasSubstance))
+        ) {
+          const gapKeys = new Set<string>();
+          const gaps = [...fallback.data.gaps, ...synthesized.gaps].filter((gap) => {
+            const key = JSON.stringify(gap);
+            if (gapKeys.has(key)) return false;
+            gapKeys.add(key);
+            return true;
+          });
+          finalDraft = { ...fallback.data, gaps };
+        } else {
+          finalDraft = synthesized;
+        }
       }
       await persistState();
     },
@@ -805,20 +1187,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     strategy: input.strategy,
     budget: input.budget,
     taskContext: input.taskContext,
-    allowedProfileIds: CHAT_SUBAGENT_PROFILES_V1
-      .filter((profile) => {
-        if (profile.id === "exact-context-reader") {
-          return input.exactContextProducts.length > 0;
-        }
-        if (profile.id === "jira-search-reader") {
-          return input.searchProducts.includes("jira");
-        }
-        if (profile.id === "confluence-search-reader") {
-          return input.searchProducts.includes("confluence");
-        }
-        return true;
-      })
-      .map((profile) => profile.id),
+    allowedProfileIds,
     beforeProposal: input.beforeProposal,
     beforeAdmission: input.beforeWorkflowAdmission,
     onAccepted: async (workflow, response) => {
@@ -829,6 +1198,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       acceptedWorkflow = workflow;
       for (const task of workflow.tasks) {
         profileByTaskId.set(task.taskId, task.profileId);
+        taskById.set(task.taskId, task);
         if (task.taskId !== workflow.synthesizerTaskId) {
           state.taskStatuses[task.taskId] = "admitted";
         }
@@ -934,21 +1304,28 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         originalSynth.objective,
         "Host quality disposition:",
         JSON.stringify({
-          requiredGapCodes: qualityDisposition.requiredGapCodes,
+          requiredGapMappings: qualityDisposition.requiredGapCodes.map((defectCode) => ({
+            defectCode,
+            finalGapCode: chatFinalGapCodeForQualityDefectV1(defectCode),
+          })),
           rejectedSourceIds: qualityDisposition.rejectedSourceIds,
           repairAdmitted: qualityDisposition.repairAdmitted,
           repairSkippedReason: qualityDisposition.repairSkippedReason,
         }),
       ].join("\n\n"),
-      dependencyTaskIds: [
-        ...allInitialDependencyIds,
-        ...appendedTasks.map((task) => task.taskId),
-      ],
+      dependencyTaskIds: qualityDisposition.repairAdmitted
+        ? appendedTasks.map((task) => task.taskId)
+        : preSynthesisTasks
+          .filter((task) =>
+            task.profileId === "answer-drafter" || task.profileId === "answer-critic"
+          )
+          .map((task) => task.taskId),
     };
     appendedTasks.push(synthTask);
     const admissions = appendedTasks.map((task) => {
       const selected = chatSubagentProfileByIdV1(task.profileId);
       profileByTaskId.set(task.taskId, task.profileId);
+      taskById.set(task.taskId, task);
       state.taskStatuses[task.taskId] = "admitted";
       return {
         taskId: task.taskId,
@@ -986,6 +1363,100 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     schema: z.object({}).strict(),
   });
 
+  const phaseOrder = [
+    "acquisition",
+    "analysis",
+    "reconciliation",
+    "drafting",
+    "critique",
+    "repair",
+    "synthesis",
+  ] as const;
+  const phaseRank = (task: ChatWorkflowTaskProposalV1): number =>
+    phaseOrder.indexOf(chatSubagentProfileByIdV1(task.profileId).phase);
+  const advanceResponse = (
+    status: ChatWorkflowAdvanceResponseV1["status"],
+    completedTaskIds: readonly string[],
+  ): ChatWorkflowAdvanceResponseV1 => ({
+    schema: "atlcli.chat-workflow-advance/v1",
+    status,
+    completedTaskIds: [...completedTaskIds],
+    remainingTaskIds: [...taskById.values()]
+      .filter((task) => state.taskStatuses[task.taskId] !== "completed")
+      .map((task) => task.taskId)
+      .sort((left, right) => left.localeCompare(right, "en-US")),
+  });
+  const advanceTool = tool(async (_value, config) => {
+    if (advancing) {
+      throw new ChatContractError(
+        "invalid-request",
+        "The Chat workflow is already advancing.",
+      );
+    }
+    const workflow = acceptedWorkflow;
+    if (!workflow) {
+      throw new ChatContractError(
+        "invalid-request",
+        "The Chat workflow must be accepted before it can advance.",
+      );
+    }
+    advancing = true;
+    const completedTaskIds: string[] = [];
+    try {
+      while (true) {
+        if (finalDraft && qualityDisposition) {
+          return JSON.stringify(advanceResponse("complete", completedTaskIds));
+        }
+        const initialTaskIds = workflow.tasks
+          .filter((task) => task.taskId !== workflow.synthesizerTaskId)
+          .map((task) => task.taskId);
+        if (
+          !qualityDisposition &&
+          initialTaskIds.every((taskId) => state.taskStatuses[taskId] === "completed")
+        ) {
+          return JSON.stringify(advanceResponse("quality-review-required", completedTaskIds));
+        }
+        const ready = [...taskById.values()]
+          .filter((task) => state.taskStatuses[task.taskId] === "admitted")
+          .filter((task) => task.dependencyTaskIds.every(
+            (taskId) => state.taskStatuses[taskId] === "completed",
+          ));
+        if (ready.length === 0) {
+          throw new ChatContractError(
+            "invalid-report",
+            "The accepted Chat workflow has no executable task frontier.",
+          );
+        }
+        const nextRank = Math.min(...ready.map(phaseRank));
+        const wave = ready.filter((task) => phaseRank(task) === nextRank);
+        if (
+          wave.some((task) => ["drafting", "critique"].includes(
+            chatSubagentProfileByIdV1(task.profileId).phase,
+          )) &&
+          !input.strategyReviewCurrent?.()
+        ) {
+          return JSON.stringify(advanceResponse("strategy-review-required", completedTaskIds));
+        }
+        await Promise.all(wave.map(async (task) => {
+          const selected = chatSubagentProfileByIdV1(task.profileId);
+          const dispatchInput = createChatWorkflowDispatchV1({ task, profile: selected });
+          await dispatch.invoke({
+            description: dispatchInput.description,
+            subagent_type: dispatchInput.subagentType,
+          }, { ...config, signal: input.signal });
+          completedTaskIds.push(task.taskId);
+        }));
+      }
+    } finally {
+      advancing = false;
+    }
+  }, {
+    name: "chat_workflow_advance",
+    description:
+      "Execute every currently admissible Chat specialist wave from the accepted dynamic graph. The host binds task descriptions, profiles, schemas, dependencies, concurrency, and results. Call again only after the returned strategy or quality checkpoint has completed.",
+    schema: z.object({}).strict(),
+  });
+
   const boundedTask = tool(
     (taskInput: AgenticTaskToolInputV1, config) => dispatch.invoke(taskInput, config),
     {
@@ -1004,7 +1475,9 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   return {
     middleware,
     proposalTool: proposal.tool,
+    advanceTool,
     qualityReviewTool,
+    allowedProfileIds: Object.freeze([...allowedProfileIds]),
     acceptedWorkflow: proposal.acceptedWorkflow,
     acceptedResponse: proposal.acceptedResponse,
     finalDraft: () => finalDraft,

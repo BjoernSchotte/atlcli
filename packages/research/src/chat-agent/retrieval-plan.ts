@@ -254,6 +254,14 @@ const RAW_QUERY_LANGUAGE_PATTERN =
 const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$/u;
 const CONFLUENCE_ID_PATTERN = /^[1-9][0-9]{0,127}$/u;
 const LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/u;
+const QUERY_STOP_WORDS = new Set([
+  "about", "answer", "belege", "beschreibe", "content", "erklaere", "erkläre",
+  "diesem", "dokumentierten", "erkennbare", "erste", "fasse", "finde", "geben",
+  "gemeinsamkeiten", "inhalte", "installation", "konfiguration", "konfigurationswege",
+  "link", "links", "nenne", "nutzung", "quelle", "quellen", "schritte", "seite",
+  "space", "summarize", "summary", "unterschiede", "use", "using", "vergleiche",
+  "welche", "what", "widersprueche", "widersprüche", "with", "zentrale",
+]);
 
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-request", message);
@@ -359,6 +367,61 @@ function defaultQueryVariants(question: string): ChatSearchVariantProposalV1[] {
   ).slice(0, 3);
 }
 
+function ensureConciseCoreTermVariant(
+  question: string,
+  variants: ChatSearchVariantProposalV1[],
+): ChatSearchVariantProposalV1[] {
+  const textVariants = variants
+    .map((variant) => variant.query.text?.toLocaleLowerCase("en-US"))
+    .filter((text): text is string => Boolean(text));
+  const questionTokens = cleanText(question, "Chat question", 2_000)
+    .toLocaleLowerCase("en-US")
+    .match(/[\p{L}][\p{L}\p{N}._-]{3,79}/gu)
+    ?.map((token) => token.replace(/^[._-]+|[._-]+$/gu, ""))
+    .filter(Boolean) ?? [];
+  const candidates = [...new Set(questionTokens)]
+    .filter((token) => !QUERY_STOP_WORDS.has(token))
+    .map((token, order) => ({
+      token,
+      order,
+      occurrences: textVariants.filter((text) =>
+        new RegExp(`(?:^|[^\\p{L}\\p{N}._-])${token.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?:$|[^\\p{L}\\p{N}._-])`, "u")
+          .test(text)
+      ).length,
+    }))
+    .sort((left, right) =>
+      right.occurrences - left.occurrences || left.order - right.order
+    );
+  // Technical identifiers are often the only stable bridge between a broad
+  // natural-language question and the source index. Prefer them even when a
+  // model proposed just one verbose variant; otherwise require repetition
+  // across independently proposed variants before injecting a generic term.
+  const technical = candidates.find((candidate) =>
+    /(?:cli|api|sdk|mcp|js)$/iu.test(candidate.token) ||
+    /[\p{L}\p{N}][._-][\p{L}\p{N}]/u.test(candidate.token) ||
+    /\d/u.test(candidate.token)
+  );
+  const core = technical?.token ?? candidates.find((candidate) =>
+    candidate.occurrences >= 2
+  )?.token;
+  if (!core || variants.some((variant) =>
+    variant.query.text?.trim().toLocaleLowerCase("en-US") === core
+  )) return variants;
+  const ids = new Set(variants.map((variant) => variant.variantId));
+  let variantId = "host-core-term";
+  for (let suffix = 2; ids.has(variantId); suffix += 1) {
+    variantId = `host-core-term-${suffix}`;
+  }
+  return [
+    {
+      variantId,
+      query: { text: core },
+      expectedInformationGain: "high",
+    },
+    ...variants.slice(0, 2),
+  ];
+}
+
 function scopeBindingProjection(
   binding: ResearchScopeBindingV1,
 ): ChatResolvedRetrievalEntityV1 | undefined {
@@ -412,7 +475,11 @@ function canonicalSearches(input: {
     const variantIds = new Set<string>();
     const queryFingerprints = new Set<string>();
     const gainRank = { high: 0, medium: 1, low: 2 } as const;
-    const variants = search.variants.map((variant, index) => {
+    const variants = ensureConciseCoreTermVariant(input.question, search.variants)
+      // At least one page is required to execute a variant. Keep only the
+      // highest-value variants that fit the product-wide page ceiling.
+      .slice(0, input.limits.maxSearchPagesPerProduct)
+      .map((variant, index) => {
       const variantId = identifier(variant.variantId, "Chat query variant ID");
       if (variantIds.has(variantId)) invalid("Chat query variant ID is duplicated.");
       variantIds.add(variantId);
@@ -429,8 +496,17 @@ function canonicalSearches(input: {
         expectedInformationGain: variant.expectedInformationGain ??
           (["high", "medium", "low"] as const)[Math.min(index, 2)]!,
       };
-    }).sort((left, right) =>
+      }).sort((left, right) =>
       gainRank[left.expectedInformationGain] - gainRank[right.expectedInformationGain]
+    );
+    // ResearchRunBudget owns one product-wide page ceiling. The proposal's
+    // maxPages is a requested per-variant ceiling, so clamp it before admission
+    // such that all admitted variants are actually executable within that root
+    // budget. A plan must never advertise 3 x 5 pages while the broker permits
+    // only 5 Confluence pages in total.
+    const maxPages = Math.min(
+      search.maxPages,
+      Math.max(1, Math.floor(input.limits.maxSearchPagesPerProduct / variants.length)),
     );
     const scopeBindingIds = input.resolvedEntities
       .filter((entity) => entity.product === search.product &&
@@ -444,7 +520,7 @@ function canonicalSearches(input: {
       searchId,
       product: search.product,
       variants,
-      maxPages: search.maxPages,
+      maxPages,
       scopeBindingIds,
     };
   }).sort((left, right) => left.product.localeCompare(right.product, "en-US"));
@@ -454,12 +530,15 @@ function canonicalTraversals(input: {
   proposal?: ChatRetrievalPlanProposalV1;
   products: readonly ResearchProduct[];
   anchors: readonly ChatRetrievalAnchorV1[];
+  enabled: boolean;
 }): ChatRelationshipTraversalProposalV1[] {
   const available = new Set<ChatRelationshipTraversalKindV1>();
-  if (input.products.includes("confluence") || input.anchors.some((anchor) => anchor.product === "confluence")) {
+  if (input.enabled &&
+      (input.products.includes("confluence") || input.anchors.some((anchor) => anchor.product === "confluence"))) {
     available.add("confluence-to-jira-reference");
   }
-  if (input.products.includes("jira") || input.anchors.some((anchor) => anchor.product === "jira")) {
+  if (input.enabled &&
+      (input.products.includes("jira") || input.anchors.some((anchor) => anchor.product === "jira"))) {
     available.add("jira-to-confluence-remote-link");
   }
   const proposed = input.proposal?.relationshipTraversals ?? [...available].map((kind) => ({
@@ -495,6 +574,7 @@ export function createChatRetrievalPlanV1(input: {
   exactContextProducts: readonly ResearchProduct[];
   limits: ResearchLimitsV1;
   agentic: boolean;
+  relationshipTracing?: boolean;
   proposal?: ChatRetrievalPlanProposalV1;
   now?: () => number;
 }): ChatRetrievalPlanV1 {
@@ -552,6 +632,7 @@ export function createChatRetrievalPlanV1(input: {
     ...(input.proposal ? { proposal: input.proposal } : {}),
     products: [...new Set([...allowedSearchProducts, ...anchors.map((anchor) => anchor.product)])],
     anchors,
+    enabled: input.relationshipTracing !== false,
   });
   const unresolvedTerms = [...new Set((input.proposal?.unresolvedTerms ?? []).map((term) =>
     cleanText(term, "Chat unresolved term", 160)
@@ -792,6 +873,33 @@ export class ChatCandidateLedgerControllerV1 {
     return this.#plan.searches
       .filter((search) => search.product === product)
       .flatMap((search) => search.variants.map((variant) => structuredClone(variant.query)));
+  }
+
+  /**
+   * True only after every admitted query variant for one product returned a
+   * terminal page and none discovered a candidate. Search specialists use
+   * this host-owned signal to stop evaluating code and return an explicit gap
+   * instead of inventing queries after the safe retrieval plan is exhausted.
+   */
+  isSearchExhaustedWithoutCandidates(product: ResearchProduct): boolean {
+    return this.isSearchPlanSaturated(product) &&
+      !this.#ledger.candidates.some((candidate) => candidate.product === product);
+  }
+
+  isSearchPlanSaturated(product: ResearchProduct): boolean {
+    const planned = this.#plan.searches
+      .filter((search) => search.product === product)
+      .flatMap((search) => search.variants.map((variant) => ({
+        searchId: search.searchId,
+        variantId: variant.variantId,
+      })));
+    if (planned.length === 0) return false;
+    const completed = new Set(this.#ledger.searches
+      .filter((search) => search.product === product && search.terminal)
+      .map((search) => `${search.searchId}:${search.queryVariantId}`));
+    return planned.every((variant) =>
+      completed.has(`${variant.searchId}:${variant.variantId}`)
+    );
   }
 
   #variantFor(product: ResearchProduct, input: unknown): {

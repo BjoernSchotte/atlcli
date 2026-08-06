@@ -65,9 +65,18 @@ export function createChatPtcToolsV1(
   options: ChatPtcToolOptionsV1 = {},
 ): DynamicStructuredTool[] {
   let sequence = 0;
+  const directReadCache = new Map<string, Promise<BoundEntityReadOutputV1>>();
   const now = options.now ?? Date.now;
   const direct = tool(async (input) => {
     const callId = `${BOUND_ENTITY_READ_CAPABILITY_ID_V1}:${++sequence}`;
+    await options.beforeInvoke?.(
+      BOUND_ENTITY_READ_CAPABILITY_ID_V1,
+      input,
+      callId,
+      "detail",
+    );
+    const existing = directReadCache.get(input.anchorRef);
+    if (existing) return JSON.stringify(await existing);
     const startedAt = now();
     options.onDiagnostic?.({
       callId,
@@ -77,16 +86,12 @@ export function createChatPtcToolsV1(
       inputKeys: ["anchorRef"],
     });
     try {
-      await options.beforeInvoke?.(
-        BOUND_ENTITY_READ_CAPABILITY_ID_V1,
-        input,
-        callId,
-        "detail",
-      );
-      const result = await broker.readExactAnchor({
+      const read = broker.readExactAnchor({
         schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
         ...input,
       });
+      directReadCache.set(input.anchorRef, read);
+      const result = await read;
       const serialized = JSON.stringify(result);
       await options.onResult?.(BOUND_ENTITY_READ_CAPABILITY_ID_V1, result, callId, input);
       options.onDiagnostic?.({

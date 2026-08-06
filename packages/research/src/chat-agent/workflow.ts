@@ -433,7 +433,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-drafter",
     phase: "drafting",
     description: "Create one provisional conversational answer for independent critique.",
-    systemPrompt: "Draft one provisional answer from accepted evidence and analysis packets. Use exact [[source:SOURCE_ID]] placeholders on every factual paragraph and preserve explicit gaps. This draft is not user-visible and is not the final answer. Do not retrieve, delegate, or produce a Deep Research report.",
+    systemPrompt: "Draft one provisional answer from accepted evidence and analysis packets. Use exact [[source:SOURCE_ID]] placeholders on every factual paragraph and preserve explicit gaps. Never turn incomplete candidate coverage into a claim that content does not exist in a whole space, project, or tenant; scope negative findings to the sources read in detail. This draft is not user-visible and is not the final answer. Do not retrieve, delegate, or produce a Deep Research report.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -451,7 +451,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-critic",
     phase: "critique",
     description: "Critique answer coverage, grounding, citations, and unresolved gaps.",
-    systemPrompt: "Independently critique the provisional answer against the versioned host groundedness rubric and accepted evidence packets. Return at most four prioritized typed defects. Check question coverage, claim support, exact citation identity, source authority/freshness, contradiction handling, wrong-source risk, uncovered candidates, false completeness, and instruction isolation exactly once. Use only the closed defect, severity, and repair-action enums. Treat unresolved interpretation as a gap. Do not retrieve, delegate, repair, or author the final answer.",
+    systemPrompt: "Independently critique the provisional answer against the versioned host groundedness rubric and accepted evidence packets. Return at most four prioritized typed defects. Check question coverage, claim support, exact citation identity, source authority/freshness, contradiction handling, wrong-source risk, uncovered candidates, false completeness, and instruction isolation exactly once. Treat any whole-space, whole-project, or tenant-wide absence claim as false completeness unless every admitted candidate was detail-read and the host retrieval assessment is complete. Use only the closed defect, severity, and repair-action enums. Treat unresolved interpretation as a gap. Do not retrieve, delegate, repair, or author the final answer.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-critique-packet/v1",
     responseSchema: CHAT_CRITIQUE_PACKET_SCHEMA_V1,
@@ -484,14 +484,14 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "synthesizer",
     phase: "synthesis",
     description: "Write one concise conversational answer from accepted evidence and analysis packets.",
-    systemPrompt: "Write the single final conversational answer only from accepted evidence, the provisional draft, deterministic quality state, critic defects, the optional bounded repair packet, and explicit gaps. Correct or omit every defect before writing. Before writing, copy canonical source IDs from accepted dependency packets. Every paragraph containing an evidence-derived fact MUST end on that same line with one or more placeholders copied exactly as [[source:SOURCE_ID]]. Example: `The implementation is complete. [[source:jira:DEMO-1]]` Headings need no marker. Never use Markdown links or a separate source list in messageMarkdown. Put every used SOURCE_ID, without section suffixes, in citationSourceIds. If a factual paragraph cannot be cited this way, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
+    systemPrompt: "Finalize the already analyzed and independently checked answer; do not re-run the analysis. Write the single final conversational answer only from accepted evidence, the provisional draft, deterministic quality state, critic defects, the optional bounded repair packet, and explicit gaps. Correct or omit every defect before writing. Every factual paragraph must answer a requested comparison dimension or justify the requested recommendation; omit provenance, side facts, and technically true details that do not help answer the user's actual question. Include only material gaps that could change the requested answer, comparison, or recommendation. The host quality disposition contains requiredGapMappings; include at least one gaps entry with each listed finalGapCode, but do not invent auxiliary gaps merely because an unrequested linked page or external reference was not read. Keep messageMarkdown concise and below 700 words; this is normal Chat, not a research report. Never turn incomplete candidate coverage into a claim that content does not exist in a whole space, project, or tenant; say only that it was not found in the sources read in detail. Before writing, copy canonical source IDs from accepted dependency packets. Every paragraph containing an evidence-derived fact MUST end on that same line with one or more placeholders copied exactly as [[source:SOURCE_ID]]. Example: `The implementation is complete. [[source:jira:DEMO-1]]` Headings need no marker. Never use Markdown links or a separate source list in messageMarkdown. Put every used SOURCE_ID, without section suffixes, in citationSourceIds. If a factual paragraph cannot be cited this way, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
       ...CHAT_AGENT_DRAFT_JSON_SCHEMA_V1,
       title: "ChatAnswerDraftV1",
     }),
-    modelPreference: "thorough",
+    modelPreference: "balanced",
     maxInputChars: 32_000,
     maxResultBytes: 32_000,
     maxDurationMs: 90_000,
@@ -623,7 +623,6 @@ export function admitChatWorkflowProposalV1(input: {
     invalid("The Chat workflow concurrency is outside the host-owned bounds.");
   }
   const ids = new Set<string>();
-  const profiles = new Set<ChatSubagentProfileIdV1>();
   const proposedTasks = proposal.tasks.map((candidate) => {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
       invalid("A Chat workflow task is invalid.");
@@ -644,10 +643,6 @@ export function admitChatWorkflowProposalV1(input: {
     if (candidate.profileId === "answer-repairer") {
       invalid("The answer repairer is admitted only by the host quality checkpoint.");
     }
-    if (profiles.has(candidate.profileId)) {
-      invalid("A Chat workflow profile may be selected at most once per turn.");
-    }
-    profiles.add(candidate.profileId);
     if (!Array.isArray(candidate.dependencyTaskIds) || candidate.dependencyTaskIds.length > 7 ||
         candidate.dependencyTaskIds.some((entry) => typeof entry !== "string") ||
         new Set(candidate.dependencyTaskIds).size !== candidate.dependencyTaskIds.length) {
@@ -739,16 +734,25 @@ export function admitChatWorkflowProposalV1(input: {
   if (tasks.some((task) => task.taskId !== synthesizer.taskId && !ancestors.has(task.taskId))) {
     invalid("Every Chat workflow task must feed the dedicated synthesizer.");
   }
+  // The generic workflow compiler models runnable task instances by their
+  // unique subagent type. Chat deliberately permits several task instances to
+  // share one least-privilege profile (for example, parallel readers for two
+  // facets of a question), so compile deterministic instance types while the
+  // dispatch admissions retain the registered DeepAgentsJS profile type.
+  const compiledTypeByTaskId = new Map(tasks.map((task, index) => [
+    task.taskId,
+    `${profileByTaskId.get(task.taskId)!.subagentType}:${index + 1}`,
+  ]));
   const compiled = compileAgenticWorkflowV1({
     schema: AGENTIC_WORKFLOW_SCHEMA_V1,
     id: `chat:${input.strategy.qualityMode}:${tasks.map((task) => task.profileId).join("+")}`,
     completionObjective: "conversation-answer",
     profiles: tasks.map((task) => ({
-      subagentType: profileByTaskId.get(task.taskId)!.subagentType,
+      subagentType: compiledTypeByTaskId.get(task.taskId)!,
       roleId: profileByTaskId.get(task.taskId)!.roleId,
       phase: profileByTaskId.get(task.taskId)!.phase,
       dependsOnSubagentTypes: task.dependencyTaskIds.map((dependencyTaskId) =>
-        profileByTaskId.get(dependencyTaskId)!.subagentType
+        compiledTypeByTaskId.get(dependencyTaskId)!
       ),
     })),
     maxTasks,
@@ -782,6 +786,85 @@ const workflowTaskProposalSchema = z.object({
   objective: z.string().min(1).max(1_000),
   dependencyTaskIds: z.array(z.string().min(1).max(200)).max(7),
 }).strict();
+
+function normalizeModelWorkflowDependenciesV1(
+  tasks: readonly ChatWorkflowTaskProposalV1[],
+): ChatWorkflowTaskProposalV1[] {
+  const taskById = new Map(tasks.map((task) => [task.taskId, task]));
+  return tasks.map((task) => {
+    const ownProfile = PROFILE_BY_ID.get(task.profileId);
+    if (!ownProfile) return { ...task };
+    return {
+      ...task,
+      dependencyTaskIds: task.dependencyTaskIds.filter((dependencyTaskId) => {
+        const dependency = taskById.get(dependencyTaskId);
+        if (!dependency || dependency.taskId === task.taskId) return true;
+        const dependencyProfile = PROFILE_BY_ID.get(dependency.profileId);
+        return !dependencyProfile ||
+          phaseRank(dependencyProfile.phase) < phaseRank(ownProfile.phase);
+      }),
+    };
+  });
+}
+
+function normalizeModelRetrievalPlanV1(
+  proposal: ChatRetrievalPlanProposalV1 | undefined,
+): ChatRetrievalPlanProposalV1 | undefined {
+  if (!proposal) return undefined;
+  const gainRank = { high: 0, medium: 1, low: 2 } as const;
+  const searchesByProduct = new Map<"jira" | "confluence", NonNullable<ChatRetrievalPlanProposalV1["searches"]>[number]>();
+  for (const search of proposal.searches ?? []) {
+    const current = searchesByProduct.get(search.product);
+    if (!current) {
+      searchesByProduct.set(search.product, structuredClone(search));
+      continue;
+    }
+    current.maxPages = Math.max(current.maxPages, search.maxPages);
+    current.variants.push(...structuredClone(search.variants));
+  }
+  const usedSearchIds = new Set<string>();
+  const searches = [...searchesByProduct.values()].map((search) => {
+    let searchId = search.searchId;
+    if (usedSearchIds.has(searchId)) searchId = `search:${search.product}`;
+    usedSearchIds.add(searchId);
+    const queryFingerprints = new Set<string>();
+    const variantIds = new Set<string>();
+    const variants = search.variants
+      .sort((left, right) =>
+        gainRank[left.expectedInformationGain ?? "medium"] -
+        gainRank[right.expectedInformationGain ?? "medium"]
+      )
+      .filter((variant) => {
+        const fingerprint = JSON.stringify(variant.query);
+        if (queryFingerprints.has(fingerprint)) return false;
+        queryFingerprints.add(fingerprint);
+        return true;
+      })
+      .slice(0, 3)
+      .map((variant, index) => {
+        let variantId = variant.variantId;
+        if (variantIds.has(variantId)) {
+          variantId = `${variant.variantId.slice(0, 100)}:${index + 1}`;
+        }
+        variantIds.add(variantId);
+        return { ...variant, variantId };
+      });
+    return { ...search, searchId, variants };
+  });
+  const traversalKinds = new Set<string>();
+  const relationshipTraversals = (proposal.relationshipTraversals ?? []).filter((traversal) => {
+    if (traversalKinds.has(traversal.kind)) return false;
+    traversalKinds.add(traversal.kind);
+    return true;
+  });
+  return {
+    ...(searches.length > 0 ? { searches } : {}),
+    ...(relationshipTraversals.length > 0 ? { relationshipTraversals } : {}),
+    ...(proposal.unresolvedTerms
+      ? { unresolvedTerms: [...new Set(proposal.unresolvedTerms)] }
+      : {}),
+  };
+}
 
 /**
  * One-shot host admission for a model-proposed Chat topology. The returned
@@ -827,6 +910,7 @@ export function createChatWorkflowProposalControllerV1(input: {
   const allowedProfiles = new Set(
     input.allowedProfileIds ?? CHAT_SUBAGENT_PROFILE_IDS_V1,
   );
+  const allowedProfileList = [...allowedProfiles];
   const proposalTool = tool(async (proposal) => {
     if (accepted || accepting) {
       throw new ChatContractError(
@@ -835,35 +919,45 @@ export function createChatWorkflowProposalControllerV1(input: {
       );
     }
     input.beforeProposal?.();
-    if (proposal.tasks.some((task) => !allowedProfiles.has(task.profileId))) {
+    const unavailableProfiles = [...new Set(proposal.tasks
+      .map((task) => task.profileId)
+      .filter((profileId) => !allowedProfiles.has(profileId)))];
+    if (unavailableProfiles.length > 0) {
       throw new ChatContractError(
         "invalid-request",
-        "The Chat workflow requested a profile whose capabilities are unavailable in this turn.",
+        `The Chat workflow requested unavailable profiles (${unavailableProfiles.join(", ")}). ` +
+          `Use only: ${allowedProfileList.join(", ")}.`,
       );
     }
     accepting = true;
     try {
       input.budget.beginPtc({ schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 });
+      const normalizedRetrievalPlan = normalizeModelRetrievalPlanV1(
+        proposal.retrievalPlan,
+      );
       const workflowProposal: ChatWorkflowProposalV1 = {
         schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1,
         maxConcurrency: proposal.maxConcurrency,
         tasks: proposal.tasks.map((task) => ({ ...task })),
-        ...(proposal.retrievalPlan ? { retrievalPlan: proposal.retrievalPlan } : {}),
+        ...(normalizedRetrievalPlan ? { retrievalPlan: normalizedRetrievalPlan } : {}),
       };
       await input.beforeAdmission?.(workflowProposal);
       const context = taskContext();
+      const normalizedTasks = normalizeModelWorkflowDependenciesV1(
+        proposal.tasks.map((task) => ({ ...task })),
+      );
       const workflow = admitChatWorkflowProposalV1({
         strategy: input.strategy,
         proposal: {
           schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1,
           maxConcurrency: proposal.maxConcurrency,
-          tasks: proposal.tasks.map((task) => ({
+          tasks: normalizedTasks.map((task) => ({
             ...task,
             objective: context
               ? `${task.objective}\n\nHost-bound turn context:\n${context}`
               : task.objective,
           })),
-          ...(proposal.retrievalPlan ? { retrievalPlan: proposal.retrievalPlan } : {}),
+          ...(normalizedRetrievalPlan ? { retrievalPlan: normalizedRetrievalPlan } : {}),
         },
       });
       if (!workflow) {
@@ -896,7 +990,9 @@ export function createChatWorkflowProposalControllerV1(input: {
   }, {
     name: "chat_workflow_propose",
     description:
-      "Propose one bounded dependency graph from the nine model-selectable Chat profiles after accepting an agentic strategy. Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, and response schemas for dispatch.",
+      `Propose one bounded dependency graph after accepting an agentic strategy. ` +
+      `The complete profile set available in this turn is: ${allowedProfileList.join(", ")}. ` +
+      "Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. Default to one parallel exact-context reader per bounded anchor so each child context and QuickJS result stays bounded. Group exact anchors only when the host objective establishes that their combined projections fit one task's byte and output limits. Keep admitted search variants for the same product in one search-reader task because its host controller owns the product-wide pagination and detail budget. Split other readers when their products, capability grants, independent facets, or latency benefit materially differ. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, and response schemas for dispatch.",
     schema: z.object({
       tasks: z.array(workflowTaskProposalSchema).min(4).max(9),
       maxConcurrency: z.number().int().min(1).max(3),

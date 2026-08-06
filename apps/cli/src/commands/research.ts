@@ -2495,7 +2495,7 @@ export function buildChatRequest(
       ),
       maxModelCostMicros:
         input.maxCostUsd === undefined
-          ? 500_000
+          ? DEFAULT_RESEARCH_LIMITS_V1.maxModelCostMicros
           : request.limits.maxModelCostMicros,
     },
   });

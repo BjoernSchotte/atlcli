@@ -10,6 +10,7 @@ import {
   assessChatStrategyReviewV1,
   createChatStrategyDecisionControllerV1,
   createChatStrategyReviewControllerV1,
+  deriveChatAcquisitionProductsV1,
   deriveChatStrategyDecisionV1,
 } from "./strategy.js";
 
@@ -112,7 +113,93 @@ describe("host-owned Chat strategy decisions", () => {
         expectedComplexity: "simple",
         qualityRisks: [],
       });
+      expect(decision.requiredCapabilities).toEqual([
+        "exact-read",
+        "chat-answer",
+      ]);
     }
+  });
+
+  test("reuses retained exact pages for a follow-up without turning allowed scope into discovery intent", () => {
+    const decision = deriveChatStrategyDecisionV1({
+      qualityPolicy: chatQualityPolicyV1("deep"),
+      question: "Review the previous answer and correct every unsupported claim.",
+      scope,
+      anchors: [
+        pageAnchor,
+        { ...pageAnchor, anchorRef: "research-anchor:page-2", name: "Second synthetic page" },
+      ],
+    });
+    expect(decision).toMatchObject({
+      execution: "agentic",
+      reasonCodes: ["multi-anchor"],
+      expectedComplexity: "moderate",
+    });
+    expect(decision.requiredCapabilities).toEqual([
+      "exact-read",
+      "quality-review",
+      "chat-answer",
+    ]);
+    expect(decision.requiredCapabilities).not.toContain("confluence-discovery");
+    expect(deriveChatAcquisitionProductsV1({
+      decision,
+      scope,
+      anchors: [pageAnchor],
+    })).toEqual({
+      searchProducts: [],
+      exactContextProducts: ["confluence"],
+    });
+  });
+
+  test("enables broad discovery when an exact-context question explicitly widens to the space", () => {
+    const decision = deriveChatStrategyDecisionV1({
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      question: "Search the whole space for related pages and compare them with this page.",
+      scope,
+      anchors: [pageAnchor],
+    });
+    expect(decision.execution).toBe("agentic");
+    expect(decision.reasonCodes).toContain("broad-scope-discovery");
+    expect(decision.requiredCapabilities).toContain("confluence-discovery");
+    expect(deriveChatAcquisitionProductsV1({
+      decision,
+      scope,
+      anchors: [pageAnchor],
+    })).toEqual({
+      searchProducts: ["confluence"],
+      exactContextProducts: [],
+    });
+  });
+
+  test("discovers within a bound space when no exact anchor exists", () => {
+    const decision = deriveChatStrategyDecisionV1({
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      question: "Where is the installation process documented?",
+      scope,
+      anchors: [],
+    });
+    expect(decision.execution).toBe("agentic");
+    expect(decision.reasonCodes).toContain("broad-scope-discovery");
+    expect(decision.requiredCapabilities).toContain("confluence-discovery");
+  });
+
+  test("honors an explicit no-new-search instruction even when scope is available", () => {
+    const decision = deriveChatStrategyDecisionV1({
+      qualityPolicy: chatQualityPolicyV1("deep"),
+      question: "Correct the comparison from the retained evidence. Nutze keine neue Suche.",
+      scope,
+      anchors: [],
+    });
+    expect(decision.reasonCodes).toContain("no-atlassian-acquisition");
+    expect(decision.requiredCapabilities).not.toContain("confluence-discovery");
+    expect(deriveChatAcquisitionProductsV1({
+      decision,
+      scope,
+      anchors: [],
+    })).toEqual({
+      searchProducts: [],
+      exactContextProducts: [],
+    });
   });
 
   test("selects agentic Auto and Deep for comparison, relationship, and contradiction cases", () => {

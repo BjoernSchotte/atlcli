@@ -165,6 +165,34 @@ describe("Chat exact-anchor retrieval", () => {
     });
   });
 
+  test("reuses one exact read result when a specialist retries the same opaque anchor", async () => {
+    const calls: string[] = [];
+    const observed: string[] = [];
+    const diagnostics: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [
+        seed({ product: "confluence", entityKind: "space", key: "~account-id", name: "Personal space", id: "space-personal" }),
+        seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" }),
+      ],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "cached-anchor" });
+    const tool = createChatPtcToolsV1(broker, {
+      onResult: async (_name, _result, callId) => { observed.push(callId); },
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.outcome),
+    }).find((candidate) => candidate.name === "atlassian_bound_read");
+    if (!tool) throw new Error("missing exact read tool");
+    const input = { anchorRef: broker.exactAnchors()[0]!.anchorRef };
+
+    const first = await tool.invoke(input);
+    const second = await tool.invoke(input);
+
+    expect(second).toBe(first);
+    expect(calls).toEqual(["wiki.get:1001"]);
+    expect(observed).toHaveLength(1);
+    expect(diagnostics).toEqual(["started", "success"]);
+  });
+
   test("restores a turn-bound opaque anchor in a fresh broker without widening scope", async () => {
     const scopedRequest = request({
       seeds: [

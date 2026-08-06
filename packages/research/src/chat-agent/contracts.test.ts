@@ -24,6 +24,8 @@ import {
   chatRecursionLimitV1,
   createChatDirectToolSurfaceMiddlewareV1,
   createKiteweaveChatAgent,
+  projectChatAgentDiagnosticActivityV1,
+  projectChatReasoningSummaryDeltaV1,
   streamedJsonStringFieldV1,
   type ChatAgentRuntimeBindings,
 } from "./runtime.js";
@@ -86,6 +88,43 @@ const syntheticCompleteContent = {
 };
 
 describe("Chat answer contract", () => {
+  test("keeps recoverable child eval retries out of user-facing activity", () => {
+    expect(projectChatAgentDiagnosticActivityV1({
+      kind: "eval-step",
+      profileId: "exact-context-reader",
+      status: "error",
+      attempt: 1,
+      errorCode: "other",
+    })).toBeUndefined();
+    expect(projectChatAgentDiagnosticActivityV1({
+      kind: "eval-step",
+      status: "error",
+      errorCode: "syntax",
+    })).toEqual({ code: "bounded-workflow-failed", status: "failed" });
+  });
+
+  test("projects streamed provider summaries into localized semantic progress", () => {
+    const state = { accumulated: "", emittedCodes: new Set<string>() };
+    const first = projectChatReasoningSummaryDeltaV1(
+      state,
+      "The user wants to compare two pages. Call chatStrategyDecide first. ",
+      "de-DE",
+    );
+    const second = projectChatReasoningSummaryDeltaV1(
+      state,
+      "Then read both sources and check the evidence before drafting the answer.",
+      "de-DE",
+    );
+    const combined = `${first}${second}`;
+
+    expect(first).toContain("Frage und der ausgewählte Kontext");
+    expect(first).toContain("Lese- und Prüfschritte");
+    expect(combined).toContain("benötigten Quellen");
+    expect(combined).toContain("verfügbaren Belegen");
+    expect(combined).toContain("belegte Antwort");
+    expect(combined).not.toContain("chatStrategyDecide");
+  });
+
   test("keeps strict host validation while removing provider-unsupported schema keywords", () => {
     const serialized = JSON.stringify(providerCompatibleChatAnswerSchemaV1());
     for (const keyword of ["maxItems", "maxLength", "minLength", "pattern"]) {
@@ -288,7 +327,8 @@ describe("Chat answer contract", () => {
       "[Synthetic page](https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001)",
     );
     expect(answer.messageMarkdown).not.toContain("#section:999:not-read");
-    expect(answer.messageMarkdown).not.toContain("section reference was not read separately");
+    expect(answer.messageMarkdown).toContain("### Limits");
+    expect(answer.messageMarkdown).toContain("section reference was not read separately");
     expect(answer.citations).toEqual([{
       sourceId: "wiki:1001",
       title: "Synthetic page",
@@ -299,6 +339,28 @@ describe("Chat answer contract", () => {
       code: "unresolved-reference",
       sourceIds: ["wiki:1001"],
     })]);
+  });
+
+  test("renders accepted answer gaps in the user-visible Markdown", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: "Belegte Zusammenfassung. [[source:wiki:1001]]",
+        citationSourceIds: ["wiki:1001"],
+        gaps: [{
+          code: "incomplete-coverage",
+          message: "Die verlinkte Folgeseite wurde nicht gelesen.",
+          sourceIds: ["wiki:1001"],
+        }],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+      locale: "de",
+    });
+
+    expect(answer.messageMarkdown).toContain("### Grenzen");
+    expect(answer.messageMarkdown).toContain("- Die verlinkte Folgeseite wurde nicht gelesen.");
   });
 
   test("omits unsupported citation claims and still rejects unknown gap evidence", () => {
@@ -539,6 +601,71 @@ describe("Chat answer contract", () => {
     expect(answer.messageMarkdown).toContain("included Confluence item was not resolved");
   });
 
+  test("preserves Markdown structure and scopes absence claims when retrieval is incomplete", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "### 1. Gemeinsamkeiten",
+          "",
+          "Die gelesene Seite nennt z. B. einen Export vs. isomorphes Rendering. [[source:wiki:1001]]",
+          "",
+          "| Kriterium | Ergebnis |",
+          "|---|---|",
+          "| Installationsanleitung | Nicht vorhanden im Space [[source:wiki:1001]] |",
+          "",
+          "Im DOCSY-Space existiert keine dedizierte Installationsanleitung.",
+          "",
+          "Insgesamt 6 Seiten gefunden.",
+          "Die Konfigurationsreferenz fehlt in allen ausgewerteten Seiten.",
+          "",
+          "Da die Suche auf maximal 6 Seiten begrenzt war, kann es weitere Treffer geben.",
+        ].join("\n"),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("deep"),
+      locale: "de",
+      run: {
+        ...run,
+        retrieval: {
+          discoveredCandidates: 10,
+          admittedCandidates: 10,
+          detailReadCandidates: 6,
+          excludedCandidates: 0,
+          deferredCandidates: 4,
+          detailReadCoverage: 0.6,
+          canonicalUrlCorrectness: 1,
+          observedRecall: null,
+          wrongSourceRate: 0,
+          atlassianHttpCalls: 8,
+          latencyMs: 2_000,
+        },
+      },
+    });
+
+    expect(answer.messageMarkdown).toContain("### 1. Gemeinsamkeiten");
+    expect(answer.messageMarkdown).toContain("z. B. einen Export vs. isomorphes Rendering");
+    expect(answer.messageMarkdown).toContain([
+      "| Kriterium | Ergebnis |",
+      "|---|---|",
+      "| Installationsanleitung | In den detailliert gelesenen Quellen nicht gefunden [Synthetic page](https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001) |",
+    ].join("\n"));
+    expect(answer.messageMarkdown).not.toContain("dedizierte Installationsanleitung");
+    expect(answer.messageMarkdown).not.toContain("existiert keine");
+    expect(answer.messageMarkdown).toContain("6 Seiten im Detail gelesen");
+    expect(answer.messageMarkdown).not.toContain("Konfigurationsreferenz fehlt");
+    expect(answer.messageMarkdown).toContain(
+      "Da 6 von 10 zugelassenen Kandidaten im Detail gelesen wurden",
+    );
+    expect(answer.messageMarkdown).toContain("2 Negativbehauptungen");
+    expect(answer.messageMarkdown).toContain("6 von 10 zugelassenen Kandidaten");
+    expect(answer.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "incomplete-coverage", sourceIds: [] }),
+    ]));
+  });
+
   test("renders parser and source limits as a material localized gap", () => {
     const source = {
       id: "wiki:1001",
@@ -726,8 +853,8 @@ describe("Chat answer contract", () => {
     ]));
   });
 
-  test("rejects a final synthesizer that omits a blocking quality gap", () => {
-    expect(() => finalizeChatAnswerV1({
+  test("adds a host-owned quality limit when the final synthesizer omits a required gap", () => {
+    const answer = finalizeChatAnswerV1({
       draft: {
         messageMarkdown: "Eine knappe Antwort ohne den vorgeschriebenen Hinweis.",
         citationSourceIds: [],
@@ -771,7 +898,12 @@ describe("Chat answer contract", () => {
       },
       locale: "de",
       run,
-    })).toThrow("omitted a host-required material gap");
+    });
+    expect(answer.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "incomplete-coverage" }),
+    ]));
+    expect(answer.messageMarkdown).toContain("Qualitätsgrenze");
+    expect(answer.messageMarkdown).toContain("detailliert gelesenen Quellen");
   });
 });
 
@@ -933,7 +1065,11 @@ describe("separate Chat root", () => {
       expect.objectContaining({
         channel: "reasoning-summary",
         status: "delta",
-        delta: "Checking the selected evidence.",
+        delta: [
+          "Claims are being matched to the available evidence.",
+          "Remaining evidence gaps and possible contradictions are being checked.",
+          "",
+        ].join("\n"),
       }),
       expect.objectContaining({ channel: "reasoning-summary", status: "completed" }),
     ]);
@@ -979,7 +1115,7 @@ describe("separate Chat root", () => {
         key: "SPACE",
       }],
       searches: [{ product: "confluence" }],
-      relationshipTraversals: [{ kind: "confluence-to-jira-reference" }],
+      relationshipTraversals: [],
     });
     expect(JSON.parse((await workspace.readFile(CHAT_CANDIDATE_LEDGER_PATH_V1))!)).toMatchObject({
       schema: "atlcli.chat-candidate-ledger/v1",
