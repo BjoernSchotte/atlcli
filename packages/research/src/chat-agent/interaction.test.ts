@@ -8,6 +8,7 @@ import {
   assertChatInteractionBindingV1,
   bindChatSteeringResumeV1,
   completeChatSteeringV1,
+  completeChatStreamInterruptionV1,
   consumeChatSteeringV1,
   createChatInteractionStateV1,
   editChatFollowUpV1,
@@ -15,6 +16,7 @@ import {
   enqueueChatFollowUpV1,
   parseChatInteractionStateV1,
   recordChatUserQuestionV1,
+  recordChatStreamInterruptionV1,
   removeChatFollowUpV1,
   removeChatSteeringV1,
   requestChatSteeringV1,
@@ -250,6 +252,42 @@ describe("durable Chat interaction state", () => {
       expectedStopRevision: 1,
       at: at(8),
     })).toThrow("stale or unavailable");
+  });
+
+  test("persists and clears one revision-fenced model-stream checkpoint", () => {
+    const interrupted = recordChatStreamInterruptionV1({
+      state: state(),
+      expectedRevision: 1,
+      turnId: "chat-turn:stream",
+      resume,
+      at: at(1),
+    });
+    expect(parseChatInteractionStateV1(interrupted).streamInterruption).toMatchObject({
+      kind: "stream-interruption",
+      revision: 1,
+      turnId: "chat-turn:stream",
+      resumeAttempts: 0,
+      resume: { exactAnchors: resume.exactAnchors },
+    });
+    const interruptedAgain = recordChatStreamInterruptionV1({
+      state: interrupted,
+      expectedRevision: interrupted.revision,
+      turnId: "chat-turn:stream",
+      resume,
+      at: at(2),
+    });
+    expect(interruptedAgain.streamInterruption).toMatchObject({
+      revision: 2,
+      resumeAttempts: 1,
+    });
+    const completed = completeChatStreamInterruptionV1({
+      state: interruptedAgain,
+      expectedRevision: interruptedAgain.revision,
+      turnId: "chat-turn:stream",
+      expectedInterruptionRevision: 2,
+      at: at(3),
+    });
+    expect(completed.streamInterruption).toBeUndefined();
   });
 
   test("edits, removes, and consumes a revision-fenced steering request", () => {

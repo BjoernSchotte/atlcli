@@ -428,6 +428,55 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(completedInteractions.snapshot().acceptedSteering).toBeUndefined();
   });
 
+  test("resumes a failed model stream from the same durable checkpoint", async () => {
+    const input = request("Answer this simple conversational question.");
+    const workspace = createMemoryResearchWorkspace();
+    const interruptedModel = fakeModel().respond(new Error("synthetic provider stream disconnected"));
+
+    await expect(runtime.runChatAgent({
+      ...input,
+      model: interruptedModel,
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    })).rejects.toMatchObject({
+      code: "paused",
+      message: expect.stringContaining("durable checkpoint"),
+    });
+    const waiting = JSON.parse(
+      (await workspace.readFile(CHAT_SESSION_PATH_V1))!,
+    ) as ChatSessionV1;
+    expect(waiting.conversation.recentTurns.at(-1)).toMatchObject({
+      status: "waiting",
+      waitingReason: "stream-interruption",
+    });
+    const interruption = JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ) as ChatInteractionStateV1;
+    expect(interruption.streamInterruption).toMatchObject({
+      kind: "stream-interruption",
+      turnId: input.turn.turnId,
+      resumeAttempts: 0,
+    });
+
+    const recoveredModel = model(false);
+    const answer = await runtime.runChatAgent({
+      ...input,
+      model: recoveredModel,
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      resumeCheckpoint: { kind: "stream-interruption" },
+    });
+    expect(answer.messageMarkdown).toBe("A bounded synthetic Chat answer.");
+    expect(interruptedModel.callCount).toBe(1);
+    expect(recoveredModel.callCount).toBe(1);
+    const completedInteraction = JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ) as ChatInteractionStateV1;
+    expect(completedInteraction.streamInterruption).toBeUndefined();
+  });
+
   test("emits durable user-facing milestones around analysis and answer validation", async () => {
     const input = request("Answer this simple conversational question.");
     const events: Array<{ kind: string; phase?: string; code?: string; status?: string }> = [];

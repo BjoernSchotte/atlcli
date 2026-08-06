@@ -136,6 +136,15 @@ export interface ChatStopRequestV1 {
   acknowledgedAt?: string;
 }
 
+export interface ChatStreamInterruptionV1 {
+  kind: "stream-interruption";
+  revision: number;
+  turnId: string;
+  interruptedAt: string;
+  resumeAttempts: number;
+  resume: ChatResumeEnvelopeV1;
+}
+
 export interface ChatInteractionStateV1 {
   schema: typeof CHAT_INTERACTION_STATE_SCHEMA_V1;
   conversationId: string;
@@ -148,6 +157,7 @@ export interface ChatInteractionStateV1 {
     turnId: string;
     resume: ChatResumeEnvelopeV1;
   };
+  streamInterruption?: ChatStreamInterruptionV1;
   stop?: ChatStopRequestV1;
   pendingQuestion?: {
     turnId: string;
@@ -807,6 +817,54 @@ export function completeChatSteeringV1(input: {
   return state;
 }
 
+/** Persist one resumable model-stream boundary without claiming token replay. */
+export function recordChatStreamInterruptionV1(input: {
+  state: ChatInteractionStateV1;
+  expectedRevision: number;
+  turnId: string;
+  resume: ChatResumeEnvelopeV1;
+  at: string;
+}): ChatInteractionStateV1 {
+  assertRevision(input.state, input.expectedRevision);
+  const existing = input.state.streamInterruption;
+  if (existing && existing.turnId !== input.turnId) {
+    throw new ChatContractError("invalid-request", "Another Chat stream checkpoint is already pending.");
+  }
+  const exactAnchors = normalizeExactAnchorResumeV1(input.resume.exactAnchors);
+  return next(input.state, input.at, {
+    streamInterruption: {
+      kind: "stream-interruption",
+      revision: (existing?.revision ?? 0) + 1,
+      turnId: id(input.turnId, "Chat stream interruption turn ID"),
+      interruptedAt: iso(input.at, "Chat stream interruption time"),
+      resumeAttempts: existing ? existing.resumeAttempts + 1 : 0,
+      resume: {
+        request: normalizeResearchRequestV1(input.resume.request),
+        qualityPolicy: normalizeChatQualityPolicyV1(input.resume.qualityPolicy),
+        ...(exactAnchors ? { exactAnchors } : {}),
+      },
+    },
+  });
+}
+
+export function completeChatStreamInterruptionV1(input: {
+  state: ChatInteractionStateV1;
+  expectedRevision: number;
+  turnId: string;
+  expectedInterruptionRevision: number;
+  at: string;
+}): ChatInteractionStateV1 {
+  assertRevision(input.state, input.expectedRevision);
+  const interruption = input.state.streamInterruption;
+  if (!interruption || interruption.turnId !== input.turnId ||
+      interruption.revision !== input.expectedInterruptionRevision) {
+    throw new ChatContractError("invalid-request", "Chat stream checkpoint is stale or unavailable.");
+  }
+  const state = next(input.state, input.at, {});
+  delete state.streamInterruption;
+  return state;
+}
+
 export function editChatSteeringV1(input: {
   state: ChatInteractionStateV1;
   expectedRevision: number;
@@ -986,6 +1044,22 @@ export function parseChatInteractionStateV1(value: unknown): ChatInteractionStat
     positiveInteger(state.stop.revision, "Chat stop revision");
     iso(state.stop.requestedAt, "Chat stop request time");
     if (state.stop.acknowledgedAt) iso(state.stop.acknowledgedAt, "Chat stop acknowledgement time");
+  }
+  if (state.streamInterruption) {
+    if (state.streamInterruption.kind !== "stream-interruption") {
+      throw new ChatContractError("invalid-request", "Chat stream checkpoint is invalid.");
+    }
+    positiveInteger(state.streamInterruption.revision, "Chat stream checkpoint revision");
+    id(state.streamInterruption.turnId, "Chat stream checkpoint turn ID");
+    iso(state.streamInterruption.interruptedAt, "Chat stream checkpoint time");
+    if (!Number.isInteger(state.streamInterruption.resumeAttempts) ||
+        state.streamInterruption.resumeAttempts < 0 ||
+        state.streamInterruption.resumeAttempts > 10) {
+      throw new ChatContractError("invalid-request", "Chat stream checkpoint attempt count is invalid.");
+    }
+    normalizeResearchRequestV1(state.streamInterruption.resume.request);
+    normalizeChatQualityPolicyV1(state.streamInterruption.resume.qualityPolicy);
+    normalizeExactAnchorResumeV1(state.streamInterruption.resume.exactAnchors);
   }
   if (state.pendingQuestion) {
     id(state.pendingQuestion.turnId, "Chat pending question turn ID");

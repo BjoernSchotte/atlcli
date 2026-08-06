@@ -1144,6 +1144,7 @@ let packedResumeRun = false;
 let packedResumePauseInitialRun = false;
 let packedResumeSteeringRun = false;
 let packedResumeSteeringInitialRun = false;
+let packedChatStreamInterruptionInitialRun = false;
 let packedRedactionRun = false;
 let packedResumeSupervisorEvals = 0;
 let supervisorWorkflowStarted = false;
@@ -1156,6 +1157,8 @@ globalThis.addEventListener("message", (event) => {
     typeof event.data?.runId === "string"
   ) {
     packedRedactionRun = event.data.runId === "packed-redaction";
+    packedChatStreamInterruptionInitialRun =
+      event.data.runId === "packed-chat-stream-interruption-initial";
     if (event.data.runId.includes("packed-resume")) {
       packedResumeRun = true;
       packedResumePauseInitialRun = event.data.runId === "packed-resume-pause-initial";
@@ -1473,6 +1476,59 @@ globalThis.fetch = async (input, init) => {
       apiKeyPresent: request.headers.has("x-api-key"),
       toolNames,
     });
+    if (packedChatStreamInterruptionInitialRun) {
+      channel.postMessage({
+        kind: "packed-chat-stream-interruption",
+        workerId,
+        modelCall: modelCalls,
+      });
+      const encoder = new TextEncoder();
+      const interruptedStream = new ReadableStream({
+        start(controller) {
+          const partialFrames = [
+            {
+              type: "message_start",
+              message: {
+                id: "msg_packed_interrupted_" + workerId + "_" + modelCalls,
+                type: "message",
+                role: "assistant",
+                model: "claude-sonnet-4-6",
+                content: [],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 20, output_tokens: 0 },
+              },
+            },
+            {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "text", text: "" },
+            },
+            {
+              type: "content_block_delta",
+              index: 0,
+              delta: {
+                type: "text_delta",
+                text: "Provisional packed fragment that must not be replayed.",
+              },
+            },
+          ];
+          for (const frame of partialFrames) {
+            controller.enqueue(encoder.encode(
+              "event: " + frame.type + "\n" +
+              "data: " + JSON.stringify(frame) + "\n\n",
+            ));
+          }
+          queueMicrotask(() => controller.error(
+            new TypeError("synthetic packed provider stream disconnected"),
+          ));
+        },
+      });
+      return new Response(interruptedStream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
     if (packedRedactionRun) {
       throw new Error(
         "x-api-key: ${PACKED_REDACTION_API_KEY}; Authorization: Bearer ${PACKED_REDACTION_BEARER}; Cookie: ${PACKED_REDACTION_COOKIE}",
@@ -6290,6 +6346,84 @@ test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV
   expect(resumed.report.messageMarkdown).toContain("packed implementation statement");
 
   const events = await harnessEvents(page);
+  const modelWorkers = new Set(events
+    .filter((event) => event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com"))
+    .map((event) => event.workerId)
+    .filter((workerId): workerId is string => typeof workerId === "string"));
+  expect(modelWorkers.size).toBeGreaterThanOrEqual(2);
+  expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("recovers an interrupted ordinary Chat model stream at the same checkpoint across fresh packed MV3 workers", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  const request = {
+    ...packedExactContextRequest("confluence"),
+    question: "packed-exact-page: Recover this packed Chat stream interruption without replaying provisional output.",
+  };
+  const sessionId = "research-session:packed-chat-stream-interruption";
+  const turnId = "research-turn:packed-chat-stream-interruption";
+  const interrupted = await runPackedChatTurnInBackground(page, {
+    request,
+    runId: "packed-chat-stream-interruption-initial",
+    sessionId,
+    turnId,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+  expect(interrupted.ok, JSON.stringify({ interrupted, events: await harnessEvents(page) })).toBe(false);
+  if (interrupted.ok) return;
+  expect(interrupted).toMatchObject({
+    code: "paused",
+  });
+  const checkpoint = await readPackedWorkspaceJson<{
+    revision: number;
+    streamInterruption?: {
+      kind: string;
+      revision: number;
+      turnId: string;
+      resumeAttempts: number;
+      resume?: {
+        exactAnchors?: Array<{ bindingId?: string }>;
+      };
+    };
+  }>(page, sessionId, "/.atlcli/chat/v1/interaction.json");
+  expect(checkpoint).toMatchObject({
+    streamInterruption: {
+      kind: "stream-interruption",
+      turnId,
+      resumeAttempts: 0,
+      resume: {
+        exactAnchors: [expect.objectContaining({ bindingId: expect.any(String) })],
+      },
+    },
+  });
+
+  const resumed = await runPackedChatTurnInBackground(page, {
+    request,
+    runId: "packed-chat-stream-interruption-resume",
+    sessionId,
+    turnId,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+    resumeCheckpoint: { kind: "stream-interruption" },
+  });
+  expect(resumed.ok, JSON.stringify({ resumed, events: await harnessEvents(page) })).toBe(true);
+  if (!resumed.ok) return;
+  expect(resumed.report.schema).toBe("atlcli.chat-answer/v1");
+  expect(resumed.report.messageMarkdown).toContain("packed implementation statement");
+  expect(resumed.report.messageMarkdown).not.toContain("Provisional packed fragment");
+
+  const completed = await readPackedWorkspaceJson<{
+    streamInterruption?: unknown;
+  }>(page, sessionId, "/.atlcli/chat/v1/interaction.json");
+  expect(completed?.streamInterruption).toBeUndefined();
+  const events = await harnessEvents(page);
+  const interruptionEvents = events.filter((event) =>
+    event.kind === "packed-chat-stream-interruption"
+  );
+  expect(interruptionEvents.length).toBeGreaterThan(0);
+  expect(new Set(interruptionEvents.map((event) => event.workerId)).size).toBe(1);
   const modelWorkers = new Set(events
     .filter((event) => event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com"))
     .map((event) => event.workerId)

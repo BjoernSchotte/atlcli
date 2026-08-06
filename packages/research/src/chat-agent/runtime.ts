@@ -33,6 +33,7 @@ import {
   type ChatQualityPolicyV1,
 } from "../quality-policy.js";
 import type { ResearchWorkspace } from "../workspace.js";
+import { classifyResearchError } from "../redaction.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
 import { finalizeChatAnswerV1 } from "./answer.js";
@@ -74,7 +75,9 @@ import {
   ChatUserQuestionRequiredError,
   WorkspaceChatInteractionControllerV1,
   acknowledgeChatStopV1,
+  completeChatStreamInterruptionV1,
   completeChatSteeringV1,
+  recordChatStreamInterruptionV1,
   requestChatStopV1,
   type ChatResumeEnvelopeV1,
   type ChatUserQuestionAnswerV1,
@@ -709,6 +712,8 @@ export function createKiteweaveChatAgent(
       let interactionController: WorkspaceChatInteractionControllerV1 | undefined;
       let activityJournal: WorkspaceChatActivityJournalV1 | undefined;
       let durableContext = "";
+      let resumeEnvelope: ChatResumeEnvelopeV1 | undefined;
+      let modelCheckpointEntered = false;
       let eventSequence = 0;
       const nextEventSequence = (): number => ++eventSequence;
       const emitPhase = (phase: string): void => {
@@ -817,6 +822,12 @@ export function createKiteweaveChatAgent(
         const acceptedSteering = input.resumeCheckpoint?.kind === "steering"
           ? interactionController.snapshot().acceptedSteering
           : undefined;
+        const streamInterruption = input.resumeCheckpoint?.kind === "stream-interruption"
+          ? interactionController.snapshot().streamInterruption
+          : undefined;
+        const pendingQuestion = input.resumeAnswer
+          ? interactionController.snapshot().pendingQuestion
+          : undefined;
         if (input.resumeCheckpoint?.kind === "steering") {
           if (!acceptedSteering || acceptedSteering.turnId !== turn.turnId) {
             throw new ChatContractError(
@@ -836,14 +847,39 @@ export function createKiteweaveChatAgent(
             );
           }
         }
+        if (input.resumeCheckpoint?.kind === "stream-interruption") {
+          if (!streamInterruption || streamInterruption.turnId !== turn.turnId) {
+            throw new ChatContractError(
+              "invalid-request",
+              "The resumable Chat stream checkpoint is unavailable.",
+            );
+          }
+          if (
+            JSON.stringify(streamInterruption.resume.request) !==
+              JSON.stringify(input.brokerRequest) ||
+            JSON.stringify(streamInterruption.resume.qualityPolicy) !==
+              JSON.stringify(qualityPolicy)
+          ) {
+            throw new ChatContractError(
+              "access-denied",
+              "The Chat stream resume envelope was altered.",
+            );
+          }
+        }
         const broker = new ResearchCapabilityBroker(
           input.brokerRequest,
           input.providers,
           {
             budget,
             scopeBindings,
-            ...(acceptedSteering?.resume.exactAnchors
-              ? { exactAnchorResume: acceptedSteering.resume.exactAnchors }
+            ...((acceptedSteering?.resume.exactAnchors ??
+                streamInterruption?.resume.exactAnchors ??
+                pendingQuestion?.resume.exactAnchors)
+              ? {
+                  exactAnchorResume: acceptedSteering?.resume.exactAnchors ??
+                    streamInterruption?.resume.exactAnchors ??
+                    pendingQuestion!.resume.exactAnchors,
+                }
               : {}),
             evidence: {
               store: evidenceStore,
@@ -908,11 +944,12 @@ export function createKiteweaveChatAgent(
         });
         emitPhase("preparing");
         const anchors = broker.exactAnchors();
-        input.onResumeEnvelopeReady?.({
+        resumeEnvelope = {
           request: input.brokerRequest,
           qualityPolicy,
           exactAnchors: broker.exactAnchorResume(),
-        });
+        };
+        input.onResumeEnvelopeReady?.(resumeEnvelope);
         const strategyDecision = deriveChatStrategyDecisionV1({
           qualityPolicy,
           question: turn.question,
@@ -1292,10 +1329,7 @@ export function createKiteweaveChatAgent(
         const askUserQuestion = createChatAskUserQuestionToolV1({
           turnId: turn.turnId,
           interactions: interactionController,
-          resume: {
-            request: input.brokerRequest,
-            qualityPolicy,
-          },
+          resume: resumeEnvelope!,
           now,
           onQuestion: () => {
             emitPhase("waiting-user");
@@ -1401,7 +1435,16 @@ export function createKiteweaveChatAgent(
                 },
               })
             : input.resumeCheckpoint?.kind === "stream-interruption"
-              ? new Command({})
+              ? new Command({
+                  update: {
+                    messages: [new HumanMessage([
+                      "Host checkpoint continuation for the current turn.",
+                      "The previous provider stream ended before a complete model result was accepted.",
+                      "Retry the interrupted model step against the original objective and accepted scope.",
+                      "Do not treat any provisional token as accepted output or broaden tools, scope, or budget.",
+                    ].join("\n"))],
+                  },
+                })
               : {
             messages: [{
               role: "user",
@@ -1417,6 +1460,7 @@ export function createKiteweaveChatAgent(
         if (input.resumeAnswer || input.resumeCheckpoint) {
           emitActivity("continuation", "started");
         }
+        modelCheckpointEntered = true;
         const run = await agent.streamEvents(
           runInput,
           {
@@ -1665,6 +1709,17 @@ export function createKiteweaveChatAgent(
           );
           emitActivity("steering", "completed");
         }
+        if (streamInterruption) {
+          await interactionController.update((state) =>
+            completeChatStreamInterruptionV1({
+              state,
+              expectedRevision: state.revision,
+              turnId: turn.turnId,
+              expectedInterruptionRevision: streamInterruption.revision,
+              at: new Date(now()).toISOString(),
+            })
+          );
+        }
         if (answer.gaps.length > 0) emitActivity("gap", "completed");
         emitActivity("completion", "completed");
         await activityJournal.flush();
@@ -1696,6 +1751,43 @@ export function createKiteweaveChatAgent(
       } catch (error) {
         if (error instanceof ChatUserQuestionRequiredError) {
           throw error;
+        }
+        const classified = classifyResearchError(error);
+        const resumableStreamFailure = Boolean(
+          modelCheckpointEntered &&
+          resumeEnvelope &&
+          interactionController &&
+          durableChatSession &&
+          !controller.signal.aborted &&
+          (classified.code === "provider-error" || classified.code === "rate-limited"),
+        );
+        if (resumableStreamFailure) {
+          const interruptedAt = new Date(now()).toISOString();
+          await interactionController!.update((state) =>
+            recordChatStreamInterruptionV1({
+              state,
+              expectedRevision: state.revision,
+              turnId: turn.turnId,
+              resume: resumeEnvelope!,
+              at: interruptedAt,
+            })
+          );
+          durableChatSession = pauseChatTurnV1({
+            session: durableChatSession!,
+            expectedSessionRevision: durableChatSession!.revision,
+            turnId: turn.turnId,
+            reason: "stream-interruption",
+            at: interruptedAt,
+          });
+          await input.workspace.writeFile(
+            CHAT_SESSION_PATH_V1,
+            JSON.stringify(durableChatSession),
+          );
+          emitActivity("continuation", "failed");
+          throw new ChatContractError(
+            "paused",
+            "The Chat model stream was interrupted at a durable checkpoint and can be resumed; partial tokens are not replayed.",
+          );
         }
         const steeringPause = Boolean(
           controller.signal.aborted &&

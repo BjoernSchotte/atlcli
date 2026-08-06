@@ -916,7 +916,7 @@ Automated proof:
       stream independently while the structured-output envelope, signatures,
       redacted thinking, ungated model reasoning, and source bodies remain
       outside the presentation channel and durable journal.
-- [ ] Streaming interruption resumes from the last durable workflow checkpoint or
+- [x] Streaming interruption resumes from the last durable workflow checkpoint or
       reports a typed resumable interruption without pretending token replay.
 
 Proof note (2026-08-06): the production MV3 bundle passes all 38 packed lifecycle
@@ -935,7 +935,8 @@ projector exposes only `messageMarkdown`; the final host validator remains
 authoritative and atomically replaces the provisional UI content. Manual extended
 thinking is intentionally not forced because it is
 incompatible with forced tool choices and is not needed on the native path.
-Durable interruption semantics and the remaining interactive controls stay open.
+The later durable-interruption proof below closes that gate; remaining live
+interactive-control acceptance stays open.
 
 Core and packed-MV3 HITL checkpoint proof (2026-08-06): ordinary Chat now owns a dedicated
 workspace-backed LangGraph checkpoint thread, separate from every Deep Research
@@ -1020,6 +1021,24 @@ interaction, broker, session, runtime, protocol, presenter, typecheck, and all
 43 packed MV3 lifecycle tests pass. The test also exposed and fixed an IndexedDB
 lifecycle race: persisted background controls now settle before their connection
 is closed.
+
+Model-stream interruption proof (2026-08-06): the ordinary Chat runtime now
+records a typed, revision-fenced interruption envelope after a provider stream
+fails inside a model checkpoint. The envelope retains the normalized request,
+quality policy, original turn, and only opaque host-private exact-anchor binding
+identifiers; it persists neither partial provider tokens nor hidden reasoning.
+A fresh DeepAgentsJS host resumes the same LangGraph `thread_id` with a bounded
+host continuation message, re-enters the failed model node, and atomically clears
+the interruption only after the host-finalized answer is committed. The
+sidepanel performs at most one automatic retry and otherwise exposes the durable
+resumable state instead of presenting a terminal research failure. Core tests
+prove first failure, repeated-failure fencing, fresh-runtime recovery, and
+checkpoint clearing. A packed production MV3 E2E emitted a provisional SSE text
+delta, severed the response stream, persisted the checkpoint, recreated the
+worker, restored the exact attached-page capability, completed the same turn,
+and proved that the provisional fragment was absent from the final answer. All
+44 packed MV3 lifecycle tests, focused React/runtime tests, typecheck, and the
+tracked-tree privacy scan pass.
 
 Live acceptance:
 

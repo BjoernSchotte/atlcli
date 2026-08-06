@@ -1384,6 +1384,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const chatInteractionRef = useRef<ChatInteractionStateV1 | null>(null);
   const queueDrainInFlight = useRef(false);
   const failedQueuedTurnId = useRef<string | null>(null);
+  const automaticStreamResumeRef = useRef<string | null>(null);
   const expectedDirectSteeringAbort = useRef(false);
   const planReviewListingGeneration = useRef(0);
 
@@ -2007,7 +2008,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         setActionStatus(t("research.stopped"));
         setProgress("");
       } else if (errorCode === "paused" || errorCode === "scope-approval-required") {
-        setActionStatus(t(errorCode === "paused" ? "research.paused" : "research.scopeApprovalRequired"));
+        const interruptedSiteOrigin =
+          resolvedChatRequest?.scope.siteOrigin ?? site?.origin;
+        const interruptedChat = errorCode === "paused" &&
+          (interactionModeOverride ?? interactionMode) === "chat" &&
+          Boolean(interruptedSiteOrigin && (await port?.getChatInteraction?.(
+            interruptedSiteOrigin,
+          ).catch(() => null))?.streamInterruption);
+        setActionStatus(t(interruptedChat
+          ? "research.chat.streamInterrupted"
+          : errorCode === "paused"
+            ? "research.paused"
+            : "research.scopeApprovalRequired"));
         setProgress("");
       } else {
         setError(value instanceof Error ? value.message : t("research.error"));
@@ -2450,6 +2462,40 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     })();
     return () => { cancelled = true; };
   }, [chatInteractionRevision, interactionMode, pendingChatQuestion, port, running, t]);
+
+  useEffect(() => {
+    const interruption = chatInteractionRef.current?.streamInterruption;
+    if (interactionMode !== "chat" || running || pendingChatQuestion ||
+        !interruption || interruption.resumeAttempts > 0 || queueDrainInFlight.current) return;
+    const checkpointKey = `${interruption.turnId}:${interruption.revision}`;
+    if (automaticStreamResumeRef.current === checkpointKey) return;
+    automaticStreamResumeRef.current = checkpointKey;
+    queueDrainInFlight.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        setActionStatus(t("research.chat.streamResuming"));
+        const completed = await run({
+          request: interruption.resume.request,
+          alreadyResolved: true,
+          conversationId: chatInteractionRef.current!.conversationId,
+          qualityPolicy: interruption.resume.qualityPolicy,
+          chatCheckpointResume: {
+            turnId: interruption.turnId,
+            kind: "stream-interruption",
+          },
+        }, undefined, `chat-stream-resume:${interruption.turnId}`, undefined, "chat");
+        if (completed && !cancelled) {
+          setActionStatus(t("research.chat.streamResumed"));
+        }
+      } catch (value) {
+        if (!cancelled) setError(value instanceof Error ? value.message : t("research.error"));
+      } finally {
+        queueDrainInFlight.current = false;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [chatInteractionRevision, interactionMode, pendingChatQuestion, running, t]);
 
   useEffect(() => {
     const queued = queuedChatMessages[0];

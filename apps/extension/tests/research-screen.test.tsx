@@ -25,8 +25,10 @@ import type {
 import {
   applyChatInteractionControlV1,
   bindChatSteeringResumeV1,
+  completeChatStreamInterruptionV1,
   completeChatSteeringV1,
   createChatInteractionStateV1,
+  recordChatStreamInterruptionV1,
   stampChatInteractionCommandV1,
 } from "@atlcli/research";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
@@ -1129,6 +1131,96 @@ describe("portable Research screen", () => {
     ]);
     expect(interaction.pendingSteering).toBeUndefined();
     expect(interaction.acceptedSteering).toBeUndefined();
+  });
+
+  it("continues one interrupted Chat model stream from its durable checkpoint", async () => {
+    let interaction = createChatInteractionStateV1({
+      conversationId: "research-session:stream-recovery",
+      binding: {
+        userId: "browser-principal:stream-recovery",
+        providerCacheIdentity: "provider-cache:stream-recovery",
+        threadId: "research-session:stream-recovery",
+        tenantOrigin: "https://example.atlassian.net",
+      },
+      createdAt: "2026-08-06T12:00:00.000Z",
+    });
+    const calls: Array<{
+      question: string;
+      checkpoint?: { turnId: string; kind: "stream-interruption" | "steering" };
+    }> = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      getChatInteraction: async () => structuredClone(interaction),
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (request, options) => {
+        calls.push({
+          question: request.question,
+          ...(options?.chatCheckpointResume
+            ? { checkpoint: options.chatCheckpointResume }
+            : {}),
+        });
+        const turnId = "research-turn:stream-recovery";
+        options?.onSessionStart?.({ sessionId: interaction.conversationId, turnId });
+        if (calls.length === 1) {
+          interaction = recordChatStreamInterruptionV1({
+            state: interaction,
+            expectedRevision: interaction.revision,
+            turnId,
+            resume: {
+              request,
+              qualityPolicy: options!.qualityPolicy!,
+            },
+            at: "2026-08-06T12:00:01.000Z",
+          });
+          throw new ResearchContractError(
+            "paused",
+            "The Chat model stream was interrupted at a durable checkpoint.",
+          );
+        }
+        const pending = interaction.streamInterruption!;
+        interaction = completeChatStreamInterruptionV1({
+          state: interaction,
+          expectedRevision: interaction.revision,
+          turnId,
+          expectedInterruptionRevision: pending.revision,
+          at: "2026-08-06T12:00:02.000Z",
+        });
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-chat-thinking", "quick");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "Summarize the attached page.");
+    await dom.click("research-run");
+    await dom.flush(30);
+
+    expect(calls).toEqual([
+      { question: "Summarize the attached page." },
+      {
+        question: "Summarize the attached page.",
+        checkpoint: {
+          turnId: "research-turn:stream-recovery",
+          kind: "stream-interruption",
+        },
+      },
+    ]);
+    expect(interaction.streamInterruption).toBeUndefined();
+    expect(dom.find("research-report")).toBeTruthy();
   });
 
   it("uses the configured key, infers scope, runs, and renders safe structured output", async () => {
