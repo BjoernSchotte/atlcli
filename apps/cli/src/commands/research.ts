@@ -61,6 +61,7 @@ import {
   type ChatUserQuestionAnswerV1,
   type ChatUserQuestionV1,
   type ChatPresentationStreamEventV1,
+  type ChatResumeEnvelopeV1,
   type ChatScopeClarificationReviewV1,
   type ChatTurnRequestV1,
   type ResearchBriefV1,
@@ -77,6 +78,7 @@ import {
   type ResearchSessionStoreV1,
   type ResearchSessionV1,
   type ResearchWorkspace,
+  type WorkspaceChatInteractionControllerV1,
   type ResearchClaimV1,
   type ResearchEvidenceRecordV1,
   type ResearchOutlineV1,
@@ -263,6 +265,8 @@ export interface ResearchCliChatAgentInput {
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   onChatPresentation: (event: ChatPresentationStreamEventV1) => void;
+  onInteractionReady?(controller: WorkspaceChatInteractionControllerV1): void;
+  onResumeEnvelopeReady?(resume: ChatResumeEnvelopeV1): void;
   writeDiagnostic: (message: string) => void;
 }
 
@@ -2729,6 +2733,8 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       signal: input.signal,
       onEvent: input.onEvent,
       onChatPresentation: input.onChatPresentation,
+      onInteractionReady: input.onInteractionReady,
+      onResumeEnvelopeReady: input.onResumeEnvelopeReady,
       onAgentDiagnostic: (diagnostic) => {
         if (diagnostic.kind === "model-step") {
           input.writeDiagnostic(
@@ -3252,6 +3258,8 @@ async function runDirectChatCliConversation(input: {
             input.dependencies.writeStderr(`[chat] ${message}\n`),
           onEvent: execution.stream?.onEvent ?? (() => {}),
           onChatPresentation: execution.stream?.onPresentation ?? (() => {}),
+          onInteractionReady: execution.onInteractionReady,
+          onResumeEnvelopeReady: execution.onResumeEnvelopeReady,
         });
       },
     });

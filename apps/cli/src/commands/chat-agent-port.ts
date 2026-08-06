@@ -1,11 +1,13 @@
 import {
   CHAT_INTERACTION_STATE_PATH_V1,
   CHAT_SESSION_PATH_V1,
+  ChatContractError,
   WorkspaceChatActivityJournalV1,
   WorkspaceChatInteractionControllerV1,
   applyChatInteractionControlV1,
   assertChatInteractionBindingV1,
   assertChatSessionBindingV1,
+  bindChatSteeringResumeV1,
   defineChatAgentPortV1,
   parseChatInteractionStateV1,
   parseChatSessionV1,
@@ -15,6 +17,7 @@ import {
   type ChatAnswerV1,
   type ChatHostIdentityV1,
   type ChatQualityPolicyV1,
+  type ChatResumeEnvelopeV1,
   type ChatUserQuestionAnswerV1,
   type ResearchRequestV1,
   type ResearchSessionStoreV1,
@@ -30,6 +33,8 @@ export interface CliChatAgentExecutionV1 {
   resumeCheckpoint?: { kind: "stream-interruption" | "steering" };
   signal: AbortSignal;
   stream?: ChatAgentStreamV1;
+  onInteractionReady?(controller: WorkspaceChatInteractionControllerV1): void;
+  onResumeEnvelopeReady?(resume: ChatResumeEnvelopeV1): void;
 }
 
 export interface CliChatAgentPortBindingsV1 {
@@ -93,6 +98,8 @@ export function createCliChatAgentPortV1(
   input: CliChatAgentPortBindingsV1,
 ): ChatAgentPortV1 {
   let activeController: AbortController | null = null;
+  let activeInteractions: WorkspaceChatInteractionControllerV1 | null = null;
+  let activeResume: { turnId: string; resume: ChatResumeEnvelopeV1 } | null = null;
 
   const execute = async (
     execution: Omit<CliChatAgentExecutionV1, "signal" | "stream">,
@@ -113,10 +120,22 @@ export function createCliChatAgentPortV1(
         ...execution,
         signal: controller.signal,
         ...(stream ? { stream } : {}),
+        onInteractionReady(interactions) {
+          if (activeController === controller) activeInteractions = interactions;
+        },
+        onResumeEnvelopeReady(resume) {
+          if (activeController === controller) {
+            activeResume = { turnId: execution.turnId, resume };
+          }
+        },
       });
     } finally {
       stream?.signal?.removeEventListener("abort", forwardAbort);
-      if (activeController === controller) activeController = null;
+      if (activeController === controller) {
+        activeController = null;
+        activeInteractions = null;
+        activeResume = null;
+      }
     }
   };
 
@@ -192,21 +211,45 @@ export function createCliChatAgentPortV1(
       return siteOrigin === input.siteOrigin ? readInteraction(input) : null;
     },
     async control(command) {
-      const controller = await WorkspaceChatInteractionControllerV1.bind({
-        workspace: input.workspace,
-        conversationId: input.conversationId,
-        binding: binding(input),
-        at: (input.now?.() ?? new Date()).toISOString(),
-      });
-      return controller.update((state) =>
-        applyChatInteractionControlV1(
+      const at = (input.now?.() ?? new Date()).toISOString();
+      const controller = activeInteractions ??
+        await WorkspaceChatInteractionControllerV1.bind({
+          workspace: input.workspace,
+          conversationId: input.conversationId,
+          binding: binding(input),
+          at,
+        });
+      let steeringRequested = false;
+      const next = await controller.update((state) => {
+        const controlled = applyChatInteractionControlV1(
           state,
-          stampChatInteractionCommandV1(
-            command,
-            (input.now?.() ?? new Date()).toISOString(),
-          ),
-        )
-      );
+          stampChatInteractionCommandV1(command, at),
+        );
+        if (command.kind !== "steer") return controlled;
+        if (!activeResume) {
+          throw new ChatContractError(
+            "invalid-request",
+            "The active Chat turn cannot bind a steering checkpoint.",
+          );
+        }
+        steeringRequested = true;
+        return bindChatSteeringResumeV1({
+          state: controlled,
+          expectedRevision: controlled.revision,
+          steeringId: command.steeringId,
+          expectedSteeringRevision: controlled.pendingSteering!.revision,
+          turnId: activeResume.turnId,
+          resume: activeResume.resume,
+          at,
+        });
+      });
+      if (steeringRequested && activeController && !activeController.signal.aborted) {
+        activeController.abort(new ChatContractError(
+          "paused",
+          "The Chat turn reached its durable steering checkpoint.",
+        ));
+      }
+      return next;
     },
     async stop() {
       if (!activeController) return "stopped";

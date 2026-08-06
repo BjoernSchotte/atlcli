@@ -4,6 +4,7 @@ import {
   DEFAULT_RESEARCH_LIMITS_V1,
   InMemoryResearchSessionStoreV1,
   WorkspaceChatActivityJournalV1,
+  WorkspaceChatInteractionControllerV1,
   beginChatTurnV1,
   chatQualityPolicyForModeV1,
   chatScopeFingerprintV1,
@@ -210,5 +211,81 @@ describe("CLI ChatAgentPortV1 adapter", () => {
     await Promise.resolve();
     expect(await port.stop()).toBe("stop_requested");
     await expect(running).rejects.toBeInstanceOf(DOMException);
+  });
+
+  test("binds active steering to the durable resume envelope and resumes the same turn", async () => {
+    const { store, workspace } = await fixture();
+    const port = createCliChatAgentPortV1({
+      store,
+      workspace,
+      conversationId,
+      siteOrigin,
+      hostIdentity: identity,
+      createTurnId: () => turnId,
+      async execute(input) {
+        if (input.resumeCheckpoint?.kind === "steering") return answer;
+        const interactions = await WorkspaceChatInteractionControllerV1.bind({
+          workspace,
+          conversationId,
+          binding: {
+            ...identity,
+            threadId: conversationId,
+            tenantOrigin: siteOrigin,
+          },
+          at: "2026-08-06T10:00:00.000Z",
+        });
+        input.onInteractionReady?.(interactions);
+        input.onResumeEnvelopeReady?.({
+          request: input.request,
+          qualityPolicy: input.qualityPolicy,
+        });
+        return new Promise<ChatAnswerV1>((_resolve, reject) => {
+          input.signal.addEventListener("abort", () => reject(input.signal.reason), {
+            once: true,
+          });
+        });
+      },
+      now: () => new Date("2026-08-06T10:00:01.000Z"),
+    });
+
+    const running = port.startTurn({
+      request,
+      qualityPolicy: chatQualityPolicyForModeV1("deep"),
+    });
+    const paused = running.catch((error: unknown) => error);
+    await Promise.resolve();
+    const steered = await port.control({
+      kind: "steer",
+      expectedRevision: 1,
+      steeringId: "chat-steering:cli-port",
+      instruction: "Prioritize the explicit contradiction.",
+    });
+    expect(steered.pendingSteering).toMatchObject({
+      id: "chat-steering:cli-port",
+      turnId,
+      instruction: "Prioritize the explicit contradiction.",
+      resume: {
+        request,
+        qualityPolicy: { mode: "deep" },
+      },
+    });
+    expect(await paused).toMatchObject({ code: "paused" });
+    const accepted = await port.control({
+      kind: "consume_steering",
+      expectedRevision: steered.revision,
+      steeringId: steered.pendingSteering!.id,
+      expectedSteeringRevision: steered.pendingSteering!.revision,
+    });
+    expect(accepted.acceptedSteering).toMatchObject({
+      id: "chat-steering:cli-port",
+      turnId,
+    });
+
+    await expect(port.resumeTurn({
+      siteOrigin,
+      conversationId,
+      turnId,
+      kind: "steering",
+    })).resolves.toEqual(answer);
   });
 });
