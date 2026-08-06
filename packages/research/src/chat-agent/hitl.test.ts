@@ -3,6 +3,7 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { fakeModel } from "@langchain/core/testing";
 import { Command } from "@langchain/langgraph";
 import { createDeepAgent } from "deepagents/node";
+import { z } from "zod/v4";
 import { createChatAskUserQuestionToolV1 } from "./hitl.js";
 import {
   CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
@@ -114,6 +115,23 @@ async function controller(workspace: ReturnType<typeof createMemoryResearchWorks
 }
 
 describe("DeepAgentsJS durable Chat HITL", () => {
+  test("publishes an Anthropic-compatible top-level object schema", () => {
+    const workspace = createMemoryResearchWorkspace();
+    const toolPromise = controller(workspace).then((interactions) =>
+      createChatAskUserQuestionToolV1({ turnId, interactions, resume })
+    );
+    return toolPromise.then((questionTool) => {
+      expect(z.toJSONSchema(questionTool.schema as z.ZodType, { target: "draft-7" }))
+        .toMatchObject({
+        type: "object",
+        properties: {
+          responseKind: { type: "string" },
+          prompt: { type: "string" },
+        },
+      });
+    });
+  });
+
   for (const scenario of scenarios) {
     test(`pauses and fresh-host resumes ${scenario.name} without replaying the model decision`, async () => {
     const workspace = createMemoryResearchWorkspace();

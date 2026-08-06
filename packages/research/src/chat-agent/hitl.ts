@@ -18,43 +18,58 @@ const optionSchema = z.object({
   description: z.string().min(1).max(320).optional(),
 }).strict();
 
-const questionProposalSchema = z.discriminatedUnion("responseKind", [
-  z.object({
-    responseKind: z.literal("free_text"),
-    prompt: z.string().min(1).max(800),
-    required: z.boolean(),
-    maxLength: z.number().int().min(1).max(4_000),
-  }).strict(),
-  z.object({
-    responseKind: z.literal("single_choice"),
-    prompt: z.string().min(1).max(800),
-    required: z.boolean(),
-    options: z.array(optionSchema).min(2).max(12),
-  }).strict(),
-  z.object({
-    responseKind: z.literal("multiple_choice"),
-    prompt: z.string().min(1).max(800),
-    required: z.boolean(),
-    options: z.array(optionSchema).min(2).max(12),
-    minSelections: z.number().int().min(0).max(12),
-    maxSelections: z.number().int().min(1).max(12),
-  }).strict(),
-  z.object({
-    responseKind: z.literal("mixed"),
-    prompt: z.string().min(1).max(800),
-    required: z.boolean(),
-    options: z.array(optionSchema).min(2).max(12),
-    minSelections: z.number().int().min(0).max(12),
-    maxSelections: z.number().int().min(1).max(12),
-    maxLength: z.number().int().min(1).max(4_000),
-  }).strict(),
-  z.object({
-    responseKind: z.literal("assumption"),
-    prompt: z.string().min(1).max(800),
-    required: z.boolean(),
-    assumption: z.string().min(1).max(800),
-  }).strict(),
-]);
+/**
+ * Keep the provider-visible root an object. Anthropic rejects root unions as a
+ * custom-tool input schema because their JSON Schema has `oneOf` but no
+ * top-level `type: object`. Cross-field refinement preserves the same five
+ * typed question shapes without changing the model-facing argument names.
+ */
+const questionProposalSchema = z.object({
+  responseKind: z.enum([
+    "free_text",
+    "single_choice",
+    "multiple_choice",
+    "mixed",
+    "assumption",
+  ]),
+  prompt: z.string().min(1).max(800),
+  required: z.boolean(),
+  options: z.array(optionSchema).min(2).max(12).optional(),
+  minSelections: z.number().int().min(0).max(12).optional(),
+  maxSelections: z.number().int().min(1).max(12).optional(),
+  maxLength: z.number().int().min(1).max(4_000).optional(),
+  assumption: z.string().min(1).max(800).optional(),
+}).strict().superRefine((proposal, context) => {
+  const requireField = (field: keyof typeof proposal): void => {
+    if (proposal[field] !== undefined) return;
+    context.addIssue({
+      code: "custom",
+      path: [field],
+      message: `${field} is required for ${proposal.responseKind}.`,
+    });
+  };
+  if (proposal.responseKind === "free_text") requireField("maxLength");
+  if (["single_choice", "multiple_choice", "mixed"].includes(proposal.responseKind)) {
+    requireField("options");
+  }
+  if (proposal.responseKind === "multiple_choice" || proposal.responseKind === "mixed") {
+    requireField("minSelections");
+    requireField("maxSelections");
+    if (
+      proposal.minSelections !== undefined &&
+      proposal.maxSelections !== undefined &&
+      proposal.minSelections > proposal.maxSelections
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["maxSelections"],
+        message: "maxSelections must be greater than or equal to minSelections.",
+      });
+    }
+  }
+  if (proposal.responseKind === "mixed") requireField("maxLength");
+  if (proposal.responseKind === "assumption") requireField("assumption");
+});
 
 function stableQuestionId(value: unknown): string {
   const source = JSON.stringify(value);

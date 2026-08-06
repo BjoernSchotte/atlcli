@@ -984,6 +984,14 @@ integration tests prove this without constructing a second agent. A manual CLI
 terminal demonstration and the other controls remain open, so the parent
 live-acceptance boxes stay unchecked.
 
+Provider-schema proof (2026-08-06): the `ask_user_question` capability retains
+all five typed interaction variants while exposing an Anthropic-compatible
+top-level JSON Schema object instead of a root `oneOf`. A real Sonnet 4.6 run
+accepted the tool schema, streamed native summarized-reasoning and provisional
+Markdown deltas, invoked the bounded strategy evaluator and exact-page reader,
+and completed with a host-validated answer. The focused schema regression,
+fresh-host HITL-resume matrix, typecheck, and tracked-tree privacy scan pass.
+
 Cooperative stop proof (2026-08-06): cancellation now crosses the extension
 boundary as a worker control message instead of immediately terminating the
 worker. The shared Chat AbortSignal reaches the root model stream, agentic child

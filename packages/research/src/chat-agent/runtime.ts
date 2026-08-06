@@ -33,7 +33,7 @@ import {
   type ChatQualityPolicyV1,
 } from "../quality-policy.js";
 import type { ResearchWorkspace } from "../workspace.js";
-import { classifyResearchError } from "../redaction.js";
+import { classifyResearchError, redactResearchSecrets } from "../redaction.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
 import { finalizeChatAnswerV1 } from "./answer.js";
@@ -144,6 +144,9 @@ export type ChatAgentDiagnosticV1 =
       purpose: "planning" | "evidence-assessment" | "answer-drafting";
       toolNames?: string[];
       stopReason?: string;
+      /** Redacted host-only failure detail; never projected into durable activity. */
+      errorCode?: import("../contracts.js").ResearchErrorCode;
+      errorMessage?: string;
     }
   | {
       kind: "eval-step";
@@ -270,7 +273,14 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         });
         return response;
       } catch (error) {
-        onDiagnostic?.({ kind: "model-step", status: "failed", purpose });
+        const classified = classifyResearchError(error);
+        onDiagnostic?.({
+          kind: "model-step",
+          status: "failed",
+          purpose,
+          errorCode: classified.code,
+          errorMessage: redactResearchSecrets(error),
+        });
         throw error;
       }
     },

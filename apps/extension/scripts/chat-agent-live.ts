@@ -161,7 +161,7 @@ export async function runChatAgentLiveV1(): Promise<void> {
     onAgentDiagnostic: (diagnostic) => {
       if (diagnostic.kind === "model-step") {
         console.error(
-          `[chat-live] model=${diagnostic.purpose} status=${diagnostic.status}`,
+          `[chat-live] model=${diagnostic.purpose} status=${diagnostic.status}${diagnostic.errorCode ? ` code=${diagnostic.errorCode}` : ""}${diagnostic.errorMessage ? ` error=${diagnostic.errorMessage}` : ""}`,
         );
         return;
       }
