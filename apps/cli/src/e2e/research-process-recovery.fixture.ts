@@ -109,6 +109,9 @@ async function createDependencies(
         policy,
       })),
     readApiKey: () => "synthetic-key-not-a-secret",
+    async askChatUserQuestion() {
+      throw new Error("The process-recovery fixture does not support Chat HITL.");
+    },
     createWorkspace: async () => {
       throw new Error("The process-recovery fixture must use the retained SQLite workspace.");
     },

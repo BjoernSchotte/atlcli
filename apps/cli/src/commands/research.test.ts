@@ -31,6 +31,11 @@ import {
   assessResearchRetrievalV1,
   type ResearchReportV1,
   type ChatAnswerV1,
+  ChatUserQuestionRequiredError,
+  CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  CHAT_USER_QUESTION_SCHEMA_V1,
+  type ChatUserQuestionAnswerV1,
+  type ChatUserQuestionV1,
   type ResearchSessionV1,
 } from "@atlcli/research";
 import { runChatAgent as runNodeChatAgent } from "@atlcli/research/node";
@@ -46,6 +51,7 @@ import {
   handleResearch,
   parseChatCliInput,
   parseResearchCliInput,
+  promptChatUserQuestionV1,
   researchArtifactPath,
   writeResearchMarkdownAtomic,
   type ResearchCliDependencies,
@@ -134,6 +140,8 @@ function cliHarness(
     abortAtDeadline?: boolean;
     durableStore?: InMemoryResearchSessionStoreV1;
     createTurnId?: () => string;
+    chatQuestion?: ChatUserQuestionV1;
+    chatQuestionAnswer?: ChatUserQuestionAnswerV1;
   } = {},
 ): CliHarness {
   const stdout: string[] = [];
@@ -236,6 +244,9 @@ function cliHarness(
     },
     async runChatAgent(input) {
       chatRunInputs.push(input);
+      if (options.chatQuestion && !input.resumeAnswer) {
+        throw new ChatUserQuestionRequiredError(options.chatQuestion);
+      }
       input.onChatPresentation({
         kind: "chat-presentation",
         seq: 1,
@@ -277,6 +288,12 @@ function cliHarness(
       }
       if (options.runError) throw options.runError;
       return chatAnswer;
+    },
+    async askChatUserQuestion(question) {
+      if (!options.chatQuestionAnswer || question.id !== options.chatQuestionAnswer.questionId) {
+        throw new Error("The CLI test has no answer for this Chat question.");
+      }
+      return options.chatQuestionAnswer;
     },
     async writeAtomic(path, contents) {
       writes.set(path, contents);
@@ -927,6 +944,121 @@ describe("research CLI one-shot contract", () => {
     );
     expect(quickRequest.limits.maxPtcCalls).toBe(16);
     expect(quickRequest.limits.maxModelOutputTokens).toBe(4_096);
+  });
+
+  test("presents and validates every shared Chat HITL question shape", async () => {
+    const base = {
+      schema: CHAT_USER_QUESTION_SCHEMA_V1,
+      required: true,
+    } as const;
+    const cases: Array<{
+      question: ChatUserQuestionV1;
+      inputs: string[];
+      expected: ChatUserQuestionAnswerV1["value"];
+    }> = [
+      {
+        question: { ...base, id: "q:text", responseKind: "free_text", prompt: "Window?", maxLength: 80 },
+        inputs: ["Last seven days"],
+        expected: { kind: "text", text: "Last seven days" },
+      },
+      {
+        question: {
+          ...base,
+          id: "q:single",
+          responseKind: "single_choice",
+          prompt: "One?",
+          options: [{ id: "a", label: "A" }, { id: "b", label: "B" }],
+        },
+        inputs: ["2"],
+        expected: { kind: "selection", optionIds: ["b"] },
+      },
+      {
+        question: {
+          ...base,
+          id: "q:multiple",
+          responseKind: "multiple_choice",
+          prompt: "Many?",
+          options: [{ id: "a", label: "A" }, { id: "b", label: "B" }],
+          minSelections: 1,
+          maxSelections: 2,
+        },
+        inputs: ["1,2"],
+        expected: { kind: "selection", optionIds: ["a", "b"] },
+      },
+      {
+        question: {
+          ...base,
+          id: "q:mixed",
+          responseKind: "mixed",
+          prompt: "Mixed?",
+          options: [{ id: "a", label: "A" }, { id: "b", label: "B" }],
+          minSelections: 0,
+          maxSelections: 2,
+          maxLength: 80,
+        },
+        inputs: ["1 | Focus here"],
+        expected: { kind: "mixed", optionIds: ["a"], text: "Focus here" },
+      },
+      {
+        question: {
+          ...base,
+          id: "q:assumption",
+          responseKind: "assumption",
+          prompt: "Proceed?",
+          assumption: "Use the current space.",
+        },
+        inputs: ["ja"],
+        expected: { kind: "assumption", decision: "accepted" },
+      },
+    ];
+    for (const scenario of cases) {
+      const answers = [...scenario.inputs];
+      const presented: string[] = [];
+      const answer = await promptChatUserQuestionV1({
+        question: scenario.question,
+        ask: async () => answers.shift() ?? "",
+        write: (message) => presented.push(message),
+      });
+      expect(answer).toEqual({
+        schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+        questionId: scenario.question.id,
+        value: scenario.expected,
+      });
+      expect(presented.join("")).toContain(scenario.question.prompt);
+    }
+  });
+
+  test("resumes the exact CLI Chat turn after a durable user answer", async () => {
+    const question: ChatUserQuestionV1 = {
+      schema: CHAT_USER_QUESTION_SCHEMA_V1,
+      id: "chat-question:cli-window",
+      responseKind: "single_choice",
+      prompt: "Which approved window should I use?",
+      required: true,
+      options: [
+        { id: "window:seven", label: "Seven days" },
+        { id: "window:thirty", label: "Thirty days" },
+      ],
+    };
+    const answer: ChatUserQuestionAnswerV1 = {
+      schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+      questionId: question.id,
+      value: { kind: "selection", optionIds: ["window:seven"] },
+    };
+    const harness = cliHarness({ chatQuestion: question, chatQuestionAnswer: answer });
+    await handleChat(
+      ["Summarize the approved window."],
+      { space: "DOCSY" },
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(harness.chatRunInputs).toHaveLength(2);
+    expect(harness.chatRunInputs[1]).toMatchObject({
+      sessionId: harness.chatRunInputs[0]!.sessionId,
+      turnId: harness.chatRunInputs[0]!.turnId,
+      resumeAnswer: answer,
+    });
   });
 
   test("runs Confluence-only CLI chat without a research graph or Jira scope", async () => {

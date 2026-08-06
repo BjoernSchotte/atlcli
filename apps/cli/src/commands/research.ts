@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { createInterface } from "node:readline/promises";
 import {
   ERROR_CODES,
   type OutputOptions,
@@ -55,6 +56,10 @@ import {
   type ResearchBriefPreflightOutcomeV1,
   type ChatQualityPolicyV1,
   type ChatAnswerV1,
+  ChatUserQuestionRequiredError,
+  CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  type ChatUserQuestionAnswerV1,
+  type ChatUserQuestionV1,
   type ChatPresentationStreamEventV1,
   type ChatScopeClarificationReviewV1,
   type ChatTurnRequestV1,
@@ -252,6 +257,7 @@ export interface ResearchCliChatAgentInput {
   conversation: { sessionId: string };
   policy: ResearchOneShotPolicyV1;
   qualityPolicy: ChatQualityPolicyV1;
+  resumeAnswer?: ChatUserQuestionAnswerV1;
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   onChatPresentation: (event: ChatPresentationStreamEventV1) => void;
@@ -280,6 +286,7 @@ export interface ResearchCliDependencies {
   createWorkspace(): Promise<ResearchCliWorkspace>;
   runAgent(input: ResearchCliAgentInput): Promise<ResearchReport>;
   runChatAgent(input: ResearchCliChatAgentInput): Promise<ChatAnswerV1>;
+  askChatUserQuestion(question: ChatUserQuestionV1): Promise<ChatUserQuestionAnswerV1>;
   writeAtomic(path: string, contents: string): Promise<void>;
   artifactPath(): string;
   createDurableSessionId(): string;
@@ -2504,6 +2511,95 @@ function readApiKey(dependencies: ResearchCliDependencies): string | undefined {
   return key || undefined;
 }
 
+function selectedOptionIds(
+  question: Extract<ChatUserQuestionV1, { responseKind: "single_choice" | "multiple_choice" | "mixed" }>,
+  raw: string,
+): string[] {
+  const indexes = raw
+    .split(",")
+    .map((value) => Number.parseInt(value.trim(), 10))
+    .filter((value) => Number.isSafeInteger(value));
+  const unique = [...new Set(indexes)];
+  if (unique.some((value) => value < 1 || value > question.options.length)) {
+    throw new Error("Choose only the displayed option numbers.");
+  }
+  return unique.map((value) => question.options[value - 1]!.id);
+}
+
+/** Portable line-oriented CLI presenter for the shared durable HITL contract. */
+export async function promptChatUserQuestionV1(input: {
+  question: ChatUserQuestionV1;
+  ask(prompt: string): Promise<string>;
+  write(message: string): void;
+}): Promise<ChatUserQuestionAnswerV1> {
+  const question = input.question;
+  input.write(`\nKiteweave needs your input:\n${question.prompt}\n`);
+  if ("options" in question) {
+    question.options.forEach((option, index) => {
+      input.write(`  ${index + 1}. ${option.label}${option.description ? ` — ${option.description}` : ""}\n`);
+    });
+  }
+  if (question.responseKind === "assumption") {
+    input.write(`Assumption: ${question.assumption}\n`);
+  }
+  while (true) {
+    try {
+      if (question.responseKind === "free_text") {
+        const text = (await input.ask("> ")).trim();
+        if ((question.required && !text) || text.length > question.maxLength) {
+          throw new Error(`Enter between 1 and ${question.maxLength} characters.`);
+        }
+        return {
+          schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+          questionId: question.id,
+          value: { kind: "text", text },
+        };
+      }
+      if (question.responseKind === "assumption") {
+        const decision = (await input.ask("Accept this assumption? [y/n] ")).trim().toLowerCase();
+        if (!["y", "yes", "j", "ja", "n", "no", "nein"].includes(decision)) {
+          throw new Error("Answer yes or no.");
+        }
+        return {
+          schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+          questionId: question.id,
+          value: {
+            kind: "assumption",
+            decision: ["y", "yes", "j", "ja"].includes(decision) ? "accepted" : "rejected",
+          },
+        };
+      }
+      const mixed = question.responseKind === "mixed";
+      const raw = await input.ask(mixed
+        ? "Choose numbers separated by commas; add optional text after |: "
+        : question.responseKind === "single_choice"
+          ? "Choose one number: "
+          : "Choose numbers separated by commas: ");
+      const [selection = "", freeTextRaw] = mixed ? raw.split("|", 2) : [raw];
+      const optionIds = selectedOptionIds(question, selection);
+      const freeText = freeTextRaw?.trim();
+      const minimum = question.responseKind === "single_choice" ? 1 : question.minSelections;
+      const maximum = question.responseKind === "single_choice" ? 1 : question.maxSelections;
+      if (optionIds.length > maximum || (optionIds.length < minimum && !freeText) ||
+          (question.required && optionIds.length === 0 && !freeText)) {
+        throw new Error(`Choose between ${minimum} and ${maximum} options${mixed ? " or provide text" : ""}.`);
+      }
+      if (mixed && freeText && freeText.length > question.maxLength) {
+        throw new Error(`Additional text is limited to ${question.maxLength} characters.`);
+      }
+      return {
+        schema: CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+        questionId: question.id,
+        value: mixed
+          ? { kind: "mixed", optionIds, ...(freeText ? { text: freeText } : {}) }
+          : { kind: "selection", optionIds },
+      };
+    } catch (error) {
+      input.write(`${error instanceof Error ? error.message : "The answer is invalid."}\n`);
+    }
+  }
+}
+
 export const defaultResearchCliDependencies: ResearchCliDependencies = {
   async resolveProfile(name) {
     return getActiveProfile(await loadConfig(), name);
@@ -2544,6 +2640,21 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
     );
   },
   readApiKey: () => process.env.ANTHROPIC_API_KEY,
+  async askChatUserQuestion(question) {
+    if (!process.stdin.isTTY) {
+      throw new Error("Chat requires user input, but stdin is not interactive.");
+    }
+    const terminal = createInterface({ input: process.stdin, output: process.stderr });
+    try {
+      return await promptChatUserQuestionV1({
+        question,
+        ask: (prompt) => terminal.question(prompt),
+        write: (message) => process.stderr.write(message),
+      });
+    } finally {
+      terminal.close();
+    }
+  },
   createWorkspace: () => FileSystemResearchWorkspace.createTemporary(),
   async runAgent(input) {
     const budget = new ResearchRunBudget(input.request.limits);
@@ -2611,6 +2722,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       budget,
       workspace: input.workspace,
       qualityPolicy: input.qualityPolicy,
+      resumeAnswer: input.resumeAnswer,
       signal: input.signal,
       onEvent: input.onEvent,
       onChatPresentation: input.onChatPresentation,
@@ -3108,47 +3220,58 @@ async function runDirectChatCliConversation(input: {
       `[chat] model=${RESEARCH_MODEL_ID} quality=${input.cli.qualityPolicy?.mode ?? "auto"} profile=${input.profile.name} session=${input.sessionId}\n`,
     );
     input.dependencies.writeStderr("[chat] running — press Ctrl+C to stop\n");
-    const answer = await input.dependencies.runChatAgent({
-      apiKey: input.apiKey,
-      profile: input.profile,
-      request: input.request,
-      workspace: input.workspace,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      conversation: { sessionId: input.sessionId },
-      policy: input.cli.policy,
-      qualityPolicy: input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto"),
-      signal: controller.signal,
-      writeDiagnostic: (message) =>
-        input.dependencies.writeStderr(`[chat] ${message}\n`),
-      onEvent: (event) => {
-        if (event.kind === "phase") {
-          input.dependencies.writeStderr(`[chat] phase=${event.phase}\n`);
-        } else if (event.kind === "capability") {
-          input.dependencies.writeStderr(
-            `[chat] tool=${event.toolId} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}\n`,
-          );
-        } else if (event.kind === "progress") {
-          input.dependencies.writeStderr(
-            `[chat] calls=${event.completed}/${event.maximum}\n`,
-          );
-        } else if (event.kind === "decision" &&
-            event.decisionId.startsWith("chat-strategy:")) {
-          input.dependencies.writeStderr(
-            `[chat] strategy=${event.reasonCode}\n`,
-          );
-        }
-      },
-      onChatPresentation: (event) => {
-        if (event.status === "started") {
-          input.dependencies.writeStderr(`[chat] ${event.channel} `);
-        } else if (event.status === "delta") {
-          input.dependencies.writeStderr(event.delta ?? "");
-        } else {
-          input.dependencies.writeStderr("\n");
-        }
-      },
-    });
+    let resumeAnswer: ChatUserQuestionAnswerV1 | undefined;
+    let answer: ChatAnswerV1;
+    while (true) {
+      try {
+        answer = await input.dependencies.runChatAgent({
+          apiKey: input.apiKey,
+          profile: input.profile,
+          request: input.request,
+          workspace: input.workspace,
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          conversation: { sessionId: input.sessionId },
+          policy: input.cli.policy,
+          qualityPolicy: input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto"),
+          ...(resumeAnswer ? { resumeAnswer } : {}),
+          signal: controller.signal,
+          writeDiagnostic: (message) =>
+            input.dependencies.writeStderr(`[chat] ${message}\n`),
+          onEvent: (event) => {
+            if (event.kind === "phase") {
+              input.dependencies.writeStderr(`[chat] phase=${event.phase}\n`);
+            } else if (event.kind === "capability") {
+              input.dependencies.writeStderr(
+                `[chat] tool=${event.toolId} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}\n`,
+              );
+            } else if (event.kind === "progress") {
+              input.dependencies.writeStderr(
+                `[chat] calls=${event.completed}/${event.maximum}\n`,
+              );
+            } else if (event.kind === "decision" &&
+                event.decisionId.startsWith("chat-strategy:")) {
+              input.dependencies.writeStderr(
+                `[chat] strategy=${event.reasonCode}\n`,
+              );
+            }
+          },
+          onChatPresentation: (event) => {
+            if (event.status === "started") {
+              input.dependencies.writeStderr(`[chat] ${event.channel} `);
+            } else if (event.status === "delta") {
+              input.dependencies.writeStderr(event.delta ?? "");
+            } else {
+              input.dependencies.writeStderr("\n");
+            }
+          },
+        });
+        break;
+      } catch (error) {
+        if (!(error instanceof ChatUserQuestionRequiredError)) throw error;
+        resumeAnswer = await input.dependencies.askChatUserQuestion(error.question);
+      }
+    }
     const artifactPath = input.dependencies.artifactPath();
     try {
       await input.dependencies.writeAtomic(artifactPath, answer.messageMarkdown);

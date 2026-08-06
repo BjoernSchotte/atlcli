@@ -953,8 +953,12 @@ sidepanel boundaries. The sidepanel restores a pending question from IndexedDB,
 blocks queued-message admission while waiting, and supports free text, single
 choice, multiple choice, mixed, and declared-assumption presentation. A packed
 production MV3 E2E pauses on a model-selected question and resumes the same turn
-through a freshly constructed worker. CLI interactive presentation and the other
-controls remain open, so the parent live-acceptance boxes stay unchecked.
+through a freshly constructed worker. The CLI now presents and validates the
+same five question shapes through a line-oriented interactive adapter and
+resumes the exact conversation and turn with the accepted answer; focused CLI
+integration tests prove this without constructing a second agent. A manual CLI
+terminal demonstration and the other controls remain open, so the parent
+live-acceptance boxes stay unchecked.
 
 Live acceptance:
 
