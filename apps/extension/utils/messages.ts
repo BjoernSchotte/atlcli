@@ -17,6 +17,7 @@ import {
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
 import type {
+  ChatPresentationStreamEventV1,
   ResearchErrorCode,
   ChatQualityPolicyV1,
   ResearchOneShotEventV1,
@@ -38,7 +39,10 @@ import type {
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
-import { isResearchOneShotEventV1 } from "./research/events.js";
+import {
+  isChatPresentationStreamEventV1,
+  isResearchOneShotEventV1,
+} from "./research/events.js";
 
 /**
  * Detection payload shared by the SW push (`entity-changed`) and the
@@ -586,6 +590,11 @@ export type ResearchEventMessage = {
   runId: string;
   event: ResearchOneShotEventV1;
 };
+export type ChatPresentationMessage = {
+  kind: "research:chat-presentation";
+  runId: string;
+  event: ChatPresentationStreamEventV1;
+};
 
 /**
  * Internal messages the service worker forwards to the offscreen document.
@@ -665,6 +674,7 @@ export type ExtMessage =
   | ExportJobsChanged
   | ResearchProgressMessage
   | ResearchEventMessage
+  | ChatPresentationMessage
   | OffscreenRequest
   | OffscreenResponse;
 
@@ -1008,6 +1018,19 @@ export function isResearchEvent(
     Number.isFinite(Date.parse(candidate.event.at)))) return false;
 
   return isResearchOneShotEventV1(candidate.event);
+}
+
+export function isChatPresentationMessage(
+  value: unknown,
+  runId?: string,
+): value is ChatPresentationMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { kind?: unknown; runId?: unknown; event?: unknown };
+  return candidate.kind === "research:chat-presentation" &&
+    hasOnlyKeys(value, ["kind", "runId", "event"]) &&
+    isResearchRunId(candidate.runId) &&
+    (runId === undefined || candidate.runId === runId) &&
+    isChatPresentationStreamEventV1(candidate.event);
 }
 
 /** Narrow a broadcast push to the Chrome window owned by one side panel. */

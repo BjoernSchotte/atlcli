@@ -16,6 +16,11 @@ import {
   type ChatQualityModeV1,
   type ChatQualityPolicyV1,
 } from "../quality-policy.js";
+import type {
+  ChatStrategyCapabilityClassV1,
+  ChatStrategyQualityRiskV1,
+  ChatStrategyReasonCodeV1,
+} from "./strategy.js";
 
 export const CHAT_TURN_REQUEST_SCHEMA_V1 = "atlcli.chat-turn-request/v1" as const;
 export const CHAT_ANSWER_SCHEMA_V1 = "atlcli.chat-answer/v1" as const;
@@ -42,6 +47,11 @@ export interface ChatCitationV1 {
   title: string;
   url: string;
   product: ResearchProduct;
+  /** Host-validated locator for a specifically read Confluence section. */
+  section?: {
+    sectionId: string;
+    heading: string;
+  };
 }
 
 export interface ChatAnswerGapV1 {
@@ -50,11 +60,42 @@ export interface ChatAnswerGapV1 {
   sourceIds: string[];
 }
 
+const CHAT_GAP_CODES_V1 = [
+  "no-detail-evidence",
+  "truncated-source",
+  "unresolved-reference",
+  "incomplete-coverage",
+] as const;
+type ChatGapCodeV1 = (typeof CHAT_GAP_CODES_V1)[number];
+
+/** Provider wording is advisory; the host owns the compact durable taxonomy. */
+export function normalizeChatGapCodeV1(value: string): ChatGapCodeV1 {
+  const normalized = value.trim().toLocaleLowerCase("en-US");
+  if (CHAT_GAP_CODES_V1.includes(normalized as ChatGapCodeV1)) {
+    return normalized as ChatGapCodeV1;
+  }
+  if (/truncat|clipp|source.?limit/iu.test(normalized)) return "truncated-source";
+  if (/refer|link|mapping|relationship/iu.test(normalized)) return "unresolved-reference";
+  if (/detail|evidence.?absent|no.?evidence/iu.test(normalized)) return "no-detail-evidence";
+  // Search, retrieval, coverage, verification, and any other bounded provider
+  // label are conservatively represented as incomplete coverage. The host
+  // never lets a provider-created taxonomy weaken an evidence boundary.
+  return "incomplete-coverage";
+}
+
+const CHAT_GAP_CODE_SCHEMA_V1 = z.string().min(1).max(64)
+  .transform(normalizeChatGapCodeV1);
+
 export interface ChatStrategyV1 {
   qualityMode: ChatQualityModeV1;
   path: ChatStrategyPathV1;
   delegated: boolean;
   reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+  reasonCodes: ChatStrategyReasonCodeV1[];
+  ambiguityDisposition: "none" | "ask-user";
+  requiredCapabilities: ChatStrategyCapabilityClassV1[];
+  expectedComplexity: "simple" | "moderate" | "complex";
+  qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
 export interface ChatContinuationOfferV1 {
@@ -128,7 +169,7 @@ export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
   messageMarkdown: z.string().min(1).max(24_000),
   citationSourceIds: z.array(z.string().min(1).max(256)).max(100),
   gaps: z.array(z.object({
-    code: z.enum(["no-detail-evidence", "truncated-source", "unresolved-reference", "incomplete-coverage"]),
+    code: CHAT_GAP_CODE_SCHEMA_V1,
     message: z.string().min(1).max(1_000),
     sourceIds: z.array(z.string().min(1).max(256)).max(100),
   }).strict()).max(50),
@@ -136,7 +177,7 @@ export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
     kind: z.enum(["follow-up", "deep-research", "clarification"]),
     prompt: z.string().min(1).max(1_000),
   }).strict().optional(),
-}).strict();
+}).strict().meta({ title: "ChatAnswerDraftV1" });
 
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -159,7 +200,7 @@ export const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1 = {
         additionalProperties: false,
         required: ["code", "message", "sourceIds"],
         properties: {
-          code: { enum: ["no-detail-evidence", "truncated-source", "unresolved-reference", "incomplete-coverage"] },
+        code: { type: "string", minLength: 1, maxLength: 64 },
           message: { type: "string", minLength: 1, maxLength: 1_000 },
           sourceIds: {
             type: "array",

@@ -261,7 +261,7 @@ export function createResearchPtcTools(
     tool(async (input) => invoke("jira.issue.get", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["jira.issue.get"],
         description:
-          "Read one Jira issue previously returned by jiraIssueSearch. Parse the returned JSON string. entityRef is opaque.",
+          "Read one Jira issue using only an opaque entityRef returned by researchCandidateRank. A raw jiraIssueSearch entityRef is not admitted and will fail.",
         schema: getInputSchema("jira.issue.get"),
       }),
     tool(async (input) => invoke("wiki.search", input), {
@@ -273,13 +273,13 @@ export function createResearchPtcTools(
     tool(async (input) => invoke("wiki.page.get", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["wiki.page.get"],
         description:
-          "Read one Confluence page previously returned by wikiSearch. Parse the returned JSON string. entityRef is opaque. Set includeComments only when bounded inline-comment evidence is materially needed; the host caps that sidecar and reports partiality.",
+          "Read one Confluence page using only an opaque entityRef returned by researchCandidateRank. A raw wikiSearch entityRef is not admitted and will fail. Set includeComments only when bounded inline-comment evidence is materially needed; the host caps that sidecar and reports partiality.",
         schema: getInputSchema("wiki.page.get"),
       }),
     tool(async (input) => invoke("research.candidate.rank", input), {
         name: RESEARCH_LANGCHAIN_TOOL_NAMES["research.candidate.rank"],
         description:
-          "Rank opaque Jira or Confluence candidates previously returned by a scoped search. Detail reads require a reference returned by this tool.",
+          "Required bridge between search and detail reads. Collect page.items[].entityRef from jiraIssueSearch or wikiSearch, call this tool with { product: 'jira' | 'confluence', entityRefs }, then pass only returned items[].entityRef to jiraIssueGet or wikiPageGet.",
         schema: candidateRankInputSchema(),
       }),
   ];

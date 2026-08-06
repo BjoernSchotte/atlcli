@@ -2,6 +2,8 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 
 export const RESEARCH_TASK_DISPATCH_SCHEMA_V1 =
   "atlcli.research-task-dispatch/v1" as const;
+export const AGENTIC_TASK_DISPATCH_SCHEMA_V1 =
+  "atlcli.agentic-task-dispatch/v1" as const;
 export const RESEARCH_TASK_ID_CONFIG_KEY = "__atlcli_research_task_id";
 export const RESEARCH_TASK_GRANTS_CONFIG_KEY =
   "__atlcli_research_task_granted_capability_ids";
@@ -10,6 +12,13 @@ export const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY =
 
 export interface ResearchTaskDescriptionV1 {
   schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
+  taskId: string;
+  objective: string;
+  dependencyResults?: ResearchTaskDependencyResultV1[];
+}
+
+export interface AgenticTaskDescriptionV1 {
+  schema: typeof AGENTIC_TASK_DISPATCH_SCHEMA_V1;
   taskId: string;
   objective: string;
   dependencyResults?: ResearchTaskDependencyResultV1[];
@@ -140,7 +149,22 @@ export function encodeResearchTaskDescriptionV1(
   } satisfies ResearchTaskDescriptionV1);
 }
 
-function parseResearchTaskDescriptionV1(value: string): ResearchTaskDescriptionV1 {
+export function encodeAgenticTaskDescriptionV1(
+  value: Omit<AgenticTaskDescriptionV1, "schema">,
+): string {
+  return JSON.stringify({
+    schema: AGENTIC_TASK_DISPATCH_SCHEMA_V1,
+    taskId: value.taskId,
+    objective: value.objective,
+    ...(value.dependencyResults?.length
+      ? { dependencyResults: value.dependencyResults }
+      : {}),
+  } satisfies AgenticTaskDescriptionV1);
+}
+
+function parseResearchTaskDescriptionV1(
+  value: string,
+): ResearchTaskDescriptionV1 | AgenticTaskDescriptionV1 {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -150,11 +174,13 @@ function parseResearchTaskDescriptionV1(value: string): ResearchTaskDescriptionV
       "Research task description is not a valid host-issued envelope.",
     );
   }
+  const schema = (parsed as { schema?: unknown } | null)?.schema;
   if (
     !parsed ||
     typeof parsed !== "object" ||
     Array.isArray(parsed) ||
-    (parsed as { schema?: unknown }).schema !== RESEARCH_TASK_DISPATCH_SCHEMA_V1 ||
+    (schema !== RESEARCH_TASK_DISPATCH_SCHEMA_V1 &&
+      schema !== AGENTIC_TASK_DISPATCH_SCHEMA_V1) ||
     typeof (parsed as { taskId?: unknown }).taskId !== "string" ||
     !(parsed as { taskId: string }).taskId ||
     typeof (parsed as { objective?: unknown }).objective !== "string" ||
@@ -200,7 +226,7 @@ function parseResearchTaskDescriptionV1(value: string): ResearchTaskDescriptionV
       ids.add(entry.taskId);
     }
   }
-  return parsed as ResearchTaskDescriptionV1;
+  return parsed as ResearchTaskDescriptionV1 | AgenticTaskDescriptionV1;
 }
 
 function canonicalJson(value: unknown): string {
@@ -250,6 +276,12 @@ export interface ResearchDispatchInterceptionAdapter {
   invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
   assertCapability(taskId: string, capabilityId: string): void;
   replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+  /**
+   * Narrow the host ceiling to the concurrency accepted for the current
+   * workflow before dispatch observation starts. A model may request less
+   * parallelism than the host permits, but it can never raise the host limit.
+   */
+  setMaxConcurrency(maxConcurrency: number): void;
   /**
    * Restore host-validated terminal dependency projections before a resumed
    * worker may admit a later frontier. This accepts projections only for
@@ -351,6 +383,7 @@ export function createAgenticDispatchInterceptionAdapter(
   let activeInvocations = 0;
   let pendingAdmissions = 0;
   let observedStatus = false;
+  let activeMaxConcurrency = options.maxConcurrency;
 
   const emit = (diagnostic: ResearchDispatchDiagnosticV1): void => {
     observedStatus = true;
@@ -384,6 +417,23 @@ export function createAgenticDispatchInterceptionAdapter(
       );
     }
     admissions = validatedAdmissions(nextAdmissions);
+  };
+
+  const setMaxConcurrency = (maxConcurrency: number): void => {
+    if (observedStatus || dispatchedTasks > 0 || activeInvocations > 0 || pendingAdmissions > 0) {
+      throw new ResearchDispatchError(
+        "admissions-locked",
+        "Research task concurrency is immutable after dispatch observation begins.",
+      );
+    }
+    if (!Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1 ||
+        maxConcurrency > options.maxConcurrency) {
+      throw new ResearchDispatchError(
+        "concurrency-exceeded",
+        `Research task concurrency must be between 1 and the host ceiling (${options.maxConcurrency}).`,
+      );
+    }
+    activeMaxConcurrency = maxConcurrency;
   };
 
   const appendAdmissions = (
@@ -482,7 +532,7 @@ export function createAgenticDispatchInterceptionAdapter(
     input: ResearchTaskToolInputV1,
     config: RunnableConfig = {},
   ): Promise<unknown> => {
-    let description: ResearchTaskDescriptionV1;
+    let description: ResearchTaskDescriptionV1 | AgenticTaskDescriptionV1;
     try {
       description = parseResearchTaskDescriptionV1(input.description);
     } catch (error) {
@@ -546,11 +596,17 @@ export function createAgenticDispatchInterceptionAdapter(
     }));
     const canonicalizedInput: ResearchTaskToolInputV1 = {
       ...input,
-      description: encodeResearchTaskDescriptionV1({
-        taskId,
-        objective: description.objective,
-        ...(canonicalDependencies.length ? { dependencyResults: canonicalDependencies } : {}),
-      }),
+      description: description.schema === AGENTIC_TASK_DISPATCH_SCHEMA_V1
+        ? encodeAgenticTaskDescriptionV1({
+            taskId,
+            objective: description.objective,
+            ...(canonicalDependencies.length ? { dependencyResults: canonicalDependencies } : {}),
+          })
+        : encodeResearchTaskDescriptionV1({
+            taskId,
+            objective: description.objective,
+            ...(canonicalDependencies.length ? { dependencyResults: canonicalDependencies } : {}),
+          }),
     };
     if (input.subagent_type !== admission.subagentType) {
       reject(
@@ -583,10 +639,10 @@ export function createAgenticDispatchInterceptionAdapter(
         taskId,
       );
     }
-    if (activeInvocations + pendingAdmissions >= options.maxConcurrency) {
+    if (activeInvocations + pendingAdmissions >= activeMaxConcurrency) {
       reject(
         "concurrency-exceeded",
-        `Research task concurrency exceeded (max=${options.maxConcurrency}).`,
+        `Research task concurrency exceeded (max=${activeMaxConcurrency}).`,
         taskId,
       );
     }
@@ -638,7 +694,13 @@ export function createAgenticDispatchInterceptionAdapter(
       signal: controller.signal,
       configurable: {
         ...config.configurable,
-        [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: admission.responseSchema,
+        // LangChain annotates raw JSON Schemas while binding structured
+        // output. Admissions are intentionally immutable, so pass a fresh
+        // clone across the framework boundary rather than the frozen host
+        // contract object itself.
+        [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: structuredClone(
+          admission.responseSchema,
+        ),
         [RESEARCH_TASK_ID_CONFIG_KEY]: taskId,
         [RESEARCH_TASK_GRANTS_CONFIG_KEY]: [...admission.grantedCapabilityIds],
       },
@@ -760,6 +822,7 @@ export function createAgenticDispatchInterceptionAdapter(
     invoke,
     assertCapability,
     replaceAdmissions,
+    setMaxConcurrency,
     appendAdmissions,
     restoreCompleted,
     snapshot: () => ({

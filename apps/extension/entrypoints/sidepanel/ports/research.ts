@@ -20,6 +20,7 @@ import {
   normalizeAnthropicApiKey,
 } from "../../../utils/research/credential.js";
 import {
+  isChatPresentationMessage,
   isResearchEvent,
   isResearchProgress,
 } from "../../../utils/messages.js";
@@ -839,6 +840,9 @@ export function chromeResearchPort(): ResearchPort {
         }
         if (isResearchEvent(message, runId)) {
           options?.onEvent?.(message.event);
+        }
+        if (isChatPresentationMessage(message, runId)) {
+          options?.onChatPresentation?.(message.event);
         }
       };
       const cancel = (): void => {

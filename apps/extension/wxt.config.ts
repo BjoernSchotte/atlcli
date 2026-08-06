@@ -72,6 +72,21 @@ export default defineConfig({
             return researchBrowserModule("langsmith-sandbox-browser-stub");
           }
 
+          // Streamdown's public barrel eagerly retains lazy Mermaid and Shiki
+          // chunks even when callers override `code` and disable controls.
+          // Those optional rich renderers contain string-to-code paths that
+          // violate the extension-page CSP. The chat supplies its own safe
+          // code renderer, so keep Streamdown's parser/streaming renderer while
+          // replacing only the unreachable rich-block modules in MV3 builds.
+          if (importer?.includes("streamdown/dist/")) {
+            if (source.startsWith("./code-block-") || source.startsWith("./mermaid-")) {
+              return researchBrowserModule("streamdown-rich-block-browser-stub");
+            }
+            if (source === "mermaid") {
+              return researchBrowserModule("streamdown-mermaid-browser-stub");
+            }
+          }
+
           // Anthropic SDK 0.115 imports its optional Node credential providers
           // eagerly from client.mjs. ChatAnthropic always supplies the user's
           // session-only apiKey, so these branches are unreachable. Alias only

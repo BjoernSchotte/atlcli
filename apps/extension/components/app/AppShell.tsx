@@ -304,7 +304,7 @@ export function AppShell({
       className={cn(
         "mx-auto box-border flex flex-col bg-background text-foreground",
         layout === "compact"
-          ? "min-h-dvh max-w-[400px]"
+          ? "h-dvh max-w-[400px] overflow-hidden"
           : "h-dvh max-w-none overflow-hidden"
       )}
     >
@@ -503,7 +503,9 @@ export function AppShell({
         className={
           layout === "full"
             ? "min-h-0 flex-1 overflow-hidden"
-            : "min-h-0 flex-1 overflow-y-auto px-4 py-[18px]"
+            : activeWorkspace === "ai"
+              ? "min-h-0 flex-1 overflow-hidden px-4 py-[18px]"
+              : "min-h-0 flex-1 overflow-y-auto px-4 py-[18px]"
         }
       >
         {active === null ? null : active.available ? (

@@ -93,6 +93,11 @@ const chatAnswer: ChatAnswerV1 = {
     path: "direct",
     delegated: false,
     reasonCode: "auto-direct",
+    reasonCodes: ["no-atlassian-acquisition"],
+    ambiguityDisposition: "none",
+    requiredCapabilities: ["chat-answer"],
+    expectedComplexity: "simple",
+    qualityRisks: [],
   },
   run: {
     model: "claude-sonnet-4-6",
@@ -224,6 +229,28 @@ function cliHarness(
     },
     async runChatAgent(input) {
       chatRunInputs.push(input);
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 1,
+        at: "2026-08-06T12:00:00.000Z",
+        channel: "reasoning-summary",
+        status: "started",
+      });
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 2,
+        at: "2026-08-06T12:00:00.001Z",
+        channel: "reasoning-summary",
+        status: "delta",
+        delta: "Checking the selected evidence.",
+      });
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 3,
+        at: "2026-08-06T12:00:00.002Z",
+        channel: "reasoning-summary",
+        status: "completed",
+      });
       input.onEvent({
         kind: "capability",
         seq: 1,
@@ -879,7 +906,7 @@ describe("research CLI one-shot contract", () => {
       maxItemsPerProduct: 20,
       maxDetailItemsPerProduct: 6,
       maxBodyCharsPerItem: 8_000,
-      maxPtcCalls: 16,
+      maxPtcCalls: 24,
       maxHttpCalls: 20,
       maxModelOutputTokens: 8_000,
       maxModelCostMicros: 500_000,
@@ -891,6 +918,7 @@ describe("research CLI one-shot contract", () => {
       }),
       profile,
     );
+    expect(quickRequest.limits.maxPtcCalls).toBe(16);
     expect(quickRequest.limits.maxModelOutputTokens).toBe(4_096);
   });
 
@@ -917,6 +945,9 @@ describe("research CLI one-shot contract", () => {
     });
     expect(harness.runInputs).toHaveLength(0);
     expect(harness.stderr.join("")).not.toContain("subagent=");
+    expect(harness.stderr.join("")).toContain(
+      "[chat] reasoning-summary Checking the selected evidence.\n",
+    );
   });
 
   test("continues ordinary CLI chat from the same durable conversation", async () => {

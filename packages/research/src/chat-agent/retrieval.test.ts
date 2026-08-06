@@ -164,6 +164,55 @@ describe("Chat exact-anchor retrieval", () => {
     });
   });
 
+  test("records section references from a complete page read without a second HTTP request", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Complete synthetic page",
+        content: {
+          text: "Decision\nThe synthetic decision is approved.",
+          linkTargets: [],
+          truncated: false,
+          inputBytes: 43,
+        },
+        navigation: navigateConfluenceStorageV1({
+          storage: "<h1>Decision</h1><p>The synthetic decision is approved.</p>",
+          sourceVersion: 1,
+          siteOrigin: ORIGIN,
+          projectionLimits: {
+            maxTextChars: 1_000,
+            maxTextBytes: 4_000,
+            maxLinks: 10,
+            maxNodes: 1_000,
+            maxDepth: 32,
+          },
+        }),
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, {
+      createAnchorId: () => "anchor",
+      createSectionId: () => "decision-section",
+    });
+
+    await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+
+    expect(broker.readSectionReferenceLedger()).toEqual([{
+      sourceId: "wiki:1001",
+      sectionId: "section:000:decision",
+      heading: "Decision",
+      order: 0,
+    }]);
+    expect(calls).toEqual(["wiki.get:1001"]);
+  });
+
   test("reads an attached Jira issue once and preserves its host canonical URL", async () => {
     const calls: string[] = [];
     const broker = new ResearchCapabilityBroker(request({
@@ -197,6 +246,31 @@ describe("Chat exact-anchor retrieval", () => {
     await expect(invokeDirect(broker, "research-anchor:forged-anchor"))
       .rejects.toMatchObject({ code: "invalid-request" });
     expect(calls).toEqual([]);
+  });
+
+  test("fences every content operation before budget or provider work until strategy acceptance", async () => {
+    const calls: string[] = [];
+    let accepted = false;
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), {
+      createAnchorId: () => "guarded-anchor",
+      beforeContentOperation: () => {
+        if (!accepted) throw new Error("strategy not accepted");
+      },
+    });
+    const anchor = broker.exactAnchors()[0]!;
+
+    await expect(invokeDirect(broker, anchor.anchorRef))
+      .rejects.toThrow("strategy not accepted");
+    expect(calls).toEqual([]);
+    expect(broker.budget.counts()).toMatchObject({ ptcCalls: 0, httpCalls: 0 });
+
+    accepted = true;
+    await invokeDirect(broker, anchor.anchorRef);
+    expect(calls).toEqual(["wiki.get:1001"]);
   });
 
   test("fails closed on a mismatched page and never falls back to search", async () => {
@@ -397,6 +471,7 @@ describe("Chat exact-anchor retrieval", () => {
     const target = page.document!.sections.find((section) => section.heading === "Current decision")!;
     expect(target).toBeDefined();
     expect(target).not.toHaveProperty("content");
+    expect(broker.readSectionReferenceLedger()).toEqual([]);
     const section = await broker.readExactSection({
       schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
       sectionRef: target.sectionRef,
@@ -415,6 +490,12 @@ describe("Chat exact-anchor retrieval", () => {
       completeDocumentRead: false,
     });
     expect(broker.budget.state().details.confluence).toBe(1);
+    expect(broker.readSectionReferenceLedger()).toEqual([{
+      sourceId: "wiki:1001",
+      sectionId: target.sectionId,
+      heading: "Current decision",
+      order: 1,
+    }]);
     expect(calls).toEqual(["wiki.get:1001"]);
   });
 

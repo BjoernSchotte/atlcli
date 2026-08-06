@@ -81,6 +81,22 @@ export function createChromePorts(): AppPorts {
       return loadConfluencePage(contentId, profile);
     },
 
+    navigateToSource: async ({ url }) => {
+      const targetProfile = profileFromTabUrl(url);
+      if (!targetProfile) {
+        throw new ReadError("unknown", "The citation is not on an approved Atlassian host.");
+      }
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tab?.id === undefined || !tab.url) {
+        throw new ReadError("unknown", "The active Atlassian tab is unavailable.");
+      }
+      const activeProfile = profileFromTabUrl(tab.url);
+      if (!activeProfile || new URL(tab.url).origin !== new URL(url).origin) {
+        throw new ReadError("unknown", "The citation belongs to another Atlassian site.");
+      }
+      await chrome.tabs.update(tab.id, { url });
+    },
+
     pdf: chromePdfExportPort(),
     docx: chromeDocxExportPort(),
     docxTemplates: chromeDocxTemplateStore(site),

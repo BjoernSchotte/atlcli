@@ -9,6 +9,8 @@ export interface ChatModelBindingV1 {
   modelId: string;
   qualityAdapter: ProviderQualityCapabilityAdapterV1;
   structuredOutput: "native" | "tool";
+  /** Explicit provider-adapter grant; absent means no reasoning text may cross the host boundary. */
+  reasoningPresentation?: "summary";
 }
 
 export interface ChatModelFactoryInputV1 {

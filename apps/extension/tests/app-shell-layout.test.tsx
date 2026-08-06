@@ -90,6 +90,20 @@ const NOOP_SCREEN: ResolvedScreen = {
   unmet: [],
 } as unknown as ResolvedScreen;
 
+const NOOP_AI_SCREEN: ResolvedScreen = {
+  definition: {
+    id: "research",
+    labelKey: "screen.research.label",
+    workspace: "ai",
+    icon: () => null,
+    component: () => React.createElement("div", { "data-testid": "screen-body" }),
+  },
+  available: true,
+  visible: true,
+  reasonKey: null,
+  unmet: [],
+} as unknown as ResolvedScreen;
+
 async function mountShell(layout?: "compact" | "full"): Promise<HTMLElement> {
   const { act } = await import("react");
   const { createRoot } = await import("react-dom/client");
@@ -116,6 +130,32 @@ async function mountShell(layout?: "compact" | "full"): Promise<HTMLElement> {
   return shell as unknown as HTMLElement;
 }
 
+async function mountCompactAiShell(): Promise<HTMLElement> {
+  const { act } = await import("react");
+  const { createRoot } = await import("react-dom/client");
+  if (!root) root = createRoot(container!);
+  await act(async () => {
+    root!.render(
+      <I18nProvider locale="en">
+        <AppShell
+          title="atlcli"
+          version="0.0.0"
+          screens={[NOOP_AI_SCREEN]}
+          active={NOOP_AI_SCREEN}
+          activeWorkspace="ai"
+          onNavigate={() => undefined}
+          onWorkspaceNavigate={() => undefined}
+          screenProps={{} as unknown as ScreenProps}
+          layout="compact"
+        />
+      </I18nProvider>
+    );
+  });
+  const shell = container!.querySelector<HTMLElement>('[data-testid="app-shell"]');
+  if (!shell) throw new Error(`no app shell in:\n${container!.innerHTML}`);
+  return shell;
+}
+
 describe("AppShell width is host configuration", () => {
   it("keeps the 400 px side-panel cap by default", async () => {
     const shell = await mountShell();
@@ -125,6 +165,16 @@ describe("AppShell width is host configuration", () => {
   it("keeps it for an explicit compact host", async () => {
     const shell = await mountShell("compact");
     expect(shell.className).toContain("max-w-[400px]");
+    expect(shell.className).toContain("h-dvh");
+    expect(shell.className).toContain("overflow-hidden");
+  });
+
+  it("gives the compact AI screen a viewport-bound non-scrolling host panel", async () => {
+    const shell = await mountCompactAiShell();
+    const panel = shell.querySelector<HTMLElement>('[data-testid="screen-research"]');
+    expect(panel?.className).toContain("min-h-0");
+    expect(panel?.className).toContain("overflow-hidden");
+    expect(panel?.className).not.toContain("overflow-y-auto");
   });
 
   it("drops the cap for a host that owns a whole tab", async () => {

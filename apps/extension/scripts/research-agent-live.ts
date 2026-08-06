@@ -9,11 +9,11 @@ import {
 } from "@atlcli/research/node";
 import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
 
-const SITE_ORIGIN = "https://synthetic.atlassian.net";
-const PROJECT_KEY = "DEMO";
-const SPACE_KEY = "KB";
+export const SYNTHETIC_SITE_ORIGIN = "https://synthetic.atlassian.net";
+export const SYNTHETIC_PROJECT_KEY = "DEMO";
+export const SYNTHETIC_SPACE_KEY = "KB";
 
-function syntheticProviders(): ResearchReadProviders {
+export function syntheticResearchProviders(): ResearchReadProviders {
   return {
     jira: {
       async searchPage({ providerCursor, signal }) {
@@ -29,7 +29,7 @@ function syntheticProviders(): ResearchReadProviders {
               items: [
                 {
                   issueKey: "DEMO-2",
-                  projectKey: PROJECT_KEY,
+                  projectKey: SYNTHETIC_PROJECT_KEY,
                   title: "Add formatted Markdown report",
                   excerpt:
                     "Render a structured, cited research result as safe Markdown.",
@@ -41,7 +41,7 @@ function syntheticProviders(): ResearchReadProviders {
               items: [
                 {
                   issueKey: "DEMO-1",
-                  projectKey: PROJECT_KEY,
+                  projectKey: SYNTHETIC_PROJECT_KEY,
                   title: "Build bounded read-only research agent",
                   excerpt:
                     "Use QuickJS programmatic tool calling with four read-only tools.",
@@ -57,14 +57,14 @@ function syntheticProviders(): ResearchReadProviders {
         if (issueKey === "DEMO-1") {
           return {
             issueKey,
-            projectKey: PROJECT_KEY,
+            projectKey: SYNTHETIC_PROJECT_KEY,
             title: "Build bounded read-only research agent",
             excerpt:
               "Use QuickJS programmatic tool calling with four read-only tools.",
             updatedAt: "2026-07-30T10:00:00.000Z",
             content: {
               text: "DEMO-1 implements the read-only agent. Its accepted design is the Confluence Research design page.",
-              linkTargets: [`${SITE_ORIGIN}/wiki/spaces/KB/pages/1001`],
+              linkTargets: [`${SYNTHETIC_SITE_ORIGIN}/wiki/spaces/KB/pages/1001`],
               truncated: false,
               inputBytes: 101,
             },
@@ -72,7 +72,7 @@ function syntheticProviders(): ResearchReadProviders {
         }
         return {
           issueKey,
-          projectKey: PROJECT_KEY,
+          projectKey: SYNTHETIC_PROJECT_KEY,
           title: "Add formatted Markdown report",
           excerpt: "Render a structured, cited research result as safe Markdown.",
           updatedAt: "2026-07-29T09:00:00.000Z",
@@ -93,7 +93,7 @@ function syntheticProviders(): ResearchReadProviders {
               items: [
                 {
                   contentId: "1002",
-                  spaceKey: SPACE_KEY,
+                  spaceKey: SYNTHETIC_SPACE_KEY,
                   title: "Markdown output contract",
                   excerpt:
                     "Markdown is the portable intermediate representation for later exporters.",
@@ -105,7 +105,7 @@ function syntheticProviders(): ResearchReadProviders {
               items: [
                 {
                   contentId: "1001",
-                  spaceKey: SPACE_KEY,
+                  spaceKey: SYNTHETIC_SPACE_KEY,
                   title: "Research design",
                   excerpt:
                     "The design limits the agent to Jira and Confluence read capabilities.",
@@ -120,14 +120,14 @@ function syntheticProviders(): ResearchReadProviders {
         if (contentId === "1001") {
           return {
             contentId,
-            spaceKey: SPACE_KEY,
+            spaceKey: SYNTHETIC_SPACE_KEY,
             title: "Research design",
             excerpt:
               "The design limits the agent to Jira and Confluence read capabilities.",
             updatedAt: "2026-07-30T08:00:00.000Z",
             content: {
               text: "The design for DEMO-1 requires QuickJS PTC, opaque pagination cursors, strict budgets, and read-only Jira plus Confluence tools.",
-              linkTargets: [`${SITE_ORIGIN}/browse/DEMO-1`],
+              linkTargets: [`${SYNTHETIC_SITE_ORIGIN}/browse/DEMO-1`],
               truncated: false,
               inputBytes: 126,
             },
@@ -135,14 +135,14 @@ function syntheticProviders(): ResearchReadProviders {
         }
         return {
           contentId,
-          spaceKey: SPACE_KEY,
+          spaceKey: SYNTHETIC_SPACE_KEY,
           title: "Markdown output contract",
           excerpt:
             "Markdown is the portable intermediate representation for later exporters.",
           updatedAt: "2026-07-29T08:00:00.000Z",
           content: {
             text: "The host, not the model, creates deterministic Markdown from a validated structured report.",
-            linkTargets: [`${SITE_ORIGIN}/browse/DEMO-2`],
+            linkTargets: [`${SYNTHETIC_SITE_ORIGIN}/browse/DEMO-2`],
             truncated: false,
             inputBytes: 88,
           },
@@ -171,9 +171,9 @@ async function main(): Promise<void> {
     schema: RESEARCH_REQUEST_SCHEMA_V1,
     question: questionFromArguments(),
     scope: {
-      siteOrigin: SITE_ORIGIN,
-      jiraProjectKeys: [PROJECT_KEY],
-      confluenceSpaceKeys: [SPACE_KEY],
+      siteOrigin: SYNTHETIC_SITE_ORIGIN,
+      jiraProjectKeys: [SYNTHETIC_PROJECT_KEY],
+      confluenceSpaceKeys: [SYNTHETIC_SPACE_KEY],
     },
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
   const report = await runResearchAgent({
     apiKey,
     request,
-    providers: syntheticProviders(),
+    providers: syntheticResearchProviders(),
     runId: `synthetic-live-${crypto.randomUUID()}`,
     researchGraph: composeStandardResearchGraphV1(request.question, {
       scope: request.scope,
@@ -213,4 +213,4 @@ async function main(): Promise<void> {
   console.log(report.markdown);
 }
 
-await main();
+if (import.meta.main) await main();

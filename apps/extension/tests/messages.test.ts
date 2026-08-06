@@ -5,10 +5,35 @@ import {
   isExtRequest,
   isExportJobsChanged,
   isOffscreenRequest,
+  isChatPresentationMessage,
   isResearchEvent,
 } from "../utils/messages.js";
 
 describe("message guards", () => {
+  it("accepts only bounded ephemeral Chat presentation messages", () => {
+    const message = {
+      kind: "research:chat-presentation",
+      runId: "chat-run-1",
+      event: {
+        kind: "chat-presentation",
+        seq: 1,
+        at: "2026-08-06T12:00:00.000Z",
+        channel: "reasoning-summary",
+        status: "delta",
+        delta: "Comparing the available evidence.",
+      },
+    } as const;
+    expect(isChatPresentationMessage(message, "chat-run-1")).toBe(true);
+    expect(isChatPresentationMessage({
+      ...message,
+      event: { ...message.event, signature: "must-not-cross" },
+    })).toBe(false);
+    expect(isChatPresentationMessage({
+      ...message,
+      event: { ...message.event, channel: "raw-chain-of-thought" },
+    })).toBe(false);
+  });
+
   it("isExtRequest accepts panel requests only", () => {
     const jobId = "123e4567-e89b-42d3-a456-426614174000";
     const opaqueJobId = "job-1";

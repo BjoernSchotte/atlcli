@@ -188,6 +188,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
             event,
           }).catch(() => undefined);
         },
+        onChatPresentation: (event) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:chat-presentation",
+            runId,
+            event,
+          }).catch(() => undefined);
+        },
       });
     },
     resumeResearch: async (runId, sessionId, turnId, key) => {

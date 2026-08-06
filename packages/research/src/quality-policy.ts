@@ -105,11 +105,12 @@ function isChatQualityPolicyV1(value: unknown): value is ChatQualityPolicyV1 {
     return false;
   }
   const candidate = value as Partial<ChatQualityPolicyV1>;
-  return CHAT_QUALITY_MODES_V1.includes(candidate.mode as ChatQualityModeV1) &&
-    ["disabled", "adaptive", "strategy-required"].includes(candidate.delegation ?? "") &&
-    ["direct", "sufficient-validated"].includes(candidate.completionTarget ?? "") &&
-    ["none", "automatic"].includes(candidate.planning ?? "") &&
-    ["deny", "ask"].includes(candidate.scopeExpansion ?? "") &&
+  if (!CHAT_QUALITY_MODES_V1.includes(candidate.mode as ChatQualityModeV1)) return false;
+  const canonical = chatQualityPolicyV1(candidate.mode as ChatQualityModeV1);
+  return candidate.delegation === canonical.delegation &&
+    candidate.completionTarget === canonical.completionTarget &&
+    candidate.planning === canonical.planning &&
+    candidate.scopeExpansion === canonical.scopeExpansion &&
     PROVIDER_REASONING_PREFERENCES_V1.includes(
       candidate.providerReasoningPreference as ProviderReasoningPreferenceV1,
     ) &&

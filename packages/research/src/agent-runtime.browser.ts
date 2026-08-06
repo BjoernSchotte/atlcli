@@ -25,6 +25,7 @@ export const runResearchAgent = browserRuntime.runResearchAgent;
 const browserChatRuntime = createKiteweaveChatAgent({
   StateBackend,
   createDeepAgent,
+  createSubAgentMiddleware,
   registerHarnessProfile,
 }, { defaultModelFactory: createAnthropicChatModelBindingV1 });
 export const runChatAgent = browserChatRuntime.runChatAgent;

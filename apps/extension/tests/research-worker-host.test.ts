@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type {
+  ChatPresentationStreamEventV1,
   ChatAnswerV1,
   ResearchOneShotEventV1,
   ResearchProgressV1,
@@ -50,6 +51,11 @@ const answer = {
     path: "direct",
     delegated: false,
     reasonCode: "quick-direct",
+    reasonCodes: ["quick-direct"],
+    ambiguityDisposition: "none",
+    requiredCapabilities: ["chat-answer"],
+    expectedComplexity: "simple",
+    qualityRisks: [],
   },
   run: {
     model: "synthetic-model",
@@ -166,6 +172,42 @@ describe("dedicated research worker host", () => {
     expect(progress).toHaveLength(1);
     expect(events).toEqual([expect.objectContaining({ kind: "artifact" })]);
     expect(worker.terminated).toBe(true);
+  });
+
+  it("forwards ephemeral Chat presentation deltas without adding them to durable events", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const presentation: ChatPresentationStreamEventV1[] = [];
+    const durableEvents: ResearchOneShotEventV1[] = [];
+    const resultPromise = host.run({
+      runId: "chat-stream-1",
+      sessionId: "chat-session:stream-1",
+      turnId: "chat-turn:stream-1",
+      apiKey: "synthetic-key",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      onEvent: (event) => durableEvents.push(event),
+      onChatPresentation: (event) => presentation.push(event),
+    });
+
+    worker.emit({
+      kind: "research-worker:chat-presentation",
+      runId: "chat-stream-1",
+      event: {
+        kind: "chat-presentation",
+        seq: 1,
+        at: "2026-08-06T12:00:00.000Z",
+        channel: "reasoning-summary",
+        status: "delta",
+        delta: "Checking the selected page.",
+      },
+    });
+    expect(presentation.map((event) => event.delta)).toEqual(["Checking the selected page."]);
+    expect(durableEvents).toEqual([]);
+
+    worker.emit({ kind: "research-worker:complete", runId: "chat-stream-1", answer });
+    expect(await resultPromise).toBe(answer);
   });
 
   it("terminates and rejects an active run on cancellation", async () => {

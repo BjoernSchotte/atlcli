@@ -61,7 +61,13 @@ interface EmissionScan {
 const NON_EXPORT_NOTE_CODES = new Set([
   "browser-case-failure",
   "compiler-diagnostic",
+  // Chat answer gaps are a separate, host-owned evidence taxonomy. They use
+  // the same `{ code, message }` shape but are never Confluence ExportNotes.
+  "incomplete-coverage",
   "legacy-pdf-error",
+  "no-detail-evidence",
+  "truncated-source",
+  "unresolved-reference",
 ]);
 
 const NON_EXPORT_NOTE_PREFIXES = new Set([

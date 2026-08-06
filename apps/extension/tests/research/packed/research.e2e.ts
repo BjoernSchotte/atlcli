@@ -32,6 +32,7 @@ import {
   RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
   RESEARCH_REQUEST_SCHEMA_V1,
   assessResearchRetrievalV1,
+  chatQualityPolicyV1,
   createResearchSessionV1,
   createStandardResearchBriefV1,
   initializeResearchSessionTurnV1,
@@ -39,6 +40,7 @@ import {
   reduceResearchSessionV1,
   type ResearchOneShotEventV1,
   type ChatAnswerV1,
+  type ChatQualityPolicyV1,
   type ResearchReport,
   type ResearchRequestV1,
   type ResearchScopePreflightOutcomeV1,
@@ -780,6 +782,9 @@ interface HarnessEvent {
   reasonCode?: string;
   errorCode?: string;
   researchEvent?: ResearchOneShotEventV1;
+  presentationChannel?: string;
+  presentationStatus?: string;
+  presentationDelta?: string;
   report?: ResearchReport;
   value?: unknown;
   hasHiddenSupervisorContext?: boolean;
@@ -868,6 +873,13 @@ function offscreenBootstrap(): string {
                   status: researchEvent?.status,
                   reasonCode: researchEvent?.reasonCode,
                   errorCode: researchEvent?.errorCode,
+                }
+              : {}),
+            ...(event.data?.kind === "research-worker:chat-presentation"
+              ? {
+                  presentationChannel: researchEvent?.channel,
+                  presentationStatus: researchEvent?.status,
+                  presentationDelta: researchEvent?.delta,
                 }
               : {}),
             ...(event.data?.kind === "research-worker:complete"
@@ -1141,8 +1153,8 @@ function wikiResult(id, title) {
   };
 }
 
-function anthropicMessage(content, stopReason, call) {
-  return json({
+function anthropicMessage(content, stopReason, call, stream = false) {
+  const payload = {
     id: "msg_packed_" + workerId + "_" + call,
     type: "message",
     role: "assistant",
@@ -1157,6 +1169,63 @@ function anthropicMessage(content, stopReason, call) {
     stop_reason: stopReason,
     stop_sequence: null,
     ...(packedHostParityRun || packedSentinelRun ? {} : { usage: { input_tokens: 20, output_tokens: 10 } }),
+  };
+  if (!stream) return json(payload);
+  const frames = [];
+  const emit = (event) => {
+    frames.push("event: " + event.type + "\n" + "data: " + JSON.stringify(event) + "\n\n");
+  };
+  emit({
+    type: "message_start",
+    message: {
+      ...payload,
+      content: [],
+      stop_reason: null,
+      usage: { input_tokens: payload.usage?.input_tokens ?? 0, output_tokens: 0 },
+    },
+  });
+  payload.content.forEach((block, index) => {
+    const contentBlock = block.type === "tool_use"
+      ? { type: "tool_use", id: block.id, name: block.name, input: {} }
+      : block.type === "thinking"
+        ? { type: "thinking", thinking: "", signature: "" }
+        : { type: "text", text: "" };
+    emit({ type: "content_block_start", index, content_block: contentBlock });
+    if (block.type === "tool_use") {
+      emit({
+        type: "content_block_delta",
+        index,
+        delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) },
+      });
+    } else if (block.type === "thinking") {
+      emit({
+        type: "content_block_delta",
+        index,
+        delta: { type: "thinking_delta", thinking: block.thinking },
+      });
+      emit({
+        type: "content_block_delta",
+        index,
+        delta: { type: "signature_delta", signature: block.signature },
+      });
+    } else {
+      emit({
+        type: "content_block_delta",
+        index,
+        delta: { type: "text_delta", text: block.text },
+      });
+    }
+    emit({ type: "content_block_stop", index });
+  });
+  emit({
+    type: "message_delta",
+    delta: { stop_reason: stopReason, stop_sequence: null },
+    usage: { output_tokens: payload.usage?.output_tokens ?? 0 },
+  });
+  emit({ type: "message_stop" });
+  return new Response(frames.join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
   });
 }
 
@@ -1252,6 +1321,18 @@ globalThis.fetch = async (input, init) => {
     const toolNames = Array.isArray(body.tools)
       ? body.tools.map((tool) => tool?.name).filter((name) => typeof name === "string")
       : [];
+    const providerMessage = (content, stopReason, call) => anthropicMessage(
+      body.thinking?.type === "adaptive"
+        ? [{
+            type: "thinking",
+            thinking: "Checking the admitted evidence before continuing.",
+            signature: "packed-provider-signature",
+          }, ...content]
+        : content,
+      stopReason,
+      call,
+      body.stream === true,
+    );
     channel.postMessage({
       kind: "fetch",
       workerId,
@@ -1326,7 +1407,7 @@ globalThis.fetch = async (input, init) => {
         channel.postMessage({ kind: "packed-sentinel-structured", value });
       }
       if (body.output_config?.format?.type === "json_schema") {
-        return anthropicMessage(
+        return providerMessage(
           [{ type: "text", text: JSON.stringify(value) }],
           "end_turn",
           modelCalls,
@@ -1337,13 +1418,13 @@ globalThis.fetch = async (input, init) => {
         : undefined;
       if (!structuredTool?.name) {
         channel.postMessage({ kind: "missing-structured-tool", workerId, toolNames });
-        return anthropicMessage(
+        return providerMessage(
           [{ type: "text", text: "Packed fixture could not find the structured response tool." }],
           "end_turn",
           modelCalls,
         );
       }
-      return anthropicMessage(
+      return providerMessage(
         [{
           type: "tool_use",
           id: "toolu_packed_structured_" + modelCalls,
@@ -1362,7 +1443,7 @@ globalThis.fetch = async (input, init) => {
       packedJiraOnlyRun = true;
       if (!packedJiraOnlyAcquisitionRequested) {
         packedJiraOnlyAcquisitionRequested = true;
-        return anthropicMessage(
+        return providerMessage(
           [{
             type: "tool_use",
             id: "toolu_packed_direct_jira_eval",
@@ -1383,16 +1464,36 @@ globalThis.fetch = async (input, init) => {
     const packedLongPageChat = serializedRequest.includes("packed-long-page:") &&
       serializedRequest.includes("Answer as a normal chat response");
     if (packedExactPageChat || packedExactIssueChat || packedLongPageChat) {
+      const strategyRequired = serializedRequest.includes(
+        "start the first eval program with exactly one await tools.chatStrategyDecide({})",
+      );
+      if (
+        strategyRequired &&
+        !serializedMessages.includes("atlcli.chat-strategy-decision/v1")
+      ) {
+        return providerMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_chat_strategy_" + modelCalls,
+            name: "eval",
+            input: {
+              code: "JSON.parse(await tools.chatStrategyDecide({}))",
+            },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
       const anchorRef = serializedRequest.match(/research-anchor:[A-Za-z0-9-]{1,200}/)?.[0];
       if (!anchorRef) {
-        return anthropicMessage(
+        return providerMessage(
           [{ type: "text", text: "Packed exact-context fixture could not find a host anchor." }],
           "end_turn",
           modelCalls,
         );
       }
       if (!serializedMessages.includes("atlcli.ptc/atlassian.bound.read.output/v1")) {
-        return anthropicMessage(
+        return providerMessage(
           [{
             type: "tool_use",
             id: "toolu_packed_exact_anchor_eval_" + modelCalls,
@@ -1411,7 +1512,7 @@ globalThis.fetch = async (input, init) => {
         const structuredOutline = ["tables", "expands", "jiraMacros", "smartLinks", "excerpts", "includes"]
           .every((key) => new RegExp(key + "[^0-9]{0,16}1").test(serializedMessages));
         if (!structuredOutline || !serializedMessages.includes("unresolved_include")) {
-          return anthropicMessage(
+          return providerMessage(
             [{ type: "text", text: "Packed long-page fixture did not receive the normalized structured outline." }],
             "end_turn",
             modelCalls,
@@ -1420,13 +1521,13 @@ globalThis.fetch = async (input, init) => {
         const sectionRefs = serializedRequest.match(/research-section:[A-Za-z0-9-]{1,200}/g) || [];
         const sectionRef = sectionRefs.at(-1);
         if (!sectionRef) {
-          return anthropicMessage(
+          return providerMessage(
             [{ type: "text", text: "Packed long-page fixture could not find a section ref." }],
             "end_turn",
             modelCalls,
           );
         }
-        return anthropicMessage(
+        return providerMessage(
           [{
             type: "tool_use",
             id: "toolu_packed_exact_section_eval_" + modelCalls,
@@ -1441,9 +1542,40 @@ globalThis.fetch = async (input, init) => {
         );
       }
       if (packedLongPageChat) return structured(packedLongPageChatDraft);
-      return structured(packedExactPageChat
+      const agenticStrategy = strategyRequired &&
+        serializedRequest.includes("Compare the attached page");
+      if (
+        agenticStrategy &&
+        !serializedMessages.includes("atlcli.chat-strategy-review/v1")
+      ) {
+        return providerMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_chat_review_" + modelCalls,
+            name: "eval",
+            input: {
+              code: "JSON.parse(await tools.chatStrategyReview({}))",
+            },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      const exactDraft = packedExactPageChat
         ? packedExactPageChatDraft
-        : packedExactIssueChatDraft);
+        : packedExactIssueChatDraft;
+      return structured(
+        agenticStrategy
+          ? {
+              ...exactDraft,
+              gaps: [{
+                code: "incomplete-coverage",
+                message: "The synthetic comparison lacks a second detailed source.",
+                sourceIds: [],
+              }],
+            }
+          : exactDraft,
+      );
     }
 
     if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
@@ -1451,7 +1583,7 @@ globalThis.fetch = async (input, init) => {
         return structured(parityPacketForResponse());
       }
       if (!serializedMessages.includes("atlcli.ptc/wiki.page.get.output/v1")) {
-        return anthropicMessage(
+        return providerMessage(
           [{
             type: "tool_use",
             id: "toolu_packed_wiki_eval",
@@ -1481,7 +1613,7 @@ globalThis.fetch = async (input, init) => {
       if (packedJiraOnlyRun) {
         if (!packedJiraOnlyAcquisitionRequested) {
           packedJiraOnlyAcquisitionRequested = true;
-          return anthropicMessage(
+          return providerMessage(
             [{
               type: "tool_use",
               id: "toolu_packed_jira_eval",
@@ -1495,7 +1627,7 @@ globalThis.fetch = async (input, init) => {
         return structured(jiraOnlyModelPacket);
       }
       if (!serializedMessages.includes("atlcli.ptc/jira.issue.get.output/v1")) {
-        return anthropicMessage(
+        return providerMessage(
           [{
             type: "tool_use",
             id: "toolu_packed_jira_eval",
@@ -1582,7 +1714,7 @@ globalThis.fetch = async (input, init) => {
           workerId,
         });
       }
-      return anthropicMessage(
+      return providerMessage(
         [{
           type: "tool_use",
           id: "toolu_packed_eval",
@@ -1632,13 +1764,13 @@ globalThis.fetch = async (input, init) => {
       : undefined;
     if (!structuredTool?.name) {
       channel.postMessage({ kind: "missing-structured-tool", workerId, toolNames });
-      return anthropicMessage(
+      return providerMessage(
         [{ type: "text", text: "Packed fixture could not find the structured response tool." }],
         "end_turn",
         modelCalls,
       );
     }
-    return anthropicMessage(
+    return providerMessage(
       [{
         type: "tool_use",
         id: "toolu_packed_report",
@@ -2562,6 +2694,7 @@ function runPackedResearchInBackground(
   request: ResearchRequestV1,
   runId: string,
   mode: "chat",
+  qualityPolicy?: ChatQualityPolicyV1,
 ): Promise<PackedChatRunResponse>;
 function runPackedResearchInBackground(
   page: Page,
@@ -2574,8 +2707,9 @@ async function runPackedResearchInBackground(
   request: ResearchRequestV1,
   runId: string,
   mode: "chat" | "research" = "research",
+  qualityPolicy?: ChatQualityPolicyV1,
 ): Promise<PackedRunResponse | PackedChatRunResponse> {
-  return page.evaluate(async ({ request, runId, mode, policy }) => {
+  return page.evaluate(async ({ request, runId, mode, policy, qualityPolicy }) => {
     const window = await chrome.windows.getCurrent();
     if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
     return chrome.runtime.sendMessage({
@@ -2587,8 +2721,9 @@ async function runPackedResearchInBackground(
       mode,
       request,
       policy,
+      ...(qualityPolicy ? { qualityPolicy } : {}),
     });
-  }, { request, runId, mode, policy: HOST_PARITY_POLICY }) as Promise<
+  }, { request, runId, mode, policy: HOST_PARITY_POLICY, qualityPolicy }) as Promise<
     PackedRunResponse | PackedChatRunResponse
   >;
 }
@@ -3158,6 +3293,62 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
       maxPtcCalls: 256,
     },
   });
+});
+
+test("keeps the compact chat composer visible while only the timeline scrolls", async () => {
+  await openResearchScreen(page);
+  await page.setViewportSize({ width: 400, height: 700 });
+  try {
+    await page.evaluate(() => {
+      const timeline = document.querySelector<HTMLElement>(
+        '[data-testid="research-chat-timeline"]',
+      );
+      if (!timeline) throw new Error("Packed chat timeline is unavailable.");
+      const filler = document.createElement("div");
+      filler.dataset.testid = "packed-chat-height-fixture";
+      filler.style.height = "1600px";
+      filler.style.flexShrink = "0";
+      filler.setAttribute("aria-hidden", "true");
+      timeline.prepend(filler);
+    });
+
+    const layout = await page.evaluate(() => {
+      const requireElement = (testId: string): HTMLElement => {
+        const element = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+        if (!element) throw new Error(`Missing ${testId}.`);
+        return element;
+      };
+      const shell = requireElement("app-shell");
+      const panel = requireElement("screen-research");
+      const screen = requireElement("research-screen");
+      const timeline = requireElement("research-chat-timeline");
+      const composer = requireElement("research-chat-composer");
+      const timelineRect = timeline.getBoundingClientRect();
+      const composerRect = composer.getBoundingClientRect();
+      return {
+        shellViewportBound: shell.scrollHeight <= shell.clientHeight + 1,
+        panelViewportBound: panel.scrollHeight <= panel.clientHeight + 1,
+        screenViewportBound: screen.scrollHeight <= screen.clientHeight + 1,
+        timelineScrollable: timeline.scrollHeight > timeline.clientHeight,
+        timelineStopsBeforeComposer: timelineRect.bottom <= composerRect.top + 1,
+        composerVisible: composerRect.top >= 0 && composerRect.bottom <= window.innerHeight + 1,
+      };
+    });
+
+    expect(layout).toEqual({
+      shellViewportBound: true,
+      panelViewportBound: true,
+      screenViewportBound: true,
+      timelineScrollable: true,
+      timelineStopsBeforeComposer: true,
+      composerVisible: true,
+    });
+  } finally {
+    await page.evaluate(() => {
+      document.querySelector('[data-testid="packed-chat-height-fixture"]')?.remove();
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
+  }
 });
 
 test("reviews a durable scope proposal in packed MV3 without allowing caller-owned scope authority", async () => {
@@ -5453,11 +5644,13 @@ test("resolves a question-derived Jira scope and streams a Jira-only composition
     }, null, 2));
   }
   await expect(page.getByTestId("research-chat-report")).toBeVisible();
-  const answer = await page.getByTestId("research-chat-answer").innerText();
-  if (
-    !answer.includes("DEMO-1 documents the packed design location") ||
-    !answer.includes("https://packed-research.atlassian.net/browse/DEMO-1")
-  ) {
+  const answerLocator = page.getByTestId("research-chat-answer");
+  const answer = await answerLocator.innerText();
+  const canonicalSource = answerLocator.locator(
+    'a[href="https://packed-research.atlassian.net/browse/DEMO-1"]',
+  );
+  if (!answer.includes("DEMO-1 documents the packed design location") ||
+      await canonicalSource.count() < 1) {
     throw new Error(JSON.stringify({
       answer,
       events: await harnessEvents(page),
@@ -5521,6 +5714,92 @@ test("reads exact page and issue anchors in packed MV3 without search or ranking
     !event.url?.includes("/remotelink"))).toHaveLength(1);
   expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
   expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(false);
+  expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat strategies in packed MV3", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  for (const mode of ["quick", "auto", "deep"] as const) {
+    const simple = await runPackedResearchInBackground(
+      page,
+      packedExactContextRequest("confluence"),
+      `packed-strategy-simple-${mode}`,
+      "chat",
+      chatQualityPolicyV1(mode),
+    );
+    expect(simple.ok, JSON.stringify(simple)).toBe(true);
+    if (!simple.ok) continue;
+    expect(simple.report.strategy).toMatchObject({
+      qualityMode: mode,
+      path: "direct",
+      delegated: false,
+      expectedComplexity: "simple",
+    });
+    expect(simple.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 2);
+
+    const complexRequest = {
+      ...packedExactContextRequest("confluence"),
+      question:
+        "packed-exact-page: Compare the attached page with the approved rollout criteria and identify contradictions.",
+    };
+    const complex = await runPackedResearchInBackground(
+      page,
+      complexRequest,
+      `packed-strategy-complex-${mode}`,
+      "chat",
+      chatQualityPolicyV1(mode),
+    );
+    expect(complex.ok, JSON.stringify(complex)).toBe(true);
+    if (!complex.ok) continue;
+    expect(complex.report.strategy).toMatchObject({
+      qualityMode: mode,
+      path: mode === "quick" ? "direct" : "agentic",
+      delegated: false,
+      expectedComplexity: "complex",
+    });
+    expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 3);
+  }
+
+  const events = await harnessEvents(page);
+  const decisions = events.filter((event) =>
+    event.messageKind === "research-worker:event" &&
+    event.researchEvent?.kind === "decision"
+  );
+  expect(decisions).toHaveLength(6);
+  const reasonCodes = decisions.flatMap((event) =>
+    event.researchEvent?.kind === "decision"
+      ? [event.researchEvent.reasonCode]
+      : []
+  );
+  expect(reasonCodes).toContain("chat-quick-direct");
+  expect(reasonCodes).toContain("chat-auto-direct");
+  expect(reasonCodes).toContain("chat-deep-direct");
+  expect(reasonCodes.filter((reason) => reason === "chat-agentic-required"))
+    .toHaveLength(2);
+  const summaries = events.filter((event) =>
+    event.messageKind === "research-worker:chat-presentation" &&
+    event.presentationChannel === "reasoning-summary" &&
+    event.presentationStatus === "delta"
+  );
+  expect(summaries.length).toBeGreaterThan(0);
+  expect(summaries.some((event) =>
+    event.presentationDelta?.includes("Checking the admitted evidence")
+  )).toBe(true);
+  expect(JSON.stringify(summaries)).not.toContain("packed-provider-signature");
+  const answerDeltas = events.filter((event) =>
+    event.messageKind === "research-worker:chat-presentation" &&
+    event.presentationChannel === "answer-markdown" &&
+    event.presentationStatus === "delta"
+  );
+  expect(answerDeltas.length).toBeGreaterThan(0);
+  const streamedAnswer = answerDeltas.map((event) => event.presentationDelta ?? "").join("");
+  expect(streamedAnswer).toContain("packed implementation statement");
+  expect(streamedAnswer).not.toContain('"messageMarkdown"');
+  expect(streamedAnswer).not.toContain("packed-provider-signature");
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
 });
 
@@ -5739,7 +6018,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(activityTrace).toContain("Question and context are being matched");
   expect(activityTrace).toContain("Relevant Jira work items are being searched");
   expect(activityTrace).toContain("Relevant pages are being searched in Confluence");
-  expect(activityTrace).toContain("Evidence and coverage are being checked");
+  expect(activityTrace).toContain("Claims and evidence are being checked");
   expect(activityTrace).toContain("The answer is being written");
   expect(activityTrace).not.toContain("research-task:");
   expect(activityTrace).not.toContain("central-supervisor");
@@ -5747,6 +6026,36 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(activityTrace).not.toContain("budget · tokens");
   expect(activityTrace).not.toContain(FAKE_KEY);
   expect(activityTrace).not.toContain("Ignore all previous instructions");
+  const activitySteps = page.getByTestId("research-activity").locator("details");
+  expect(await activitySteps.count()).toBeGreaterThan(1);
+  expect(await activitySteps.evaluateAll((steps) =>
+    steps.every((step) => !(step as HTMLDetailsElement).open)
+  )).toBe(true);
+  const firstActivitySummary = activitySteps.first().locator("summary");
+  const firstActivityLabel = firstActivitySummary.locator(".line-clamp-2");
+  await expect(firstActivityLabel).toBeVisible();
+  const activityLabelMetrics = await page
+    .getByTestId("research-activity")
+    .locator("summary .line-clamp-2")
+    .evaluateAll((elements) => elements.map((element) => {
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        lineClamp: style.webkitLineClamp,
+        lineHeight: Number.parseFloat(style.lineHeight),
+        overflow: style.overflow,
+      };
+    }));
+  expect(activityLabelMetrics.every((metric) =>
+    metric.lineClamp === "2" &&
+    metric.overflow === "hidden" &&
+    metric.height <= metric.lineHeight * 2 + 1
+  )).toBe(true);
+  await firstActivitySummary.evaluate((summary) => (summary as HTMLElement).click());
+  await expect(activitySteps.first()).toHaveAttribute("open", "");
+  await expect(activitySteps.first().locator("div p").first()).toBeVisible();
+  await firstActivitySummary.evaluate((summary) => (summary as HTMLElement).click());
+  await expect(activitySteps.first()).not.toHaveAttribute("open", "");
   expect(
     await page.evaluate(
       () =>
@@ -5921,6 +6230,14 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await excludeCurrentContext(page);
   await page.getByTestId("research-mode-deep").click();
   await expect(page.getByTestId("research-mode-deep")).toHaveAttribute("aria-pressed", "true");
+  // Switching back into Deep Research reveals the prepared follow-up's
+  // required HITL checkpoint. Resolve it before an unrelated submission.
+  await expect.poll(async () => planReviewCards.count()).toBeGreaterThan(0);
+  const preparedFollowUpPlanCount = await planReviewCards.count();
+  await planReviewCards.first()
+    .locator('button[data-testid^="research-plan-review-approve-"]')
+    .click();
+  await expect(planReviewCards).toHaveCount(preparedFollowUpPlanCount - 1);
   await fillResearchForm(
     page,
     cancelledObjective,

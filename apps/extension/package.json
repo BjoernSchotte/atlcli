@@ -29,6 +29,7 @@
     "prebench:export-jobs-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/export-job-baseline/vite.config.ts",
     "bench:export-jobs-chrome": "playwright test --config tests/export-job-baseline/playwright.config.ts",
     "research:live": "bun --env-file=../../.env --conditions=development scripts/research-agent-live.ts",
+    "chat:live": "bun --env-file=../../.env --conditions=development scripts/chat-agent-live.ts",
     "postinstall": "wxt prepare",
     "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "wxt prepare && tsc --noEmit",
@@ -54,6 +55,7 @@
     "pdfjs-dist": "^6.1.200",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "streamdown": "1.6.11",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {

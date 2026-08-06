@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Streamdown } from "streamdown";
 import {
   ArrowUp,
   ChevronRight,
@@ -30,6 +31,7 @@ import {
   ResearchContractError,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
+  type ChatPresentationStreamEventV1,
   type ResearchOneShotEventV1,
   type ChatThinkingModeV1,
   type ChatAnswerV1,
@@ -153,6 +155,7 @@ function researchErrorCodeV1(value: unknown): string | undefined {
 type ResearchTimelineStepKind =
   | "thinking"
   | "planning"
+  | "analyzing"
   | "confluence-search"
   | "confluence-read"
   | "confluence-section-read"
@@ -167,14 +170,84 @@ type ResearchTimelineStepKind =
 interface ResearchTimelineStep {
   id: string;
   kind: ResearchTimelineStepKind;
-  events: ResearchOneShotEventV1[];
+  events: ResearchTimelineEventV1[];
+}
+
+type ResearchTimelineEventV1 = ResearchOneShotEventV1 | ChatPresentationStreamEventV1;
+
+function appendTimelineEvent(
+  current: readonly ResearchTimelineEventV1[],
+  event: ResearchTimelineEventV1,
+): ResearchTimelineEventV1[] {
+  const previous = current.at(-1);
+  if (event.kind === "chat-presentation" && event.status === "delta" &&
+    previous?.kind === "chat-presentation" && previous.status === "delta" &&
+    previous.channel === event.channel) {
+    return [
+      ...current.slice(0, -1),
+      {
+        ...event,
+        delta: `${previous.delta ?? ""}${event.delta ?? ""}`.slice(-12_000),
+      },
+    ].slice(-MAX_RESEARCH_ACTIVITY_EVENTS);
+  }
+  return [...current, event].slice(-MAX_RESEARCH_ACTIVITY_EVENTS);
+}
+
+type ResearchSuggestionKind = "summarize" | "connections" | "changes";
+
+interface ResearchChatTurnPresentation {
+  kind: ResearchSuggestionKind;
+  label: string;
+}
+
+function researchActivityMessage(
+  event: Extract<ResearchOneShotEventV1, { kind: "activity" }>,
+  t: ReturnType<typeof useT>,
+): string {
+  if (event.code === "model-assessing") {
+    if (event.status === "started") return t("research.chat.activity.model-assessing.started");
+    if (event.status === "completed") return t("research.chat.activity.model-assessing.completed");
+    return t("research.chat.activity.model-assessing.failed");
+  }
+  if (event.code === "answer-drafting") {
+    return event.status === "started"
+      ? t("research.chat.activity.answer-drafting.started")
+      : event.status === "completed"
+        ? t("research.chat.activity.answer-draft-ready.completed")
+        : t("research.chat.activity.answer-drafting.failed");
+  }
+  if (event.code === "next-step-ready") {
+    return event.status === "completed"
+      ? t("research.chat.activity.next-step-ready.completed")
+      : t("research.chat.activity.model-assessing.failed");
+  }
+  if (event.code === "answer-draft-ready") {
+    return event.status === "completed"
+      ? t("research.chat.activity.answer-draft-ready.completed")
+      : t("research.chat.activity.model-assessing.failed");
+  }
+  if (event.code === "bounded-workflow-running") {
+    return event.status === "started"
+      ? t("research.chat.activity.bounded-workflow-running.started")
+      : event.status === "completed"
+        ? t("research.chat.activity.bounded-workflow-complete.completed")
+        : t("research.chat.activity.bounded-workflow-failed.failed");
+  }
+  if (event.code === "bounded-workflow-complete") {
+    return event.status === "completed"
+      ? t("research.chat.activity.bounded-workflow-complete.completed")
+      : t("research.chat.activity.bounded-workflow-failed.failed");
+  }
+  return t("research.chat.activity.bounded-workflow-failed.failed");
 }
 
 function researchActivityDetailMessages(
-  events: readonly ResearchOneShotEventV1[],
+  events: readonly ResearchTimelineEventV1[],
   t: ReturnType<typeof useT>,
 ): string[] {
   const messages = events.flatMap((event): string[] => {
+    if (event.kind === "chat-presentation") return [];
     if (event.kind === "capability") {
       if (event.status === "failed") return [t("research.chat.detail.readFailed")];
       if (event.status !== "completed") return [];
@@ -226,14 +299,41 @@ function researchActivityDetailMessages(
     if (event.kind === "steering") {
       return [t("research.chat.detail.steeringApplied")];
     }
+    if (event.kind === "activity") {
+      return [researchActivityMessage(event, t)];
+    }
     return [];
   });
   return [...new Set(messages)];
 }
 
-function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKind | null {
+function chatReasoningSummary(events: readonly ResearchTimelineEventV1[]): string {
+  return events
+    .filter((event): event is ChatPresentationStreamEventV1 =>
+      event.kind === "chat-presentation" &&
+      event.channel === "reasoning-summary" &&
+      event.status === "delta")
+    .map((event) => event.delta ?? "")
+    .join("")
+    .trim();
+}
+
+function streamedChatAnswer(events: readonly ResearchTimelineEventV1[]): string {
+  return events
+    .filter((event): event is ChatPresentationStreamEventV1 =>
+      event.kind === "chat-presentation" &&
+      event.channel === "answer-markdown" &&
+      event.status === "delta")
+    .map((event) => event.delta ?? "")
+    .join("");
+}
+
+function timelineStepKind(event: ResearchTimelineEventV1): ResearchTimelineStepKind | null {
+  if (event.kind === "chat-presentation") return null;
   if (event.kind === "phase") {
     if (event.phase === "preparing") return "planning";
+    if (event.phase === "analyzing") return "analyzing";
+    if (event.phase === "checking") return "checking";
     if (event.phase === "rendering") return "synthesizing";
     return null;
   }
@@ -266,6 +366,12 @@ function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKi
   // them as validation created a misleading duplicate “checking” phase.
   if (event.kind === "retrieval") return null;
   if (event.kind === "artifact") return null;
+  if (event.kind === "activity") {
+    if (event.code === "answer-drafting" || event.code === "answer-draft-ready") {
+      return "synthesizing";
+    }
+    return null;
+  }
   if (event.kind === "decision") {
     if (event.decisionId === "direct-chat-agent-run") {
       return event.status === "started" ? "planning" : null;
@@ -281,7 +387,7 @@ function timelineStepKind(event: ResearchOneShotEventV1): ResearchTimelineStepKi
  * owns them; they are not presented as dozens of apparent conversation turns.
  */
 export function researchTimelineSteps(
-  events: readonly ResearchOneShotEventV1[],
+  events: readonly ResearchTimelineEventV1[],
   running: boolean,
 ): ResearchTimelineStep[] {
   const steps: ResearchTimelineStep[] = [];
@@ -322,6 +428,26 @@ function KiteActivityMark(): React.JSX.Element {
       />
     </svg>
   );
+}
+
+function ActiveActivityDots(): React.JSX.Element {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5"
+      aria-hidden="true"
+      data-testid="research-active-dots"
+    >
+      <span className="kiteweave-agent-dot size-1 rounded-full bg-current" />
+      <span className="kiteweave-agent-dot size-1 rounded-full bg-current [animation-delay:120ms]" />
+      <span className="kiteweave-agent-dot size-1 rounded-full bg-current [animation-delay:240ms]" />
+    </span>
+  );
+}
+
+function SuggestionIcon({ kind }: { kind: ResearchSuggestionKind }): React.JSX.Element {
+  if (kind === "summarize") return <FileText className="size-4" aria-hidden="true" />;
+  if (kind === "connections") return <Search className="size-4" aria-hidden="true" />;
+  return <MessageCircle className="size-4" aria-hidden="true" />;
 }
 
 export function inferResearchScope(input: {
@@ -714,24 +840,159 @@ function FormattedReport({ report }: { report: ResearchReport }): React.JSX.Elem
     : <V1FormattedReport report={report} />;
 }
 
-function ChatAnswer({ answer }: { answer: ChatAnswerV1 }): React.JSX.Element {
+function safeChatMarkdownHref(href: string | undefined): string | undefined {
+  if (!href) return undefined;
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === "https:" ? parsed.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function ChatMarkdown({
+  markdown,
+  streaming = false,
+  currentCitationUrls = new Set<string>(),
+  currentContextLabel = "Current context",
+  onCurrentContextNavigate,
+}: {
+  markdown: string;
+  streaming?: boolean;
+  currentCitationUrls?: ReadonlySet<string>;
+  currentContextLabel?: string;
+  onCurrentContextNavigate?: (url: string) => void;
+}): React.JSX.Element {
+  return (
+    <div className="space-y-3 break-words" data-testid="research-chat-markdown">
+      <Streamdown
+        mode={streaming ? "streaming" : "static"}
+        controls={false}
+        components={{
+          h1: ({ children }) => <h2 className="mb-2 mt-4 text-lg font-semibold leading-6 first:mt-0">{children}</h2>,
+          h2: ({ children }) => <h3 className="mb-2 mt-4 text-base font-semibold leading-6 first:mt-0">{children}</h3>,
+          h3: ({ children }) => <h4 className="mb-1.5 mt-3 text-sm font-semibold leading-5 first:mt-0">{children}</h4>,
+          h4: ({ children }) => <h5 className="mb-1.5 mt-3 text-sm font-medium leading-5 first:mt-0">{children}</h5>,
+          p: ({ children }) => <p className="my-2 whitespace-pre-wrap first:mt-0 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li className="pl-0.5">{children}</li>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          blockquote: ({ children }) => (
+            <blockquote className="my-3 border-l-2 border-border pl-3 text-muted-foreground">
+              {children}
+            </blockquote>
+          ),
+          code: ({ children, className }) => className
+            ? <code className={cn("block overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs", className)}>{children}</code>
+            : <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">{children}</code>,
+          pre: ({ children }) => <pre className="my-3 overflow-x-auto">{children}</pre>,
+          a: ({ children, href }) => {
+            const safeHref = safeChatMarkdownHref(href);
+            const isCurrentContext = safeHref !== undefined && currentCitationUrls.has(safeHref);
+            if (safeHref && isCurrentContext && new URL(safeHref).hash.length === 0) {
+              return (
+                <span
+                  className="whitespace-nowrap rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                  data-current-context-citation="page"
+                >
+                  {currentContextLabel}
+                </span>
+              );
+            }
+            if (safeHref && isCurrentContext && onCurrentContextNavigate) {
+              return (
+                <button
+                  type="button"
+                  className="break-words text-left underline underline-offset-2"
+                  data-current-context-citation="section"
+                  onClick={() => onCurrentContextNavigate(safeHref)}
+                >
+                  {children}
+                </button>
+              );
+            }
+            return safeHref
+              ? (
+                <a
+                  className="break-all underline underline-offset-2"
+                  href={safeHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {children}
+                </a>
+              )
+              : <span>{children}</span>;
+          },
+          table: ({ children }) => <table className="my-3 w-full border-collapse text-xs">{children}</table>,
+          th: ({ children }) => <th className="border border-border bg-muted px-2 py-1 text-left font-semibold">{children}</th>,
+          td: ({ children }) => <td className="border border-border px-2 py-1 align-top">{children}</td>,
+          hr: () => <hr className="my-4 border-border" />,
+        }}
+      >
+        {markdown}
+      </Streamdown>
+    </div>
+  );
+}
+
+function ChatAnswer({
+  answer,
+  currentSourceId,
+  currentContextLabel,
+  onCurrentContextNavigate,
+}: {
+  answer: ChatAnswerV1;
+  currentSourceId?: string;
+  currentContextLabel: string;
+  onCurrentContextNavigate?: (url: string) => void;
+}): React.JSX.Element {
   const t = useT();
+  const currentCitations = answer.citations.filter((source) => source.sourceId === currentSourceId);
+  const currentCitationUrls = new Set(
+    currentCitations.flatMap((source) => safeChatMarkdownHref(source.url) ?? []),
+  );
   return (
     <article className="space-y-3 text-sm leading-6" data-testid="research-chat-answer">
-      <p className="m-0 whitespace-pre-wrap">{answer.messageMarkdown}</p>
+      <ChatMarkdown
+        markdown={answer.messageMarkdown}
+        currentCitationUrls={currentCitationUrls}
+        currentContextLabel={currentContextLabel}
+        onCurrentContextNavigate={onCurrentContextNavigate}
+      />
       {answer.citations.length > 0 && (
         <details className="rounded-lg border border-border/70 px-3 py-2">
           <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
             {t("research.chat.sources", { count: answer.citations.length })}
           </summary>
           <ol className="mb-0 mt-2 space-y-1 pl-5 text-xs">
-            {answer.citations.map((source) => (
-              <li key={source.sourceId}>
-                <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
-                  {source.title}
-                </a>
-              </li>
-            ))}
+            {answer.citations.map((source) => {
+              const isCurrentContext = source.sourceId === currentSourceId;
+              const key = `${source.sourceId}#${source.section?.sectionId ?? "item"}`;
+              return (
+                <li key={key}>
+                  {isCurrentContext && !source.section
+                    ? <span className="text-muted-foreground">{currentContextLabel}</span>
+                    : isCurrentContext && onCurrentContextNavigate
+                      ? (
+                        <button
+                          type="button"
+                          className="text-left underline underline-offset-2"
+                          onClick={() => onCurrentContextNavigate(source.url)}
+                        >
+                          {source.title}
+                        </button>
+                      )
+                      : (
+                        <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
+                          {source.title}
+                        </a>
+                      )}
+                </li>
+              );
+            })}
           </ol>
         </details>
       )}
@@ -765,13 +1026,12 @@ function ResearchStreamingTurn({
   running,
   request,
 }: {
-  activity: readonly ResearchOneShotEventV1[];
+  activity: readonly ResearchTimelineEventV1[];
   progress: string;
   running: boolean;
   request?: ResearchRequestV1 | null;
 }): React.JSX.Element | null {
   const t = useT();
-  if (!running && activity.length === 0) return null;
   const steps = researchTimelineSteps(activity, running);
   const exactPage = request?.exactContextProducts?.includes("confluence")
     ? request.scopeSeeds?.find((seed) =>
@@ -787,6 +1047,7 @@ function ResearchStreamingTurn({
       seed.binding.entityKind === "issue",
     )?.binding
     : undefined;
+  const answerDraft = streamedChatAnswer(activity);
   // Ranking validates the one host-bound entity reference internally, but it
   // is not a user-visible discovery step when there is only one exact page.
   // Showing it as "relevant results selected" suggested a broad search that
@@ -794,10 +1055,23 @@ function ResearchStreamingTurn({
   const displaySteps = exactPage
     ? steps.filter((step) => step.kind !== "ranking")
     : steps;
+  const activeStepId = running ? displaySteps.at(-1)?.id : undefined;
+  const [activeSeconds, setActiveSeconds] = useState(0);
+  useEffect(() => {
+    setActiveSeconds(0);
+    if (!activeStepId) return;
+    const startedAt = Date.now();
+    const interval = globalThis.setInterval(() => {
+      setActiveSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1_000)));
+    }, 1_000);
+    return () => globalThis.clearInterval(interval);
+  }, [activeStepId]);
+  if (!running && activity.length === 0) return null;
   const label = (kind: ResearchTimelineStepKind): string => {
     switch (kind) {
       case "thinking": return t("research.chat.phase.thinking");
       case "planning": return t("research.chat.phase.planning");
+      case "analyzing": return t("research.chat.phase.analyzing");
       case "confluence-search": return exactPage
         ? t("research.chat.phase.confluenceContext")
         : t("research.chat.phase.confluenceSearch");
@@ -822,12 +1096,17 @@ function ResearchStreamingTurn({
     switch (kind) {
       case "thinking": return t("research.chat.phase.thinking.description");
       case "planning": return t("research.chat.phase.planning.description");
+      case "analyzing": return t("research.chat.phase.analyzing.description");
       case "confluence-search": return exactPage
         ? t("research.chat.phase.confluenceContext.description")
         : t("research.chat.phase.confluenceSearch.description");
       case "confluence-read": return t("research.chat.phase.confluenceRead.description");
       case "confluence-section-read": return t("research.chat.phase.confluenceSectionRead.description");
-      case "bound-read": return t("research.chat.phase.boundRead.description");
+      case "bound-read": return exactPage
+        ? t("research.chat.phase.confluenceContextRead.description")
+        : exactIssue
+          ? t("research.chat.phase.jiraContextRead.description")
+          : t("research.chat.phase.boundRead.description");
       case "jira-search": return t("research.chat.phase.jiraSearch.description");
       case "jira-read": return t("research.chat.phase.jiraRead.description");
       case "ranking": return t("research.chat.phase.ranking.description");
@@ -836,6 +1115,10 @@ function ResearchStreamingTurn({
       case "synthesizing": return t("research.chat.phase.synthesizing.description");
     }
   };
+  const activeDetail = (kind: ResearchTimelineStepKind): string =>
+    kind === "analyzing"
+      ? t("research.chat.phase.analyzing.active")
+      : t("research.chat.phase.active");
   return (
     <section
       className="space-y-1 py-1 text-sm"
@@ -847,59 +1130,105 @@ function ResearchStreamingTurn({
           const active = running && index === displaySteps.length - 1;
           const details = exactPage && step.kind === "confluence-search"
             ? [t("research.chat.detail.confluenceContextSelected")]
-            : researchActivityDetailMessages(step.events, t);
+            : exactPage && step.kind === "bound-read"
+              ? [t("research.chat.detail.boundRead", { label: exactPage.name })]
+              : researchActivityDetailMessages(step.events, t);
           if (step.kind === "planning") {
             details.push(exactPage
               ? t("research.chat.detail.planExactContext", { name: exactPage.name })
               : t("research.chat.detail.planScopedDiscovery"));
           }
-          const summary = (
+          const reasoningSummary = chatReasoningSummary(step.events);
+          const activityLine = (
             <span className={cn(
-              "flex min-h-9 items-center gap-2.5 rounded-lg px-2 py-1.5",
+              "flex min-h-9 items-start gap-2.5 px-2 py-1.5",
               active ? "font-medium text-foreground" : "text-muted-foreground",
             )}>
-              {active ? <KiteActivityMark /> : <span className="size-5 shrink-0" aria-hidden="true" />}
-              <span className="min-w-0 flex-1">
-                <span className="block">{label(step.kind)}</span>
-                <span className="mt-0.5 block text-xs font-normal leading-4 text-muted-foreground">
-                  {description(step.kind)}
-                </span>
+              <span className="mt-0.5">
+                {active ? <KiteActivityMark /> : <span className="block size-5 shrink-0" aria-hidden="true" />}
               </span>
-              {details.length > 0 && (
-                <ChevronRight
-                  className="size-4 shrink-0 transition-transform group-open:rotate-90"
-                  aria-hidden="true"
-                />
-              )}
+              <span className="min-w-0 flex-1 leading-5">
+                <span className="line-clamp-2 block">{label(step.kind)}</span>
+                {active && reasoningSummary && (
+                  <span
+                    className="mt-0.5 line-clamp-2 block text-xs font-normal leading-4 text-muted-foreground"
+                    data-testid="research-live-reasoning-summary"
+                  >
+                    {reasoningSummary}
+                  </span>
+                )}
+              </span>
               {active && (
-                <span className="sr-only">{t("research.chat.phase.inProgress")}</span>
+                <span
+                  className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-normal tabular-nums text-muted-foreground"
+                  data-testid="research-active-progress"
+                >
+                  <span>{t("research.chat.phase.elapsed", { seconds: String(activeSeconds) })}</span>
+                  <ActiveActivityDots />
+                </span>
+              )}
+              <ChevronRight
+                className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+                aria-hidden="true"
+              />
+              {active && (
+                <span className="sr-only" data-testid="research-active-label">
+                  {t("research.chat.phase.inProgress")}
+                </span>
               )}
             </span>
           );
-          if (details.length === 0) {
-            return <div key={step.id}>{summary}</div>;
-          }
           return (
             <details
               key={step.id}
-              className="group rounded-lg"
+              className="group"
               data-testid={`research-timeline-step-${index}`}
             >
               <summary
-                className="cursor-pointer list-none rounded-lg marker:content-none hover:bg-muted/70"
+                className="cursor-pointer list-none rounded-md marker:content-none hover:bg-muted/60"
                 aria-label={`${label(step.kind)}. ${t("research.chat.phase.showDetails")}`}
               >
-                {summary}
+                {activityLine}
               </summary>
-              <ol className="m-0 ml-9 mt-1 max-h-64 space-y-1 overflow-auto pl-0 text-xs text-muted-foreground">
+              <div className="ml-9 mr-5 space-y-1 pb-2 text-xs leading-4 text-muted-foreground">
+                <p className="m-0">{description(step.kind)}</p>
                 {details.map((detail) => (
-                  <li className="rounded-md bg-muted/70 px-2 py-1" key={detail}>{detail}</li>
+                  <p className="m-0" data-testid="research-activity-outcome" key={detail}>
+                    {detail}
+                  </p>
                 ))}
-              </ol>
+                {active && (
+                  <p className="m-0" data-testid="research-active-detail">
+                    {activeDetail(step.kind)} {t("research.chat.phase.elapsedLong", {
+                      seconds: String(activeSeconds),
+                    })}
+                  </p>
+                )}
+                {reasoningSummary && (
+                  <div
+                    className="mt-2 rounded-md bg-muted/60 px-2.5 py-2 text-xs leading-4 text-foreground"
+                    data-testid="research-reasoning-summary"
+                  >
+                    <p className="m-0 mb-1 font-medium text-muted-foreground">
+                      {t("research.chat.presentation.reasoningSummary")}
+                    </p>
+                    <p className="m-0 whitespace-pre-wrap">{reasoningSummary}</p>
+                  </div>
+                )}
+              </div>
             </details>
           );
         })}
       </div>
+      {running && answerDraft && (
+        <article
+          className="mt-3 rounded-lg border border-border/70 bg-card px-3 py-2 text-sm leading-6"
+          aria-label={t("research.chat.presentation.answerDraft")}
+          data-testid="research-streaming-answer"
+        >
+          <ChatMarkdown markdown={answerDraft} streaming />
+        </article>
+      )}
       {progress && <span className="sr-only">{progress}</span>}
     </section>
   );
@@ -916,6 +1245,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     id: string;
     content: string;
     state: "sent" | "queued" | "steering";
+    presentation?: ResearchChatTurnPresentation;
   }>>([]);
   const [queuedChatMessages, setQueuedChatMessages] = useState<Array<{
     id: string;
@@ -958,7 +1288,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [running, setRunning] = useState(false);
   const [pauseRequested, setPauseRequested] = useState(false);
   const [progress, setProgress] = useState("");
-  const [activity, setActivity] = useState<ResearchOneShotEventV1[]>([]);
+  const [activity, setActivity] = useState<ResearchTimelineEventV1[]>([]);
   const [report, setReport] = useState<ResearchReport | ChatAnswerV1 | null>(null);
   const [raw, setRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1245,6 +1575,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     retry?: ScopePreflightRetry,
     questionOverride?: string,
     existingTurnId?: string,
+    turnPresentation?: ResearchChatTurnPresentation,
+    interactionModeOverride?: ResearchInteractionMode,
   ): Promise<boolean> {
     setError(null);
     setPlanApprovalRequired(null);
@@ -1298,15 +1630,17 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           wikiProvider: "rest",
         });
       })();
+      const activeInteractionMode = interactionModeOverride ?? interactionMode;
       if (!retry && !existingTurnId) {
         chatTurnSequence.current += 1;
         setChatTurns((current) => [...current, {
           id: `research-user-turn:${chatTurnSequence.current}`,
-          content: initialRequest.question,
+          content: turnPresentation?.label ?? initialRequest.question,
           state: "sent",
+          ...(turnPresentation ? { presentation: turnPresentation } : {}),
         }]);
       }
-      const policy = interactionMode === "chat"
+      const policy = activeInteractionMode === "chat"
         ? chatPolicyForThinkingModeV1(chatThinkingMode)
         : normalizeResearchOneShotPolicyV1({
             schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
@@ -1330,7 +1664,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       if (scopeOutcome.kind === "clarification_required") {
         if (port!.prepareScopeClarificationReview) {
           const review = await port!.prepareScopeClarificationReview(initialRequest, policy, {
-            purpose: interactionMode === "chat" ? "chat" : "research",
+            purpose: activeInteractionMode === "chat" ? "chat" : "research",
           });
           setScopeClarificationReviews((current) => [
             review,
@@ -1353,11 +1687,11 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         setProgress("");
         return true;
       }
-      const request = interactionMode === "chat"
+      const request = activeInteractionMode === "chat"
         ? prepareDirectChatRequestV1(scopeOutcome.request)
         : scopeOutcome.request;
       setSubmittedRequest(structuredClone(request));
-      if (interactionMode === "deep") {
+      if (activeInteractionMode === "deep") {
         const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
           scope: request.scope,
           scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
@@ -1416,31 +1750,34 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current = controller;
       setRunning(true);
       setPauseRequested(false);
-      setProgress(t(interactionMode === "chat" ? "research.chat.running" : "research.running"));
+      setProgress(t(activeInteractionMode === "chat" ? "research.chat.running" : "research.running"));
       setActivity([]);
       setReport(null);
       const result = await port!.run(request, {
         signal: controller.signal,
-        mode: interactionMode === "chat" ? "chat" : "research",
-        ...(interactionMode === "chat" && (retry?.conversationId ?? activeChatConversationIdRef.current)
+        mode: activeInteractionMode === "chat" ? "chat" : "research",
+        ...(activeInteractionMode === "chat" && (retry?.conversationId ?? activeChatConversationIdRef.current)
           ? { conversationId: retry?.conversationId ?? activeChatConversationIdRef.current! }
           : {}),
         policy,
-        ...(interactionMode === "chat"
+        ...(activeInteractionMode === "chat"
           ? { qualityPolicy: chatQualityPolicyForModeV1(chatThinkingMode) }
           : {}),
         onSessionStart: (session) => {
-          if (interactionMode === "chat") {
+          if (activeInteractionMode === "chat") {
             activeChatConversationIdRef.current = session.sessionId;
           } else {
             trackActiveSession(session.sessionId);
           }
         },
         onProgress: () => setProgress(t(
-          interactionMode === "chat" ? "research.chat.running" : "research.running",
+          activeInteractionMode === "chat" ? "research.chat.running" : "research.running",
         )),
         onEvent: (event) => setActivity((current) =>
-          [...current, event].slice(-MAX_RESEARCH_ACTIVITY_EVENTS)
+          appendTimelineEvent(current, event)
+        ),
+        onChatPresentation: (event) => setActivity((current) =>
+          appendTimelineEvent(current, event)
         ),
       });
       setReport(result);
@@ -1565,6 +1902,25 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     setQuestion(content);
     const accepted = await run(undefined, content);
     if (!accepted) setQuestion(content);
+  }
+
+  async function submitSuggestion(input: {
+    kind: ResearchSuggestionKind;
+    label: string;
+    prompt: string;
+    mode: ResearchInteractionMode;
+  }): Promise<void> {
+    if (running) return;
+    selectInteractionMode(input.mode);
+    setQuestion("");
+    const accepted = await run(
+      undefined,
+      input.prompt,
+      undefined,
+      { kind: input.kind, label: input.label },
+      input.mode,
+    );
+    if (!accepted) setQuestion(input.prompt);
   }
 
   async function submitImmediateSteering(value: string): Promise<void> {
@@ -2300,6 +2656,12 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   const hasConversation = chatTurns.length > 0 || running || Boolean(report) || Boolean(error);
   const currentContextLabel = site?.contextLabel;
+  const currentContextSourceId = site?.activeEntity
+    ? `${site.activeEntity.product === "confluence" ? "wiki" : "jira"}:${site.activeEntity.key}`
+    : undefined;
+  const currentContextCitationLabel = site?.activeEntity?.product === "jira"
+    ? t("research.chat.currentWorkItem")
+    : t("research.chat.currentPage");
   const displayScopeKeys = (
     keys: readonly string[],
     product: "jira" | "confluence",
@@ -2310,8 +2672,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   }).join(", ") || "—";
 
   return (
-    <div className="relative flex flex-col gap-3" data-testid="research-screen">
-      <header className="flex items-center gap-1.5 px-0.5">
+    <div className="relative flex h-full min-h-0 flex-col gap-3 overflow-hidden" data-testid="research-screen">
+      <header className="flex shrink-0 items-center gap-1.5 px-0.5">
         <div className="flex min-w-0 items-center gap-1.5">
           <Button
             size="icon"
@@ -2443,8 +2805,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           chatInputToolbarToolsButtonLabel: t("research.chat.settings"),
         }}
       >
-        <section className="flex min-h-[28rem] flex-col gap-3" data-testid="research-chat">
-          <div className="flex flex-1 flex-col gap-3 overflow-auto px-0.5" data-testid="research-chat-timeline">
+        <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden" data-testid="research-chat">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-0.5" data-testid="research-chat-timeline">
             {!hasConversation && (
               <div className="py-2" data-testid="research-chat-welcome">
                 <p className="m-0 text-sm leading-6 text-muted-foreground">
@@ -2455,7 +2817,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   <button
                     type="button"
                     className="group flex min-h-11 items-center gap-3 rounded-xl px-2.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => setQuestion(t("research.chat.suggestion.summarizePrompt"))}
+                    data-testid="research-suggestion-summarize"
+                    onClick={() => void submitSuggestion({
+                      kind: "summarize",
+                      label: t("research.chat.suggestion.summarize"),
+                      prompt: t("research.chat.suggestion.summarizePrompt"),
+                      mode: "chat",
+                    })}
                   >
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground group-hover:text-foreground">
                       <FileText className="size-4.5" aria-hidden="true" />
@@ -2465,10 +2833,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   <button
                     type="button"
                     className="group flex min-h-11 items-center gap-3 rounded-xl px-2.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => {
-                      selectInteractionMode("deep");
-                      setQuestion(t("research.chat.suggestion.connectionsPrompt"));
-                    }}
+                    data-testid="research-suggestion-connections"
+                    onClick={() => void submitSuggestion({
+                      kind: "connections",
+                      label: t("research.chat.suggestion.connections"),
+                      prompt: t("research.chat.suggestion.connectionsPrompt"),
+                      mode: "deep",
+                    })}
                   >
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground group-hover:text-foreground">
                       <Search className="size-4.5" aria-hidden="true" />
@@ -2478,7 +2849,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   <button
                     type="button"
                     className="group flex min-h-11 items-center gap-3 rounded-xl px-2.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => setQuestion(t("research.chat.suggestion.changesPrompt"))}
+                    data-testid="research-suggestion-changes"
+                    onClick={() => void submitSuggestion({
+                      kind: "changes",
+                      label: t("research.chat.suggestion.changes"),
+                      prompt: t("research.chat.suggestion.changesPrompt"),
+                      mode: "chat",
+                    })}
                   >
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground group-hover:text-foreground">
                       <MessageCircle className="size-4.5" aria-hidden="true" />
@@ -2523,9 +2900,15 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   </div>
                 ) : (
                   <div
-                    className="max-w-[92%] self-end rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
+                    className={cn(
+                      "max-w-[92%] self-end rounded-lg px-3 py-2 text-sm",
+                      turn.presentation
+                        ? "inline-flex items-center gap-2 bg-primary/10 font-medium text-foreground"
+                        : "bg-primary text-primary-foreground",
+                    )}
                     data-testid={`research-chat-user-${turn.id}`}
                   >
+                    {turn.presentation && <SuggestionIcon kind={turn.presentation.kind} />}
                     {turn.content}
                   </div>
                 )}
@@ -2596,7 +2979,16 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             {report && (
               <div className="rounded-lg border border-border/70 bg-card px-3 py-2" data-testid="research-chat-report">
                 {report.schema === "atlcli.chat-answer/v1"
-                  ? <ChatAnswer answer={report} />
+                  ? (
+                    <ChatAnswer
+                      answer={report}
+                      currentSourceId={currentContextSourceId}
+                      currentContextLabel={currentContextCitationLabel}
+                      onCurrentContextNavigate={ports.navigateToSource
+                        ? (url) => void ports.navigateToSource!({ url })
+                        : undefined}
+                    />
+                  )
                   : interactionMode === "chat"
                     ? <LegacyChatAnswer report={report} />
                     : <FormattedReport report={report} />}
@@ -2634,7 +3026,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           </div>
           {includeCurrentContext && currentContextLabel ? (
             <div
-              className="flex min-h-11 items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs"
+              className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs"
               data-testid="research-context-chips"
             >
               <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -2656,7 +3048,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           ) : null}
           <div
             data-copilotkit="true"
-            className="w-full"
+            className="w-full shrink-0"
             data-testid="research-chat-composer"
           >
             <div
@@ -2769,7 +3161,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               </label>
             </div>
           </div>
-          <p className="m-0 px-1 text-center text-[11px] text-muted-foreground">
+          <p className="m-0 shrink-0 px-1 text-center text-[11px] text-muted-foreground">
             {running
               ? t("research.chat.composerHelp.running")
               : t("research.chat.composerHelp.idle")}
@@ -2990,6 +3382,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       </Card>
       </details>
 
+      <div
+        className="max-h-[45%] shrink-0 space-y-3 overflow-y-auto overscroll-contain px-0.5"
+        data-testid="research-interruptions"
+      >
       {scopeReviews.length > 0 && (
         <Card data-testid="research-scope-reviews">
           <CardHeader>
@@ -3615,6 +4011,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           </Card>
         </details>
       )}
+      </div>
     </div>
   );
 }

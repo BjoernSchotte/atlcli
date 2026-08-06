@@ -1,4 +1,5 @@
 import type {
+  ChatPresentationStreamEventV1,
   ChatQualityPolicyV1,
   ChatAnswerV1,
   ResearchErrorCode,
@@ -36,6 +37,11 @@ export type ResearchWorkerRequestV1 =
     };
 
 export type ResearchWorkerResponseV1 =
+  | {
+      kind: "research-worker:chat-presentation";
+      runId: string;
+      event: ChatPresentationStreamEventV1;
+    }
   | {
       kind: "research-worker:event";
       runId: string;

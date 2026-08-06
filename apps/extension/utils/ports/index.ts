@@ -75,6 +75,14 @@ export interface AppPorts {
    */
   loadPage(contentId: string): Promise<LoadedPage>;
 
+  /**
+   * Navigate the host's current content surface to a validated source URL.
+   * Portable presenters may omit this port and fall back to a normal link;
+   * the side panel uses it for same-page section citations so it does not open
+   * a duplicate Confluence tab.
+   */
+  navigateToSource?(input: { url: string }): Promise<void>;
+
   /** `null` when this host cannot produce PDFs. */
   pdf: PdfExportPort | null;
   /** `null` when this host cannot produce Word documents. */

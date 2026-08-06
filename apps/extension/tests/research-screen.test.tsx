@@ -8,6 +8,7 @@ import {
 } from "bun:test";
 import React from "react";
 import {
+  ChatMarkdown,
   ResearchBriefClarificationNotice,
   ResearchScreen,
   inferResearchScope,
@@ -65,6 +66,70 @@ beforeEach(() => dom.setup());
 afterEach(() => dom.teardown());
 afterAll(() => {
   expect(dom.leakedGlobals()).toEqual([]);
+});
+
+describe("Chat Markdown presentation", () => {
+  it("renders supported Markdown as safe chat typography instead of raw syntax", async () => {
+    await dom.render(
+      <ChatMarkdown
+        markdown={[
+          "### Supported finding",
+          "",
+          "The **important** claim uses *context* and `inline code`.",
+          "",
+          "- First item",
+          "- [Canonical source](https://example.atlassian.net/wiki/spaces/KB/pages/1001)",
+          "- [Unsafe source](javascript:alert(1))",
+          "",
+          "<script>globalThis.compromised = true</script>",
+        ].join("\n")}
+      />,
+    );
+
+    const rendered = dom.find("research-chat-markdown");
+    expect(rendered.textContent).toContain("Supported finding");
+    expect(rendered.textContent).toContain("The important claim uses context and inline code.");
+    expect(rendered.textContent).not.toContain("###");
+    expect(rendered.textContent).not.toContain("**important**");
+    expect(rendered.querySelector("h4")?.textContent).toBe("Supported finding");
+    expect(rendered.querySelector("strong")?.textContent).toBe("important");
+    expect(rendered.querySelector("em")?.textContent).toBe("context");
+    expect(rendered.querySelector("code")?.textContent).toBe("inline code");
+    expect(rendered.querySelectorAll("li")).toHaveLength(3);
+    expect(rendered.querySelector("a")?.getAttribute("href"))
+      .toBe("https://example.atlassian.net/wiki/spaces/KB/pages/1001");
+    expect(rendered.querySelectorAll("a")).toHaveLength(1);
+    expect(rendered.querySelector("script")).toBeNull();
+  });
+
+  it("suppresses a redundant current-page link and navigates a current section in place", async () => {
+    const pageUrl = "https://example.atlassian.net/wiki/spaces/KB/pages/1001";
+    const sectionUrl = `${pageUrl}#Decision`;
+    const navigations: string[] = [];
+    await dom.render(
+      <ChatMarkdown
+        markdown={[
+          `The page establishes the context. [Synthetic page](${pageUrl})`,
+          `The decision is specific. [Decision](${sectionUrl})`,
+        ].join("\n\n")}
+        currentCitationUrls={new Set([pageUrl, sectionUrl])}
+        currentContextLabel="Current page"
+        onCurrentContextNavigate={(url) => navigations.push(url)}
+      />,
+    );
+
+    const rendered = dom.find("research-chat-markdown");
+    expect(rendered.querySelector('[data-current-context-citation="page"]')?.textContent)
+      .toBe("Current page");
+    expect(rendered.querySelector(`a[href="${pageUrl}"]`)).toBeNull();
+    const section = rendered.querySelector<HTMLButtonElement>(
+      '[data-current-context-citation="section"]',
+    );
+    expect(section?.textContent).toBe("Decision");
+    const { act } = await import("react");
+    await act(async () => section?.click());
+    expect(navigations).toEqual([sectionUrl]);
+  });
 });
 
 const report: ResearchReportV1 = {
@@ -188,6 +253,43 @@ describe("research activity timeline", () => {
     expect(steps).toEqual([expect.objectContaining({ kind: "confluence-section-read" })]);
     expect(steps.some((step) => step.kind === "confluence-search" || step.kind === "ranking"))
       .toBe(false);
+  });
+
+  it("streams the shared Chat runtime milestones as distinct user-visible work steps", () => {
+    const at = "2026-08-05T12:00:00.000Z";
+    const steps = researchTimelineSteps([
+      { kind: "phase", seq: 1, at, phase: "preparing" },
+      {
+        kind: "capability",
+        seq: 2,
+        at,
+        callId: "atlassian.bound.read:1",
+        toolId: "atlassian.bound.read",
+        inputKind: "detail",
+        status: "started",
+      },
+      {
+        kind: "capability",
+        seq: 3,
+        at,
+        callId: "atlassian.bound.read:1",
+        toolId: "atlassian.bound.read",
+        inputKind: "detail",
+        status: "completed",
+        itemCount: 1,
+      },
+      { kind: "phase", seq: 4, at, phase: "analyzing" },
+      { kind: "phase", seq: 5, at, phase: "checking" },
+      { kind: "phase", seq: 6, at, phase: "rendering" },
+    ], false);
+
+    expect(steps.map((step) => step.kind)).toEqual([
+      "planning",
+      "bound-read",
+      "analyzing",
+      "checking",
+      "synthesizing",
+    ]);
   });
 });
 
@@ -441,6 +543,48 @@ describe("portable Research screen", () => {
     expect(dom.maybeFind("research-composer-add-menu")).toBeNull();
   });
 
+  it("runs a suggested action immediately while presenting its concise action label", async () => {
+    const calls: Array<{ question: string; mode?: string }> = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (request, options) => {
+        calls.push({ question: request.question, mode: options?.mode });
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="de">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+
+    await dom.toggle("research-disclosure");
+    await dom.click("research-suggestion-summarize");
+    await dom.flush();
+
+    expect(calls).toEqual([{
+      question: "Fasse die aktuelle Seite zusammen und belege die wichtigsten Aussagen.",
+      mode: "chat",
+    }]);
+    const action = dom.find("research-chat").querySelector<HTMLElement>(
+      '[data-testid^="research-chat-user-"]',
+    );
+    expect(action?.textContent).toBe("Seite zusammenfassen");
+    expect(action?.className).toContain("bg-primary/10");
+    expect((dom.find("copilot-chat-textarea") as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("uses the CopilotKit composer for queued follow-ups and checkpointed steering", async () => {
     let releaseRun: ((value: ResearchReportV1) => void) | undefined;
     let pauseCalls = 0;
@@ -478,6 +622,29 @@ describe("portable Research screen", () => {
           inputKind: "detail",
           status: "started",
         });
+        options?.onEvent?.({
+          kind: "activity",
+          seq: 3,
+          at: "2026-08-03T12:00:02.000Z",
+          code: "bounded-workflow-running",
+          status: "started",
+        });
+        options?.onChatPresentation?.({
+          kind: "chat-presentation",
+          seq: 4,
+          at: "2026-08-03T12:00:03.000Z",
+          channel: "reasoning-summary",
+          status: "delta",
+          delta: "I am checking whether the selected evidence is sufficient.",
+        });
+        options?.onChatPresentation?.({
+          kind: "chat-presentation",
+          seq: 5,
+          at: "2026-08-03T12:00:04.000Z",
+          channel: "answer-markdown",
+          status: "delta",
+          delta: "## Draft answer\n\nThe selected evidence supports the answer.",
+        });
         if (runCalls > 1) return report;
         return await new Promise<ResearchReportV1>((resolve) => {
           releaseRun = resolve;
@@ -497,6 +664,12 @@ describe("portable Research screen", () => {
     );
 
     expect((dom.find("research-settings") as HTMLDetailsElement).open).toBe(false);
+    expect(dom.find("research-screen").className).toContain("h-full");
+    expect(dom.find("research-screen").className).toContain("min-h-0");
+    expect(dom.find("research-chat").className).toContain("min-h-0");
+    expect(dom.find("research-chat").className).toContain("overflow-hidden");
+    expect(dom.find("research-chat-timeline").className).toContain("overflow-y-auto");
+    expect(dom.find("research-chat-composer").className).toContain("shrink-0");
     expect(dom.find("research-chat-welcome").textContent).toContain("Ask a research question");
     await dom.setValue("research-chat-thinking", "quick");
     await dom.toggle("research-disclosure");
@@ -508,7 +681,24 @@ describe("portable Research screen", () => {
     expect(dom.find("research-activity").textContent).toContain("is being read");
     expect(dom.find("research-activity").textContent).toContain("loaded for evidence-backed statements");
     expect(dom.find("research-streaming-turn").querySelectorAll('[data-testid="research-active-kite"]')).toHaveLength(1);
-    expect(dom.find("research-streaming-turn").querySelectorAll("details")).toHaveLength(0);
+    expect(dom.find("research-streaming-turn").querySelectorAll('[data-testid="research-active-dots"]')).toHaveLength(1);
+    expect(dom.find("research-streaming-turn").querySelectorAll('[data-testid="research-active-label"]')).toHaveLength(1);
+    expect(dom.find("research-streaming-turn").querySelectorAll('[data-testid="research-active-progress"]')).toHaveLength(1);
+    const activeStep = dom.find("research-streaming-turn").querySelector<HTMLDetailsElement>("details");
+    expect(activeStep?.open).toBe(false);
+    expect(activeStep?.querySelector("summary .line-clamp-2")).not.toBeNull();
+    expect(activeStep?.querySelector('[data-testid="research-live-reasoning-summary"]')?.textContent)
+      .toContain("I am checking whether the selected evidence is sufficient.");
+    activeStep?.querySelector<HTMLElement>("summary")?.click();
+    await dom.flush();
+    expect(activeStep?.open).toBe(true);
+    expect(activeStep?.textContent).toContain("The selected reading and validation steps are running.");
+    expect(activeStep?.querySelector('[data-testid="research-active-detail"]')?.textContent)
+      .toContain("This step is still running.");
+    expect(activeStep?.querySelector('[data-testid="research-reasoning-summary"]')?.textContent)
+      .toContain("I am checking whether the selected evidence is sufficient.");
+    expect(dom.find("research-streaming-answer").textContent)
+      .toContain("The selected evidence supports the answer.");
 
     await dom.setValue("copilot-chat-textarea", "Queue a source check after this report.");
     await pressComposerKey("Enter");
@@ -537,6 +727,8 @@ describe("portable Research screen", () => {
     ]);
     expect(dom.find("research-chat-answer").textContent).toContain("The page explicitly links the issue.");
     expect(dom.find("research-streaming-turn").querySelector('[data-testid="research-active-kite"]')).toBeNull();
+    expect(dom.find("research-streaming-turn").querySelector('[data-testid="research-active-dots"]')).toBeNull();
+    expect(dom.find("research-streaming-turn").querySelector('[data-testid="research-active-progress"]')).toBeNull();
   });
 
   it("clears the durable direct-chat pointer when a new conversation starts", async () => {
@@ -1961,8 +2153,24 @@ describe("portable Research screen", () => {
     expect(dom.maybeFind("research-clarification-reviews")).toBeNull();
     expect(dom.find("research-activity").textContent).toContain("is being read");
     expect(dom.find("research-activity").textContent).toContain(
-      "no search or ranking is needed",
+      "The page text and structure are evaluated",
     );
+    expect(dom.find("research-activity").textContent).toContain(
+      "The content and structure of “Design” are available for the answer.",
+    );
+    const directRead = dom.find("research-activity").querySelector<HTMLDetailsElement>("details");
+    expect(directRead?.open).toBe(false);
+    expect(directRead?.querySelector("summary")?.textContent).not.toContain(
+      "The page text and structure are evaluated",
+    );
+    expect(directRead?.querySelector("summary")?.textContent).not.toContain(
+      "The content and structure of “Design” are available for the answer.",
+    );
+    expect(dom.find("research-activity").querySelectorAll(
+      '[data-testid="research-activity-outcome"]',
+    )).toHaveLength(1);
+    expect(dom.find("research-activity").textContent).not.toContain("host-bound");
+    expect(dom.find("research-activity").textContent).not.toContain("secure reference");
     expect(dom.find("research-activity").textContent).not.toContain("Confluence search returned");
     expect(dom.find("research-activity").textContent).not.toContain("Relevant results");
     expect(dom.find("research-activity").textContent).not.toContain("Selected for detailed reading");

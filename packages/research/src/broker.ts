@@ -138,6 +138,14 @@ export interface ResearchDetailEvidenceV1 {
   };
 }
 
+/** Body-free host proof that one Confluence section was included in a detail read. */
+export interface ResearchReadSectionReferenceV1 {
+  sourceId: string;
+  sectionId: string;
+  heading: string;
+  order: number;
+}
+
 /** Body-free outcome of host-side freshness checks before report finalization. */
 export interface ResearchEvidenceRevalidationOutcomeV1 {
   /** Retained records inspected for possible reuse. */
@@ -157,6 +165,8 @@ interface BrokerOptions {
   createSectionId?: () => string;
   createCaptureId?: () => string;
   exactAuxiliaryNeeds?: readonly ChatAuxiliaryReadNeedV1[];
+  /** Optional Chat workflow fence evaluated before any budget or provider work. */
+  beforeContentOperation?: () => void;
   budget?: ResearchRunBudget;
   /** Optional private evidence sink for durable session-backed detail reads. */
   evidence?: {
@@ -347,10 +357,12 @@ export class ResearchCapabilityBroker {
   readonly #createAnchorId: () => string;
   readonly #exactSectionBindings = new Map<string, ExactSectionBindingV1>();
   readonly #activeExactDocuments = new Map<string, ExactDocumentStateV1>();
+  readonly #readSectionReferences = new Map<string, ResearchReadSectionReferenceV1>();
   readonly #captureRefs = new Set<string>();
   readonly #createSectionId: () => string;
   readonly #createCaptureId: () => string;
   readonly #exactAuxiliaryNeeds: ReadonlySet<ChatAuxiliaryReadNeedV1>;
+  readonly #beforeContentOperation?: () => void;
   readonly #exactSearchEmitted = new Set<ResearchProduct>();
   readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
   readonly #searchAttempts: Record<ResearchProduct, number> = {
@@ -404,6 +416,7 @@ export class ResearchCapabilityBroker {
       return crypto.randomUUID();
     });
     this.#exactAuxiliaryNeeds = new Set(options.exactAuxiliaryNeeds ?? []);
+    this.#beforeContentOperation = options.beforeContentOperation;
     this.#evidence = options.evidence;
     this.#scopeBindings = [...(options.scopeBindings ?? options.evidence?.scopeBindings ??
       request.scopeSeeds?.map((seed) => seed.binding) ?? [])];
@@ -486,6 +499,7 @@ export class ResearchCapabilityBroker {
     this.#exactAnchorRefs.clear();
     this.#exactSectionBindings.clear();
     this.#activeExactDocuments.clear();
+    this.#readSectionReferences.clear();
     this.#successfulDetailReads.length = 0;
   }
 
@@ -559,6 +573,10 @@ export class ResearchCapabilityBroker {
     }));
   }
 
+  readSectionReferenceLedger(): ResearchReadSectionReferenceV1[] {
+    return [...this.#readSectionReferences.values()].map((entry) => ({ ...entry }));
+  }
+
   /**
    * Issue body-free, turn-local capabilities for host-accepted exact bindings.
    * The binding's raw page ID, issue key, URL, tenant, and containing scope are
@@ -593,6 +611,9 @@ export class ResearchCapabilityBroker {
     if (!previous) return;
     for (const sectionRef of previous.sectionRefs) {
       this.#exactSectionBindings.delete(sectionRef);
+    }
+    for (const key of this.#readSectionReferences.keys()) {
+      if (key.startsWith(`${sourceId}#`)) this.#readSectionReferences.delete(key);
     }
     this.#activeExactDocuments.delete(sourceId);
   }
@@ -636,6 +657,14 @@ export class ResearchCapabilityBroker {
       }
       document.sectionRefs.push(sectionRef);
       this.#exactSectionBindings.set(sectionRef, { document, section });
+      if (!projectionTruncated) {
+        this.#readSectionReferences.set(`${source.id}#${section.sectionId}`, {
+          sourceId: source.id,
+          sectionId: section.sectionId,
+          heading: section.heading,
+          order: section.order,
+        });
+      }
       return {
         sectionRef,
         sectionId: section.sectionId,
@@ -667,6 +696,7 @@ export class ResearchCapabilityBroker {
 
   /** Direct detail read for one host-issued exact anchor; no search or ranking. */
   async readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1> {
+    this.#beforeContentOperation?.();
     const decoded = decodeBoundEntityReadInputV1(input);
     this.budget.beginPtc(decoded);
     const output = await this.#gate.run(this.signal, async () => {
@@ -771,6 +801,7 @@ export class ResearchCapabilityBroker {
 
   /** Read one section from the verified page snapshot through an opaque turn-local ref. */
   async readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1> {
+    this.#beforeContentOperation?.();
     const decoded = decodeBoundEntitySectionReadInputV1(input);
     this.budget.beginPtc(decoded);
     const output = await this.#gate.run(this.signal, async () => {
@@ -783,6 +814,12 @@ export class ResearchCapabilityBroker {
       }
       const { document, section } = bound;
       document.readSectionIds.add(section.sectionId);
+      this.#readSectionReferences.set(`${document.source.id}#${section.sectionId}`, {
+        sourceId: document.source.id,
+        sectionId: section.sectionId,
+        heading: section.heading,
+        order: section.order,
+      });
       this.#registerObservedJiraReferences(section.content);
       const evidenceId = await this.#recordDetailEvidence(
         document.source,
@@ -1080,6 +1117,7 @@ export class ResearchCapabilityBroker {
   }
 
   async invoke(tool: ResearchToolId, input: unknown): Promise<unknown> {
+    this.#beforeContentOperation?.();
     if (!RESEARCH_TOOL_IDS.includes(tool)) {
       throw new ResearchContractError("invalid-request", "Unknown research capability.");
     }

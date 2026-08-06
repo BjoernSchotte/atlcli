@@ -55,6 +55,7 @@ import {
   type ResearchBriefPreflightOutcomeV1,
   type ChatQualityPolicyV1,
   type ChatAnswerV1,
+  type ChatPresentationStreamEventV1,
   type ChatScopeClarificationReviewV1,
   type ChatTurnRequestV1,
   type ResearchBriefV1,
@@ -229,6 +230,7 @@ export interface ResearchCliChatAgentInput {
   qualityPolicy: ChatQualityPolicyV1;
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
+  onChatPresentation: (event: ChatPresentationStreamEventV1) => void;
   writeDiagnostic: (message: string) => void;
 }
 
@@ -2434,7 +2436,14 @@ export function buildChatRequest(
       // inheriting Research's 50k body projection wastes context and bypasses
       // the navigable-document path entirely.
       maxBodyCharsPerItem: Math.min(request.limits.maxBodyCharsPerItem, 8_000),
-      maxPtcCalls: Math.min(request.limits.maxPtcCalls, 16),
+      // Agentic Auto/Deep Chat may read several exact sections plus a small
+      // related candidate set. Keep it well below the Research envelope while
+      // leaving enough room for the host-reserved evidence review. Quick stays
+      // on the smaller direct-only budget.
+      maxPtcCalls: Math.min(
+        request.limits.maxPtcCalls,
+        input.qualityPolicy?.mode === "quick" ? 16 : 24,
+      ),
       maxHttpCalls: Math.min(request.limits.maxHttpCalls, 20),
       maxModelOutputTokens: Math.min(
         request.limits.maxModelOutputTokens,
@@ -2579,10 +2588,11 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       qualityPolicy: input.qualityPolicy,
       signal: input.signal,
       onEvent: input.onEvent,
+      onChatPresentation: input.onChatPresentation,
       onAgentDiagnostic: (diagnostic) => {
         if (diagnostic.kind === "model-step") {
           input.writeDiagnostic(
-            `model tools=${diagnostic.toolNames.join(",") || "none"}${diagnostic.stopReason ? ` stop=${diagnostic.stopReason}` : ""}`,
+            `model status=${diagnostic.status} tools=${diagnostic.toolNames?.join(",") || "none"}${diagnostic.stopReason ? ` stop=${diagnostic.stopReason}` : ""}`,
           );
           return;
         }
@@ -3097,6 +3107,20 @@ async function runDirectChatCliConversation(input: {
           input.dependencies.writeStderr(
             `[chat] calls=${event.completed}/${event.maximum}\n`,
           );
+        } else if (event.kind === "decision" &&
+            event.decisionId.startsWith("chat-strategy:")) {
+          input.dependencies.writeStderr(
+            `[chat] strategy=${event.reasonCode}\n`,
+          );
+        }
+      },
+      onChatPresentation: (event) => {
+        if (event.status === "started") {
+          input.dependencies.writeStderr(`[chat] ${event.channel} `);
+        } else if (event.status === "delta") {
+          input.dependencies.writeStderr(event.delta ?? "");
+        } else {
+          input.dependencies.writeStderr("\n");
         }
       },
     });

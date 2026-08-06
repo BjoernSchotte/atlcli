@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   formatResearchOneShotEventV1,
+  isChatPresentationStreamEventV1,
   isResearchOneShotEventV1,
 } from "./events.js";
 import {
@@ -26,15 +27,52 @@ const capabilityEvent = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("research one-shot events", () => {
+  it("keeps provider-approved reasoning summaries on a separate bounded presentation channel", () => {
+    const base = {
+      kind: "chat-presentation",
+      seq: 1,
+      at: "2026-08-06T12:00:00.000Z",
+      channel: "reasoning-summary",
+    } as const;
+    expect(isChatPresentationStreamEventV1({ ...base, status: "started" })).toBe(true);
+    expect(isChatPresentationStreamEventV1({ ...base, status: "delta", delta: "Checking the cited section." })).toBe(true);
+    expect(isChatPresentationStreamEventV1({ ...base, status: "completed" })).toBe(true);
+    expect(isChatPresentationStreamEventV1({
+      ...base,
+      channel: "answer-markdown",
+      status: "delta",
+      delta: "The answer is being written.",
+    })).toBe(true);
+    expect(isChatPresentationStreamEventV1({
+      ...base,
+      channel: "assistant-text",
+      status: "delta",
+      delta: "Internal model text must not cross this channel.",
+    })).toBe(false);
+    expect(isChatPresentationStreamEventV1({ ...base, status: "delta", delta: "" })).toBe(false);
+    expect(isChatPresentationStreamEventV1({
+      ...base,
+      status: "delta",
+      delta: "x".repeat(1_025),
+    })).toBe(false);
+    expect(isChatPresentationStreamEventV1({
+      ...base,
+      status: "delta",
+      delta: "Visible summary",
+      signature: "opaque-provider-secret",
+    })).toBe(false);
+  });
+
   it("pins every event projection to a body-free exact-key contract", () => {
     const at = "2026-08-01T12:00:00.000Z";
     const events = [
       { kind: "phase", seq: 1, at, phase: "planning" },
-      { kind: "progress", seq: 2, at, graphRevision: 1, completed: 0, maximum: 2 },
-      { kind: "brief", seq: 3, at, revision: 1 },
+      { kind: "activity", seq: 2, at, code: "model-assessing", status: "started" },
+      { kind: "progress", seq: 3, at, graphRevision: 1, completed: 0, maximum: 2 },
+      { kind: "brief", seq: 4, at, revision: 1 },
       {
         kind: "plan",
-        seq: 4,
+        seq: 5,
         at,
         briefRevision: 1,
         revision: 1,
@@ -47,7 +85,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "task",
-        seq: 5,
+        seq: 6,
         at,
         taskId: "task:one",
         status: "planned",
@@ -55,7 +93,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "subagent",
-        seq: 6,
+        seq: 7,
         at,
         taskId: "task:one",
         roleId: "focused-researcher",
@@ -63,7 +101,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "capability",
-        seq: 7,
+        seq: 8,
         at,
         callId: "call:one",
         toolId: "wiki.search",
@@ -73,7 +111,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "decision",
-        seq: 8,
+        seq: 9,
         at,
         decisionId: "decision:one",
         status: "completed",
@@ -81,7 +119,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "reconciliation",
-        seq: 9,
+        seq: 10,
         at,
         taskId: "task:critic",
         status: "completed",
@@ -89,7 +127,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "reconciliation_disposition",
-        seq: 10,
+        seq: 11,
         at,
         dispositionId: "disposition:one",
         defectId: "defect:one",
@@ -99,7 +137,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "repair_group",
-        seq: 11,
+        seq: 12,
         at,
         followUpId: "follow-up:one",
         status: "retained_without_execution",
@@ -107,7 +145,7 @@ describe("research one-shot events", () => {
       },
       {
         kind: "retrieval",
-        seq: 12,
+        seq: 13,
         at,
         graphRevision: 1,
         action: "stop",
@@ -119,10 +157,10 @@ describe("research one-shot events", () => {
         unresolvedCoverageTargetCount: 0,
         unresolvedContradictionCount: 0,
       },
-      { kind: "steering", seq: 13, at, revision: 2, status: "applied" },
+      { kind: "steering", seq: 14, at, revision: 2, status: "applied" },
       {
         kind: "budget",
-        seq: 14,
+        seq: 15,
         at,
         metric: "tokens",
         consumed: 10,
@@ -130,13 +168,13 @@ describe("research one-shot events", () => {
       },
       {
         kind: "artifact",
-        seq: 15,
+        seq: 16,
         at,
         path: RESEARCH_REPORT_ARTIFACT_PATH_V1,
       },
     ] satisfies ResearchOneShotEventV1[];
 
-    expect(events).toHaveLength(15);
+    expect(events).toHaveLength(16);
     for (const event of events) {
       expect(isResearchOneShotEventV1(event), event.kind).toBe(true);
       expect(
@@ -181,6 +219,21 @@ describe("research one-shot events", () => {
     expect(isResearchOneShotEventV1(capabilityEvent({
       itemLabels: ["x".repeat(241)],
     }))).toBe(false);
+  });
+
+  it("renders a Chat strategy decision as a body-free operator trajectory", () => {
+    const event = {
+      kind: "decision" as const,
+      seq: 1,
+      at: "2026-08-05T12:00:00.000Z",
+      decisionId: "chat-strategy:turn-1",
+      status: "completed" as const,
+      reasonCode: "chat-agentic-required",
+    };
+    expect(isResearchOneShotEventV1(event)).toBe(true);
+    expect(formatResearchOneShotEventV1(event)).toContain(
+      "agentic Chat quality path accepted",
+    );
   });
 
   it("admits the body-free direct bound-entity read event", () => {

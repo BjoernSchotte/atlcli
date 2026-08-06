@@ -473,6 +473,18 @@ export interface ResearchProgressV1 {
   maxCalls: number;
 }
 
+export const RESEARCH_ACTIVITY_CODES_V1 = [
+  "model-assessing",
+  "answer-drafting",
+  "next-step-ready",
+  "answer-draft-ready",
+  "bounded-workflow-running",
+  "bounded-workflow-complete",
+  "bounded-workflow-failed",
+] as const;
+
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 /**
  * Sanitized, body-free event stream shape shared by CLI and browser hosts.
  * T2 emits phase/progress/artifact events; durable phases extend usage of the
@@ -481,6 +493,14 @@ export interface ResearchProgressV1 {
 export type ResearchEventV1 =
   | { kind: "state"; seq: number; at: string; from: string; to: string }
   | { kind: "phase"; seq: number; at: string; phase: string }
+  | {
+      /** Body-free, provider-neutral user activity emitted from observable agent boundaries. */
+      kind: "activity";
+      seq: number;
+      at: string;
+      code: ResearchActivityCodeV1;
+      status: "started" | "completed" | "failed";
+    }
   | { kind: "progress"; seq: number; at: string; graphRevision: number; completed: number; maximum: number }
   | { kind: "brief"; seq: number; at: string; revision: number }
   | { kind: "clarification"; seq: number; at: string; briefRevision: number; status: string }
@@ -629,6 +649,7 @@ export type ResearchOneShotEventV1 = Extract<
   {
     kind:
       | "phase"
+      | "activity"
       | "progress"
       | "brief"
       | "plan"
@@ -697,6 +718,33 @@ export interface ResearchRunOptions {
   onSessionStart?: (session: { sessionId: string; turnId?: string }) => void;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
+  /**
+   * Ephemeral, content-bearing presentation stream for the active Chat turn.
+   * It is deliberately separate from the durable body-free operator events.
+   */
+  onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
+}
+
+/**
+ * Provider-neutral live presentation from a Chat model call.
+ *
+ * A model adapter may opt into `reasoning-summary` only when the provider
+ * explicitly documents the returned text as a user-displayable summary. Raw
+ * provider payloads, signatures, tool arguments and hidden reasoning are not
+ * representable here. These events are ephemeral and must not be journaled as
+ * durable workflow state.
+ */
+export interface ChatPresentationStreamEventV1 {
+  kind: "chat-presentation";
+  seq: number;
+  at: string;
+  /**
+   * `answer-markdown` is a provisional model projection. The host-validated
+   * ChatAnswerV1 remains the only durable/final answer.
+   */
+  channel: "reasoning-summary" | "answer-markdown";
+  status: "started" | "delta" | "completed";
+  delta?: string;
 }
 
 /**

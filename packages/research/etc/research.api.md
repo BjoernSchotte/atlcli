@@ -169,6 +169,12 @@ export declare function assertResearchReportV1(value: unknown): asserts value is
 // export: assertResearchReportV2
 export declare function assertResearchReportV2(value: unknown): asserts value is ResearchReportV2;
 
+// export: assessChatStrategyReviewV1
+export declare function assessChatStrategyReviewV1(input: {
+    decision: ChatStrategyDecisionV1;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+}): ChatStrategyReviewV1;
+
 // export: assessResearchRetrievalV1
 export declare function assessResearchRetrievalV1(input: ResearchRetrievalAssessmentInputV1): ResearchRetrievalAssessmentV1;
 
@@ -185,11 +191,81 @@ export interface AtlassianRelationshipV1 {
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
 
+// export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
+
+// export: BOUND_ENTITY_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.input/v1";
+
+// export: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.output/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1: "atlassian.bound.section.read";
+
+// export: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.input/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.output/v1";
+
 // export: BoundAgenticWorkflowRunV1
 export interface BoundAgenticWorkflowRunV1 {
     readonly compiled: CompiledAgenticWorkflowV1;
     readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
     readonly signal?: AbortSignal;
+}
+
+// export: BoundDocumentCoverageIssueV1
+export type BoundDocumentCoverageIssueV1 = "source_limit" | "parse_budget" | "outline_limit" | "projection_limit" | "unresolved_include" | "unsupported_structure";
+
+// export: BoundDocumentOutlineV1
+export interface BoundDocumentOutlineV1 {
+    snapshot: {
+        sourceId: string;
+        representation: "storage";
+        sourceVersion: number;
+        captureRef: string;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    unreadSections: number;
+    sections: BoundDocumentSectionOutlineV1[];
+}
+
+// export: BoundDocumentSectionOutlineV1
+export interface BoundDocumentSectionOutlineV1 {
+    sectionRef: string;
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    metadata: {
+        macroNames: string[];
+        macroCount: number;
+        macrosTruncated: boolean;
+        linkCount: number;
+        linksTruncated: boolean;
+        jiraIssueKeys: string[];
+        structures: BoundDocumentStructureSummaryV1;
+    };
+}
+
+// export: BoundDocumentStructureSummaryV1
+export interface BoundDocumentStructureSummaryV1 {
+    tables: number;
+    expands: number;
+    jiraMacros: number;
+    smartLinks: number;
+    excerpts: number;
+    includes: number;
+    unresolvedIncludes: number;
+    unsupportedMacros: number;
 }
 
 // export: BoundedContentProjectionV1
@@ -200,8 +276,103 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: BoundedDocumentSectionSourceV1
+export interface BoundedDocumentSectionSourceV1 {
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    content: ReturnType<typeof projectConfluenceBlocks>;
+    metadata: BoundDocumentSectionOutlineV1["metadata"];
+}
+
+// export: BoundedDocumentSourceV1
+export interface BoundedDocumentSourceV1 {
+    snapshot: {
+        representation: "storage";
+        sourceVersion: number;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    sections: BoundedDocumentSectionSourceV1[];
+}
+
+// export: BoundEntityAnchorV1
+export interface BoundEntityAnchorV1 {
+    anchorRef: string;
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: BoundEntityReadInputV1
+export interface BoundEntityReadInputV1 {
+    schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+    anchorRef: string;
+}
+
+// export: BoundEntityReadOutputV1
+export interface BoundEntityReadOutputV1 {
+    schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    relatedAnchors: BoundEntityAnchorV1[];
+    document?: BoundDocumentOutlineV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: BoundEntitySectionReadInputV1
+export interface BoundEntitySectionReadInputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+    sectionRef: string;
+}
+
+// export: BoundEntitySectionReadOutputV1
+export interface BoundEntitySectionReadOutputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+    content: BoundedContentProjectionV1;
+    support: {
+        sectionId: string;
+        start: number;
+        end: number;
+        evidenceId?: string;
+    };
+    coverage: {
+        snapshot: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
+    relatedAnchors: BoundEntityAnchorV1[];
+    budget: ResearchBudgetSnapshotV1;
+}
+
 // export: briefRequiresClarificationV1
 export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean;
+
+// export: buildChatSystemPromptV1
+export declare function buildChatSystemPromptV1(input: {
+    qualityMode: ChatQualityModeV1;
+    maxDetailItemsPerProduct: number;
+    strategyDecisionRequired?: boolean;
+}): string;
+
+// export: buildChatTurnPromptV1
+export declare function buildChatTurnPromptV1(input: {
+    question: string;
+    jiraProjectKeys: readonly string[];
+    confluenceSpaceKeys: readonly string[];
+    anchors: readonly BoundEntityAnchorV1[];
+}): string;
 
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
@@ -220,6 +391,111 @@ export declare function buildResearchTurnContextV1(input: {
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "messageMarkdown",
+        "citationSourceIds",
+        "gaps"
+    ];
+    readonly properties: {
+        readonly messageMarkdown: {
+            readonly type: "string";
+            readonly minLength: 1;
+            readonly maxLength: 24000;
+        };
+        readonly citationSourceIds: {
+            readonly type: "array";
+            readonly maxItems: 100;
+            readonly items: {
+                readonly type: "string";
+                readonly minLength: 1;
+                readonly maxLength: 256;
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
+// export: CHAT_AGENT_DRAFT_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    messageMarkdown: z.ZodString;
+    citationSourceIds: z.ZodArray<z.ZodString>;
+    gaps: z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            clarification: "clarification";
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_SCHEMA_V1
+export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -230,6 +506,67 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SESSION_STATE_PATH_V1
+export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_STATE_SCHEMA_V1
+export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1";
+
+// export: CHAT_STRATEGY_CAPABILITY_CLASSES_V1
+export declare const CHAT_STRATEGY_CAPABILITY_CLASSES_V1: readonly [
+    "exact-read",
+    "jira-discovery",
+    "confluence-discovery",
+    "relationship-tracing",
+    "comparison-analysis",
+    "contradiction-check",
+    "quality-review",
+    "chat-answer"
+];
+
+// export: CHAT_STRATEGY_DECISION_SCHEMA_V1
+export declare const CHAT_STRATEGY_DECISION_SCHEMA_V1: "atlcli.chat-strategy-decision/v1";
+
+// export: CHAT_STRATEGY_QUALITY_RISKS_V1
+export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
+    "multiple-sources",
+    "cross-product",
+    "contradictory-evidence",
+    "broad-discovery",
+    "scope-ambiguity"
+];
+
+// export: CHAT_STRATEGY_REASON_CODES_V1
+export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
+    "quick-direct",
+    "single-exact-context",
+    "no-atlassian-acquisition",
+    "multi-anchor",
+    "broad-scope-discovery",
+    "multi-source-comparison",
+    "cross-product-relationship",
+    "contradiction-risk",
+    "unresolved-ambiguity"
+];
+
+// export: CHAT_STRATEGY_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_RECORD_SCHEMA_V1: "atlcli.chat-strategy-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1: "atlcli.chat-strategy-review-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_SCHEMA_V1: "atlcli.chat-strategy-review/v1";
+
+// export: CHAT_STRATEGY_REVIEW_STATE_PATH_V1
+export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-review-v1.json";
+
+// export: CHAT_STRATEGY_STATE_PATH_V1
+export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -237,6 +574,75 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
     "quick",
     "deep"
 ];
+
+// export: CHAT_TURN_REQUEST_SCHEMA_V1
+export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAgentDraftV1
+export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAnswerGapV1
+export interface ChatAnswerGapV1 {
+    code: "no-detail-evidence" | "truncated-source" | "unresolved-reference" | "incomplete-coverage";
+    message: string;
+    sourceIds: string[];
+}
+
+// export: ChatAnswerV1
+export interface ChatAnswerV1 {
+    schema: typeof CHAT_ANSWER_SCHEMA_V1;
+    messageMarkdown: string;
+    citations: ChatCitationV1[];
+    evidenceRefs: string[];
+    gaps: ChatAnswerGapV1[];
+    strategy: ChatStrategyV1;
+    continuation?: ChatContinuationOfferV1;
+    run: ChatRunSummaryV1;
+}
+
+// export: ChatAuxiliaryReadNeedV1
+export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCitationV1
+export interface ChatCitationV1 {
+    sourceId: string;
+    title: string;
+    url: string;
+    product: ResearchProduct;
+    section?: {
+        sectionId: string;
+        heading: string;
+    };
+}
+
+// export: ChatContinuationOfferV1
+export interface ChatContinuationOfferV1 {
+    kind: "follow-up" | "deep-research" | "clarification";
+    prompt: string;
+}
+
+// export: ChatContractError
+export declare class ChatContractError extends ResearchContractError {
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ChatModelBindingV1
+export interface ChatModelBindingV1 {
+    model: BaseChatModel;
+    modelId: string;
+    qualityAdapter: ProviderQualityCapabilityAdapterV1;
+    structuredOutput: "native" | "tool";
+}
+
+// export: ChatModelFactoryInputV1
+export interface ChatModelFactoryInputV1 {
+    credential: string;
+    maxOutputTokens: number;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatModelFactoryV1
+export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -265,12 +671,131 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRunSummaryV1
+export interface ChatRunSummaryV1 {
+    model: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+}
+
+// export: ChatScopeClarificationReviewV1
+export interface ChatScopeClarificationReviewV1 {
+    schema: typeof CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_scope_clarification";
+    updatedAt: string;
+    clarification: {
+        mentionId: string;
+        reason: "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
+        rerunGuidance: string[];
+        candidates: Array<{
+            id: string;
+            product: "jira" | "confluence";
+            entityKind: "project" | "space" | "issue" | "page";
+            key?: string;
+            name: string;
+            canonicalUrl?: string;
+            status?: "current" | "archived";
+        }>;
+    };
+}
+
+// export: ChatSessionStateV1
+export interface ChatSessionStateV1 {
+    schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatStrategyCapabilityClassV1
+export type ChatStrategyCapabilityClassV1 = (typeof CHAT_STRATEGY_CAPABILITY_CLASSES_V1)[number];
+
+// export: ChatStrategyDecisionV1
+export interface ChatStrategyDecisionV1 {
+    schema: typeof CHAT_STRATEGY_DECISION_SCHEMA_V1;
+    qualityMode: ChatQualityModeV1;
+    execution: "direct" | "agentic";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
+// export: ChatStrategyPathV1
+export type ChatStrategyPathV1 = "direct" | "agentic";
+
+// export: ChatStrategyQualityRiskV1
+export type ChatStrategyQualityRiskV1 = (typeof CHAT_STRATEGY_QUALITY_RISKS_V1)[number];
+
+// export: ChatStrategyReasonCodeV1
+export type ChatStrategyReasonCodeV1 = (typeof CHAT_STRATEGY_REASON_CODES_V1)[number];
+
+// export: ChatStrategyRecordV1
+export interface ChatStrategyRecordV1 {
+    schema: typeof CHAT_STRATEGY_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    acceptedAt: string;
+    decision: ChatStrategyDecisionV1;
+}
+
+// export: ChatStrategyReviewRecordV1
+export interface ChatStrategyReviewRecordV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    reviewedAt: string;
+    review: ChatStrategyReviewV1;
+}
+
+// export: ChatStrategyReviewV1
+export interface ChatStrategyReviewV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_SCHEMA_V1;
+    execution: "agentic";
+    detailedSourceIds: string[];
+    detailedProducts: Array<"jira" | "confluence">;
+    unmetCapabilityClasses: ChatStrategyCapabilityClassV1[];
+    readyForAnswer: boolean;
+}
+
+// export: ChatStrategyV1
+export interface ChatStrategyV1 {
+    qualityMode: ChatQualityModeV1;
+    path: ChatStrategyPathV1;
+    delegated: boolean;
+    reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
+
+// export: ChatTurnRequestV1
+export interface ChatTurnRequestV1 {
+    schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+    exactContextProducts?: ResearchProduct[];
+    locale?: string;
+}
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -311,6 +836,15 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: ConfluenceDocumentInputV1
+export type ConfluenceDocumentInputV1 = {
+    representation: "storage";
+    value: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+};
 
 // export: ContentProjectionLimits
 export interface ContentProjectionLimits {
@@ -358,6 +892,39 @@ export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatch
 
 // export: createAgenticDispatchInterceptionAdapter
 export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
+
+// export: createChatPtcToolsV1
+export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
+
+// export: createChatSessionStateV1
+export declare function createChatSessionStateV1(input: {
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}): ChatSessionStateV1;
+
+// export: createChatStrategyDecisionControllerV1
+export declare function createChatStrategyDecisionControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acknowledgedDecision(): ChatStrategyDecisionV1 | undefined;
+    assertAcknowledged(): void;
+};
+
+// export: createChatStrategyReviewControllerV1
+export declare function createChatStrategyReviewControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    detailEvidence: () => readonly ResearchDetailEvidenceV1[];
+    beforeReview?: () => void;
+    onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    latestReview(): ChatStrategyReviewV1 | undefined;
+    assertCurrent(): void;
+};
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -511,6 +1078,12 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeBoundEntityReadInputV1
+export declare function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1;
+
+// export: decodeBoundEntitySectionReadInputV1
+export declare function decodeBoundEntitySectionReadInputV1(value: unknown): BoundEntitySectionReadInputV1;
+
 // export: decodeResearchCandidateRankInputV1
 export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
 
@@ -541,6 +1114,18 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: deriveChatAuxiliaryReadNeedsV1
+export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
+
+// export: deriveChatStrategyDecisionV1
+export declare function deriveChatStrategyDecisionV1(input: {
+    qualityPolicy: ChatQualityPolicyV1;
+    question: string;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+    unresolvedAmbiguity?: boolean;
+}): ChatStrategyDecisionV1;
+
 // export: diffResearchPlansV1
 export declare function diffResearchPlansV1(input: {
     fromBrief: ResearchBriefV1;
@@ -564,6 +1149,20 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: finalizeChatAnswerV1
+export declare function finalizeChatAnswerV1(input: {
+    draft: unknown;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    qualityPolicy: ChatQualityPolicyV1;
+    strategyDecision?: ChatStrategyDecisionV1;
+    strategyReview?: ChatStrategyReviewV1;
+    delegated?: boolean;
+    run: ChatRunSummaryV1;
+    locale?: string;
+}): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
 export declare function finalizeResearchAgentDraftV1(input: {
@@ -673,6 +1272,7 @@ export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
+    purpose?: "chat" | "research";
     at: string;
 }
 
@@ -801,8 +1401,25 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: navigateConfluenceDocumentV1
+export declare function navigateConfluenceDocumentV1(input: ConfluenceDocumentInputV1): BoundedDocumentSourceV1 | undefined;
+
+// export: navigateConfluenceStorageV1
+export declare function navigateConfluenceStorageV1(input: {
+    storage: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+}): BoundedDocumentSourceV1 | undefined;
+
+// export: normalizeChatGapCodeV1
+export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
+// export: normalizeChatTurnRequestV1
+export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -949,6 +1566,12 @@ export declare function prependBoundedDetailText(projection: BoundedContentProje
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: projectChatScopeClarificationReviewV1
+export declare function projectChatScopeClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ChatScopeClarificationReviewV1 | undefined;
+
+// export: projectConfluenceBlocks
+export declare function projectConfluenceBlocks(blocks: readonly ExportBlock[], siteOrigin: string, limits: ContentProjectionLimits, inputBytes: number): BoundedContentProjectionV1;
+
 // export: projectConfluenceStorage
 export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -1074,6 +1697,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
     "balanced",
     "thorough"
 ];
+
+// export: providerCompatibleChatAnswerSchemaV1
+export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
 
 // export: ProviderQualityCapabilityAdapterV1
 export interface ProviderQualityCapabilityAdapterV1 {
@@ -1207,6 +1836,16 @@ export declare function renderResearchTurnContextV1(context: ResearchTurnContext
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
+// export: RESEARCH_ACTIVITY_CODES_V1
+export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "model-assessing",
+    "next-step-ready",
+    "answer-draft-ready",
+    "bounded-workflow-running",
+    "bounded-workflow-complete",
+    "bounded-workflow-failed"
+];
+
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -1253,6 +1892,8 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "wiki.search",
     "wiki.page.get",
     "research.candidate.rank",
+    "atlassian.bound.read",
+    "atlassian.bound.section.read",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -1824,6 +2465,9 @@ export interface ResearchAcceptedPacketV1 {
     acceptedAt: string;
 }
 
+// export: ResearchActivityCodeV1
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -1984,6 +2628,10 @@ export declare class ResearchCapabilityBroker {
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
+    exactAnchors(): BoundEntityAnchorV1[];
+    readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
+    readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
         evidenceIds: readonly string[];
         checkedAt: string;
@@ -2204,6 +2852,20 @@ export interface ResearchDetailEvidenceV1 {
     content: BoundedContentProjectionV1;
     retrieval?: ResearchEvidenceRetrievalV1;
     evidenceId?: string;
+    section?: {
+        sectionId: string;
+        heading: string;
+        order: number;
+    };
+    coverage?: {
+        snapshot?: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
 }
 
 // export: ResearchDispatchDiagnosticV1
@@ -2307,6 +2969,12 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     phase: string;
+} | {
+    kind: "activity";
+    seq: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
 } | {
     kind: "progress";
     seq: number;
@@ -2538,7 +3206,7 @@ export interface ResearchEvidenceRecordV1 {
 // export: ResearchEvidenceRetrievalV1
 export interface ResearchEvidenceRetrievalV1 {
     sourceId: string;
-    reason: "question_relevance_rank";
+    reason: "question_relevance_rank" | "exact_anchor";
     rank: number;
 }
 
@@ -3003,7 +3671,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "activity" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -3244,7 +3912,7 @@ export interface ResearchPort {
         revision: number;
         instruction: string;
     }): Promise<void>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
@@ -3298,7 +3966,9 @@ export interface ResearchPort {
         revision: number;
         briefRevision: number;
     }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
-    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1, options?: {
+        purpose?: "chat" | "research";
+    }): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
     listScopeClarificationReviews?(): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]>;
     resolveScopeClarificationReview?(input: {
         sessionId: string;
@@ -3394,6 +4064,8 @@ export interface ResearchReadProviders {
         }): Promise<ResearchProviderPage<JiraResearchSummary>>;
         getIssue(input: {
             issueKey: string;
+            includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<JiraResearchDetail>;
     };
@@ -3407,9 +4079,18 @@ export interface ResearchReadProviders {
         getPage(input: {
             contentId: string;
             includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<WikiResearchDetail>;
     };
+}
+
+// export: ResearchReadSectionReferenceV1
+export interface ResearchReadSectionReferenceV1 {
+    sourceId: string;
+    sectionId: string;
+    heading: string;
+    order: number;
 }
 
 // export: ResearchReconciliationDefectV1
@@ -3942,6 +4623,10 @@ export interface ResearchScopeClarificationReviewActionV1 {
 
 // export: ResearchScopeClarificationReviewResolutionV1
 export type ResearchScopeClarificationReviewResolutionV1 = {
+    kind: "chat_ready";
+    request: import("./contracts.js").ResearchRequestV1;
+    conversationId: string;
+} | {
     kind: "scope_clarification";
     review: ResearchSessionScopeClarificationReviewV1;
 } | {
@@ -4475,6 +5160,7 @@ export interface ResearchSessionRetrievalContinuationV1 {
 export interface ResearchSessionScopeClarificationReviewV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
     sessionId: string;
+    purpose?: "chat" | "research";
     revision: number;
     status: "waiting_scope_clarification" | "idle" | "planning";
     stage: "choice_required" | "brief_required" | "plan_required";
@@ -4498,6 +5184,7 @@ export interface ResearchSessionScopeClarificationReviewV1 {
 // export: ResearchSessionScopeClarificationV1
 export interface ResearchSessionScopeClarificationV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+    purpose?: "chat" | "research";
     state: "waiting_choice" | "choice_resolved";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
@@ -4727,6 +5414,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     turnId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_scope_clarification";
+    purpose?: "chat" | "research";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
@@ -5172,6 +5860,20 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatScopeClarificationV1
+export declare function resolveChatScopeClarificationV1(input: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    selection: ResearchScopeCandidateSelectionV1;
+    resolvedRequest: ResearchRequestV1;
+    at: string;
+}): Promise<{
+    request: ResearchRequestV1;
+    conversationSession: ResearchSessionV1;
+}>;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -5333,6 +6035,7 @@ export declare function verifyResearchSessionStoreConformanceV1(factory: Researc
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
+    navigation?: BoundedDocumentSourceV1;
 }
 
 // export: WikiResearchSummary
@@ -5627,6 +6330,12 @@ export declare function assertResearchReportV1(value: unknown): asserts value is
 // export: assertResearchReportV2
 export declare function assertResearchReportV2(value: unknown): asserts value is ResearchReportV2;
 
+// export: assessChatStrategyReviewV1
+export declare function assessChatStrategyReviewV1(input: {
+    decision: ChatStrategyDecisionV1;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+}): ChatStrategyReviewV1;
+
 // export: assessResearchRetrievalV1
 export declare function assessResearchRetrievalV1(input: ResearchRetrievalAssessmentInputV1): ResearchRetrievalAssessmentV1;
 
@@ -5643,11 +6352,81 @@ export interface AtlassianRelationshipV1 {
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
 
+// export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
+
+// export: BOUND_ENTITY_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.input/v1";
+
+// export: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.output/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1: "atlassian.bound.section.read";
+
+// export: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.input/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.output/v1";
+
 // export: BoundAgenticWorkflowRunV1
 export interface BoundAgenticWorkflowRunV1 {
     readonly compiled: CompiledAgenticWorkflowV1;
     readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
     readonly signal?: AbortSignal;
+}
+
+// export: BoundDocumentCoverageIssueV1
+export type BoundDocumentCoverageIssueV1 = "source_limit" | "parse_budget" | "outline_limit" | "projection_limit" | "unresolved_include" | "unsupported_structure";
+
+// export: BoundDocumentOutlineV1
+export interface BoundDocumentOutlineV1 {
+    snapshot: {
+        sourceId: string;
+        representation: "storage";
+        sourceVersion: number;
+        captureRef: string;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    unreadSections: number;
+    sections: BoundDocumentSectionOutlineV1[];
+}
+
+// export: BoundDocumentSectionOutlineV1
+export interface BoundDocumentSectionOutlineV1 {
+    sectionRef: string;
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    metadata: {
+        macroNames: string[];
+        macroCount: number;
+        macrosTruncated: boolean;
+        linkCount: number;
+        linksTruncated: boolean;
+        jiraIssueKeys: string[];
+        structures: BoundDocumentStructureSummaryV1;
+    };
+}
+
+// export: BoundDocumentStructureSummaryV1
+export interface BoundDocumentStructureSummaryV1 {
+    tables: number;
+    expands: number;
+    jiraMacros: number;
+    smartLinks: number;
+    excerpts: number;
+    includes: number;
+    unresolvedIncludes: number;
+    unsupportedMacros: number;
 }
 
 // export: BoundedContentProjectionV1
@@ -5658,8 +6437,103 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: BoundedDocumentSectionSourceV1
+export interface BoundedDocumentSectionSourceV1 {
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    content: ReturnType<typeof projectConfluenceBlocks>;
+    metadata: BoundDocumentSectionOutlineV1["metadata"];
+}
+
+// export: BoundedDocumentSourceV1
+export interface BoundedDocumentSourceV1 {
+    snapshot: {
+        representation: "storage";
+        sourceVersion: number;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    sections: BoundedDocumentSectionSourceV1[];
+}
+
+// export: BoundEntityAnchorV1
+export interface BoundEntityAnchorV1 {
+    anchorRef: string;
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: BoundEntityReadInputV1
+export interface BoundEntityReadInputV1 {
+    schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+    anchorRef: string;
+}
+
+// export: BoundEntityReadOutputV1
+export interface BoundEntityReadOutputV1 {
+    schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    relatedAnchors: BoundEntityAnchorV1[];
+    document?: BoundDocumentOutlineV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: BoundEntitySectionReadInputV1
+export interface BoundEntitySectionReadInputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+    sectionRef: string;
+}
+
+// export: BoundEntitySectionReadOutputV1
+export interface BoundEntitySectionReadOutputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+    content: BoundedContentProjectionV1;
+    support: {
+        sectionId: string;
+        start: number;
+        end: number;
+        evidenceId?: string;
+    };
+    coverage: {
+        snapshot: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
+    relatedAnchors: BoundEntityAnchorV1[];
+    budget: ResearchBudgetSnapshotV1;
+}
+
 // export: briefRequiresClarificationV1
 export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean;
+
+// export: buildChatSystemPromptV1
+export declare function buildChatSystemPromptV1(input: {
+    qualityMode: ChatQualityModeV1;
+    maxDetailItemsPerProduct: number;
+    strategyDecisionRequired?: boolean;
+}): string;
+
+// export: buildChatTurnPromptV1
+export declare function buildChatTurnPromptV1(input: {
+    question: string;
+    jiraProjectKeys: readonly string[];
+    confluenceSpaceKeys: readonly string[];
+    anchors: readonly BoundEntityAnchorV1[];
+}): string;
 
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
@@ -5678,6 +6552,111 @@ export declare function buildResearchTurnContextV1(input: {
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "messageMarkdown",
+        "citationSourceIds",
+        "gaps"
+    ];
+    readonly properties: {
+        readonly messageMarkdown: {
+            readonly type: "string";
+            readonly minLength: 1;
+            readonly maxLength: 24000;
+        };
+        readonly citationSourceIds: {
+            readonly type: "array";
+            readonly maxItems: 100;
+            readonly items: {
+                readonly type: "string";
+                readonly minLength: 1;
+                readonly maxLength: 256;
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
+// export: CHAT_AGENT_DRAFT_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    messageMarkdown: z.ZodString;
+    citationSourceIds: z.ZodArray<z.ZodString>;
+    gaps: z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            clarification: "clarification";
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_SCHEMA_V1
+export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -5688,6 +6667,67 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SESSION_STATE_PATH_V1
+export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_STATE_SCHEMA_V1
+export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1";
+
+// export: CHAT_STRATEGY_CAPABILITY_CLASSES_V1
+export declare const CHAT_STRATEGY_CAPABILITY_CLASSES_V1: readonly [
+    "exact-read",
+    "jira-discovery",
+    "confluence-discovery",
+    "relationship-tracing",
+    "comparison-analysis",
+    "contradiction-check",
+    "quality-review",
+    "chat-answer"
+];
+
+// export: CHAT_STRATEGY_DECISION_SCHEMA_V1
+export declare const CHAT_STRATEGY_DECISION_SCHEMA_V1: "atlcli.chat-strategy-decision/v1";
+
+// export: CHAT_STRATEGY_QUALITY_RISKS_V1
+export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
+    "multiple-sources",
+    "cross-product",
+    "contradictory-evidence",
+    "broad-discovery",
+    "scope-ambiguity"
+];
+
+// export: CHAT_STRATEGY_REASON_CODES_V1
+export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
+    "quick-direct",
+    "single-exact-context",
+    "no-atlassian-acquisition",
+    "multi-anchor",
+    "broad-scope-discovery",
+    "multi-source-comparison",
+    "cross-product-relationship",
+    "contradiction-risk",
+    "unresolved-ambiguity"
+];
+
+// export: CHAT_STRATEGY_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_RECORD_SCHEMA_V1: "atlcli.chat-strategy-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1: "atlcli.chat-strategy-review-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_SCHEMA_V1: "atlcli.chat-strategy-review/v1";
+
+// export: CHAT_STRATEGY_REVIEW_STATE_PATH_V1
+export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-review-v1.json";
+
+// export: CHAT_STRATEGY_STATE_PATH_V1
+export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -5695,6 +6735,75 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
     "quick",
     "deep"
 ];
+
+// export: CHAT_TURN_REQUEST_SCHEMA_V1
+export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAgentDraftV1
+export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAnswerGapV1
+export interface ChatAnswerGapV1 {
+    code: "no-detail-evidence" | "truncated-source" | "unresolved-reference" | "incomplete-coverage";
+    message: string;
+    sourceIds: string[];
+}
+
+// export: ChatAnswerV1
+export interface ChatAnswerV1 {
+    schema: typeof CHAT_ANSWER_SCHEMA_V1;
+    messageMarkdown: string;
+    citations: ChatCitationV1[];
+    evidenceRefs: string[];
+    gaps: ChatAnswerGapV1[];
+    strategy: ChatStrategyV1;
+    continuation?: ChatContinuationOfferV1;
+    run: ChatRunSummaryV1;
+}
+
+// export: ChatAuxiliaryReadNeedV1
+export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCitationV1
+export interface ChatCitationV1 {
+    sourceId: string;
+    title: string;
+    url: string;
+    product: ResearchProduct;
+    section?: {
+        sectionId: string;
+        heading: string;
+    };
+}
+
+// export: ChatContinuationOfferV1
+export interface ChatContinuationOfferV1 {
+    kind: "follow-up" | "deep-research" | "clarification";
+    prompt: string;
+}
+
+// export: ChatContractError
+export declare class ChatContractError extends ResearchContractError {
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ChatModelBindingV1
+export interface ChatModelBindingV1 {
+    model: BaseChatModel;
+    modelId: string;
+    qualityAdapter: ProviderQualityCapabilityAdapterV1;
+    structuredOutput: "native" | "tool";
+}
+
+// export: ChatModelFactoryInputV1
+export interface ChatModelFactoryInputV1 {
+    credential: string;
+    maxOutputTokens: number;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatModelFactoryV1
+export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -5723,12 +6832,131 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRunSummaryV1
+export interface ChatRunSummaryV1 {
+    model: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+}
+
+// export: ChatScopeClarificationReviewV1
+export interface ChatScopeClarificationReviewV1 {
+    schema: typeof CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_scope_clarification";
+    updatedAt: string;
+    clarification: {
+        mentionId: string;
+        reason: "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
+        rerunGuidance: string[];
+        candidates: Array<{
+            id: string;
+            product: "jira" | "confluence";
+            entityKind: "project" | "space" | "issue" | "page";
+            key?: string;
+            name: string;
+            canonicalUrl?: string;
+            status?: "current" | "archived";
+        }>;
+    };
+}
+
+// export: ChatSessionStateV1
+export interface ChatSessionStateV1 {
+    schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatStrategyCapabilityClassV1
+export type ChatStrategyCapabilityClassV1 = (typeof CHAT_STRATEGY_CAPABILITY_CLASSES_V1)[number];
+
+// export: ChatStrategyDecisionV1
+export interface ChatStrategyDecisionV1 {
+    schema: typeof CHAT_STRATEGY_DECISION_SCHEMA_V1;
+    qualityMode: ChatQualityModeV1;
+    execution: "direct" | "agentic";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
+// export: ChatStrategyPathV1
+export type ChatStrategyPathV1 = "direct" | "agentic";
+
+// export: ChatStrategyQualityRiskV1
+export type ChatStrategyQualityRiskV1 = (typeof CHAT_STRATEGY_QUALITY_RISKS_V1)[number];
+
+// export: ChatStrategyReasonCodeV1
+export type ChatStrategyReasonCodeV1 = (typeof CHAT_STRATEGY_REASON_CODES_V1)[number];
+
+// export: ChatStrategyRecordV1
+export interface ChatStrategyRecordV1 {
+    schema: typeof CHAT_STRATEGY_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    acceptedAt: string;
+    decision: ChatStrategyDecisionV1;
+}
+
+// export: ChatStrategyReviewRecordV1
+export interface ChatStrategyReviewRecordV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    reviewedAt: string;
+    review: ChatStrategyReviewV1;
+}
+
+// export: ChatStrategyReviewV1
+export interface ChatStrategyReviewV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_SCHEMA_V1;
+    execution: "agentic";
+    detailedSourceIds: string[];
+    detailedProducts: Array<"jira" | "confluence">;
+    unmetCapabilityClasses: ChatStrategyCapabilityClassV1[];
+    readyForAnswer: boolean;
+}
+
+// export: ChatStrategyV1
+export interface ChatStrategyV1 {
+    qualityMode: ChatQualityModeV1;
+    path: ChatStrategyPathV1;
+    delegated: boolean;
+    reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
+
+// export: ChatTurnRequestV1
+export interface ChatTurnRequestV1 {
+    schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+    exactContextProducts?: ResearchProduct[];
+    locale?: string;
+}
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -5769,6 +6997,15 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: ConfluenceDocumentInputV1
+export type ConfluenceDocumentInputV1 = {
+    representation: "storage";
+    value: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+};
 
 // export: ContentProjectionLimits
 export interface ContentProjectionLimits {
@@ -5816,6 +7053,39 @@ export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatch
 
 // export: createAgenticDispatchInterceptionAdapter
 export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
+
+// export: createChatPtcToolsV1
+export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
+
+// export: createChatSessionStateV1
+export declare function createChatSessionStateV1(input: {
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}): ChatSessionStateV1;
+
+// export: createChatStrategyDecisionControllerV1
+export declare function createChatStrategyDecisionControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acknowledgedDecision(): ChatStrategyDecisionV1 | undefined;
+    assertAcknowledged(): void;
+};
+
+// export: createChatStrategyReviewControllerV1
+export declare function createChatStrategyReviewControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    detailEvidence: () => readonly ResearchDetailEvidenceV1[];
+    beforeReview?: () => void;
+    onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    latestReview(): ChatStrategyReviewV1 | undefined;
+    assertCurrent(): void;
+};
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -5960,6 +7230,12 @@ export declare function createResearchSessionV1(input: {
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeBoundEntityReadInputV1
+export declare function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1;
+
+// export: decodeBoundEntitySectionReadInputV1
+export declare function decodeBoundEntitySectionReadInputV1(value: unknown): BoundEntitySectionReadInputV1;
+
 // export: decodeResearchCandidateRankInputV1
 export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
 
@@ -5990,6 +7266,18 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: deriveChatAuxiliaryReadNeedsV1
+export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
+
+// export: deriveChatStrategyDecisionV1
+export declare function deriveChatStrategyDecisionV1(input: {
+    qualityPolicy: ChatQualityPolicyV1;
+    question: string;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+    unresolvedAmbiguity?: boolean;
+}): ChatStrategyDecisionV1;
+
 // export: diffResearchPlansV1
 export declare function diffResearchPlansV1(input: {
     fromBrief: ResearchBriefV1;
@@ -6013,6 +7301,20 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: finalizeChatAnswerV1
+export declare function finalizeChatAnswerV1(input: {
+    draft: unknown;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    qualityPolicy: ChatQualityPolicyV1;
+    strategyDecision?: ChatStrategyDecisionV1;
+    strategyReview?: ChatStrategyReviewV1;
+    delegated?: boolean;
+    run: ChatRunSummaryV1;
+    locale?: string;
+}): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
 export declare function finalizeResearchAgentDraftV1(input: {
@@ -6122,6 +7424,7 @@ export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
+    purpose?: "chat" | "research";
     at: string;
 }
 
@@ -6250,8 +7553,25 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: navigateConfluenceDocumentV1
+export declare function navigateConfluenceDocumentV1(input: ConfluenceDocumentInputV1): BoundedDocumentSourceV1 | undefined;
+
+// export: navigateConfluenceStorageV1
+export declare function navigateConfluenceStorageV1(input: {
+    storage: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+}): BoundedDocumentSourceV1 | undefined;
+
+// export: normalizeChatGapCodeV1
+export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
+// export: normalizeChatTurnRequestV1
+export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -6398,6 +7718,12 @@ export declare function prependBoundedDetailText(projection: BoundedContentProje
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: projectChatScopeClarificationReviewV1
+export declare function projectChatScopeClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ChatScopeClarificationReviewV1 | undefined;
+
+// export: projectConfluenceBlocks
+export declare function projectConfluenceBlocks(blocks: readonly ExportBlock[], siteOrigin: string, limits: ContentProjectionLimits, inputBytes: number): BoundedContentProjectionV1;
+
 // export: projectConfluenceStorage
 export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -6523,6 +7849,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
     "balanced",
     "thorough"
 ];
+
+// export: providerCompatibleChatAnswerSchemaV1
+export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
 
 // export: ProviderQualityCapabilityAdapterV1
 export interface ProviderQualityCapabilityAdapterV1 {
@@ -6656,6 +7988,16 @@ export declare function renderResearchTurnContextV1(context: ResearchTurnContext
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
+// export: RESEARCH_ACTIVITY_CODES_V1
+export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "model-assessing",
+    "next-step-ready",
+    "answer-draft-ready",
+    "bounded-workflow-running",
+    "bounded-workflow-complete",
+    "bounded-workflow-failed"
+];
+
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -6702,6 +8044,8 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "wiki.search",
     "wiki.page.get",
     "research.candidate.rank",
+    "atlassian.bound.read",
+    "atlassian.bound.section.read",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -7273,6 +8617,9 @@ export interface ResearchAcceptedPacketV1 {
     acceptedAt: string;
 }
 
+// export: ResearchActivityCodeV1
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -7433,6 +8780,10 @@ export declare class ResearchCapabilityBroker {
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
+    exactAnchors(): BoundEntityAnchorV1[];
+    readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
+    readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
         evidenceIds: readonly string[];
         checkedAt: string;
@@ -7653,6 +9004,20 @@ export interface ResearchDetailEvidenceV1 {
     content: BoundedContentProjectionV1;
     retrieval?: ResearchEvidenceRetrievalV1;
     evidenceId?: string;
+    section?: {
+        sectionId: string;
+        heading: string;
+        order: number;
+    };
+    coverage?: {
+        snapshot?: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
 }
 
 // export: ResearchDispatchDiagnosticV1
@@ -7756,6 +9121,12 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     phase: string;
+} | {
+    kind: "activity";
+    seq: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
 } | {
     kind: "progress";
     seq: number;
@@ -7987,7 +9358,7 @@ export interface ResearchEvidenceRecordV1 {
 // export: ResearchEvidenceRetrievalV1
 export interface ResearchEvidenceRetrievalV1 {
     sourceId: string;
-    reason: "question_relevance_rank";
+    reason: "question_relevance_rank" | "exact_anchor";
     rank: number;
 }
 
@@ -8452,7 +9823,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "activity" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -8693,7 +10064,7 @@ export interface ResearchPort {
         revision: number;
         instruction: string;
     }): Promise<void>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
@@ -8747,7 +10118,9 @@ export interface ResearchPort {
         revision: number;
         briefRevision: number;
     }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
-    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1, options?: {
+        purpose?: "chat" | "research";
+    }): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
     listScopeClarificationReviews?(): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]>;
     resolveScopeClarificationReview?(input: {
         sessionId: string;
@@ -8843,6 +10216,8 @@ export interface ResearchReadProviders {
         }): Promise<ResearchProviderPage<JiraResearchSummary>>;
         getIssue(input: {
             issueKey: string;
+            includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<JiraResearchDetail>;
     };
@@ -8856,9 +10231,18 @@ export interface ResearchReadProviders {
         getPage(input: {
             contentId: string;
             includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<WikiResearchDetail>;
     };
+}
+
+// export: ResearchReadSectionReferenceV1
+export interface ResearchReadSectionReferenceV1 {
+    sourceId: string;
+    sectionId: string;
+    heading: string;
+    order: number;
 }
 
 // export: ResearchReconciliationDefectV1
@@ -9391,6 +10775,10 @@ export interface ResearchScopeClarificationReviewActionV1 {
 
 // export: ResearchScopeClarificationReviewResolutionV1
 export type ResearchScopeClarificationReviewResolutionV1 = {
+    kind: "chat_ready";
+    request: import("./contracts.js").ResearchRequestV1;
+    conversationId: string;
+} | {
     kind: "scope_clarification";
     review: ResearchSessionScopeClarificationReviewV1;
 } | {
@@ -9924,6 +11312,7 @@ export interface ResearchSessionRetrievalContinuationV1 {
 export interface ResearchSessionScopeClarificationReviewV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
     sessionId: string;
+    purpose?: "chat" | "research";
     revision: number;
     status: "waiting_scope_clarification" | "idle" | "planning";
     stage: "choice_required" | "brief_required" | "plan_required";
@@ -9947,6 +11336,7 @@ export interface ResearchSessionScopeClarificationReviewV1 {
 // export: ResearchSessionScopeClarificationV1
 export interface ResearchSessionScopeClarificationV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+    purpose?: "chat" | "research";
     state: "waiting_choice" | "choice_resolved";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
@@ -10176,6 +11566,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     turnId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_scope_clarification";
+    purpose?: "chat" | "research";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
@@ -10621,6 +12012,20 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatScopeClarificationV1
+export declare function resolveChatScopeClarificationV1(input: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    selection: ResearchScopeCandidateSelectionV1;
+    resolvedRequest: ResearchRequestV1;
+    at: string;
+}): Promise<{
+    request: ResearchRequestV1;
+    conversationSession: ResearchSessionV1;
+}>;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -10771,6 +12176,7 @@ export declare function verifyResearchSessionStoreConformanceV1(factory: Researc
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
+    navigation?: BoundedDocumentSourceV1;
 }
 
 // export: WikiResearchSummary
@@ -11065,6 +12471,12 @@ export declare function assertResearchReportV1(value: unknown): asserts value is
 // export: assertResearchReportV2
 export declare function assertResearchReportV2(value: unknown): asserts value is ResearchReportV2;
 
+// export: assessChatStrategyReviewV1
+export declare function assessChatStrategyReviewV1(input: {
+    decision: ChatStrategyDecisionV1;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+}): ChatStrategyReviewV1;
+
 // export: assessResearchRetrievalV1
 export declare function assessResearchRetrievalV1(input: ResearchRetrievalAssessmentInputV1): ResearchRetrievalAssessmentV1;
 
@@ -11081,11 +12493,81 @@ export interface AtlassianRelationshipV1 {
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
 
+// export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
+
+// export: BOUND_ENTITY_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.input/v1";
+
+// export: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.output/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1: "atlassian.bound.section.read";
+
+// export: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.input/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.output/v1";
+
 // export: BoundAgenticWorkflowRunV1
 export interface BoundAgenticWorkflowRunV1 {
     readonly compiled: CompiledAgenticWorkflowV1;
     readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
     readonly signal?: AbortSignal;
+}
+
+// export: BoundDocumentCoverageIssueV1
+export type BoundDocumentCoverageIssueV1 = "source_limit" | "parse_budget" | "outline_limit" | "projection_limit" | "unresolved_include" | "unsupported_structure";
+
+// export: BoundDocumentOutlineV1
+export interface BoundDocumentOutlineV1 {
+    snapshot: {
+        sourceId: string;
+        representation: "storage";
+        sourceVersion: number;
+        captureRef: string;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    unreadSections: number;
+    sections: BoundDocumentSectionOutlineV1[];
+}
+
+// export: BoundDocumentSectionOutlineV1
+export interface BoundDocumentSectionOutlineV1 {
+    sectionRef: string;
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    metadata: {
+        macroNames: string[];
+        macroCount: number;
+        macrosTruncated: boolean;
+        linkCount: number;
+        linksTruncated: boolean;
+        jiraIssueKeys: string[];
+        structures: BoundDocumentStructureSummaryV1;
+    };
+}
+
+// export: BoundDocumentStructureSummaryV1
+export interface BoundDocumentStructureSummaryV1 {
+    tables: number;
+    expands: number;
+    jiraMacros: number;
+    smartLinks: number;
+    excerpts: number;
+    includes: number;
+    unresolvedIncludes: number;
+    unsupportedMacros: number;
 }
 
 // export: BoundedContentProjectionV1
@@ -11096,8 +12578,103 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: BoundedDocumentSectionSourceV1
+export interface BoundedDocumentSectionSourceV1 {
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    content: ReturnType<typeof projectConfluenceBlocks>;
+    metadata: BoundDocumentSectionOutlineV1["metadata"];
+}
+
+// export: BoundedDocumentSourceV1
+export interface BoundedDocumentSourceV1 {
+    snapshot: {
+        representation: "storage";
+        sourceVersion: number;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    sections: BoundedDocumentSectionSourceV1[];
+}
+
+// export: BoundEntityAnchorV1
+export interface BoundEntityAnchorV1 {
+    anchorRef: string;
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: BoundEntityReadInputV1
+export interface BoundEntityReadInputV1 {
+    schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+    anchorRef: string;
+}
+
+// export: BoundEntityReadOutputV1
+export interface BoundEntityReadOutputV1 {
+    schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    relatedAnchors: BoundEntityAnchorV1[];
+    document?: BoundDocumentOutlineV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: BoundEntitySectionReadInputV1
+export interface BoundEntitySectionReadInputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+    sectionRef: string;
+}
+
+// export: BoundEntitySectionReadOutputV1
+export interface BoundEntitySectionReadOutputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+    content: BoundedContentProjectionV1;
+    support: {
+        sectionId: string;
+        start: number;
+        end: number;
+        evidenceId?: string;
+    };
+    coverage: {
+        snapshot: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
+    relatedAnchors: BoundEntityAnchorV1[];
+    budget: ResearchBudgetSnapshotV1;
+}
+
 // export: briefRequiresClarificationV1
 export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean;
+
+// export: buildChatSystemPromptV1
+export declare function buildChatSystemPromptV1(input: {
+    qualityMode: ChatQualityModeV1;
+    maxDetailItemsPerProduct: number;
+    strategyDecisionRequired?: boolean;
+}): string;
+
+// export: buildChatTurnPromptV1
+export declare function buildChatTurnPromptV1(input: {
+    question: string;
+    jiraProjectKeys: readonly string[];
+    confluenceSpaceKeys: readonly string[];
+    anchors: readonly BoundEntityAnchorV1[];
+}): string;
 
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
@@ -11116,6 +12693,111 @@ export declare function buildResearchTurnContextV1(input: {
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "messageMarkdown",
+        "citationSourceIds",
+        "gaps"
+    ];
+    readonly properties: {
+        readonly messageMarkdown: {
+            readonly type: "string";
+            readonly minLength: 1;
+            readonly maxLength: 24000;
+        };
+        readonly citationSourceIds: {
+            readonly type: "array";
+            readonly maxItems: 100;
+            readonly items: {
+                readonly type: "string";
+                readonly minLength: 1;
+                readonly maxLength: 256;
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
+// export: CHAT_AGENT_DRAFT_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    messageMarkdown: z.ZodString;
+    citationSourceIds: z.ZodArray<z.ZodString>;
+    gaps: z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            clarification: "clarification";
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_SCHEMA_V1
+export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -11126,6 +12808,67 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SESSION_STATE_PATH_V1
+export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_STATE_SCHEMA_V1
+export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1";
+
+// export: CHAT_STRATEGY_CAPABILITY_CLASSES_V1
+export declare const CHAT_STRATEGY_CAPABILITY_CLASSES_V1: readonly [
+    "exact-read",
+    "jira-discovery",
+    "confluence-discovery",
+    "relationship-tracing",
+    "comparison-analysis",
+    "contradiction-check",
+    "quality-review",
+    "chat-answer"
+];
+
+// export: CHAT_STRATEGY_DECISION_SCHEMA_V1
+export declare const CHAT_STRATEGY_DECISION_SCHEMA_V1: "atlcli.chat-strategy-decision/v1";
+
+// export: CHAT_STRATEGY_QUALITY_RISKS_V1
+export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
+    "multiple-sources",
+    "cross-product",
+    "contradictory-evidence",
+    "broad-discovery",
+    "scope-ambiguity"
+];
+
+// export: CHAT_STRATEGY_REASON_CODES_V1
+export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
+    "quick-direct",
+    "single-exact-context",
+    "no-atlassian-acquisition",
+    "multi-anchor",
+    "broad-scope-discovery",
+    "multi-source-comparison",
+    "cross-product-relationship",
+    "contradiction-risk",
+    "unresolved-ambiguity"
+];
+
+// export: CHAT_STRATEGY_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_RECORD_SCHEMA_V1: "atlcli.chat-strategy-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1: "atlcli.chat-strategy-review-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_SCHEMA_V1: "atlcli.chat-strategy-review/v1";
+
+// export: CHAT_STRATEGY_REVIEW_STATE_PATH_V1
+export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-review-v1.json";
+
+// export: CHAT_STRATEGY_STATE_PATH_V1
+export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -11133,6 +12876,75 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
     "quick",
     "deep"
 ];
+
+// export: CHAT_TURN_REQUEST_SCHEMA_V1
+export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAgentDraftV1
+export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAnswerGapV1
+export interface ChatAnswerGapV1 {
+    code: "no-detail-evidence" | "truncated-source" | "unresolved-reference" | "incomplete-coverage";
+    message: string;
+    sourceIds: string[];
+}
+
+// export: ChatAnswerV1
+export interface ChatAnswerV1 {
+    schema: typeof CHAT_ANSWER_SCHEMA_V1;
+    messageMarkdown: string;
+    citations: ChatCitationV1[];
+    evidenceRefs: string[];
+    gaps: ChatAnswerGapV1[];
+    strategy: ChatStrategyV1;
+    continuation?: ChatContinuationOfferV1;
+    run: ChatRunSummaryV1;
+}
+
+// export: ChatAuxiliaryReadNeedV1
+export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCitationV1
+export interface ChatCitationV1 {
+    sourceId: string;
+    title: string;
+    url: string;
+    product: ResearchProduct;
+    section?: {
+        sectionId: string;
+        heading: string;
+    };
+}
+
+// export: ChatContinuationOfferV1
+export interface ChatContinuationOfferV1 {
+    kind: "follow-up" | "deep-research" | "clarification";
+    prompt: string;
+}
+
+// export: ChatContractError
+export declare class ChatContractError extends ResearchContractError {
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ChatModelBindingV1
+export interface ChatModelBindingV1 {
+    model: BaseChatModel;
+    modelId: string;
+    qualityAdapter: ProviderQualityCapabilityAdapterV1;
+    structuredOutput: "native" | "tool";
+}
+
+// export: ChatModelFactoryInputV1
+export interface ChatModelFactoryInputV1 {
+    credential: string;
+    maxOutputTokens: number;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatModelFactoryV1
+export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -11161,12 +12973,131 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRunSummaryV1
+export interface ChatRunSummaryV1 {
+    model: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+}
+
+// export: ChatScopeClarificationReviewV1
+export interface ChatScopeClarificationReviewV1 {
+    schema: typeof CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_scope_clarification";
+    updatedAt: string;
+    clarification: {
+        mentionId: string;
+        reason: "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
+        rerunGuidance: string[];
+        candidates: Array<{
+            id: string;
+            product: "jira" | "confluence";
+            entityKind: "project" | "space" | "issue" | "page";
+            key?: string;
+            name: string;
+            canonicalUrl?: string;
+            status?: "current" | "archived";
+        }>;
+    };
+}
+
+// export: ChatSessionStateV1
+export interface ChatSessionStateV1 {
+    schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatStrategyCapabilityClassV1
+export type ChatStrategyCapabilityClassV1 = (typeof CHAT_STRATEGY_CAPABILITY_CLASSES_V1)[number];
+
+// export: ChatStrategyDecisionV1
+export interface ChatStrategyDecisionV1 {
+    schema: typeof CHAT_STRATEGY_DECISION_SCHEMA_V1;
+    qualityMode: ChatQualityModeV1;
+    execution: "direct" | "agentic";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
+// export: ChatStrategyPathV1
+export type ChatStrategyPathV1 = "direct" | "agentic";
+
+// export: ChatStrategyQualityRiskV1
+export type ChatStrategyQualityRiskV1 = (typeof CHAT_STRATEGY_QUALITY_RISKS_V1)[number];
+
+// export: ChatStrategyReasonCodeV1
+export type ChatStrategyReasonCodeV1 = (typeof CHAT_STRATEGY_REASON_CODES_V1)[number];
+
+// export: ChatStrategyRecordV1
+export interface ChatStrategyRecordV1 {
+    schema: typeof CHAT_STRATEGY_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    acceptedAt: string;
+    decision: ChatStrategyDecisionV1;
+}
+
+// export: ChatStrategyReviewRecordV1
+export interface ChatStrategyReviewRecordV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    reviewedAt: string;
+    review: ChatStrategyReviewV1;
+}
+
+// export: ChatStrategyReviewV1
+export interface ChatStrategyReviewV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_SCHEMA_V1;
+    execution: "agentic";
+    detailedSourceIds: string[];
+    detailedProducts: Array<"jira" | "confluence">;
+    unmetCapabilityClasses: ChatStrategyCapabilityClassV1[];
+    readyForAnswer: boolean;
+}
+
+// export: ChatStrategyV1
+export interface ChatStrategyV1 {
+    qualityMode: ChatQualityModeV1;
+    path: ChatStrategyPathV1;
+    delegated: boolean;
+    reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
+
+// export: ChatTurnRequestV1
+export interface ChatTurnRequestV1 {
+    schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+    exactContextProducts?: ResearchProduct[];
+    locale?: string;
+}
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -11207,6 +13138,15 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: ConfluenceDocumentInputV1
+export type ConfluenceDocumentInputV1 = {
+    representation: "storage";
+    value: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+};
 
 // export: ContentProjectionLimits
 export interface ContentProjectionLimits {
@@ -11254,6 +13194,39 @@ export declare function createAgenticDispatchControlHookV1(gate: AgenticDispatch
 
 // export: createAgenticDispatchInterceptionAdapter
 export declare function createAgenticDispatchInterceptionAdapter(options: AgenticDispatchInterceptionOptionsV1): AgenticDispatchInterceptionAdapter;
+
+// export: createChatPtcToolsV1
+export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
+
+// export: createChatSessionStateV1
+export declare function createChatSessionStateV1(input: {
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}): ChatSessionStateV1;
+
+// export: createChatStrategyDecisionControllerV1
+export declare function createChatStrategyDecisionControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acknowledgedDecision(): ChatStrategyDecisionV1 | undefined;
+    assertAcknowledged(): void;
+};
+
+// export: createChatStrategyReviewControllerV1
+export declare function createChatStrategyReviewControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    detailEvidence: () => readonly ResearchDetailEvidenceV1[];
+    beforeReview?: () => void;
+    onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    latestReview(): ChatStrategyReviewV1 | undefined;
+    assertCurrent(): void;
+};
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -11407,6 +13380,12 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeBoundEntityReadInputV1
+export declare function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1;
+
+// export: decodeBoundEntitySectionReadInputV1
+export declare function decodeBoundEntitySectionReadInputV1(value: unknown): BoundEntitySectionReadInputV1;
+
 // export: decodeResearchCandidateRankInputV1
 export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
 
@@ -11437,6 +13416,18 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
 
+// export: deriveChatAuxiliaryReadNeedsV1
+export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
+
+// export: deriveChatStrategyDecisionV1
+export declare function deriveChatStrategyDecisionV1(input: {
+    qualityPolicy: ChatQualityPolicyV1;
+    question: string;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+    unresolvedAmbiguity?: boolean;
+}): ChatStrategyDecisionV1;
+
 // export: diffResearchPlansV1
 export declare function diffResearchPlansV1(input: {
     fromBrief: ResearchBriefV1;
@@ -11460,6 +13451,20 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: finalizeChatAnswerV1
+export declare function finalizeChatAnswerV1(input: {
+    draft: unknown;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    qualityPolicy: ChatQualityPolicyV1;
+    strategyDecision?: ChatStrategyDecisionV1;
+    strategyReview?: ChatStrategyReviewV1;
+    delegated?: boolean;
+    run: ChatRunSummaryV1;
+    locale?: string;
+}): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
 export declare function finalizeResearchAgentDraftV1(input: {
@@ -11569,6 +13574,7 @@ export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
+    purpose?: "chat" | "research";
     at: string;
 }
 
@@ -11697,8 +13703,25 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: navigateConfluenceDocumentV1
+export declare function navigateConfluenceDocumentV1(input: ConfluenceDocumentInputV1): BoundedDocumentSourceV1 | undefined;
+
+// export: navigateConfluenceStorageV1
+export declare function navigateConfluenceStorageV1(input: {
+    storage: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+}): BoundedDocumentSourceV1 | undefined;
+
+// export: normalizeChatGapCodeV1
+export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
+// export: normalizeChatTurnRequestV1
+export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -11845,6 +13868,12 @@ export declare function prependBoundedDetailText(projection: BoundedContentProje
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: projectChatScopeClarificationReviewV1
+export declare function projectChatScopeClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ChatScopeClarificationReviewV1 | undefined;
+
+// export: projectConfluenceBlocks
+export declare function projectConfluenceBlocks(blocks: readonly ExportBlock[], siteOrigin: string, limits: ContentProjectionLimits, inputBytes: number): BoundedContentProjectionV1;
+
 // export: projectConfluenceStorage
 export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -11970,6 +13999,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
     "balanced",
     "thorough"
 ];
+
+// export: providerCompatibleChatAnswerSchemaV1
+export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
 
 // export: ProviderQualityCapabilityAdapterV1
 export interface ProviderQualityCapabilityAdapterV1 {
@@ -12103,6 +14138,16 @@ export declare function renderResearchTurnContextV1(context: ResearchTurnContext
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
+// export: RESEARCH_ACTIVITY_CODES_V1
+export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "model-assessing",
+    "next-step-ready",
+    "answer-draft-ready",
+    "bounded-workflow-running",
+    "bounded-workflow-complete",
+    "bounded-workflow-failed"
+];
+
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -12149,6 +14194,8 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "wiki.search",
     "wiki.page.get",
     "research.candidate.rank",
+    "atlassian.bound.read",
+    "atlassian.bound.section.read",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -12720,6 +14767,9 @@ export interface ResearchAcceptedPacketV1 {
     acceptedAt: string;
 }
 
+// export: ResearchActivityCodeV1
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -12880,6 +14930,10 @@ export declare class ResearchCapabilityBroker {
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
+    exactAnchors(): BoundEntityAnchorV1[];
+    readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
+    readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
         evidenceIds: readonly string[];
         checkedAt: string;
@@ -13100,6 +15154,20 @@ export interface ResearchDetailEvidenceV1 {
     content: BoundedContentProjectionV1;
     retrieval?: ResearchEvidenceRetrievalV1;
     evidenceId?: string;
+    section?: {
+        sectionId: string;
+        heading: string;
+        order: number;
+    };
+    coverage?: {
+        snapshot?: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
 }
 
 // export: ResearchDispatchDiagnosticV1
@@ -13203,6 +15271,12 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     phase: string;
+} | {
+    kind: "activity";
+    seq: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
 } | {
     kind: "progress";
     seq: number;
@@ -13434,7 +15508,7 @@ export interface ResearchEvidenceRecordV1 {
 // export: ResearchEvidenceRetrievalV1
 export interface ResearchEvidenceRetrievalV1 {
     sourceId: string;
-    reason: "question_relevance_rank";
+    reason: "question_relevance_rank" | "exact_anchor";
     rank: number;
 }
 
@@ -13899,7 +15973,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "activity" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -14140,7 +16214,7 @@ export interface ResearchPort {
         revision: number;
         instruction: string;
     }): Promise<void>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
@@ -14194,7 +16268,9 @@ export interface ResearchPort {
         revision: number;
         briefRevision: number;
     }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
-    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1, options?: {
+        purpose?: "chat" | "research";
+    }): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
     listScopeClarificationReviews?(): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]>;
     resolveScopeClarificationReview?(input: {
         sessionId: string;
@@ -14290,6 +16366,8 @@ export interface ResearchReadProviders {
         }): Promise<ResearchProviderPage<JiraResearchSummary>>;
         getIssue(input: {
             issueKey: string;
+            includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<JiraResearchDetail>;
     };
@@ -14303,9 +16381,18 @@ export interface ResearchReadProviders {
         getPage(input: {
             contentId: string;
             includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<WikiResearchDetail>;
     };
+}
+
+// export: ResearchReadSectionReferenceV1
+export interface ResearchReadSectionReferenceV1 {
+    sourceId: string;
+    sectionId: string;
+    heading: string;
+    order: number;
 }
 
 // export: ResearchReconciliationDefectV1
@@ -14838,6 +16925,10 @@ export interface ResearchScopeClarificationReviewActionV1 {
 
 // export: ResearchScopeClarificationReviewResolutionV1
 export type ResearchScopeClarificationReviewResolutionV1 = {
+    kind: "chat_ready";
+    request: import("./contracts.js").ResearchRequestV1;
+    conversationId: string;
+} | {
     kind: "scope_clarification";
     review: ResearchSessionScopeClarificationReviewV1;
 } | {
@@ -15371,6 +17462,7 @@ export interface ResearchSessionRetrievalContinuationV1 {
 export interface ResearchSessionScopeClarificationReviewV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
     sessionId: string;
+    purpose?: "chat" | "research";
     revision: number;
     status: "waiting_scope_clarification" | "idle" | "planning";
     stage: "choice_required" | "brief_required" | "plan_required";
@@ -15394,6 +17486,7 @@ export interface ResearchSessionScopeClarificationReviewV1 {
 // export: ResearchSessionScopeClarificationV1
 export interface ResearchSessionScopeClarificationV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+    purpose?: "chat" | "research";
     state: "waiting_choice" | "choice_resolved";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
@@ -15623,6 +17716,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     turnId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_scope_clarification";
+    purpose?: "chat" | "research";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
@@ -16068,6 +18162,20 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatScopeClarificationV1
+export declare function resolveChatScopeClarificationV1(input: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    selection: ResearchScopeCandidateSelectionV1;
+    resolvedRequest: ResearchRequestV1;
+    at: string;
+}): Promise<{
+    request: ResearchRequestV1;
+    conversationSession: ResearchSessionV1;
+}>;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -16229,6 +18337,7 @@ export declare function verifyResearchSessionStoreConformanceV1(factory: Researc
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
+    navigation?: BoundedDocumentSourceV1;
 }
 
 // export: WikiResearchSummary
@@ -16523,6 +18632,12 @@ export declare function assertResearchReportV1(value: unknown): asserts value is
 // export: assertResearchReportV2
 export declare function assertResearchReportV2(value: unknown): asserts value is ResearchReportV2;
 
+// export: assessChatStrategyReviewV1
+export declare function assessChatStrategyReviewV1(input: {
+    decision: ChatStrategyDecisionV1;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+}): ChatStrategyReviewV1;
+
 // export: assessResearchRetrievalV1
 export declare function assessResearchRetrievalV1(input: ResearchRetrievalAssessmentInputV1): ResearchRetrievalAssessmentV1;
 
@@ -16539,11 +18654,81 @@ export interface AtlassianRelationshipV1 {
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
 
+// export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
+
+// export: BOUND_ENTITY_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.input/v1";
+
+// export: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.output/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1: "atlassian.bound.section.read";
+
+// export: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.input/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.output/v1";
+
 // export: BoundAgenticWorkflowRunV1
 export interface BoundAgenticWorkflowRunV1 {
     readonly compiled: CompiledAgenticWorkflowV1;
     readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
     readonly signal?: AbortSignal;
+}
+
+// export: BoundDocumentCoverageIssueV1
+export type BoundDocumentCoverageIssueV1 = "source_limit" | "parse_budget" | "outline_limit" | "projection_limit" | "unresolved_include" | "unsupported_structure";
+
+// export: BoundDocumentOutlineV1
+export interface BoundDocumentOutlineV1 {
+    snapshot: {
+        sourceId: string;
+        representation: "storage";
+        sourceVersion: number;
+        captureRef: string;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    unreadSections: number;
+    sections: BoundDocumentSectionOutlineV1[];
+}
+
+// export: BoundDocumentSectionOutlineV1
+export interface BoundDocumentSectionOutlineV1 {
+    sectionRef: string;
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    metadata: {
+        macroNames: string[];
+        macroCount: number;
+        macrosTruncated: boolean;
+        linkCount: number;
+        linksTruncated: boolean;
+        jiraIssueKeys: string[];
+        structures: BoundDocumentStructureSummaryV1;
+    };
+}
+
+// export: BoundDocumentStructureSummaryV1
+export interface BoundDocumentStructureSummaryV1 {
+    tables: number;
+    expands: number;
+    jiraMacros: number;
+    smartLinks: number;
+    excerpts: number;
+    includes: number;
+    unresolvedIncludes: number;
+    unsupportedMacros: number;
 }
 
 // export: BoundedContentProjectionV1
@@ -16554,11 +18739,106 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: BoundedDocumentSectionSourceV1
+export interface BoundedDocumentSectionSourceV1 {
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    content: ReturnType<typeof projectConfluenceBlocks>;
+    metadata: BoundDocumentSectionOutlineV1["metadata"];
+}
+
+// export: BoundedDocumentSourceV1
+export interface BoundedDocumentSourceV1 {
+    snapshot: {
+        representation: "storage";
+        sourceVersion: number;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    sections: BoundedDocumentSectionSourceV1[];
+}
+
+// export: BoundEntityAnchorV1
+export interface BoundEntityAnchorV1 {
+    anchorRef: string;
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: BoundEntityReadInputV1
+export interface BoundEntityReadInputV1 {
+    schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+    anchorRef: string;
+}
+
+// export: BoundEntityReadOutputV1
+export interface BoundEntityReadOutputV1 {
+    schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    relatedAnchors: BoundEntityAnchorV1[];
+    document?: BoundDocumentOutlineV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: BoundEntitySectionReadInputV1
+export interface BoundEntitySectionReadInputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+    sectionRef: string;
+}
+
+// export: BoundEntitySectionReadOutputV1
+export interface BoundEntitySectionReadOutputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+    content: BoundedContentProjectionV1;
+    support: {
+        sectionId: string;
+        start: number;
+        end: number;
+        evidenceId?: string;
+    };
+    coverage: {
+        snapshot: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
+    relatedAnchors: BoundEntityAnchorV1[];
+    budget: ResearchBudgetSnapshotV1;
+}
+
 // export: boundResearchNodePtcToolsV1
 export declare function boundResearchNodePtcToolsV1(candidates: readonly DynamicStructuredTool[], maxCapabilityCalls: number, nodeId: string): DynamicStructuredTool[];
 
 // export: briefRequiresClarificationV1
 export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean;
+
+// export: buildChatSystemPromptV1
+export declare function buildChatSystemPromptV1(input: {
+    qualityMode: ChatQualityModeV1;
+    maxDetailItemsPerProduct: number;
+    strategyDecisionRequired?: boolean;
+}): string;
+
+// export: buildChatTurnPromptV1
+export declare function buildChatTurnPromptV1(input: {
+    question: string;
+    jiraProjectKeys: readonly string[];
+    confluenceSpaceKeys: readonly string[];
+    anchors: readonly BoundEntityAnchorV1[];
+}): string;
 
 // export: buildDynamicSupervisorPrompt
 export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
@@ -16583,6 +18863,111 @@ export declare function buildResearchTurnContextV1(input: {
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "messageMarkdown",
+        "citationSourceIds",
+        "gaps"
+    ];
+    readonly properties: {
+        readonly messageMarkdown: {
+            readonly type: "string";
+            readonly minLength: 1;
+            readonly maxLength: 24000;
+        };
+        readonly citationSourceIds: {
+            readonly type: "array";
+            readonly maxItems: 100;
+            readonly items: {
+                readonly type: "string";
+                readonly minLength: 1;
+                readonly maxLength: 256;
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
+// export: CHAT_AGENT_DRAFT_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    messageMarkdown: z.ZodString;
+    citationSourceIds: z.ZodArray<z.ZodString>;
+    gaps: z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            clarification: "clarification";
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_SCHEMA_V1
+export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -16593,6 +18978,67 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SESSION_STATE_PATH_V1
+export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_STATE_SCHEMA_V1
+export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1";
+
+// export: CHAT_STRATEGY_CAPABILITY_CLASSES_V1
+export declare const CHAT_STRATEGY_CAPABILITY_CLASSES_V1: readonly [
+    "exact-read",
+    "jira-discovery",
+    "confluence-discovery",
+    "relationship-tracing",
+    "comparison-analysis",
+    "contradiction-check",
+    "quality-review",
+    "chat-answer"
+];
+
+// export: CHAT_STRATEGY_DECISION_SCHEMA_V1
+export declare const CHAT_STRATEGY_DECISION_SCHEMA_V1: "atlcli.chat-strategy-decision/v1";
+
+// export: CHAT_STRATEGY_QUALITY_RISKS_V1
+export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
+    "multiple-sources",
+    "cross-product",
+    "contradictory-evidence",
+    "broad-discovery",
+    "scope-ambiguity"
+];
+
+// export: CHAT_STRATEGY_REASON_CODES_V1
+export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
+    "quick-direct",
+    "single-exact-context",
+    "no-atlassian-acquisition",
+    "multi-anchor",
+    "broad-scope-discovery",
+    "multi-source-comparison",
+    "cross-product-relationship",
+    "contradiction-risk",
+    "unresolved-ambiguity"
+];
+
+// export: CHAT_STRATEGY_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_RECORD_SCHEMA_V1: "atlcli.chat-strategy-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1: "atlcli.chat-strategy-review-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_SCHEMA_V1: "atlcli.chat-strategy-review/v1";
+
+// export: CHAT_STRATEGY_REVIEW_STATE_PATH_V1
+export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-review-v1.json";
+
+// export: CHAT_STRATEGY_STATE_PATH_V1
+export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -16600,6 +19046,82 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
     "quick",
     "deep"
 ];
+
+// export: CHAT_TURN_REQUEST_SCHEMA_V1
+export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAgentDraftV1
+export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentRuntimeBindings
+export interface ChatAgentRuntimeBindings {
+    StateBackend: typeof import("deepagents/browser").StateBackend;
+    createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ChatAnswerGapV1
+export interface ChatAnswerGapV1 {
+    code: "no-detail-evidence" | "truncated-source" | "unresolved-reference" | "incomplete-coverage";
+    message: string;
+    sourceIds: string[];
+}
+
+// export: ChatAnswerV1
+export interface ChatAnswerV1 {
+    schema: typeof CHAT_ANSWER_SCHEMA_V1;
+    messageMarkdown: string;
+    citations: ChatCitationV1[];
+    evidenceRefs: string[];
+    gaps: ChatAnswerGapV1[];
+    strategy: ChatStrategyV1;
+    continuation?: ChatContinuationOfferV1;
+    run: ChatRunSummaryV1;
+}
+
+// export: ChatAuxiliaryReadNeedV1
+export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCitationV1
+export interface ChatCitationV1 {
+    sourceId: string;
+    title: string;
+    url: string;
+    product: ResearchProduct;
+    section?: {
+        sectionId: string;
+        heading: string;
+    };
+}
+
+// export: ChatContinuationOfferV1
+export interface ChatContinuationOfferV1 {
+    kind: "follow-up" | "deep-research" | "clarification";
+    prompt: string;
+}
+
+// export: ChatContractError
+export declare class ChatContractError extends ResearchContractError {
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ChatModelBindingV1
+export interface ChatModelBindingV1 {
+    model: BaseChatModel;
+    modelId: string;
+    qualityAdapter: ProviderQualityCapabilityAdapterV1;
+    structuredOutput: "native" | "tool";
+}
+
+// export: ChatModelFactoryInputV1
+export interface ChatModelFactoryInputV1 {
+    credential: string;
+    maxOutputTokens: number;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatModelFactoryV1
+export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -16628,12 +19150,131 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRunSummaryV1
+export interface ChatRunSummaryV1 {
+    model: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+}
+
+// export: ChatScopeClarificationReviewV1
+export interface ChatScopeClarificationReviewV1 {
+    schema: typeof CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_scope_clarification";
+    updatedAt: string;
+    clarification: {
+        mentionId: string;
+        reason: "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
+        rerunGuidance: string[];
+        candidates: Array<{
+            id: string;
+            product: "jira" | "confluence";
+            entityKind: "project" | "space" | "issue" | "page";
+            key?: string;
+            name: string;
+            canonicalUrl?: string;
+            status?: "current" | "archived";
+        }>;
+    };
+}
+
+// export: ChatSessionStateV1
+export interface ChatSessionStateV1 {
+    schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatStrategyCapabilityClassV1
+export type ChatStrategyCapabilityClassV1 = (typeof CHAT_STRATEGY_CAPABILITY_CLASSES_V1)[number];
+
+// export: ChatStrategyDecisionV1
+export interface ChatStrategyDecisionV1 {
+    schema: typeof CHAT_STRATEGY_DECISION_SCHEMA_V1;
+    qualityMode: ChatQualityModeV1;
+    execution: "direct" | "agentic";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
+// export: ChatStrategyPathV1
+export type ChatStrategyPathV1 = "direct" | "agentic";
+
+// export: ChatStrategyQualityRiskV1
+export type ChatStrategyQualityRiskV1 = (typeof CHAT_STRATEGY_QUALITY_RISKS_V1)[number];
+
+// export: ChatStrategyReasonCodeV1
+export type ChatStrategyReasonCodeV1 = (typeof CHAT_STRATEGY_REASON_CODES_V1)[number];
+
+// export: ChatStrategyRecordV1
+export interface ChatStrategyRecordV1 {
+    schema: typeof CHAT_STRATEGY_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    acceptedAt: string;
+    decision: ChatStrategyDecisionV1;
+}
+
+// export: ChatStrategyReviewRecordV1
+export interface ChatStrategyReviewRecordV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    reviewedAt: string;
+    review: ChatStrategyReviewV1;
+}
+
+// export: ChatStrategyReviewV1
+export interface ChatStrategyReviewV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_SCHEMA_V1;
+    execution: "agentic";
+    detailedSourceIds: string[];
+    detailedProducts: Array<"jira" | "confluence">;
+    unmetCapabilityClasses: ChatStrategyCapabilityClassV1[];
+    readyForAnswer: boolean;
+}
+
+// export: ChatStrategyV1
+export interface ChatStrategyV1 {
+    qualityMode: ChatQualityModeV1;
+    path: ChatStrategyPathV1;
+    delegated: boolean;
+    reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
+
+// export: ChatTurnRequestV1
+export interface ChatTurnRequestV1 {
+    schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+    exactContextProducts?: ResearchProduct[];
+    locale?: string;
+}
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -16677,6 +19318,15 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: ConfluenceDocumentInputV1
+export type ConfluenceDocumentInputV1 = {
+    representation: "storage";
+    value: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+};
 
 // export: ContentProjectionLimits
 export interface ContentProjectionLimits {
@@ -16811,8 +19461,51 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
 };
 
+// export: createChatPtcToolsV1
+export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
+
+// export: createChatSessionStateV1
+export declare function createChatSessionStateV1(input: {
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}): ChatSessionStateV1;
+
+// export: createChatStrategyDecisionControllerV1
+export declare function createChatStrategyDecisionControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acknowledgedDecision(): ChatStrategyDecisionV1 | undefined;
+    assertAcknowledged(): void;
+};
+
+// export: createChatStrategyReviewControllerV1
+export declare function createChatStrategyReviewControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    detailEvidence: () => readonly ResearchDetailEvidenceV1[];
+    beforeReview?: () => void;
+    onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    latestReview(): ChatStrategyReviewV1 | undefined;
+    assertCurrent(): void;
+};
+
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
+
+// export: createKiteweaveChatAgent
+export declare function createKiteweaveChatAgent(runtime: ChatAgentRuntimeBindings, options?: {
+    defaultModelFactory?: ChatModelFactoryV1;
+}): {
+    runChatAgent(input: RunChatAgentInput): Promise<ChatAnswerV1>;
+};
+
+// export: createKiteweaveResearchAgent
+export declare const createKiteweaveResearchAgent: typeof createResearchAgentRuntime;
 
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
@@ -17001,6 +19694,12 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeBoundEntityReadInputV1
+export declare function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1;
+
+// export: decodeBoundEntitySectionReadInputV1
+export declare function decodeBoundEntitySectionReadInputV1(value: unknown): BoundEntitySectionReadInputV1;
+
 // export: decodeResearchCandidateRankInputV1
 export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
 
@@ -17030,6 +19729,18 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: deriveChatAuxiliaryReadNeedsV1
+export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
+
+// export: deriveChatStrategyDecisionV1
+export declare function deriveChatStrategyDecisionV1(input: {
+    qualityPolicy: ChatQualityPolicyV1;
+    question: string;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+    unresolvedAmbiguity?: boolean;
+}): ChatStrategyDecisionV1;
 
 // export: diffResearchPlansV1
 export declare function diffResearchPlansV1(input: {
@@ -17100,6 +19811,20 @@ export declare function escapeResearchJqlLiteral(value: string): string;
 
 // export: extractResearchStructuredCandidateV1
 export declare function extractResearchStructuredCandidateV1(result: unknown): unknown;
+
+// export: finalizeChatAnswerV1
+export declare function finalizeChatAnswerV1(input: {
+    draft: unknown;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    qualityPolicy: ChatQualityPolicyV1;
+    strategyDecision?: ChatStrategyDecisionV1;
+    strategyReview?: ChatStrategyReviewV1;
+    delegated?: boolean;
+    run: ChatRunSummaryV1;
+    locale?: string;
+}): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
 export declare function finalizeResearchAgentDraftV1(input: {
@@ -17209,6 +19934,7 @@ export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
+    purpose?: "chat" | "research";
     at: string;
 }
 
@@ -17337,8 +20063,25 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: navigateConfluenceDocumentV1
+export declare function navigateConfluenceDocumentV1(input: ConfluenceDocumentInputV1): BoundedDocumentSourceV1 | undefined;
+
+// export: navigateConfluenceStorageV1
+export declare function navigateConfluenceStorageV1(input: {
+    storage: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+}): BoundedDocumentSourceV1 | undefined;
+
+// export: normalizeChatGapCodeV1
+export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
+// export: normalizeChatTurnRequestV1
+export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -17488,6 +20231,12 @@ export declare function prependBoundedDetailText(projection: BoundedContentProje
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: projectChatScopeClarificationReviewV1
+export declare function projectChatScopeClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ChatScopeClarificationReviewV1 | undefined;
+
+// export: projectConfluenceBlocks
+export declare function projectConfluenceBlocks(blocks: readonly ExportBlock[], siteOrigin: string, limits: ContentProjectionLimits, inputBytes: number): BoundedContentProjectionV1;
+
 // export: projectConfluenceStorage
 export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -17613,6 +20362,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
     "balanced",
     "thorough"
 ];
+
+// export: providerCompatibleChatAnswerSchemaV1
+export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
 
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
@@ -17752,6 +20507,16 @@ export declare function renderResearchTurnContextV1(context: ResearchTurnContext
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
+// export: RESEARCH_ACTIVITY_CODES_V1
+export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "model-assessing",
+    "next-step-ready",
+    "answer-draft-ready",
+    "bounded-workflow-running",
+    "bounded-workflow-complete",
+    "bounded-workflow-failed"
+];
+
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -17802,6 +20567,8 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "wiki.search",
     "wiki.page.get",
     "research.candidate.rank",
+    "atlassian.bound.read",
+    "atlassian.bound.section.read",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -18413,6 +21180,9 @@ export interface ResearchAcceptedTaskHydrationV1 {
     dependencyResult?: unknown;
 }
 
+// export: ResearchActivityCodeV1
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -18584,6 +21354,10 @@ export declare class ResearchCapabilityBroker {
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
+    exactAnchors(): BoundEntityAnchorV1[];
+    readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
+    readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
         evidenceIds: readonly string[];
         checkedAt: string;
@@ -18823,6 +21597,20 @@ export interface ResearchDetailEvidenceV1 {
     content: BoundedContentProjectionV1;
     retrieval?: ResearchEvidenceRetrievalV1;
     evidenceId?: string;
+    section?: {
+        sectionId: string;
+        heading: string;
+        order: number;
+    };
+    coverage?: {
+        snapshot?: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
 }
 
 // export: ResearchDispatchDiagnosticV1
@@ -18926,6 +21714,12 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     phase: string;
+} | {
+    kind: "activity";
+    seq: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
 } | {
     kind: "progress";
     seq: number;
@@ -19157,7 +21951,7 @@ export interface ResearchEvidenceRecordV1 {
 // export: ResearchEvidenceRetrievalV1
 export interface ResearchEvidenceRetrievalV1 {
     sourceId: string;
-    reason: "question_relevance_rank";
+    reason: "question_relevance_rank" | "exact_anchor";
     rank: number;
 }
 
@@ -19622,7 +22416,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "activity" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -19863,7 +22657,7 @@ export interface ResearchPort {
         revision: number;
         instruction: string;
     }): Promise<void>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
@@ -19917,7 +22711,9 @@ export interface ResearchPort {
         revision: number;
         briefRevision: number;
     }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
-    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1, options?: {
+        purpose?: "chat" | "research";
+    }): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
     listScopeClarificationReviews?(): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]>;
     resolveScopeClarificationReview?(input: {
         sessionId: string;
@@ -19963,7 +22759,7 @@ export interface ResearchProviderPage<T> {
 // export: ResearchPtcDiagnosticV1
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
-    tool: ResearchGraphCapabilityV1;
+    tool: ResearchCapabilityEventToolIdV1;
     inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     outcome: "started" | "success" | "error";
     durationMs?: number;
@@ -20041,6 +22837,8 @@ export interface ResearchReadProviders {
         }): Promise<ResearchProviderPage<JiraResearchSummary>>;
         getIssue(input: {
             issueKey: string;
+            includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<JiraResearchDetail>;
     };
@@ -20054,9 +22852,18 @@ export interface ResearchReadProviders {
         getPage(input: {
             contentId: string;
             includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<WikiResearchDetail>;
     };
+}
+
+// export: ResearchReadSectionReferenceV1
+export interface ResearchReadSectionReferenceV1 {
+    sourceId: string;
+    sectionId: string;
+    heading: string;
+    order: number;
 }
 
 // export: ResearchReadyFrontierControllerV1
@@ -20609,6 +23416,10 @@ export interface ResearchScopeClarificationReviewActionV1 {
 
 // export: ResearchScopeClarificationReviewResolutionV1
 export type ResearchScopeClarificationReviewResolutionV1 = {
+    kind: "chat_ready";
+    request: import("./contracts.js").ResearchRequestV1;
+    conversationId: string;
+} | {
     kind: "scope_clarification";
     review: ResearchSessionScopeClarificationReviewV1;
 } | {
@@ -21142,6 +23953,7 @@ export interface ResearchSessionRetrievalContinuationV1 {
 export interface ResearchSessionScopeClarificationReviewV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
     sessionId: string;
+    purpose?: "chat" | "research";
     revision: number;
     status: "waiting_scope_clarification" | "idle" | "planning";
     stage: "choice_required" | "brief_required" | "plan_required";
@@ -21165,6 +23977,7 @@ export interface ResearchSessionScopeClarificationReviewV1 {
 // export: ResearchSessionScopeClarificationV1
 export interface ResearchSessionScopeClarificationV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+    purpose?: "chat" | "research";
     state: "waiting_choice" | "choice_resolved";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
@@ -21394,6 +24207,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     turnId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_scope_clarification";
+    purpose?: "chat" | "research";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
@@ -21882,6 +24696,20 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatScopeClarificationV1
+export declare function resolveChatScopeClarificationV1(input: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    selection: ResearchScopeCandidateSelectionV1;
+    resolvedRequest: ResearchRequestV1;
+    at: string;
+}): Promise<{
+    request: ResearchRequestV1;
+    conversationSession: ResearchSessionV1;
+}>;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -21995,6 +24823,28 @@ export declare function reviseResearchBriefPlanV1(input: {
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: runChatAgent
+export declare const runChatAgent: (input: import("./agent-runtime.browser.js").RunChatAgentInput) => Promise<import("./index.js").ChatAnswerV1>;
+
+// export: RunChatAgentInput
+export interface RunChatAgentInput {
+    apiKey?: string;
+    model?: BaseChatModel;
+    modelBinding?: ChatModelBindingV1;
+    turn: ChatTurnRequestV1;
+    brokerRequest: ResearchRequestV1;
+    providers: ResearchReadProviders;
+    budget?: ResearchRunBudget;
+    workspace: ResearchWorkspace;
+    qualityPolicy?: ChatQualityPolicyV1;
+    signal?: AbortSignal;
+    now?: () => number;
+    onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
+}
+
 // export: runResearchAgent
 export declare const runResearchAgent: (input: import("./agent-runtime-core.js").RunResearchAgentInput) => Promise<import("./contracts.js").ResearchReport>;
 
@@ -22080,6 +24930,7 @@ export declare function verifyResearchSessionStoreConformanceV1(factory: Researc
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
+    navigation?: BoundedDocumentSourceV1;
 }
 
 // export: WikiResearchSummary
@@ -22374,6 +25225,12 @@ export declare function assertResearchReportV1(value: unknown): asserts value is
 // export: assertResearchReportV2
 export declare function assertResearchReportV2(value: unknown): asserts value is ResearchReportV2;
 
+// export: assessChatStrategyReviewV1
+export declare function assessChatStrategyReviewV1(input: {
+    decision: ChatStrategyDecisionV1;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+}): ChatStrategyReviewV1;
+
 // export: assessResearchRetrievalV1
 export declare function assessResearchRetrievalV1(input: ResearchRetrievalAssessmentInputV1): ResearchRetrievalAssessmentV1;
 
@@ -22390,11 +25247,81 @@ export interface AtlassianRelationshipV1 {
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
 
+// export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
+
+// export: BOUND_ENTITY_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.input/v1";
+
+// export: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.output/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1: "atlassian.bound.section.read";
+
+// export: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.input/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.output/v1";
+
 // export: BoundAgenticWorkflowRunV1
 export interface BoundAgenticWorkflowRunV1 {
     readonly compiled: CompiledAgenticWorkflowV1;
     readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
     readonly signal?: AbortSignal;
+}
+
+// export: BoundDocumentCoverageIssueV1
+export type BoundDocumentCoverageIssueV1 = "source_limit" | "parse_budget" | "outline_limit" | "projection_limit" | "unresolved_include" | "unsupported_structure";
+
+// export: BoundDocumentOutlineV1
+export interface BoundDocumentOutlineV1 {
+    snapshot: {
+        sourceId: string;
+        representation: "storage";
+        sourceVersion: number;
+        captureRef: string;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    unreadSections: number;
+    sections: BoundDocumentSectionOutlineV1[];
+}
+
+// export: BoundDocumentSectionOutlineV1
+export interface BoundDocumentSectionOutlineV1 {
+    sectionRef: string;
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    metadata: {
+        macroNames: string[];
+        macroCount: number;
+        macrosTruncated: boolean;
+        linkCount: number;
+        linksTruncated: boolean;
+        jiraIssueKeys: string[];
+        structures: BoundDocumentStructureSummaryV1;
+    };
+}
+
+// export: BoundDocumentStructureSummaryV1
+export interface BoundDocumentStructureSummaryV1 {
+    tables: number;
+    expands: number;
+    jiraMacros: number;
+    smartLinks: number;
+    excerpts: number;
+    includes: number;
+    unresolvedIncludes: number;
+    unsupportedMacros: number;
 }
 
 // export: BoundedContentProjectionV1
@@ -22405,11 +25332,106 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: BoundedDocumentSectionSourceV1
+export interface BoundedDocumentSectionSourceV1 {
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    content: ReturnType<typeof projectConfluenceBlocks>;
+    metadata: BoundDocumentSectionOutlineV1["metadata"];
+}
+
+// export: BoundedDocumentSourceV1
+export interface BoundedDocumentSourceV1 {
+    snapshot: {
+        representation: "storage";
+        sourceVersion: number;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    sections: BoundedDocumentSectionSourceV1[];
+}
+
+// export: BoundEntityAnchorV1
+export interface BoundEntityAnchorV1 {
+    anchorRef: string;
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: BoundEntityReadInputV1
+export interface BoundEntityReadInputV1 {
+    schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+    anchorRef: string;
+}
+
+// export: BoundEntityReadOutputV1
+export interface BoundEntityReadOutputV1 {
+    schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    relatedAnchors: BoundEntityAnchorV1[];
+    document?: BoundDocumentOutlineV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: BoundEntitySectionReadInputV1
+export interface BoundEntitySectionReadInputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+    sectionRef: string;
+}
+
+// export: BoundEntitySectionReadOutputV1
+export interface BoundEntitySectionReadOutputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+    content: BoundedContentProjectionV1;
+    support: {
+        sectionId: string;
+        start: number;
+        end: number;
+        evidenceId?: string;
+    };
+    coverage: {
+        snapshot: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
+    relatedAnchors: BoundEntityAnchorV1[];
+    budget: ResearchBudgetSnapshotV1;
+}
+
 // export: boundResearchNodePtcToolsV1
 export declare function boundResearchNodePtcToolsV1(candidates: readonly DynamicStructuredTool[], maxCapabilityCalls: number, nodeId: string): DynamicStructuredTool[];
 
 // export: briefRequiresClarificationV1
 export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean;
+
+// export: buildChatSystemPromptV1
+export declare function buildChatSystemPromptV1(input: {
+    qualityMode: ChatQualityModeV1;
+    maxDetailItemsPerProduct: number;
+    strategyDecisionRequired?: boolean;
+}): string;
+
+// export: buildChatTurnPromptV1
+export declare function buildChatTurnPromptV1(input: {
+    question: string;
+    jiraProjectKeys: readonly string[];
+    confluenceSpaceKeys: readonly string[];
+    anchors: readonly BoundEntityAnchorV1[];
+}): string;
 
 // export: buildDynamicSupervisorPrompt
 export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
@@ -22434,6 +25456,111 @@ export declare function buildResearchTurnContextV1(input: {
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "messageMarkdown",
+        "citationSourceIds",
+        "gaps"
+    ];
+    readonly properties: {
+        readonly messageMarkdown: {
+            readonly type: "string";
+            readonly minLength: 1;
+            readonly maxLength: 24000;
+        };
+        readonly citationSourceIds: {
+            readonly type: "array";
+            readonly maxItems: 100;
+            readonly items: {
+                readonly type: "string";
+                readonly minLength: 1;
+                readonly maxLength: 256;
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
+// export: CHAT_AGENT_DRAFT_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    messageMarkdown: z.ZodString;
+    citationSourceIds: z.ZodArray<z.ZodString>;
+    gaps: z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            clarification: "clarification";
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_SCHEMA_V1
+export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -22444,6 +25571,67 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SESSION_STATE_PATH_V1
+export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_STATE_SCHEMA_V1
+export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1";
+
+// export: CHAT_STRATEGY_CAPABILITY_CLASSES_V1
+export declare const CHAT_STRATEGY_CAPABILITY_CLASSES_V1: readonly [
+    "exact-read",
+    "jira-discovery",
+    "confluence-discovery",
+    "relationship-tracing",
+    "comparison-analysis",
+    "contradiction-check",
+    "quality-review",
+    "chat-answer"
+];
+
+// export: CHAT_STRATEGY_DECISION_SCHEMA_V1
+export declare const CHAT_STRATEGY_DECISION_SCHEMA_V1: "atlcli.chat-strategy-decision/v1";
+
+// export: CHAT_STRATEGY_QUALITY_RISKS_V1
+export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
+    "multiple-sources",
+    "cross-product",
+    "contradictory-evidence",
+    "broad-discovery",
+    "scope-ambiguity"
+];
+
+// export: CHAT_STRATEGY_REASON_CODES_V1
+export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
+    "quick-direct",
+    "single-exact-context",
+    "no-atlassian-acquisition",
+    "multi-anchor",
+    "broad-scope-discovery",
+    "multi-source-comparison",
+    "cross-product-relationship",
+    "contradiction-risk",
+    "unresolved-ambiguity"
+];
+
+// export: CHAT_STRATEGY_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_RECORD_SCHEMA_V1: "atlcli.chat-strategy-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1: "atlcli.chat-strategy-review-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_SCHEMA_V1: "atlcli.chat-strategy-review/v1";
+
+// export: CHAT_STRATEGY_REVIEW_STATE_PATH_V1
+export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-review-v1.json";
+
+// export: CHAT_STRATEGY_STATE_PATH_V1
+export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -22451,6 +25639,82 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
     "quick",
     "deep"
 ];
+
+// export: CHAT_TURN_REQUEST_SCHEMA_V1
+export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAgentDraftV1
+export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentRuntimeBindings
+export interface ChatAgentRuntimeBindings {
+    StateBackend: typeof import("deepagents/browser").StateBackend;
+    createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ChatAnswerGapV1
+export interface ChatAnswerGapV1 {
+    code: "no-detail-evidence" | "truncated-source" | "unresolved-reference" | "incomplete-coverage";
+    message: string;
+    sourceIds: string[];
+}
+
+// export: ChatAnswerV1
+export interface ChatAnswerV1 {
+    schema: typeof CHAT_ANSWER_SCHEMA_V1;
+    messageMarkdown: string;
+    citations: ChatCitationV1[];
+    evidenceRefs: string[];
+    gaps: ChatAnswerGapV1[];
+    strategy: ChatStrategyV1;
+    continuation?: ChatContinuationOfferV1;
+    run: ChatRunSummaryV1;
+}
+
+// export: ChatAuxiliaryReadNeedV1
+export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCitationV1
+export interface ChatCitationV1 {
+    sourceId: string;
+    title: string;
+    url: string;
+    product: ResearchProduct;
+    section?: {
+        sectionId: string;
+        heading: string;
+    };
+}
+
+// export: ChatContinuationOfferV1
+export interface ChatContinuationOfferV1 {
+    kind: "follow-up" | "deep-research" | "clarification";
+    prompt: string;
+}
+
+// export: ChatContractError
+export declare class ChatContractError extends ResearchContractError {
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ChatModelBindingV1
+export interface ChatModelBindingV1 {
+    model: BaseChatModel;
+    modelId: string;
+    qualityAdapter: ProviderQualityCapabilityAdapterV1;
+    structuredOutput: "native" | "tool";
+}
+
+// export: ChatModelFactoryInputV1
+export interface ChatModelFactoryInputV1 {
+    credential: string;
+    maxOutputTokens: number;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatModelFactoryV1
+export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -22479,12 +25743,131 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRunSummaryV1
+export interface ChatRunSummaryV1 {
+    model: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+}
+
+// export: ChatScopeClarificationReviewV1
+export interface ChatScopeClarificationReviewV1 {
+    schema: typeof CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_scope_clarification";
+    updatedAt: string;
+    clarification: {
+        mentionId: string;
+        reason: "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
+        rerunGuidance: string[];
+        candidates: Array<{
+            id: string;
+            product: "jira" | "confluence";
+            entityKind: "project" | "space" | "issue" | "page";
+            key?: string;
+            name: string;
+            canonicalUrl?: string;
+            status?: "current" | "archived";
+        }>;
+    };
+}
+
+// export: ChatSessionStateV1
+export interface ChatSessionStateV1 {
+    schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatStrategyCapabilityClassV1
+export type ChatStrategyCapabilityClassV1 = (typeof CHAT_STRATEGY_CAPABILITY_CLASSES_V1)[number];
+
+// export: ChatStrategyDecisionV1
+export interface ChatStrategyDecisionV1 {
+    schema: typeof CHAT_STRATEGY_DECISION_SCHEMA_V1;
+    qualityMode: ChatQualityModeV1;
+    execution: "direct" | "agentic";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
+// export: ChatStrategyPathV1
+export type ChatStrategyPathV1 = "direct" | "agentic";
+
+// export: ChatStrategyQualityRiskV1
+export type ChatStrategyQualityRiskV1 = (typeof CHAT_STRATEGY_QUALITY_RISKS_V1)[number];
+
+// export: ChatStrategyReasonCodeV1
+export type ChatStrategyReasonCodeV1 = (typeof CHAT_STRATEGY_REASON_CODES_V1)[number];
+
+// export: ChatStrategyRecordV1
+export interface ChatStrategyRecordV1 {
+    schema: typeof CHAT_STRATEGY_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    acceptedAt: string;
+    decision: ChatStrategyDecisionV1;
+}
+
+// export: ChatStrategyReviewRecordV1
+export interface ChatStrategyReviewRecordV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    reviewedAt: string;
+    review: ChatStrategyReviewV1;
+}
+
+// export: ChatStrategyReviewV1
+export interface ChatStrategyReviewV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_SCHEMA_V1;
+    execution: "agentic";
+    detailedSourceIds: string[];
+    detailedProducts: Array<"jira" | "confluence">;
+    unmetCapabilityClasses: ChatStrategyCapabilityClassV1[];
+    readyForAnswer: boolean;
+}
+
+// export: ChatStrategyV1
+export interface ChatStrategyV1 {
+    qualityMode: ChatQualityModeV1;
+    path: ChatStrategyPathV1;
+    delegated: boolean;
+    reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
+
+// export: ChatTurnRequestV1
+export interface ChatTurnRequestV1 {
+    schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+    exactContextProducts?: ResearchProduct[];
+    locale?: string;
+}
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -22528,6 +25911,15 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: ConfluenceDocumentInputV1
+export type ConfluenceDocumentInputV1 = {
+    representation: "storage";
+    value: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+};
 
 // export: ContentProjectionLimits
 export interface ContentProjectionLimits {
@@ -22662,8 +26054,51 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
 };
 
+// export: createChatPtcToolsV1
+export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
+
+// export: createChatSessionStateV1
+export declare function createChatSessionStateV1(input: {
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}): ChatSessionStateV1;
+
+// export: createChatStrategyDecisionControllerV1
+export declare function createChatStrategyDecisionControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acknowledgedDecision(): ChatStrategyDecisionV1 | undefined;
+    assertAcknowledged(): void;
+};
+
+// export: createChatStrategyReviewControllerV1
+export declare function createChatStrategyReviewControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    detailEvidence: () => readonly ResearchDetailEvidenceV1[];
+    beforeReview?: () => void;
+    onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    latestReview(): ChatStrategyReviewV1 | undefined;
+    assertCurrent(): void;
+};
+
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
+
+// export: createKiteweaveChatAgent
+export declare function createKiteweaveChatAgent(runtime: ChatAgentRuntimeBindings, options?: {
+    defaultModelFactory?: ChatModelFactoryV1;
+}): {
+    runChatAgent(input: RunChatAgentInput): Promise<ChatAnswerV1>;
+};
+
+// export: createKiteweaveResearchAgent
+export declare const createKiteweaveResearchAgent: typeof createResearchAgentRuntime;
 
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
@@ -22852,6 +26287,12 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeBoundEntityReadInputV1
+export declare function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1;
+
+// export: decodeBoundEntitySectionReadInputV1
+export declare function decodeBoundEntitySectionReadInputV1(value: unknown): BoundEntitySectionReadInputV1;
+
 // export: decodeResearchCandidateRankInputV1
 export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
 
@@ -22881,6 +26322,18 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: deriveChatAuxiliaryReadNeedsV1
+export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
+
+// export: deriveChatStrategyDecisionV1
+export declare function deriveChatStrategyDecisionV1(input: {
+    qualityPolicy: ChatQualityPolicyV1;
+    question: string;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+    unresolvedAmbiguity?: boolean;
+}): ChatStrategyDecisionV1;
 
 // export: diffResearchPlansV1
 export declare function diffResearchPlansV1(input: {
@@ -22966,6 +26419,20 @@ export declare class FileSystemResearchWorkspace implements ResearchWorkspace {
     list(prefix?: string): Promise<string[]>;
     dispose(): Promise<void>;
 }
+
+// export: finalizeChatAnswerV1
+export declare function finalizeChatAnswerV1(input: {
+    draft: unknown;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    qualityPolicy: ChatQualityPolicyV1;
+    strategyDecision?: ChatStrategyDecisionV1;
+    strategyReview?: ChatStrategyReviewV1;
+    delegated?: boolean;
+    run: ChatRunSummaryV1;
+    locale?: string;
+}): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
 export declare function finalizeResearchAgentDraftV1(input: {
@@ -23075,6 +26542,7 @@ export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
+    purpose?: "chat" | "research";
     at: string;
 }
 
@@ -23203,8 +26671,25 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: navigateConfluenceDocumentV1
+export declare function navigateConfluenceDocumentV1(input: ConfluenceDocumentInputV1): BoundedDocumentSourceV1 | undefined;
+
+// export: navigateConfluenceStorageV1
+export declare function navigateConfluenceStorageV1(input: {
+    storage: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+}): BoundedDocumentSourceV1 | undefined;
+
+// export: normalizeChatGapCodeV1
+export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
+// export: normalizeChatTurnRequestV1
+export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -23354,6 +26839,12 @@ export declare function prependBoundedDetailText(projection: BoundedContentProje
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: projectChatScopeClarificationReviewV1
+export declare function projectChatScopeClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ChatScopeClarificationReviewV1 | undefined;
+
+// export: projectConfluenceBlocks
+export declare function projectConfluenceBlocks(blocks: readonly ExportBlock[], siteOrigin: string, limits: ContentProjectionLimits, inputBytes: number): BoundedContentProjectionV1;
+
 // export: projectConfluenceStorage
 export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -23479,6 +26970,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
     "balanced",
     "thorough"
 ];
+
+// export: providerCompatibleChatAnswerSchemaV1
+export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
 
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
@@ -23618,6 +27115,16 @@ export declare function renderResearchTurnContextV1(context: ResearchTurnContext
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
+// export: RESEARCH_ACTIVITY_CODES_V1
+export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "model-assessing",
+    "next-step-ready",
+    "answer-draft-ready",
+    "bounded-workflow-running",
+    "bounded-workflow-complete",
+    "bounded-workflow-failed"
+];
+
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -23668,6 +27175,8 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "wiki.search",
     "wiki.page.get",
     "research.candidate.rank",
+    "atlassian.bound.read",
+    "atlassian.bound.section.read",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -24279,6 +27788,9 @@ export interface ResearchAcceptedTaskHydrationV1 {
     dependencyResult?: unknown;
 }
 
+// export: ResearchActivityCodeV1
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -24450,6 +27962,10 @@ export declare class ResearchCapabilityBroker {
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
+    exactAnchors(): BoundEntityAnchorV1[];
+    readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
+    readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
         evidenceIds: readonly string[];
         checkedAt: string;
@@ -24689,6 +28205,20 @@ export interface ResearchDetailEvidenceV1 {
     content: BoundedContentProjectionV1;
     retrieval?: ResearchEvidenceRetrievalV1;
     evidenceId?: string;
+    section?: {
+        sectionId: string;
+        heading: string;
+        order: number;
+    };
+    coverage?: {
+        snapshot?: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
 }
 
 // export: ResearchDispatchDiagnosticV1
@@ -24792,6 +28322,12 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     phase: string;
+} | {
+    kind: "activity";
+    seq: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
 } | {
     kind: "progress";
     seq: number;
@@ -25023,7 +28559,7 @@ export interface ResearchEvidenceRecordV1 {
 // export: ResearchEvidenceRetrievalV1
 export interface ResearchEvidenceRetrievalV1 {
     sourceId: string;
-    reason: "question_relevance_rank";
+    reason: "question_relevance_rank" | "exact_anchor";
     rank: number;
 }
 
@@ -25488,7 +29024,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "activity" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -25729,7 +29265,7 @@ export interface ResearchPort {
         revision: number;
         instruction: string;
     }): Promise<void>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
@@ -25783,7 +29319,9 @@ export interface ResearchPort {
         revision: number;
         briefRevision: number;
     }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
-    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1, options?: {
+        purpose?: "chat" | "research";
+    }): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
     listScopeClarificationReviews?(): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]>;
     resolveScopeClarificationReview?(input: {
         sessionId: string;
@@ -25829,7 +29367,7 @@ export interface ResearchProviderPage<T> {
 // export: ResearchPtcDiagnosticV1
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
-    tool: ResearchGraphCapabilityV1;
+    tool: ResearchCapabilityEventToolIdV1;
     inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     outcome: "started" | "success" | "error";
     durationMs?: number;
@@ -25907,6 +29445,8 @@ export interface ResearchReadProviders {
         }): Promise<ResearchProviderPage<JiraResearchSummary>>;
         getIssue(input: {
             issueKey: string;
+            includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<JiraResearchDetail>;
     };
@@ -25920,9 +29460,18 @@ export interface ResearchReadProviders {
         getPage(input: {
             contentId: string;
             includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<WikiResearchDetail>;
     };
+}
+
+// export: ResearchReadSectionReferenceV1
+export interface ResearchReadSectionReferenceV1 {
+    sourceId: string;
+    sectionId: string;
+    heading: string;
+    order: number;
 }
 
 // export: ResearchReadyFrontierControllerV1
@@ -26475,6 +30024,10 @@ export interface ResearchScopeClarificationReviewActionV1 {
 
 // export: ResearchScopeClarificationReviewResolutionV1
 export type ResearchScopeClarificationReviewResolutionV1 = {
+    kind: "chat_ready";
+    request: import("./contracts.js").ResearchRequestV1;
+    conversationId: string;
+} | {
     kind: "scope_clarification";
     review: ResearchSessionScopeClarificationReviewV1;
 } | {
@@ -27019,6 +30572,7 @@ export interface ResearchSessionRetrievalContinuationV1 {
 export interface ResearchSessionScopeClarificationReviewV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
     sessionId: string;
+    purpose?: "chat" | "research";
     revision: number;
     status: "waiting_scope_clarification" | "idle" | "planning";
     stage: "choice_required" | "brief_required" | "plan_required";
@@ -27042,6 +30596,7 @@ export interface ResearchSessionScopeClarificationReviewV1 {
 // export: ResearchSessionScopeClarificationV1
 export interface ResearchSessionScopeClarificationV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+    purpose?: "chat" | "research";
     state: "waiting_choice" | "choice_resolved";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
@@ -27271,6 +30826,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     turnId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_scope_clarification";
+    purpose?: "chat" | "research";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
@@ -27742,6 +31298,20 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatScopeClarificationV1
+export declare function resolveChatScopeClarificationV1(input: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    selection: ResearchScopeCandidateSelectionV1;
+    resolvedRequest: ResearchRequestV1;
+    at: string;
+}): Promise<{
+    request: ResearchRequestV1;
+    conversationSession: ResearchSessionV1;
+}>;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -27854,6 +31424,28 @@ export declare function reviseResearchBriefPlanV1(input: {
 
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: runChatAgent
+export declare const runChatAgent: (input: import("./agent-runtime.browser.js").RunChatAgentInput) => Promise<import("./index.js").ChatAnswerV1>;
+
+// export: RunChatAgentInput
+export interface RunChatAgentInput {
+    apiKey?: string;
+    model?: BaseChatModel;
+    modelBinding?: ChatModelBindingV1;
+    turn: ChatTurnRequestV1;
+    brokerRequest: ResearchRequestV1;
+    providers: ResearchReadProviders;
+    budget?: ResearchRunBudget;
+    workspace: ResearchWorkspace;
+    qualityPolicy?: ChatQualityPolicyV1;
+    signal?: AbortSignal;
+    now?: () => number;
+    onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
+}
 
 // export: runResearchAgent
 export declare const runResearchAgent: (input: import("./agent-runtime-core.js").RunResearchAgentInput) => Promise<import("./contracts.js").ResearchReport>;
@@ -27979,6 +31571,7 @@ export declare function verifyResearchSessionStoreConformanceV1(factory: Researc
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
+    navigation?: BoundedDocumentSourceV1;
 }
 
 // export: WikiResearchSummary
@@ -28111,6 +31704,76 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 ### Entry point `./capability-contracts`
 
 ```ts
+// export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
+
+// export: BOUND_ENTITY_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.input/v1";
+
+// export: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.output/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1: "atlassian.bound.section.read";
+
+// export: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.input/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.output/v1";
+
+// export: BoundDocumentCoverageIssueV1
+export type BoundDocumentCoverageIssueV1 = "source_limit" | "parse_budget" | "outline_limit" | "projection_limit" | "unresolved_include" | "unsupported_structure";
+
+// export: BoundDocumentOutlineV1
+export interface BoundDocumentOutlineV1 {
+    snapshot: {
+        sourceId: string;
+        representation: "storage";
+        sourceVersion: number;
+        captureRef: string;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    unreadSections: number;
+    sections: BoundDocumentSectionOutlineV1[];
+}
+
+// export: BoundDocumentSectionOutlineV1
+export interface BoundDocumentSectionOutlineV1 {
+    sectionRef: string;
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    metadata: {
+        macroNames: string[];
+        macroCount: number;
+        macrosTruncated: boolean;
+        linkCount: number;
+        linksTruncated: boolean;
+        jiraIssueKeys: string[];
+        structures: BoundDocumentStructureSummaryV1;
+    };
+}
+
+// export: BoundDocumentStructureSummaryV1
+export interface BoundDocumentStructureSummaryV1 {
+    tables: number;
+    expands: number;
+    jiraMacros: number;
+    smartLinks: number;
+    excerpts: number;
+    includes: number;
+    unresolvedIncludes: number;
+    unsupportedMacros: number;
+}
+
 // export: BoundedContentProjectionV1
 export interface BoundedContentProjectionV1 {
     text: string;
@@ -28118,6 +31781,67 @@ export interface BoundedContentProjectionV1 {
     truncated: boolean;
     inputBytes: number;
 }
+
+// export: BoundEntityAnchorV1
+export interface BoundEntityAnchorV1 {
+    anchorRef: string;
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: BoundEntityReadInputV1
+export interface BoundEntityReadInputV1 {
+    schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+    anchorRef: string;
+}
+
+// export: BoundEntityReadOutputV1
+export interface BoundEntityReadOutputV1 {
+    schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    relatedAnchors: BoundEntityAnchorV1[];
+    document?: BoundDocumentOutlineV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: BoundEntitySectionReadInputV1
+export interface BoundEntitySectionReadInputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+    sectionRef: string;
+}
+
+// export: BoundEntitySectionReadOutputV1
+export interface BoundEntitySectionReadOutputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+    content: BoundedContentProjectionV1;
+    support: {
+        sectionId: string;
+        start: number;
+        end: number;
+        evidenceId?: string;
+    };
+    coverage: {
+        snapshot: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
+    relatedAnchors: BoundEntityAnchorV1[];
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: decodeBoundEntityReadInputV1
+export declare function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1;
+
+// export: decodeBoundEntitySectionReadInputV1
+export declare function decodeBoundEntitySectionReadInputV1(value: unknown): BoundEntitySectionReadInputV1;
 
 // export: decodeResearchCandidateRankInputV1
 export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
@@ -28244,6 +31968,234 @@ export interface ResearchSearchQueryV1 {
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 ```
 
+### Entry point `./chat-contracts`
+
+```ts
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "messageMarkdown",
+        "citationSourceIds",
+        "gaps"
+    ];
+    readonly properties: {
+        readonly messageMarkdown: {
+            readonly type: "string";
+            readonly minLength: 1;
+            readonly maxLength: 24000;
+        };
+        readonly citationSourceIds: {
+            readonly type: "array";
+            readonly maxItems: 100;
+            readonly items: {
+                readonly type: "string";
+                readonly minLength: 1;
+                readonly maxLength: 256;
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
+// export: CHAT_AGENT_DRAFT_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    messageMarkdown: z.ZodString;
+    citationSourceIds: z.ZodArray<z.ZodString>;
+    gaps: z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            clarification: "clarification";
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_SCHEMA_V1
+export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
+
+// export: CHAT_SESSION_STATE_PATH_V1
+export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_STATE_SCHEMA_V1
+export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1";
+
+// export: CHAT_TURN_REQUEST_SCHEMA_V1
+export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAgentDraftV1
+export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAnswerGapV1
+export interface ChatAnswerGapV1 {
+    code: "no-detail-evidence" | "truncated-source" | "unresolved-reference" | "incomplete-coverage";
+    message: string;
+    sourceIds: string[];
+}
+
+// export: ChatAnswerV1
+export interface ChatAnswerV1 {
+    schema: typeof CHAT_ANSWER_SCHEMA_V1;
+    messageMarkdown: string;
+    citations: ChatCitationV1[];
+    evidenceRefs: string[];
+    gaps: ChatAnswerGapV1[];
+    strategy: ChatStrategyV1;
+    continuation?: ChatContinuationOfferV1;
+    run: ChatRunSummaryV1;
+}
+
+// export: ChatCitationV1
+export interface ChatCitationV1 {
+    sourceId: string;
+    title: string;
+    url: string;
+    product: ResearchProduct;
+    section?: {
+        sectionId: string;
+        heading: string;
+    };
+}
+
+// export: ChatContinuationOfferV1
+export interface ChatContinuationOfferV1 {
+    kind: "follow-up" | "deep-research" | "clarification";
+    prompt: string;
+}
+
+// export: ChatContractError
+export declare class ChatContractError extends ResearchContractError {
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ChatRunSummaryV1
+export interface ChatRunSummaryV1 {
+    model: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+}
+
+// export: ChatSessionStateV1
+export interface ChatSessionStateV1 {
+    schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatStrategyPathV1
+export type ChatStrategyPathV1 = "direct" | "agentic";
+
+// export: ChatStrategyV1
+export interface ChatStrategyV1 {
+    qualityMode: ChatQualityModeV1;
+    path: ChatStrategyPathV1;
+    delegated: boolean;
+    reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
+// export: ChatTurnRequestV1
+export interface ChatTurnRequestV1 {
+    schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+    exactContextProducts?: ResearchProduct[];
+    locale?: string;
+}
+
+// export: createChatSessionStateV1
+export declare function createChatSessionStateV1(input: {
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}): ChatSessionStateV1;
+
+// export: normalizeChatGapCodeV1
+export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
+// export: normalizeChatTurnRequestV1
+export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
+
+// export: providerCompatibleChatAnswerSchemaV1
+export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+```
+
 ### Entry point `./contracts`
 
 ```ts
@@ -28330,6 +32282,16 @@ export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: Res
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
 
+// export: RESEARCH_ACTIVITY_CODES_V1
+export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "model-assessing",
+    "next-step-ready",
+    "answer-draft-ready",
+    "bounded-workflow-running",
+    "bounded-workflow-complete",
+    "bounded-workflow-failed"
+];
+
 // export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
 export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "jira.issue.search",
@@ -28337,6 +32299,8 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "wiki.search",
     "wiki.page.get",
     "research.candidate.rank",
+    "atlassian.bound.read",
+    "atlassian.bound.section.read",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -28436,6 +32400,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "research.candidate.rank"
 ];
 
+// export: ResearchActivityCodeV1
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 // export: ResearchCapabilityEventToolIdV1
 export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
 
@@ -28460,6 +32427,12 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     phase: string;
+} | {
+    kind: "activity";
+    seq: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
 } | {
     kind: "progress";
     seq: number;
@@ -28678,7 +32651,7 @@ export interface ResearchLimitsV1 {
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "activity" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -28715,7 +32688,7 @@ export interface ResearchPort {
         revision: number;
         instruction: string;
     }): Promise<void>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
@@ -28769,7 +32742,9 @@ export interface ResearchPort {
         revision: number;
         briefRevision: number;
     }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
-    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1, options?: {
+        purpose?: "chat" | "research";
+    }): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
     listScopeClarificationReviews?(): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]>;
     resolveScopeClarificationReview?(input: {
         sessionId: string;
@@ -29577,6 +33552,12 @@ export declare function assertResearchReportV1(value: unknown): asserts value is
 // export: assertResearchReportV2
 export declare function assertResearchReportV2(value: unknown): asserts value is ResearchReportV2;
 
+// export: assessChatStrategyReviewV1
+export declare function assessChatStrategyReviewV1(input: {
+    decision: ChatStrategyDecisionV1;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+}): ChatStrategyReviewV1;
+
 // export: assessResearchRetrievalV1
 export declare function assessResearchRetrievalV1(input: ResearchRetrievalAssessmentInputV1): ResearchRetrievalAssessmentV1;
 
@@ -29593,11 +33574,81 @@ export interface AtlassianRelationshipV1 {
 // export: bindAgenticWorkflowRunV1
 export declare function bindAgenticWorkflowRunV1(compiled: CompiledAgenticWorkflowV1, identity: AgenticWorkflowRunIdentityV1, signal?: AbortSignal): BoundAgenticWorkflowRunV1;
 
+// export: BOUND_ENTITY_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_READ_CAPABILITY_ID_V1: "atlassian.bound.read";
+
+// export: BOUND_ENTITY_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.input/v1";
+
+// export: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.read.output/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1
+export declare const BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1: "atlassian.bound.section.read";
+
+// export: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.input/v1";
+
+// export: BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1
+export declare const BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1: "atlcli.ptc/atlassian.bound.section.read.output/v1";
+
 // export: BoundAgenticWorkflowRunV1
 export interface BoundAgenticWorkflowRunV1 {
     readonly compiled: CompiledAgenticWorkflowV1;
     readonly identity: Readonly<AgenticWorkflowRunIdentityV1>;
     readonly signal?: AbortSignal;
+}
+
+// export: BoundDocumentCoverageIssueV1
+export type BoundDocumentCoverageIssueV1 = "source_limit" | "parse_budget" | "outline_limit" | "projection_limit" | "unresolved_include" | "unsupported_structure";
+
+// export: BoundDocumentOutlineV1
+export interface BoundDocumentOutlineV1 {
+    snapshot: {
+        sourceId: string;
+        representation: "storage";
+        sourceVersion: number;
+        captureRef: string;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    projectionTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    unreadSections: number;
+    sections: BoundDocumentSectionOutlineV1[];
+}
+
+// export: BoundDocumentSectionOutlineV1
+export interface BoundDocumentSectionOutlineV1 {
+    sectionRef: string;
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    metadata: {
+        macroNames: string[];
+        macroCount: number;
+        macrosTruncated: boolean;
+        linkCount: number;
+        linksTruncated: boolean;
+        jiraIssueKeys: string[];
+        structures: BoundDocumentStructureSummaryV1;
+    };
+}
+
+// export: BoundDocumentStructureSummaryV1
+export interface BoundDocumentStructureSummaryV1 {
+    tables: number;
+    expands: number;
+    jiraMacros: number;
+    smartLinks: number;
+    excerpts: number;
+    includes: number;
+    unresolvedIncludes: number;
+    unsupportedMacros: number;
 }
 
 // export: BoundedContentProjectionV1
@@ -29608,11 +33659,106 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: BoundedDocumentSectionSourceV1
+export interface BoundedDocumentSectionSourceV1 {
+    sectionId: string;
+    heading: string;
+    level: number;
+    order: number;
+    contentBytes: number;
+    content: ReturnType<typeof projectConfluenceBlocks>;
+    metadata: BoundDocumentSectionOutlineV1["metadata"];
+}
+
+// export: BoundedDocumentSourceV1
+export interface BoundedDocumentSourceV1 {
+    snapshot: {
+        representation: "storage";
+        sourceVersion: number;
+    };
+    coverageIssues: BoundDocumentCoverageIssueV1[];
+    sourceTruncated: boolean;
+    outlineTruncated: boolean;
+    genuinelyEmpty: boolean;
+    totalSections: number;
+    sections: BoundedDocumentSectionSourceV1[];
+}
+
+// export: BoundEntityAnchorV1
+export interface BoundEntityAnchorV1 {
+    anchorRef: string;
+    product: "jira" | "confluence";
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: BoundEntityReadInputV1
+export interface BoundEntityReadInputV1 {
+    schema: typeof BOUND_ENTITY_READ_INPUT_SCHEMA_V1;
+    anchorRef: string;
+}
+
+// export: BoundEntityReadOutputV1
+export interface BoundEntityReadOutputV1 {
+    schema: typeof BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    relatedAnchors: BoundEntityAnchorV1[];
+    document?: BoundDocumentOutlineV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: BoundEntitySectionReadInputV1
+export interface BoundEntitySectionReadInputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1;
+    sectionRef: string;
+}
+
+// export: BoundEntitySectionReadOutputV1
+export interface BoundEntitySectionReadOutputV1 {
+    schema: typeof BOUND_ENTITY_SECTION_READ_OUTPUT_SCHEMA_V1;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    section: Omit<BoundDocumentSectionOutlineV1, "sectionRef" | "metadata">;
+    content: BoundedContentProjectionV1;
+    support: {
+        sectionId: string;
+        start: number;
+        end: number;
+        evidenceId?: string;
+    };
+    coverage: {
+        snapshot: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
+    relatedAnchors: BoundEntityAnchorV1[];
+    budget: ResearchBudgetSnapshotV1;
+}
+
 // export: boundResearchNodePtcToolsV1
 export declare function boundResearchNodePtcToolsV1(candidates: readonly DynamicStructuredTool[], maxCapabilityCalls: number, nodeId: string): DynamicStructuredTool[];
 
 // export: briefRequiresClarificationV1
 export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean;
+
+// export: buildChatSystemPromptV1
+export declare function buildChatSystemPromptV1(input: {
+    qualityMode: ChatQualityModeV1;
+    maxDetailItemsPerProduct: number;
+    strategyDecisionRequired?: boolean;
+}): string;
+
+// export: buildChatTurnPromptV1
+export declare function buildChatTurnPromptV1(input: {
+    question: string;
+    jiraProjectKeys: readonly string[];
+    confluenceSpaceKeys: readonly string[];
+    anchors: readonly BoundEntityAnchorV1[];
+}): string;
 
 // export: buildDynamicSupervisorPrompt
 export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
@@ -29637,6 +33783,111 @@ export declare function buildResearchTurnContextV1(input: {
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "messageMarkdown",
+        "citationSourceIds",
+        "gaps"
+    ];
+    readonly properties: {
+        readonly messageMarkdown: {
+            readonly type: "string";
+            readonly minLength: 1;
+            readonly maxLength: 24000;
+        };
+        readonly citationSourceIds: {
+            readonly type: "array";
+            readonly maxItems: 100;
+            readonly items: {
+                readonly type: "string";
+                readonly minLength: 1;
+                readonly maxLength: 256;
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
+// export: CHAT_AGENT_DRAFT_SCHEMA_V1
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    messageMarkdown: z.ZodString;
+    citationSourceIds: z.ZodArray<z.ZodString>;
+    gaps: z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            clarification: "clarification";
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_SCHEMA_V1
+export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -29647,6 +33898,67 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
+export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
+
+// export: CHAT_SESSION_STATE_PATH_V1
+export declare const CHAT_SESSION_STATE_PATH_V1: "/state/chat-session-v1.json";
+
+// export: CHAT_SESSION_STATE_SCHEMA_V1
+export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1";
+
+// export: CHAT_STRATEGY_CAPABILITY_CLASSES_V1
+export declare const CHAT_STRATEGY_CAPABILITY_CLASSES_V1: readonly [
+    "exact-read",
+    "jira-discovery",
+    "confluence-discovery",
+    "relationship-tracing",
+    "comparison-analysis",
+    "contradiction-check",
+    "quality-review",
+    "chat-answer"
+];
+
+// export: CHAT_STRATEGY_DECISION_SCHEMA_V1
+export declare const CHAT_STRATEGY_DECISION_SCHEMA_V1: "atlcli.chat-strategy-decision/v1";
+
+// export: CHAT_STRATEGY_QUALITY_RISKS_V1
+export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
+    "multiple-sources",
+    "cross-product",
+    "contradictory-evidence",
+    "broad-discovery",
+    "scope-ambiguity"
+];
+
+// export: CHAT_STRATEGY_REASON_CODES_V1
+export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
+    "quick-direct",
+    "single-exact-context",
+    "no-atlassian-acquisition",
+    "multi-anchor",
+    "broad-scope-discovery",
+    "multi-source-comparison",
+    "cross-product-relationship",
+    "contradiction-risk",
+    "unresolved-ambiguity"
+];
+
+// export: CHAT_STRATEGY_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_RECORD_SCHEMA_V1: "atlcli.chat-strategy-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1: "atlcli.chat-strategy-review-record/v1";
+
+// export: CHAT_STRATEGY_REVIEW_SCHEMA_V1
+export declare const CHAT_STRATEGY_REVIEW_SCHEMA_V1: "atlcli.chat-strategy-review/v1";
+
+// export: CHAT_STRATEGY_REVIEW_STATE_PATH_V1
+export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-review-v1.json";
+
+// export: CHAT_STRATEGY_STATE_PATH_V1
+export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -29654,6 +33966,82 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
     "quick",
     "deep"
 ];
+
+// export: CHAT_TURN_REQUEST_SCHEMA_V1
+export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAgentDraftV1
+export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentRuntimeBindings
+export interface ChatAgentRuntimeBindings {
+    StateBackend: typeof import("deepagents/browser").StateBackend;
+    createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ChatAnswerGapV1
+export interface ChatAnswerGapV1 {
+    code: "no-detail-evidence" | "truncated-source" | "unresolved-reference" | "incomplete-coverage";
+    message: string;
+    sourceIds: string[];
+}
+
+// export: ChatAnswerV1
+export interface ChatAnswerV1 {
+    schema: typeof CHAT_ANSWER_SCHEMA_V1;
+    messageMarkdown: string;
+    citations: ChatCitationV1[];
+    evidenceRefs: string[];
+    gaps: ChatAnswerGapV1[];
+    strategy: ChatStrategyV1;
+    continuation?: ChatContinuationOfferV1;
+    run: ChatRunSummaryV1;
+}
+
+// export: ChatAuxiliaryReadNeedV1
+export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCitationV1
+export interface ChatCitationV1 {
+    sourceId: string;
+    title: string;
+    url: string;
+    product: ResearchProduct;
+    section?: {
+        sectionId: string;
+        heading: string;
+    };
+}
+
+// export: ChatContinuationOfferV1
+export interface ChatContinuationOfferV1 {
+    kind: "follow-up" | "deep-research" | "clarification";
+    prompt: string;
+}
+
+// export: ChatContractError
+export declare class ChatContractError extends ResearchContractError {
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ChatModelBindingV1
+export interface ChatModelBindingV1 {
+    model: BaseChatModel;
+    modelId: string;
+    qualityAdapter: ProviderQualityCapabilityAdapterV1;
+    structuredOutput: "native" | "tool";
+}
+
+// export: ChatModelFactoryInputV1
+export interface ChatModelFactoryInputV1 {
+    credential: string;
+    maxOutputTokens: number;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatModelFactoryV1
+export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
@@ -29682,12 +34070,131 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRunSummaryV1
+export interface ChatRunSummaryV1 {
+    model: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+}
+
+// export: ChatScopeClarificationReviewV1
+export interface ChatScopeClarificationReviewV1 {
+    schema: typeof CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: "waiting_scope_clarification";
+    updatedAt: string;
+    clarification: {
+        mentionId: string;
+        reason: "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
+        rerunGuidance: string[];
+        candidates: Array<{
+            id: string;
+            product: "jira" | "confluence";
+            entityKind: "project" | "space" | "issue" | "page";
+            key?: string;
+            name: string;
+            canonicalUrl?: string;
+            status?: "current" | "archived";
+        }>;
+    };
+}
+
+// export: ChatSessionStateV1
+export interface ChatSessionStateV1 {
+    schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}
+
+// export: ChatStrategyCapabilityClassV1
+export type ChatStrategyCapabilityClassV1 = (typeof CHAT_STRATEGY_CAPABILITY_CLASSES_V1)[number];
+
+// export: ChatStrategyDecisionV1
+export interface ChatStrategyDecisionV1 {
+    schema: typeof CHAT_STRATEGY_DECISION_SCHEMA_V1;
+    qualityMode: ChatQualityModeV1;
+    execution: "direct" | "agentic";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
+// export: ChatStrategyPathV1
+export type ChatStrategyPathV1 = "direct" | "agentic";
+
+// export: ChatStrategyQualityRiskV1
+export type ChatStrategyQualityRiskV1 = (typeof CHAT_STRATEGY_QUALITY_RISKS_V1)[number];
+
+// export: ChatStrategyReasonCodeV1
+export type ChatStrategyReasonCodeV1 = (typeof CHAT_STRATEGY_REASON_CODES_V1)[number];
+
+// export: ChatStrategyRecordV1
+export interface ChatStrategyRecordV1 {
+    schema: typeof CHAT_STRATEGY_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    acceptedAt: string;
+    decision: ChatStrategyDecisionV1;
+}
+
+// export: ChatStrategyReviewRecordV1
+export interface ChatStrategyReviewRecordV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    reviewedAt: string;
+    review: ChatStrategyReviewV1;
+}
+
+// export: ChatStrategyReviewV1
+export interface ChatStrategyReviewV1 {
+    schema: typeof CHAT_STRATEGY_REVIEW_SCHEMA_V1;
+    execution: "agentic";
+    detailedSourceIds: string[];
+    detailedProducts: Array<"jira" | "confluence">;
+    unmetCapabilityClasses: ChatStrategyCapabilityClassV1[];
+    readyForAnswer: boolean;
+}
+
+// export: ChatStrategyV1
+export interface ChatStrategyV1 {
+    qualityMode: ChatQualityModeV1;
+    path: ChatStrategyPathV1;
+    delegated: boolean;
+    reasonCode: "quick-direct" | "auto-direct" | "deep-direct" | "agentic-required";
+    reasonCodes: ChatStrategyReasonCodeV1[];
+    ambiguityDisposition: "none" | "ask-user";
+    requiredCapabilities: ChatStrategyCapabilityClassV1[];
+    expectedComplexity: "simple" | "moderate" | "complex";
+    qualityRisks: ChatStrategyQualityRiskV1[];
+}
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
 // export: ChatThinkingModeV1
 // @deprecated ChatThinkingModeV1 — Use ChatQualityModeV1.
 export type ChatThinkingModeV1 = ChatQualityModeV1;
+
+// export: ChatTurnRequestV1
+export interface ChatTurnRequestV1 {
+    schema: typeof CHAT_TURN_REQUEST_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+    exactContextProducts?: ResearchProduct[];
+    locale?: string;
+}
 
 // export: classifyResearchError
 export declare function classifyResearchError(value: unknown): {
@@ -29731,6 +34238,15 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: ConfluenceDocumentInputV1
+export type ConfluenceDocumentInputV1 = {
+    representation: "storage";
+    value: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+};
 
 // export: ContentProjectionLimits
 export interface ContentProjectionLimits {
@@ -29865,8 +34381,51 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
 };
 
+// export: createChatPtcToolsV1
+export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
+
+// export: createChatSessionStateV1
+export declare function createChatSessionStateV1(input: {
+    conversationId: string;
+    qualityPolicy: ChatQualityPolicyV1;
+}): ChatSessionStateV1;
+
+// export: createChatStrategyDecisionControllerV1
+export declare function createChatStrategyDecisionControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acknowledgedDecision(): ChatStrategyDecisionV1 | undefined;
+    assertAcknowledged(): void;
+};
+
+// export: createChatStrategyReviewControllerV1
+export declare function createChatStrategyReviewControllerV1(input: {
+    decision: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    detailEvidence: () => readonly ResearchDetailEvidenceV1[];
+    beforeReview?: () => void;
+    onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    latestReview(): ChatStrategyReviewV1 | undefined;
+    assertCurrent(): void;
+};
+
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
+
+// export: createKiteweaveChatAgent
+export declare function createKiteweaveChatAgent(runtime: ChatAgentRuntimeBindings, options?: {
+    defaultModelFactory?: ChatModelFactoryV1;
+}): {
+    runChatAgent(input: RunChatAgentInput): Promise<ChatAnswerV1>;
+};
+
+// export: createKiteweaveResearchAgent
+export declare const createKiteweaveResearchAgent: typeof createResearchAgentRuntime;
 
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
@@ -30055,6 +34614,12 @@ export declare function createRestScopeCatalogProviders(profile: Profile, expect
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
 
+// export: decodeBoundEntityReadInputV1
+export declare function decodeBoundEntityReadInputV1(value: unknown): BoundEntityReadInputV1;
+
+// export: decodeBoundEntitySectionReadInputV1
+export declare function decodeBoundEntitySectionReadInputV1(value: unknown): BoundEntitySectionReadInputV1;
+
 // export: decodeResearchCandidateRankInputV1
 export declare function decodeResearchCandidateRankInputV1(value: unknown, maximumEntities: number): ResearchCandidateRankInputV1;
 
@@ -30084,6 +34649,18 @@ export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneSh
 
 // export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
 export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: deriveChatAuxiliaryReadNeedsV1
+export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
+
+// export: deriveChatStrategyDecisionV1
+export declare function deriveChatStrategyDecisionV1(input: {
+    qualityPolicy: ChatQualityPolicyV1;
+    question: string;
+    scope: ResearchScopeV1;
+    anchors: readonly BoundEntityAnchorV1[];
+    unresolvedAmbiguity?: boolean;
+}): ChatStrategyDecisionV1;
 
 // export: diffResearchPlansV1
 export declare function diffResearchPlansV1(input: {
@@ -30169,6 +34746,20 @@ export declare class FileSystemResearchWorkspace implements ResearchWorkspace {
     list(prefix?: string): Promise<string[]>;
     dispose(): Promise<void>;
 }
+
+// export: finalizeChatAnswerV1
+export declare function finalizeChatAnswerV1(input: {
+    draft: unknown;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    qualityPolicy: ChatQualityPolicyV1;
+    strategyDecision?: ChatStrategyDecisionV1;
+    strategyReview?: ChatStrategyReviewV1;
+    delegated?: boolean;
+    run: ChatRunSummaryV1;
+    locale?: string;
+}): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
 export declare function finalizeResearchAgentDraftV1(input: {
@@ -30278,6 +34869,7 @@ export interface InitializeResearchSessionScopeClarificationWaitInputV1 {
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
+    purpose?: "chat" | "research";
     at: string;
 }
 
@@ -30406,8 +34998,25 @@ export declare const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1: number;
 // export: MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1: number;
 
+// export: navigateConfluenceDocumentV1
+export declare function navigateConfluenceDocumentV1(input: ConfluenceDocumentInputV1): BoundedDocumentSourceV1 | undefined;
+
+// export: navigateConfluenceStorageV1
+export declare function navigateConfluenceStorageV1(input: {
+    storage: string;
+    sourceVersion: number;
+    siteOrigin: string;
+    projectionLimits: ContentProjectionLimits;
+}): BoundedDocumentSourceV1 | undefined;
+
+// export: normalizeChatGapCodeV1
+export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
+
 // export: normalizeChatQualityPolicyV1
 export declare function normalizeChatQualityPolicyV1(value: unknown): ChatQualityPolicyV1;
+
+// export: normalizeChatTurnRequestV1
+export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRequestV1;
 
 // export: NormalizedResearchClaimCandidateV2
 export interface NormalizedResearchClaimCandidateV2 {
@@ -30557,6 +35166,12 @@ export declare function prependBoundedDetailText(projection: BoundedContentProje
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: projectChatScopeClarificationReviewV1
+export declare function projectChatScopeClarificationReviewV1(session: ResearchSessionV1, expectedTenantOrigin: string): ChatScopeClarificationReviewV1 | undefined;
+
+// export: projectConfluenceBlocks
+export declare function projectConfluenceBlocks(blocks: readonly ExportBlock[], siteOrigin: string, limits: ContentProjectionLimits, inputBytes: number): BoundedContentProjectionV1;
+
 // export: projectConfluenceStorage
 export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -30682,6 +35297,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
     "balanced",
     "thorough"
 ];
+
+// export: providerCompatibleChatAnswerSchemaV1
+export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
 
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
@@ -30821,6 +35442,16 @@ export declare function renderResearchTurnContextV1(context: ResearchTurnContext
 // export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
 export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
+// export: RESEARCH_ACTIVITY_CODES_V1
+export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
+    "model-assessing",
+    "next-step-ready",
+    "answer-draft-ready",
+    "bounded-workflow-running",
+    "bounded-workflow-complete",
+    "bounded-workflow-failed"
+];
+
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
 
@@ -30871,6 +35502,8 @@ export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
     "wiki.search",
     "wiki.page.get",
     "research.candidate.rank",
+    "atlassian.bound.read",
+    "atlassian.bound.section.read",
     "jira.project.search",
     "wiki.space.search",
     "atlassian.reference.resolve"
@@ -31482,6 +36115,9 @@ export interface ResearchAcceptedTaskHydrationV1 {
     dependencyResult?: unknown;
 }
 
+// export: ResearchActivityCodeV1
+export type ResearchActivityCodeV1 = (typeof RESEARCH_ACTIVITY_CODES_V1)[number];
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -31653,6 +36289,10 @@ export declare class ResearchCapabilityBroker {
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
+    exactAnchors(): BoundEntityAnchorV1[];
+    readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
+    readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
     revalidateRetainedEvidence(input: {
         evidenceIds: readonly string[];
         checkedAt: string;
@@ -31892,6 +36532,20 @@ export interface ResearchDetailEvidenceV1 {
     content: BoundedContentProjectionV1;
     retrieval?: ResearchEvidenceRetrievalV1;
     evidenceId?: string;
+    section?: {
+        sectionId: string;
+        heading: string;
+        order: number;
+    };
+    coverage?: {
+        snapshot?: BoundDocumentOutlineV1["snapshot"];
+        issues: BoundDocumentCoverageIssueV1[];
+        sourceTruncated: boolean;
+        outlineTruncated: boolean;
+        projectionTruncated: boolean;
+        unreadSections: number;
+        completeDocumentRead: boolean;
+    };
 }
 
 // export: ResearchDispatchDiagnosticV1
@@ -31995,6 +36649,12 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     phase: string;
+} | {
+    kind: "activity";
+    seq: number;
+    at: string;
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
 } | {
     kind: "progress";
     seq: number;
@@ -32226,7 +36886,7 @@ export interface ResearchEvidenceRecordV1 {
 // export: ResearchEvidenceRetrievalV1
 export interface ResearchEvidenceRetrievalV1 {
     sourceId: string;
-    reason: "question_relevance_rank";
+    reason: "question_relevance_rank" | "exact_anchor";
     rank: number;
 }
 
@@ -32691,7 +37351,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
+    kind: "phase" | "activity" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "steering" | "retrieval" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -32932,7 +37592,7 @@ export interface ResearchPort {
         revision: number;
         instruction: string;
     }): Promise<void>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport | import("./chat-agent/contracts.js").ChatAnswerV1>;
     resume?(sessionId: string, options?: Omit<ResearchRunOptions, "policy">): Promise<ResearchReport>;
     pauseActiveRun?(): Promise<"pause_requested" | "paused">;
     listScopeReviews?(): Promise<import("./session-scope-review.js").ResearchSessionScopeReviewV1[]>;
@@ -32986,7 +37646,9 @@ export interface ResearchPort {
         revision: number;
         briefRevision: number;
     }): Promise<import("./session-clarification-review.js").ResearchClarificationReviewResolutionV1>;
-    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
+    prepareScopeClarificationReview?(request: ResearchRequestV1, policy: ResearchOneShotPolicyV1, options?: {
+        purpose?: "chat" | "research";
+    }): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1>;
     listScopeClarificationReviews?(): Promise<import("./session-scope-clarification-review.js").ResearchSessionScopeClarificationReviewV1[]>;
     resolveScopeClarificationReview?(input: {
         sessionId: string;
@@ -33032,7 +37694,7 @@ export interface ResearchProviderPage<T> {
 // export: ResearchPtcDiagnosticV1
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
-    tool: ResearchGraphCapabilityV1;
+    tool: ResearchCapabilityEventToolIdV1;
     inputKind: "search" | "continuation" | "detail" | "reference" | "ranking";
     outcome: "started" | "success" | "error";
     durationMs?: number;
@@ -33110,6 +37772,8 @@ export interface ResearchReadProviders {
         }): Promise<ResearchProviderPage<JiraResearchSummary>>;
         getIssue(input: {
             issueKey: string;
+            includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<JiraResearchDetail>;
     };
@@ -33123,9 +37787,18 @@ export interface ResearchReadProviders {
         getPage(input: {
             contentId: string;
             includeComments?: boolean;
+            includeMetadata?: boolean;
             signal: AbortSignal;
         }): Promise<WikiResearchDetail>;
     };
+}
+
+// export: ResearchReadSectionReferenceV1
+export interface ResearchReadSectionReferenceV1 {
+    sourceId: string;
+    sectionId: string;
+    heading: string;
+    order: number;
 }
 
 // export: ResearchReadyFrontierControllerV1
@@ -33678,6 +38351,10 @@ export interface ResearchScopeClarificationReviewActionV1 {
 
 // export: ResearchScopeClarificationReviewResolutionV1
 export type ResearchScopeClarificationReviewResolutionV1 = {
+    kind: "chat_ready";
+    request: import("./contracts.js").ResearchRequestV1;
+    conversationId: string;
+} | {
     kind: "scope_clarification";
     review: ResearchSessionScopeClarificationReviewV1;
 } | {
@@ -34222,6 +38899,7 @@ export interface ResearchSessionRetrievalContinuationV1 {
 export interface ResearchSessionScopeClarificationReviewV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1;
     sessionId: string;
+    purpose?: "chat" | "research";
     revision: number;
     status: "waiting_scope_clarification" | "idle" | "planning";
     stage: "choice_required" | "brief_required" | "plan_required";
@@ -34245,6 +38923,7 @@ export interface ResearchSessionScopeClarificationReviewV1 {
 // export: ResearchSessionScopeClarificationV1
 export interface ResearchSessionScopeClarificationV1 {
     schema: typeof RESEARCH_SESSION_SCOPE_CLARIFICATION_SCHEMA_V1;
+    purpose?: "chat" | "research";
     state: "waiting_choice" | "choice_resolved";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
@@ -34474,6 +39153,7 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     turnId: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_scope_clarification";
+    purpose?: "chat" | "research";
     request: ResearchRequestV1;
     policy: ResearchOneShotPolicyV1;
     clarification: ResearchScopeClarificationRequiredV1;
@@ -34945,6 +39625,20 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatScopeClarificationV1
+export declare function resolveChatScopeClarificationV1(input: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    expectedRevision: number;
+    expectedLeaseEpoch: number;
+    selection: ResearchScopeCandidateSelectionV1;
+    resolvedRequest: ResearchRequestV1;
+    at: string;
+}): Promise<{
+    request: ResearchRequestV1;
+    conversationSession: ResearchSessionV1;
+}>;
+
 // export: ResolvedProviderQualityV1
 export interface ResolvedProviderQualityV1 {
     workflow: ChatQualityPolicyV1;
@@ -35058,6 +39752,28 @@ export declare function reviseResearchBriefPlanV1(input: {
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
 
+// export: runChatAgent
+export declare const runChatAgent: (input: import("./agent-runtime.browser.js").RunChatAgentInput) => Promise<import("./index.js").ChatAnswerV1>;
+
+// export: RunChatAgentInput
+export interface RunChatAgentInput {
+    apiKey?: string;
+    model?: BaseChatModel;
+    modelBinding?: ChatModelBindingV1;
+    turn: ChatTurnRequestV1;
+    brokerRequest: ResearchRequestV1;
+    providers: ResearchReadProviders;
+    budget?: ResearchRunBudget;
+    workspace: ResearchWorkspace;
+    qualityPolicy?: ChatQualityPolicyV1;
+    signal?: AbortSignal;
+    now?: () => number;
+    onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
+}
+
 // export: runResearchAgent
 export declare const runResearchAgent: (input: import("./agent-runtime-core.js").RunResearchAgentInput) => Promise<import("./contracts.js").ResearchReport>;
 
@@ -35143,6 +39859,7 @@ export declare function verifyResearchSessionStoreConformanceV1(factory: Researc
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
+    navigation?: BoundedDocumentSourceV1;
 }
 
 // export: WikiResearchSummary

@@ -63,3 +63,5 @@ export * from "./chat-agent/retrieval.js";
 export * from "./chat-agent/model.js";
 export * from "./chat-agent/auxiliary.js";
 export * from "./chat-agent/scope-clarification.js";
+export * from "./chat-agent/strategy.js";
+export * from "./chat-agent/workflow.js";

@@ -25,9 +25,9 @@ export function createAnthropicChatModelBindingV1(
       apiKey: credential,
       maxTokens: input.maxOutputTokens,
       maxRetries: 0,
-      streaming: false,
+      streaming: true,
       ...(resolved.controls?.adaptiveThinking
-        ? { thinking: { type: "adaptive" as const } }
+        ? { thinking: { type: "adaptive" as const, display: "summarized" as const } }
         : { temperature: 0 }),
       ...(resolved.controls?.effort
         ? { outputConfig: { effort: resolved.controls.effort } }
@@ -35,10 +35,14 @@ export function createAnthropicChatModelBindingV1(
     }),
     modelId: ANTHROPIC_CHAT_MODEL_ID,
     qualityAdapter: ANTHROPIC_QUALITY_ADAPTER_V1,
-    // ToolStrategy is the portable LangChain/DeepAgentsJS baseline and avoids
-    // coupling the Chat contract to Anthropic's evolving native JSON envelope.
-    // A future adapter may opt into `native` only after its production path is
-    // proven against the same strict host finalizer.
-    structuredOutput: "tool",
+    // Anthropic's native JSON-schema output keeps the terminal model step in
+    // the normal streamed response channel. A ToolStrategy would force the
+    // terminal response through a tool call, which suppresses summarized
+    // thinking and answer-text chunks on Sonnet 4.6. The stricter host Zod
+    // finalizer remains authoritative after LangChain parses this envelope.
+    structuredOutput: "native",
+    ...(resolved.controls?.adaptiveThinking
+      ? { reasoningPresentation: "summary" as const }
+      : {}),
   };
 }

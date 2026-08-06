@@ -24,6 +24,7 @@ import {
   type ResearchRequestV1,
   type ResearchSessionV1,
   type ChatTurnRequestV1,
+  type ChatPresentationStreamEventV1,
 } from "@atlcli/research/browser";
 import { runChatAgent, runResearchAgent } from "@atlcli/research/browser/agent";
 import {
@@ -80,6 +81,8 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           post({ kind: "research-worker:progress", runId, progress });
         const onEvent = (event: ResearchOneShotEventV1): void =>
           post({ kind: "research-worker:event", runId, event });
+        const onChatPresentation = (event: ChatPresentationStreamEventV1): void =>
+          post({ kind: "research-worker:chat-presentation", runId, event });
         const store = await IndexedDbResearchSessionStoreV1.open();
         try {
           const now = new Date().toISOString();
@@ -117,6 +120,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
               : {}),
             onProgress,
             onEvent,
+            onChatPresentation,
           });
           post({ kind: "research-worker:complete", runId, answer });
         } finally {

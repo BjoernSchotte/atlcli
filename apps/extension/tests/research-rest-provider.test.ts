@@ -160,8 +160,18 @@ describe("REST research provider authentication boundary", () => {
     );
     const signal = new AbortController().signal;
 
-    const issue = await providers.jira.getIssue({ issueKey: "DEMO-1", signal });
-    const page = await providers.wiki.getPage({ contentId: "1001", includeComments: true, signal });
+    const issue = await providers.jira.getIssue({
+      issueKey: "DEMO-1",
+      includeMetadata: true,
+      includeComments: true,
+      signal,
+    });
+    const page = await providers.wiki.getPage({
+      contentId: "1001",
+      includeMetadata: true,
+      includeComments: true,
+      signal,
+    });
 
     expect(issue.content.text).toContain("Labels: agentic-ai, release");
     expect(issue.content.text).toContain("Related issue keys: DEMO-2, DEMO-3, DEMO-9");

@@ -1,5 +1,6 @@
 import {
   ResearchContractError,
+  type ChatPresentationStreamEventV1,
   type ChatAnswerV1,
   type ChatQualityPolicyV1,
   type ResearchOneShotPolicyV1,
@@ -38,6 +39,7 @@ interface ResearchAgentWorkerRunInput {
   resume?: true;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
+  onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 export class ResearchAgentWorkerHost {
@@ -67,6 +69,10 @@ export class ResearchAgentWorkerHost {
         }
         if (message.kind === "research-worker:event") {
           input.onEvent?.(message.event);
+          return;
+        }
+        if (message.kind === "research-worker:chat-presentation") {
+          input.onChatPresentation?.(message.event);
           return;
         }
         if (message.kind === "research-worker:complete") {

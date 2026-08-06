@@ -1,6 +1,6 @@
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
-import type { AIMessage } from "@langchain/core/messages";
+import { AIMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../broker.js";
 import { ResearchRunBudget } from "../budget.js";
 import type {
+  ChatPresentationStreamEventV1,
   ResearchOneShotEventV1,
   ResearchProgressV1,
   ResearchRequestV1,
@@ -38,6 +39,21 @@ import {
 import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
 import type { ChatModelBindingV1, ChatModelFactoryV1 } from "./model.js";
+import {
+  CHAT_STRATEGY_RECORD_SCHEMA_V1,
+  CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1,
+  CHAT_STRATEGY_REVIEW_STATE_PATH_V1,
+  CHAT_STRATEGY_STATE_PATH_V1,
+  createChatStrategyDecisionControllerV1,
+  createChatStrategyReviewControllerV1,
+  deriveChatStrategyDecisionV1,
+  type ChatStrategyDecisionV1,
+  type ChatStrategyRecordV1,
+  type ChatStrategyReviewRecordV1,
+} from "./strategy.js";
+import {
+  createChatAgenticWorkflowRuntimeV1,
+} from "./workflow-runtime.js";
 
 export function chatRecursionLimitV1(maxPtcCalls: number): number {
   const boundedCalls = Math.max(1, Math.min(24, Math.trunc(maxPtcCalls)));
@@ -47,8 +63,33 @@ export function chatRecursionLimitV1(maxPtcCalls: number): number {
   return Math.min(64, Math.max(24, boundedCalls * 2 + 8));
 }
 
+/**
+ * Agentic Chat must retain one host-tool slot for its mandatory final evidence
+ * review. Acquisition is allowed to consume the rest of the bounded envelope,
+ * but cannot make the final quality gate unreachable.
+ */
+export function assertChatFinalReviewReserveV1(input: {
+  strategy?: ChatStrategyDecisionV1;
+  budget: ResearchRunBudget;
+  maxPtcCalls: number;
+}): void {
+  if (input.strategy?.execution !== "agentic") return;
+  if (input.budget.counts().ptcCalls >= input.maxPtcCalls - 1) {
+    throw new ChatContractError(
+      "limit-exceeded",
+      "The Chat acquisition budget is complete; the reserved final evidence review must run next.",
+    );
+  }
+}
+
 export type ChatAgentDiagnosticV1 =
-  | { kind: "model-step"; toolNames: string[]; stopReason?: string }
+  | {
+      kind: "model-step";
+      status: "started" | "completed" | "failed";
+      purpose: "planning" | "evidence-assessment" | "answer-drafting";
+      toolNames?: string[];
+      stopReason?: string;
+    }
   | {
       kind: "eval-step";
       status: "started" | "success" | "error";
@@ -105,7 +146,7 @@ function evalResultDiagnostic(value: unknown): {
     ? undefined
     : /\btools\b[^\n]*(?:not defined|unavailable)/iu.test(rendered)
       ? "tools-unavailable"
-      : /\b(?:atlassianBoundRead|atlassianBoundSectionRead|jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
+      : /\b(?:chatStrategyDecide|chatStrategyReview|atlassianBoundRead|atlassianBoundSectionRead|jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
         ? "capability-unavailable"
         : /not defined/iu.test(rendered)
           ? "undefined-symbol"
@@ -123,19 +164,51 @@ function evalResultDiagnostic(value: unknown): {
 
 export function createChatDirectToolSurfaceMiddlewareV1(
   onDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void,
+  options: { agenticWorkflowComplete?: () => boolean } = {},
 ) {
+  let completedEvidenceStep = false;
+  let completedFinalReview = false;
+  const modelPurpose = (): Extract<ChatAgentDiagnosticV1, { kind: "model-step" }>['purpose'] =>
+    completedFinalReview || completedEvidenceStep
+      ? "answer-drafting"
+      : "planning";
   return createMiddleware({
     name: "ChatDirectToolSurfaceMiddleware",
     async wrapModelCall(request, handler) {
-      const response = await handler({
-        ...request,
-        // createDeepAgent always assembles filesystem and task scaffolding.
-        // Direct Chat deliberately exposes only the host-audited QuickJS bridge;
-        // structured-output tools are bound by LangChain after this middleware.
-        tools: request.tools.filter((candidate) => candidate.name === "eval"),
-      });
-      onDiagnostic?.({ kind: "model-step", ...diagnosticMessage(response) });
-      return response;
+      const purpose = modelPurpose();
+      onDiagnostic?.({ kind: "model-step", status: "started", purpose });
+      if (options.agenticWorkflowComplete?.()) {
+        // The dedicated synthesizer is authoritative. Close the root graph
+        // without paying for (or exposing) a second supervisor rewrite after
+        // the final task result returns to the persistent QuickJS session.
+        const response = new AIMessage({ content: "Agentic Chat synthesis accepted." });
+        onDiagnostic?.({
+          kind: "model-step",
+          status: "completed",
+          purpose,
+          ...diagnosticMessage(response),
+        });
+        return response;
+      }
+      try {
+        const response = await handler({
+          ...request,
+          // createDeepAgent always assembles filesystem and task scaffolding.
+          // Direct Chat deliberately exposes only the host-audited QuickJS bridge;
+          // structured-output tools are bound by LangChain after this middleware.
+          tools: request.tools.filter((candidate) => candidate.name === "eval"),
+        });
+        onDiagnostic?.({
+          kind: "model-step",
+          status: "completed",
+          purpose,
+          ...diagnosticMessage(response),
+        });
+        return response;
+      } catch (error) {
+        onDiagnostic?.({ kind: "model-step", status: "failed", purpose });
+        throw error;
+      }
     },
     async wrapToolCall(request, handler) {
       if (request.toolCall.name !== "eval") return handler(request);
@@ -144,6 +217,9 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         ? request.toolCall.args.code
         : "";
       const capabilityNames = [
+        "chatStrategyDecide",
+        "chatWorkflowPropose",
+        "chatStrategyReview",
         "jiraIssueSearch",
         "jiraIssueGet",
         "wikiSearch",
@@ -177,6 +253,16 @@ export function createChatDirectToolSurfaceMiddlewareV1(
       });
       try {
         const response = await handler(request);
+        completedEvidenceStep ||= capabilityNames.some((name) => [
+          "jiraIssueSearch",
+          "jiraIssueGet",
+          "wikiSearch",
+          "wikiPageGet",
+          "researchCandidateRank",
+          "atlassianBoundRead",
+          "atlassianBoundSectionRead",
+        ].includes(name));
+        completedFinalReview ||= capabilityNames.includes("chatStrategyReview");
         onDiagnostic?.({
           kind: "eval-step",
           status: "success",
@@ -200,10 +286,44 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   });
 }
 
+/** Replace DeepAgentsJS's built-in task registry until C5 installs audited Chat profiles. */
+export function createChatNoSubagentMiddlewareV1() {
+  return createMiddleware({ name: "subAgentMiddleware" });
+}
+
+function createChatCodeInterpreterMiddlewareV1(
+  options: Parameters<typeof createCodeInterpreterMiddleware>[0] & {
+    agentic?: boolean;
+  },
+) {
+  const middleware = createCodeInterpreterMiddleware(options);
+  const evaluator = middleware.tools?.find(
+    (candidate) => candidate.name === (options.toolName ?? "eval"),
+  );
+  if (!evaluator) {
+    throw new ChatContractError(
+      "invalid-request",
+      "QuickJS did not provide the Chat eval tool.",
+    );
+  }
+  if (options.agentic) {
+    evaluator.description = [
+      "Advance the host-bounded agentic Chat workflow in a persistent QuickJS session.",
+      "First acknowledge chatStrategyDecide, then call chatWorkflowPropose exactly once. The calls may be separate eval steps; the host keeps their accepted state.",
+      "Execute only returned task dispatches in dependency order and run ready siblings with awaited Promise.all.",
+      "After every non-synthesizer task completes, call chatStrategyReview. Then execute the sole returned synthesizer dispatch.",
+      "Copy every task description, subagentType, and responseSchema exactly from the host response. Never invent a task, schema, dependency, or second synthesizer.",
+    ].join(" ");
+  }
+  return middleware;
+}
+
 
 export interface ChatAgentRuntimeBindings {
   StateBackend: typeof import("deepagents/browser").StateBackend;
   createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+  createSubAgentMiddleware:
+    typeof import("deepagents/browser").createSubAgentMiddleware;
   registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
 }
 
@@ -222,6 +342,7 @@ export interface RunChatAgentInput {
   now?: () => number;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
+  onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
   onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
 }
@@ -238,6 +359,61 @@ function collectUsage(messages: unknown): ResearchRunUsageV1 | undefined {
     outputTokens += message.usage_metadata.output_tokens ?? 0;
   }
   return found ? { inputTokens, outputTokens } : undefined;
+}
+
+/**
+ * Project one JSON string field from a streamed native structured-output
+ * envelope. It never exposes the envelope, neighbouring fields, or an
+ * incomplete escape sequence to presentation consumers.
+ */
+export function streamedJsonStringFieldV1(
+  input: string,
+  fieldName: string,
+): string | undefined {
+  const marker = JSON.stringify(fieldName);
+  const markerIndex = input.indexOf(marker);
+  if (markerIndex < 0) return undefined;
+  let cursor = markerIndex + marker.length;
+  while (/\s/u.test(input[cursor] ?? "")) cursor += 1;
+  if (input[cursor] !== ":") return undefined;
+  cursor += 1;
+  while (/\s/u.test(input[cursor] ?? "")) cursor += 1;
+  if (input[cursor] !== '"') return undefined;
+  cursor += 1;
+
+  let value = "";
+  while (cursor < input.length) {
+    const character = input[cursor]!;
+    if (character === '"') return value;
+    if (character !== "\\") {
+      value += character;
+      cursor += 1;
+      continue;
+    }
+    if (cursor + 1 >= input.length) return value;
+    const escaped = input[cursor + 1]!;
+    const simpleEscapes: Record<string, string> = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t",
+    };
+    if (escaped in simpleEscapes) {
+      value += simpleEscapes[escaped];
+      cursor += 2;
+      continue;
+    }
+    if (escaped !== "u" || cursor + 6 > input.length) return value;
+    const unit = input.slice(cursor + 2, cursor + 6);
+    if (!/^[0-9a-f]{4}$/iu.test(unit)) return value;
+    value += String.fromCharCode(Number.parseInt(unit, 16));
+    cursor += 6;
+  }
+  return value;
 }
 
 function normalizeStoredChatSessionStateV1(
@@ -287,13 +463,13 @@ function emitPtcEventFactory(input: {
   onEvent?: (event: ResearchOneShotEventV1) => void;
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
   now: () => number;
+  nextSequence: () => number;
 }): (diagnostic: ResearchPtcDiagnosticV1) => void {
-  let seq = 0;
   return (diagnostic) => {
     input.onDiagnostic?.(diagnostic);
     input.onEvent?.({
       kind: "capability",
-      seq: ++seq,
+      seq: input.nextSequence(),
       at: new Date(input.now()).toISOString(),
       callId: diagnostic.callId,
       toolId: diagnostic.tool,
@@ -332,6 +508,42 @@ export function createKiteweaveChatAgent(
       const now = input.now ?? Date.now;
       const startedAtMs = now();
       const budget = input.budget ?? new ResearchRunBudget(input.brokerRequest.limits);
+      let eventSequence = 0;
+      const nextEventSequence = (): number => ++eventSequence;
+      const emitPhase = (phase: string): void => {
+        input.onEvent?.({
+          kind: "phase",
+          seq: nextEventSequence(),
+          at: new Date(now()).toISOString(),
+          phase,
+        });
+      };
+      const emitAgentDiagnostic = (diagnostic: ChatAgentDiagnosticV1): void => {
+        input.onAgentDiagnostic?.(diagnostic);
+        const activity = diagnostic.kind === "model-step"
+          ? diagnostic.status === "started"
+            ? diagnostic.purpose === "answer-drafting"
+              ? { code: "answer-drafting" as const, status: "started" as const }
+              : { code: "model-assessing" as const, status: "started" as const }
+            : diagnostic.status === "failed"
+              ? { code: "model-assessing" as const, status: "failed" as const }
+              : diagnostic.toolNames?.includes("eval")
+                ? { code: "next-step-ready" as const, status: "completed" as const }
+                : { code: "answer-draft-ready" as const, status: "completed" as const }
+          : diagnostic.status === "started"
+            ? { code: "bounded-workflow-running" as const, status: "started" as const }
+            : diagnostic.status === "success"
+              ? { code: "bounded-workflow-complete" as const, status: "completed" as const }
+              : { code: "bounded-workflow-failed" as const, status: "failed" as const };
+        input.onEvent?.({
+          kind: "activity",
+          seq: nextEventSequence(),
+          at: new Date(now()).toISOString(),
+          ...activity,
+        });
+      };
+      let assertStrategyAccepted: (() => void) | undefined;
+      let strategyForFinalReviewReserve: ChatStrategyDecisionV1 | undefined;
       const broker = new ResearchCapabilityBroker(
         input.brokerRequest,
         input.providers,
@@ -339,6 +551,14 @@ export function createKiteweaveChatAgent(
           budget,
           scopeBindings: input.brokerRequest.scopeSeeds?.map((seed) => seed.binding),
           exactAuxiliaryNeeds: deriveChatAuxiliaryReadNeedsV1(turn.question),
+          beforeContentOperation: () => {
+            assertStrategyAccepted?.();
+            assertChatFinalReviewReserveV1({
+              strategy: strategyForFinalReviewReserve,
+              budget,
+              maxPtcCalls: turn.limits.maxPtcCalls,
+            });
+          },
         },
       );
       const controller = new AbortController();
@@ -363,20 +583,78 @@ export function createKiteweaveChatAgent(
           completedCalls: 0,
           maxCalls: turn.limits.maxPtcCalls,
         });
+        emitPhase("preparing");
         const anchors = broker.exactAnchors();
-        const ptcTools = createChatPtcToolsV1(broker, {
-          now,
-          exactContextProducts: turn.exactContextProducts,
-          searchProducts: [
-            ...(turn.scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
-            ...(turn.scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
-          ],
-          onDiagnostic: emitPtcEventFactory({
-            onEvent: input.onEvent,
-            onDiagnostic: input.onPtcDiagnostic,
-            now,
-          }),
+        const strategyDecision = deriveChatStrategyDecisionV1({
+          qualityPolicy,
+          question: turn.question,
+          scope: turn.scope,
+          anchors,
         });
+        strategyForFinalReviewReserve = strategyDecision;
+        let acceptedStrategy: ChatStrategyDecisionV1 | undefined;
+        const persistAcceptedStrategy = async (
+          decision: ChatStrategyDecisionV1,
+        ): Promise<void> => {
+          if (acceptedStrategy) {
+            throw new ChatContractError(
+              "invalid-request",
+              "The Chat strategy decision was already recorded.",
+            );
+          }
+          acceptedStrategy = structuredClone(decision);
+          const acceptedAt = new Date(now()).toISOString();
+          const record: ChatStrategyRecordV1 = {
+            schema: CHAT_STRATEGY_RECORD_SCHEMA_V1,
+            conversationId: turn.conversationId,
+            turnId: turn.turnId,
+            acceptedAt,
+            decision: structuredClone(decision),
+          };
+          await input.workspace.writeFile(
+            CHAT_STRATEGY_STATE_PATH_V1,
+            JSON.stringify(record),
+          );
+          input.onEvent?.({
+            kind: "decision",
+            seq: nextEventSequence(),
+            at: acceptedAt,
+            decisionId: `chat-strategy:${turn.turnId.slice(0, 180)}`,
+            status: "completed",
+            reasonCode: decision.execution === "agentic"
+              ? "chat-agentic-required"
+              : `chat-${decision.qualityMode}-direct`,
+          });
+        };
+        const strategyController = qualityPolicy.mode === "quick"
+          ? undefined
+          : createChatStrategyDecisionControllerV1({
+              decision: strategyDecision,
+              budget,
+            });
+        await persistAcceptedStrategy(strategyDecision);
+        assertStrategyAccepted = strategyController?.assertAcknowledged;
+        const strategyReviewController = strategyDecision.execution === "agentic"
+          ? createChatStrategyReviewControllerV1({
+              decision: strategyDecision,
+              budget,
+              beforeReview: strategyController?.assertAcknowledged,
+              detailEvidence: () => broker.detailEvidenceLedger(),
+              onReviewed: async (review) => {
+                const record: ChatStrategyReviewRecordV1 = {
+                  schema: CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1,
+                  conversationId: turn.conversationId,
+                  turnId: turn.turnId,
+                  reviewedAt: new Date(now()).toISOString(),
+                  review,
+                };
+                await input.workspace.writeFile(
+                  CHAT_STRATEGY_REVIEW_STATE_PATH_V1,
+                  JSON.stringify(record),
+                );
+              },
+            })
+          : undefined;
         const modelBinding = input.modelBinding ?? (input.model
           ? {
               model: input.model,
@@ -396,6 +674,81 @@ export function createKiteweaveChatAgent(
           );
         }
         const model = modelBinding.model;
+        const searchProducts = [
+          ...(turn.scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
+          ...(turn.scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
+        ];
+        const emitPtcDiagnostic = emitPtcEventFactory({
+          onEvent: (event) => {
+            input.onEvent?.(event);
+            if (
+              event.kind === "capability" &&
+              event.status === "completed" &&
+              ["detail", "reference"].includes(event.inputKind)
+            ) {
+              emitPhase("analyzing");
+            }
+          },
+          onDiagnostic: input.onPtcDiagnostic,
+          now,
+          nextSequence: nextEventSequence,
+        });
+        const agenticWorkflow = strategyDecision.execution === "agentic"
+          ? createChatAgenticWorkflowRuntimeV1({
+              runtime,
+              model,
+              strategy: strategyDecision,
+              budget,
+              broker,
+              workspace: input.workspace,
+              conversationId: turn.conversationId,
+              turnId: turn.turnId,
+              taskContext: JSON.stringify({
+                question: turn.question,
+                scope: turn.scope,
+                anchors,
+              }),
+              limits: turn.limits,
+              exactContextProducts: turn.exactContextProducts ?? [],
+              searchProducts,
+              signal: controller.signal,
+              beforeProposal: strategyController?.assertAcknowledged,
+              beforeSynthesis: strategyReviewController?.assertCurrent,
+              now,
+              onPtcDiagnostic: (profileId, diagnostic) => emitPtcDiagnostic({
+                ...diagnostic,
+                callId: `${profileId}:${diagnostic.callId}`,
+              }),
+              onDispatchDiagnostic: (diagnostic) => {
+                if (!diagnostic.taskId) return;
+                input.onEvent?.({
+                  kind: "task",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  taskId: diagnostic.taskId,
+                  status: diagnostic.status,
+                  ...(diagnostic.resultBytes === undefined
+                    ? {}
+                    : { resultBytes: diagnostic.resultBytes }),
+                });
+              },
+            })
+          : undefined;
+        const ptcTools = strategyDecision.execution === "agentic"
+          ? [
+              ...(strategyController ? [strategyController.tool] : []),
+              agenticWorkflow!.proposalTool,
+              ...(strategyReviewController ? [strategyReviewController.tool] : []),
+            ]
+          : [
+              ...(strategyController ? [strategyController.tool] : []),
+              ...createChatPtcToolsV1(broker, {
+                now,
+                exactContextProducts: turn.exactContextProducts,
+                searchProducts,
+                onDiagnostic: emitPtcDiagnostic,
+              }),
+            ];
         let structuredRepairAttempts = 0;
         const agent = runtime.createDeepAgent({
           name: "kiteweave-chat-agent",
@@ -406,35 +759,60 @@ export function createKiteweaveChatAgent(
           systemPrompt: buildChatSystemPromptV1({
             qualityMode: qualityPolicy.mode,
             maxDetailItemsPerProduct: turn.limits.maxDetailItemsPerProduct,
+            strategyDecisionRequired: strategyController !== undefined,
+            agenticWorkflowRequired: strategyDecision.execution === "agentic",
           }),
           middleware: [
-            createCodeInterpreterMiddleware({
+            agenticWorkflow?.middleware ?? createChatNoSubagentMiddlewareV1(),
+            createChatCodeInterpreterMiddlewareV1({
               ptc: ptcTools,
-              subagents: false,
+              subagents: strategyDecision.execution === "agentic",
               toolName: "eval",
-              systemPrompt: "The eval tool runs JavaScript in a persistent QuickJS REPL. Top-level await is available. Return the useful value as the final expression; console is intentionally unavailable. External reads are possible only through the documented tools.* functions.",
+              systemPrompt: strategyDecision.execution === "agentic"
+                ? "The eval tool advances an agentic Chat workflow in a persistent QuickJS REPL. Top-level await and the depth-one task() bridge are available. Strategy, proposal, task waves, review, and synthesis may use separate eval calls; accepted host state persists. Use only host-returned dispatch fields and documented tools.* controls. Console is unavailable."
+                : "The eval tool runs JavaScript in a persistent QuickJS REPL. Top-level await is available. Return the useful value as the final expression; console is intentionally unavailable. External reads are possible only through the documented tools.* functions. When chatStrategyDecide is present, call it exactly once before any Atlassian content capability.",
               memoryLimitBytes: turn.limits.maxInterpreterMemoryBytes,
               maxStackSizeBytes: 320 * 1024,
-              executionTimeoutMs: turn.limits.maxInterpreterMs,
+              executionTimeoutMs: strategyDecision.execution === "agentic"
+                ? turn.limits.maxRunMs
+                : turn.limits.maxInterpreterMs,
               maxPtcCalls: turn.limits.maxPtcCalls,
               maxResultChars: Math.min(
                 turn.limits.maxPtcOutputBytes,
                 Math.max(24_000, turn.limits.maxReportChars),
               ),
               captureConsole: false,
+              agentic: strategyDecision.execution === "agentic",
             }),
-            createChatDirectToolSurfaceMiddlewareV1(input.onAgentDiagnostic),
+            createChatDirectToolSurfaceMiddlewareV1(emitAgentDiagnostic, {
+              ...(agenticWorkflow
+                ? {
+                    agenticWorkflowComplete: () => {
+                      try {
+                        agenticWorkflow.assertComplete();
+                        return true;
+                      } catch {
+                        return false;
+                      }
+                    },
+                  }
+                : {}),
+            }),
           ],
-          responseFormat: modelBinding.structuredOutput === "tool"
-            ? toolStrategy(CHAT_AGENT_DRAFT_SCHEMA_V1, {
-                handleError: (error) => {
-                  structuredRepairAttempts += 1;
-                  if (structuredRepairAttempts > 1) throw error;
-                  return "The Chat answer did not match the required schema. Repair it exactly once without another tool call.";
-                },
-                toolMessageContent: "Chat answer accepted.",
-              })
-            : providerStrategy(providerCompatibleChatAnswerSchemaV1()),
+          ...(strategyDecision.execution === "agentic"
+            ? {}
+            : {
+                responseFormat: modelBinding.structuredOutput === "tool"
+                  ? toolStrategy(CHAT_AGENT_DRAFT_SCHEMA_V1, {
+                      handleError: (error) => {
+                        structuredRepairAttempts += 1;
+                        if (structuredRepairAttempts > 1) throw error;
+                        return "The Chat answer did not match the required schema. Repair it exactly once without another tool call.";
+                      },
+                      toolMessageContent: "Chat answer accepted.",
+                    })
+                  : providerStrategy(providerCompatibleChatAnswerSchemaV1()),
+              }),
         });
         input.onProgress?.({
           phase: "researching",
@@ -442,7 +820,7 @@ export function createKiteweaveChatAgent(
           completedCalls: 0,
           maxCalls: turn.limits.maxPtcCalls,
         });
-        const result = await agent.invoke(
+        const run = await agent.streamEvents(
           {
             messages: [{
               role: "user",
@@ -455,18 +833,186 @@ export function createKiteweaveChatAgent(
             }],
           },
           {
+            version: "v3",
             configurable: { thread_id: `chat-turn:${turn.turnId}` },
             recursionLimit: chatRecursionLimitV1(turn.limits.maxPtcCalls),
             signal: controller.signal,
           },
         );
+        const streamPresentation = (async (): Promise<void> => {
+          let emittedReasoningChars = 0;
+          let emittedAnswerChars = 0;
+          let nativeStructuredText = "";
+          const maximumReasoningChars = 12_000;
+          const maximumAnswerChars = turn.limits.maxReportChars;
+          const consumeReasoning = async (source: AsyncIterable<string>): Promise<void> => {
+            if (modelBinding.reasoningPresentation !== "summary") {
+              for await (const _unused of source) {
+                // Drain the projection. Unapproved reasoning never crosses the
+                // host presentation boundary.
+              }
+              return;
+            }
+            let started = false;
+            for await (const rawDelta of source) {
+              if (emittedReasoningChars >= maximumReasoningChars) continue;
+              const delta = rawDelta.slice(
+                0,
+                Math.min(1_024, maximumReasoningChars - emittedReasoningChars),
+              );
+              if (!delta) continue;
+              if (!started) {
+                started = true;
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "reasoning-summary",
+                  status: "started",
+                });
+              }
+              emittedReasoningChars += delta.length;
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "reasoning-summary",
+                status: "delta",
+                delta,
+              });
+            }
+            if (started) {
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "reasoning-summary",
+                status: "completed",
+              });
+            }
+          };
+          const consumeAnswer = async (
+            source: AsyncIterable<string>,
+            allowed: boolean,
+          ): Promise<void> => {
+            if (!allowed || modelBinding.structuredOutput !== "native") {
+              for await (const _unused of source) {
+                // Tool-structured and unstructured text is not a safe
+                // provisional Chat answer.
+              }
+              return;
+            }
+            let started = false;
+            for await (const rawDelta of source) {
+              nativeStructuredText += rawDelta;
+              if (nativeStructuredText.length > maximumAnswerChars * 4) continue;
+              const projected = streamedJsonStringFieldV1(
+                nativeStructuredText,
+                "messageMarkdown",
+              ) ?? "";
+              const bounded = projected.slice(0, maximumAnswerChars);
+              if (bounded.length <= emittedAnswerChars) continue;
+              const delta = bounded.slice(emittedAnswerChars);
+              if (!started) {
+                started = true;
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "answer-markdown",
+                  status: "started",
+                });
+              }
+              emittedAnswerChars = bounded.length;
+              for (let offset = 0; offset < delta.length; offset += 1_024) {
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "answer-markdown",
+                  status: "delta",
+                  delta: delta.slice(offset, offset + 1_024),
+                });
+              }
+            }
+            if (started) {
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "completed",
+              });
+            }
+          };
+          await Promise.all([
+            (async () => {
+              for await (const message of run.messages) {
+                await Promise.all([
+                  consumeReasoning(message.reasoning),
+                  consumeAnswer(
+                    message.text,
+                    strategyDecision.execution !== "agentic",
+                  ),
+                ]);
+              }
+            })(),
+            (async () => {
+              if (strategyDecision.execution !== "agentic") return;
+              const subagentStreams = (run as unknown as {
+                subagents: AsyncIterable<{
+                  name: string;
+                  messages: AsyncIterable<{
+                    reasoning: AsyncIterable<string>;
+                    text: AsyncIterable<string>;
+                  }>;
+                }>;
+              }).subagents;
+              for await (const subagent of subagentStreams) {
+                for await (const message of subagent.messages) {
+                  await Promise.all([
+                    consumeReasoning(message.reasoning),
+                    consumeAnswer(
+                      message.text,
+                      subagent.name === "chat-synthesizer-v1",
+                    ),
+                  ]);
+                }
+              }
+            })(),
+          ]);
+        })();
+        const [result] = await Promise.all([run.output, streamPresentation]);
         controller.signal.throwIfAborted();
+        emitPhase("checking");
+        if (strategyController && !strategyController.acknowledgedDecision()) {
+          throw new ChatContractError(
+            "invalid-report",
+            "The Chat answer was produced without acknowledging its accepted strategy decision.",
+          );
+        }
+        strategyReviewController?.assertCurrent();
+        const finalStrategy = acceptedStrategy;
+        if (!finalStrategy) {
+          throw new ChatContractError(
+            "invalid-report",
+            "The Chat answer was produced without an accepted strategy decision.",
+          );
+        }
+        const finalDraft = agenticWorkflow
+          ? agenticWorkflow.assertComplete()
+          : result.structuredResponse;
+        emitPhase("rendering");
         const completedAtMs = now();
         const answer = finalizeChatAnswerV1({
-          draft: result.structuredResponse,
+          draft: finalDraft,
           sources: broker.sourceLedger(),
           detailEvidence: broker.detailEvidenceLedger(),
+          readSectionReferences: broker.readSectionReferenceLedger(),
           qualityPolicy,
+          strategyDecision: finalStrategy,
+          strategyReview: strategyReviewController?.latestReview(),
+          delegated: strategyDecision.execution === "agentic",
           ...(turn.locale ? { locale: turn.locale } : {}),
           run: {
             model: modelBinding.modelId,
@@ -486,6 +1032,7 @@ export function createKiteweaveChatAgent(
         });
         return answer;
       } catch (error) {
+        if (!controller.signal.aborted) controller.abort(error);
         if (controller.signal.aborted) {
           throw controller.signal.reason instanceof Error
             ? controller.signal.reason

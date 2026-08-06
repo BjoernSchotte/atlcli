@@ -1,6 +1,8 @@
 import {
+  type ChatPresentationStreamEventV1,
   RESEARCH_REPORT_ARTIFACT_PATH_V1,
   RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1,
+  RESEARCH_ACTIVITY_CODES_V1,
   RESEARCH_REQUESTED_EFFORTS_V1,
   type ResearchOneShotEventV1,
 } from "./contracts.js";
@@ -22,6 +24,26 @@ const optionalNonNegativeInteger = (value: unknown): boolean =>
 
 const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]): boolean =>
   Object.keys(value).every((key) => allowed.includes(key));
+
+/** Validate the separate ephemeral Chat presentation channel. */
+export function isChatPresentationStreamEventV1(
+  value: unknown,
+): value is ChatPresentationStreamEventV1 {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const event = value as Record<string, unknown>;
+  if (!hasOnlyKeys(event, ["kind", "seq", "at", "channel", "status", "delta"]) ||
+    event.kind !== "chat-presentation" ||
+    !positiveInteger(event.seq) ||
+    typeof event.at !== "string" ||
+    event.at.length > 64 ||
+    !Number.isFinite(Date.parse(event.at)) ||
+    !["reasoning-summary", "answer-markdown"].includes(String(event.channel)) ||
+    !["started", "delta", "completed"].includes(String(event.status))) return false;
+  if (event.status === "delta") {
+    return typeof event.delta === "string" && event.delta.length > 0 && event.delta.length <= 1_024;
+  }
+  return event.delta === undefined;
+}
 
 const RESEARCH_PLAN_EVENT_STATUSES_V1 = [
   "proposed",
@@ -55,6 +77,13 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
 
   if (event.kind === "phase") {
     return hasOnlyKeys(event, ["kind", "seq", "at", "phase"]) && boundedToken(event.phase, 64);
+  }
+  if (event.kind === "activity") {
+    return hasOnlyKeys(event, ["kind", "seq", "at", "code", "status"]) &&
+      RESEARCH_ACTIVITY_CODES_V1.includes(
+        event.code as (typeof RESEARCH_ACTIVITY_CODES_V1)[number],
+      ) &&
+      ["started", "completed", "failed"].includes(String(event.status));
   }
   if (event.kind === "progress") {
     return hasOnlyKeys(event, ["kind", "seq", "at", "graphRevision", "completed", "maximum"]) &&
@@ -226,6 +255,10 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
 
 const decisionSummary = (reasonCode: string): string => {
   switch (reasonCode) {
+    case "chat-quick-direct": return "quick direct Chat strategy accepted";
+    case "chat-auto-direct": return "automatic direct Chat strategy accepted";
+    case "chat-deep-direct": return "deep direct Chat strategy accepted";
+    case "chat-agentic-required": return "agentic Chat quality path accepted";
     case "generate-and-orchestrate-workflow": return "supervisor is composing the accepted workflow";
     case "workflow-returned-for-validation": return "workflow returned; host validation begins";
     case "validate-before-render": return "host is validating evidence before rendering";
@@ -243,6 +276,7 @@ const decisionSummary = (reasonCode: string): string => {
 export function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string {
   switch (event.kind) {
     case "phase": return `phase · ${event.phase}`;
+    case "activity": return `activity · ${event.code} · ${event.status}`;
     case "progress": return `progress · graph ${event.graphRevision} · calls ${event.completed}/${event.maximum}`;
     case "brief": return `brief · revision ${event.revision}`;
     case "plan": return [

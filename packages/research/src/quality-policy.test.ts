@@ -75,6 +75,10 @@ describe("provider-neutral chat quality policy", () => {
         finalizationReserveMs: 1_000,
       },
     })).toThrow("Chat quality policy is invalid.");
+    expect(() => normalizeChatQualityPolicyV1({
+      ...chatQualityPolicyV1("quick"),
+      delegation: "adaptive",
+    })).toThrow("Chat quality policy is invalid.");
     expect(normalizeChatQualityPolicyV1({
       ...chatQualityPolicyV1("deep"),
       deadline: {
@@ -86,6 +90,21 @@ describe("provider-neutral chat quality policy", () => {
       softDeadlineMs: 5_000,
       hardDeadlineMs: 10_000,
       finalizationReserveMs: 1_000,
+    });
+  });
+
+  test("allows provider preference overrides without changing the accepted workflow", () => {
+    const policy = normalizeChatQualityPolicyV1({
+      ...chatQualityPolicyV1("quick"),
+      providerReasoningPreference: "thorough",
+    });
+    expect(policy).toMatchObject({
+      mode: "quick",
+      delegation: "disabled",
+      completionTarget: "direct",
+      planning: "none",
+      scopeExpansion: "deny",
+      providerReasoningPreference: "thorough",
     });
   });
 

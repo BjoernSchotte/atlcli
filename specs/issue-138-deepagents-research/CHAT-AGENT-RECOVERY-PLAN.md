@@ -1,6 +1,6 @@
 # Kiteweave Chat Agent Recovery Plan
 
-Status: **In progress; C0-C3A proven, C4 next**
+Status: **In progress; C0-C3A proven, C4 live MV3 proof pending**
 
 ## Contents
 
@@ -532,42 +532,42 @@ provider reasoning controls.
 
 Implementation:
 
-- [ ] Keep `quick` on the direct-only Chat root. Do not construct subagent
+- [x] Keep `quick` on the direct-only Chat root. Do not construct subagent
       middleware, a task registry, or QuickJS task bridge.
-- [ ] Add `ChatStrategyDecisionV1` and a host-validated strategy-decision PTC for
+- [x] Add `ChatStrategyDecisionV1` and a host-validated strategy-decision PTC for
       the agentic-capable root.
-- [ ] Include direct-versus-agentic execution, closed reason codes, ambiguity
+- [x] Include direct-versus-agentic execution, closed reason codes, ambiguity
       disposition, required capability classes, expected complexity, and quality
       risks in the strategy contract.
-- [ ] In `auto`, permit either direct or agentic execution based on the question,
+- [x] In `auto`, permit either direct or agentic execution based on the question,
       anchors, source count, comparison/relationship intent, contradiction risk,
       and unresolved ambiguity.
-- [ ] In `deep`, require an explicit strategy decision. Permit a direct strategy
+- [x] In `deep`, require an explicit strategy decision. Permit a direct strategy
       for a genuinely simple exact-context question, but require additional
       quality work when material complexity or evidence risk is present.
-- [ ] Map provider-neutral `fast`, `balanced`, and `thorough` preferences only
+- [x] Map provider-neutral `fast`, `balanced`, and `thorough` preferences only
       after the host accepts the workflow policy.
-- [ ] Add a capability-free provider adapter that ignores reasoning preference
+- [x] Add a capability-free provider adapter that ignores reasoning preference
       without changing the accepted trajectory.
 
 Automated proof:
 
-- [ ] Quick never exposes or dispatches `task()`.
-- [ ] Auto selects direct execution for simple exact-context gold cases.
-- [ ] Auto selects agentic execution for multi-source comparison, relationship,
+- [x] Quick never exposes or dispatches `task()`.
+- [x] Auto selects direct execution for simple exact-context gold cases.
+- [x] Auto selects agentic execution for multi-source comparison, relationship,
       and contradiction gold cases.
-- [ ] Deep always records one accepted strategy decision and does not imply that
+- [x] Deep always records one accepted strategy decision and does not imply that
       subagents are mandatory for a trivial case.
-- [ ] Identical host trajectories result with a provider that has no reasoning-
+- [x] Identical host trajectories result with a provider that has no reasoning-
       effort feature.
-- [ ] Provider controls cannot enable delegation or alter authorization, scope,
+- [x] Provider controls cannot enable delegation or alter authorization, scope,
       budgets, completion objective, or finalization.
 
 Live acceptance:
 
 - [ ] Run the same simple and complex private read-only questions in Quick, Auto,
       and Deep through CLI and MV3.
-- [ ] Inspect body-free trajectories and confirm that mode-specific workflow
+- [x] Inspect body-free trajectories and confirm that mode-specific workflow
       behavior, not only token usage, differs as designed.
 
 Acceptance criteria:
@@ -575,6 +575,22 @@ Acceptance criteria:
 - [ ] Auto is cheaper/faster on simple cases than an unnecessary agentic run.
 - [ ] Deep improves complex-question quality over Quick without regressing exact-
       context correctness.
+
+Proof record (2026-08-05): 106 focused Chat strategy, answer-contract, CLI,
+extension-host, quality-policy, API-surface, and export-registry tests pass. The
+production MV3 build passes a packed-browser trajectory test covering Quick,
+Auto, and Deep. The root typecheck passes, including the extension, browser PDF
+compiler, and browser export harness. Approved private read-only CLI comparisons
+used the same simple and complex questions across all three modes: Quick stayed
+direct, simple Auto/Deep stayed direct after a host decision, and complex
+Auto/Deep performed the accepted agentic strategy plus final evidence review.
+The complex Deep CLI run read materially more relevant detail evidence and disclosed
+fewer unresolved coverage gaps than Quick without weakening exact-context
+identity. All private inputs, source material, trajectories, and artifacts remain
+outside Git. Packed MV3 proves the same provider-neutral mode contract in the
+browser shape; no private tenant material is embedded in browser fixtures. The
+real provider-backed MV3 comparison remains open and the acceptance criteria stay
+unchecked until that browser run is observed successfully.
 
 ### C5 — Add dynamic Chat subagent composition
 
@@ -805,9 +821,17 @@ Implementation:
 - [ ] Project semantic events for strategy, direct read, search, selected sources,
       child work, critique, repair, synthesis, gap, HITL, steering, stop,
       continuation, and completion.
-- [ ] Stream final Chat Markdown incrementally. Do not stream hidden reasoning,
-      raw child output, credentials, raw source bodies, provider payloads, or
-      budget/debug counters to the normal user view.
+- [x] Consume DeepAgentsJS v3 message streams concurrently and project only an
+      explicitly provider-approved summarized-reasoning channel as bounded,
+      ephemeral presentation data. Never infer a summary from ordinary assistant
+      text, tool arguments, signatures, redacted blocks, or raw provider events.
+- [x] Show the current summarized-reasoning stream in the collapsed activity row
+      with a two-line bound while retaining its accumulated text in the optional
+      per-step details.
+- [x] Stream provisional Chat Markdown incrementally and replace it atomically
+      with the host-validated final answer. Do not stream hidden reasoning,
+      unsummarized chain of thought, raw child output, credentials, raw source
+      bodies, provider payloads, or budget/debug counters to the normal user view.
 - [ ] Persist replayable activity and the completed final answer atomically. Treat
       exact mid-provider token replay as later hardening unless evidence justifies
       its cost.
@@ -824,8 +848,31 @@ Automated proof:
       can enter synthesis.
 - [ ] Event snapshots contain no raw private/debug/reasoning fields and cover both
       locales.
+- [x] Synthetic Anthropic SSE, DeepAgentsJS v3, runtime-gate, UI, and packed-MV3
+      tests prove that summarized thinking and the projected Markdown field
+      stream independently while the structured-output envelope, signatures,
+      redacted thinking, ungated model reasoning, and source bodies remain
+      outside the presentation channel and durable journal.
 - [ ] Streaming interruption resumes from the last durable workflow checkpoint or
       reports a typed resumable interruption without pretending token replay.
+
+Proof note (2026-08-06): the production MV3 bundle passes all 38 packed lifecycle
+tests, including the bounded ephemeral summary channel. A real Sonnet 4.6 model
+smoke emitted 1,619 summary characters through the native model stream. The
+Anthropic adapter now uses LangChain's native JSON-schema response path instead
+of forcing the terminal answer through a ToolStrategy call. A synthetic provider
+contract test proves that the request contains `output_config.format`, omits a
+forced `tool_choice`, streams the summarized reasoning through DeepAgentsJS v3,
+and still yields host-parseable structured output. A complete provider-backed
+Deep Chat run over hardcoded synthetic Jira and Confluence data then emitted eight
+summary deltas across multiple model steps while producing a host-finalized
+answer. The completed synthetic Deep Chat proof now emits eight reasoning-summary
+deltas and 42 provisional Markdown deltas in 49.1 seconds. The incremental JSON
+projector exposes only `messageMarkdown`; the final host validator remains
+authoritative and atomically replaces the provisional UI content. Manual extended
+thinking is intentionally not forced because it is
+incompatible with forced tool choices and is not needed on the native path.
+Durable interruption semantics and the remaining interactive controls stay open.
 
 Live acceptance:
 
