@@ -918,6 +918,24 @@ afterEach(async () => {
 });
 
 describe("research CLI one-shot contract", () => {
+  test("opens an isolated durable session store from the explicit environment override", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-research-session-store-"));
+    const previous = process.env.ATLCLI_RESEARCH_SESSIONS_DIR;
+    process.env.ATLCLI_RESEARCH_SESSIONS_DIR = join(root, "isolated");
+    try {
+      const opened = await defaultResearchCliDependencies.openSessionStore();
+      try {
+        expect(await stat(join(root, "isolated", "catalog.sqlite"))).toBeTruthy();
+      } finally {
+        await opened.close();
+      }
+    } finally {
+      if (previous === undefined) delete process.env.ATLCLI_RESEARCH_SESSIONS_DIR;
+      else process.env.ATLCLI_RESEARCH_SESSIONS_DIR = previous;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("parses ordinary chat separately from research workflow options", () => {
     const parsed = parseChatCliInput(["Summarize", "DOCSY"], {
       space: "DOCSY",

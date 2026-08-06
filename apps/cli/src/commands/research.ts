@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import { createInterface as createLineInterface } from "node:readline";
@@ -2760,7 +2760,10 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
   createDurableSessionId: () => `research-session:${randomUUID()}`,
   createDurableTurnId: () => `research-turn:${randomUUID()}`,
   async openSessionStore() {
-    const root = join(homedir(), ".atlcli", "research-sessions");
+    const configuredRoot = process.env.ATLCLI_RESEARCH_SESSIONS_DIR?.trim();
+    const root = configuredRoot
+      ? resolve(configuredRoot)
+      : join(homedir(), ".atlcli", "research-sessions");
     await mkdir(root, { recursive: true, mode: 0o700 });
     const store = new SqliteResearchSessionStoreV1({
       databasePath: join(root, "catalog.sqlite"),
@@ -4135,6 +4138,11 @@ Options:
   --keep-session         Print the retained session workspace path
   --json                 Emit the structured report as JSON
   --help                 Show this help
+
+Environment:
+  ATLCLI_RESEARCH_SESSIONS_DIR
+                         Override the durable session directory for isolated
+                         automation and E2E runs (default: ~/.atlcli/research-sessions)
 
 Durable session commands:
   sessions list [--limit <1-100>] [--cursor <session-id>]
