@@ -27,6 +27,11 @@ import {
   streamedJsonStringFieldV1,
   type ChatAgentRuntimeBindings,
 } from "./runtime.js";
+import {
+  CHAT_CANDIDATE_LEDGER_PATH_V1,
+  CHAT_RETRIEVAL_ASSESSMENT_PATH_V1,
+  CHAT_RETRIEVAL_PLAN_PATH_V1,
+} from "./retrieval-plan.js";
 import { createKiteweaveResearchAgent } from "../agent-runtime-core.js";
 
 const turn: ChatTurnRequestV1 = {
@@ -779,6 +784,14 @@ describe("separate Chat root", () => {
     });
 
     expect(answer.schema).toBe("atlcli.chat-answer/v1");
+    expect(answer.run.retrieval).toMatchObject({
+      discoveredCandidates: 0,
+      admittedCandidates: 0,
+      detailReadCandidates: 0,
+      detailReadCoverage: 0,
+      canonicalUrlCorrectness: 0,
+      atlassianHttpCalls: 0,
+    });
     expect(presentation.filter((event) => event.channel === "reasoning-summary")).toEqual([
       expect.objectContaining({ channel: "reasoning-summary", status: "started" }),
       expect.objectContaining({
@@ -807,6 +820,33 @@ describe("separate Chat root", () => {
     expect(JSON.parse((await workspace.readFile(CHAT_SESSION_STATE_PATH_V1))!)).toMatchObject({
       schema: "atlcli.chat-session-state/v1",
       conversationId: turn.conversationId,
+    });
+    expect(JSON.parse((await workspace.readFile(CHAT_RETRIEVAL_PLAN_PATH_V1))!)).toMatchObject({
+      schema: "atlcli.chat-retrieval-plan/v1",
+      conversationId: turn.conversationId,
+      turnId: turn.turnId,
+      anchors: [],
+      resolvedEntities: [{
+        product: "confluence",
+        entityKind: "space",
+        key: "SPACE",
+      }],
+      searches: [{ product: "confluence" }],
+      relationshipTraversals: [{ kind: "confluence-to-jira-reference" }],
+    });
+    expect(JSON.parse((await workspace.readFile(CHAT_CANDIDATE_LEDGER_PATH_V1))!)).toMatchObject({
+      schema: "atlcli.chat-candidate-ledger/v1",
+      conversationId: turn.conversationId,
+      turnId: turn.turnId,
+      candidates: [],
+    });
+    expect(JSON.parse((await workspace.readFile(CHAT_RETRIEVAL_ASSESSMENT_PATH_V1))!)).toMatchObject({
+      schema: "atlcli.chat-retrieval-assessment/v1",
+      sufficient: false,
+      metrics: {
+        discoveredCandidates: 0,
+        detailReadCandidates: 0,
+      },
     });
   });
 

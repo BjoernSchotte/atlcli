@@ -5,11 +5,35 @@ import {
   RESEARCH_CAPABILITY_SCHEMAS,
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "./capability-contracts.js";
-import type { ResearchCapabilityEventToolIdV1, ResearchToolId } from "./contracts.js";
+import {
+  ResearchContractError,
+  type ResearchCapabilityEventToolIdV1,
+  type ResearchToolId,
+} from "./contracts.js";
 import type { ResearchGraphCapabilityV1 } from "./graph.js";
 
-const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") =>
-  z.union([
+const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") => {
+  const scopeHint = toolId === "jira.issue.search"
+    ? {
+        project: z.string().max(255).optional(),
+        projectKey: z.string().max(255).optional(),
+      }
+    : {
+        space: z.string().max(255).optional(),
+        spaceKey: z.string().max(255).optional(),
+      };
+  return z.union([
+    // Model-facing ergonomic alias. The host immediately normalizes this to
+    // the canonical typed { query: { text } } capability input below; it does
+    // not permit JQL/CQL, tenant, or cursor injection. A redundant project or
+    // space hint is accepted only when it matches the host-bound scope.
+    z
+      .object({
+        query: z.string().max(500),
+        pageSize: z.number().int().positive().optional(),
+        ...scopeHint,
+      })
+      .strict(),
     z
       .object({
         query: z
@@ -25,11 +49,20 @@ const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") =>
           })
           .strict(),
         pageSize: z.number().int().positive().optional(),
+        ...scopeHint,
       })
       .strict(),
     z
       .object({
         cursor: z.string().max(220),
+        query: z.union([
+          z.string().max(500),
+          z.object({
+            text: z.string().max(500).optional(),
+            labels: z.array(z.string().max(255)).min(1).max(8).optional(),
+          }).strict(),
+        ]).optional(),
+        ...scopeHint,
       })
       .strict(),
     // Sonnet sometimes preserves the first call's `query` wrapper while
@@ -47,6 +80,7 @@ const searchInputSchema = (toolId: "jira.issue.search" | "wiki.search") =>
       })
       .strict(),
   ]);
+};
 
 const getInputSchema = (toolId: "jira.issue.get" | "wiki.page.get") =>
   z
@@ -94,8 +128,22 @@ export interface ResearchPtcToolOptions {
     tool: ResearchGraphCapabilityV1,
     result: unknown,
     callId: string,
+    input?: unknown,
+  ) => void | Promise<void>;
+  /** Host-only preflight after ergonomic input normalization, before broker IO. */
+  beforeInvoke?: (
+    tool: ResearchGraphCapabilityV1,
+    input: unknown,
+    callId: string,
+    inputKind: ResearchPtcDiagnosticV1["inputKind"],
   ) => void | Promise<void>;
   now?: () => number;
+  /** Host-bound keys used only to validate redundant model scope hints. */
+  boundProjectKeys?: readonly string[];
+  /** Host-bound keys used only to validate redundant model scope hints. */
+  boundSpaceKeys?: readonly string[];
+  /** Reject a second unique initial query while replaying an identical result. */
+  singleInitialQuery?: boolean;
 }
 
 function inputKind(
@@ -123,6 +171,10 @@ export function createResearchPtcTools(
 ): DynamicStructuredTool[] {
   let callSequence = 0;
   const labelByEntityRef = new Map<string, string>();
+  const initialSearchByTool = new Map<ResearchToolId, {
+    fingerprint: string;
+    result: unknown;
+  }>();
   const now = options.now ?? Date.now;
   const invoke = async (
     id: ResearchToolId,
@@ -150,22 +202,82 @@ export function createResearchPtcTools(
       queryKeys,
     });
     try {
-      const record =
-        typeof input === "object" && input !== null ? input : {};
-      const nestedCursor =
-        "query" in record &&
-        typeof record.query === "object" &&
-        record.query !== null &&
-        "cursor" in record.query &&
-        typeof record.query.cursor === "string"
-          ? record.query.cursor
+      const record: Record<string, unknown> =
+        typeof input === "object" && input !== null
+          ? input as Record<string, unknown>
+          : {};
+      const scopeHints = id === "jira.issue.search"
+        ? [record.project, record.projectKey].filter((value) => value !== undefined)
+        : id === "wiki.search"
+          ? [record.space, record.spaceKey].filter((value) => value !== undefined)
+          : [];
+      const allowedScopeHints = id === "jira.issue.search"
+        ? options.boundProjectKeys
+        : id === "wiki.search"
+          ? options.boundSpaceKeys
           : undefined;
-      const result = await broker.invoke(id, {
-        ...(nestedCursor ? { cursor: nestedCursor } : record),
-        schema: RESEARCH_CAPABILITY_SCHEMAS[id].input,
-      });
+      if (scopeHints.some((scopeHint) =>
+        typeof scopeHint !== "string" || !allowedScopeHints?.includes(scopeHint)
+      )) {
+        throw new ResearchContractError(
+          "access-denied",
+          "The redundant search scope hint does not match a host-bound scope.",
+        );
+      }
+      const {
+        project: _project,
+        projectKey: _projectKey,
+        space: _space,
+        spaceKey: _spaceKey,
+        ...recordWithoutScopeHint
+      } = record;
+      const normalizedRecord = "query" in record && typeof record.query === "string"
+        ? {
+            ...recordWithoutScopeHint,
+            query: { text: record.query },
+          }
+        : recordWithoutScopeHint;
+      const nestedCursor =
+        "query" in normalizedRecord &&
+        typeof normalizedRecord.query === "object" &&
+        normalizedRecord.query !== null &&
+        "cursor" in normalizedRecord.query &&
+        typeof normalizedRecord.query.cursor === "string"
+          ? normalizedRecord.query.cursor
+          : undefined;
+      const topCursor = "cursor" in normalizedRecord &&
+        typeof normalizedRecord.cursor === "string"
+          ? normalizedRecord.cursor
+          : undefined;
+      const brokerInput = topCursor || nestedCursor
+        ? { cursor: topCursor ?? nestedCursor }
+        : normalizedRecord;
+      const initialSearch = options.singleInitialQuery &&
+        (id === "jira.issue.search" || id === "wiki.search") &&
+        kind === "search";
+      const fingerprint = initialSearch ? JSON.stringify(brokerInput) : undefined;
+      const remembered = initialSearch ? initialSearchByTool.get(id) : undefined;
+      if (remembered && remembered.fingerprint !== fingerprint) {
+        throw new ResearchContractError(
+          "limit-exceeded",
+          "This bounded reader already used its single initial search query.",
+        );
+      }
+      await options.beforeInvoke?.(id, brokerInput, callId, kind);
+      const result = remembered
+        ? structuredClone(remembered.result)
+        : await broker.invoke(id, {
+            ...brokerInput,
+            schema: RESEARCH_CAPABILITY_SCHEMAS[id].input,
+          });
+      if (initialSearch && fingerprint && !remembered) {
+        initialSearchByTool.set(id, {
+          fingerprint,
+          result: structuredClone(result),
+        });
+      }
       const serialized = jsonResult(result);
-      await options.onResult?.(id, result, callId);
+      await options.onResult?.(id, result, callId, brokerInput);
       const resultItems = typeof result === "object" && result !== null &&
         "items" in result && Array.isArray(result.items)
         ? result.items

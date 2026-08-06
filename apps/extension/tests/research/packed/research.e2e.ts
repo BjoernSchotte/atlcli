@@ -374,6 +374,79 @@ const PACKED_LONG_PAGE_CHAT_DRAFT = {
   }],
 };
 
+const PACKED_CHAT_EXACT_EVIDENCE_PACKET = {
+  schema: "atlcli.chat-evidence-packet/v1",
+  sourceIds: ["wiki:1001"],
+  claims: [{
+    text: "The attached page directly establishes the packed implementation statement.",
+    sourceIds: ["wiki:1001"],
+  }],
+  relationships: [],
+  gaps: [],
+};
+
+const PACKED_CHAT_COMPARISON_PACKET = {
+  schema: "atlcli.chat-analysis-packet/v1",
+  claimRefs: ["claim:packed-implementation-statement"],
+  relationshipRefs: [],
+  contradictions: [],
+  gaps: ["The synthetic comparison has only one detailed source."],
+};
+
+const PACKED_CHAT_CRITIQUE_PACKET = {
+  schema: "atlcli.chat-critique-packet/v1",
+  defects: [{
+    code: "single-source-comparison",
+    message: "The requested comparison has only one detailed source.",
+    sourceIds: ["wiki:1001"],
+    repairable: false,
+  }],
+  readyForSynthesis: true,
+};
+
+const PACKED_CHAT_AGENTIC_WORKFLOW_CODE = `
+if (typeof tools.chatWorkflowPropose !== "function") {
+  throw new Error("chatWorkflowPropose-type:" + typeof tools.chatWorkflowPropose);
+}
+globalThis.packedChatWorkflow = JSON.parse(await tools.chatWorkflowPropose({
+  retrievalPlan: {
+    searches: [],
+    relationshipTraversals: [
+      { traversalId: "traversal:wiki-to-jira", kind: "confluence-to-jira-reference", maxDepth: 1 }
+    ],
+    unresolvedTerms: []
+  },
+  tasks: [
+    { taskId: "task:exact", profileId: "exact-context-reader", objective: "Read the attached page directly.", dependencyTaskIds: [] },
+    { taskId: "task:comparison", profileId: "comparison-analyst", objective: "Compare the accepted evidence with the requested criteria.", dependencyTaskIds: ["task:exact"] },
+    { taskId: "task:critic", profileId: "answer-critic", objective: "Check grounding and disclose the single-source limitation.", dependencyTaskIds: ["task:exact", "task:comparison"] },
+    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the concise conversational answer.", dependencyTaskIds: ["task:exact", "task:comparison", "task:critic"] }
+  ],
+  maxConcurrency: 1
+}));
+packedChatWorkflow;
+`.trim();
+
+const PACKED_CHAT_AGENTIC_TASK_CODE = `
+if (typeof task !== "function") {
+  throw new Error("task-type:" + typeof task);
+}
+const workflow = globalThis.packedChatWorkflow;
+const runTask = async (taskId) => {
+  const dispatch = workflow.dispatches.find((entry) => entry.taskId === taskId);
+  return task({
+    description: dispatch.description,
+    subagentType: dispatch.subagentType,
+    responseSchema: dispatch.responseSchema
+  });
+};
+await runTask("task:exact");
+await runTask("task:comparison");
+await runTask("task:critic");
+JSON.parse(await tools.chatStrategyReview({}));
+await runTask("task:synth");
+`.trim();
+
 const PACKED_WORKFLOW_CODE = `
 const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
   basedOnBriefRevision: 1,
@@ -1235,6 +1308,11 @@ const packedJiraOnlyChatDraft = ${JSON.stringify(PACKED_JIRA_ONLY_CHAT_DRAFT)};
 const packedExactPageChatDraft = ${JSON.stringify(PACKED_EXACT_PAGE_CHAT_DRAFT)};
 const packedExactIssueChatDraft = ${JSON.stringify(PACKED_EXACT_ISSUE_CHAT_DRAFT)};
 const packedLongPageChatDraft = ${JSON.stringify(PACKED_LONG_PAGE_CHAT_DRAFT)};
+const packedChatExactEvidencePacket = ${JSON.stringify(PACKED_CHAT_EXACT_EVIDENCE_PACKET)};
+const packedChatComparisonPacket = ${JSON.stringify(PACKED_CHAT_COMPARISON_PACKET)};
+const packedChatCritiquePacket = ${JSON.stringify(PACKED_CHAT_CRITIQUE_PACKET)};
+const packedChatAgenticWorkflowCode = ${JSON.stringify(PACKED_CHAT_AGENTIC_WORKFLOW_CODE)};
+const packedChatAgenticTaskCode = ${JSON.stringify(PACKED_CHAT_AGENTIC_TASK_CODE)};
 const packedHostParityPacket = ${JSON.stringify(HOST_PARITY_PACKET)};
 const packedSentinelPacket = ${JSON.stringify(PACKED_SENTINEL_PACKET)};
 const packedHostParityModelPacket = ${JSON.stringify(HOST_PARITY_MODEL_PACKET_V2)};
@@ -1321,6 +1399,21 @@ globalThis.fetch = async (input, init) => {
     const toolNames = Array.isArray(body.tools)
       ? body.tools.map((tool) => tool?.name).filter((name) => typeof name === "string")
       : [];
+    if (
+      serializedRequest.includes("packed-exact-page:") &&
+      (
+        serializedMessages.includes("atlcli.chat-workflow-admission/v1") ||
+        /(?:ReferenceError|TypeError|Error):/u.test(serializedMessages)
+      )
+    ) {
+      channel.postMessage({
+        kind: "packed-chat-workflow-request",
+        workerId,
+        modelCall: modelCalls,
+        toolNames,
+        evalErrors: serializedMessages.match(/(?:ReferenceError|TypeError|Error):[^"\\]{0,240}/g) ?? [],
+      });
+    }
     const providerMessage = (content, stopReason, call) => anthropicMessage(
       body.thinking?.type === "adaptive"
         ? [{
@@ -1436,6 +1529,52 @@ globalThis.fetch = async (input, init) => {
       );
     };
 
+    if (serializedRequest.includes("Read only opaque host-attached entities.")) {
+      const anchorRef = serializedRequest.match(/research-anchor:[A-Za-z0-9-]{1,200}/)?.[0];
+      if (!anchorRef) {
+        return providerMessage(
+          [{ type: "text", text: "Packed exact-reader fixture could not find a host anchor." }],
+          "end_turn",
+          modelCalls,
+        );
+      }
+      if (!serializedMessages.includes("atlcli.ptc/atlassian.bound.read.output/v1")) {
+        return providerMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_chat_exact_reader_" + modelCalls,
+            name: "eval",
+            input: {
+              code: "JSON.parse(await tools.atlassianBoundRead({ anchorRef: " +
+                JSON.stringify(anchorRef) + " }))",
+            },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      return structured(packedChatExactEvidencePacket);
+    }
+
+    if (serializedRequest.includes("Compare only accepted claim and source references.")) {
+      return structured(packedChatComparisonPacket);
+    }
+
+    if (serializedRequest.includes("Make one systematic pass over the accepted packets")) {
+      return structured(packedChatCritiquePacket);
+    }
+
+    if (serializedRequest.includes("Write the final conversational answer only from accepted references")) {
+      return structured({
+        ...packedExactPageChatDraft,
+        gaps: [{
+          code: "incomplete-coverage",
+          message: "The synthetic comparison has only one detailed source.",
+          sourceIds: ["wiki:1001"],
+        }],
+      });
+    }
+
     const packedJiraOnlyDirectChat =
       serializedRequest.includes("packed-jira-only") &&
       serializedRequest.includes("Answer as a normal chat response");
@@ -1465,7 +1604,7 @@ globalThis.fetch = async (input, init) => {
       serializedRequest.includes("Answer as a normal chat response");
     if (packedExactPageChat || packedExactIssueChat || packedLongPageChat) {
       const strategyRequired = serializedRequest.includes(
-        "start the first eval program with exactly one await tools.chatStrategyDecide({})",
+        "make the first eval step exactly one await tools.chatStrategyDecide({})",
       );
       if (
         strategyRequired &&
@@ -1478,6 +1617,39 @@ globalThis.fetch = async (input, init) => {
             name: "eval",
             input: {
               code: "JSON.parse(await tools.chatStrategyDecide({}))",
+            },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      const agenticStrategy = strategyRequired &&
+        serializedRequest.includes("Compare the attached page");
+      if (
+        agenticStrategy &&
+        !serializedMessages.includes("atlcli.chat-workflow-admission/v1")
+      ) {
+        return providerMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_chat_workflow_" + modelCalls,
+            name: "eval",
+            input: {
+              code: packedChatAgenticWorkflowCode,
+            },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      if (agenticStrategy) {
+        return providerMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_chat_tasks_" + modelCalls,
+            name: "eval",
+            input: {
+              code: packedChatAgenticTaskCode,
             },
           }],
           "tool_use",
@@ -1542,40 +1714,10 @@ globalThis.fetch = async (input, init) => {
         );
       }
       if (packedLongPageChat) return structured(packedLongPageChatDraft);
-      const agenticStrategy = strategyRequired &&
-        serializedRequest.includes("Compare the attached page");
-      if (
-        agenticStrategy &&
-        !serializedMessages.includes("atlcli.chat-strategy-review/v1")
-      ) {
-        return providerMessage(
-          [{
-            type: "tool_use",
-            id: "toolu_packed_chat_review_" + modelCalls,
-            name: "eval",
-            input: {
-              code: "JSON.parse(await tools.chatStrategyReview({}))",
-            },
-          }],
-          "tool_use",
-          modelCalls,
-        );
-      }
       const exactDraft = packedExactPageChat
         ? packedExactPageChatDraft
         : packedExactIssueChatDraft;
-      return structured(
-        agenticStrategy
-          ? {
-              ...exactDraft,
-              gaps: [{
-                code: "incomplete-coverage",
-                message: "The synthetic comparison lacks a second detailed source.",
-                sourceIds: [],
-              }],
-            }
-          : exactDraft,
-      );
+      return structured(exactDraft);
     }
 
     if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
@@ -5753,15 +5895,34 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
       "chat",
       chatQualityPolicyV1(mode),
     );
-    expect(complex.ok, JSON.stringify(complex)).toBe(true);
+    const complexFailureEvents = complex.ok
+      ? []
+      : (await harnessEvents(page)).filter((event) =>
+        event.kind === "worker-error" ||
+        event.kind === "missing-structured-tool" ||
+        event.kind === "packed-chat-workflow-request" ||
+        event.messageKind === "research-worker:event"
+      ).slice(-30);
+    expect(
+      complex.ok,
+      JSON.stringify({ result: complex, events: complexFailureEvents }),
+    ).toBe(true);
     if (!complex.ok) continue;
     expect(complex.report.strategy).toMatchObject({
       qualityMode: mode,
       path: mode === "quick" ? "direct" : "agentic",
-      delegated: false,
+      delegated: mode !== "quick",
       expectedComplexity: "complex",
     });
-    expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 3);
+    expect(complex.report.run.retrieval).toMatchObject({
+      discoveredCandidates: 1,
+      admittedCandidates: 1,
+      detailReadCandidates: 1,
+      detailReadCoverage: 1,
+      canonicalUrlCorrectness: 1,
+      atlassianHttpCalls: 1,
+    });
+    expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 4);
   }
 
   const events = await harnessEvents(page);

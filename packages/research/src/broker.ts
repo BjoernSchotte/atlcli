@@ -298,6 +298,41 @@ function observedJiraKeysFromWikiDetail(
   return [...keys];
 }
 
+function observedConfluencePagesFromJiraDetail(
+  content: BoundedContentProjectionV1,
+  tenantOrigin: string,
+  allowedSpaceKeys: readonly string[],
+  maximum: number,
+): Array<{ contentId: string; spaceKey?: string }> {
+  const pages = new Map<string, { contentId: string; spaceKey?: string }>();
+  for (const target of content.linkTargets) {
+    try {
+      const url = new URL(target);
+      if (url.origin !== tenantOrigin) continue;
+      const scoped = url.pathname.match(
+        /\/wiki\/spaces\/([^/]+)\/pages\/([1-9][0-9]{0,127})(?:\/|$)/u,
+      );
+      const unscoped = url.pathname.match(
+        /\/wiki\/(?:pages|viewpage\.action\/pages)\/([1-9][0-9]{0,127})(?:\/|$)/u,
+      );
+      const contentId = scoped?.[2] ?? unscoped?.[1];
+      const spaceKey = scoped?.[1] ? decodeURIComponent(scoped[1]) : undefined;
+      if (!contentId ||
+          (allowedSpaceKeys.length > 0 && (!spaceKey || !allowedSpaceKeys.includes(spaceKey)))) {
+        continue;
+      }
+      pages.set(contentId, {
+        contentId,
+        ...(spaceKey ? { spaceKey } : {}),
+      });
+      if (pages.size >= maximum) break;
+    } catch {
+      // Invalid or foreign links never become exact capabilities.
+    }
+  }
+  return [...pages.values()];
+}
+
 function publicSource(
   source: ResearchSourceReferenceV1
 ): Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt"> {
@@ -481,6 +516,34 @@ export class ResearchCapabilityBroker {
       this.#scopeBindings.push(binding);
       this.#registerExactEntityBinding(binding);
       this.#exactSearchEmitted.delete("jira");
+    }
+  }
+
+  #registerObservedConfluenceReferences(content: BoundedContentProjectionV1): void {
+    const pages = observedConfluencePagesFromJiraDetail(
+      content,
+      this.#request.scope.siteOrigin,
+      this.#request.scope.confluenceSpaceKeys,
+      Math.min(this.#request.limits.maxItemsPerProduct, 20),
+    );
+    for (const page of pages) {
+      const exactKey = `confluence:${page.contentId}`;
+      if (this.#exactEntityBindings.has(exactKey)) continue;
+      const binding: ResearchScopeBindingV1 = {
+        schema: RESEARCH_SCOPE_BINDING_SCHEMA_V1,
+        id: `scope-binding:observed-link:confluence:${page.contentId}`,
+        tenantOrigin: this.#request.scope.siteOrigin,
+        product: "confluence",
+        entityKind: "page",
+        entityRef: `research-scope-entity:observed-confluence-${page.contentId}`,
+        key: page.contentId,
+        name: `Confluence ${page.contentId}`,
+        source: "exact_link",
+        authority: "approved",
+      };
+      this.#scopeBindings.push(binding);
+      this.#registerExactEntityBinding(binding);
+      this.#exactSearchEmitted.delete("confluence");
     }
   }
 
@@ -723,6 +786,7 @@ export class ResearchCapabilityBroker {
           throw new ResearchContractError("access-denied", "Jira detail does not match the bound entity.");
         }
         const source = this.#jiraSource(detail);
+        this.#registerObservedConfluenceReferences(detail.content);
         await this.#recordDetailEvidence(source, detail.content, {
           sourceId: source.id,
           reason: "exact_anchor",
@@ -732,7 +796,9 @@ export class ResearchCapabilityBroker {
           schema: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1,
           source: publicSource(source),
           content: detail.content,
-          relatedAnchors: [],
+          relatedAnchors: this.exactAnchors().filter((anchor) =>
+            anchor.product === "confluence"
+          ),
           budget: this.budget.snapshot(),
         };
       }
@@ -1511,11 +1577,15 @@ export class ResearchCapabilityBroker {
     if (admission.retrieval.sourceId !== source.id) {
       throw new ResearchContractError("provider-error", "Jira ranked candidate does not match its detail source.");
     }
+    this.#registerObservedConfluenceReferences(detail.content);
     await this.#recordDetailEvidence(source, detail.content, admission.retrieval);
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].output,
       source: publicSource(source),
       content: detail.content,
+      relatedAnchors: this.exactAnchors().filter((anchor) =>
+        anchor.product === "confluence"
+      ),
       budget: this.budget.snapshot(),
     };
   }
@@ -1557,6 +1627,7 @@ export class ResearchCapabilityBroker {
       schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].output,
       source: publicSource(source),
       content: detail.content,
+      relatedAnchors: this.exactAnchors().filter((anchor) => anchor.product === "jira"),
       budget: this.budget.snapshot(),
     };
   }

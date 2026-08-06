@@ -15,15 +15,29 @@ import {
   type BoundEntitySectionReadOutputV1,
 } from "../capability-contracts.js";
 import type { ResearchProduct } from "../contracts.js";
+import type { ResearchGraphCapabilityV1 } from "../graph.js";
 
-interface ChatPtcToolOptionsV1 extends Omit<ResearchPtcToolOptions, "onResult"> {
+interface ChatPtcToolOptionsV1 extends Omit<
+  ResearchPtcToolOptions,
+  "onResult" | "beforeInvoke"
+> {
   exactContextProducts?: readonly ResearchProduct[];
   searchProducts?: readonly ResearchProduct[];
   onResult?: (
-    tool: typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 |
+    tool: ResearchGraphCapabilityV1 |
+      typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 |
       typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
     result: unknown,
     callId: string,
+    input?: unknown,
+  ) => void | Promise<void>;
+  beforeInvoke?: (
+    tool: ResearchGraphCapabilityV1 |
+      typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 |
+      typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
+    input: unknown,
+    callId: string,
+    inputKind: ResearchPtcDiagnosticV1["inputKind"],
   ) => void | Promise<void>;
 }
 
@@ -63,12 +77,18 @@ export function createChatPtcToolsV1(
       inputKeys: ["anchorRef"],
     });
     try {
+      await options.beforeInvoke?.(
+        BOUND_ENTITY_READ_CAPABILITY_ID_V1,
+        input,
+        callId,
+        "detail",
+      );
       const result = await broker.readExactAnchor({
         schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
         ...input,
       });
       const serialized = JSON.stringify(result);
-      await options.onResult?.(BOUND_ENTITY_READ_CAPABILITY_ID_V1, result, callId);
+      await options.onResult?.(BOUND_ENTITY_READ_CAPABILITY_ID_V1, result, callId, input);
       options.onDiagnostic?.({
         callId,
         tool: BOUND_ENTITY_READ_CAPABILITY_ID_V1,
@@ -111,12 +131,23 @@ export function createChatPtcToolsV1(
       inputKeys: ["sectionRef"],
     });
     try {
+      await options.beforeInvoke?.(
+        BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
+        input,
+        callId,
+        "detail",
+      );
       const result = await broker.readExactSection({
         schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
         ...input,
       });
       const serialized = JSON.stringify(result);
-      await options.onResult?.(BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1, result, callId);
+      await options.onResult?.(
+        BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
+        result,
+        callId,
+        input,
+      );
       options.onDiagnostic?.({
         callId,
         tool: BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
@@ -156,6 +187,17 @@ export function createChatPtcToolsV1(
       ? { onDiagnostic: options.onDiagnostic as (diagnostic: ResearchPtcDiagnosticV1) => void }
       : {}),
     ...(options.now ? { now: options.now } : {}),
+    ...(options.boundProjectKeys
+      ? { boundProjectKeys: options.boundProjectKeys }
+      : {}),
+    ...(options.boundSpaceKeys
+      ? { boundSpaceKeys: options.boundSpaceKeys }
+      : {}),
+    ...(options.singleInitialQuery
+      ? { singleInitialQuery: true }
+      : {}),
+    ...(options.beforeInvoke ? { beforeInvoke: options.beforeInvoke } : {}),
+    ...(options.onResult ? { onResult: options.onResult } : {}),
   };
   const discovery = createResearchPtcTools(broker, researchOptions).filter((candidate) => {
     if ((!searchable.has("jira") || exact.has("jira")) &&

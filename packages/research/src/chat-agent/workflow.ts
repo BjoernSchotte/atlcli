@@ -21,6 +21,10 @@ import {
   ChatContractError,
   type ChatAgentDraftV1,
 } from "./contracts.js";
+import {
+  CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1,
+  type ChatRetrievalPlanProposalV1,
+} from "./retrieval-plan.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 
 export const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 =
@@ -359,7 +363,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 20_000,
     maxResultBytes: 24_000,
-    maxDurationMs: 45_000,
+    maxDurationMs: 75_000,
   }),
   profile({
     id: "comparison-analyst",
@@ -374,7 +378,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 20_000,
     maxResultBytes: 24_000,
-    maxDurationMs: 45_000,
+    maxDurationMs: 75_000,
   }),
   profile({
     id: "contradiction-checker",
@@ -389,7 +393,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 20_000,
     maxResultBytes: 20_000,
-    maxDurationMs: 45_000,
+    maxDurationMs: 75_000,
   }),
   profile({
     id: "answer-critic",
@@ -397,14 +401,14 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-critic",
     phase: "reconciliation",
     description: "Critique answer coverage, grounding, citations, and unresolved gaps.",
-    systemPrompt: "Return typed defects over accepted reference packets. Do not retrieve, delegate, repair, or author the final answer.",
+    systemPrompt: "Make one systematic pass over the accepted packets and return at most four prioritized, actionable defects with one concise sentence each. Check grounding, relationship direction, contradiction, coverage, and citation validity once each. Treat unresolved interpretation as a gap instead of repeatedly debating it. Do not retrieve, delegate, repair, or author the final answer.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-critique-packet/v1",
     responseSchema: CHAT_CRITIQUE_PACKET_SCHEMA_V1,
-    modelPreference: "thorough",
+    modelPreference: "balanced",
     maxInputChars: 24_000,
     maxResultBytes: 20_000,
-    maxDurationMs: 45_000,
+    maxDurationMs: 75_000,
   }),
   profile({
     id: "chat-synthesizer",
@@ -412,7 +416,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "synthesizer",
     phase: "synthesis",
     description: "Write one concise conversational answer from accepted evidence and analysis packets.",
-    systemPrompt: "Write the final conversational answer only from accepted references, defects, and gaps. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
+    systemPrompt: "Write the final conversational answer only from accepted references, defects, and gaps. Before writing, copy the canonical source IDs from the accepted dependency packets. Every paragraph containing an evidence-derived fact MUST end on that same line with one or more placeholders copied exactly as [[source:SOURCE_ID]]. Example: `The implementation is complete. [[source:jira:DEMO-1]]` Headings need no marker. Never use Markdown links or a separate source list in messageMarkdown. Put every used SOURCE_ID, without section suffixes, in citationSourceIds. If a factual paragraph cannot be cited this way, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -422,7 +426,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "thorough",
     maxInputChars: 32_000,
     maxResultBytes: 32_000,
-    maxDurationMs: 60_000,
+    maxDurationMs: 90_000,
   }),
 ] as const);
 
@@ -441,6 +445,7 @@ export interface ChatWorkflowProposalV1 {
   schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
   tasks: ChatWorkflowTaskProposalV1[];
   maxConcurrency: number;
+  retrievalPlan?: ChatRetrievalPlanProposalV1;
 }
 
 export interface AcceptedChatWorkflowV1 {
@@ -515,7 +520,7 @@ export function admitChatWorkflowProposalV1(input: {
   }
   const ids = new Set<string>();
   const profiles = new Set<ChatSubagentProfileIdV1>();
-  const tasks = proposal.tasks.map((candidate) => {
+  const proposedTasks = proposal.tasks.map((candidate) => {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
       invalid("A Chat workflow task is invalid.");
     }
@@ -546,6 +551,28 @@ export function admitChatWorkflowProposalV1(input: {
       profileId: candidate.profileId,
       objective: boundedText(candidate.objective, "Chat workflow objective", 4_000),
       dependencyTaskIds: Object.freeze([...candidate.dependencyTaskIds]) as unknown as string[],
+    });
+  });
+  const acquisitionAndAnalysisTaskIds = proposedTasks
+    .filter((task) => {
+      const phase = PROFILE_BY_ID.get(task.profileId)!.phase;
+      return phase === "acquisition" || phase === "analysis";
+    })
+    .map((task) => task.taskId);
+  const tasks = proposedTasks.map((task) => {
+    const required = task.profileId === "answer-critic"
+      ? acquisitionAndAnalysisTaskIds.filter((taskId) => taskId !== task.taskId)
+      : task.profileId === "chat-synthesizer"
+        ? proposedTasks
+            .filter((candidate) => candidate.taskId !== task.taskId)
+            .map((candidate) => candidate.taskId)
+        : task.dependencyTaskIds;
+    return Object.freeze({
+      ...task,
+      dependencyTaskIds: Object.freeze([...new Set([
+        ...task.dependencyTaskIds,
+        ...required,
+      ])]) as unknown as string[],
     });
   });
   const taskById = new Map(tasks.map((task) => [task.taskId, task]));
@@ -642,10 +669,11 @@ export function createChatWorkflowProposalControllerV1(input: {
   strategy: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
   /** Body-free host context appended to every admitted child objective. */
-  taskContext?: string;
+  taskContext?: string | (() => string);
   /** Profiles whose required read capabilities exist in this bound turn. */
   allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
   beforeProposal?: () => void;
+  beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
   onAccepted?: (
     workflow: AcceptedChatWorkflowV1,
     response: ChatWorkflowAdmissionResponseV1,
@@ -665,9 +693,14 @@ export function createChatWorkflowProposalControllerV1(input: {
   let accepted: AcceptedChatWorkflowV1 | undefined;
   let acceptedResponse: ChatWorkflowAdmissionResponseV1 | undefined;
   let accepting = false;
-  const taskContext = input.taskContext === undefined
-    ? undefined
-    : boundedText(input.taskContext, "Chat workflow task context", 2_800);
+  const taskContext = (): string | undefined => {
+    if (input.taskContext === undefined) return undefined;
+    return boundedText(
+      typeof input.taskContext === "function" ? input.taskContext() : input.taskContext,
+      "Chat workflow task context",
+      8_000,
+    );
+  };
   const allowedProfiles = new Set(
     input.allowedProfileIds ?? CHAT_SUBAGENT_PROFILE_IDS_V1,
   );
@@ -688,6 +721,14 @@ export function createChatWorkflowProposalControllerV1(input: {
     accepting = true;
     try {
       input.budget.beginPtc({ schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 });
+      const workflowProposal: ChatWorkflowProposalV1 = {
+        schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1,
+        maxConcurrency: proposal.maxConcurrency,
+        tasks: proposal.tasks.map((task) => ({ ...task })),
+        ...(proposal.retrievalPlan ? { retrievalPlan: proposal.retrievalPlan } : {}),
+      };
+      await input.beforeAdmission?.(workflowProposal);
+      const context = taskContext();
       const workflow = admitChatWorkflowProposalV1({
         strategy: input.strategy,
         proposal: {
@@ -695,10 +736,11 @@ export function createChatWorkflowProposalControllerV1(input: {
           maxConcurrency: proposal.maxConcurrency,
           tasks: proposal.tasks.map((task) => ({
             ...task,
-            objective: taskContext
-              ? `${task.objective}\n\nHost-bound turn context:\n${taskContext}`
+            objective: context
+              ? `${task.objective}\n\nHost-bound turn context:\n${context}`
               : task.objective,
           })),
+          ...(proposal.retrievalPlan ? { retrievalPlan: proposal.retrievalPlan } : {}),
         },
       });
       if (!workflow) {
@@ -742,6 +784,7 @@ export function createChatWorkflowProposalControllerV1(input: {
     schema: z.object({
       tasks: z.array(workflowTaskProposalSchema).min(2).max(8),
       maxConcurrency: z.number().int().min(1).max(3),
+      retrievalPlan: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1.optional(),
     }).strict(),
   });
   return {

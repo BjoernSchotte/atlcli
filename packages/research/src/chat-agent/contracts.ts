@@ -110,6 +110,19 @@ export interface ChatRunSummaryV1 {
   durationMs: number;
   counts: ResearchRunCountsV1;
   usage?: ResearchRunUsageV1;
+  retrieval?: {
+    discoveredCandidates: number;
+    admittedCandidates: number;
+    detailReadCandidates: number;
+    excludedCandidates: number;
+    deferredCandidates: number;
+    detailReadCoverage: number;
+    canonicalUrlCorrectness: number;
+    observedRecall: number | null;
+    wrongSourceRate: number | null;
+    atlassianHttpCalls: number;
+    latencyMs: number;
+  };
 }
 
 export interface ChatAnswerV1 {
@@ -166,8 +179,12 @@ export function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRe
 }
 
 export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
-  messageMarkdown: z.string().min(1).max(24_000),
-  citationSourceIds: z.array(z.string().min(1).max(256)).max(100),
+  messageMarkdown: z.string().min(1).max(24_000).describe(
+    "Conversational Markdown. Every paragraph that states an evidence-derived fact must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied from accepted dependency packets.",
+  ),
+  citationSourceIds: z.array(z.string().min(1).max(256)).max(100).describe(
+    "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.",
+  ),
   gaps: z.array(z.object({
     code: CHAT_GAP_CODE_SCHEMA_V1,
     message: z.string().min(1).max(1_000),
@@ -186,9 +203,15 @@ export const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1 = {
   additionalProperties: false,
   required: ["messageMarkdown", "citationSourceIds", "gaps"],
   properties: {
-    messageMarkdown: { type: "string", minLength: 1, maxLength: 24_000 },
+    messageMarkdown: {
+      type: "string",
+      description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]",
+      minLength: 1,
+      maxLength: 24_000,
+    },
     citationSourceIds: {
       type: "array",
+      description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.",
       maxItems: 100,
       items: { type: "string", minLength: 1, maxLength: 256 },
     },
@@ -239,8 +262,13 @@ const CHAT_PROVIDER_UNSUPPORTED_SCHEMA_KEYWORDS_V1 = new Set([
   "uniqueItems",
 ]);
 
-/** Provider adapters may expose a reduced schema; the stricter host Zod contract remains authoritative. */
-export function providerCompatibleChatAnswerSchemaV1(): {
+/**
+ * Provider adapters may expose a reduced JSON Schema; the stricter immutable
+ * host contract remains authoritative after the model returns.
+ */
+export function providerCompatibleChatJsonSchemaV1(
+  schema: Readonly<Record<string, unknown>>,
+): {
   type: "object";
   [key: string]: unknown;
 } {
@@ -253,10 +281,17 @@ export function providerCompatibleChatAnswerSchemaV1(): {
         .map(([key, nested]) => [key, visit(nested)]),
     );
   };
-  return visit(CHAT_AGENT_DRAFT_JSON_SCHEMA_V1) as {
+  return visit(schema) as {
     type: "object";
     [key: string]: unknown;
   };
+}
+
+export function providerCompatibleChatAnswerSchemaV1(): {
+  type: "object";
+  [key: string]: unknown;
+} {
+  return providerCompatibleChatJsonSchemaV1(CHAT_AGENT_DRAFT_JSON_SCHEMA_V1);
 }
 
 export function createChatSessionStateV1(input: {

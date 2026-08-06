@@ -173,10 +173,21 @@ describe("Chat dynamic workflow admission", () => {
       "chat-synthesizer",
     ]);
     expect(accepted?.admissions.find((entry) => entry.taskId === "task:critic")
-      ?.dependsOnTaskIds).toEqual(["task:relationships"]);
+      ?.dependsOnTaskIds).toEqual([
+        "task:relationships",
+        "task:exact",
+        "task:jira",
+      ]);
+    expect(accepted?.admissions.find((entry) => entry.taskId === "task:synth")
+      ?.dependsOnTaskIds).toEqual([
+        "task:critic",
+        "task:exact",
+        "task:jira",
+        "task:relationships",
+      ]);
   });
 
-  test("rejects forged fields, unknown profiles, duplicate profiles, invalid phase dependencies, and orphan work", () => {
+  test("rejects forged fields, unknown profiles, duplicate profiles, and invalid phase dependencies", () => {
     const base = [
       {
         taskId: "task:jira",
@@ -214,7 +225,7 @@ describe("Chat dynamic workflow admission", () => {
         { ...base[1]!, dependencyTaskIds: [] },
       ]),
     })).toThrow(/phase order|cycle/u);
-    expect(() => admitChatWorkflowProposalV1({
+    const augmented = admitChatWorkflowProposalV1({
       strategy: agentic,
       proposal: proposal([
         base[0]!,
@@ -226,7 +237,9 @@ describe("Chat dynamic workflow admission", () => {
         },
         base[1]!,
       ]),
-    })).toThrow("feed the dedicated synthesizer");
+    });
+    expect(augmented?.admissions.find((entry) => entry.taskId === "task:synth")
+      ?.dependsOnTaskIds).toEqual(["task:jira", "task:orphan"]);
   });
 
   test("admits one model proposal into exact generic dispatch envelopes after the strategy checkpoint", async () => {
@@ -279,6 +292,56 @@ describe("Chat dynamic workflow admission", () => {
     await expect(controller.tool.invoke(proposed)).rejects.toThrow("already been accepted");
   });
 
+  test("validates a bounded retrieval proposal before freezing dynamic task context", async () => {
+    let context = JSON.stringify({ retrieval: { variants: ["initial"] } });
+    const seenVariants: string[] = [];
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: agentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      taskContext: () => context,
+      beforeAdmission: (workflowProposal) => {
+        seenVariants.push(...(workflowProposal.retrievalPlan?.searches?.[0]?.variants
+          .map((variant) => variant.variantId) ?? []));
+        context = JSON.stringify({ retrieval: { variants: seenVariants } });
+      },
+    });
+    const response = JSON.parse(await controller.tool.invoke({
+      tasks: [
+        {
+          taskId: "task:wiki",
+          profileId: "confluence-search-reader",
+          objective: "Find the relevant evidence.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the answer.",
+          dependencyTaskIds: ["task:wiki"],
+        },
+      ],
+      maxConcurrency: 1,
+      retrievalPlan: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [
+            { variantId: "alternate-title", query: { text: "absence process" } },
+            { variantId: "synonym", query: { text: "vacation workflow" } },
+          ],
+          maxPages: 2,
+        }],
+        relationshipTraversals: [],
+        unresolvedTerms: [],
+      },
+    }));
+
+    expect(seenVariants).toEqual(["alternate-title", "synonym"]);
+    expect(response.dispatches[0].objective).toContain(
+      '\"variants\":[\"alternate-title\",\"synonym\"]',
+    );
+  });
+
   test("rejects unavailable acquisition profiles and malformed child packets", async () => {
     const controller = createChatWorkflowProposalControllerV1({
       strategy: agentic,
@@ -307,6 +370,46 @@ describe("Chat dynamic workflow admission", () => {
       defects: [],
       readyForSynthesis: true,
       rawBody: "forbidden",
+    })).toThrow("invalid structured packet");
+  });
+
+  test("accepts packet field limits and rejects item, character, and nested-shape overflow", () => {
+    const accepted = parseChatSubagentResultV1("exact-context-reader", {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: Array.from({ length: 100 }, (_, index) => `source:${index}`),
+      claims: Array.from({ length: 80 }, (_, index) => ({
+        text: index === 0 ? "x".repeat(1_000) : `Claim ${index}`,
+        sourceIds: [],
+      })),
+      relationships: [],
+      gaps: Array.from({ length: 40 }, (_, index) =>
+        index === 0 ? "g".repeat(600) : `Gap ${index}`
+      ),
+    });
+    expect(accepted).toMatchObject({
+      schema: "atlcli.chat-evidence-packet/v1",
+    });
+
+    expect(() => parseChatSubagentResultV1("exact-context-reader", {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: Array.from({ length: 101 }, (_, index) => `source:${index}`),
+      claims: [],
+      relationships: [],
+      gaps: [],
+    })).toThrow("invalid structured packet");
+    expect(() => parseChatSubagentResultV1("exact-context-reader", {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: [],
+      claims: [{ text: "x".repeat(1_001), sourceIds: [] }],
+      relationships: [],
+      gaps: [],
+    })).toThrow("invalid structured packet");
+    expect(() => parseChatSubagentResultV1("exact-context-reader", {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: [],
+      claims: [{ text: { nested: "forbidden" }, sourceIds: [] }],
+      relationships: [],
+      gaps: [],
     })).toThrow("invalid structured packet");
   });
 });

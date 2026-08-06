@@ -7,14 +7,34 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: AcceptedChatWorkflowV1
+export interface AcceptedChatWorkflowV1 {
+    compiled: CompiledAgenticWorkflowV1;
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+    admissions: readonly Readonly<AgenticTaskAdmissionV1>[];
+    profileByTaskId: ReadonlyMap<string, Readonly<ChatSubagentProfileV1>>;
+    synthesizerTaskId: string;
+}
+
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: admitChatWorkflowProposalV1
+export declare function admitChatWorkflowProposalV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    proposal?: ChatWorkflowProposalV1;
+    maxTasks?: number;
+    maxConcurrency?: number;
+}): AcceptedChatWorkflowV1 | undefined;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
     "conversation-answer",
     "research-report"
 ];
+
+// export: AGENTIC_TASK_DISPATCH_SCHEMA_V1
+export declare const AGENTIC_TASK_DISPATCH_SCHEMA_V1: "atlcli.agentic-task-dispatch/v1";
 
 // export: AGENTIC_WORKFLOW_PHASES_V1
 export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
@@ -66,6 +86,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
         admission: AgenticTaskAdmissionV1;
     }) => unknown | Promise<unknown>;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    projectResponseFormat?: (responseSchema: Readonly<Record<string, unknown>>, admission: AgenticTaskAdmissionV1) => unknown;
     beforeInvoke?: (input: {
         taskId: string;
         admission: AgenticTaskAdmissionV1;
@@ -82,6 +103,14 @@ export interface AgenticDispatchInterceptionOptionsV1 {
 
 // export: AgenticTaskAdmissionV1
 export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskDescriptionV1
+export interface AgenticTaskDescriptionV1 {
+    schema: typeof AGENTIC_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+    dependencyResults?: ResearchTaskDependencyResultV1[];
+}
 
 // export: AgenticTaskToolInputV1
 export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
@@ -364,6 +393,7 @@ export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
     strategyDecisionRequired?: boolean;
+    agenticWorkflowRequired?: boolean;
 }): string;
 
 // export: buildChatTurnPromptV1
@@ -403,11 +433,13 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     readonly properties: {
         readonly messageMarkdown: {
             readonly type: "string";
+            readonly description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]";
             readonly minLength: 1;
             readonly maxLength: 24000;
         };
         readonly citationSourceIds: {
             readonly type: "array";
+            readonly description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.";
             readonly maxItems: 100;
             readonly items: {
                 readonly type: "string";
@@ -496,6 +528,12 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
+// export: CHAT_CANDIDATE_LEDGER_PATH_V1
+export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-ledger.json";
+
+// export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
+export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -505,6 +543,53 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.chat-retrieval-assessment/v1";
+
+// export: CHAT_RETRIEVAL_PLAN_PATH_V1
+export declare const CHAT_RETRIEVAL_PLAN_PATH_V1: "/.atlcli/chat/v1/retrieval-plan.json";
+
+// export: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
+    searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        searchId: z.ZodString;
+        product: z.ZodEnum<{
+            jira: "jira";
+            confluence: "confluence";
+        }>;
+        variants: z.ZodArray<z.ZodObject<{
+            variantId: z.ZodString;
+            query: z.ZodObject<{
+                text: z.ZodOptional<z.ZodString>;
+                labels: z.ZodOptional<z.ZodArray<z.ZodString>>;
+                ancestorId: z.ZodOptional<z.ZodString>;
+                parentId: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            expectedInformationGain: z.ZodOptional<z.ZodEnum<{
+                high: "high";
+                low: "low";
+                medium: "medium";
+            }>>;
+        }, z.core.$strict>>;
+        maxPages: z.ZodNumber;
+    }, z.core.$strict>>>;
+    relationshipTraversals: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        traversalId: z.ZodString;
+        kind: z.ZodEnum<{
+            "confluence-to-jira-reference": "confluence-to-jira-reference";
+            "jira-to-confluence-remote-link": "jira-to-confluence-remote-link";
+        }>;
+        maxDepth: z.ZodLiteral<1>;
+    }, z.core.$strict>>>;
+    unresolvedTerms: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+
+// export: CHAT_RETRIEVAL_PLAN_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/v1";
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
@@ -567,6 +652,30 @@ export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-r
 // export: CHAT_STRATEGY_STATE_PATH_V1
 export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
 
+// export: CHAT_SUBAGENT_PROFILE_IDS_V1
+export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
+    "exact-context-reader",
+    "confluence-search-reader",
+    "jira-search-reader",
+    "relationship-tracer",
+    "comparison-analyst",
+    "contradiction-checker",
+    "answer-critic",
+    "chat-synthesizer"
+];
+
+// export: CHAT_SUBAGENT_PROFILES_V1
+export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>
+];
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -578,8 +687,14 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
+export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAnalysisPacketV1
+export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -602,6 +717,72 @@ export interface ChatAnswerV1 {
 
 // export: ChatAuxiliaryReadNeedV1
 export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCandidateDiscoveryV1
+export interface ChatCandidateDiscoveryV1 {
+    kind: "bound-anchor" | "scoped-search" | "relationship";
+    callId: string;
+    searchId?: string;
+    queryVariantId?: string;
+    page: number;
+    rank?: number;
+}
+
+// export: ChatCandidateLedgerControllerV1
+export declare class ChatCandidateLedgerControllerV1 {
+    #private;
+    constructor(input: {
+        plan: ChatRetrievalPlanV1;
+        workspace: ResearchWorkspace;
+        siteOrigin: string;
+        expectedSourceIds?: readonly string[];
+        now?: () => number;
+    });
+    initialize(): Promise<void>;
+    replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    plan(): ChatRetrievalPlanV1;
+    snapshot(): ChatCandidateLedgerV1;
+    allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
+    observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
+    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
+    finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
+    assessment(): ChatRetrievalAssessmentV1;
+}
+
+// export: ChatCandidateLedgerEntryV1
+export interface ChatCandidateLedgerEntryV1 {
+    candidateId: string;
+    sourceId: string;
+    product: ResearchProduct;
+    title: string;
+    canonicalUrl: string;
+    authority: "bound" | "scoped-search" | "explicit-relationship";
+    versionsObserved: string[];
+    discoveries: ChatCandidateDiscoveryV1[];
+    state: ChatCandidateStateV1;
+    admittedRank?: number;
+    exclusionReason?: string;
+    deferredReason?: string;
+}
+
+// export: ChatCandidateLedgerV1
+export interface ChatCandidateLedgerV1 {
+    schema: typeof CHAT_CANDIDATE_LEDGER_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    planFingerprint: string;
+    startedAt: string;
+    updatedAt: string;
+    finalizedAt?: string;
+    candidates: ChatCandidateLedgerEntryV1[];
+    searches: ChatSearchLedgerEntryV1[];
+    relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    atlassianHttpCalls: number;
+}
+
+// export: ChatCandidateStateV1
+export type ChatCandidateStateV1 = "discovered" | "admitted" | "detail-read" | "excluded" | "deferred";
 
 // export: ChatCitationV1
 export interface ChatCitationV1 {
@@ -626,12 +807,21 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatCritiquePacketV1
+export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatEvidencePacketV1
+export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
     model: BaseChatModel;
     modelId: string;
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
+    reasoningPresentation?: "summary";
+    modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
 // export: ChatModelFactoryInputV1
@@ -646,6 +836,16 @@ export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBi
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: ChatPresentationStreamEventV1
+export interface ChatPresentationStreamEventV1 {
+    kind: "chat-presentation";
+    seq: number;
+    at: string;
+    channel: "reasoning-summary" | "answer-markdown";
+    status: "started" | "delta" | "completed";
+    delta?: string;
+}
 
 // export: ChatQualityModeV1
 export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
@@ -671,6 +871,111 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRelationshipTraversalKindV1
+export type ChatRelationshipTraversalKindV1 = "confluence-to-jira-reference" | "jira-to-confluence-remote-link";
+
+// export: ChatRelationshipTraversalProposalV1
+export interface ChatRelationshipTraversalProposalV1 {
+    traversalId: string;
+    kind: ChatRelationshipTraversalKindV1;
+    maxDepth: 1;
+}
+
+// export: ChatResolvedRetrievalEntityV1
+export interface ChatResolvedRetrievalEntityV1 {
+    bindingId: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page" | "project" | "space";
+    authority: "approved" | "locked" | "resolved";
+    key?: string;
+    name: string;
+}
+
+// export: ChatRetrievalAnchorV1
+export interface ChatRetrievalAnchorV1 {
+    anchorRef: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: ChatRetrievalAssessmentV1
+export interface ChatRetrievalAssessmentV1 {
+    schema: typeof CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
+    sufficient: boolean;
+    reasons: string[];
+    completionSignals: Array<{
+        signal: ChatRetrievalCompletionSignalV1;
+        satisfied: boolean;
+    }>;
+    metrics: ChatRetrievalMetricsV1;
+}
+
+// export: ChatRetrievalBudgetReservationsV1
+export interface ChatRetrievalBudgetReservationsV1 {
+    directReadCalls: number;
+    discoveryCalls: number;
+    relationshipTraversalCalls: number;
+    repairCalls: number;
+    criticCalls: number;
+    synthesisCalls: 1;
+    totalCalls: number;
+}
+
+// export: ChatRetrievalCompletionSignalV1
+export type ChatRetrievalCompletionSignalV1 = "all-anchors-read" | "all-searches-terminal" | "all-admitted-candidates-terminal" | "relationship-traversals-checked" | "detail-evidence-present" | "query-variants-saturated";
+
+// export: ChatRetrievalMetricsV1
+export interface ChatRetrievalMetricsV1 {
+    discoveredCandidates: number;
+    admittedCandidates: number;
+    detailReadCandidates: number;
+    excludedCandidates: number;
+    deferredCandidates: number;
+    detailReadCoverage: number;
+    canonicalUrlCorrectness: number;
+    observedRecall: number | null;
+    wrongSourceRate: number | null;
+    atlassianHttpCalls: number;
+    latencyMs: number;
+}
+
+// export: ChatRetrievalPlanProposalV1
+export interface ChatRetrievalPlanProposalV1 {
+    searches?: ChatRetrievalSearchProposalV1[];
+    relationshipTraversals?: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms?: string[];
+}
+
+// export: ChatRetrievalPlanV1
+export interface ChatRetrievalPlanV1 {
+    schema: typeof CHAT_RETRIEVAL_PLAN_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    createdAt: string;
+    questionFingerprint: string;
+    anchors: ChatRetrievalAnchorV1[];
+    resolvedEntities: ChatResolvedRetrievalEntityV1[];
+    searches: ChatRetrievalSearchV1[];
+    relationshipTraversals: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms: string[];
+    completionSignals: ChatRetrievalCompletionSignalV1[];
+    budgetReservations: ChatRetrievalBudgetReservationsV1;
+}
+
+// export: ChatRetrievalSearchProposalV1
+export interface ChatRetrievalSearchProposalV1 {
+    searchId: string;
+    product: ResearchProduct;
+    variants: ChatSearchVariantProposalV1[];
+    maxPages: number;
+}
+
+// export: ChatRetrievalSearchV1
+export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
+    scopeBindingIds: string[];
+}
+
 // export: ChatRunSummaryV1
 export interface ChatRunSummaryV1 {
     model: string;
@@ -679,6 +984,19 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    retrieval?: {
+        discoveredCandidates: number;
+        admittedCandidates: number;
+        detailReadCandidates: number;
+        excludedCandidates: number;
+        deferredCandidates: number;
+        detailReadCoverage: number;
+        canonicalUrlCorrectness: number;
+        observedRecall: number | null;
+        wrongSourceRate: number | null;
+        atlassianHttpCalls: number;
+        latencyMs: number;
+    };
 }
 
 // export: ChatScopeClarificationReviewV1
@@ -702,6 +1020,32 @@ export interface ChatScopeClarificationReviewV1 {
             status?: "current" | "archived";
         }>;
     };
+}
+
+// export: ChatSearchLedgerEntryV1
+export interface ChatSearchLedgerEntryV1 {
+    searchId: string;
+    product: ResearchProduct;
+    queryVariantId: string;
+    pagesRead: number;
+    uniqueCandidateCount: number;
+    terminal: boolean;
+    termination?: string;
+}
+
+// export: ChatSearchQueryV1
+export interface ChatSearchQueryV1 {
+    text?: string;
+    labels?: string[];
+    ancestorId?: string;
+    parentId?: string;
+}
+
+// export: ChatSearchVariantProposalV1
+export interface ChatSearchVariantProposalV1 {
+    variantId: string;
+    query: ChatSearchQueryV1;
+    expectedInformationGain?: "high" | "medium" | "low";
 }
 
 // export: ChatSessionStateV1
@@ -776,6 +1120,35 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatSubagentCapabilityIdV1
+export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
+
+// export: ChatSubagentPacketSchemaV1
+export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: ChatSubagentProfileIdV1
+export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
+
+// export: ChatSubagentProfileV1
+export interface ChatSubagentProfileV1 {
+    id: ChatSubagentProfileIdV1;
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    description: string;
+    systemPrompt: string;
+    grantedCapabilityIds: readonly ChatSubagentCapabilityIdV1[];
+    responseSchemaId: ChatSubagentPacketSchemaV1;
+    responseSchema: Readonly<Record<string, unknown>>;
+    modelPreference: "fast" | "balanced" | "thorough";
+    maxInputChars: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ChatSubagentResultV1
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
@@ -795,6 +1168,41 @@ export interface ChatTurnRequestV1 {
     scopeSeeds?: ResearchScopeSeedV1[];
     exactContextProducts?: ResearchProduct[];
     locale?: string;
+}
+
+// export: ChatWorkflowAdmissionResponseV1
+export interface ChatWorkflowAdmissionResponseV1 {
+    schema: "atlcli.chat-workflow-admission/v1";
+    completionObjective: "conversation-answer";
+    maxConcurrency: number;
+    synthesizerTaskId: string;
+    dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+// export: ChatWorkflowDispatchV1
+export interface ChatWorkflowDispatchV1 {
+    taskId: string;
+    subagentType: string;
+    objective: string;
+    dependencyTaskIds: readonly string[];
+    description: string;
+    responseSchema: Readonly<Record<string, unknown>>;
+}
+
+// export: ChatWorkflowProposalV1
+export interface ChatWorkflowProposalV1 {
+    schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
+    tasks: ChatWorkflowTaskProposalV1[];
+    maxConcurrency: number;
+    retrievalPlan?: ChatRetrievalPlanProposalV1;
+}
+
+// export: ChatWorkflowTaskProposalV1
+export interface ChatWorkflowTaskProposalV1 {
+    taskId: string;
+    profileId: ChatSubagentProfileIdV1;
+    objective: string;
+    dependencyTaskIds: string[];
 }
 
 // export: classifyResearchError
@@ -896,6 +1304,23 @@ export declare function createAgenticDispatchInterceptionAdapter(options: Agenti
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
+// export: createChatRetrievalPlanV1
+export declare function createChatRetrievalPlanV1(input: {
+    conversationId: string;
+    turnId: string;
+    question: string;
+    anchors: readonly BoundEntityAnchorV1[];
+    scopeBindings: readonly ResearchScopeBindingV1[];
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    searchProducts: readonly ResearchProduct[];
+    exactContextProducts: readonly ResearchProduct[];
+    limits: ResearchLimitsV1;
+    agentic: boolean;
+    proposal?: ChatRetrievalPlanProposalV1;
+    now?: () => number;
+}): ChatRetrievalPlanV1;
+
 // export: createChatSessionStateV1
 export declare function createChatSessionStateV1(input: {
     conversationId: string;
@@ -924,6 +1349,22 @@ export declare function createChatStrategyReviewControllerV1(input: {
     tool: DynamicStructuredTool;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
+};
+
+// export: createChatWorkflowProposalControllerV1
+export declare function createChatWorkflowProposalControllerV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    taskContext?: string | (() => string);
+    allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
+    beforeProposal?: () => void;
+    beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+    onAccepted?: (workflow: AcceptedChatWorkflowV1, response: ChatWorkflowAdmissionResponseV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
+    acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
+    assertAccepted(): void;
 };
 
 // export: createHostValidationAbstentionPacketV2
@@ -1141,6 +1582,9 @@ export declare function directChatHasExactCurrentPageV1(request: ResearchRequest
 // export: directChatProductsV1
 export declare function directChatProductsV1(request: ResearchRequestV1): ResearchProduct[];
 
+// export: encodeAgenticTaskDescriptionV1
+export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
+
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
 
@@ -1149,6 +1593,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: extractChatSubagentCandidateV1
+export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
 
 // export: finalizeChatAnswerV1
 export declare function finalizeChatAnswerV1(input: {
@@ -1351,6 +1798,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isChatPresentationStreamEventV1
+export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
+
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
@@ -1486,6 +1936,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: parseChatSubagentResultV1
+export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
 // export: parseReconciliationBodyV1
 export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
@@ -1704,6 +2157,12 @@ export declare function providerCompatibleChatAnswerSchemaV1(): {
     [key: string]: unknown;
 };
 
+// export: providerCompatibleChatJsonSchemaV1
+export declare function providerCompatibleChatJsonSchemaV1(schema: Readonly<Record<string, unknown>>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
 // export: ProviderQualityCapabilityAdapterV1
 export interface ProviderQualityCapabilityAdapterV1 {
     readonly providerId: string;
@@ -1839,6 +2298,7 @@ export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-resear
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
     "model-assessing",
+    "answer-drafting",
     "next-step-ready",
     "answer-draft-ready",
     "bounded-workflow-running",
@@ -2891,6 +3351,7 @@ export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
     replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+    setMaxConcurrency(maxConcurrency: number): void;
     restoreCompleted(results: readonly ResearchTaskDependencyResultV1[]): void;
     appendAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
@@ -3331,6 +3792,7 @@ export interface ResearchGetOutputV1 {
     schema: string;
     source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
     content: BoundedContentProjectionV1;
+    relatedAnchors?: BoundEntityAnchorV1[];
     budget: ResearchBudgetSnapshotV1;
 }
 
@@ -4444,6 +4906,7 @@ export interface ResearchRunOptions {
     }) => void;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -6168,14 +6631,34 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 ### Entry point `. (default)`
 
 ```ts
+// export: AcceptedChatWorkflowV1
+export interface AcceptedChatWorkflowV1 {
+    compiled: CompiledAgenticWorkflowV1;
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+    admissions: readonly Readonly<AgenticTaskAdmissionV1>[];
+    profileByTaskId: ReadonlyMap<string, Readonly<ChatSubagentProfileV1>>;
+    synthesizerTaskId: string;
+}
+
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: admitChatWorkflowProposalV1
+export declare function admitChatWorkflowProposalV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    proposal?: ChatWorkflowProposalV1;
+    maxTasks?: number;
+    maxConcurrency?: number;
+}): AcceptedChatWorkflowV1 | undefined;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
     "conversation-answer",
     "research-report"
 ];
+
+// export: AGENTIC_TASK_DISPATCH_SCHEMA_V1
+export declare const AGENTIC_TASK_DISPATCH_SCHEMA_V1: "atlcli.agentic-task-dispatch/v1";
 
 // export: AGENTIC_WORKFLOW_PHASES_V1
 export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
@@ -6227,6 +6710,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
         admission: AgenticTaskAdmissionV1;
     }) => unknown | Promise<unknown>;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    projectResponseFormat?: (responseSchema: Readonly<Record<string, unknown>>, admission: AgenticTaskAdmissionV1) => unknown;
     beforeInvoke?: (input: {
         taskId: string;
         admission: AgenticTaskAdmissionV1;
@@ -6243,6 +6727,14 @@ export interface AgenticDispatchInterceptionOptionsV1 {
 
 // export: AgenticTaskAdmissionV1
 export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskDescriptionV1
+export interface AgenticTaskDescriptionV1 {
+    schema: typeof AGENTIC_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+    dependencyResults?: ResearchTaskDependencyResultV1[];
+}
 
 // export: AgenticTaskToolInputV1
 export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
@@ -6525,6 +7017,7 @@ export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
     strategyDecisionRequired?: boolean;
+    agenticWorkflowRequired?: boolean;
 }): string;
 
 // export: buildChatTurnPromptV1
@@ -6564,11 +7057,13 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     readonly properties: {
         readonly messageMarkdown: {
             readonly type: "string";
+            readonly description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]";
             readonly minLength: 1;
             readonly maxLength: 24000;
         };
         readonly citationSourceIds: {
             readonly type: "array";
+            readonly description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.";
             readonly maxItems: 100;
             readonly items: {
                 readonly type: "string";
@@ -6657,6 +7152,12 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
+// export: CHAT_CANDIDATE_LEDGER_PATH_V1
+export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-ledger.json";
+
+// export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
+export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -6666,6 +7167,53 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.chat-retrieval-assessment/v1";
+
+// export: CHAT_RETRIEVAL_PLAN_PATH_V1
+export declare const CHAT_RETRIEVAL_PLAN_PATH_V1: "/.atlcli/chat/v1/retrieval-plan.json";
+
+// export: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
+    searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        searchId: z.ZodString;
+        product: z.ZodEnum<{
+            jira: "jira";
+            confluence: "confluence";
+        }>;
+        variants: z.ZodArray<z.ZodObject<{
+            variantId: z.ZodString;
+            query: z.ZodObject<{
+                text: z.ZodOptional<z.ZodString>;
+                labels: z.ZodOptional<z.ZodArray<z.ZodString>>;
+                ancestorId: z.ZodOptional<z.ZodString>;
+                parentId: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            expectedInformationGain: z.ZodOptional<z.ZodEnum<{
+                high: "high";
+                low: "low";
+                medium: "medium";
+            }>>;
+        }, z.core.$strict>>;
+        maxPages: z.ZodNumber;
+    }, z.core.$strict>>>;
+    relationshipTraversals: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        traversalId: z.ZodString;
+        kind: z.ZodEnum<{
+            "confluence-to-jira-reference": "confluence-to-jira-reference";
+            "jira-to-confluence-remote-link": "jira-to-confluence-remote-link";
+        }>;
+        maxDepth: z.ZodLiteral<1>;
+    }, z.core.$strict>>>;
+    unresolvedTerms: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+
+// export: CHAT_RETRIEVAL_PLAN_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/v1";
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
@@ -6728,6 +7276,30 @@ export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-r
 // export: CHAT_STRATEGY_STATE_PATH_V1
 export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
 
+// export: CHAT_SUBAGENT_PROFILE_IDS_V1
+export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
+    "exact-context-reader",
+    "confluence-search-reader",
+    "jira-search-reader",
+    "relationship-tracer",
+    "comparison-analyst",
+    "contradiction-checker",
+    "answer-critic",
+    "chat-synthesizer"
+];
+
+// export: CHAT_SUBAGENT_PROFILES_V1
+export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>
+];
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -6739,8 +7311,14 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
+export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAnalysisPacketV1
+export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -6763,6 +7341,72 @@ export interface ChatAnswerV1 {
 
 // export: ChatAuxiliaryReadNeedV1
 export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCandidateDiscoveryV1
+export interface ChatCandidateDiscoveryV1 {
+    kind: "bound-anchor" | "scoped-search" | "relationship";
+    callId: string;
+    searchId?: string;
+    queryVariantId?: string;
+    page: number;
+    rank?: number;
+}
+
+// export: ChatCandidateLedgerControllerV1
+export declare class ChatCandidateLedgerControllerV1 {
+    #private;
+    constructor(input: {
+        plan: ChatRetrievalPlanV1;
+        workspace: ResearchWorkspace;
+        siteOrigin: string;
+        expectedSourceIds?: readonly string[];
+        now?: () => number;
+    });
+    initialize(): Promise<void>;
+    replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    plan(): ChatRetrievalPlanV1;
+    snapshot(): ChatCandidateLedgerV1;
+    allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
+    observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
+    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
+    finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
+    assessment(): ChatRetrievalAssessmentV1;
+}
+
+// export: ChatCandidateLedgerEntryV1
+export interface ChatCandidateLedgerEntryV1 {
+    candidateId: string;
+    sourceId: string;
+    product: ResearchProduct;
+    title: string;
+    canonicalUrl: string;
+    authority: "bound" | "scoped-search" | "explicit-relationship";
+    versionsObserved: string[];
+    discoveries: ChatCandidateDiscoveryV1[];
+    state: ChatCandidateStateV1;
+    admittedRank?: number;
+    exclusionReason?: string;
+    deferredReason?: string;
+}
+
+// export: ChatCandidateLedgerV1
+export interface ChatCandidateLedgerV1 {
+    schema: typeof CHAT_CANDIDATE_LEDGER_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    planFingerprint: string;
+    startedAt: string;
+    updatedAt: string;
+    finalizedAt?: string;
+    candidates: ChatCandidateLedgerEntryV1[];
+    searches: ChatSearchLedgerEntryV1[];
+    relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    atlassianHttpCalls: number;
+}
+
+// export: ChatCandidateStateV1
+export type ChatCandidateStateV1 = "discovered" | "admitted" | "detail-read" | "excluded" | "deferred";
 
 // export: ChatCitationV1
 export interface ChatCitationV1 {
@@ -6787,12 +7431,21 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatCritiquePacketV1
+export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatEvidencePacketV1
+export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
     model: BaseChatModel;
     modelId: string;
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
+    reasoningPresentation?: "summary";
+    modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
 // export: ChatModelFactoryInputV1
@@ -6807,6 +7460,16 @@ export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBi
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: ChatPresentationStreamEventV1
+export interface ChatPresentationStreamEventV1 {
+    kind: "chat-presentation";
+    seq: number;
+    at: string;
+    channel: "reasoning-summary" | "answer-markdown";
+    status: "started" | "delta" | "completed";
+    delta?: string;
+}
 
 // export: ChatQualityModeV1
 export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
@@ -6832,6 +7495,111 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRelationshipTraversalKindV1
+export type ChatRelationshipTraversalKindV1 = "confluence-to-jira-reference" | "jira-to-confluence-remote-link";
+
+// export: ChatRelationshipTraversalProposalV1
+export interface ChatRelationshipTraversalProposalV1 {
+    traversalId: string;
+    kind: ChatRelationshipTraversalKindV1;
+    maxDepth: 1;
+}
+
+// export: ChatResolvedRetrievalEntityV1
+export interface ChatResolvedRetrievalEntityV1 {
+    bindingId: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page" | "project" | "space";
+    authority: "approved" | "locked" | "resolved";
+    key?: string;
+    name: string;
+}
+
+// export: ChatRetrievalAnchorV1
+export interface ChatRetrievalAnchorV1 {
+    anchorRef: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: ChatRetrievalAssessmentV1
+export interface ChatRetrievalAssessmentV1 {
+    schema: typeof CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
+    sufficient: boolean;
+    reasons: string[];
+    completionSignals: Array<{
+        signal: ChatRetrievalCompletionSignalV1;
+        satisfied: boolean;
+    }>;
+    metrics: ChatRetrievalMetricsV1;
+}
+
+// export: ChatRetrievalBudgetReservationsV1
+export interface ChatRetrievalBudgetReservationsV1 {
+    directReadCalls: number;
+    discoveryCalls: number;
+    relationshipTraversalCalls: number;
+    repairCalls: number;
+    criticCalls: number;
+    synthesisCalls: 1;
+    totalCalls: number;
+}
+
+// export: ChatRetrievalCompletionSignalV1
+export type ChatRetrievalCompletionSignalV1 = "all-anchors-read" | "all-searches-terminal" | "all-admitted-candidates-terminal" | "relationship-traversals-checked" | "detail-evidence-present" | "query-variants-saturated";
+
+// export: ChatRetrievalMetricsV1
+export interface ChatRetrievalMetricsV1 {
+    discoveredCandidates: number;
+    admittedCandidates: number;
+    detailReadCandidates: number;
+    excludedCandidates: number;
+    deferredCandidates: number;
+    detailReadCoverage: number;
+    canonicalUrlCorrectness: number;
+    observedRecall: number | null;
+    wrongSourceRate: number | null;
+    atlassianHttpCalls: number;
+    latencyMs: number;
+}
+
+// export: ChatRetrievalPlanProposalV1
+export interface ChatRetrievalPlanProposalV1 {
+    searches?: ChatRetrievalSearchProposalV1[];
+    relationshipTraversals?: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms?: string[];
+}
+
+// export: ChatRetrievalPlanV1
+export interface ChatRetrievalPlanV1 {
+    schema: typeof CHAT_RETRIEVAL_PLAN_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    createdAt: string;
+    questionFingerprint: string;
+    anchors: ChatRetrievalAnchorV1[];
+    resolvedEntities: ChatResolvedRetrievalEntityV1[];
+    searches: ChatRetrievalSearchV1[];
+    relationshipTraversals: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms: string[];
+    completionSignals: ChatRetrievalCompletionSignalV1[];
+    budgetReservations: ChatRetrievalBudgetReservationsV1;
+}
+
+// export: ChatRetrievalSearchProposalV1
+export interface ChatRetrievalSearchProposalV1 {
+    searchId: string;
+    product: ResearchProduct;
+    variants: ChatSearchVariantProposalV1[];
+    maxPages: number;
+}
+
+// export: ChatRetrievalSearchV1
+export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
+    scopeBindingIds: string[];
+}
+
 // export: ChatRunSummaryV1
 export interface ChatRunSummaryV1 {
     model: string;
@@ -6840,6 +7608,19 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    retrieval?: {
+        discoveredCandidates: number;
+        admittedCandidates: number;
+        detailReadCandidates: number;
+        excludedCandidates: number;
+        deferredCandidates: number;
+        detailReadCoverage: number;
+        canonicalUrlCorrectness: number;
+        observedRecall: number | null;
+        wrongSourceRate: number | null;
+        atlassianHttpCalls: number;
+        latencyMs: number;
+    };
 }
 
 // export: ChatScopeClarificationReviewV1
@@ -6863,6 +7644,32 @@ export interface ChatScopeClarificationReviewV1 {
             status?: "current" | "archived";
         }>;
     };
+}
+
+// export: ChatSearchLedgerEntryV1
+export interface ChatSearchLedgerEntryV1 {
+    searchId: string;
+    product: ResearchProduct;
+    queryVariantId: string;
+    pagesRead: number;
+    uniqueCandidateCount: number;
+    terminal: boolean;
+    termination?: string;
+}
+
+// export: ChatSearchQueryV1
+export interface ChatSearchQueryV1 {
+    text?: string;
+    labels?: string[];
+    ancestorId?: string;
+    parentId?: string;
+}
+
+// export: ChatSearchVariantProposalV1
+export interface ChatSearchVariantProposalV1 {
+    variantId: string;
+    query: ChatSearchQueryV1;
+    expectedInformationGain?: "high" | "medium" | "low";
 }
 
 // export: ChatSessionStateV1
@@ -6937,6 +7744,35 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatSubagentCapabilityIdV1
+export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
+
+// export: ChatSubagentPacketSchemaV1
+export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: ChatSubagentProfileIdV1
+export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
+
+// export: ChatSubagentProfileV1
+export interface ChatSubagentProfileV1 {
+    id: ChatSubagentProfileIdV1;
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    description: string;
+    systemPrompt: string;
+    grantedCapabilityIds: readonly ChatSubagentCapabilityIdV1[];
+    responseSchemaId: ChatSubagentPacketSchemaV1;
+    responseSchema: Readonly<Record<string, unknown>>;
+    modelPreference: "fast" | "balanced" | "thorough";
+    maxInputChars: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ChatSubagentResultV1
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
@@ -6956,6 +7792,41 @@ export interface ChatTurnRequestV1 {
     scopeSeeds?: ResearchScopeSeedV1[];
     exactContextProducts?: ResearchProduct[];
     locale?: string;
+}
+
+// export: ChatWorkflowAdmissionResponseV1
+export interface ChatWorkflowAdmissionResponseV1 {
+    schema: "atlcli.chat-workflow-admission/v1";
+    completionObjective: "conversation-answer";
+    maxConcurrency: number;
+    synthesizerTaskId: string;
+    dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+// export: ChatWorkflowDispatchV1
+export interface ChatWorkflowDispatchV1 {
+    taskId: string;
+    subagentType: string;
+    objective: string;
+    dependencyTaskIds: readonly string[];
+    description: string;
+    responseSchema: Readonly<Record<string, unknown>>;
+}
+
+// export: ChatWorkflowProposalV1
+export interface ChatWorkflowProposalV1 {
+    schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
+    tasks: ChatWorkflowTaskProposalV1[];
+    maxConcurrency: number;
+    retrievalPlan?: ChatRetrievalPlanProposalV1;
+}
+
+// export: ChatWorkflowTaskProposalV1
+export interface ChatWorkflowTaskProposalV1 {
+    taskId: string;
+    profileId: ChatSubagentProfileIdV1;
+    objective: string;
+    dependencyTaskIds: string[];
 }
 
 // export: classifyResearchError
@@ -7057,6 +7928,23 @@ export declare function createAgenticDispatchInterceptionAdapter(options: Agenti
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
+// export: createChatRetrievalPlanV1
+export declare function createChatRetrievalPlanV1(input: {
+    conversationId: string;
+    turnId: string;
+    question: string;
+    anchors: readonly BoundEntityAnchorV1[];
+    scopeBindings: readonly ResearchScopeBindingV1[];
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    searchProducts: readonly ResearchProduct[];
+    exactContextProducts: readonly ResearchProduct[];
+    limits: ResearchLimitsV1;
+    agentic: boolean;
+    proposal?: ChatRetrievalPlanProposalV1;
+    now?: () => number;
+}): ChatRetrievalPlanV1;
+
 // export: createChatSessionStateV1
 export declare function createChatSessionStateV1(input: {
     conversationId: string;
@@ -7085,6 +7973,22 @@ export declare function createChatStrategyReviewControllerV1(input: {
     tool: DynamicStructuredTool;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
+};
+
+// export: createChatWorkflowProposalControllerV1
+export declare function createChatWorkflowProposalControllerV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    taskContext?: string | (() => string);
+    allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
+    beforeProposal?: () => void;
+    beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+    onAccepted?: (workflow: AcceptedChatWorkflowV1, response: ChatWorkflowAdmissionResponseV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
+    acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
+    assertAccepted(): void;
 };
 
 // export: createHostValidationAbstentionPacketV2
@@ -7293,6 +8197,9 @@ export declare function directChatHasExactCurrentPageV1(request: ResearchRequest
 // export: directChatProductsV1
 export declare function directChatProductsV1(request: ResearchRequestV1): ResearchProduct[];
 
+// export: encodeAgenticTaskDescriptionV1
+export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
+
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
 
@@ -7301,6 +8208,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: extractChatSubagentCandidateV1
+export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
 
 // export: finalizeChatAnswerV1
 export declare function finalizeChatAnswerV1(input: {
@@ -7503,6 +8413,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isChatPresentationStreamEventV1
+export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
+
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
@@ -7638,6 +8551,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: parseChatSubagentResultV1
+export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
 // export: parseReconciliationBodyV1
 export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
@@ -7856,6 +8772,12 @@ export declare function providerCompatibleChatAnswerSchemaV1(): {
     [key: string]: unknown;
 };
 
+// export: providerCompatibleChatJsonSchemaV1
+export declare function providerCompatibleChatJsonSchemaV1(schema: Readonly<Record<string, unknown>>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
 // export: ProviderQualityCapabilityAdapterV1
 export interface ProviderQualityCapabilityAdapterV1 {
     readonly providerId: string;
@@ -7991,6 +8913,7 @@ export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-resear
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
     "model-assessing",
+    "answer-drafting",
     "next-step-ready",
     "answer-draft-ready",
     "bounded-workflow-running",
@@ -9043,6 +9966,7 @@ export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
     replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+    setMaxConcurrency(maxConcurrency: number): void;
     restoreCompleted(results: readonly ResearchTaskDependencyResultV1[]): void;
     appendAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
@@ -9483,6 +10407,7 @@ export interface ResearchGetOutputV1 {
     schema: string;
     source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
     content: BoundedContentProjectionV1;
+    relatedAnchors?: BoundEntityAnchorV1[];
     budget: ResearchBudgetSnapshotV1;
 }
 
@@ -10596,6 +11521,7 @@ export interface ResearchRunOptions {
     }) => void;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -12309,14 +13235,34 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 ### Entry point `./browser`
 
 ```ts
+// export: AcceptedChatWorkflowV1
+export interface AcceptedChatWorkflowV1 {
+    compiled: CompiledAgenticWorkflowV1;
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+    admissions: readonly Readonly<AgenticTaskAdmissionV1>[];
+    profileByTaskId: ReadonlyMap<string, Readonly<ChatSubagentProfileV1>>;
+    synthesizerTaskId: string;
+}
+
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: admitChatWorkflowProposalV1
+export declare function admitChatWorkflowProposalV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    proposal?: ChatWorkflowProposalV1;
+    maxTasks?: number;
+    maxConcurrency?: number;
+}): AcceptedChatWorkflowV1 | undefined;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
     "conversation-answer",
     "research-report"
 ];
+
+// export: AGENTIC_TASK_DISPATCH_SCHEMA_V1
+export declare const AGENTIC_TASK_DISPATCH_SCHEMA_V1: "atlcli.agentic-task-dispatch/v1";
 
 // export: AGENTIC_WORKFLOW_PHASES_V1
 export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
@@ -12368,6 +13314,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
         admission: AgenticTaskAdmissionV1;
     }) => unknown | Promise<unknown>;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    projectResponseFormat?: (responseSchema: Readonly<Record<string, unknown>>, admission: AgenticTaskAdmissionV1) => unknown;
     beforeInvoke?: (input: {
         taskId: string;
         admission: AgenticTaskAdmissionV1;
@@ -12384,6 +13331,14 @@ export interface AgenticDispatchInterceptionOptionsV1 {
 
 // export: AgenticTaskAdmissionV1
 export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskDescriptionV1
+export interface AgenticTaskDescriptionV1 {
+    schema: typeof AGENTIC_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+    dependencyResults?: ResearchTaskDependencyResultV1[];
+}
 
 // export: AgenticTaskToolInputV1
 export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
@@ -12666,6 +13621,7 @@ export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
     strategyDecisionRequired?: boolean;
+    agenticWorkflowRequired?: boolean;
 }): string;
 
 // export: buildChatTurnPromptV1
@@ -12705,11 +13661,13 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     readonly properties: {
         readonly messageMarkdown: {
             readonly type: "string";
+            readonly description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]";
             readonly minLength: 1;
             readonly maxLength: 24000;
         };
         readonly citationSourceIds: {
             readonly type: "array";
+            readonly description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.";
             readonly maxItems: 100;
             readonly items: {
                 readonly type: "string";
@@ -12798,6 +13756,12 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
+// export: CHAT_CANDIDATE_LEDGER_PATH_V1
+export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-ledger.json";
+
+// export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
+export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -12807,6 +13771,53 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.chat-retrieval-assessment/v1";
+
+// export: CHAT_RETRIEVAL_PLAN_PATH_V1
+export declare const CHAT_RETRIEVAL_PLAN_PATH_V1: "/.atlcli/chat/v1/retrieval-plan.json";
+
+// export: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
+    searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        searchId: z.ZodString;
+        product: z.ZodEnum<{
+            jira: "jira";
+            confluence: "confluence";
+        }>;
+        variants: z.ZodArray<z.ZodObject<{
+            variantId: z.ZodString;
+            query: z.ZodObject<{
+                text: z.ZodOptional<z.ZodString>;
+                labels: z.ZodOptional<z.ZodArray<z.ZodString>>;
+                ancestorId: z.ZodOptional<z.ZodString>;
+                parentId: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            expectedInformationGain: z.ZodOptional<z.ZodEnum<{
+                high: "high";
+                low: "low";
+                medium: "medium";
+            }>>;
+        }, z.core.$strict>>;
+        maxPages: z.ZodNumber;
+    }, z.core.$strict>>>;
+    relationshipTraversals: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        traversalId: z.ZodString;
+        kind: z.ZodEnum<{
+            "confluence-to-jira-reference": "confluence-to-jira-reference";
+            "jira-to-confluence-remote-link": "jira-to-confluence-remote-link";
+        }>;
+        maxDepth: z.ZodLiteral<1>;
+    }, z.core.$strict>>>;
+    unresolvedTerms: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+
+// export: CHAT_RETRIEVAL_PLAN_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/v1";
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
@@ -12869,6 +13880,30 @@ export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-r
 // export: CHAT_STRATEGY_STATE_PATH_V1
 export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
 
+// export: CHAT_SUBAGENT_PROFILE_IDS_V1
+export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
+    "exact-context-reader",
+    "confluence-search-reader",
+    "jira-search-reader",
+    "relationship-tracer",
+    "comparison-analyst",
+    "contradiction-checker",
+    "answer-critic",
+    "chat-synthesizer"
+];
+
+// export: CHAT_SUBAGENT_PROFILES_V1
+export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>
+];
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -12880,8 +13915,14 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
+export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAnalysisPacketV1
+export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -12904,6 +13945,72 @@ export interface ChatAnswerV1 {
 
 // export: ChatAuxiliaryReadNeedV1
 export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCandidateDiscoveryV1
+export interface ChatCandidateDiscoveryV1 {
+    kind: "bound-anchor" | "scoped-search" | "relationship";
+    callId: string;
+    searchId?: string;
+    queryVariantId?: string;
+    page: number;
+    rank?: number;
+}
+
+// export: ChatCandidateLedgerControllerV1
+export declare class ChatCandidateLedgerControllerV1 {
+    #private;
+    constructor(input: {
+        plan: ChatRetrievalPlanV1;
+        workspace: ResearchWorkspace;
+        siteOrigin: string;
+        expectedSourceIds?: readonly string[];
+        now?: () => number;
+    });
+    initialize(): Promise<void>;
+    replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    plan(): ChatRetrievalPlanV1;
+    snapshot(): ChatCandidateLedgerV1;
+    allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
+    observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
+    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
+    finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
+    assessment(): ChatRetrievalAssessmentV1;
+}
+
+// export: ChatCandidateLedgerEntryV1
+export interface ChatCandidateLedgerEntryV1 {
+    candidateId: string;
+    sourceId: string;
+    product: ResearchProduct;
+    title: string;
+    canonicalUrl: string;
+    authority: "bound" | "scoped-search" | "explicit-relationship";
+    versionsObserved: string[];
+    discoveries: ChatCandidateDiscoveryV1[];
+    state: ChatCandidateStateV1;
+    admittedRank?: number;
+    exclusionReason?: string;
+    deferredReason?: string;
+}
+
+// export: ChatCandidateLedgerV1
+export interface ChatCandidateLedgerV1 {
+    schema: typeof CHAT_CANDIDATE_LEDGER_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    planFingerprint: string;
+    startedAt: string;
+    updatedAt: string;
+    finalizedAt?: string;
+    candidates: ChatCandidateLedgerEntryV1[];
+    searches: ChatSearchLedgerEntryV1[];
+    relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    atlassianHttpCalls: number;
+}
+
+// export: ChatCandidateStateV1
+export type ChatCandidateStateV1 = "discovered" | "admitted" | "detail-read" | "excluded" | "deferred";
 
 // export: ChatCitationV1
 export interface ChatCitationV1 {
@@ -12928,12 +14035,21 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatCritiquePacketV1
+export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatEvidencePacketV1
+export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
     model: BaseChatModel;
     modelId: string;
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
+    reasoningPresentation?: "summary";
+    modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
 // export: ChatModelFactoryInputV1
@@ -12948,6 +14064,16 @@ export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBi
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: ChatPresentationStreamEventV1
+export interface ChatPresentationStreamEventV1 {
+    kind: "chat-presentation";
+    seq: number;
+    at: string;
+    channel: "reasoning-summary" | "answer-markdown";
+    status: "started" | "delta" | "completed";
+    delta?: string;
+}
 
 // export: ChatQualityModeV1
 export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
@@ -12973,6 +14099,111 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRelationshipTraversalKindV1
+export type ChatRelationshipTraversalKindV1 = "confluence-to-jira-reference" | "jira-to-confluence-remote-link";
+
+// export: ChatRelationshipTraversalProposalV1
+export interface ChatRelationshipTraversalProposalV1 {
+    traversalId: string;
+    kind: ChatRelationshipTraversalKindV1;
+    maxDepth: 1;
+}
+
+// export: ChatResolvedRetrievalEntityV1
+export interface ChatResolvedRetrievalEntityV1 {
+    bindingId: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page" | "project" | "space";
+    authority: "approved" | "locked" | "resolved";
+    key?: string;
+    name: string;
+}
+
+// export: ChatRetrievalAnchorV1
+export interface ChatRetrievalAnchorV1 {
+    anchorRef: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: ChatRetrievalAssessmentV1
+export interface ChatRetrievalAssessmentV1 {
+    schema: typeof CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
+    sufficient: boolean;
+    reasons: string[];
+    completionSignals: Array<{
+        signal: ChatRetrievalCompletionSignalV1;
+        satisfied: boolean;
+    }>;
+    metrics: ChatRetrievalMetricsV1;
+}
+
+// export: ChatRetrievalBudgetReservationsV1
+export interface ChatRetrievalBudgetReservationsV1 {
+    directReadCalls: number;
+    discoveryCalls: number;
+    relationshipTraversalCalls: number;
+    repairCalls: number;
+    criticCalls: number;
+    synthesisCalls: 1;
+    totalCalls: number;
+}
+
+// export: ChatRetrievalCompletionSignalV1
+export type ChatRetrievalCompletionSignalV1 = "all-anchors-read" | "all-searches-terminal" | "all-admitted-candidates-terminal" | "relationship-traversals-checked" | "detail-evidence-present" | "query-variants-saturated";
+
+// export: ChatRetrievalMetricsV1
+export interface ChatRetrievalMetricsV1 {
+    discoveredCandidates: number;
+    admittedCandidates: number;
+    detailReadCandidates: number;
+    excludedCandidates: number;
+    deferredCandidates: number;
+    detailReadCoverage: number;
+    canonicalUrlCorrectness: number;
+    observedRecall: number | null;
+    wrongSourceRate: number | null;
+    atlassianHttpCalls: number;
+    latencyMs: number;
+}
+
+// export: ChatRetrievalPlanProposalV1
+export interface ChatRetrievalPlanProposalV1 {
+    searches?: ChatRetrievalSearchProposalV1[];
+    relationshipTraversals?: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms?: string[];
+}
+
+// export: ChatRetrievalPlanV1
+export interface ChatRetrievalPlanV1 {
+    schema: typeof CHAT_RETRIEVAL_PLAN_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    createdAt: string;
+    questionFingerprint: string;
+    anchors: ChatRetrievalAnchorV1[];
+    resolvedEntities: ChatResolvedRetrievalEntityV1[];
+    searches: ChatRetrievalSearchV1[];
+    relationshipTraversals: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms: string[];
+    completionSignals: ChatRetrievalCompletionSignalV1[];
+    budgetReservations: ChatRetrievalBudgetReservationsV1;
+}
+
+// export: ChatRetrievalSearchProposalV1
+export interface ChatRetrievalSearchProposalV1 {
+    searchId: string;
+    product: ResearchProduct;
+    variants: ChatSearchVariantProposalV1[];
+    maxPages: number;
+}
+
+// export: ChatRetrievalSearchV1
+export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
+    scopeBindingIds: string[];
+}
+
 // export: ChatRunSummaryV1
 export interface ChatRunSummaryV1 {
     model: string;
@@ -12981,6 +14212,19 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    retrieval?: {
+        discoveredCandidates: number;
+        admittedCandidates: number;
+        detailReadCandidates: number;
+        excludedCandidates: number;
+        deferredCandidates: number;
+        detailReadCoverage: number;
+        canonicalUrlCorrectness: number;
+        observedRecall: number | null;
+        wrongSourceRate: number | null;
+        atlassianHttpCalls: number;
+        latencyMs: number;
+    };
 }
 
 // export: ChatScopeClarificationReviewV1
@@ -13004,6 +14248,32 @@ export interface ChatScopeClarificationReviewV1 {
             status?: "current" | "archived";
         }>;
     };
+}
+
+// export: ChatSearchLedgerEntryV1
+export interface ChatSearchLedgerEntryV1 {
+    searchId: string;
+    product: ResearchProduct;
+    queryVariantId: string;
+    pagesRead: number;
+    uniqueCandidateCount: number;
+    terminal: boolean;
+    termination?: string;
+}
+
+// export: ChatSearchQueryV1
+export interface ChatSearchQueryV1 {
+    text?: string;
+    labels?: string[];
+    ancestorId?: string;
+    parentId?: string;
+}
+
+// export: ChatSearchVariantProposalV1
+export interface ChatSearchVariantProposalV1 {
+    variantId: string;
+    query: ChatSearchQueryV1;
+    expectedInformationGain?: "high" | "medium" | "low";
 }
 
 // export: ChatSessionStateV1
@@ -13078,6 +14348,35 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatSubagentCapabilityIdV1
+export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
+
+// export: ChatSubagentPacketSchemaV1
+export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: ChatSubagentProfileIdV1
+export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
+
+// export: ChatSubagentProfileV1
+export interface ChatSubagentProfileV1 {
+    id: ChatSubagentProfileIdV1;
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    description: string;
+    systemPrompt: string;
+    grantedCapabilityIds: readonly ChatSubagentCapabilityIdV1[];
+    responseSchemaId: ChatSubagentPacketSchemaV1;
+    responseSchema: Readonly<Record<string, unknown>>;
+    modelPreference: "fast" | "balanced" | "thorough";
+    maxInputChars: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ChatSubagentResultV1
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
@@ -13097,6 +14396,41 @@ export interface ChatTurnRequestV1 {
     scopeSeeds?: ResearchScopeSeedV1[];
     exactContextProducts?: ResearchProduct[];
     locale?: string;
+}
+
+// export: ChatWorkflowAdmissionResponseV1
+export interface ChatWorkflowAdmissionResponseV1 {
+    schema: "atlcli.chat-workflow-admission/v1";
+    completionObjective: "conversation-answer";
+    maxConcurrency: number;
+    synthesizerTaskId: string;
+    dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+// export: ChatWorkflowDispatchV1
+export interface ChatWorkflowDispatchV1 {
+    taskId: string;
+    subagentType: string;
+    objective: string;
+    dependencyTaskIds: readonly string[];
+    description: string;
+    responseSchema: Readonly<Record<string, unknown>>;
+}
+
+// export: ChatWorkflowProposalV1
+export interface ChatWorkflowProposalV1 {
+    schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
+    tasks: ChatWorkflowTaskProposalV1[];
+    maxConcurrency: number;
+    retrievalPlan?: ChatRetrievalPlanProposalV1;
+}
+
+// export: ChatWorkflowTaskProposalV1
+export interface ChatWorkflowTaskProposalV1 {
+    taskId: string;
+    profileId: ChatSubagentProfileIdV1;
+    objective: string;
+    dependencyTaskIds: string[];
 }
 
 // export: classifyResearchError
@@ -13198,6 +14532,23 @@ export declare function createAgenticDispatchInterceptionAdapter(options: Agenti
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
+// export: createChatRetrievalPlanV1
+export declare function createChatRetrievalPlanV1(input: {
+    conversationId: string;
+    turnId: string;
+    question: string;
+    anchors: readonly BoundEntityAnchorV1[];
+    scopeBindings: readonly ResearchScopeBindingV1[];
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    searchProducts: readonly ResearchProduct[];
+    exactContextProducts: readonly ResearchProduct[];
+    limits: ResearchLimitsV1;
+    agentic: boolean;
+    proposal?: ChatRetrievalPlanProposalV1;
+    now?: () => number;
+}): ChatRetrievalPlanV1;
+
 // export: createChatSessionStateV1
 export declare function createChatSessionStateV1(input: {
     conversationId: string;
@@ -13226,6 +14577,22 @@ export declare function createChatStrategyReviewControllerV1(input: {
     tool: DynamicStructuredTool;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
+};
+
+// export: createChatWorkflowProposalControllerV1
+export declare function createChatWorkflowProposalControllerV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    taskContext?: string | (() => string);
+    allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
+    beforeProposal?: () => void;
+    beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+    onAccepted?: (workflow: AcceptedChatWorkflowV1, response: ChatWorkflowAdmissionResponseV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
+    acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
+    assertAccepted(): void;
 };
 
 // export: createHostValidationAbstentionPacketV2
@@ -13443,6 +14810,9 @@ export declare function directChatHasExactCurrentPageV1(request: ResearchRequest
 // export: directChatProductsV1
 export declare function directChatProductsV1(request: ResearchRequestV1): ResearchProduct[];
 
+// export: encodeAgenticTaskDescriptionV1
+export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
+
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
 
@@ -13451,6 +14821,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: extractChatSubagentCandidateV1
+export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
 
 // export: finalizeChatAnswerV1
 export declare function finalizeChatAnswerV1(input: {
@@ -13653,6 +15026,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isChatPresentationStreamEventV1
+export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
+
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
@@ -13788,6 +15164,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: parseChatSubagentResultV1
+export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
 // export: parseReconciliationBodyV1
 export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
@@ -14006,6 +15385,12 @@ export declare function providerCompatibleChatAnswerSchemaV1(): {
     [key: string]: unknown;
 };
 
+// export: providerCompatibleChatJsonSchemaV1
+export declare function providerCompatibleChatJsonSchemaV1(schema: Readonly<Record<string, unknown>>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
 // export: ProviderQualityCapabilityAdapterV1
 export interface ProviderQualityCapabilityAdapterV1 {
     readonly providerId: string;
@@ -14141,6 +15526,7 @@ export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-resear
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
     "model-assessing",
+    "answer-drafting",
     "next-step-ready",
     "answer-draft-ready",
     "bounded-workflow-running",
@@ -15193,6 +16579,7 @@ export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
     replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+    setMaxConcurrency(maxConcurrency: number): void;
     restoreCompleted(results: readonly ResearchTaskDependencyResultV1[]): void;
     appendAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
@@ -15633,6 +17020,7 @@ export interface ResearchGetOutputV1 {
     schema: string;
     source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
     content: BoundedContentProjectionV1;
+    relatedAnchors?: BoundEntityAnchorV1[];
     budget: ResearchBudgetSnapshotV1;
 }
 
@@ -16746,6 +18134,7 @@ export interface ResearchRunOptions {
     }) => void;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -18470,14 +19859,34 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 ### Entry point `./browser/agent`
 
 ```ts
+// export: AcceptedChatWorkflowV1
+export interface AcceptedChatWorkflowV1 {
+    compiled: CompiledAgenticWorkflowV1;
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+    admissions: readonly Readonly<AgenticTaskAdmissionV1>[];
+    profileByTaskId: ReadonlyMap<string, Readonly<ChatSubagentProfileV1>>;
+    synthesizerTaskId: string;
+}
+
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: admitChatWorkflowProposalV1
+export declare function admitChatWorkflowProposalV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    proposal?: ChatWorkflowProposalV1;
+    maxTasks?: number;
+    maxConcurrency?: number;
+}): AcceptedChatWorkflowV1 | undefined;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
     "conversation-answer",
     "research-report"
 ];
+
+// export: AGENTIC_TASK_DISPATCH_SCHEMA_V1
+export declare const AGENTIC_TASK_DISPATCH_SCHEMA_V1: "atlcli.agentic-task-dispatch/v1";
 
 // export: AGENTIC_WORKFLOW_PHASES_V1
 export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
@@ -18529,6 +19938,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
         admission: AgenticTaskAdmissionV1;
     }) => unknown | Promise<unknown>;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    projectResponseFormat?: (responseSchema: Readonly<Record<string, unknown>>, admission: AgenticTaskAdmissionV1) => unknown;
     beforeInvoke?: (input: {
         taskId: string;
         admission: AgenticTaskAdmissionV1;
@@ -18545,6 +19955,14 @@ export interface AgenticDispatchInterceptionOptionsV1 {
 
 // export: AgenticTaskAdmissionV1
 export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskDescriptionV1
+export interface AgenticTaskDescriptionV1 {
+    schema: typeof AGENTIC_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+    dependencyResults?: ResearchTaskDependencyResultV1[];
+}
 
 // export: AgenticTaskToolInputV1
 export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
@@ -18830,6 +20248,7 @@ export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
     strategyDecisionRequired?: boolean;
+    agenticWorkflowRequired?: boolean;
 }): string;
 
 // export: buildChatTurnPromptV1
@@ -18875,11 +20294,13 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     readonly properties: {
         readonly messageMarkdown: {
             readonly type: "string";
+            readonly description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]";
             readonly minLength: 1;
             readonly maxLength: 24000;
         };
         readonly citationSourceIds: {
             readonly type: "array";
+            readonly description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.";
             readonly maxItems: 100;
             readonly items: {
                 readonly type: "string";
@@ -18968,6 +20389,12 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
+// export: CHAT_CANDIDATE_LEDGER_PATH_V1
+export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-ledger.json";
+
+// export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
+export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -18977,6 +20404,53 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.chat-retrieval-assessment/v1";
+
+// export: CHAT_RETRIEVAL_PLAN_PATH_V1
+export declare const CHAT_RETRIEVAL_PLAN_PATH_V1: "/.atlcli/chat/v1/retrieval-plan.json";
+
+// export: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
+    searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        searchId: z.ZodString;
+        product: z.ZodEnum<{
+            jira: "jira";
+            confluence: "confluence";
+        }>;
+        variants: z.ZodArray<z.ZodObject<{
+            variantId: z.ZodString;
+            query: z.ZodObject<{
+                text: z.ZodOptional<z.ZodString>;
+                labels: z.ZodOptional<z.ZodArray<z.ZodString>>;
+                ancestorId: z.ZodOptional<z.ZodString>;
+                parentId: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            expectedInformationGain: z.ZodOptional<z.ZodEnum<{
+                high: "high";
+                low: "low";
+                medium: "medium";
+            }>>;
+        }, z.core.$strict>>;
+        maxPages: z.ZodNumber;
+    }, z.core.$strict>>>;
+    relationshipTraversals: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        traversalId: z.ZodString;
+        kind: z.ZodEnum<{
+            "confluence-to-jira-reference": "confluence-to-jira-reference";
+            "jira-to-confluence-remote-link": "jira-to-confluence-remote-link";
+        }>;
+        maxDepth: z.ZodLiteral<1>;
+    }, z.core.$strict>>>;
+    unresolvedTerms: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+
+// export: CHAT_RETRIEVAL_PLAN_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/v1";
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
@@ -19039,6 +20513,30 @@ export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-r
 // export: CHAT_STRATEGY_STATE_PATH_V1
 export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
 
+// export: CHAT_SUBAGENT_PROFILE_IDS_V1
+export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
+    "exact-context-reader",
+    "confluence-search-reader",
+    "jira-search-reader",
+    "relationship-tracer",
+    "comparison-analyst",
+    "contradiction-checker",
+    "answer-critic",
+    "chat-synthesizer"
+];
+
+// export: CHAT_SUBAGENT_PROFILES_V1
+export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>
+];
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -19050,6 +20548,9 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
+export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -19057,8 +20558,12 @@ export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 export interface ChatAgentRuntimeBindings {
     StateBackend: typeof import("deepagents/browser").StateBackend;
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
 }
+
+// export: ChatAnalysisPacketV1
+export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -19081,6 +20586,72 @@ export interface ChatAnswerV1 {
 
 // export: ChatAuxiliaryReadNeedV1
 export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCandidateDiscoveryV1
+export interface ChatCandidateDiscoveryV1 {
+    kind: "bound-anchor" | "scoped-search" | "relationship";
+    callId: string;
+    searchId?: string;
+    queryVariantId?: string;
+    page: number;
+    rank?: number;
+}
+
+// export: ChatCandidateLedgerControllerV1
+export declare class ChatCandidateLedgerControllerV1 {
+    #private;
+    constructor(input: {
+        plan: ChatRetrievalPlanV1;
+        workspace: ResearchWorkspace;
+        siteOrigin: string;
+        expectedSourceIds?: readonly string[];
+        now?: () => number;
+    });
+    initialize(): Promise<void>;
+    replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    plan(): ChatRetrievalPlanV1;
+    snapshot(): ChatCandidateLedgerV1;
+    allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
+    observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
+    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
+    finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
+    assessment(): ChatRetrievalAssessmentV1;
+}
+
+// export: ChatCandidateLedgerEntryV1
+export interface ChatCandidateLedgerEntryV1 {
+    candidateId: string;
+    sourceId: string;
+    product: ResearchProduct;
+    title: string;
+    canonicalUrl: string;
+    authority: "bound" | "scoped-search" | "explicit-relationship";
+    versionsObserved: string[];
+    discoveries: ChatCandidateDiscoveryV1[];
+    state: ChatCandidateStateV1;
+    admittedRank?: number;
+    exclusionReason?: string;
+    deferredReason?: string;
+}
+
+// export: ChatCandidateLedgerV1
+export interface ChatCandidateLedgerV1 {
+    schema: typeof CHAT_CANDIDATE_LEDGER_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    planFingerprint: string;
+    startedAt: string;
+    updatedAt: string;
+    finalizedAt?: string;
+    candidates: ChatCandidateLedgerEntryV1[];
+    searches: ChatSearchLedgerEntryV1[];
+    relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    atlassianHttpCalls: number;
+}
+
+// export: ChatCandidateStateV1
+export type ChatCandidateStateV1 = "discovered" | "admitted" | "detail-read" | "excluded" | "deferred";
 
 // export: ChatCitationV1
 export interface ChatCitationV1 {
@@ -19105,12 +20676,21 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatCritiquePacketV1
+export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatEvidencePacketV1
+export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
     model: BaseChatModel;
     modelId: string;
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
+    reasoningPresentation?: "summary";
+    modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
 // export: ChatModelFactoryInputV1
@@ -19125,6 +20705,16 @@ export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBi
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: ChatPresentationStreamEventV1
+export interface ChatPresentationStreamEventV1 {
+    kind: "chat-presentation";
+    seq: number;
+    at: string;
+    channel: "reasoning-summary" | "answer-markdown";
+    status: "started" | "delta" | "completed";
+    delta?: string;
+}
 
 // export: ChatQualityModeV1
 export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
@@ -19150,6 +20740,111 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRelationshipTraversalKindV1
+export type ChatRelationshipTraversalKindV1 = "confluence-to-jira-reference" | "jira-to-confluence-remote-link";
+
+// export: ChatRelationshipTraversalProposalV1
+export interface ChatRelationshipTraversalProposalV1 {
+    traversalId: string;
+    kind: ChatRelationshipTraversalKindV1;
+    maxDepth: 1;
+}
+
+// export: ChatResolvedRetrievalEntityV1
+export interface ChatResolvedRetrievalEntityV1 {
+    bindingId: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page" | "project" | "space";
+    authority: "approved" | "locked" | "resolved";
+    key?: string;
+    name: string;
+}
+
+// export: ChatRetrievalAnchorV1
+export interface ChatRetrievalAnchorV1 {
+    anchorRef: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: ChatRetrievalAssessmentV1
+export interface ChatRetrievalAssessmentV1 {
+    schema: typeof CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
+    sufficient: boolean;
+    reasons: string[];
+    completionSignals: Array<{
+        signal: ChatRetrievalCompletionSignalV1;
+        satisfied: boolean;
+    }>;
+    metrics: ChatRetrievalMetricsV1;
+}
+
+// export: ChatRetrievalBudgetReservationsV1
+export interface ChatRetrievalBudgetReservationsV1 {
+    directReadCalls: number;
+    discoveryCalls: number;
+    relationshipTraversalCalls: number;
+    repairCalls: number;
+    criticCalls: number;
+    synthesisCalls: 1;
+    totalCalls: number;
+}
+
+// export: ChatRetrievalCompletionSignalV1
+export type ChatRetrievalCompletionSignalV1 = "all-anchors-read" | "all-searches-terminal" | "all-admitted-candidates-terminal" | "relationship-traversals-checked" | "detail-evidence-present" | "query-variants-saturated";
+
+// export: ChatRetrievalMetricsV1
+export interface ChatRetrievalMetricsV1 {
+    discoveredCandidates: number;
+    admittedCandidates: number;
+    detailReadCandidates: number;
+    excludedCandidates: number;
+    deferredCandidates: number;
+    detailReadCoverage: number;
+    canonicalUrlCorrectness: number;
+    observedRecall: number | null;
+    wrongSourceRate: number | null;
+    atlassianHttpCalls: number;
+    latencyMs: number;
+}
+
+// export: ChatRetrievalPlanProposalV1
+export interface ChatRetrievalPlanProposalV1 {
+    searches?: ChatRetrievalSearchProposalV1[];
+    relationshipTraversals?: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms?: string[];
+}
+
+// export: ChatRetrievalPlanV1
+export interface ChatRetrievalPlanV1 {
+    schema: typeof CHAT_RETRIEVAL_PLAN_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    createdAt: string;
+    questionFingerprint: string;
+    anchors: ChatRetrievalAnchorV1[];
+    resolvedEntities: ChatResolvedRetrievalEntityV1[];
+    searches: ChatRetrievalSearchV1[];
+    relationshipTraversals: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms: string[];
+    completionSignals: ChatRetrievalCompletionSignalV1[];
+    budgetReservations: ChatRetrievalBudgetReservationsV1;
+}
+
+// export: ChatRetrievalSearchProposalV1
+export interface ChatRetrievalSearchProposalV1 {
+    searchId: string;
+    product: ResearchProduct;
+    variants: ChatSearchVariantProposalV1[];
+    maxPages: number;
+}
+
+// export: ChatRetrievalSearchV1
+export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
+    scopeBindingIds: string[];
+}
+
 // export: ChatRunSummaryV1
 export interface ChatRunSummaryV1 {
     model: string;
@@ -19158,6 +20853,19 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    retrieval?: {
+        discoveredCandidates: number;
+        admittedCandidates: number;
+        detailReadCandidates: number;
+        excludedCandidates: number;
+        deferredCandidates: number;
+        detailReadCoverage: number;
+        canonicalUrlCorrectness: number;
+        observedRecall: number | null;
+        wrongSourceRate: number | null;
+        atlassianHttpCalls: number;
+        latencyMs: number;
+    };
 }
 
 // export: ChatScopeClarificationReviewV1
@@ -19181,6 +20889,32 @@ export interface ChatScopeClarificationReviewV1 {
             status?: "current" | "archived";
         }>;
     };
+}
+
+// export: ChatSearchLedgerEntryV1
+export interface ChatSearchLedgerEntryV1 {
+    searchId: string;
+    product: ResearchProduct;
+    queryVariantId: string;
+    pagesRead: number;
+    uniqueCandidateCount: number;
+    terminal: boolean;
+    termination?: string;
+}
+
+// export: ChatSearchQueryV1
+export interface ChatSearchQueryV1 {
+    text?: string;
+    labels?: string[];
+    ancestorId?: string;
+    parentId?: string;
+}
+
+// export: ChatSearchVariantProposalV1
+export interface ChatSearchVariantProposalV1 {
+    variantId: string;
+    query: ChatSearchQueryV1;
+    expectedInformationGain?: "high" | "medium" | "low";
 }
 
 // export: ChatSessionStateV1
@@ -19255,6 +20989,35 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatSubagentCapabilityIdV1
+export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
+
+// export: ChatSubagentPacketSchemaV1
+export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: ChatSubagentProfileIdV1
+export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
+
+// export: ChatSubagentProfileV1
+export interface ChatSubagentProfileV1 {
+    id: ChatSubagentProfileIdV1;
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    description: string;
+    systemPrompt: string;
+    grantedCapabilityIds: readonly ChatSubagentCapabilityIdV1[];
+    responseSchemaId: ChatSubagentPacketSchemaV1;
+    responseSchema: Readonly<Record<string, unknown>>;
+    modelPreference: "fast" | "balanced" | "thorough";
+    maxInputChars: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ChatSubagentResultV1
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
@@ -19274,6 +21037,41 @@ export interface ChatTurnRequestV1 {
     scopeSeeds?: ResearchScopeSeedV1[];
     exactContextProducts?: ResearchProduct[];
     locale?: string;
+}
+
+// export: ChatWorkflowAdmissionResponseV1
+export interface ChatWorkflowAdmissionResponseV1 {
+    schema: "atlcli.chat-workflow-admission/v1";
+    completionObjective: "conversation-answer";
+    maxConcurrency: number;
+    synthesizerTaskId: string;
+    dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+// export: ChatWorkflowDispatchV1
+export interface ChatWorkflowDispatchV1 {
+    taskId: string;
+    subagentType: string;
+    objective: string;
+    dependencyTaskIds: readonly string[];
+    description: string;
+    responseSchema: Readonly<Record<string, unknown>>;
+}
+
+// export: ChatWorkflowProposalV1
+export interface ChatWorkflowProposalV1 {
+    schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
+    tasks: ChatWorkflowTaskProposalV1[];
+    maxConcurrency: number;
+    retrievalPlan?: ChatRetrievalPlanProposalV1;
+}
+
+// export: ChatWorkflowTaskProposalV1
+export interface ChatWorkflowTaskProposalV1 {
+    taskId: string;
+    profileId: ChatSubagentProfileIdV1;
+    objective: string;
+    dependencyTaskIds: string[];
 }
 
 // export: classifyResearchError
@@ -19464,6 +21262,23 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
+// export: createChatRetrievalPlanV1
+export declare function createChatRetrievalPlanV1(input: {
+    conversationId: string;
+    turnId: string;
+    question: string;
+    anchors: readonly BoundEntityAnchorV1[];
+    scopeBindings: readonly ResearchScopeBindingV1[];
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    searchProducts: readonly ResearchProduct[];
+    exactContextProducts: readonly ResearchProduct[];
+    limits: ResearchLimitsV1;
+    agentic: boolean;
+    proposal?: ChatRetrievalPlanProposalV1;
+    now?: () => number;
+}): ChatRetrievalPlanV1;
+
 // export: createChatSessionStateV1
 export declare function createChatSessionStateV1(input: {
     conversationId: string;
@@ -19492,6 +21307,22 @@ export declare function createChatStrategyReviewControllerV1(input: {
     tool: DynamicStructuredTool;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
+};
+
+// export: createChatWorkflowProposalControllerV1
+export declare function createChatWorkflowProposalControllerV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    taskContext?: string | (() => string);
+    allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
+    beforeProposal?: () => void;
+    beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+    onAccepted?: (workflow: AcceptedChatWorkflowV1, response: ChatWorkflowAdmissionResponseV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
+    acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
+    assertAccepted(): void;
 };
 
 // export: createHostValidationAbstentionPacketV2
@@ -19800,6 +21631,9 @@ export interface DynamicResearchSubagentOptions {
     now?: () => number;
 }
 
+// export: encodeAgenticTaskDescriptionV1
+export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
+
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
 
@@ -19808,6 +21642,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: extractChatSubagentCandidateV1
+export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
 
 // export: extractResearchStructuredCandidateV1
 export declare function extractResearchStructuredCandidateV1(result: unknown): unknown;
@@ -20013,6 +21850,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isChatPresentationStreamEventV1
+export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
+
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
@@ -20148,6 +21988,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: parseChatSubagentResultV1
+export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
 // export: parseReconciliationBodyV1
 export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
@@ -20369,6 +22212,12 @@ export declare function providerCompatibleChatAnswerSchemaV1(): {
     [key: string]: unknown;
 };
 
+// export: providerCompatibleChatJsonSchemaV1
+export declare function providerCompatibleChatJsonSchemaV1(schema: Readonly<Record<string, unknown>>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
     type: "object";
@@ -20510,6 +22359,7 @@ export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-resear
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
     "model-assessing",
+    "answer-drafting",
     "next-step-ready",
     "answer-draft-ready",
     "bounded-workflow-running",
@@ -21636,6 +23486,7 @@ export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
     replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+    setMaxConcurrency(maxConcurrency: number): void;
     restoreCompleted(results: readonly ResearchTaskDependencyResultV1[]): void;
     appendAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
@@ -22076,6 +23927,7 @@ export interface ResearchGetOutputV1 {
     schema: string;
     source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
     content: BoundedContentProjectionV1;
+    relatedAnchors?: BoundEntityAnchorV1[];
     budget: ResearchBudgetSnapshotV1;
 }
 
@@ -22780,8 +24632,12 @@ export declare function researchPtcToolNamesForNodeV1(node: Pick<ResearchGraphNo
 // export: ResearchPtcToolOptions
 export interface ResearchPtcToolOptions {
     onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown, callId: string) => void | Promise<void>;
+    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown, callId: string, input?: unknown) => void | Promise<void>;
+    beforeInvoke?: (tool: ResearchGraphCapabilityV1, input: unknown, callId: string, inputKind: ResearchPtcDiagnosticV1["inputKind"]) => void | Promise<void>;
     now?: () => number;
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    singleInitialQuery?: boolean;
 }
 
 // export: researchQueryFingerprint
@@ -23229,6 +25085,7 @@ export interface ResearchRunOptions {
     }) => void;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -24841,8 +26698,11 @@ export interface RunChatAgentInput {
     now?: () => number;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
+    onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+    onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
 }
 
 // export: runResearchAgent
@@ -25063,14 +26923,34 @@ export declare class WorkspaceResearchOutlineStoreV1 implements ResearchOutlineS
 ### Entry point `./bun`
 
 ```ts
+// export: AcceptedChatWorkflowV1
+export interface AcceptedChatWorkflowV1 {
+    compiled: CompiledAgenticWorkflowV1;
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+    admissions: readonly Readonly<AgenticTaskAdmissionV1>[];
+    profileByTaskId: ReadonlyMap<string, Readonly<ChatSubagentProfileV1>>;
+    synthesizerTaskId: string;
+}
+
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: admitChatWorkflowProposalV1
+export declare function admitChatWorkflowProposalV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    proposal?: ChatWorkflowProposalV1;
+    maxTasks?: number;
+    maxConcurrency?: number;
+}): AcceptedChatWorkflowV1 | undefined;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
     "conversation-answer",
     "research-report"
 ];
+
+// export: AGENTIC_TASK_DISPATCH_SCHEMA_V1
+export declare const AGENTIC_TASK_DISPATCH_SCHEMA_V1: "atlcli.agentic-task-dispatch/v1";
 
 // export: AGENTIC_WORKFLOW_PHASES_V1
 export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
@@ -25122,6 +27002,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
         admission: AgenticTaskAdmissionV1;
     }) => unknown | Promise<unknown>;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    projectResponseFormat?: (responseSchema: Readonly<Record<string, unknown>>, admission: AgenticTaskAdmissionV1) => unknown;
     beforeInvoke?: (input: {
         taskId: string;
         admission: AgenticTaskAdmissionV1;
@@ -25138,6 +27019,14 @@ export interface AgenticDispatchInterceptionOptionsV1 {
 
 // export: AgenticTaskAdmissionV1
 export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskDescriptionV1
+export interface AgenticTaskDescriptionV1 {
+    schema: typeof AGENTIC_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+    dependencyResults?: ResearchTaskDependencyResultV1[];
+}
 
 // export: AgenticTaskToolInputV1
 export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
@@ -25423,6 +27312,7 @@ export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
     strategyDecisionRequired?: boolean;
+    agenticWorkflowRequired?: boolean;
 }): string;
 
 // export: buildChatTurnPromptV1
@@ -25468,11 +27358,13 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     readonly properties: {
         readonly messageMarkdown: {
             readonly type: "string";
+            readonly description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]";
             readonly minLength: 1;
             readonly maxLength: 24000;
         };
         readonly citationSourceIds: {
             readonly type: "array";
+            readonly description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.";
             readonly maxItems: 100;
             readonly items: {
                 readonly type: "string";
@@ -25561,6 +27453,12 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
+// export: CHAT_CANDIDATE_LEDGER_PATH_V1
+export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-ledger.json";
+
+// export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
+export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -25570,6 +27468,53 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.chat-retrieval-assessment/v1";
+
+// export: CHAT_RETRIEVAL_PLAN_PATH_V1
+export declare const CHAT_RETRIEVAL_PLAN_PATH_V1: "/.atlcli/chat/v1/retrieval-plan.json";
+
+// export: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
+    searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        searchId: z.ZodString;
+        product: z.ZodEnum<{
+            jira: "jira";
+            confluence: "confluence";
+        }>;
+        variants: z.ZodArray<z.ZodObject<{
+            variantId: z.ZodString;
+            query: z.ZodObject<{
+                text: z.ZodOptional<z.ZodString>;
+                labels: z.ZodOptional<z.ZodArray<z.ZodString>>;
+                ancestorId: z.ZodOptional<z.ZodString>;
+                parentId: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            expectedInformationGain: z.ZodOptional<z.ZodEnum<{
+                high: "high";
+                low: "low";
+                medium: "medium";
+            }>>;
+        }, z.core.$strict>>;
+        maxPages: z.ZodNumber;
+    }, z.core.$strict>>>;
+    relationshipTraversals: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        traversalId: z.ZodString;
+        kind: z.ZodEnum<{
+            "confluence-to-jira-reference": "confluence-to-jira-reference";
+            "jira-to-confluence-remote-link": "jira-to-confluence-remote-link";
+        }>;
+        maxDepth: z.ZodLiteral<1>;
+    }, z.core.$strict>>>;
+    unresolvedTerms: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+
+// export: CHAT_RETRIEVAL_PLAN_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/v1";
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
@@ -25632,6 +27577,30 @@ export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-r
 // export: CHAT_STRATEGY_STATE_PATH_V1
 export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
 
+// export: CHAT_SUBAGENT_PROFILE_IDS_V1
+export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
+    "exact-context-reader",
+    "confluence-search-reader",
+    "jira-search-reader",
+    "relationship-tracer",
+    "comparison-analyst",
+    "contradiction-checker",
+    "answer-critic",
+    "chat-synthesizer"
+];
+
+// export: CHAT_SUBAGENT_PROFILES_V1
+export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>
+];
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -25643,6 +27612,9 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
+export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -25650,8 +27622,12 @@ export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 export interface ChatAgentRuntimeBindings {
     StateBackend: typeof import("deepagents/browser").StateBackend;
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
 }
+
+// export: ChatAnalysisPacketV1
+export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -25674,6 +27650,72 @@ export interface ChatAnswerV1 {
 
 // export: ChatAuxiliaryReadNeedV1
 export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCandidateDiscoveryV1
+export interface ChatCandidateDiscoveryV1 {
+    kind: "bound-anchor" | "scoped-search" | "relationship";
+    callId: string;
+    searchId?: string;
+    queryVariantId?: string;
+    page: number;
+    rank?: number;
+}
+
+// export: ChatCandidateLedgerControllerV1
+export declare class ChatCandidateLedgerControllerV1 {
+    #private;
+    constructor(input: {
+        plan: ChatRetrievalPlanV1;
+        workspace: ResearchWorkspace;
+        siteOrigin: string;
+        expectedSourceIds?: readonly string[];
+        now?: () => number;
+    });
+    initialize(): Promise<void>;
+    replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    plan(): ChatRetrievalPlanV1;
+    snapshot(): ChatCandidateLedgerV1;
+    allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
+    observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
+    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
+    finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
+    assessment(): ChatRetrievalAssessmentV1;
+}
+
+// export: ChatCandidateLedgerEntryV1
+export interface ChatCandidateLedgerEntryV1 {
+    candidateId: string;
+    sourceId: string;
+    product: ResearchProduct;
+    title: string;
+    canonicalUrl: string;
+    authority: "bound" | "scoped-search" | "explicit-relationship";
+    versionsObserved: string[];
+    discoveries: ChatCandidateDiscoveryV1[];
+    state: ChatCandidateStateV1;
+    admittedRank?: number;
+    exclusionReason?: string;
+    deferredReason?: string;
+}
+
+// export: ChatCandidateLedgerV1
+export interface ChatCandidateLedgerV1 {
+    schema: typeof CHAT_CANDIDATE_LEDGER_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    planFingerprint: string;
+    startedAt: string;
+    updatedAt: string;
+    finalizedAt?: string;
+    candidates: ChatCandidateLedgerEntryV1[];
+    searches: ChatSearchLedgerEntryV1[];
+    relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    atlassianHttpCalls: number;
+}
+
+// export: ChatCandidateStateV1
+export type ChatCandidateStateV1 = "discovered" | "admitted" | "detail-read" | "excluded" | "deferred";
 
 // export: ChatCitationV1
 export interface ChatCitationV1 {
@@ -25698,12 +27740,21 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatCritiquePacketV1
+export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatEvidencePacketV1
+export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
     model: BaseChatModel;
     modelId: string;
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
+    reasoningPresentation?: "summary";
+    modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
 // export: ChatModelFactoryInputV1
@@ -25718,6 +27769,16 @@ export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBi
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: ChatPresentationStreamEventV1
+export interface ChatPresentationStreamEventV1 {
+    kind: "chat-presentation";
+    seq: number;
+    at: string;
+    channel: "reasoning-summary" | "answer-markdown";
+    status: "started" | "delta" | "completed";
+    delta?: string;
+}
 
 // export: ChatQualityModeV1
 export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
@@ -25743,6 +27804,111 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRelationshipTraversalKindV1
+export type ChatRelationshipTraversalKindV1 = "confluence-to-jira-reference" | "jira-to-confluence-remote-link";
+
+// export: ChatRelationshipTraversalProposalV1
+export interface ChatRelationshipTraversalProposalV1 {
+    traversalId: string;
+    kind: ChatRelationshipTraversalKindV1;
+    maxDepth: 1;
+}
+
+// export: ChatResolvedRetrievalEntityV1
+export interface ChatResolvedRetrievalEntityV1 {
+    bindingId: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page" | "project" | "space";
+    authority: "approved" | "locked" | "resolved";
+    key?: string;
+    name: string;
+}
+
+// export: ChatRetrievalAnchorV1
+export interface ChatRetrievalAnchorV1 {
+    anchorRef: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: ChatRetrievalAssessmentV1
+export interface ChatRetrievalAssessmentV1 {
+    schema: typeof CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
+    sufficient: boolean;
+    reasons: string[];
+    completionSignals: Array<{
+        signal: ChatRetrievalCompletionSignalV1;
+        satisfied: boolean;
+    }>;
+    metrics: ChatRetrievalMetricsV1;
+}
+
+// export: ChatRetrievalBudgetReservationsV1
+export interface ChatRetrievalBudgetReservationsV1 {
+    directReadCalls: number;
+    discoveryCalls: number;
+    relationshipTraversalCalls: number;
+    repairCalls: number;
+    criticCalls: number;
+    synthesisCalls: 1;
+    totalCalls: number;
+}
+
+// export: ChatRetrievalCompletionSignalV1
+export type ChatRetrievalCompletionSignalV1 = "all-anchors-read" | "all-searches-terminal" | "all-admitted-candidates-terminal" | "relationship-traversals-checked" | "detail-evidence-present" | "query-variants-saturated";
+
+// export: ChatRetrievalMetricsV1
+export interface ChatRetrievalMetricsV1 {
+    discoveredCandidates: number;
+    admittedCandidates: number;
+    detailReadCandidates: number;
+    excludedCandidates: number;
+    deferredCandidates: number;
+    detailReadCoverage: number;
+    canonicalUrlCorrectness: number;
+    observedRecall: number | null;
+    wrongSourceRate: number | null;
+    atlassianHttpCalls: number;
+    latencyMs: number;
+}
+
+// export: ChatRetrievalPlanProposalV1
+export interface ChatRetrievalPlanProposalV1 {
+    searches?: ChatRetrievalSearchProposalV1[];
+    relationshipTraversals?: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms?: string[];
+}
+
+// export: ChatRetrievalPlanV1
+export interface ChatRetrievalPlanV1 {
+    schema: typeof CHAT_RETRIEVAL_PLAN_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    createdAt: string;
+    questionFingerprint: string;
+    anchors: ChatRetrievalAnchorV1[];
+    resolvedEntities: ChatResolvedRetrievalEntityV1[];
+    searches: ChatRetrievalSearchV1[];
+    relationshipTraversals: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms: string[];
+    completionSignals: ChatRetrievalCompletionSignalV1[];
+    budgetReservations: ChatRetrievalBudgetReservationsV1;
+}
+
+// export: ChatRetrievalSearchProposalV1
+export interface ChatRetrievalSearchProposalV1 {
+    searchId: string;
+    product: ResearchProduct;
+    variants: ChatSearchVariantProposalV1[];
+    maxPages: number;
+}
+
+// export: ChatRetrievalSearchV1
+export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
+    scopeBindingIds: string[];
+}
+
 // export: ChatRunSummaryV1
 export interface ChatRunSummaryV1 {
     model: string;
@@ -25751,6 +27917,19 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    retrieval?: {
+        discoveredCandidates: number;
+        admittedCandidates: number;
+        detailReadCandidates: number;
+        excludedCandidates: number;
+        deferredCandidates: number;
+        detailReadCoverage: number;
+        canonicalUrlCorrectness: number;
+        observedRecall: number | null;
+        wrongSourceRate: number | null;
+        atlassianHttpCalls: number;
+        latencyMs: number;
+    };
 }
 
 // export: ChatScopeClarificationReviewV1
@@ -25774,6 +27953,32 @@ export interface ChatScopeClarificationReviewV1 {
             status?: "current" | "archived";
         }>;
     };
+}
+
+// export: ChatSearchLedgerEntryV1
+export interface ChatSearchLedgerEntryV1 {
+    searchId: string;
+    product: ResearchProduct;
+    queryVariantId: string;
+    pagesRead: number;
+    uniqueCandidateCount: number;
+    terminal: boolean;
+    termination?: string;
+}
+
+// export: ChatSearchQueryV1
+export interface ChatSearchQueryV1 {
+    text?: string;
+    labels?: string[];
+    ancestorId?: string;
+    parentId?: string;
+}
+
+// export: ChatSearchVariantProposalV1
+export interface ChatSearchVariantProposalV1 {
+    variantId: string;
+    query: ChatSearchQueryV1;
+    expectedInformationGain?: "high" | "medium" | "low";
 }
 
 // export: ChatSessionStateV1
@@ -25848,6 +28053,35 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatSubagentCapabilityIdV1
+export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
+
+// export: ChatSubagentPacketSchemaV1
+export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: ChatSubagentProfileIdV1
+export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
+
+// export: ChatSubagentProfileV1
+export interface ChatSubagentProfileV1 {
+    id: ChatSubagentProfileIdV1;
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    description: string;
+    systemPrompt: string;
+    grantedCapabilityIds: readonly ChatSubagentCapabilityIdV1[];
+    responseSchemaId: ChatSubagentPacketSchemaV1;
+    responseSchema: Readonly<Record<string, unknown>>;
+    modelPreference: "fast" | "balanced" | "thorough";
+    maxInputChars: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ChatSubagentResultV1
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
@@ -25867,6 +28101,41 @@ export interface ChatTurnRequestV1 {
     scopeSeeds?: ResearchScopeSeedV1[];
     exactContextProducts?: ResearchProduct[];
     locale?: string;
+}
+
+// export: ChatWorkflowAdmissionResponseV1
+export interface ChatWorkflowAdmissionResponseV1 {
+    schema: "atlcli.chat-workflow-admission/v1";
+    completionObjective: "conversation-answer";
+    maxConcurrency: number;
+    synthesizerTaskId: string;
+    dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+// export: ChatWorkflowDispatchV1
+export interface ChatWorkflowDispatchV1 {
+    taskId: string;
+    subagentType: string;
+    objective: string;
+    dependencyTaskIds: readonly string[];
+    description: string;
+    responseSchema: Readonly<Record<string, unknown>>;
+}
+
+// export: ChatWorkflowProposalV1
+export interface ChatWorkflowProposalV1 {
+    schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
+    tasks: ChatWorkflowTaskProposalV1[];
+    maxConcurrency: number;
+    retrievalPlan?: ChatRetrievalPlanProposalV1;
+}
+
+// export: ChatWorkflowTaskProposalV1
+export interface ChatWorkflowTaskProposalV1 {
+    taskId: string;
+    profileId: ChatSubagentProfileIdV1;
+    objective: string;
+    dependencyTaskIds: string[];
 }
 
 // export: classifyResearchError
@@ -26057,6 +28326,23 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
+// export: createChatRetrievalPlanV1
+export declare function createChatRetrievalPlanV1(input: {
+    conversationId: string;
+    turnId: string;
+    question: string;
+    anchors: readonly BoundEntityAnchorV1[];
+    scopeBindings: readonly ResearchScopeBindingV1[];
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    searchProducts: readonly ResearchProduct[];
+    exactContextProducts: readonly ResearchProduct[];
+    limits: ResearchLimitsV1;
+    agentic: boolean;
+    proposal?: ChatRetrievalPlanProposalV1;
+    now?: () => number;
+}): ChatRetrievalPlanV1;
+
 // export: createChatSessionStateV1
 export declare function createChatSessionStateV1(input: {
     conversationId: string;
@@ -26085,6 +28371,22 @@ export declare function createChatStrategyReviewControllerV1(input: {
     tool: DynamicStructuredTool;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
+};
+
+// export: createChatWorkflowProposalControllerV1
+export declare function createChatWorkflowProposalControllerV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    taskContext?: string | (() => string);
+    allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
+    beforeProposal?: () => void;
+    beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+    onAccepted?: (workflow: AcceptedChatWorkflowV1, response: ChatWorkflowAdmissionResponseV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
+    acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
+    assertAccepted(): void;
 };
 
 // export: createHostValidationAbstentionPacketV2
@@ -26393,6 +28695,9 @@ export interface DynamicResearchSubagentOptions {
     now?: () => number;
 }
 
+// export: encodeAgenticTaskDescriptionV1
+export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
+
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
 
@@ -26401,6 +28706,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: extractChatSubagentCandidateV1
+export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
 
 // export: extractResearchStructuredCandidateV1
 export declare function extractResearchStructuredCandidateV1(result: unknown): unknown;
@@ -26621,6 +28929,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isChatPresentationStreamEventV1
+export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
+
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
@@ -26756,6 +29067,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: parseChatSubagentResultV1
+export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
 // export: parseReconciliationBodyV1
 export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
@@ -26977,6 +29291,12 @@ export declare function providerCompatibleChatAnswerSchemaV1(): {
     [key: string]: unknown;
 };
 
+// export: providerCompatibleChatJsonSchemaV1
+export declare function providerCompatibleChatJsonSchemaV1(schema: Readonly<Record<string, unknown>>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
     type: "object";
@@ -27118,6 +29438,7 @@ export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-resear
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
     "model-assessing",
+    "answer-drafting",
     "next-step-ready",
     "answer-draft-ready",
     "bounded-workflow-running",
@@ -28244,6 +30565,7 @@ export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
     replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+    setMaxConcurrency(maxConcurrency: number): void;
     restoreCompleted(results: readonly ResearchTaskDependencyResultV1[]): void;
     appendAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
@@ -28684,6 +31006,7 @@ export interface ResearchGetOutputV1 {
     schema: string;
     source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
     content: BoundedContentProjectionV1;
+    relatedAnchors?: BoundEntityAnchorV1[];
     budget: ResearchBudgetSnapshotV1;
 }
 
@@ -29388,8 +31711,12 @@ export declare function researchPtcToolNamesForNodeV1(node: Pick<ResearchGraphNo
 // export: ResearchPtcToolOptions
 export interface ResearchPtcToolOptions {
     onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown, callId: string) => void | Promise<void>;
+    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown, callId: string, input?: unknown) => void | Promise<void>;
+    beforeInvoke?: (tool: ResearchGraphCapabilityV1, input: unknown, callId: string, inputKind: ResearchPtcDiagnosticV1["inputKind"]) => void | Promise<void>;
     now?: () => number;
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    singleInitialQuery?: boolean;
 }
 
 // export: researchQueryFingerprint
@@ -29837,6 +32164,7 @@ export interface ResearchRunOptions {
     }) => void;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -31443,8 +33771,11 @@ export interface RunChatAgentInput {
     now?: () => number;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
+    onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+    onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
 }
 
 // export: runResearchAgent
@@ -31931,6 +34262,7 @@ export interface ResearchGetOutputV1 {
     schema: string;
     source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
     content: BoundedContentProjectionV1;
+    relatedAnchors?: BoundEntityAnchorV1[];
     budget: ResearchBudgetSnapshotV1;
 }
 
@@ -31983,11 +34315,13 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     readonly properties: {
         readonly messageMarkdown: {
             readonly type: "string";
+            readonly description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]";
             readonly minLength: 1;
             readonly maxLength: 24000;
         };
         readonly citationSourceIds: {
             readonly type: "array";
+            readonly description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.";
             readonly maxItems: 100;
             readonly items: {
                 readonly type: "string";
@@ -32138,6 +34472,19 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    retrieval?: {
+        discoveredCandidates: number;
+        admittedCandidates: number;
+        detailReadCandidates: number;
+        excludedCandidates: number;
+        deferredCandidates: number;
+        detailReadCoverage: number;
+        canonicalUrlCorrectness: number;
+        observedRecall: number | null;
+        wrongSourceRate: number | null;
+        atlassianHttpCalls: number;
+        latencyMs: number;
+    };
 }
 
 // export: ChatSessionStateV1
@@ -32194,6 +34541,12 @@ export declare function providerCompatibleChatAnswerSchemaV1(): {
     type: "object";
     [key: string]: unknown;
 };
+
+// export: providerCompatibleChatJsonSchemaV1
+export declare function providerCompatibleChatJsonSchemaV1(schema: Readonly<Record<string, unknown>>): {
+    type: "object";
+    [key: string]: unknown;
+};
 ```
 
 ### Entry point `./contracts`
@@ -32226,6 +34579,16 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: ChatPresentationStreamEventV1
+export interface ChatPresentationStreamEventV1 {
+    kind: "chat-presentation";
+    seq: number;
+    at: string;
+    channel: "reasoning-summary" | "answer-markdown";
+    status: "started" | "delta" | "completed";
+    delta?: string;
+}
 
 // export: ChatQualityModeV1
 export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
@@ -32285,6 +34648,7 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
     "model-assessing",
+    "answer-drafting",
     "next-step-ready",
     "answer-draft-ready",
     "bounded-workflow-running",
@@ -32908,6 +35272,7 @@ export interface ResearchRunOptions {
     }) => void;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -33001,6 +35366,9 @@ export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 ```ts
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: isChatPresentationStreamEventV1
+export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
 
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
@@ -33390,14 +35758,34 @@ export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 ### Entry point `./node`
 
 ```ts
+// export: AcceptedChatWorkflowV1
+export interface AcceptedChatWorkflowV1 {
+    compiled: CompiledAgenticWorkflowV1;
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+    admissions: readonly Readonly<AgenticTaskAdmissionV1>[];
+    profileByTaskId: ReadonlyMap<string, Readonly<ChatSubagentProfileV1>>;
+    synthesizerTaskId: string;
+}
+
 // export: acceptResearchGraphProposalV1
 export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: admitChatWorkflowProposalV1
+export declare function admitChatWorkflowProposalV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    proposal?: ChatWorkflowProposalV1;
+    maxTasks?: number;
+    maxConcurrency?: number;
+}): AcceptedChatWorkflowV1 | undefined;
 
 // export: AGENTIC_COMPLETION_OBJECTIVES_V1
 export declare const AGENTIC_COMPLETION_OBJECTIVES_V1: readonly [
     "conversation-answer",
     "research-report"
 ];
+
+// export: AGENTIC_TASK_DISPATCH_SCHEMA_V1
+export declare const AGENTIC_TASK_DISPATCH_SCHEMA_V1: "atlcli.agentic-task-dispatch/v1";
 
 // export: AGENTIC_WORKFLOW_PHASES_V1
 export declare const AGENTIC_WORKFLOW_PHASES_V1: readonly [
@@ -33449,6 +35837,7 @@ export interface AgenticDispatchInterceptionOptionsV1 {
         admission: AgenticTaskAdmissionV1;
     }) => unknown | Promise<unknown>;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    projectResponseFormat?: (responseSchema: Readonly<Record<string, unknown>>, admission: AgenticTaskAdmissionV1) => unknown;
     beforeInvoke?: (input: {
         taskId: string;
         admission: AgenticTaskAdmissionV1;
@@ -33465,6 +35854,14 @@ export interface AgenticDispatchInterceptionOptionsV1 {
 
 // export: AgenticTaskAdmissionV1
 export type AgenticTaskAdmissionV1 = ResearchTaskAdmissionV1;
+
+// export: AgenticTaskDescriptionV1
+export interface AgenticTaskDescriptionV1 {
+    schema: typeof AGENTIC_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+    dependencyResults?: ResearchTaskDependencyResultV1[];
+}
 
 // export: AgenticTaskToolInputV1
 export type AgenticTaskToolInputV1 = ResearchTaskToolInputV1;
@@ -33750,6 +36147,7 @@ export declare function buildChatSystemPromptV1(input: {
     qualityMode: ChatQualityModeV1;
     maxDetailItemsPerProduct: number;
     strategyDecisionRequired?: boolean;
+    agenticWorkflowRequired?: boolean;
 }): string;
 
 // export: buildChatTurnPromptV1
@@ -33795,11 +36193,13 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     readonly properties: {
         readonly messageMarkdown: {
             readonly type: "string";
+            readonly description: "Conversational Markdown. Every evidence-derived factual paragraph must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied verbatim from accepted dependency packets. Example: The implementation is complete. [[source:jira:DEMO-1]]";
             readonly minLength: 1;
             readonly maxLength: 24000;
         };
         readonly citationSourceIds: {
             readonly type: "array";
+            readonly description: "Unique canonical SOURCE_ID values used by placeholders in messageMarkdown, without section suffixes.";
             readonly maxItems: 100;
             readonly items: {
                 readonly type: "string";
@@ -33888,6 +36288,12 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
+// export: CHAT_CANDIDATE_LEDGER_PATH_V1
+export declare const CHAT_CANDIDATE_LEDGER_PATH_V1: "/.atlcli/chat/v1/candidate-ledger.json";
+
+// export: CHAT_CANDIDATE_LEDGER_SCHEMA_V1
+export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-ledger/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -33897,6 +36303,53 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
+
+// export: CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1: "atlcli.chat-retrieval-assessment/v1";
+
+// export: CHAT_RETRIEVAL_PLAN_PATH_V1
+export declare const CHAT_RETRIEVAL_PLAN_PATH_V1: "/.atlcli/chat/v1/retrieval-plan.json";
+
+// export: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
+    searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        searchId: z.ZodString;
+        product: z.ZodEnum<{
+            jira: "jira";
+            confluence: "confluence";
+        }>;
+        variants: z.ZodArray<z.ZodObject<{
+            variantId: z.ZodString;
+            query: z.ZodObject<{
+                text: z.ZodOptional<z.ZodString>;
+                labels: z.ZodOptional<z.ZodArray<z.ZodString>>;
+                ancestorId: z.ZodOptional<z.ZodString>;
+                parentId: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            expectedInformationGain: z.ZodOptional<z.ZodEnum<{
+                high: "high";
+                low: "low";
+                medium: "medium";
+            }>>;
+        }, z.core.$strict>>;
+        maxPages: z.ZodNumber;
+    }, z.core.$strict>>>;
+    relationshipTraversals: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        traversalId: z.ZodString;
+        kind: z.ZodEnum<{
+            "confluence-to-jira-reference": "confluence-to-jira-reference";
+            "jira-to-confluence-remote-link": "jira-to-confluence-remote-link";
+        }>;
+        maxDepth: z.ZodLiteral<1>;
+    }, z.core.$strict>>>;
+    unresolvedTerms: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+
+// export: CHAT_RETRIEVAL_PLAN_SCHEMA_V1
+export declare const CHAT_RETRIEVAL_PLAN_SCHEMA_V1: "atlcli.chat-retrieval-plan/v1";
 
 // export: CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1
 export declare const CHAT_SCOPE_CLARIFICATION_REVIEW_SCHEMA_V1: "atlcli.chat-scope-clarification-review/v1";
@@ -33959,6 +36412,30 @@ export declare const CHAT_STRATEGY_REVIEW_STATE_PATH_V1: "/state/chat-strategy-r
 // export: CHAT_STRATEGY_STATE_PATH_V1
 export declare const CHAT_STRATEGY_STATE_PATH_V1: "/state/chat-strategy-v1.json";
 
+// export: CHAT_SUBAGENT_PROFILE_IDS_V1
+export declare const CHAT_SUBAGENT_PROFILE_IDS_V1: readonly [
+    "exact-context-reader",
+    "confluence-search-reader",
+    "jira-search-reader",
+    "relationship-tracer",
+    "comparison-analyst",
+    "contradiction-checker",
+    "answer-critic",
+    "chat-synthesizer"
+];
+
+// export: CHAT_SUBAGENT_PROFILES_V1
+export declare const CHAT_SUBAGENT_PROFILES_V1: readonly [
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>,
+    Readonly<ChatSubagentProfileV1>
+];
+
 // export: CHAT_THINKING_MODES_V1
 // @deprecated CHAT_THINKING_MODES_V1 — Use CHAT_QUALITY_MODES_V1.
 export declare const CHAT_THINKING_MODES_V1: readonly [
@@ -33970,6 +36447,9 @@ export declare const CHAT_THINKING_MODES_V1: readonly [
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
+export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -33977,8 +36457,12 @@ export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 export interface ChatAgentRuntimeBindings {
     StateBackend: typeof import("deepagents/browser").StateBackend;
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
 }
+
+// export: ChatAnalysisPacketV1
+export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -34001,6 +36485,72 @@ export interface ChatAnswerV1 {
 
 // export: ChatAuxiliaryReadNeedV1
 export type ChatAuxiliaryReadNeedV1 = "comments" | "metadata";
+
+// export: ChatCandidateDiscoveryV1
+export interface ChatCandidateDiscoveryV1 {
+    kind: "bound-anchor" | "scoped-search" | "relationship";
+    callId: string;
+    searchId?: string;
+    queryVariantId?: string;
+    page: number;
+    rank?: number;
+}
+
+// export: ChatCandidateLedgerControllerV1
+export declare class ChatCandidateLedgerControllerV1 {
+    #private;
+    constructor(input: {
+        plan: ChatRetrievalPlanV1;
+        workspace: ResearchWorkspace;
+        siteOrigin: string;
+        expectedSourceIds?: readonly string[];
+        now?: () => number;
+    });
+    initialize(): Promise<void>;
+    replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    plan(): ChatRetrievalPlanV1;
+    snapshot(): ChatCandidateLedgerV1;
+    allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
+    assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
+    observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
+    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
+    finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
+    assessment(): ChatRetrievalAssessmentV1;
+}
+
+// export: ChatCandidateLedgerEntryV1
+export interface ChatCandidateLedgerEntryV1 {
+    candidateId: string;
+    sourceId: string;
+    product: ResearchProduct;
+    title: string;
+    canonicalUrl: string;
+    authority: "bound" | "scoped-search" | "explicit-relationship";
+    versionsObserved: string[];
+    discoveries: ChatCandidateDiscoveryV1[];
+    state: ChatCandidateStateV1;
+    admittedRank?: number;
+    exclusionReason?: string;
+    deferredReason?: string;
+}
+
+// export: ChatCandidateLedgerV1
+export interface ChatCandidateLedgerV1 {
+    schema: typeof CHAT_CANDIDATE_LEDGER_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    planFingerprint: string;
+    startedAt: string;
+    updatedAt: string;
+    finalizedAt?: string;
+    candidates: ChatCandidateLedgerEntryV1[];
+    searches: ChatSearchLedgerEntryV1[];
+    relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    atlassianHttpCalls: number;
+}
+
+// export: ChatCandidateStateV1
+export type ChatCandidateStateV1 = "discovered" | "admitted" | "detail-read" | "excluded" | "deferred";
 
 // export: ChatCitationV1
 export interface ChatCitationV1 {
@@ -34025,12 +36575,21 @@ export declare class ChatContractError extends ResearchContractError {
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ChatCritiquePacketV1
+export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatEvidencePacketV1
+export type ChatEvidencePacketV1 = z.infer<typeof chatEvidencePacketSchemaV1>;
+
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
     model: BaseChatModel;
     modelId: string;
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
+    reasoningPresentation?: "summary";
+    modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
 // export: ChatModelFactoryInputV1
@@ -34045,6 +36604,16 @@ export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBi
 
 // export: chatPolicyForThinkingModeV1
 export declare function chatPolicyForThinkingModeV1(mode: ChatThinkingModeV1): ResearchOneShotPolicyV1;
+
+// export: ChatPresentationStreamEventV1
+export interface ChatPresentationStreamEventV1 {
+    kind: "chat-presentation";
+    seq: number;
+    at: string;
+    channel: "reasoning-summary" | "answer-markdown";
+    status: "started" | "delta" | "completed";
+    delta?: string;
+}
 
 // export: ChatQualityModeV1
 export type ChatQualityModeV1 = (typeof CHAT_QUALITY_MODES_V1)[number];
@@ -34070,6 +36639,111 @@ export interface ChatQualityPolicyV1 {
     providerReasoningPreference: ProviderReasoningPreferenceV1;
 }
 
+// export: ChatRelationshipTraversalKindV1
+export type ChatRelationshipTraversalKindV1 = "confluence-to-jira-reference" | "jira-to-confluence-remote-link";
+
+// export: ChatRelationshipTraversalProposalV1
+export interface ChatRelationshipTraversalProposalV1 {
+    traversalId: string;
+    kind: ChatRelationshipTraversalKindV1;
+    maxDepth: 1;
+}
+
+// export: ChatResolvedRetrievalEntityV1
+export interface ChatResolvedRetrievalEntityV1 {
+    bindingId: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page" | "project" | "space";
+    authority: "approved" | "locked" | "resolved";
+    key?: string;
+    name: string;
+}
+
+// export: ChatRetrievalAnchorV1
+export interface ChatRetrievalAnchorV1 {
+    anchorRef: string;
+    product: ResearchProduct;
+    entityKind: "issue" | "page";
+    name: string;
+}
+
+// export: ChatRetrievalAssessmentV1
+export interface ChatRetrievalAssessmentV1 {
+    schema: typeof CHAT_RETRIEVAL_ASSESSMENT_SCHEMA_V1;
+    sufficient: boolean;
+    reasons: string[];
+    completionSignals: Array<{
+        signal: ChatRetrievalCompletionSignalV1;
+        satisfied: boolean;
+    }>;
+    metrics: ChatRetrievalMetricsV1;
+}
+
+// export: ChatRetrievalBudgetReservationsV1
+export interface ChatRetrievalBudgetReservationsV1 {
+    directReadCalls: number;
+    discoveryCalls: number;
+    relationshipTraversalCalls: number;
+    repairCalls: number;
+    criticCalls: number;
+    synthesisCalls: 1;
+    totalCalls: number;
+}
+
+// export: ChatRetrievalCompletionSignalV1
+export type ChatRetrievalCompletionSignalV1 = "all-anchors-read" | "all-searches-terminal" | "all-admitted-candidates-terminal" | "relationship-traversals-checked" | "detail-evidence-present" | "query-variants-saturated";
+
+// export: ChatRetrievalMetricsV1
+export interface ChatRetrievalMetricsV1 {
+    discoveredCandidates: number;
+    admittedCandidates: number;
+    detailReadCandidates: number;
+    excludedCandidates: number;
+    deferredCandidates: number;
+    detailReadCoverage: number;
+    canonicalUrlCorrectness: number;
+    observedRecall: number | null;
+    wrongSourceRate: number | null;
+    atlassianHttpCalls: number;
+    latencyMs: number;
+}
+
+// export: ChatRetrievalPlanProposalV1
+export interface ChatRetrievalPlanProposalV1 {
+    searches?: ChatRetrievalSearchProposalV1[];
+    relationshipTraversals?: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms?: string[];
+}
+
+// export: ChatRetrievalPlanV1
+export interface ChatRetrievalPlanV1 {
+    schema: typeof CHAT_RETRIEVAL_PLAN_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    createdAt: string;
+    questionFingerprint: string;
+    anchors: ChatRetrievalAnchorV1[];
+    resolvedEntities: ChatResolvedRetrievalEntityV1[];
+    searches: ChatRetrievalSearchV1[];
+    relationshipTraversals: ChatRelationshipTraversalProposalV1[];
+    unresolvedTerms: string[];
+    completionSignals: ChatRetrievalCompletionSignalV1[];
+    budgetReservations: ChatRetrievalBudgetReservationsV1;
+}
+
+// export: ChatRetrievalSearchProposalV1
+export interface ChatRetrievalSearchProposalV1 {
+    searchId: string;
+    product: ResearchProduct;
+    variants: ChatSearchVariantProposalV1[];
+    maxPages: number;
+}
+
+// export: ChatRetrievalSearchV1
+export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
+    scopeBindingIds: string[];
+}
+
 // export: ChatRunSummaryV1
 export interface ChatRunSummaryV1 {
     model: string;
@@ -34078,6 +36752,19 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    retrieval?: {
+        discoveredCandidates: number;
+        admittedCandidates: number;
+        detailReadCandidates: number;
+        excludedCandidates: number;
+        deferredCandidates: number;
+        detailReadCoverage: number;
+        canonicalUrlCorrectness: number;
+        observedRecall: number | null;
+        wrongSourceRate: number | null;
+        atlassianHttpCalls: number;
+        latencyMs: number;
+    };
 }
 
 // export: ChatScopeClarificationReviewV1
@@ -34101,6 +36788,32 @@ export interface ChatScopeClarificationReviewV1 {
             status?: "current" | "archived";
         }>;
     };
+}
+
+// export: ChatSearchLedgerEntryV1
+export interface ChatSearchLedgerEntryV1 {
+    searchId: string;
+    product: ResearchProduct;
+    queryVariantId: string;
+    pagesRead: number;
+    uniqueCandidateCount: number;
+    terminal: boolean;
+    termination?: string;
+}
+
+// export: ChatSearchQueryV1
+export interface ChatSearchQueryV1 {
+    text?: string;
+    labels?: string[];
+    ancestorId?: string;
+    parentId?: string;
+}
+
+// export: ChatSearchVariantProposalV1
+export interface ChatSearchVariantProposalV1 {
+    variantId: string;
+    query: ChatSearchQueryV1;
+    expectedInformationGain?: "high" | "medium" | "low";
 }
 
 // export: ChatSessionStateV1
@@ -34175,6 +36888,35 @@ export interface ChatStrategyV1 {
     qualityRisks: ChatStrategyQualityRiskV1[];
 }
 
+// export: ChatSubagentCapabilityIdV1
+export type ChatSubagentCapabilityIdV1 = typeof BOUND_ENTITY_READ_CAPABILITY_ID_V1 | typeof BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1 | "jira.issue.search" | "jira.issue.get" | "wiki.search" | "wiki.page.get" | "research.candidate.rank";
+
+// export: ChatSubagentPacketSchemaV1
+export type ChatSubagentPacketSchemaV1 = "atlcli.chat-evidence-packet/v1" | "atlcli.chat-analysis-packet/v1" | "atlcli.chat-critique-packet/v1" | "atlcli.chat-answer-draft/v1";
+
+// export: ChatSubagentProfileIdV1
+export type ChatSubagentProfileIdV1 = (typeof CHAT_SUBAGENT_PROFILE_IDS_V1)[number];
+
+// export: ChatSubagentProfileV1
+export interface ChatSubagentProfileV1 {
+    id: ChatSubagentProfileIdV1;
+    subagentType: string;
+    roleId: string;
+    phase: AgenticWorkflowPhaseV1;
+    description: string;
+    systemPrompt: string;
+    grantedCapabilityIds: readonly ChatSubagentCapabilityIdV1[];
+    responseSchemaId: ChatSubagentPacketSchemaV1;
+    responseSchema: Readonly<Record<string, unknown>>;
+    modelPreference: "fast" | "balanced" | "thorough";
+    maxInputChars: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ChatSubagentResultV1
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
 
@@ -34194,6 +36936,41 @@ export interface ChatTurnRequestV1 {
     scopeSeeds?: ResearchScopeSeedV1[];
     exactContextProducts?: ResearchProduct[];
     locale?: string;
+}
+
+// export: ChatWorkflowAdmissionResponseV1
+export interface ChatWorkflowAdmissionResponseV1 {
+    schema: "atlcli.chat-workflow-admission/v1";
+    completionObjective: "conversation-answer";
+    maxConcurrency: number;
+    synthesizerTaskId: string;
+    dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+// export: ChatWorkflowDispatchV1
+export interface ChatWorkflowDispatchV1 {
+    taskId: string;
+    subagentType: string;
+    objective: string;
+    dependencyTaskIds: readonly string[];
+    description: string;
+    responseSchema: Readonly<Record<string, unknown>>;
+}
+
+// export: ChatWorkflowProposalV1
+export interface ChatWorkflowProposalV1 {
+    schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
+    tasks: ChatWorkflowTaskProposalV1[];
+    maxConcurrency: number;
+    retrievalPlan?: ChatRetrievalPlanProposalV1;
+}
+
+// export: ChatWorkflowTaskProposalV1
+export interface ChatWorkflowTaskProposalV1 {
+    taskId: string;
+    profileId: ChatSubagentProfileIdV1;
+    objective: string;
+    dependencyTaskIds: string[];
 }
 
 // export: classifyResearchError
@@ -34384,6 +37161,23 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
+// export: createChatRetrievalPlanV1
+export declare function createChatRetrievalPlanV1(input: {
+    conversationId: string;
+    turnId: string;
+    question: string;
+    anchors: readonly BoundEntityAnchorV1[];
+    scopeBindings: readonly ResearchScopeBindingV1[];
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    searchProducts: readonly ResearchProduct[];
+    exactContextProducts: readonly ResearchProduct[];
+    limits: ResearchLimitsV1;
+    agentic: boolean;
+    proposal?: ChatRetrievalPlanProposalV1;
+    now?: () => number;
+}): ChatRetrievalPlanV1;
+
 // export: createChatSessionStateV1
 export declare function createChatSessionStateV1(input: {
     conversationId: string;
@@ -34412,6 +37206,22 @@ export declare function createChatStrategyReviewControllerV1(input: {
     tool: DynamicStructuredTool;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
+};
+
+// export: createChatWorkflowProposalControllerV1
+export declare function createChatWorkflowProposalControllerV1(input: {
+    strategy: ChatStrategyDecisionV1;
+    budget: ResearchRunBudget;
+    taskContext?: string | (() => string);
+    allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
+    beforeProposal?: () => void;
+    beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+    onAccepted?: (workflow: AcceptedChatWorkflowV1, response: ChatWorkflowAdmissionResponseV1) => void | Promise<void>;
+}): {
+    tool: DynamicStructuredTool;
+    acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
+    acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
+    assertAccepted(): void;
 };
 
 // export: createHostValidationAbstentionPacketV2
@@ -34720,6 +37530,9 @@ export interface DynamicResearchSubagentOptions {
     now?: () => number;
 }
 
+// export: encodeAgenticTaskDescriptionV1
+export declare function encodeAgenticTaskDescriptionV1(value: Omit<AgenticTaskDescriptionV1, "schema">): string;
+
 // export: encodeResearchTaskDescriptionV1
 export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
 
@@ -34728,6 +37541,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: extractChatSubagentCandidateV1
+export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
 
 // export: extractResearchStructuredCandidateV1
 export declare function extractResearchStructuredCandidateV1(result: unknown): unknown;
@@ -34948,6 +37764,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isChatPresentationStreamEventV1
+export declare function isChatPresentationStreamEventV1(value: unknown): value is ChatPresentationStreamEventV1;
+
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
@@ -35083,6 +37902,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: parseChatSubagentResultV1
+export declare function parseChatSubagentResultV1(profileId: ChatSubagentProfileIdV1, value: unknown): ChatSubagentResultV1;
 
 // export: parseReconciliationBodyV1
 export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
@@ -35304,6 +38126,12 @@ export declare function providerCompatibleChatAnswerSchemaV1(): {
     [key: string]: unknown;
 };
 
+// export: providerCompatibleChatJsonSchemaV1
+export declare function providerCompatibleChatJsonSchemaV1(schema: Readonly<Record<string, unknown>>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
     type: "object";
@@ -35445,6 +38273,7 @@ export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-resear
 // export: RESEARCH_ACTIVITY_CODES_V1
 export declare const RESEARCH_ACTIVITY_CODES_V1: readonly [
     "model-assessing",
+    "answer-drafting",
     "next-step-ready",
     "answer-draft-ready",
     "bounded-workflow-running",
@@ -36571,6 +39400,7 @@ export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
     replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+    setMaxConcurrency(maxConcurrency: number): void;
     restoreCompleted(results: readonly ResearchTaskDependencyResultV1[]): void;
     appendAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
@@ -37011,6 +39841,7 @@ export interface ResearchGetOutputV1 {
     schema: string;
     source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
     content: BoundedContentProjectionV1;
+    relatedAnchors?: BoundEntityAnchorV1[];
     budget: ResearchBudgetSnapshotV1;
 }
 
@@ -37715,8 +40546,12 @@ export declare function researchPtcToolNamesForNodeV1(node: Pick<ResearchGraphNo
 // export: ResearchPtcToolOptions
 export interface ResearchPtcToolOptions {
     onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown, callId: string) => void | Promise<void>;
+    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown, callId: string, input?: unknown) => void | Promise<void>;
+    beforeInvoke?: (tool: ResearchGraphCapabilityV1, input: unknown, callId: string, inputKind: ResearchPtcDiagnosticV1["inputKind"]) => void | Promise<void>;
     now?: () => number;
+    boundProjectKeys?: readonly string[];
+    boundSpaceKeys?: readonly string[];
+    singleInitialQuery?: boolean;
 }
 
 // export: researchQueryFingerprint
@@ -38164,6 +40999,7 @@ export interface ResearchRunOptions {
     }) => void;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -39770,8 +42606,11 @@ export interface RunChatAgentInput {
     now?: () => number;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
+    onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
+    onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+    onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
 }
 
 // export: runResearchAgent

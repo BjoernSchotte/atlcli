@@ -315,6 +315,54 @@ describe("Chat exact-anchor retrieval", () => {
     expect(calls).toEqual([]);
   });
 
+  test("normalizes a model-facing scalar query without widening the host search contract", async () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [],
+      wiki: ["KB"],
+      exact: [],
+    }), providers(calls));
+    const search = createChatPtcToolsV1(broker, {
+      exactContextProducts: [],
+      searchProducts: ["confluence"],
+      boundSpaceKeys: ["KB"],
+      singleInitialQuery: true,
+    }).find((candidate) => candidate.name === "wiki_search");
+    if (!search) throw new Error("missing Confluence search tool");
+
+    const result = JSON.parse(await search.invoke({
+      query: "synthetic design decision",
+      pageSize: 3,
+      space: "KB",
+    }));
+
+    expect(calls).toEqual(["wiki.search"]);
+    expect(result).toMatchObject({
+      schema: "atlcli.ptc/wiki.search.output/v1",
+      items: [],
+      page: { complete: true },
+    });
+    await search.invoke({
+      query: "synthetic design decision",
+      pageSize: 3,
+      spaceKey: "KB",
+    });
+    expect(calls).toEqual(["wiki.search"]);
+    await expect(search.invoke({
+      query: "different synthetic query",
+      space: "KB",
+    })).rejects.toBeDefined();
+    expect(calls).toEqual(["wiki.search"]);
+    await expect(search.invoke({
+      query: "synthetic design decision",
+      space: "FORGED",
+    })).rejects.toBeDefined();
+    await expect(search.invoke({
+      query: "synthetic design decision",
+      spaceKey: "FORGED",
+    })).rejects.toBeDefined();
+  });
+
   test("keeps Jira dormant until an admitted Jira signal is observed", async () => {
     const calls: string[] = [];
     const broker = new ResearchCapabilityBroker(request({
@@ -395,6 +443,153 @@ describe("Chat exact-anchor retrieval", () => {
     const issue = await invokeDirect(broker, pageOutput.relatedAnchors[0]!.anchorRef);
     expect(issue.source.sourceId).toBe("jira:DEMO-42");
     expect(calls).toEqual(["wiki.get:1001", "jira.get:DEMO-42"]);
+  });
+
+  test("discovers a Jira issue from a structured Jira macro only after its bound section is read", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    const navigation = navigateConfluenceStorageV1({
+      storage: [
+        "<h2>Delivery status</h2>",
+        '<ac:structured-macro ac:name="jira" ac:macro-id="jira-1">',
+        '<ac:parameter ac:name="key">DEMO-42</ac:parameter>',
+        "</ac:structured-macro>",
+      ].join(""),
+      sourceVersion: 3,
+      siteOrigin: ORIGIN,
+      projectionLimits: {
+        maxTextChars: 2_000,
+        maxTextBytes: 8_000,
+        maxLinks: 20,
+        maxNodes: 20_000,
+        maxDepth: 64,
+      },
+    })!;
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Attached page with a Jira macro",
+        content: {
+          text: "The initial projection omits the structured delivery section.",
+          linkTargets: [],
+          truncated: true,
+          inputBytes: 16_000,
+        },
+        navigation,
+      };
+    };
+    let anchorSequence = 0;
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, { createAnchorId: () => `anchor-${++anchorSequence}` });
+
+    const page = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+    expect(page.relatedAnchors).toEqual([]);
+    const macroSection = page.document!.sections.find((section) =>
+      section.metadata.macroNames.includes("jira")
+    )!;
+    const section = await broker.readExactSection({
+      schema: BOUND_ENTITY_SECTION_READ_INPUT_SCHEMA_V1,
+      sectionRef: macroSection.sectionRef,
+    });
+    expect(section.content.text).toContain("Jira macro issue key: DEMO-42");
+    expect(section.relatedAnchors).toEqual([{
+      anchorRef: "research-anchor:anchor-2",
+      product: "jira",
+      entityKind: "issue",
+      name: "DEMO-42",
+    }]);
+    expect(calls).toEqual(["wiki.get:1001"]);
+  });
+
+  test("returns an opaque Confluence anchor only after a verified Jira issue exposes a tenant-local page link", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.jira.getIssue = async ({ issueKey }) => {
+      calls.push(`jira.get:${issueKey}`);
+      return {
+        issueKey,
+        projectKey: "DEMO",
+        title: "Issue with a verified documentation link",
+        content: {
+          text: "The implementation decision is documented on the linked Confluence page.",
+          linkTargets: [`${ORIGIN}/wiki/spaces/KB/pages/2002/Linked+page`],
+          truncated: false,
+          inputBytes: 71,
+        },
+      };
+    };
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "KB",
+        title: "Linked page",
+        content: {
+          text: "The linked page contains the approved implementation decision.",
+          linkTargets: [],
+          truncated: false,
+          inputBytes: 62,
+        },
+      };
+    };
+    let anchorSequence = 0;
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "jira", entityKind: "issue", key: "DEMO-42", name: "DEMO-42", id: "issue-demo-42" })],
+      jira: ["DEMO"],
+      wiki: ["KB"],
+      exact: ["jira"],
+    }), fake, { createAnchorId: () => `anchor-${++anchorSequence}` });
+
+    const issueOutput = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+    expect(issueOutput.relatedAnchors).toEqual([{
+      anchorRef: "research-anchor:anchor-2",
+      product: "confluence",
+      entityKind: "page",
+      name: "Confluence 2002",
+    }]);
+    const pageOutput = await invokeDirect(broker, issueOutput.relatedAnchors[0]!.anchorRef);
+    expect(pageOutput.source).toMatchObject({
+      sourceId: "wiki:2002",
+      title: "Linked page",
+      url: `${ORIGIN}/wiki/spaces/KB/pages/2002`,
+      contentId: "2002",
+      spaceKey: "KB",
+    });
+    expect(calls).toEqual(["jira.get:DEMO-42", "wiki.get:2002"]);
+  });
+
+  test("does not admit a Jira-linked Confluence page from an unbound space", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.jira.getIssue = async ({ issueKey }) => {
+      calls.push(`jira.get:${issueKey}`);
+      return {
+        issueKey,
+        projectKey: "DEMO",
+        title: "Issue with an out-of-scope documentation link",
+        content: {
+          text: "A related page exists outside the accepted Confluence scope.",
+          linkTargets: [`${ORIGIN}/wiki/spaces/OTHER/pages/2003/Foreign+page`],
+          truncated: false,
+          inputBytes: 61,
+        },
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "jira", entityKind: "issue", key: "DEMO-42", name: "DEMO-42", id: "issue-demo-42" })],
+      jira: ["DEMO"],
+      wiki: ["KB"],
+      exact: ["jira"],
+    }), fake, { createAnchorId: () => "issue-anchor" });
+
+    const issueOutput = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
+    expect(issueOutput.relatedAnchors).toEqual([]);
+    expect(calls).toEqual(["jira.get:DEMO-42"]);
   });
 
   test("stops before HTTP when the turn has already been cancelled", async () => {

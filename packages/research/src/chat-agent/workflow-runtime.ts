@@ -1,6 +1,7 @@
-import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
+import { createCodeInterpreterMiddleware, toCamelCase } from "@langchain/quickjs";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
+import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
 import { z } from "zod/v4";
 import type { SubAgent } from "deepagents/browser";
 import type { ResearchPtcDiagnosticV1 } from "../agent-tools.js";
@@ -10,6 +11,7 @@ import {
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "../capability-contracts.js";
 import type { ResearchLimitsV1, ResearchProduct } from "../contracts.js";
+import type { ProviderReasoningPreferenceV1 } from "../quality-policy.js";
 import {
   createAgenticDispatchInterceptionAdapter,
   type AgenticDispatchInterceptionAdapter,
@@ -23,6 +25,7 @@ import {
   type ChatAgentDraftV1,
 } from "./contracts.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
+import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 import {
   CHAT_SUBAGENT_PROFILES_V1,
@@ -33,6 +36,7 @@ import {
   type ChatSubagentProfileIdV1,
   type ChatSubagentResultV1,
   type ChatWorkflowAdmissionResponseV1,
+  type ChatWorkflowProposalV1,
 } from "./workflow.js";
 
 export const CHAT_WORKFLOW_STATE_PATH_V1 =
@@ -58,6 +62,108 @@ export interface ChatWorkflowStateV1 {
 export interface ChatWorkflowRuntimeBindingsV1 {
   createSubAgentMiddleware:
     typeof import("deepagents/browser").createSubAgentMiddleware;
+}
+
+export interface ChatSubagentEvalDiagnosticV1 {
+  profileId: ChatSubagentProfileIdV1;
+  status: "started" | "success" | "error";
+  attempt: number;
+  codeChars?: number;
+  usesToolsNamespace?: boolean;
+  capabilityNames?: string[];
+  searchInputShapes?: string[];
+  argumentKeys?: string[];
+  errorKind?: string;
+  errorCode?:
+    | "eval-attempt-exceeded"
+    | "tool-error"
+    | "undefined-symbol"
+    | "invalid-input"
+    | "timeout"
+    | "other";
+}
+
+export interface ChatSubagentResultDiagnosticV1 {
+  profileId: ChatSubagentProfileIdV1;
+  status: "accepted" | "error";
+  phase: "schema" | "evidence-reference";
+  valueKind: "string" | "array" | "object" | "other";
+  objectKeys?: string[];
+  referenceKinds?: string[];
+  unknownReferenceKinds?: string[];
+}
+
+function resultShapeV1(value: unknown): Pick<
+  ChatSubagentResultDiagnosticV1,
+  "valueKind" | "objectKeys"
+> {
+  if (typeof value === "string") return { valueKind: "string" };
+  if (Array.isArray(value)) return { valueKind: "array" };
+  if (value && typeof value === "object") {
+    return {
+      valueKind: "object",
+      objectKeys: Object.keys(value as Record<string, unknown>).sort().slice(0, 20),
+    };
+  }
+  return { valueKind: "other" };
+}
+
+function sourceReferenceKindV1(value: string): string {
+  if (/^jira:/u.test(value)) return "canonical-jira-id";
+  if (/^wiki:/u.test(value)) return "canonical-wiki-id";
+  if (/^[A-Z][A-Z0-9_]*-\d+$/u.test(value)) return "issue-key";
+  if (/^\d+$/u.test(value)) return "numeric-content-id";
+  if (/^https?:\/\//u.test(value)) return "url";
+  if (/^(?:research|chat)[-_:]/u.test(value)) return "opaque-ref";
+  return "other";
+}
+
+function sourceReferenceDiagnosticV1(
+  broker: ResearchCapabilityBroker,
+  value: ChatSubagentResultV1,
+): Pick<ChatSubagentResultDiagnosticV1, "referenceKinds" | "unknownReferenceKinds"> {
+  const known = new Set(broker.detailEvidenceLedger().map((entry) => entry.source.id));
+  const references = [...new Set(sourceIdsFromResult(value))];
+  return {
+    referenceKinds: [...new Set(references.map(sourceReferenceKindV1))].sort(),
+    unknownReferenceKinds: [...new Set(references
+      .filter((reference) => !known.has(reference))
+      .map(sourceReferenceKindV1))].sort(),
+  };
+}
+
+function classifyChildEvalErrorV1(error: unknown): Pick<
+  ChatSubagentEvalDiagnosticV1,
+  "errorKind" | "errorCode"
+> {
+  const name = error instanceof Error ? error.name : "unknown";
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const errorCode = /(?:not defined|not a function|undefined symbol)/iu.test(message)
+    ? "undefined-symbol"
+    : /(?:schema|validation|invalid (?:tool )?input|arguments?)/iu.test(message)
+      ? "invalid-input"
+      : /(?:timed? ?out|timeout)/iu.test(message)
+        ? "timeout"
+        : "other";
+  return { errorKind: name.slice(0, 80), errorCode };
+}
+
+function classifyChildEvalToolResultV1(content: string): Pick<
+  ChatSubagentEvalDiagnosticV1,
+  "errorKind" | "errorCode"
+> {
+  const match = /^(SyntaxError|ReferenceError|TypeError|Error):/u.exec(
+    content.trimStart(),
+  );
+  if (!match) return {};
+  const errorCode = /(?:not defined|not a function|undefined symbol)/iu.test(content)
+    ? "undefined-symbol"
+    : /(?:schema|validation|invalid (?:tool )?input|arguments?)/iu.test(content)
+      ? "invalid-input"
+      : /(?:timed? ?out|timeout)/iu.test(content)
+        ? "timeout"
+        : "tool-error";
+  return { errorKind: match[1], errorCode };
 }
 
 const taskInputSchema = z.object({
@@ -133,10 +239,45 @@ function assertKnownSourceReferencesV1(
   }
 }
 
+export function normalizeKnownSourceReferencesV1(
+  broker: ResearchCapabilityBroker,
+  value: ChatSubagentResultV1,
+): ChatSubagentResultV1 {
+  const aliases = new Map<string, string>();
+  for (const entry of broker.detailEvidenceLedger()) {
+    aliases.set(entry.source.id, entry.source.id);
+    if (entry.source.issueKey) aliases.set(entry.source.issueKey, entry.source.id);
+    if (entry.source.contentId) aliases.set(entry.source.contentId, entry.source.id);
+    aliases.set(entry.source.url, entry.source.id);
+  }
+  const normalize = (candidate: unknown, key?: string): unknown => {
+    if (typeof candidate === "string" && [
+      "sourceId",
+      "fromSourceId",
+      "toSourceId",
+    ].includes(key ?? "")) {
+      return aliases.get(candidate) ?? candidate;
+    }
+    if (Array.isArray(candidate)) {
+      if (key === "sourceIds" || key === "citationSourceIds") {
+        return candidate.map((item) =>
+          typeof item === "string" ? aliases.get(item) ?? item : item
+        );
+      }
+      return candidate.map((item) => normalize(item));
+    }
+    if (!candidate || typeof candidate !== "object") return candidate;
+    return Object.fromEntries(Object.entries(candidate as Record<string, unknown>)
+      .map(([childKey, child]) => [childKey, normalize(child, childKey)]));
+  };
+  return normalize(structuredClone(value)) as ChatSubagentResultV1;
+}
+
 function profilePromptV1(input: {
   profile: (typeof CHAT_SUBAGENT_PROFILES_V1)[number];
   allowedToolNames: readonly string[];
   limits: ResearchLimitsV1;
+  queryVariantMode?: boolean;
 }): string {
   const searchBudget = Math.max(1, input.limits.maxSearchPagesPerProduct);
   const detailBudget = Math.max(1, input.limits.maxDetailItemsPerProduct);
@@ -144,23 +285,32 @@ function profilePromptV1(input: {
     input.profile.systemPrompt,
     "This is a depth-one Kiteweave Chat specialist. You receive only the host-issued task objective and exact completed dependency packets; no parent or sibling conversation is available.",
     input.allowedToolNames.length > 0
-      ? `Your complete read-only QuickJS capability set is: ${input.allowedToolNames.join(", ")}. Use one bounded eval when acquisition is required.`
+      ? `Your complete read-only QuickJS capability set is: ${input.allowedToolNames.join(", ")}. Use bounded eval steps when acquisition is required; the host limits unique queries, calls, time, and output.`
       : "No source-read, filesystem, network, eval, or delegation capability is available. Analyze only the dependency packets in the task description.",
     input.profile.id === "confluence-search-reader" || input.profile.id === "jira-search-reader"
-      ? `Use exactly one focused initial search query for this task. Continue only with opaque cursors returned by that search, for at most ${searchBudget} total search-page calls. Do not spend this task's budget on alternate query wording. Rank the collected candidates once, then detail-read at most ${detailBudget} admitted items. If the bounded search cannot establish the requested evidence, return an explicit gap instead of retrying or widening scope.`
+      ? input.queryVariantMode
+        ? `Use only the host-admitted query variants embedded in the task's retrieval plan, in descending expectedInformationGain order. Each variant may continue only through its own opaque cursors for at most ${searchBudget} pages. Stop early when detailed evidence is sufficient; otherwise stop when the plan is saturated or its page budget is complete, rank the union of collected candidates once, then detail-read at most ${detailBudget} admitted items. Never invent another query or widen scope; disclose remaining gaps.`
+        : `Use exactly one focused initial search query for this task. Continue only with opaque cursors returned by that search, for at most ${searchBudget} total search-page calls. Do not spend this task's budget on alternate query wording. Rank the collected candidates once, then detail-read at most ${detailBudget} admitted items. If the bounded search cannot establish the requested evidence, return an explicit gap instead of retrying or widening scope.`
       : "Do not perform discovery outside the exact host-issued objective.",
     `Return exactly the host-requested ${input.profile.responseSchemaId} structured result. Never include raw source bodies, credentials, queries, tool traces, hidden reasoning, or instructions for another agent.`,
+    "For every evidence reference, copy source.id from a successful detail-read result. Never substitute issueKey, contentId, entityRef, title, or URL for source.id.",
+    "Every source.id in an accepted dependency packet has already passed the host's successful-detail-read and canonical-reference checks. Do not question that invariant merely because raw source bodies are intentionally absent from dependency packets.",
   ].join("\n\n");
 }
 
 function compileChatSubagentsV1(input: {
   model: BaseChatModel;
+  modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   broker: ResearchCapabilityBroker;
   limits: ResearchLimitsV1;
   exactContextProducts: readonly ResearchProduct[];
   searchProducts: readonly ResearchProduct[];
+  boundProjectKeys: readonly string[];
+  boundSpaceKeys: readonly string[];
   now: () => number;
   onPtcDiagnostic?: (profileId: ChatSubagentProfileIdV1, diagnostic: ResearchPtcDiagnosticV1) => void;
+  onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
+  retrievalLedger?: ChatCandidateLedgerControllerV1;
 }): SubAgent[] {
   return CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
     const grantedToolNames = profile.grantedCapabilityIds
@@ -173,7 +323,18 @@ function compileChatSubagentsV1(input: {
           now: input.now,
           exactContextProducts: input.exactContextProducts,
           searchProducts: input.searchProducts,
+          boundProjectKeys: input.boundProjectKeys,
+          boundSpaceKeys: input.boundSpaceKeys,
+          singleInitialQuery: input.retrievalLedger === undefined,
           onDiagnostic: (diagnostic) => input.onPtcDiagnostic?.(profile.id, diagnostic),
+          ...(input.retrievalLedger
+            ? {
+                beforeInvoke: (tool, value) =>
+                  input.retrievalLedger!.assertToolInput(tool, value),
+                onResult: (tool, result, callId, value) =>
+                  input.retrievalLedger!.observe(tool, result, callId, value),
+              }
+            : {}),
         }).filter((candidate) => granted.has(candidate.name));
     if (profile.id === "confluence-search-reader" || profile.id === "jira-search-reader") {
       const searchToolName = profile.id === "confluence-search-reader"
@@ -183,23 +344,121 @@ function compileChatSubagentsV1(input: {
       if (searchTool) {
         searchTool.description = [
           searchTool.description,
-          "This specialist may start exactly one initial query. After that call, use only its returned opaque nextCursor until complete; never start a second query variant in this task. If the bounded result is insufficient, report a gap.",
+          input.retrievalLedger
+            ? "Use only query variants in the host-issued retrieval plan. The host rejects invented queries, excess pages, foreign cursors, and scope changes before HTTP."
+            : "This specialist may start exactly one initial query. After that call, use only its returned opaque nextCursor until complete; never start a second query variant in this task. If the bounded result is insufficient, report a gap.",
         ].join(" ");
       }
     }
+    let evalAttempts = 0;
+    const maxEvalAttempts = profile.id === "confluence-search-reader" ||
+        profile.id === "jira-search-reader"
+      ? 8
+      : 4;
+    const evalGuard = createMiddleware({
+      name: `ChatSubagentEvalGuard:${profile.id}`,
+      async wrapToolCall(request, handler) {
+        if (request.toolCall.name !== "eval") return handler(request);
+        evalAttempts += 1;
+        const code = request.toolCall.args && typeof request.toolCall.args === "object" &&
+          "code" in request.toolCall.args && typeof request.toolCall.args.code === "string"
+          ? request.toolCall.args.code
+          : "";
+        const capabilityNames = [
+          "atlassianBoundRead",
+          "atlassianBoundSectionRead",
+          "jiraIssueSearch",
+          "jiraIssueGet",
+          "wikiSearch",
+          "wikiPageGet",
+          "researchCandidateRank",
+        ].filter((name) => new RegExp(`\\b${name}\\b`, "u").test(code));
+        const searchInputShapes = [
+          ["jiraIssueSearch", "jira"],
+          ["wikiSearch", "wiki"],
+        ].flatMap(([functionName, label]): string[] => {
+          if (!new RegExp(`\\b${functionName}\\s*\\(`, "u").test(code)) return [];
+          if (!new RegExp(`\\b${functionName}\\s*\\(\\s*\\{\\s*query\\s*:`, "u").test(code)) {
+            return [`${label}:flat`];
+          }
+          if (!new RegExp(`\\b${functionName}\\s*\\(\\s*\\{\\s*query\\s*:\\s*\\{`, "u").test(code)) {
+            return [`${label}:query-scalar`];
+          }
+          return [new RegExp(
+            `\\b${functionName}\\s*\\(\\s*\\{\\s*query\\s*:\\s*\\{[^}]*\\btext\\s*:`,
+            "u",
+          ).test(code) ? `${label}:query-text` : `${label}:query-other`];
+        });
+        const argumentKeys = [...new Set(
+          [...code.matchAll(/\b([A-Za-z_$][A-Za-z0-9_$]*)\s*:/gu)]
+            .map((match) => match[1]!)
+            .filter((key) => key.length <= 80),
+        )].sort();
+        input.onEvalDiagnostic?.({
+          profileId: profile.id,
+          status: "started",
+          attempt: evalAttempts,
+          codeChars: code.length,
+          usesToolsNamespace: /\btools\s*\./u.test(code),
+          capabilityNames,
+          searchInputShapes,
+          argumentKeys,
+        });
+        if (evalAttempts > maxEvalAttempts) {
+          input.onEvalDiagnostic?.({
+            profileId: profile.id,
+            status: "error",
+            attempt: evalAttempts,
+            errorCode: "eval-attempt-exceeded",
+          });
+          throw new ChatContractError(
+            "limit-exceeded",
+            `Chat specialist ${profile.id} exceeded its bounded eval step limit.`,
+          );
+        }
+        try {
+          const response = await handler(request);
+          const content = response && typeof response === "object" && "content" in response
+            ? String((response as { content?: unknown }).content ?? "")
+            : String(response ?? "");
+          const failure = classifyChildEvalToolResultV1(content);
+          const failed = failure.errorCode !== undefined;
+          input.onEvalDiagnostic?.({
+            profileId: profile.id,
+            status: failed ? "error" : "success",
+            attempt: evalAttempts,
+            ...failure,
+          });
+          return response;
+        } catch (error) {
+          input.onEvalDiagnostic?.({
+            profileId: profile.id,
+            status: "error",
+            attempt: evalAttempts,
+            ...classifyChildEvalErrorV1(error),
+          });
+          throw error;
+        }
+      },
+    });
     return {
       name: profile.subagentType,
       description: profile.description,
-      model: input.model,
+      model: input.modelForPreference?.(profile.modelPreference) ?? input.model,
       systemPrompt: profilePromptV1({
         profile,
-        allowedToolNames: ptc.map((candidate) => candidate.name),
+        // @langchain/quickjs exposes registered LangChain tools through the
+        // generated camelCase tools.* namespace. Repeating the underlying
+        // snake_case registry name here makes an otherwise correct model call
+        // fail before the host capability is reached.
+        allowedToolNames: ptc.map((candidate) => toCamelCase(candidate.name)),
         limits: input.limits,
+        queryVariantMode: input.retrievalLedger !== undefined,
       }),
       tools: [],
       middleware: ptc.length === 0
         ? []
-        : [createCodeInterpreterMiddleware({
+        : [evalGuard, createCodeInterpreterMiddleware({
             ptc,
             subagents: false,
             toolName: "eval",
@@ -231,22 +490,33 @@ function cloneWorkflowStateV1(state: ChatWorkflowStateV1): ChatWorkflowStateV1 {
 export function createChatAgenticWorkflowRuntimeV1(input: {
   runtime: ChatWorkflowRuntimeBindingsV1;
   model: BaseChatModel;
+  modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+  structuredOutput: "native" | "tool";
+  projectResponseSchema?: (
+    schema: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, unknown>>;
   strategy: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
   broker: ResearchCapabilityBroker;
   workspace: ResearchWorkspace;
   conversationId: string;
   turnId: string;
-  taskContext: string;
+  taskContext: string | (() => string);
   limits: ResearchLimitsV1;
   exactContextProducts: readonly ResearchProduct[];
   searchProducts: readonly ResearchProduct[];
+  boundProjectKeys: readonly string[];
+  boundSpaceKeys: readonly string[];
   signal: AbortSignal;
   beforeProposal?: () => void;
-  beforeSynthesis?: () => void;
+  beforeWorkflowAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
+  beforeSynthesis?: () => void | Promise<void>;
   now?: () => number;
   onPtcDiagnostic?: (profileId: ChatSubagentProfileIdV1, diagnostic: ResearchPtcDiagnosticV1) => void;
+  onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
+  onResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
   onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+  retrievalLedger?: ChatCandidateLedgerControllerV1;
 }): {
   middleware: ReturnType<ChatWorkflowRuntimeBindingsV1["createSubAgentMiddleware"]>;
   proposalTool: DynamicStructuredTool;
@@ -284,12 +554,17 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   const profileByTaskId = new Map<string, ChatSubagentProfileIdV1>();
   const subagents = compileChatSubagentsV1({
     model: input.model,
+    modelForPreference: input.modelForPreference,
     broker: input.broker,
     limits: input.limits,
     exactContextProducts: input.exactContextProducts,
     searchProducts: input.searchProducts,
+    boundProjectKeys: input.boundProjectKeys,
+    boundSpaceKeys: input.boundSpaceKeys,
     now,
     onPtcDiagnostic: input.onPtcDiagnostic,
+    ...(input.onEvalDiagnostic ? { onEvalDiagnostic: input.onEvalDiagnostic } : {}),
+    ...(input.retrievalLedger ? { retrievalLedger: input.retrievalLedger } : {}),
   });
   const upstream = input.runtime.createSubAgentMiddleware({
     defaultModel: input.model,
@@ -323,14 +598,69 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
           "A Chat task returned without an admitted host profile.",
         );
       }
-      const result = parseChatSubagentResultV1(profileId, raw);
-      assertKnownSourceReferencesV1(input.broker, profileId, result);
+      let result: ChatSubagentResultV1;
+      try {
+        result = normalizeKnownSourceReferencesV1(
+          input.broker,
+          parseChatSubagentResultV1(profileId, raw),
+        );
+      } catch (error) {
+        input.onResultDiagnostic?.({
+          profileId,
+          status: "error",
+          phase: "schema",
+          ...resultShapeV1(raw),
+        });
+        throw error;
+      }
+      try {
+        assertKnownSourceReferencesV1(input.broker, profileId, result);
+      } catch (error) {
+        input.onResultDiagnostic?.({
+          profileId,
+          status: "error",
+          phase: "evidence-reference",
+          ...resultShapeV1(raw),
+          ...sourceReferenceDiagnosticV1(input.broker, result),
+        });
+        throw error;
+      }
+      input.onResultDiagnostic?.({
+        profileId,
+        status: "accepted",
+        phase: "evidence-reference",
+        ...resultShapeV1(raw),
+        ...sourceReferenceDiagnosticV1(input.broker, result),
+      });
       return result;
     },
     projectDependencyResult: (_taskId, result) => structuredClone(result),
+    projectResponseFormat: input.structuredOutput === "native"
+      ? (schema, admission) => {
+          const selected = CHAT_SUBAGENT_PROFILES_V1.find((profile) =>
+            profile.subagentType === admission.subagentType
+          );
+          if (selected?.id !== "chat-synthesizer") {
+            return toolStrategy(schema as {
+              type: "object";
+              properties?: Record<string, unknown>;
+              required?: string[];
+              additionalProperties?: boolean;
+              [key: string]: unknown;
+            });
+          }
+          return providerStrategy((input.projectResponseSchema?.(schema) ?? schema) as {
+            type: "object";
+            properties?: Record<string, unknown>;
+            required?: string[];
+            additionalProperties?: boolean;
+            [key: string]: unknown;
+          });
+        }
+      : undefined,
     beforeInvoke: async ({ taskId }) => {
       const profileId = profileByTaskId.get(taskId);
-      if (profileId === "chat-synthesizer") input.beforeSynthesis?.();
+      if (profileId === "chat-synthesizer") await input.beforeSynthesis?.();
       state.taskStatuses[taskId] = "started";
       await persistState();
     },
@@ -377,6 +707,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       })
       .map((profile) => profile.id),
     beforeProposal: input.beforeProposal,
+    beforeAdmission: input.beforeWorkflowAdmission,
     onAccepted: async (workflow, response) => {
       dispatch.replaceAdmissions(workflow.admissions);
       dispatch.setMaxConcurrency(workflow.compiled.maxConcurrency);

@@ -318,6 +318,14 @@ export interface AgenticDispatchInterceptionOptionsV1 {
   }) => unknown | Promise<unknown>;
   /** Project the bounded value visible to dependent tasks and QuickJS. */
   projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+  /**
+   * Select the framework response-format strategy only after the raw schema
+   * supplied by guest code matches the immutable host admission.
+   */
+  projectResponseFormat?: (
+    responseSchema: Readonly<Record<string, unknown>>,
+    admission: AgenticTaskAdmissionV1,
+  ) => unknown;
   /** Runs after static admission but before any upstream provider/model call. */
   beforeInvoke?: (input: {
     taskId: string;
@@ -388,11 +396,11 @@ export function createAgenticDispatchInterceptionAdapter(
   const emit = (diagnostic: ResearchDispatchDiagnosticV1): void => {
     observedStatus = true;
     if (diagnostic.taskId) {
-      const current = taskStatuses.get(diagnostic.taskId);
-      // A rejected duplicate or invalid transition is an observation, not a
-      // state transition of the already accepted attempt. Preserve terminal
-      // truth so dependency admission cannot be rolled back by a later call.
-      if (diagnostic.status !== "rejected" || current === undefined) {
+      // A rejected request never crossed the upstream dispatch boundary and
+      // therefore cannot consume the immutable task slot. It is diagnostic
+      // evidence only. Preserve the current accepted lifecycle (if any) and
+      // let a corrected, still-admitted request proceed exactly once.
+      if (diagnostic.status !== "rejected") {
         taskStatuses.set(diagnostic.taskId, diagnostic.status);
       }
     }
@@ -698,9 +706,12 @@ export function createAgenticDispatchInterceptionAdapter(
         // output. Admissions are intentionally immutable, so pass a fresh
         // clone across the framework boundary rather than the frozen host
         // contract object itself.
-        [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: structuredClone(
-          admission.responseSchema,
-        ),
+        [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: options.projectResponseFormat
+          ? options.projectResponseFormat(
+              structuredClone(admission.responseSchema),
+              admission,
+            )
+          : structuredClone(admission.responseSchema),
         [RESEARCH_TASK_ID_CONFIG_KEY]: taskId,
         [RESEARCH_TASK_GRANTS_CONFIG_KEY]: [...admission.grantedCapabilityIds],
       },

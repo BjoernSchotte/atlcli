@@ -599,51 +599,74 @@ keeping simple answers direct.
 
 Implementation:
 
-- [ ] Register narrow host-owned profiles for exact-context reading, Confluence
+- [x] Register narrow host-owned profiles for exact-context reading, Confluence
       search, Jira search, relationship tracing, comparison analysis,
       contradiction checking, answer critique, and Chat synthesis.
-- [ ] Give each profile the minimum PTC capabilities, response schema, prompt,
+- [x] Give each profile the minimum PTC capabilities, response schema, prompt,
       context projection, model preference, budget slice, and duration required
       by its role.
-- [ ] Add a host-validated Chat workflow proposal using the generalized
+- [x] Add a host-validated Chat workflow proposal using the generalized
       `AgenticWorkflowV1` core and `conversation-answer` objective.
-- [ ] Let QuickJS compose dynamically sized parallel frontiers and dependency-
+- [x] Let QuickJS compose dynamically sized parallel frontiers and dependency-
       driven continuation from only the host-returned admitted tasks.
-- [ ] Route bridged `task()` calls through the shared durable dispatcher with
+- [x] Route bridged `task()` calls through the shared durable dispatcher with
       authorization, HITL, deterministic task/attempt IDs, reserve-before-call
       budgets, cancellation, and journal writes.
-- [ ] Keep child depth at one. A child cannot delegate, access sibling context,
+- [x] Keep child depth at one. A child cannot delegate, access sibling context,
       inspect the full supervisor history, or receive another child's trajectory.
-- [ ] Keep source bodies in the evidence workspace; guest code and child packets
+- [x] Keep source bodies in the evidence workspace; guest code and child packets
       carry bounded references, metadata, support spans, claims, and gaps.
-- [ ] Dispatch exactly one dedicated Chat synthesizer for every agentic Chat path.
+- [x] Dispatch exactly one dedicated Chat synthesizer for every agentic Chat path.
 
 Automated proof:
 
-- [ ] Deterministic composition tests cover direct, two-sibling parallel, multi-
+- [x] Deterministic composition tests cover direct, two-sibling parallel, multi-
       wave dependency, optional critic, repair, and synthesis topologies.
-- [ ] Sibling timing proves real concurrency under the host concurrency ceiling.
-- [ ] Context-isolation tests prove no sibling/full-supervisor/source-body leak.
-- [ ] Unknown profile, forged task, duplicate dispatch, dependency violation,
+- [x] Sibling timing proves real concurrency under the host concurrency ceiling.
+- [x] Context-isolation tests prove no sibling/full-supervisor/source-body leak.
+- [x] Unknown profile, forged task, duplicate dispatch, dependency violation,
       nested delegation, raw network, GraphQL, filesystem, Chrome API, credential,
       and mutation attempts fail before provider execution.
-- [ ] Packet item/character/byte/depth limits have explicit near-limit and
+- [x] Packet item/character/byte/depth limits have explicit near-limit and
       overflow rejection tests.
-- [ ] Exactly one root and one agentic-path synthesizer execute per turn.
+- [x] Exactly one root and one agentic-path synthesizer execute per turn.
 
 Live acceptance:
 
 - [ ] A real read-only complex CLI question produces a dynamically composed
       workflow whose child tasks materially match the question.
-- [ ] The equivalent MV3 run uses the same accepted topology and capability
+- [x] The equivalent MV3 run uses the same accepted topology and capability
       closure.
-- [ ] A simple exact-page Deep turn may remain direct and dispatch no ceremonial
+- [x] A simple exact-page Deep turn may remain direct and dispatch no ceremonial
       children.
 
 Acceptance criteria:
 
-- [ ] Dynamic composition reduces supervisor context and improves the complex
+- [x] Dynamic composition reduces supervisor context and improves the complex
       answer without changing scope or exposing extra capabilities.
+
+Proof record (2026-08-06): the production Chat root now registers exactly eight
+host-owned, depth-one profiles. QuickJS proposes only profile IDs, objectives,
+and dependencies; the host admits the graph and returns immutable dispatch
+envelopes. The provider sees one `eval` surface while the host-audited `task()`
+bridge remains inside the interpreter, and every child receives only its bounded
+turn context, admitted dependency packets, response schema, capability subset,
+model preference, duration, and byte limits. The shared dispatcher proves real
+sibling concurrency, dependency hydration, cancellation, single-dispatch
+semantics, and one dedicated final synthesizer. Explicit tests accept schema and
+byte values at their limits and reject item, character, byte, and nested-shape
+overflow before synthesis.
+
+A complete provider-backed Deep CLI proof over synthetic read-only Jira and
+Confluence adapters dynamically dispatched acquisition, analysis, critique, and
+synthesis work. It emitted 21 summarized-reasoning deltas, 33 provisional
+Markdown deltas, 13 bounded PTC calls, and one host-validated final answer in
+176.1 seconds. The packed production MV3 bundle proves the same direct and
+agentic decisions for Quick, Auto, and Deep, including the internal `task()`
+bridge, child read, accepted topology, closure, summarized-reasoning stream, and
+provisional-answer stream. No private tenant content, source body, credential,
+provider payload, or raw chain of thought enters fixtures, packets, journals, or
+committed proof text.
 
 ### C6 — Implement Chat retrieval planning and candidate accountability
 
@@ -652,39 +675,39 @@ that stops at sufficient evidence rather than pretending a fixed cap is complete
 
 Implementation:
 
-- [ ] Add `ChatRetrievalPlanV1` with anchors, resolved entities, admitted searches,
+- [x] Add `ChatRetrievalPlanV1` with anchors, resolved entities, admitted searches,
       relationship traversals, unresolved terms, completion signals, and budget
       reservations.
 - [ ] Enforce the retrieval order: bound anchors; explicit URL/ID/key; approved
       natural-language resolver; focused scoped search; query variants;
       relationship traversal; controlled related-scope proposal; completion
       assessment.
-- [ ] Add a durable candidate ledger containing discovery provenance, query
+- [x] Add a durable candidate ledger containing discovery provenance, query
       variant, rank, canonical identity, version, authority, deduplication,
       admission, detail-read state, exclusion reason, and deferred state.
-- [ ] Add bounded query reformulation and saturation detection for alternate
+- [x] Add bounded query reformulation and saturation detection for alternate
       titles, synonyms, terminology, and time windows.
-- [ ] Traverse Confluence-to-Jira text keys, structured Jira macros, and links,
+- [x] Traverse Confluence-to-Jira text keys, structured Jira macros, and links,
       plus Jira-to-Confluence remote links, without implicitly granting broader
       whole-project or whole-space access.
-- [ ] Resolve natural-language project/space names through approved catalog tools;
+- [x] Resolve natural-language project/space names through approved catalog tools;
       pause through HITL when a material ambiguity remains.
-- [ ] Reserve separate root capacity for direct reads, discovery/pagination,
+- [x] Reserve separate root capacity for direct reads, discovery/pagination,
       traversal, repair, critique, and synthesis. Rank further work by expected
       information gain rather than a fixed candidate count.
-- [ ] Add a host-owned sufficient-evidence assessment for Chat that remains
+- [x] Add a host-owned sufficient-evidence assessment for Chat that remains
       distinct from Research corpus completeness.
 
 Automated proof:
 
-- [ ] Relevant later-page candidate, alternate title, synonym, explicit link,
+- [x] Relevant later-page candidate, alternate title, synonym, explicit link,
       search-index miss, Jira text key, Jira macro, Jira remote link, stale/new
       duplicate, and ambiguous resolver scenarios all have individual tests.
-- [ ] Every admitted candidate ends in detail-read, excluded-with-reason, or
+- [x] Every admitted candidate ends in detail-read, excluded-with-reason, or
       deferred-with-disclosed-reason state.
-- [ ] Few search results, index exhaustion, or a read cap cannot alone set
+- [x] Few search results, index exhaustion, or a read cap cannot alone set
       sufficient evidence to true.
-- [ ] Invalid CQL/JQL, cursor, tenant, scope, traversal, or budget proposals fail
+- [x] Invalid CQL/JQL, cursor, tenant, scope, traversal, or budget proposals fail
       before HTTP.
 - [ ] CLI and MV3 consume the same retrieval plan and candidate trace.
 
@@ -697,8 +720,32 @@ Live acceptance:
 
 Acceptance criteria:
 
-- [ ] Retrieval recall, wrong-source rate, detail-read coverage, canonical URL
+- [x] Retrieval recall, wrong-source rate, detail-read coverage, canonical URL
       correctness, Atlassian calls, and latency are measurable per turn.
+
+Proof record (2026-08-06): the separate Chat root now persists a typed retrieval
+plan, candidate ledger, and sufficient-evidence assessment before and during
+content access. An agentic supervisor may attach a bounded retrieval proposal to
+its dynamic workflow: at most three typed variants per already-bound product,
+ordered by expected information gain. The host rejects raw CQL/JQL, invented or
+foreign cursors, unavailable products, scope changes, traversal depth greater
+than one, late replanning, and budget overflow before HTTP. Every discovered
+candidate retains query/page/rank provenance, canonical identity, observed
+versions, authority, and a terminal detail-read, exclusion, or disclosed
+deferral state. Per-turn run metadata exposes recall when a labelled proof corpus
+exists, wrong-source rate, detail-read coverage, canonical URL correctness,
+Atlassian calls, and latency.
+
+Synthetic proof covers a later pagination page, alternate title and synonym,
+query saturation, exact anchors that bypass search-index discovery, Confluence
+text keys, structured Jira macros, tenant-local Jira-to-Confluence links,
+foreign-space rejection, duplicate versions, natural-language scope resolution,
+and durable ambiguity clarification. The focused suite passes 179 tests; the
+packed production MV3 test passes the same dynamic replan, agentic workflow,
+summarized-reasoning stream, and provisional-Markdown stream. The remaining C6
+gates are the explicit related-scope HITL proposal, a persisted trace parity
+assertion across CLI and MV3, and the private read-only live acceptance; they
+remain unchecked below rather than being inferred from synthetic data.
 
 ### C7 — Add sufficient-evidence assessment, critic, repair, and synthesis
 

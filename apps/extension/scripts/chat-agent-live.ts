@@ -154,6 +154,27 @@ export async function runChatAgentLiveV1(): Promise<void> {
         console.error(`[chat-live] capability=${event.toolId} status=${event.status}`);
       }
     },
+    onAgentDiagnostic: (diagnostic) => {
+      if (diagnostic.kind === "model-step") {
+        console.error(
+          `[chat-live] model=${diagnostic.purpose} status=${diagnostic.status}`,
+        );
+        return;
+      }
+      console.error(
+        `[chat-live] eval=${diagnostic.status}${diagnostic.profileId ? ` profile=${diagnostic.profileId}` : ""}${diagnostic.attempt === undefined ? "" : ` attempt=${diagnostic.attempt}`}${diagnostic.codeChars === undefined ? "" : ` chars=${diagnostic.codeChars}`}${diagnostic.capabilityNames === undefined ? "" : ` capabilities=${diagnostic.capabilityNames.join(",") || "none"}`}${diagnostic.searchInputShapes === undefined ? "" : ` shapes=${diagnostic.searchInputShapes.join(",") || "none"}`}${diagnostic.argumentKeys === undefined ? "" : ` keys=${diagnostic.argumentKeys.join(",") || "none"}`}${diagnostic.errorKind ? ` kind=${diagnostic.errorKind}` : ""}${diagnostic.subagentErrorCode ? ` child_error=${diagnostic.subagentErrorCode}` : ""}${diagnostic.errorCode ? ` error=${diagnostic.errorCode}` : ""}`,
+      );
+    },
+    onDispatchDiagnostic: (diagnostic) => {
+      console.error(
+        `[chat-live] dispatch=${diagnostic.status}${diagnostic.taskId ? ` task=${diagnostic.taskId}` : ""}${diagnostic.code ? ` code=${diagnostic.code}` : ""}${diagnostic.resultBytes === undefined ? "" : ` bytes=${diagnostic.resultBytes}`}`,
+      );
+    },
+    onSubagentResultDiagnostic: (diagnostic) => {
+      console.error(
+        `[chat-live] result=${diagnostic.status} profile=${diagnostic.profileId} phase=${diagnostic.phase} kind=${diagnostic.valueKind}${diagnostic.objectKeys ? ` keys=${diagnostic.objectKeys.join(",")}` : ""}${diagnostic.referenceKinds ? ` refs=${diagnostic.referenceKinds.join(",") || "none"}` : ""}${diagnostic.unknownReferenceKinds ? ` unknown_refs=${diagnostic.unknownReferenceKinds.join(",") || "none"}` : ""}`,
+      );
+    },
     onChatPresentation: (event) => {
       presentation.push(event);
       if (event.status === "started") {

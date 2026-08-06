@@ -22,6 +22,7 @@ import {
   type ChatQualityPolicyV1,
 } from "../quality-policy.js";
 import type { ResearchWorkspace } from "../workspace.js";
+import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
 import { finalizeChatAnswerV1 } from "./answer.js";
 import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
 import {
@@ -38,6 +39,11 @@ import {
 } from "./contracts.js";
 import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
+import {
+  ChatCandidateLedgerControllerV1,
+  createChatRetrievalPlanV1,
+  type ChatRetrievalPlanProposalV1,
+} from "./retrieval-plan.js";
 import type { ChatModelBindingV1, ChatModelFactoryV1 } from "./model.js";
 import {
   CHAT_STRATEGY_RECORD_SCHEMA_V1,
@@ -53,6 +59,7 @@ import {
 } from "./strategy.js";
 import {
   createChatAgenticWorkflowRuntimeV1,
+  type ChatSubagentResultDiagnosticV1,
 } from "./workflow-runtime.js";
 
 export function chatRecursionLimitV1(maxPtcCalls: number): number {
@@ -93,6 +100,10 @@ export type ChatAgentDiagnosticV1 =
   | {
       kind: "eval-step";
       status: "started" | "success" | "error";
+      /** Present only for a depth-one specialist eval; absent means the root supervisor. */
+      profileId?: string;
+      attempt?: number;
+      subagentErrorCode?: string;
       resultChars?: number;
       errorKind?: "SyntaxError" | "ReferenceError" | "TypeError" | "Error" | "unknown";
       errorCode?: "tools-unavailable" | "capability-unavailable" | "undefined-symbol" | "syntax" | "other";
@@ -100,6 +111,7 @@ export type ChatAgentDiagnosticV1 =
       capabilityNames?: string[];
       usesToolsNamespace?: boolean;
       searchInputShapes?: string[];
+      argumentKeys?: string[];
     };
 
 function diagnosticMessage(value: unknown): {
@@ -294,9 +306,28 @@ export function createChatNoSubagentMiddlewareV1() {
 function createChatCodeInterpreterMiddlewareV1(
   options: Parameters<typeof createCodeInterpreterMiddleware>[0] & {
     agentic?: boolean;
+    /** Host-audited task tool that QuickJS may bridge but the provider may not see. */
+    taskBridgeTool?: unknown;
   },
 ) {
-  const middleware = createCodeInterpreterMiddleware(options);
+  const { taskBridgeTool, ...interpreterOptions } = options;
+  const middleware = createCodeInterpreterMiddleware(interpreterOptions);
+  const upstreamWrapModelCall = middleware.wrapModelCall;
+  if (taskBridgeTool && upstreamWrapModelCall) {
+    middleware.wrapModelCall = (request, handler) => {
+      const bridgeTool = taskBridgeTool as (typeof request.tools)[number];
+      const toolsForInterpreter = request.tools.some((candidate) => candidate.name === "task")
+        ? request.tools
+        : [...request.tools, bridgeTool];
+      return upstreamWrapModelCall(
+        { ...request, tools: toolsForInterpreter },
+        (providerRequest) => handler({
+          ...providerRequest,
+          tools: providerRequest.tools.filter((candidate) => candidate.name !== "task"),
+        }),
+      );
+    };
+  }
   const evaluator = middleware.tools?.find(
     (candidate) => candidate.name === (options.toolName ?? "eval"),
   );
@@ -345,6 +376,8 @@ export interface RunChatAgentInput {
   onChatPresentation?: (event: ChatPresentationStreamEventV1) => void;
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
   onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
+  onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+  onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
 }
 
 function collectUsage(messages: unknown): ResearchRunUsageV1 | undefined {
@@ -543,6 +576,7 @@ export function createKiteweaveChatAgent(
         });
       };
       let assertStrategyAccepted: (() => void) | undefined;
+      let retrievalLedger: ChatCandidateLedgerControllerV1 | undefined;
       let strategyForFinalReviewReserve: ChatStrategyDecisionV1 | undefined;
       const broker = new ResearchCapabilityBroker(
         input.brokerRequest,
@@ -553,6 +587,12 @@ export function createKiteweaveChatAgent(
           exactAuxiliaryNeeds: deriveChatAuxiliaryReadNeedsV1(turn.question),
           beforeContentOperation: () => {
             assertStrategyAccepted?.();
+            if (!retrievalLedger) {
+              throw new ChatContractError(
+                "invalid-request",
+                "The Chat retrieval plan must be persisted before content access.",
+              );
+            }
             assertChatFinalReviewReserveV1({
               strategy: strategyForFinalReviewReserve,
               budget,
@@ -678,6 +718,31 @@ export function createKiteweaveChatAgent(
           ...(turn.scope.jiraProjectKeys.length > 0 ? ["jira" as const] : []),
           ...(turn.scope.confluenceSpaceKeys.length > 0 ? ["confluence" as const] : []),
         ];
+        const buildRetrievalPlan = (
+          proposal?: ChatRetrievalPlanProposalV1,
+        ) => createChatRetrievalPlanV1({
+          conversationId: turn.conversationId,
+          turnId: turn.turnId,
+          question: turn.question,
+          anchors,
+          scopeBindings: input.brokerRequest.scopeSeeds?.map((seed) => seed.binding) ?? [],
+          boundProjectKeys: turn.scope.jiraProjectKeys,
+          boundSpaceKeys: turn.scope.confluenceSpaceKeys,
+          searchProducts,
+          exactContextProducts: turn.exactContextProducts ?? [],
+          limits: turn.limits,
+          agentic: strategyDecision.execution === "agentic",
+          ...(proposal ? { proposal } : {}),
+          now,
+        });
+        const retrievalPlan = buildRetrievalPlan();
+        retrievalLedger = new ChatCandidateLedgerControllerV1({
+          plan: retrievalPlan,
+          workspace: input.workspace,
+          siteOrigin: turn.scope.siteOrigin,
+          now,
+        });
+        await retrievalLedger.initialize();
         const emitPtcDiagnostic = emitPtcEventFactory({
           onEvent: (event) => {
             input.onEvent?.(event);
@@ -697,29 +762,101 @@ export function createKiteweaveChatAgent(
           ? createChatAgenticWorkflowRuntimeV1({
               runtime,
               model,
+              ...(modelBinding.modelForPreference
+                ? { modelForPreference: modelBinding.modelForPreference }
+                : {}),
+              structuredOutput: modelBinding.structuredOutput,
+              ...(modelBinding.projectResponseSchema
+                ? { projectResponseSchema: modelBinding.projectResponseSchema }
+                : {}),
               strategy: strategyDecision,
               budget,
               broker,
               workspace: input.workspace,
               conversationId: turn.conversationId,
               turnId: turn.turnId,
-              taskContext: JSON.stringify({
-                question: turn.question,
-                scope: turn.scope,
-                anchors,
-              }),
+              taskContext: () => {
+                const currentRetrievalPlan = retrievalLedger!.plan();
+                return JSON.stringify({
+                  question: turn.question,
+                  scope: turn.scope,
+                  anchors,
+                  retrieval: {
+                    searches: currentRetrievalPlan.searches.map((search) => ({
+                      searchId: search.searchId,
+                      product: search.product,
+                      variants: search.variants,
+                      maxPages: search.maxPages,
+                    })),
+                    relationshipTraversals: currentRetrievalPlan.relationshipTraversals,
+                    completionSignals: currentRetrievalPlan.completionSignals,
+                    unresolvedTerms: currentRetrievalPlan.unresolvedTerms,
+                  },
+                });
+              },
               limits: turn.limits,
               exactContextProducts: turn.exactContextProducts ?? [],
               searchProducts,
+              boundProjectKeys: turn.scope.jiraProjectKeys,
+              boundSpaceKeys: turn.scope.confluenceSpaceKeys,
               signal: controller.signal,
               beforeProposal: strategyController?.assertAcknowledged,
-              beforeSynthesis: strategyReviewController?.assertCurrent,
+              beforeWorkflowAdmission: async (proposal) => {
+                if (!proposal.retrievalPlan) return;
+                await retrievalLedger!.replacePlan(buildRetrievalPlan(proposal.retrievalPlan));
+              },
+              beforeSynthesis: async () => {
+                strategyReviewController?.assertCurrent();
+                await retrievalLedger!.finalize();
+              },
+              retrievalLedger,
               now,
               onPtcDiagnostic: (profileId, diagnostic) => emitPtcDiagnostic({
                 ...diagnostic,
                 callId: `${profileId}:${diagnostic.callId}`,
               }),
+              onEvalDiagnostic: (diagnostic) => emitAgentDiagnostic({
+                kind: "eval-step",
+                status: diagnostic.status,
+                profileId: diagnostic.profileId,
+                attempt: diagnostic.attempt,
+                ...(diagnostic.errorKind && [
+                  "SyntaxError",
+                  "ReferenceError",
+                  "TypeError",
+                  "Error",
+                ].includes(diagnostic.errorKind)
+                  ? {
+                      errorKind: diagnostic.errorKind as
+                        | "SyntaxError"
+                        | "ReferenceError"
+                        | "TypeError"
+                        | "Error",
+                    }
+                  : {}),
+                ...(diagnostic.errorCode
+                  ? { subagentErrorCode: diagnostic.errorCode }
+                  : {}),
+                ...(diagnostic.codeChars === undefined
+                  ? {}
+                  : { codeChars: diagnostic.codeChars }),
+                ...(diagnostic.usesToolsNamespace === undefined
+                  ? {}
+                  : { usesToolsNamespace: diagnostic.usesToolsNamespace }),
+                ...(diagnostic.capabilityNames === undefined
+                  ? {}
+                  : { capabilityNames: diagnostic.capabilityNames }),
+                ...(diagnostic.searchInputShapes === undefined
+                  ? {}
+                  : { searchInputShapes: diagnostic.searchInputShapes }),
+                ...(diagnostic.argumentKeys === undefined
+                  ? {}
+                  : { argumentKeys: diagnostic.argumentKeys }),
+                ...(diagnostic.errorCode ? { errorCode: "other" as const } : {}),
+              }),
+              onResultDiagnostic: input.onSubagentResultDiagnostic,
               onDispatchDiagnostic: (diagnostic) => {
+                input.onDispatchDiagnostic?.(diagnostic);
                 if (!diagnostic.taskId) return;
                 input.onEvent?.({
                   kind: "task",
@@ -731,6 +868,15 @@ export function createKiteweaveChatAgent(
                     ? {}
                     : { resultBytes: diagnostic.resultBytes }),
                 });
+                if (
+                  (diagnostic.status === "failed" || diagnostic.status === "cancelled") &&
+                  !controller.signal.aborted
+                ) {
+                  controller.abort(new ChatContractError(
+                    diagnostic.code === "timeout" ? "limit-exceeded" : "invalid-report",
+                    "A bounded Chat specialist did not complete; the turn stopped before synthesis.",
+                  ));
+                }
               },
             })
           : undefined;
@@ -746,7 +892,13 @@ export function createKiteweaveChatAgent(
                 now,
                 exactContextProducts: turn.exactContextProducts,
                 searchProducts,
+                boundProjectKeys: turn.scope.jiraProjectKeys,
+                boundSpaceKeys: turn.scope.confluenceSpaceKeys,
                 onDiagnostic: emitPtcDiagnostic,
+                beforeInvoke: (tool, value) =>
+                  retrievalLedger!.assertToolInput(tool, value),
+                onResult: (tool, result, callId, value) =>
+                  retrievalLedger!.observe(tool, result, callId, value),
               }),
             ];
         let structuredRepairAttempts = 0;
@@ -767,6 +919,13 @@ export function createKiteweaveChatAgent(
             createChatCodeInterpreterMiddlewareV1({
               ptc: ptcTools,
               subagents: strategyDecision.execution === "agentic",
+              ...(agenticWorkflow?.middleware.tools?.find((candidate) => candidate.name === "task")
+                ? {
+                    taskBridgeTool: agenticWorkflow.middleware.tools.find(
+                      (candidate) => candidate.name === "task",
+                    ),
+                  }
+                : {}),
               toolName: "eval",
               systemPrompt: strategyDecision.execution === "agentic"
                 ? "The eval tool advances an agentic Chat workflow in a persistent QuickJS REPL. Top-level await and the depth-one task() bridge are available. Strategy, proposal, task waves, review, and synthesis may use separate eval calls; accepted host state persists. Use only host-returned dispatch fields and documented tools.* controls. Console is unavailable."
@@ -1002,6 +1161,8 @@ export function createKiteweaveChatAgent(
         const finalDraft = agenticWorkflow
           ? agenticWorkflow.assertComplete()
           : result.structuredResponse;
+        if (!agenticWorkflow) await retrievalLedger.finalize();
+        const retrievalAssessment = retrievalLedger.assessment();
         emitPhase("rendering");
         const completedAtMs = now();
         const answer = finalizeChatAnswerV1({
@@ -1020,6 +1181,7 @@ export function createKiteweaveChatAgent(
             completedAt: new Date(completedAtMs).toISOString(),
             durationMs: Math.max(0, completedAtMs - startedAtMs),
             counts: broker.budget.counts(),
+            retrieval: retrievalAssessment.metrics,
             ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
           },
         });

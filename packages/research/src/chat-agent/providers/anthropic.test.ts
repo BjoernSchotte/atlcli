@@ -4,7 +4,10 @@ import { createDeepAgent } from "deepagents/node";
 import { providerStrategy } from "langchain";
 import { z } from "zod/v4";
 import { chatQualityPolicyV1 } from "../../quality-policy.js";
-import { createAnthropicChatModelBindingV1 } from "./anthropic.js";
+import {
+  anthropicOutputTokensForPreferenceV1,
+  createAnthropicChatModelBindingV1,
+} from "./anthropic.js";
 
 function syntheticAnthropicStream(): Response {
   const frames: unknown[] = [
@@ -74,6 +77,13 @@ function syntheticAnthropicStream(): Response {
 }
 
 describe("Anthropic Chat model binding", () => {
+  it("bounds child output by role without exceeding the root token contract", () => {
+    expect(anthropicOutputTokensForPreferenceV1("fast", 8_000)).toBe(2_048);
+    expect(anthropicOutputTokensForPreferenceV1("balanced", 8_000)).toBe(4_096);
+    expect(anthropicOutputTokensForPreferenceV1("thorough", 8_000)).toBe(5_000);
+    expect(anthropicOutputTokensForPreferenceV1("thorough", 1_024)).toBe(1_024);
+  });
+
   it("uses native streaming and grants only documented summarized reasoning", () => {
     const quick = createAnthropicChatModelBindingV1({
       credential: "synthetic-key",
@@ -98,6 +108,28 @@ describe("Anthropic Chat model binding", () => {
     });
     expect(deep.reasoningPresentation).toBe("summary");
     expect(deep.structuredOutput).toBe("native");
+    expect(deep.modelForPreference?.("fast")).toMatchObject({
+      streaming: true,
+      thinking: { type: "disabled" },
+      outputConfig: { effort: "low" },
+    });
+    expect(deep.modelForPreference?.("balanced")).toMatchObject({
+      streaming: true,
+      thinking: { type: "adaptive", display: "summarized" },
+      outputConfig: { effort: "medium" },
+    });
+    expect(deep.modelForPreference?.("thorough")).toBe(deep.model);
+    expect(deep.projectResponseSchema?.({
+      type: "object",
+      properties: {
+        values: { type: "array", maxItems: 2, items: { type: "string" } },
+      },
+    })).toEqual({
+      type: "object",
+      properties: {
+        values: { type: "array", items: { type: "string" } },
+      },
+    });
   });
 
   it("projects provider summaries through DeepAgents v3 reasoning without mixing answer or opaque blocks", async () => {

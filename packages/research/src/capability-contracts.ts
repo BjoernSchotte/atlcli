@@ -131,6 +131,8 @@ export interface ResearchGetOutputV1 {
   schema: string;
   source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
   content: BoundedContentProjectionV1;
+  /** Exact opposite-product links observed in verified detail content. */
+  relatedAnchors?: BoundEntityAnchorV1[];
   budget: ResearchBudgetSnapshotV1;
 }
 
