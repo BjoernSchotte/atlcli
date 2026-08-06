@@ -65,6 +65,11 @@ import {
 const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
 const SITE_ORIGIN = "https://packed-research.atlassian.net";
+const PACKED_CHAT_HOST_IDENTITY = {
+  userId: "browser-principal:00000000-0000-4000-8000-000000000001",
+  providerCacheIdentity:
+    "anthropic:browser-principal:00000000-0000-4000-8000-000000000001",
+} as const;
 const ATLASSIAN_PAGE = `${SITE_ORIGIN}/wiki/spaces/KB/pages/1001/Packed-research`;
 const CHANNEL_NAME = "atlcli-packed-research-v1";
 const PACKED_STRUCTURED_LONG_STORAGE = [
@@ -1401,6 +1406,21 @@ globalThis.fetch = async (input, init) => {
     modelCalls += 1;
     const serializedMessages = JSON.stringify(body.messages ?? []);
     const serializedRequest = JSON.stringify(body);
+    const currentUserMessage = [...(body.messages ?? [])]
+      .reverse()
+      .find((message) =>
+        message?.role === "user" && JSON.stringify(message).includes("User question:")
+      );
+    const currentUserContent = currentUserMessage?.content;
+    const currentUserText = typeof currentUserContent === "string"
+      ? currentUserContent
+      : Array.isArray(currentUserContent)
+        ? currentUserContent
+          .filter((block) => block?.type === "text" && typeof block.text === "string")
+          .map((block) => block.text)
+          .join("\n")
+        : "";
+    const serializedCurrentQuestion = currentUserText.split("\n", 1)[0] ?? "";
     const packedSentinelRequest = packedSentinelRun || serializedRequest.includes("packed-sentinel");
     if (packedSentinelRequest) {
       const specialist = serializedRequest.match(/You are the ([a-z-]+) specialist in a read-only Atlassian research workflow/);
@@ -1625,11 +1645,11 @@ globalThis.fetch = async (input, init) => {
       return structured(packedJiraOnlyChatDraft);
     }
 
-    const packedExactPageChat = serializedRequest.includes("packed-exact-page:") &&
+    const packedExactPageChat = serializedCurrentQuestion.includes("packed-exact-page:") &&
       serializedRequest.includes("Answer as a normal chat response");
-    const packedExactIssueChat = serializedRequest.includes("packed-exact-issue:") &&
+    const packedExactIssueChat = serializedCurrentQuestion.includes("packed-exact-issue:") &&
       serializedRequest.includes("Answer as a normal chat response");
-    const packedLongPageChat = serializedRequest.includes("packed-long-page:") &&
+    const packedLongPageChat = serializedCurrentQuestion.includes("packed-long-page:") &&
       serializedRequest.includes("Answer as a normal chat response");
     if (packedExactPageChat || packedExactIssueChat || packedLongPageChat) {
       const strategyRequired = serializedRequest.includes(
@@ -1685,7 +1705,9 @@ globalThis.fetch = async (input, init) => {
           modelCalls,
         );
       }
-      const anchorRef = serializedRequest.match(/research-anchor:[A-Za-z0-9-]{1,200}/)?.[0];
+      const anchorRef = currentUserText.match(
+        /research-anchor:[A-Za-z0-9-]{1,200}/,
+      )?.[0];
       if (!anchorRef) {
         return providerMessage(
           [{ type: "text", text: "Packed exact-context fixture could not find a host anchor." }],
@@ -2880,7 +2902,7 @@ async function runPackedResearchInBackground(
   mode: "chat" | "research" = "research",
   qualityPolicy?: ChatQualityPolicyV1,
 ): Promise<PackedRunResponse | PackedChatRunResponse> {
-  return page.evaluate(async ({ request, runId, mode, policy, qualityPolicy }) => {
+  return page.evaluate(async ({ request, runId, mode, policy, qualityPolicy, hostIdentity }) => {
     const window = await chrome.windows.getCurrent();
     if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
     return chrome.runtime.sendMessage({
@@ -2892,11 +2914,51 @@ async function runPackedResearchInBackground(
       mode,
       request,
       policy,
+      ...(mode === "chat" ? { hostIdentity } : {}),
       ...(qualityPolicy ? { qualityPolicy } : {}),
     });
-  }, { request, runId, mode, policy: HOST_PARITY_POLICY, qualityPolicy }) as Promise<
+  }, {
+    request,
+    runId,
+    mode,
+    policy: HOST_PARITY_POLICY,
+    qualityPolicy,
+    hostIdentity: PACKED_CHAT_HOST_IDENTITY,
+  }) as Promise<
     PackedRunResponse | PackedChatRunResponse
   >;
+}
+
+async function runPackedChatTurnInBackground(
+  page: Page,
+  input: {
+    request: ResearchRequestV1;
+    runId: string;
+    sessionId: string;
+    turnId: string;
+    qualityPolicy?: ChatQualityPolicyV1;
+  },
+): Promise<PackedChatRunResponse> {
+  return page.evaluate(async ({ input, policy, hostIdentity }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:run",
+      runId: input.runId,
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      windowId: window.id,
+      mode: "chat",
+      request: input.request,
+      policy,
+      hostIdentity,
+      ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
+    });
+  }, {
+    input,
+    policy: HOST_PARITY_POLICY,
+    hostIdentity: PACKED_CHAT_HOST_IDENTITY,
+  }) as Promise<PackedChatRunResponse>;
 }
 
 async function resumePackedResearchInBackground(
@@ -5886,6 +5948,104 @@ test("reads exact page and issue anchors in packed MV3 without search or ranking
   expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
   expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(false);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("resumes three connected Chat turns across MV3 worker recreation and reuses fresh evidence", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+  const sessionId = "research-session:packed-chat-memory";
+  const first = await runPackedChatTurnInBackground(page, {
+    request: packedExactContextRequest("confluence"),
+    runId: "packed-chat-memory-first",
+    sessionId,
+    turnId: "research-turn:packed-chat-memory-first",
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+  expect(first.ok, JSON.stringify(first)).toBe(true);
+  const firstEvents = await harnessEvents(page);
+  expect(firstEvents.filter((event) =>
+    event.kind === "fetch" && event.url?.includes("/wiki/rest/api/content/1001")
+  )).toHaveLength(1);
+
+  await closePackedResearchOffscreenDocument(page);
+  await page.reload();
+  await installEventCapture(page);
+  const secondRequest = {
+    ...packedExactContextRequest("confluence"),
+    question:
+      "packed-exact-page: Which detail from the previously read page matters most?",
+  };
+  const second = await runPackedChatTurnInBackground(page, {
+    request: secondRequest,
+    runId: "packed-chat-memory-second",
+    sessionId,
+    turnId: "research-turn:packed-chat-memory-second",
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+  expect(second.ok, JSON.stringify(second)).toBe(true);
+  if (second.ok) {
+    expect(second.report.evidenceRefs).toEqual(["wiki:1001"]);
+    expect(second.report.run.counts.httpCalls).toBe(0);
+  }
+  const secondEvents = await harnessEvents(page);
+  expect(secondEvents.some((event) =>
+    event.kind === "fetch" && event.url?.includes("/wiki/rest/api/content/1001")
+  )).toBe(false);
+
+  await closePackedResearchOffscreenDocument(page);
+  await installEventCapture(page);
+  const third = await runPackedChatTurnInBackground(page, {
+    request: packedExactContextRequest("jira"),
+    runId: "packed-chat-memory-third",
+    sessionId,
+    turnId: "research-turn:packed-chat-memory-third",
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+  expect(third.ok, JSON.stringify(third)).toBe(true);
+  if (third.ok) {
+    expect(third.report.evidenceRefs, JSON.stringify({
+      third,
+      events: await harnessEvents(page),
+    }, null, 2)).toEqual(["jira:DEMO-1"]);
+    expect(third.report.evidenceRefs).not.toContain("wiki:1001");
+    // One issue-detail request plus the bounded Jira remote-link sidecar.
+    expect(third.report.run.counts.httpCalls).toBe(2);
+  }
+  const thirdEvents = await harnessEvents(page);
+  expect(thirdEvents.filter((event) =>
+    event.kind === "fetch" && event.url?.includes("/rest/api/3/issue/DEMO-1") &&
+    !event.url?.includes("/remotelink")
+  )).toHaveLength(1);
+  expect(thirdEvents.some((event) => event.kind === "worker-error")).toBe(false);
+
+  const persisted = JSON.parse(await readPackedResearchDatabaseText(page)) as {
+    workspace?: Array<{ sessionId?: string; path?: string; contents?: string }>;
+  };
+  const sessionFile = persisted.workspace?.find((entry) =>
+    entry.sessionId === sessionId && entry.path === "/state/chat-session-v1.json"
+  );
+  expect(sessionFile?.contents).toBeDefined();
+  const chatSession = JSON.parse(sessionFile!.contents!) as {
+    schema?: string;
+    conversation?: { recentTurns?: Array<{ id?: string; status?: string }> };
+  };
+  expect(chatSession.schema).toBe("atlcli.chat-session/v1");
+  expect(chatSession.conversation?.recentTurns).toEqual([
+    expect.objectContaining({
+      id: "research-turn:packed-chat-memory-first",
+      status: "complete",
+    }),
+    expect.objectContaining({
+      id: "research-turn:packed-chat-memory-second",
+      status: "complete",
+    }),
+    expect.objectContaining({
+      id: "research-turn:packed-chat-memory-third",
+      status: "complete",
+    }),
+  ]);
 });
 
 test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat strategies in packed MV3", async () => {

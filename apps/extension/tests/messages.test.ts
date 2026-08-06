@@ -40,6 +40,27 @@ describe("message guards", () => {
     expect(isExtRequest({ kind: "ping" })).toBe(true);
     expect(isExtRequest({ kind: "wasm-smoke", a: 1, b: 2 })).toBe(true);
     expect(isExtRequest({ kind: "get-current-entity", windowId: 7 })).toBe(true);
+    const panelChatRun = {
+      kind: "research:run",
+      runId: "run-chat-1",
+      sessionId: "research-session:chat-1",
+      turnId: "research-turn:chat-1",
+      windowId: 7,
+      mode: "chat",
+      request: {},
+    } as const;
+    expect(isExtRequest(panelChatRun)).toBe(false);
+    expect(isExtRequest({
+      ...panelChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+    })).toBe(true);
+    expect(isExtRequest({
+      ...panelChatRun,
+      mode: "research",
+    })).toBe(true);
     expect(isExtRequest({ kind: "get-current-entity" })).toBe(false);
     expect(isExtRequest({ kind: "get-current-entity", windowId: -1 })).toBe(false);
     expect(isExtRequest({ kind: "get-current-entity", windowId: 1.5 })).toBe(false);
@@ -708,6 +729,23 @@ describe("message guards", () => {
     const jobId = "123e4567-e89b-42d3-a456-426614174000";
     expect(isOffscreenRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:research-pause", runId: "run-1" })).toBe(true);
+    const offscreenChatRun = {
+      kind: "offscreen:research-run",
+      runId: "run-chat-1",
+      sessionId: "research-session:chat-1",
+      turnId: "research-turn:chat-1",
+      apiKey: "sk-ant-test-message",
+      mode: "chat",
+      request: {},
+    } as const;
+    expect(isOffscreenRequest(offscreenChatRun)).toBe(false);
+    expect(isOffscreenRequest({
+      ...offscreenChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+    })).toBe(true);
     expect(isOffscreenRequest({
       kind: "offscreen:research-pause",
       runId: "run-1",

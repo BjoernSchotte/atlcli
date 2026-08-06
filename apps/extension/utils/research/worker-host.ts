@@ -9,7 +9,7 @@ import {
   type ResearchReport,
   type ResearchRequestV1,
 } from "./contracts.js";
-import { classifyResearchError } from "@atlcli/research";
+import { classifyResearchError, type ChatHostIdentityV1 } from "@atlcli/research";
 import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
@@ -36,6 +36,7 @@ interface ResearchAgentWorkerRunInput {
   request?: ResearchRequestV1;
   policy?: ResearchOneShotPolicyV1;
   qualityPolicy?: ChatQualityPolicyV1;
+  hostIdentity?: ChatHostIdentityV1;
   resume?: true;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
@@ -115,6 +116,7 @@ export class ResearchAgentWorkerHost {
         request: input.request,
         ...(input.policy ? { policy: input.policy } : {}),
         ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
+        ...(input.hostIdentity ? { hostIdentity: input.hostIdentity } : {}),
       });
     }).finally(() => {
       const active = this.#active.get(input.runId);

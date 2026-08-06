@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -128,6 +128,30 @@ export interface ResearchCliInput {
     revision: number;
     mentionId: string;
     candidateId: string;
+  };
+}
+
+/**
+ * Stable opaque CLI principal/cache fences. Raw profile names, usernames and
+ * email addresses never enter retained Chat state.
+ */
+export function cliChatHostIdentityV1(profile: Profile): {
+  userId: string;
+  providerCacheIdentity: string;
+} {
+  const principalMaterial = JSON.stringify({
+    tenantOrigin: new URL(profile.baseUrl).origin,
+    profileName: profile.name,
+    authType: profile.auth.type,
+    principalHint: profile.auth.email ?? profile.auth.username ?? profile.name,
+  });
+  const principalHash = createHash("sha256")
+    .update(principalMaterial)
+    .digest("hex")
+    .slice(0, 48);
+  return {
+    userId: `cli-principal:${principalHash}`,
+    providerCacheIdentity: `anthropic:cli-principal:${principalHash}`,
   };
 }
 
@@ -2580,6 +2604,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
     };
     return runKiteweaveChatAgent({
       apiKey: input.apiKey,
+      hostIdentity: cliChatHostIdentityV1(input.profile),
       turn,
       brokerRequest: input.request,
       providers,

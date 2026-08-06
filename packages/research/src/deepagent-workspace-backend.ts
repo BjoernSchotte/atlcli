@@ -294,7 +294,22 @@ export class ResearchDeepAgentWorkspaceBackendV1 {
 export function createResearchDeepAgentSummarizationBackendV1(
   workspace: ResearchWorkspace,
 ): ResearchDeepAgentWorkspaceBackendV1 {
+  return createDeepAgentSummarizationBackendV1(
+    workspace,
+    RESEARCH_DEEPAGENT_SUMMARIZATION_STORAGE_ROOT_V1,
+  );
+}
+
+/**
+ * Shared storage adapter for native DeepAgentsJS summarization. Callers must
+ * provide a host-owned root for their agent shape; Chat and Research never
+ * share histories even when they use the same portable workspace backend.
+ */
+export function createDeepAgentSummarizationBackendV1(
+  workspace: ResearchWorkspace,
+  storageRoot: string,
+): ResearchDeepAgentWorkspaceBackendV1 {
   return new ResearchDeepAgentWorkspaceBackendV1(
-    createNamespacedResearchWorkspace(workspace, RESEARCH_DEEPAGENT_SUMMARIZATION_STORAGE_ROOT_V1),
+    createNamespacedResearchWorkspace(workspace, storageRoot),
   );
 }

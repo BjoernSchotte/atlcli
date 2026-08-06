@@ -25,6 +25,7 @@ import {
   type ResearchSessionV1,
   type ChatTurnRequestV1,
   type ChatPresentationStreamEventV1,
+  type ChatHostIdentityV1,
 } from "@atlcli/research/browser";
 import { runChatAgent, runResearchAgent } from "@atlcli/research/browser/agent";
 import {
@@ -66,6 +67,13 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         if (!("request" in message)) {
           throw new ResearchContractError("invalid-request", "A direct chat run requires a request.");
         }
+        if (!("hostIdentity" in message) || !message.hostIdentity) {
+          throw new ResearchContractError(
+            "access-denied",
+            "A direct Chat run requires a host-owned principal fence.",
+          );
+        }
+        const hostIdentity: ChatHostIdentityV1 = message.hostIdentity;
         const request = prepareDirectChatRequestV1(
           normalizeResearchRequestV1(message.request),
         );
@@ -115,6 +123,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             providers,
             budget,
             workspace,
+            hostIdentity,
             ...(message.qualityPolicy
               ? { qualityPolicy: normalizeChatQualityPolicyV1(message.qualityPolicy) }
               : {}),

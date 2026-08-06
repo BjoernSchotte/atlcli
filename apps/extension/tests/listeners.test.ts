@@ -383,6 +383,10 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       scopeExpansion: "deny",
       providerReasoningPreference: "fast",
     } as const;
+    const hostIdentity = {
+      userId: "browser-principal:synthetic-listener",
+      providerCacheIdentity: "anthropic:browser-principal:synthetic-listener",
+    } as const;
     expect(handleOffscreenMessage(
       {
         kind: "offscreen:research-run",
@@ -394,12 +398,13 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         request,
         policy,
         qualityPolicy,
+        hostIdentity,
       },
       cap.sendResponse,
       {
         ...okOffscreenDeps,
-        runResearch: async (runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality) => {
-          received.push(runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality);
+        runResearch: async (runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality, receivedIdentity) => {
+          received.push(runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality, receivedIdentity);
           return report;
         },
       },
@@ -414,6 +419,7 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       request,
       policy,
       qualityPolicy,
+      hostIdentity,
     ]);
     expect(cap.values).toEqual([{
       kind: "offscreen:research-run-result",

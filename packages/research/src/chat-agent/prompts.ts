@@ -41,12 +41,17 @@ export function buildChatTurnPromptV1(input: {
   jiraProjectKeys: readonly string[];
   confluenceSpaceKeys: readonly string[];
   anchors: readonly BoundEntityAnchorV1[];
+  /** Host-projected bounded memory; summaries and prior answers are not evidence. */
+  durableContext?: string;
 }): string {
   return [
     `User question: ${JSON.stringify(input.question)}`,
     `Host-bound Jira projects: ${input.jiraProjectKeys.join(", ") || "none"}.`,
     `Host-bound Confluence spaces: ${input.confluenceSpaceKeys.join(", ") || "none"}.`,
     `Attached host-bound entities (opaque refs only): ${JSON.stringify(input.anchors)}.`,
+    ...(input.durableContext
+      ? ["Durable conversation context:", input.durableContext]
+      : []),
     "Answer as a normal chat response. Use eval only when Atlassian evidence is needed.",
   ].join("\n");
 }

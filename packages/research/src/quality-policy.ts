@@ -279,7 +279,11 @@ export function projectPromptCacheSystemContentV1(input: {
       : [];
   const stable = existing
     .filter((block) => !(block.type === "text" && (block.text ?? "").trim().length === 0))
-    .map((block) => ({ ...block }));
+    .map((block) => {
+      const sanitized = { ...block };
+      delete sanitized.cache_control;
+      return sanitized;
+    });
   if (input.cacheStablePrefix && stable.length > 0) {
     stable[stable.length - 1] = {
       ...stable[stable.length - 1],

@@ -43,6 +43,7 @@ import type {
   ResearchSessionScopeReviewV1,
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
+  ChatHostIdentityV1,
 } from "@atlcli/research";
 import { classifyResearchError } from "@atlcli/research";
 
@@ -81,6 +82,7 @@ export interface RouterDeps {
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
     qualityPolicy?: ChatQualityPolicyV1,
+    hostIdentity?: ChatHostIdentityV1,
   ) => Promise<ResearchReport | ChatAnswerV1>;
   resumeResearch?: (
     runId: string,
@@ -287,6 +289,7 @@ export async function routeMessage(
           msg.request,
           msg.policy,
           msg.qualityPolicy,
+          msg.hostIdentity,
         );
         return { kind: "research:run-result", runId: msg.runId, ok: true, report };
       } catch (error) {

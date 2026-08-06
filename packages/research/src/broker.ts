@@ -41,6 +41,7 @@ import {
 import { ResearchEntityVault } from "./entity-vault.js";
 import {
   createResearchEvidenceRecordV1,
+  type ResearchEvidenceRecordV1,
   type ResearchEvidenceRetrievalV1,
   type ResearchEvidenceStoreV1,
 } from "./evidence-store.js";
@@ -156,6 +157,15 @@ export interface ResearchEvidenceRevalidationOutcomeV1 {
   revalidated: number;
   /** Records whose dependent claims were excluded because revalidation failed. */
   invalidated: number;
+}
+
+/** Body-free host result for staging retained evidence as a turn-local read. */
+export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
+  considered: number;
+  staged: number;
+  stale: number;
+  unauthorized: number;
+  missing: number;
 }
 
 interface BrokerOptions {
@@ -429,6 +439,10 @@ export class ResearchCapabilityBroker {
     confluence: 0,
   };
   readonly #evidence?: NonNullable<BrokerOptions["evidence"]>;
+  readonly #retainedExactEvidence = new Map<string, {
+    record: ResearchEvidenceRecordV1;
+    content: BoundedContentProjectionV1;
+  }>();
   readonly #controller = new AbortController();
   readonly #searchCompletion: Record<
     "jira" | "confluence",
@@ -609,6 +623,171 @@ export class ResearchCapabilityBroker {
     this.#activeExactDocuments.clear();
     this.#readSectionReferences.clear();
     this.#successfulDetailReads.length = 0;
+    this.#retainedExactEvidence.clear();
+  }
+
+  #retainedSourceIsAuthorized(record: ResearchEvidenceRecordV1): boolean {
+    if (record.identity.tenantOrigin !== this.#request.scope.siteOrigin) return false;
+    const source = record.source;
+    const exact = this.#exactEntityBindings.get(
+      `${record.identity.product}:${record.identity.entityId}`,
+    );
+    if (exact) return true;
+    return this.#scopeBindings.some((binding) => {
+      if (
+        binding.tenantOrigin !== this.#request.scope.siteOrigin ||
+        (binding.authority !== "approved" && binding.authority !== "locked")
+      ) return false;
+      if (source.product === "jira") {
+        return binding.product === "jira" &&
+          binding.entityKind === "project" &&
+          binding.key === source.projectKey &&
+          this.#request.scope.jiraProjectKeys.includes(source.projectKey ?? "");
+      }
+      return binding.product === "confluence" &&
+        binding.entityKind === "space" &&
+        binding.key === source.spaceKey &&
+        this.#request.scope.confluenceSpaceKeys.includes(source.spaceKey ?? "");
+    });
+  }
+
+  #registerRetainedExactCapability(record: ResearchEvidenceRecordV1): void {
+    const key = `${record.identity.product}:${record.identity.entityId}`;
+    if (this.#exactEntityBindings.has(key)) return;
+    const product = record.identity.product;
+    const entityKind = product === "jira" ? "issue" : "page";
+    this.#exactEntityBindings.set(key, {
+      product,
+      entityId: record.identity.entityId,
+      binding: {
+        schema: "atlcli.research-scope-binding/v1",
+        id: `scope-binding:retained:${record.id.slice("evidence:".length)}`,
+        tenantOrigin: record.identity.tenantOrigin,
+        product,
+        entityKind,
+        entityRef: `research-scope-entity:retained-${record.id.slice("evidence:".length)}`,
+        key: record.identity.entityId,
+        name: record.source.title,
+        source: "research_discovery",
+        authority: "approved",
+      },
+    });
+  }
+
+  /**
+   * Stage fresh, integrity-checked evidence for the current turn. Staging does
+   * not enter it into the source/evidence ledger and therefore cannot support
+   * an answer until the model performs the corresponding opaque bound read.
+   */
+  async restoreRetainedEvidence(input: {
+    evidenceIds: readonly string[];
+    checkedAt: string;
+  }): Promise<ResearchRetainedEvidenceRestoreOutcomeV1> {
+    if (!this.#evidence) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Retained evidence restore requires a durable evidence store.",
+      );
+    }
+    if (this.#sources.size > 0 || this.#detailEvidence.size > 0) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Retained evidence must be staged before current-turn detail reads.",
+      );
+    }
+    const checkedAtMs = Date.parse(input.checkedAt);
+    if (!Number.isFinite(checkedAtMs)) {
+      throw new ResearchContractError("invalid-request", "Evidence restore time is invalid.");
+    }
+    const outcome: ResearchRetainedEvidenceRestoreOutcomeV1 = {
+      considered: 0,
+      staged: 0,
+      stale: 0,
+      unauthorized: 0,
+      missing: 0,
+    };
+    for (const evidenceId of [...new Set(input.evidenceIds)].sort()) {
+      const record = await this.#evidence.store.get(evidenceId);
+      if (!record) {
+        outcome.missing += 1;
+        continue;
+      }
+      outcome.considered += 1;
+      if (!this.#retainedSourceIsAuthorized(record)) {
+        outcome.unauthorized += 1;
+        continue;
+      }
+      const capturedAtMs = Date.parse(record.version.capturedAt);
+      if (
+        !Number.isFinite(capturedAtMs) ||
+        checkedAtMs < capturedAtMs ||
+        checkedAtMs - capturedAtMs > this.#request.limits.maxEvidenceAgeMs
+      ) {
+        outcome.stale += 1;
+        continue;
+      }
+      const chunks = await this.#evidence.store.chunks(record.id);
+      const content: BoundedContentProjectionV1 = {
+        text: chunks.map((chunk) => chunk.text).join(""),
+        linkTargets: [...record.linkTargets],
+        truncated: record.version.truncated,
+        inputBytes: record.version.inputBytes,
+      };
+      const key = `${record.identity.product}:${record.identity.entityId}`;
+      const current = this.#retainedExactEvidence.get(key);
+      if (!current || current.record.version.capturedAt < record.version.capturedAt) {
+        this.#retainedExactEvidence.set(key, { record, content });
+      }
+      this.#registerRetainedExactCapability(record);
+      outcome.staged += 1;
+    }
+    return outcome;
+  }
+
+  async #readRetainedExactEvidence(
+    exact: ExactEntityBindingV1,
+  ): Promise<BoundEntityReadOutputV1 | undefined> {
+    const retained = this.#retainedExactEvidence.get(
+      `${exact.product}:${exact.entityId}`,
+    );
+    if (!retained) return undefined;
+    const source = retained.record.source;
+    const content = {
+      ...retained.content,
+      linkTargets: [...retained.content.linkTargets],
+    };
+    this.#sources.set(source.id, { ...source });
+    this.#detailEvidence.set(source.id, {
+      source: { ...source },
+      content,
+      ...(retained.record.retrieval
+        ? { retrieval: { ...retained.record.retrieval } }
+        : {}),
+      evidenceId: retained.record.id,
+      coverage: {
+        issues: content.truncated ? ["projection_limit"] : [],
+        sourceTruncated: false,
+        outlineTruncated: false,
+        projectionTruncated: content.truncated,
+        unreadSections: 0,
+        completeDocumentRead: !content.truncated,
+      },
+    });
+    this.#successfulDetailReads.push({ product: source.product, sourceId: source.id });
+    if (source.product === "confluence") {
+      this.#registerObservedJiraReferences(content);
+    } else {
+      await this.#registerObservedConfluenceReferences(content, source.id);
+    }
+    return {
+      schema: BOUND_ENTITY_READ_OUTPUT_SCHEMA_V1,
+      source: publicSource(source),
+      content,
+      relatedAnchors: this.exactAnchors().filter((anchor) =>
+        anchor.product === (source.product === "jira" ? "confluence" : "jira")
+      ),
+      budget: this.budget.snapshot(),
+    };
   }
 
   /**
@@ -816,6 +995,8 @@ export class ResearchCapabilityBroker {
         );
       }
       this.budget.beginDetail(exact.product);
+      const retained = await this.#readRetainedExactEvidence(exact);
+      if (retained) return retained;
       if (exact.product === "jira") {
         const detail = await this.#providers.jira.getIssue({
           issueKey: exact.entityId,

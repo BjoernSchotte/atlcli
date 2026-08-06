@@ -13,6 +13,7 @@ import { defineBackground } from "wxt/utils/define-background";
 // scan then proves this pulls in zero node:/bun: specifiers.
 import { extractEntityFromUrl } from "@atlcli/core";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
+import type { ChatHostIdentityV1 } from "@atlcli/research";
 import {
   type EntityChanged,
   type EntityDetection,
@@ -498,6 +499,7 @@ export default defineBackground({
     value: ResearchRequestV1,
     policyValue?: ResearchOneShotPolicyV1,
     qualityPolicyValue?: ChatQualityPolicyV1,
+    hostIdentity?: ChatHostIdentityV1,
   ) => {
     const request = normalizeResearchRequestV1(value);
     const policy = normalizeResearchOneShotPolicyV1(policyValue);
@@ -534,6 +536,7 @@ export default defineBackground({
         mode,
         request,
         policy,
+        ...(hostIdentity ? { hostIdentity } : {}),
         ...(qualityPolicy ? { qualityPolicy } : {}),
       })) as OffscreenResponse | undefined;
       if (

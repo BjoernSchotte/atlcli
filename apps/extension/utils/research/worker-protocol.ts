@@ -9,6 +9,7 @@ import type {
   ResearchReport,
   ResearchRequestV1,
 } from "./contracts.js";
+import type { ChatHostIdentityV1 } from "@atlcli/research";
 
 export type ResearchWorkerRequestV1 =
   | {
@@ -21,6 +22,7 @@ export type ResearchWorkerRequestV1 =
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
       qualityPolicy?: ChatQualityPolicyV1;
+      hostIdentity?: ChatHostIdentityV1;
       resume?: false;
     }
   | {

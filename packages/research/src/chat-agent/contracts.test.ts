@@ -56,6 +56,11 @@ const brokerRequest: ResearchRequestV1 = {
   wikiProvider: "rest",
 };
 
+const hostIdentity = {
+  userId: "principal:synthetic-user",
+  providerCacheIdentity: "provider-cache:synthetic-user",
+} as const;
+
 const run = {
   model: "synthetic-model",
   startedAt: "2026-08-05T08:00:00.000Z",
@@ -856,6 +861,10 @@ describe("separate Chat root", () => {
           }),
         };
       },
+      createSummarizationMiddleware: () => ({
+        wrapModelCall: async (_request: unknown, handler: (request: unknown) => Promise<unknown>) =>
+          handler(_request),
+      }),
       registerHarnessProfile: () => undefined,
     } as unknown as ChatAgentRuntimeBindings;
     const researchRuntime = {
@@ -900,6 +909,7 @@ describe("separate Chat root", () => {
         },
       },
       workspace,
+      hostIdentity,
       qualityPolicy: chatQualityPolicyV1("quick"),
       onChatPresentation: (event) => presentation.push(event),
       now: (() => {
@@ -943,8 +953,19 @@ describe("separate Chat root", () => {
     expect(answer.messageMarkdown).not.toMatch(/executive summary|findings|limitations/iu);
     expect(harness.counts()).toEqual({ chatRoots: 1, researchRoots: 0 });
     expect(JSON.parse((await workspace.readFile(CHAT_SESSION_STATE_PATH_V1))!)).toMatchObject({
-      schema: "atlcli.chat-session-state/v1",
+      schema: "atlcli.chat-session/v1",
       conversationId: turn.conversationId,
+      operations: {
+        lastCompletedTurnId: turn.turnId,
+      },
+      conversation: {
+        recentTurns: [
+          expect.objectContaining({
+            id: turn.turnId,
+            status: "complete",
+          }),
+        ],
+      },
     });
     expect(JSON.parse((await workspace.readFile(CHAT_RETRIEVAL_PLAN_PATH_V1))!)).toMatchObject({
       schema: "atlcli.chat-retrieval-plan/v1",
@@ -999,6 +1020,7 @@ describe("separate Chat root", () => {
         },
       },
       workspace: createMemoryResearchWorkspace(),
+      hostIdentity,
       qualityPolicy: chatQualityPolicyV1("quick"),
       onChatPresentation: (event) => presentation.push(event),
     });
@@ -1023,6 +1045,7 @@ describe("separate Chat root", () => {
         wiki: { searchPage: async () => ({ items: [] }), getPage: async () => { throw new Error(); } },
       },
       workspace,
+      hostIdentity,
     })).rejects.toMatchObject({ code: "invalid-request" });
     expect(harness.counts().chatRoots).toBe(0);
   });

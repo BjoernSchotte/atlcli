@@ -140,6 +140,10 @@ export async function runChatAgentLiveV1(): Promise<void> {
   const durableEvents: ResearchOneShotEventV1[] = [];
   const startedAt = performance.now();
   const answer = await runChatAgent({
+    hostIdentity: {
+      userId: "principal:local-live-chat",
+      providerCacheIdentity: "anthropic:principal:local-live-chat",
+    },
     apiKey,
     turn,
     brokerRequest: request,

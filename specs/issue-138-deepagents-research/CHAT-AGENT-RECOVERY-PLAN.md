@@ -812,35 +812,35 @@ transcripts as factual authority.
 
 Implementation:
 
-- [ ] Add `ChatSessionV1` and `ChatTurnV1` with versioned objective, quality mode,
+- [x] Add `ChatSessionV1` and `ChatTurnV1` with versioned objective, quality mode,
       accepted strategy/workflow, controls, final answer, and compact activity
       references.
-- [ ] Keep conversation memory, operational summaries, and evidence memory as
+- [x] Keep conversation memory, operational summaries, and evidence memory as
       separate state classes with explicit resume ownership.
-- [ ] Persist accepted evidence by tenant, scope/capability provenance, canonical
+- [x] Persist accepted evidence by tenant, scope/capability provenance, canonical
       identity, version/last-modified, capture time, content hash, and supporting
       claim references.
-- [ ] Reuse unchanged evidence only inside the accepted freshness window and
+- [x] Reuse unchanged evidence only inside the accepted freshness window and
       authorized scope; revalidate or re-read changed, stale, or newly material
       evidence.
-- [ ] Build each new supervisor context from the current user turn, compact
+- [x] Build each new supervisor context from the current user turn, compact
       conversation summary, recent messages, accepted evidence/claim references,
       unresolved gaps, and controls. Do not replay raw historic tool transcripts
       by default.
-- [ ] Keep DeepAgentsJS conversation summarization as non-authoritative operational
+- [x] Keep DeepAgentsJS conversation summarization as non-authoritative operational
       context and preserve provider prompt-cache privacy boundaries.
-- [ ] Fence user, thread, tenant, scope, provider-cache identity, revision, abort,
+- [x] Fence user, thread, tenant, scope, provider-cache identity, revision, abort,
       and steering state across root reuse or worker recreation.
 
 Automated proof:
 
-- [ ] A fresh follow-up reuses accepted evidence with zero unnecessary HTTP reads.
-- [ ] A changed or stale source is revalidated and dependent claims are refreshed
+- [x] A fresh follow-up reuses accepted evidence with zero unnecessary HTTP reads.
+- [x] A changed or stale source is revalidated and dependent claims are refreshed
       or invalidated.
-- [ ] A context switch cannot retain obsolete evidence as answer authority.
-- [ ] A 1,000-turn synthetic conversation remains bounded and semantically stable
+- [x] A context switch cannot retain obsolete evidence as answer authority.
+- [x] A 1,000-turn synthetic conversation remains bounded and semantically stable
       across native compaction.
-- [ ] Cross-user/thread/tenant isolation and hostile stale-client resume tests fail
+- [x] Cross-user/thread/tenant isolation and hostile stale-client resume tests fail
       closed.
 
 Live acceptance:
@@ -853,8 +853,20 @@ Live acceptance:
 
 Acceptance criteria:
 
-- [ ] Conversation continuity and factual evidence reuse are both durable, but
+- [x] Conversation continuity and factual evidence reuse are both durable, but
       neither can overwrite the other's authority boundary.
+
+Proof status on 2026-08-06: the real Chat root completed three connected turns
+through a fresh CLI host over one durable store; fresh accepted evidence produced
+zero repeated provider reads, while a materially different turn acquired new
+Jira evidence. The packed production MV3 bundle repeated the same three-turn
+lifecycle across two offscreen-worker recreations and persisted all turns and
+evidence authority in IndexedDB. Focused Chat session, native compaction,
+prompt-cache privacy, broker freshness/invalidation, protocol-fence, full CLI,
+typecheck, privacy, exact-context, strategy, and streaming E2Es pass. The two
+private live-acceptance gates remain intentionally open until a separately
+authorized tenant-data run is performed; no private source content is embedded
+in committed fixtures or proof output.
 
 ### C9 — Add shared HITL, steering, stop, queue, and streaming
 

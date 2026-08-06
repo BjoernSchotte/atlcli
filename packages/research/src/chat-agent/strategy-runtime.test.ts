@@ -5,6 +5,7 @@ import {
   StateBackend,
   createDeepAgent,
   createSubAgentMiddleware,
+  createSummarizationMiddleware,
   registerHarnessProfile,
 } from "deepagents/node";
 import {
@@ -39,9 +40,15 @@ const providers = {
   },
 };
 
+const hostIdentity = {
+  userId: "principal:strategy-test",
+  providerCacheIdentity: "provider-cache:strategy-test",
+} as const;
+
 function request(question: string): {
   turn: ChatTurnRequestV1;
   brokerRequest: ResearchRequestV1;
+  hostIdentity: typeof hostIdentity;
 } {
   const scope = {
     siteOrigin: "https://tenant-a.atlassian.net",
@@ -60,6 +67,7 @@ function request(question: string): {
     maxModelCostMicros: 100_000_000,
   };
   return {
+    hostIdentity,
     turn: {
       schema: "atlcli.chat-turn-request/v1",
       conversationId: "chat-conversation:strategy",
@@ -192,6 +200,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
     StateBackend,
     createDeepAgent,
     createSubAgentMiddleware,
+    createSummarizationMiddleware,
     registerHarnessProfile,
   });
 
@@ -211,6 +220,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
         return agent;
       }) as typeof createDeepAgent,
       createSubAgentMiddleware,
+      createSummarizationMiddleware,
       registerHarnessProfile,
     });
     const input = request("Answer this simple conversational question.");
@@ -304,6 +314,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
       StateBackend,
       createDeepAgent,
       createSubAgentMiddleware,
+      createSummarizationMiddleware,
       registerHarnessProfile,
     }, {
       defaultModelFactory: ({ qualityPolicy }) => {

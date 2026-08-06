@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { AIMessage } from "@langchain/core/messages";
+import { fakeModel } from "@langchain/core/testing";
 import type { Profile } from "@atlcli/core";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -14,6 +16,8 @@ import {
   WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchEvidenceStoreV1,
   WorkspaceResearchOutlineStoreV1,
+  CAPABILITY_FREE_QUALITY_ADAPTER_V1,
+  ResearchRunBudget,
   createResearchClaimV1,
   createResearchEvidenceRecordV1,
   createResearchEntityScopeSeedV1,
@@ -29,6 +33,7 @@ import {
   type ChatAnswerV1,
   type ResearchSessionV1,
 } from "@atlcli/research";
+import { runChatAgent as runNodeChatAgent } from "@atlcli/research/node";
 import {
   composeResearchGraphV1,
   createStandardResearchBriefV1,
@@ -127,6 +132,8 @@ function cliHarness(
     result?: ResearchReportV1;
     runError?: Error;
     abortAtDeadline?: boolean;
+    durableStore?: InMemoryResearchSessionStoreV1;
+    createTurnId?: () => string;
   } = {},
 ): CliHarness {
   const stdout: string[] = [];
@@ -135,7 +142,7 @@ function cliHarness(
   const workspaces: Array<ResearchCliWorkspace & { disposed: boolean }> = [];
   const runInputs: Parameters<ResearchCliDependencies["runAgent"]>[0][] = [];
   const chatRunInputs: Parameters<ResearchCliDependencies["runChatAgent"]>[0][] = [];
-  const durableStore = new InMemoryResearchSessionStoreV1();
+  const durableStore = options.durableStore ?? new InMemoryResearchSessionStoreV1();
   let interrupt: (() => void) | undefined;
   const dependencies: ResearchCliDependencies = {
     resolveProfile: async () => options.profile ?? profile,
@@ -276,7 +283,7 @@ function cliHarness(
     },
     artifactPath: () => "/external/artifact/report.md",
     createDurableSessionId: () => "research-session:cli-plan",
-    createDurableTurnId: () => "research-turn:cli-plan",
+    createDurableTurnId: options.createTurnId ?? (() => "research-turn:cli-plan"),
     async openSessionStore() {
       return { store: durableStore, close: () => undefined };
     },
@@ -982,6 +989,230 @@ describe("research CLI one-shot contract", () => {
     expect(harness.chatRunInputs[1]?.request.scope).toMatchObject({
       jiraProjectKeys: [],
       confluenceSpaceKeys: ["DOCSY"],
+    });
+  });
+
+  test("runs three real Chat-root turns across a fresh CLI host and reuses accepted evidence", async () => {
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    const turnIds = [
+      "research-turn:cli-memory-first",
+      "research-turn:cli-memory-second",
+      "research-turn:cli-memory-third",
+    ];
+    let turnIndex = 0;
+    const providers = {
+      wikiSearches: 0,
+      wikiReads: 0,
+      jiraSearches: 0,
+      jiraReads: 0,
+      wiki: {
+        async searchPage() {
+          providers.wikiSearches += 1;
+          return {
+            items: [{
+              contentId: "1001",
+              spaceKey: "DOCSY",
+              title: "Synthetic CLI page",
+              updatedAt: "2026-08-06T09:00:00.000Z",
+            }],
+          };
+        },
+        async getPage({ contentId }: { contentId: string }) {
+          providers.wikiReads += 1;
+          return {
+            contentId,
+            spaceKey: "DOCSY",
+            title: "Synthetic CLI page",
+            updatedAt: "2026-08-06T09:00:00.000Z",
+            content: {
+              text: "The synthetic CLI page records one accepted decision.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 53,
+            },
+          };
+        },
+      },
+      jira: {
+        async searchPage() {
+          providers.jiraSearches += 1;
+          return {
+            items: [{
+              issueKey: "ATLCLI-1",
+              projectKey: "ATLCLI",
+              title: "Synthetic CLI issue",
+              updatedAt: "2026-08-06T09:05:00.000Z",
+            }],
+          };
+        },
+        async getIssue({ issueKey }: { issueKey: string }) {
+          providers.jiraReads += 1;
+          return {
+            issueKey,
+            projectKey: "ATLCLI",
+            title: "Synthetic CLI issue",
+            updatedAt: "2026-08-06T09:05:00.000Z",
+            content: {
+              text: "The synthetic Jira issue tracks a materially different action.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 64,
+            },
+          };
+        },
+      },
+    };
+    const toolResult = (
+      name: string,
+      args: Record<string, unknown>,
+      id: string,
+    ): AIMessage => new AIMessage({
+      content: "",
+      tool_calls: [{ name, args, id, type: "tool_call" }],
+    });
+    const wikiAcquisition = `
+const page = JSON.parse(await tools.wikiSearch({ query: { text: "Summarize the initial Confluence decision." } }));
+const ranked = JSON.parse(await tools.researchCandidateRank({ product: "confluence", entityRefs: page.items.map((item) => item.entityRef) }));
+JSON.parse(await tools.wikiPageGet({ entityRef: ranked.items[0].entityRef }));`;
+    const jiraAcquisition = `
+const page = JSON.parse(await tools.jiraIssueSearch({ query: { text: "Now read the materially different Jira action." } }));
+const ranked = JSON.parse(await tools.researchCandidateRank({ product: "jira", entityRefs: page.items.map((item) => item.entityRef) }));
+JSON.parse(await tools.jiraIssueGet({ entityRef: ranked.items[0].entityRef }));`;
+    const modelFor = (question: string) => {
+      const model = fakeModel();
+      if (question.includes("initial Confluence")) {
+        return model
+          .respond(toolResult("eval", { code: wikiAcquisition }, "toolu_cli_wiki"))
+          .respond(toolResult("ChatAnswerDraftV1", {
+            messageMarkdown:
+              "The page records one accepted decision. [[source:wiki:1001]]",
+            citationSourceIds: ["wiki:1001"],
+            gaps: [],
+          }, "toolu_cli_wiki_answer"));
+      }
+      if (question.includes("same accepted detail")) {
+        return model
+          .respond((messages) => {
+            const anchorRef = messages.map((message) => message.text).join("\n")
+              .match(/research-anchor:[A-Za-z0-9-]{1,200}/u)?.[0];
+            return anchorRef
+              ? toolResult("eval", {
+                  code: `JSON.parse(await tools.atlassianBoundRead({ anchorRef: ${JSON.stringify(anchorRef)} }))`,
+                }, "toolu_cli_retained")
+              : new Error("The retained CLI evidence anchor was not projected.");
+          })
+          .respond(toolResult("ChatAnswerDraftV1", {
+            messageMarkdown:
+              "The same accepted decision remains the relevant detail. [[source:wiki:1001]]",
+            citationSourceIds: ["wiki:1001"],
+            gaps: [],
+          }, "toolu_cli_retained_answer"));
+      }
+      return model
+        .respond(toolResult("eval", { code: jiraAcquisition }, "toolu_cli_jira"))
+        .respond(toolResult("ChatAnswerDraftV1", {
+          messageMarkdown:
+            "The Jira issue tracks a different action. [[source:jira:ATLCLI-1]]",
+          citationSourceIds: ["jira:ATLCLI-1"],
+          gaps: [],
+        }, "toolu_cli_jira_answer"));
+    };
+    const runRealChat: ResearchCliDependencies["runChatAgent"] = async (input) => {
+      const budget = new ResearchRunBudget(input.request.limits);
+      return runNodeChatAgent({
+        modelBinding: {
+          model: modelFor(input.request.question),
+          modelId: "synthetic-cli-session-model",
+          qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
+          structuredOutput: "tool",
+        },
+        hostIdentity: {
+          userId: "principal:synthetic-cli-session",
+          providerCacheIdentity: "provider-cache:synthetic-cli-session",
+        },
+        turn: {
+          schema: "atlcli.chat-turn-request/v1",
+          conversationId: input.sessionId,
+          turnId: input.turnId,
+          question: input.request.question,
+          scope: input.request.scope,
+          limits: input.request.limits,
+          wikiProvider: input.request.wikiProvider,
+          ...(input.request.scopeSeeds ? { scopeSeeds: input.request.scopeSeeds } : {}),
+          ...(input.request.exactContextProducts
+            ? { exactContextProducts: input.request.exactContextProducts }
+            : {}),
+        },
+        brokerRequest: input.request,
+        providers,
+        budget,
+        workspace: input.workspace,
+        qualityPolicy: input.qualityPolicy,
+        signal: input.signal,
+        onEvent: input.onEvent,
+        onChatPresentation: input.onChatPresentation,
+      });
+    };
+    const createHarness = () => {
+      const harness = cliHarness({
+        durableStore,
+        createTurnId: () => turnIds[turnIndex++]!,
+      });
+      harness.dependencies.runChatAgent = runRealChat;
+      return harness;
+    };
+
+    const firstHost = createHarness();
+    await handleChat(
+      ["Summarize the initial Confluence decision."],
+      { space: "DOCSY", project: "ATLCLI", thinking: "quick" },
+      { json: false },
+      firstHost.dependencies,
+    );
+    expect({
+      wikiSearches: providers.wikiSearches,
+      wikiReads: providers.wikiReads,
+      jiraSearches: providers.jiraSearches,
+      jiraReads: providers.jiraReads,
+    }).toEqual({ wikiSearches: 1, wikiReads: 1, jiraSearches: 0, jiraReads: 0 });
+
+    // A fresh dependency graph models a new CLI process over the same durable store.
+    const restartedHost = createHarness();
+    await handleChat(
+      ["Which part of the same accepted detail matters most?"],
+      { session: "research-session:cli-plan", thinking: "quick" },
+      { json: false },
+      restartedHost.dependencies,
+    );
+    expect({
+      wikiSearches: providers.wikiSearches,
+      wikiReads: providers.wikiReads,
+    }).toEqual({ wikiSearches: 1, wikiReads: 1 });
+
+    await handleChat(
+      ["Now read the materially different Jira action."],
+      { session: "research-session:cli-plan", thinking: "quick" },
+      { json: false },
+      restartedHost.dependencies,
+    );
+    expect({
+      wikiSearches: providers.wikiSearches,
+      wikiReads: providers.wikiReads,
+      jiraSearches: providers.jiraSearches,
+      jiraReads: providers.jiraReads,
+    }).toEqual({ wikiSearches: 1, wikiReads: 1, jiraSearches: 1, jiraReads: 1 });
+
+    const workspace = await durableStore.workspace("research-session:cli-plan");
+    const persisted = JSON.parse((await workspace.readFile("/state/chat-session-v1.json"))!);
+    expect(persisted).toMatchObject({
+      schema: "atlcli.chat-session/v1",
+      conversation: {
+        recentTurns: [
+          { id: "research-turn:cli-memory-first", status: "complete" },
+          { id: "research-turn:cli-memory-second", status: "complete" },
+          { id: "research-turn:cli-memory-third", status: "complete" },
+        ],
+      },
     });
   });
 

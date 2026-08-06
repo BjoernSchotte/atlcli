@@ -8,6 +8,10 @@ import {
   type ResearchReadProviders,
 } from "../broker.js";
 import {
+  WorkspaceResearchEvidenceStoreV1,
+  type ResearchEvidenceRecordV1,
+} from "../evidence-store.js";
+import {
   ResearchModelRunBudget,
   ResearchRunBudget,
   type ResearchModelBudgetStateV1,
@@ -35,7 +39,6 @@ import {
   CHAT_SESSION_STATE_PATH_V1,
   CHAT_SESSION_STATE_SCHEMA_V1,
   ChatContractError,
-  createChatSessionStateV1,
   normalizeChatTurnRequestV1,
   providerCompatibleChatAnswerSchemaV1,
   type ChatAnswerV1,
@@ -43,6 +46,24 @@ import {
   type ChatTurnRequestV1,
 } from "./contracts.js";
 import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
+import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
+import {
+  CHAT_SESSION_PATH_V1,
+  CHAT_SESSION_SCHEMA_V1,
+  assertChatSessionBindingV1,
+  beginChatTurnV1,
+  buildChatTurnContextV1,
+  chatScopeFingerprintV1,
+  completeChatTurnV1,
+  createChatSessionV1,
+  interruptChatTurnV1,
+  normalizeChatHostIdentityV1,
+  parseChatSessionV1,
+  renderChatTurnContextV1,
+  type ChatHostIdentityV1,
+  type ChatSessionV1,
+} from "./session.js";
+import { createChatDurableSummarizationMiddlewareV1 } from "./summarization.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
 import {
   ChatCandidateLedgerControllerV1,
@@ -360,6 +381,8 @@ export interface ChatAgentRuntimeBindings {
   createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
   createSubAgentMiddleware:
     typeof import("deepagents/browser").createSubAgentMiddleware;
+  createSummarizationMiddleware:
+    typeof import("deepagents/browser").createSummarizationMiddleware;
   registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
 }
 
@@ -373,6 +396,8 @@ export interface RunChatAgentInput {
   providers: ResearchReadProviders;
   budget?: ResearchRunBudget;
   workspace: ResearchWorkspace;
+  /** Opaque host-owned principal/cache fences; never credentials or email addresses. */
+  hostIdentity: ChatHostIdentityV1;
   qualityPolicy?: ChatQualityPolicyV1;
   signal?: AbortSignal;
   now?: () => number;
@@ -498,8 +523,16 @@ async function bindChatSessionStateV1(input: {
   workspace: ResearchWorkspace;
   conversationId: string;
   qualityPolicy: ChatQualityPolicyV1;
-}): Promise<void> {
+  turnId: string;
+  objective: string;
+  tenantOrigin: string;
+  scopeBindings: readonly import("../contracts.js").ResearchScopeBindingV1[];
+  scope: import("../contracts.js").ResearchScopeV1;
+  hostIdentity: ChatHostIdentityV1;
+  startedAt: string;
+}): Promise<{ session: ChatSessionV1; context: string }> {
   const stored = await input.workspace.readFile(CHAT_SESSION_STATE_PATH_V1);
+  let session: ChatSessionV1;
   if (stored !== undefined) {
     let parsed: unknown;
     try {
@@ -507,12 +540,62 @@ async function bindChatSessionStateV1(input: {
     } catch {
       throw new ChatContractError("invalid-request", "Stored Chat state is incompatible with this runtime.");
     }
-    normalizeStoredChatSessionStateV1(parsed, input.conversationId);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      (parsed as { schema?: unknown }).schema === CHAT_SESSION_SCHEMA_V1
+    ) {
+      session = parseChatSessionV1(parsed);
+      assertChatSessionBindingV1({
+        session,
+        conversationId: input.conversationId,
+        identity: input.hostIdentity,
+        tenantOrigin: input.tenantOrigin,
+      });
+    } else {
+      // A compatible pre-C8 state carried only the conversation ID and quality
+      // policy. It contains no evidence or transcript and can be migrated
+      // without importing any Research checkpoint semantics.
+      normalizeStoredChatSessionStateV1(parsed, input.conversationId);
+      session = createChatSessionV1({
+        conversationId: input.conversationId,
+        identity: input.hostIdentity,
+        tenantOrigin: input.tenantOrigin,
+        createdAt: input.startedAt,
+      });
+    }
+  } else {
+    session = createChatSessionV1({
+      conversationId: input.conversationId,
+      identity: input.hostIdentity,
+      tenantOrigin: input.tenantOrigin,
+      createdAt: input.startedAt,
+    });
   }
+  const scopeFingerprint = await chatScopeFingerprintV1({
+    scope: input.scope,
+    scopeBindings: input.scopeBindings,
+  });
+  session = beginChatTurnV1({
+    session,
+    expectedSessionRevision: session.revision,
+    turnId: input.turnId,
+    objective: input.objective,
+    qualityMode: input.qualityPolicy.mode,
+    scopeFingerprint,
+    startedAt: input.startedAt,
+  });
   await input.workspace.writeFile(
-    CHAT_SESSION_STATE_PATH_V1,
-    JSON.stringify(createChatSessionStateV1(input)),
+    CHAT_SESSION_PATH_V1,
+    JSON.stringify(session),
   );
+  return {
+    session,
+    context: renderChatTurnContextV1(
+      buildChatTurnContextV1(session, input.turnId),
+    ),
+  };
 }
 
 function emitPtcEventFactory(input: {
@@ -561,9 +644,15 @@ export function createKiteweaveChatAgent(
       const qualityPolicy = normalizeChatQualityPolicyV1(
         input.qualityPolicy ?? chatQualityPolicyV1("auto"),
       );
+      const hostIdentity = normalizeChatHostIdentityV1(input.hostIdentity);
       const now = input.now ?? Date.now;
       const startedAtMs = now();
+      const startedAt = new Date(startedAtMs).toISOString();
       const budget = input.budget ?? new ResearchRunBudget(input.brokerRequest.limits);
+      const scopeBindings = input.brokerRequest.scopeSeeds?.map((seed) => seed.binding) ?? [];
+      const evidenceStore = new WorkspaceResearchEvidenceStoreV1(input.workspace);
+      let durableChatSession: ChatSessionV1 | undefined;
+      let durableContext = "";
       let eventSequence = 0;
       const nextEventSequence = (): number => ++eventSequence;
       const emitPhase = (phase: string): void => {
@@ -606,7 +695,12 @@ export function createKiteweaveChatAgent(
         input.providers,
         {
           budget,
-          scopeBindings: input.brokerRequest.scopeSeeds?.map((seed) => seed.binding),
+          scopeBindings,
+          evidence: {
+            store: evidenceStore,
+            scopeBindings,
+            capturedAt: () => new Date(now()).toISOString(),
+          },
           exactAuxiliaryNeeds: deriveChatAuxiliaryReadNeedsV1(turn.question),
           beforeContentOperation: () => {
             assertStrategyAccepted?.();
@@ -644,11 +738,30 @@ export function createKiteweaveChatAgent(
       const onAbort = (): void => broker.cancel(controller.signal.reason);
       controller.signal.addEventListener("abort", onAbort, { once: true });
       try {
-        await bindChatSessionStateV1({
+        const durable = await bindChatSessionStateV1({
           workspace: input.workspace,
           conversationId: turn.conversationId,
           qualityPolicy,
+          turnId: turn.turnId,
+          objective: turn.question,
+          tenantOrigin: turn.scope.siteOrigin,
+          scopeBindings,
+          scope: turn.scope,
+          hostIdentity,
+          startedAt,
         });
+        durableChatSession = durable.session;
+        durableContext = durable.context;
+        const retainedEvidenceIds = buildChatTurnContextV1(
+          durableChatSession,
+          turn.turnId,
+        ).acceptedEvidence.map((entry) => entry.evidenceId);
+        if (retainedEvidenceIds.length > 0) {
+          await broker.restoreRetainedEvidence({
+            evidenceIds: retainedEvidenceIds,
+            checkedAt: new Date(now()).toISOString(),
+          });
+        }
         input.onProgress?.({
           phase: "preparing",
           message: "Preparing the bounded Chat turn.",
@@ -988,6 +1101,11 @@ export function createKiteweaveChatAgent(
             onSnapshot: async (_snapshot, state) => persistModelBudget(state),
           },
         );
+        const durableSummarizationMiddleware =
+          createChatDurableSummarizationMiddlewareV1(runtime, {
+            workspace: input.workspace,
+            model,
+          });
         const agent = runtime.createDeepAgent({
           name: "kiteweave-chat-agent",
           model,
@@ -1001,7 +1119,9 @@ export function createKiteweaveChatAgent(
             agenticWorkflowRequired: strategyDecision.execution === "agentic",
           }),
           middleware: [
+            durableSummarizationMiddleware,
             rootModelBudgetMiddleware,
+            ...createChatPromptCacheMiddlewareV1(),
             agenticWorkflow?.middleware ?? createChatNoSubagentMiddlewareV1(),
             createChatCodeInterpreterMiddlewareV1({
               ptc: ptcTools,
@@ -1075,6 +1195,7 @@ export function createKiteweaveChatAgent(
                 jiraProjectKeys: turn.scope.jiraProjectKeys,
                 confluenceSpaceKeys: turn.scope.confluenceSpaceKeys,
                 anchors,
+                durableContext,
               }),
             }],
           },
@@ -1274,6 +1395,36 @@ export function createKiteweaveChatAgent(
             ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
           },
         });
+        const acceptedEvidenceIds = new Set(
+          broker.detailEvidenceLedger().flatMap((entry) =>
+            answer.evidenceRefs.includes(entry.source.id) && entry.evidenceId
+              ? [entry.evidenceId]
+              : []
+          ),
+        );
+        const evidenceRecords = (await Promise.all(
+          [...acceptedEvidenceIds].map((evidenceId) => evidenceStore.get(evidenceId)),
+        )).filter((record): record is ResearchEvidenceRecordV1 => record !== undefined);
+        durableChatSession = completeChatTurnV1({
+          session: durableChatSession!,
+          expectedSessionRevision: durableChatSession!.revision,
+          turnId: turn.turnId,
+          answer,
+          acceptedStrategy: answer.strategy,
+          ...(agenticWorkflow
+            ? { acceptedWorkflowRef: `chat-workflow:${turn.turnId}` }
+            : {}),
+          activityRefs: [
+            `chat-activity:strategy:${answer.strategy.reasonCode}`,
+            ...evidenceRecords.map((record) => `chat-activity:evidence:${record.id}`),
+          ],
+          evidenceRecords,
+          completedAt: new Date(completedAtMs).toISOString(),
+        });
+        await input.workspace.writeFile(
+          CHAT_SESSION_PATH_V1,
+          JSON.stringify(durableChatSession),
+        );
         await input.workspace.writeFile("/.atlcli/chat/v1/answer.md", answer.messageMarkdown);
         input.onProgress?.({
           phase: "complete",
@@ -1283,6 +1434,24 @@ export function createKiteweaveChatAgent(
         });
         return answer;
       } catch (error) {
+        if (durableChatSession) {
+          try {
+            durableChatSession = interruptChatTurnV1({
+              session: durableChatSession,
+              expectedSessionRevision: durableChatSession.revision,
+              turnId: turn.turnId,
+              status: controller.signal.aborted ? "cancelled" : "failed",
+              at: new Date(now()).toISOString(),
+            });
+            await input.workspace.writeFile(
+              CHAT_SESSION_PATH_V1,
+              JSON.stringify(durableChatSession),
+            );
+          } catch {
+            // Never replace the causal model/provider/runtime failure with a
+            // best-effort state-publication failure.
+          }
+        }
         if (!controller.signal.aborted) controller.abort(error);
         if (controller.signal.aborted) {
           throw controller.signal.reason instanceof Error
