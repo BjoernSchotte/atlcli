@@ -244,6 +244,65 @@ describe("Chat retrieval plan", () => {
 });
 
 describe("Chat candidate ledger", () => {
+  test("persists an out-of-scope exact link as approval-only metadata without admitting it", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const ledger = new ChatCandidateLedgerControllerV1({
+      plan: plan({
+        anchors: [{
+          anchorRef: "research-anchor:jira",
+          product: "jira",
+          entityKind: "issue",
+          name: "DEMO-42",
+        }],
+        exactProducts: ["jira"],
+        maxPtcCalls: 12,
+      }),
+      workspace,
+      siteOrigin: ORIGIN,
+    });
+    await ledger.initialize();
+    await ledger.observeRelatedScopeCandidate({
+      product: "confluence",
+      entityKind: "page",
+      key: "2003",
+      scopeKey: "OTHER",
+      name: "Confluence 2003",
+      canonicalUrl: `${ORIGIN}/wiki/spaces/OTHER/pages/2003/Foreign+page`,
+      discoveredFromProduct: "jira",
+      discoveredFromSourceId: "jira:DEMO-42",
+      reason: "explicit-link-outside-bound-scope",
+    });
+
+    expect(ledger.snapshot()).toMatchObject({
+      candidates: [],
+      relatedScopeProposals: [{
+        product: "confluence",
+        key: "2003",
+        scopeKey: "OTHER",
+        status: "pending-user-approval",
+      }],
+    });
+    expect(ledger.assessment()).toMatchObject({
+      sufficient: false,
+      reasons: expect.arrayContaining(["related-scope-approval-required"]),
+    });
+    expect(await workspace.readFile(CHAT_CANDIDATE_LEDGER_PATH_V1)).toContain(
+      "pending-user-approval",
+    );
+
+    await expect(ledger.observeRelatedScopeCandidate({
+      product: "confluence",
+      entityKind: "page",
+      key: "2004",
+      scopeKey: "OTHER",
+      name: "Foreign tenant page",
+      canonicalUrl: "https://tenant-b.atlassian.net/wiki/spaces/OTHER/pages/2004",
+      discoveredFromProduct: "jira",
+      discoveredFromSourceId: "jira:DEMO-42",
+      reason: "explicit-link-outside-bound-scope",
+    })).rejects.toThrow("outside the bound tenant");
+  });
+
   test("accepts one model-proposed bounded replan before acquisition and rejects late replanning", async () => {
     const workspace = createMemoryResearchWorkspace();
     const initial = plan({ searchProducts: ["confluence"] });

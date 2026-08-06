@@ -13,6 +13,7 @@ import {
 import { navigateConfluenceStorageV1 } from "../document-navigation.js";
 import {
   ResearchCapabilityBroker,
+  type ResearchRelatedScopeCandidateV1,
   type ResearchReadProviders,
 } from "../broker.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
@@ -565,6 +566,7 @@ describe("Chat exact-anchor retrieval", () => {
 
   test("does not admit a Jira-linked Confluence page from an unbound space", async () => {
     const calls: string[] = [];
+    const proposals: ResearchRelatedScopeCandidateV1[] = [];
     const fake = providers(calls);
     fake.jira.getIssue = async ({ issueKey }) => {
       calls.push(`jira.get:${issueKey}`);
@@ -585,10 +587,26 @@ describe("Chat exact-anchor retrieval", () => {
       jira: ["DEMO"],
       wiki: ["KB"],
       exact: ["jira"],
-    }), fake, { createAnchorId: () => "issue-anchor" });
+    }), fake, {
+      createAnchorId: () => "issue-anchor",
+      onRelatedScopeCandidate: (candidate) => {
+        proposals.push(candidate);
+      },
+    });
 
     const issueOutput = await invokeDirect(broker, broker.exactAnchors()[0]!.anchorRef);
     expect(issueOutput.relatedAnchors).toEqual([]);
+    expect(proposals).toEqual([{
+      product: "confluence",
+      entityKind: "page",
+      key: "2003",
+      scopeKey: "OTHER",
+      name: "Confluence 2003",
+      canonicalUrl: `${ORIGIN}/wiki/spaces/OTHER/pages/2003/Foreign+page`,
+      discoveredFromProduct: "jira",
+      discoveredFromSourceId: "jira:DEMO-42",
+      reason: "explicit-link-outside-bound-scope",
+    }]);
     expect(calls).toEqual(["jira.get:DEMO-42"]);
   });
 

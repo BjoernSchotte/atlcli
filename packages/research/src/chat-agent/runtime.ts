@@ -599,6 +599,15 @@ export function createKiteweaveChatAgent(
               maxPtcCalls: turn.limits.maxPtcCalls,
             });
           },
+          onRelatedScopeCandidate: (candidate) => {
+            if (!retrievalLedger) {
+              throw new ChatContractError(
+                "invalid-request",
+                "The Chat retrieval ledger must exist before related scope is observed.",
+              );
+            }
+            return retrievalLedger.observeRelatedScopeCandidate(candidate);
+          },
         },
       );
       const controller = new AbortController();

@@ -167,6 +167,14 @@ interface BrokerOptions {
   exactAuxiliaryNeeds?: readonly ChatAuxiliaryReadNeedV1[];
   /** Optional Chat workflow fence evaluated before any budget or provider work. */
   beforeContentOperation?: () => void;
+  /**
+   * Host-only observer for an exact tenant-local relationship whose parent
+   * scope is not currently admitted. Observing this metadata grants no read
+   * capability; Chat may persist it as a user-review proposal.
+   */
+  onRelatedScopeCandidate?: (
+    candidate: ResearchRelatedScopeCandidateV1,
+  ) => void | Promise<void>;
   budget?: ResearchRunBudget;
   /** Optional private evidence sink for durable session-backed detail reads. */
   evidence?: {
@@ -177,6 +185,19 @@ interface BrokerOptions {
   };
   /** Host-owned bindings for a durable turn; never exposed to QuickJS. */
   scopeBindings?: readonly ResearchScopeBindingV1[];
+}
+
+/** Body-free relationship metadata that is not itself a scope binding. */
+export interface ResearchRelatedScopeCandidateV1 {
+  product: "confluence";
+  entityKind: "page";
+  key: string;
+  scopeKey: string;
+  name: string;
+  canonicalUrl: string;
+  discoveredFromProduct: "jira";
+  discoveredFromSourceId: string;
+  reason: "explicit-link-outside-bound-scope";
 }
 
 interface RankedDetailAdmissionV1 {
@@ -301,10 +322,12 @@ function observedJiraKeysFromWikiDetail(
 function observedConfluencePagesFromJiraDetail(
   content: BoundedContentProjectionV1,
   tenantOrigin: string,
-  allowedSpaceKeys: readonly string[],
   maximum: number,
-): Array<{ contentId: string; spaceKey?: string }> {
-  const pages = new Map<string, { contentId: string; spaceKey?: string }>();
+): Array<{ contentId: string; spaceKey?: string; canonicalUrl: string }> {
+  const pages = new Map<
+    string,
+    { contentId: string; spaceKey?: string; canonicalUrl: string }
+  >();
   for (const target of content.linkTargets) {
     try {
       const url = new URL(target);
@@ -317,13 +340,13 @@ function observedConfluencePagesFromJiraDetail(
       );
       const contentId = scoped?.[2] ?? unscoped?.[1];
       const spaceKey = scoped?.[1] ? decodeURIComponent(scoped[1]) : undefined;
-      if (!contentId ||
-          (allowedSpaceKeys.length > 0 && (!spaceKey || !allowedSpaceKeys.includes(spaceKey)))) {
-        continue;
-      }
+      if (!contentId) continue;
+      url.hash = "";
+      url.search = "";
       pages.set(contentId, {
         contentId,
         ...(spaceKey ? { spaceKey } : {}),
+        canonicalUrl: url.toString(),
       });
       if (pages.size >= maximum) break;
     } catch {
@@ -398,6 +421,7 @@ export class ResearchCapabilityBroker {
   readonly #createCaptureId: () => string;
   readonly #exactAuxiliaryNeeds: ReadonlySet<ChatAuxiliaryReadNeedV1>;
   readonly #beforeContentOperation?: () => void;
+  readonly #onRelatedScopeCandidate?: BrokerOptions["onRelatedScopeCandidate"];
   readonly #exactSearchEmitted = new Set<ResearchProduct>();
   readonly #successfulDetailReads: Array<{ product: ResearchProduct; sourceId: string }> = [];
   readonly #searchAttempts: Record<ResearchProduct, number> = {
@@ -452,6 +476,7 @@ export class ResearchCapabilityBroker {
     });
     this.#exactAuxiliaryNeeds = new Set(options.exactAuxiliaryNeeds ?? []);
     this.#beforeContentOperation = options.beforeContentOperation;
+    this.#onRelatedScopeCandidate = options.onRelatedScopeCandidate;
     this.#evidence = options.evidence;
     this.#scopeBindings = [...(options.scopeBindings ?? options.evidence?.scopeBindings ??
       request.scopeSeeds?.map((seed) => seed.binding) ?? [])];
@@ -519,14 +544,34 @@ export class ResearchCapabilityBroker {
     }
   }
 
-  #registerObservedConfluenceReferences(content: BoundedContentProjectionV1): void {
+  async #registerObservedConfluenceReferences(
+    content: BoundedContentProjectionV1,
+    discoveredFromSourceId: string,
+  ): Promise<void> {
     const pages = observedConfluencePagesFromJiraDetail(
       content,
       this.#request.scope.siteOrigin,
-      this.#request.scope.confluenceSpaceKeys,
       Math.min(this.#request.limits.maxItemsPerProduct, 20),
     );
     for (const page of pages) {
+      const allowedSpaces = this.#request.scope.confluenceSpaceKeys;
+      if (allowedSpaces.length > 0 &&
+          (!page.spaceKey || !allowedSpaces.includes(page.spaceKey))) {
+        if (page.spaceKey) {
+          await this.#onRelatedScopeCandidate?.({
+            product: "confluence",
+            entityKind: "page",
+            key: page.contentId,
+            scopeKey: page.spaceKey,
+            name: `Confluence ${page.contentId}`,
+            canonicalUrl: page.canonicalUrl,
+            discoveredFromProduct: "jira",
+            discoveredFromSourceId,
+            reason: "explicit-link-outside-bound-scope",
+          });
+        }
+        continue;
+      }
       const exactKey = `confluence:${page.contentId}`;
       if (this.#exactEntityBindings.has(exactKey)) continue;
       const binding: ResearchScopeBindingV1 = {
@@ -786,7 +831,7 @@ export class ResearchCapabilityBroker {
           throw new ResearchContractError("access-denied", "Jira detail does not match the bound entity.");
         }
         const source = this.#jiraSource(detail);
-        this.#registerObservedConfluenceReferences(detail.content);
+        await this.#registerObservedConfluenceReferences(detail.content, source.id);
         await this.#recordDetailEvidence(source, detail.content, {
           sourceId: source.id,
           reason: "exact_anchor",
@@ -1577,7 +1622,7 @@ export class ResearchCapabilityBroker {
     if (admission.retrieval.sourceId !== source.id) {
       throw new ResearchContractError("provider-error", "Jira ranked candidate does not match its detail source.");
     }
-    this.#registerObservedConfluenceReferences(detail.content);
+    await this.#registerObservedConfluenceReferences(detail.content, source.id);
     await this.#recordDetailEvidence(source, detail.content, admission.retrieval);
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].output,

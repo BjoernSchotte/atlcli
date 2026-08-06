@@ -678,7 +678,7 @@ Implementation:
 - [x] Add `ChatRetrievalPlanV1` with anchors, resolved entities, admitted searches,
       relationship traversals, unresolved terms, completion signals, and budget
       reservations.
-- [ ] Enforce the retrieval order: bound anchors; explicit URL/ID/key; approved
+- [x] Enforce the retrieval order: bound anchors; explicit URL/ID/key; approved
       natural-language resolver; focused scoped search; query variants;
       relationship traversal; controlled related-scope proposal; completion
       assessment.
@@ -709,7 +709,7 @@ Automated proof:
       sufficient evidence to true.
 - [x] Invalid CQL/JQL, cursor, tenant, scope, traversal, or budget proposals fail
       before HTTP.
-- [ ] CLI and MV3 consume the same retrieval plan and candidate trace.
+- [x] CLI and MV3 consume the same retrieval plan and candidate trace.
 
 Live acceptance:
 
@@ -739,13 +739,17 @@ Atlassian calls, and latency.
 Synthetic proof covers a later pagination page, alternate title and synonym,
 query saturation, exact anchors that bypass search-index discovery, Confluence
 text keys, structured Jira macros, tenant-local Jira-to-Confluence links,
-foreign-space rejection, duplicate versions, natural-language scope resolution,
-and durable ambiguity clarification. The focused suite passes 179 tests; the
-packed production MV3 test passes the same dynamic replan, agentic workflow,
-summarized-reasoning stream, and provisional-Markdown stream. The remaining C6
-gates are the explicit related-scope HITL proposal, a persisted trace parity
-assertion across CLI and MV3, and the private read-only live acceptance; they
-remain unchecked below rather than being inferred from synthetic data.
+foreign-space proposal, duplicate versions, natural-language scope resolution,
+and durable ambiguity clarification. A tenant-local exact page link whose space
+is not bound now produces only a body-free `pending-user-approval` record; it
+does not create an anchor, candidate admission, or HTTP read, and it forces the
+sufficient-evidence assessment to remain false. Cross-tenant links are rejected.
+The real CLI SQLite/filesystem and MV3 IndexedDB conversation workspaces pass the
+same conformance scenario with byte-identical retrieval plan, candidate ledger,
+and assessment artifacts. The focused suites and packed production MV3 proof
+also cover the same dynamic replan, agentic workflow, summarized-reasoning
+stream, and provisional-Markdown stream. Only the private read-only live
+acceptance remains unchecked rather than being inferred from synthetic data.
 
 ### C7 — Add sufficient-evidence assessment, critic, repair, and synthesis
 

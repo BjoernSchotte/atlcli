@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   IndexedDbResearchSessionStoreV1,
   RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
@@ -14,7 +17,10 @@ import {
   researchCheckpointConfigV1,
   verifyResearchDataStoreConformanceV1,
   verifyResearchSessionStoreConformanceV1,
+  openDurableChatConversationWorkspaceV1,
+  verifyChatRetrievalTraceConformanceV1,
 } from "@atlcli/research";
+import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "@atlcli/research/browser/agent";
 
 const stores: IndexedDbResearchSessionStoreV1[] = [];
@@ -42,6 +48,58 @@ async function createVersionOneResearchDatabase(
 }
 
 describe("IndexedDB durable research session store", () => {
+  test("persists a byte-identical Chat retrieval plan and candidate trace to CLI SQLite and MV3 IndexedDB", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-chat-retrieval-parity-"));
+    const sqlite = new SqliteResearchSessionStoreV1({
+      databasePath: join(root, "catalog.sqlite"),
+      root: join(root, "sessions"),
+    });
+    const browser = await IndexedDbResearchSessionStoreV1.open({
+      factory: new IDBFactory() as unknown as IDBFactory,
+      databaseName: "chat-retrieval-host-parity",
+    });
+    stores.push(browser);
+    try {
+      const lifecycle = {
+        sessionId: "research-session:chat-retrieval-host-parity",
+        createdAt: "2026-08-06T12:00:00.000Z",
+        leaseExpiresAt: "2026-08-06T12:10:00.000Z",
+      };
+      const [cliWorkspace, mv3Workspace] = await Promise.all([
+        openDurableChatConversationWorkspaceV1({
+          store: sqlite,
+          ownerId: "owner:cli-chat-parity",
+          ...lifecycle,
+        }),
+        openDurableChatConversationWorkspaceV1({
+          store: browser,
+          ownerId: "owner:mv3-chat-parity",
+          ...lifecycle,
+        }),
+      ]);
+      const [cliTrace, mv3Trace] = await Promise.all([
+        verifyChatRetrievalTraceConformanceV1(cliWorkspace),
+        verifyChatRetrievalTraceConformanceV1(mv3Workspace),
+      ]);
+      expect(cliTrace).toEqual(mv3Trace);
+      expect(JSON.parse(cliTrace.plan)).toMatchObject({
+        schema: "atlcli.chat-retrieval-plan/v1",
+        conversationId: "conversation:host-parity",
+      });
+      expect(JSON.parse(cliTrace.candidateLedger)).toMatchObject({
+        schema: "atlcli.chat-candidate-ledger/v1",
+        candidates: [{ sourceId: "wiki:1001", state: "detail-read" }],
+      });
+      expect(JSON.parse(cliTrace.assessment)).toMatchObject({
+        schema: "atlcli.chat-retrieval-assessment/v1",
+        sufficient: true,
+      });
+    } finally {
+      sqlite.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("upgrades a version-one browser database without replacing its session stores", async () => {
     const factory = new IDBFactory();
     const databaseName = "research-session-v1-upgrade";

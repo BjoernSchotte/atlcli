@@ -6,6 +6,7 @@ import type {
   ResearchGetOutputV1,
   ResearchSearchOutputV1,
 } from "../capability-contracts.js";
+import type { ResearchRelatedScopeCandidateV1 } from "../broker.js";
 import {
   ResearchContractError,
   type ResearchLimitsV1,
@@ -188,6 +189,20 @@ export interface ChatSearchLedgerEntryV1 {
   termination?: string;
 }
 
+export interface ChatRelatedScopeProposalV1 {
+  proposalId: string;
+  product: "confluence";
+  entityKind: "page";
+  key: string;
+  scopeKey: string;
+  name: string;
+  canonicalUrl: string;
+  discoveredFromProduct: "jira";
+  discoveredFromSourceId: string;
+  reason: "explicit-link-outside-bound-scope";
+  status: "pending-user-approval";
+}
+
 export interface ChatCandidateLedgerV1 {
   schema: typeof CHAT_CANDIDATE_LEDGER_SCHEMA_V1;
   conversationId: string;
@@ -199,6 +214,8 @@ export interface ChatCandidateLedgerV1 {
   candidates: ChatCandidateLedgerEntryV1[];
   searches: ChatSearchLedgerEntryV1[];
   relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+  /** Body-free review candidates only; these grant no read capability. */
+  relatedScopeProposals?: ChatRelatedScopeProposalV1[];
   atlassianHttpCalls: number;
 }
 
@@ -645,6 +662,10 @@ export class ChatCandidateLedgerControllerV1 {
   readonly #sourceByEntityRef = new Map<string, string>();
   readonly #cursorRoute = new Map<string, { searchId: string; variantId: string; page: number }>();
   readonly #searchByVariant = new Map<string, ChatSearchLedgerEntryV1>();
+  readonly #relatedScopeProposalByIdentity = new Map<
+    string,
+    ChatRelatedScopeProposalV1
+  >();
   #persistTail = Promise.resolve();
   #ledger: ChatCandidateLedgerV1;
 
@@ -721,7 +742,50 @@ export class ChatCandidateLedgerControllerV1 {
           "en-US",
         )
       );
+    const relatedScopeProposals = [...this.#relatedScopeProposalByIdentity.values()]
+      .map((entry) => structuredClone(entry))
+      .sort((left, right) => left.proposalId.localeCompare(right.proposalId, "en-US"));
+    if (relatedScopeProposals.length > 0) {
+      this.#ledger.relatedScopeProposals = relatedScopeProposals;
+    } else {
+      delete this.#ledger.relatedScopeProposals;
+    }
     return cloneLedger(this.#ledger);
+  }
+
+  async observeRelatedScopeCandidate(
+    candidate: ResearchRelatedScopeCandidateV1,
+  ): Promise<void> {
+    const canonical = new URL(candidate.canonicalUrl);
+    const expectedPath = `/wiki/spaces/${encodeURIComponent(candidate.scopeKey)}/pages/${candidate.key}`;
+    if (canonical.origin !== this.#siteOrigin || !canonical.pathname.includes(expectedPath)) {
+      invalid("Chat related-scope candidate is outside the bound tenant or has no canonical page identity.");
+    }
+    const identity = `${candidate.product}:${candidate.key}`;
+    const proposal: ChatRelatedScopeProposalV1 = {
+      proposalId: `related-scope:${stableFingerprint(identity).slice("fnv1a32:".length)}`,
+      product: candidate.product,
+      entityKind: candidate.entityKind,
+      key: cleanText(candidate.key, "Chat related-scope entity key", 128),
+      scopeKey: cleanText(candidate.scopeKey, "Chat related-scope key", 255),
+      name: cleanText(candidate.name, "Chat related-scope entity name", 500),
+      canonicalUrl: canonical.toString(),
+      discoveredFromProduct: candidate.discoveredFromProduct,
+      discoveredFromSourceId: cleanText(
+        candidate.discoveredFromSourceId,
+        "Chat related-scope provenance",
+        256,
+      ),
+      reason: candidate.reason,
+      status: "pending-user-approval",
+    };
+    const existing = this.#relatedScopeProposalByIdentity.get(identity);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(proposal)) {
+      invalid("Chat related-scope candidate identity changed during the turn.");
+    }
+    this.#relatedScopeProposalByIdentity.set(identity, proposal);
+    this.#ledger.updatedAt = new Date(this.#now()).toISOString();
+    await this.#persist();
   }
 
   allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[] {
@@ -1049,6 +1113,9 @@ export class ChatCandidateLedgerControllerV1 {
         .map((signal) => `completion-signal:${signal.signal}`),
       ...(this.#plan.unresolvedTerms.length > 0 ? ["unresolved-terms"] : []),
       ...(deferred.length > 0 ? ["deferred-admitted-candidates"] : []),
+      ...((snapshot.relatedScopeProposals?.length ?? 0) > 0
+        ? ["related-scope-approval-required"]
+        : []),
     ];
     const canonicalCorrect = snapshot.candidates.filter((candidate) => {
       try {

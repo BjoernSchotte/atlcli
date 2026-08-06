@@ -742,6 +742,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
+    observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
@@ -778,6 +779,7 @@ export interface ChatCandidateLedgerV1 {
     candidates: ChatCandidateLedgerEntryV1[];
     searches: ChatSearchLedgerEntryV1[];
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
 }
 
@@ -869,6 +871,21 @@ export interface ChatQualityPolicyV1 {
         finalizationReserveMs: number;
     };
     providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatRelatedScopeProposalV1
+export interface ChatRelatedScopeProposalV1 {
+    proposalId: string;
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+    status: "pending-user-approval";
 }
 
 // export: ChatRelationshipTraversalKindV1
@@ -974,6 +991,13 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
+}
+
+// export: ChatRetrievalTraceConformanceV1
+export interface ChatRetrievalTraceConformanceV1 {
+    plan: string;
+    candidateLedger: string;
+    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -4634,6 +4658,19 @@ export interface ResearchReferenceResolveOutputV1 {
     unavailable: boolean;
 }
 
+// export: ResearchRelatedScopeCandidateV1
+export interface ResearchRelatedScopeCandidateV1 {
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+}
+
 // export: ResearchRelationshipCandidateV1
 export interface ResearchRelationshipCandidateV1 {
     id: string;
@@ -6488,6 +6525,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyChatRetrievalTraceConformanceV1
+export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
 
 // export: verifyResearchDataStoreConformanceV1
 export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
@@ -7366,6 +7406,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
+    observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
@@ -7402,6 +7443,7 @@ export interface ChatCandidateLedgerV1 {
     candidates: ChatCandidateLedgerEntryV1[];
     searches: ChatSearchLedgerEntryV1[];
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
 }
 
@@ -7493,6 +7535,21 @@ export interface ChatQualityPolicyV1 {
         finalizationReserveMs: number;
     };
     providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatRelatedScopeProposalV1
+export interface ChatRelatedScopeProposalV1 {
+    proposalId: string;
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+    status: "pending-user-approval";
 }
 
 // export: ChatRelationshipTraversalKindV1
@@ -7598,6 +7655,13 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
+}
+
+// export: ChatRetrievalTraceConformanceV1
+export interface ChatRetrievalTraceConformanceV1 {
+    plan: string;
+    candidateLedger: string;
+    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -11249,6 +11313,19 @@ export interface ResearchReferenceResolveOutputV1 {
     unavailable: boolean;
 }
 
+// export: ResearchRelatedScopeCandidateV1
+export interface ResearchRelatedScopeCandidateV1 {
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+}
+
 // export: ResearchRelationshipCandidateV1
 export interface ResearchRelationshipCandidateV1 {
     id: string;
@@ -13093,6 +13170,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
+// export: verifyChatRetrievalTraceConformanceV1
+export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
+
 // export: verifyResearchDataStoreConformanceV1
 export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
 
@@ -13970,6 +14050,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
+    observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
@@ -14006,6 +14087,7 @@ export interface ChatCandidateLedgerV1 {
     candidates: ChatCandidateLedgerEntryV1[];
     searches: ChatSearchLedgerEntryV1[];
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
 }
 
@@ -14097,6 +14179,21 @@ export interface ChatQualityPolicyV1 {
         finalizationReserveMs: number;
     };
     providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatRelatedScopeProposalV1
+export interface ChatRelatedScopeProposalV1 {
+    proposalId: string;
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+    status: "pending-user-approval";
 }
 
 // export: ChatRelationshipTraversalKindV1
@@ -14202,6 +14299,13 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
+}
+
+// export: ChatRetrievalTraceConformanceV1
+export interface ChatRetrievalTraceConformanceV1 {
+    plan: string;
+    candidateLedger: string;
+    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -17862,6 +17966,19 @@ export interface ResearchReferenceResolveOutputV1 {
     unavailable: boolean;
 }
 
+// export: ResearchRelatedScopeCandidateV1
+export interface ResearchRelatedScopeCandidateV1 {
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+}
+
 // export: ResearchRelationshipCandidateV1
 export interface ResearchRelationshipCandidateV1 {
     id: string;
@@ -19716,6 +19833,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyChatRetrievalTraceConformanceV1
+export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
 
 // export: verifyResearchDataStoreConformanceV1
 export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
@@ -20611,6 +20731,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
+    observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
@@ -20647,6 +20768,7 @@ export interface ChatCandidateLedgerV1 {
     candidates: ChatCandidateLedgerEntryV1[];
     searches: ChatSearchLedgerEntryV1[];
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
 }
 
@@ -20738,6 +20860,21 @@ export interface ChatQualityPolicyV1 {
         finalizationReserveMs: number;
     };
     providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatRelatedScopeProposalV1
+export interface ChatRelatedScopeProposalV1 {
+    proposalId: string;
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+    status: "pending-user-approval";
 }
 
 // export: ChatRelationshipTraversalKindV1
@@ -20843,6 +20980,13 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
+}
+
+// export: ChatRetrievalTraceConformanceV1
+export interface ChatRetrievalTraceConformanceV1 {
+    plan: string;
+    candidateLedger: string;
+    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -24813,6 +24957,19 @@ export interface ResearchReferenceResolveOutputV1 {
     unavailable: boolean;
 }
 
+// export: ResearchRelatedScopeCandidateV1
+export interface ResearchRelatedScopeCandidateV1 {
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+}
+
 // export: ResearchRelationshipCandidateV1
 export interface ResearchRelationshipCandidateV1 {
     id: string;
@@ -26781,6 +26938,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
+// export: verifyChatRetrievalTraceConformanceV1
+export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
+
 // export: verifyResearchDataStoreConformanceV1
 export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
 
@@ -27675,6 +27835,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
+    observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
@@ -27711,6 +27872,7 @@ export interface ChatCandidateLedgerV1 {
     candidates: ChatCandidateLedgerEntryV1[];
     searches: ChatSearchLedgerEntryV1[];
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
 }
 
@@ -27802,6 +27964,21 @@ export interface ChatQualityPolicyV1 {
         finalizationReserveMs: number;
     };
     providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatRelatedScopeProposalV1
+export interface ChatRelatedScopeProposalV1 {
+    proposalId: string;
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+    status: "pending-user-approval";
 }
 
 // export: ChatRelationshipTraversalKindV1
@@ -27907,6 +28084,13 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
+}
+
+// export: ChatRetrievalTraceConformanceV1
+export interface ChatRetrievalTraceConformanceV1 {
+    plan: string;
+    candidateLedger: string;
+    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -31892,6 +32076,19 @@ export interface ResearchReferenceResolveOutputV1 {
     unavailable: boolean;
 }
 
+// export: ResearchRelatedScopeCandidateV1
+export interface ResearchRelatedScopeCandidateV1 {
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+}
+
 // export: ResearchRelationshipCandidateV1
 export interface ResearchRelationshipCandidateV1 {
     id: string;
@@ -33892,6 +34089,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyChatRetrievalTraceConformanceV1
+export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
 
 // export: verifyResearchDataStoreConformanceV1
 export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
@@ -36510,6 +36710,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
+    observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
@@ -36546,6 +36747,7 @@ export interface ChatCandidateLedgerV1 {
     candidates: ChatCandidateLedgerEntryV1[];
     searches: ChatSearchLedgerEntryV1[];
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
+    relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
 }
 
@@ -36637,6 +36839,21 @@ export interface ChatQualityPolicyV1 {
         finalizationReserveMs: number;
     };
     providerReasoningPreference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatRelatedScopeProposalV1
+export interface ChatRelatedScopeProposalV1 {
+    proposalId: string;
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+    status: "pending-user-approval";
 }
 
 // export: ChatRelationshipTraversalKindV1
@@ -36742,6 +36959,13 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
+}
+
+// export: ChatRetrievalTraceConformanceV1
+export interface ChatRetrievalTraceConformanceV1 {
+    plan: string;
+    candidateLedger: string;
+    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -40727,6 +40951,19 @@ export interface ResearchReferenceResolveOutputV1 {
     unavailable: boolean;
 }
 
+// export: ResearchRelatedScopeCandidateV1
+export interface ResearchRelatedScopeCandidateV1 {
+    product: "confluence";
+    entityKind: "page";
+    key: string;
+    scopeKey: string;
+    name: string;
+    canonicalUrl: string;
+    discoveredFromProduct: "jira";
+    discoveredFromSourceId: string;
+    reason: "explicit-link-outside-bound-scope";
+}
+
 // export: ResearchRelationshipCandidateV1
 export interface ResearchRelationshipCandidateV1 {
     id: string;
@@ -42688,6 +42925,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyChatRetrievalTraceConformanceV1
+export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
 
 // export: verifyResearchDataStoreConformanceV1
 export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
