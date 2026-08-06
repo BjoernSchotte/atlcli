@@ -330,12 +330,16 @@ export function normalizeKnownSourceReferencesV1(
       "fromSourceId",
       "toSourceId",
     ].includes(key ?? "")) {
-      return aliases.get(candidate) ?? candidate;
+      return aliases.get(candidate) ??
+        broker.canonicalDetailSourceIdForRef(candidate) ??
+        candidate;
     }
     if (Array.isArray(candidate)) {
       if (key === "sourceIds" || key === "citationSourceIds") {
         return candidate.map((item) =>
-          typeof item === "string" ? aliases.get(item) ?? item : item
+          typeof item === "string"
+            ? aliases.get(item) ?? broker.canonicalDetailSourceIdForRef(item) ?? item
+            : item
         );
       }
       return candidate.map((item) => normalize(item));
@@ -344,7 +348,15 @@ export function normalizeKnownSourceReferencesV1(
     return Object.fromEntries(Object.entries(candidate as Record<string, unknown>)
       .map(([childKey, child]) => [childKey, normalize(child, childKey)]));
   };
-  return normalize(structuredClone(value)) as ChatSubagentResultV1;
+  const normalized = normalize(structuredClone(value)) as ChatSubagentResultV1;
+  if ("sourceIds" in normalized) {
+    // Models occasionally omit a source from the packet-level inventory while
+    // using the same canonical source in a typed claim or relationship. Close
+    // that inventory deterministically; the following host check still rejects
+    // every unknown or unread reference.
+    normalized.sourceIds = [...new Set(sourceIdsFromResult(normalized))];
+  }
+  return normalized;
 }
 
 function profilePromptV1(input: {
@@ -466,16 +478,29 @@ export function createPlannedSearchAcquisitionToolV1(input: {
           entityRefs: [...entityRefs],
         }, nestedConfig), "Chat candidate ranking");
         const rankedItems = Array.isArray(ranked.items) ? ranked.items : [];
-        const admittedRefs = rankedItems.flatMap((candidate): string[] =>
-          candidate && typeof candidate === "object" &&
-            typeof (candidate as { entityRef?: unknown }).entityRef === "string"
-            ? [(candidate as { entityRef: string }).entityRef]
-            : []
-        ).slice(0, Math.max(1, input.maxDetails));
+        const admittedRefs: string[] = [];
+        const admittedSourceIds = new Set<string>();
+        for (const candidate of rankedItems) {
+          if (!candidate || typeof candidate !== "object") continue;
+          const entityRef = (candidate as { entityRef?: unknown }).entityRef;
+          const sourceId = (candidate as { sourceId?: unknown }).sourceId;
+          if (typeof entityRef !== "string" || typeof sourceId !== "string" ||
+              admittedSourceIds.has(sourceId)) continue;
+          admittedSourceIds.add(sourceId);
+          admittedRefs.push(entityRef);
+          if (admittedRefs.length >= Math.max(1, input.maxDetails)) break;
+        }
         phase = "detail-read";
-        const details = await Promise.all(admittedRefs.map(async (entityRef) =>
-          parsedToolJsonV1(await detail.invoke({ entityRef }, nestedConfig), "Chat detail read")
-        ));
+        const details: Record<string, unknown>[] = [];
+        // A candidate can be returned by several admitted query variants. Read
+        // each canonical source once, sequentially, so evidence publication and
+        // candidate-state transitions remain deterministic across every host.
+        for (const entityRef of admittedRefs) {
+          details.push(parsedToolJsonV1(
+            await detail.invoke({ entityRef }, nestedConfig),
+            "Chat detail read",
+          ));
+        }
         return JSON.stringify({
           schema: "atlcli.chat-planned-acquisition/v1",
           product: input.product,

@@ -652,6 +652,70 @@ describe("Chat candidate ledger", () => {
     );
   });
 
+  test("reconciles equivalent scoped and unscoped Confluence URLs for one canonical source", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const retrievalPlan = plan({
+      searchProducts: ["confluence"],
+      proposal: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [{ variantId: "primary", query: { text: "design" } }],
+          maxPages: 1,
+        }],
+        relationshipTraversals: [],
+      },
+    });
+    const ledger = new ChatCandidateLedgerControllerV1({
+      plan: retrievalPlan,
+      workspace,
+      siteOrigin: ORIGIN,
+    });
+    await ledger.initialize();
+    const query = { query: { text: "design" } };
+    await ledger.observe("wiki.search", searchResult({
+      items: [{
+        sourceId: "wiki:1001",
+        entityRef: "entity:1001",
+        title: "Design",
+        url: `${ORIGIN}/wiki/pages/1001`,
+      }],
+      complete: true,
+    }), "wiki.search:1", query);
+    await ledger.observe("research.candidate.rank", {
+      schema: "atlcli.ptc/research.candidate.rank.output/v1",
+      items: [{ entityRef: "entity:1001", sourceId: "wiki:1001", rank: 1 }],
+      budget: {
+        ptcRemaining: 8,
+        httpAttemptsRemaining: 8,
+        responseBytesRemaining: 8_000,
+      },
+    }, "rank:1");
+    await ledger.observe("wiki.page.get", {
+      schema: "atlcli.ptc/wiki.page.get.output/v1",
+      source: {
+        sourceId: "wiki:1001",
+        product: "confluence",
+        title: "Design",
+        url: `${ORIGIN}/wiki/spaces/KB/pages/1001/Design`,
+      },
+      content: { text: "Design detail.", linkTargets: [], truncated: false, inputBytes: 14 },
+      budget: {
+        ptcRemaining: 7,
+        httpAttemptsRemaining: 7,
+        responseBytesRemaining: 7_000,
+      },
+    }, "wiki.get:1");
+
+    expect(ledger.snapshot().candidates).toEqual([
+      expect.objectContaining({
+        sourceId: "wiki:1001",
+        state: "detail-read",
+        canonicalUrl: `${ORIGIN}/wiki/spaces/KB/pages/1001/Design`,
+      }),
+    ]);
+  });
+
   test("does not treat few results, index exhaustion, or an unread admitted cap as sufficient", async () => {
     const workspace = createMemoryResearchWorkspace();
     const retrievalPlan = plan({

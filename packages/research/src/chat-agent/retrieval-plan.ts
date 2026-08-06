@@ -722,6 +722,32 @@ function observedSource(input: Record<string, unknown>): {
   };
 }
 
+function canonicalUrlMatchesSourceV1(input: {
+  sourceId: string;
+  product: ResearchProduct;
+  canonicalUrl: string;
+  siteOrigin: string;
+}): boolean {
+  let url: URL;
+  try {
+    url = new URL(input.canonicalUrl);
+  } catch {
+    return false;
+  }
+  if (url.origin !== input.siteOrigin) return false;
+  if (input.product === "jira") {
+    const issueKey = input.sourceId.match(/^jira:([A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18})$/u)?.[1];
+    return issueKey !== undefined
+      ? url.pathname === `/browse/${encodeURIComponent(issueKey)}`
+      : url.pathname.startsWith("/browse/");
+  }
+  const contentId = input.sourceId.match(/^wiki:([1-9][0-9]{0,127})$/u)?.[1];
+  if (!contentId) return url.pathname.startsWith("/wiki/");
+  const encodedId = encodeURIComponent(contentId);
+  return url.pathname === `/wiki/pages/${encodedId}` ||
+    new RegExp(`^/wiki/spaces/[^/]+/pages/${encodedId}(?:/|$)`, "u").test(url.pathname);
+}
+
 function cloneLedger(ledger: ChatCandidateLedgerV1): ChatCandidateLedgerV1 {
   return structuredClone(ledger);
 }
@@ -1106,6 +1132,12 @@ export class ChatCandidateLedgerControllerV1 {
     discovery: ChatCandidateDiscoveryV1,
     authority: ChatCandidateLedgerEntryV1["authority"],
   ): ChatCandidateLedgerEntryV1 {
+    if (!canonicalUrlMatchesSourceV1({
+      ...source,
+      siteOrigin: this.#siteOrigin,
+    })) {
+      invalid("Chat candidate canonical URL does not match its source identity.");
+    }
     let candidate = this.#candidateBySource.get(source.sourceId);
     if (!candidate) {
       candidate = {
@@ -1121,8 +1153,24 @@ export class ChatCandidateLedgerControllerV1 {
       };
       this.#candidateBySource.set(source.sourceId, candidate);
     } else {
-      if (candidate.product !== source.product || candidate.canonicalUrl !== source.canonicalUrl) {
+      if (candidate.product !== source.product || !canonicalUrlMatchesSourceV1({
+        sourceId: candidate.sourceId,
+        product: candidate.product,
+        canonicalUrl: candidate.canonicalUrl,
+        siteOrigin: this.#siteOrigin,
+      })) {
         invalid("Chat candidate canonical identity changed during the turn.");
+      }
+      const hasCanonicalEntityIdentity = source.product === "confluence"
+        ? /^wiki:[1-9][0-9]{0,127}$/u.test(source.sourceId)
+        : /^jira:[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}$/u.test(source.sourceId);
+      if (candidate.canonicalUrl !== source.canonicalUrl && !hasCanonicalEntityIdentity) {
+        invalid("Chat candidate canonical identity changed during the turn.");
+      }
+      if (source.product === "confluence" &&
+          !candidate.canonicalUrl.includes("/wiki/spaces/") &&
+          source.canonicalUrl.includes("/wiki/spaces/")) {
+        candidate.canonicalUrl = source.canonicalUrl;
       }
       candidate.title = source.title;
       if (source.version && !candidate.versionsObserved.includes(source.version)) {

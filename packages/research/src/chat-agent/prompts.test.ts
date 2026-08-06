@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildChatSystemPromptV1 } from "./prompts.js";
+import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
 
 describe("Chat supervisor prompt", () => {
   test("makes the host-enforced search-rank-detail sequence executable", () => {
@@ -57,5 +57,22 @@ describe("Chat supervisor prompt", () => {
 
     expect(prompt).toContain("reasoning summaries in German");
     expect(prompt).toContain("source titles, Jira keys, and URLs unchanged");
+  });
+
+  test("pins direct Chat searches to the host-admitted query variants", () => {
+    const prompt = buildChatTurnPromptV1({
+      question: "Compare the bounded products.",
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["KB"],
+      anchors: [],
+      admittedSearches: [{
+        product: "confluence",
+        queries: [{ text: "design" }, { text: "architecture" }],
+      }],
+    });
+
+    expect(prompt).toContain('"queries":[{"text":"design"},{"text":"architecture"}]');
+    expect(prompt).toContain("copy one of these query objects exactly");
+    expect(prompt).toContain("Do not paraphrase, broaden, or invent");
   });
 });

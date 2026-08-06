@@ -1,5 +1,6 @@
 import type { ChatQualityModeV1 } from "../quality-policy.js";
 import type { BoundEntityAnchorV1 } from "../capability-contracts.js";
+import type { ChatSearchQueryV1 } from "./retrieval-plan.js";
 
 export function buildChatSystemPromptV1(input: {
   qualityMode: ChatQualityModeV1;
@@ -50,6 +51,10 @@ export function buildChatTurnPromptV1(input: {
   jiraProjectKeys: readonly string[];
   confluenceSpaceKeys: readonly string[];
   anchors: readonly BoundEntityAnchorV1[];
+  admittedSearches?: readonly {
+    product: "jira" | "confluence";
+    queries: readonly ChatSearchQueryV1[];
+  }[];
   /** Host-projected bounded memory; summaries and prior answers are not evidence. */
   durableContext?: string;
 }): string {
@@ -58,6 +63,12 @@ export function buildChatTurnPromptV1(input: {
     `Host-bound Jira projects: ${input.jiraProjectKeys.join(", ") || "none"}.`,
     `Host-bound Confluence spaces: ${input.confluenceSpaceKeys.join(", ") || "none"}.`,
     `Attached host-bound entities (opaque refs only): ${JSON.stringify(input.anchors)}.`,
+    ...(input.admittedSearches?.length
+      ? [
+          `Host-admitted initial search queries: ${JSON.stringify(input.admittedSearches)}.`,
+          "If search is needed, copy one of these query objects exactly. Do not paraphrase, broaden, or invent a different initial query; opaque host cursors are the only valid continuation.",
+        ]
+      : []),
     ...(input.durableContext
       ? ["Durable conversation context:", input.durableContext]
       : []),

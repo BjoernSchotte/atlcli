@@ -924,6 +924,21 @@ export class ResearchCapabilityBroker {
       });
   }
 
+  /**
+   * Resolve a turn-local opaque capability reference only after its canonical
+   * source has completed a detail read. This is an internal normalization
+   * boundary; unresolved, merely discovered, or unread references remain
+   * unusable as evidence.
+   */
+  canonicalDetailSourceIdForRef(reference: string): string | undefined {
+    const ranked = this.#rankedEntityRefs.get(reference)?.retrieval.sourceId;
+    const exact = this.#exactAnchorBindings.get(reference);
+    const sourceId = ranked ?? (exact
+      ? `${exact.product === "jira" ? "jira" : "wiki"}:${exact.entityId}`
+      : undefined);
+    return sourceId && this.#detailEvidence.has(sourceId) ? sourceId : undefined;
+  }
+
   /** Host-private continuation state; never include this mapping in model input. */
   exactAnchorResume(): ResearchExactAnchorResumeV1[] {
     return [...this.#exactAnchorRefs.entries()]

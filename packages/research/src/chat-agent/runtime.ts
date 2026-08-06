@@ -1742,6 +1742,10 @@ export function createKiteweaveChatAgent(
                 jiraProjectKeys: turn.scope.jiraProjectKeys,
                 confluenceSpaceKeys: turn.scope.confluenceSpaceKeys,
                 anchors,
+                admittedSearches: retrievalPlan.searches.map((search) => ({
+                  product: search.product,
+                  queries: search.variants.map((variant) => variant.query),
+                })),
                 durableContext,
               }),
             }],

@@ -7,11 +7,17 @@ describe("synthetic provider-backed Chat live harness", () => {
     expect(parsed.mode).toBe("deep");
     expect(parsed.question).toContain("synthetic");
     expect(parsed.exactPage).toBe(false);
+    expect(parsed.summaryOnly).toBe(false);
   });
 
   test("accepts one explicit quality mode and rejects unknown options", () => {
     expect(parseChatAgentLiveArgumentsV1(["--thinking", "auto", "Compare", "sources"]))
-      .toEqual({ mode: "auto", question: "Compare sources", exactPage: false });
+      .toEqual({
+        mode: "auto",
+        question: "Compare sources",
+        exactPage: false,
+        summaryOnly: false,
+      });
     expect(() => parseChatAgentLiveArgumentsV1(["--thinking", "maximum"]))
       .toThrow("--thinking must be quick, auto, or deep.");
     expect(() => parseChatAgentLiveArgumentsV1(["--private-scope"]))
@@ -24,5 +30,10 @@ describe("synthetic provider-backed Chat live harness", () => {
       exactPage: true,
       question: expect.stringContaining("attached synthetic Confluence page"),
     });
+  });
+
+  test("supports compact live-proof output without changing the run", () => {
+    expect(parseChatAgentLiveArgumentsV1(["--summary-only", "Compare", "sources"]))
+      .toMatchObject({ summaryOnly: true, question: "Compare sources" });
   });
 });

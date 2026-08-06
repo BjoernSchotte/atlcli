@@ -25,11 +25,13 @@ export interface ChatAgentLiveArgumentsV1 {
   mode: ChatQualityModeV1;
   question: string;
   exactPage: boolean;
+  summaryOnly: boolean;
 }
 
 export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgentLiveArgumentsV1 {
   let mode: ChatQualityModeV1 = "deep";
   let exactPage = false;
+  let summaryOnly = false;
   const questionParts: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]!;
@@ -46,6 +48,10 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
       exactPage = true;
       continue;
     }
+    if (argument === "--summary-only") {
+      summaryOnly = true;
+      continue;
+    }
     if (argument.startsWith("--")) throw new Error(`Unknown option: ${argument}`);
     questionParts.push(argument);
   }
@@ -55,6 +61,7 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
       ? "Summarize the attached synthetic Confluence page and cite its central design decision."
       : DEFAULT_QUESTION),
     exactPage,
+    summaryOnly,
   };
 }
 
@@ -74,9 +81,8 @@ export async function runChatAgentLiveV1(): Promise<void> {
       jiraProjectKeys: argumentsV1.exactPage ? [] : [SYNTHETIC_PROJECT_KEY],
       confluenceSpaceKeys: [SYNTHETIC_SPACE_KEY],
     },
-    ...(argumentsV1.exactPage
-      ? {
-          scopeSeeds: [{
+    scopeSeeds: argumentsV1.exactPage
+      ? [{
             binding: {
               schema: "atlcli.research-scope-binding/v1",
               id: "scope-binding:current:synthetic-space-kb",
@@ -104,9 +110,38 @@ export async function runChatAgentLiveV1(): Promise<void> {
               authority: "approved",
             },
             precedence: 300,
-          }],
-          exactContextProducts: ["confluence" as const],
-        }
+          }]
+      : [{
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:synthetic-project-demo",
+            tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+            product: "jira",
+            entityKind: "project",
+            entityRef: "research-scope-entity:synthetic-project-demo",
+            key: SYNTHETIC_PROJECT_KEY,
+            name: "Synthetic project",
+            source: "cli_flag",
+            authority: "locked",
+          },
+          precedence: 500,
+        }, {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:synthetic-space-kb",
+            tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+            product: "confluence",
+            entityKind: "space",
+            entityRef: "research-scope-entity:synthetic-space-kb",
+            key: SYNTHETIC_SPACE_KEY,
+            name: "Synthetic knowledge base",
+            source: "cli_flag",
+            authority: "locked",
+          },
+          precedence: 500,
+        }],
+    ...(argumentsV1.exactPage
+      ? { exactContextProducts: ["confluence" as const] }
       : {}),
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
@@ -154,11 +189,16 @@ export async function runChatAgentLiveV1(): Promise<void> {
     signal: AbortSignal.timeout(request.limits.maxRunMs),
     onEvent: (event) => {
       durableEvents.push(event);
-      if (event.kind === "capability") {
-        console.error(`[chat-live] capability=${event.toolId} status=${event.status}`);
+      if (event.kind === "capability" &&
+          (!argumentsV1.summaryOnly || event.status === "failed")) {
+        console.error(
+          `[chat-live] capability=${event.toolId} status=${event.status}${event.errorCode ? ` code=${event.errorCode}` : ""}`,
+        );
       }
     },
     onAgentDiagnostic: (diagnostic) => {
+      if (argumentsV1.summaryOnly && diagnostic.status !== "failed" &&
+          diagnostic.status !== "error") return;
       if (diagnostic.kind === "model-step") {
         console.error(
           `[chat-live] model=${diagnostic.purpose} status=${diagnostic.status}${diagnostic.errorCode ? ` code=${diagnostic.errorCode}` : ""}${diagnostic.errorMessage ? ` error=${diagnostic.errorMessage}` : ""}`,
@@ -170,17 +210,21 @@ export async function runChatAgentLiveV1(): Promise<void> {
       );
     },
     onDispatchDiagnostic: (diagnostic) => {
+      if (argumentsV1.summaryOnly && diagnostic.status !== "failed" &&
+          diagnostic.status !== "cancelled") return;
       console.error(
         `[chat-live] dispatch=${diagnostic.status}${diagnostic.taskId ? ` task=${diagnostic.taskId}` : ""}${diagnostic.code ? ` code=${diagnostic.code}` : ""}${diagnostic.resultBytes === undefined ? "" : ` bytes=${diagnostic.resultBytes}`}`,
       );
     },
     onSubagentResultDiagnostic: (diagnostic) => {
+      if (argumentsV1.summaryOnly && diagnostic.status !== "error") return;
       console.error(
         `[chat-live] result=${diagnostic.status} profile=${diagnostic.profileId} phase=${diagnostic.phase} kind=${diagnostic.valueKind}${diagnostic.objectKeys ? ` keys=${diagnostic.objectKeys.join(",")}` : ""}${diagnostic.referenceKinds ? ` refs=${diagnostic.referenceKinds.join(",") || "none"}` : ""}${diagnostic.unknownReferenceKinds ? ` unknown_refs=${diagnostic.unknownReferenceKinds.join(",") || "none"}` : ""}`,
       );
     },
     onChatPresentation: (event) => {
       presentation.push(event);
+      if (argumentsV1.summaryOnly) return;
       if (event.status === "started") {
         console.error(`[chat-live] ${event.channel} `);
       } else if (event.status === "delta") {
@@ -194,7 +238,7 @@ export async function runChatAgentLiveV1(): Promise<void> {
     event.channel === "reasoning-summary" && event.status === "delta");
   const answerDeltas = presentation.filter((event) =>
     event.channel === "answer-markdown" && event.status === "delta");
-  if (argumentsV1.mode !== "quick" && reasoningDeltas.length === 0) {
+  if (!argumentsV1.summaryOnly && argumentsV1.mode !== "quick" && reasoningDeltas.length === 0) {
     // Adaptive thinking is explicitly allowed to skip a thinking block. This
     // is an observed provider outcome, not a broken stream transport. The
     // separate Anthropic -> DeepAgents v3 contract test proves projection when

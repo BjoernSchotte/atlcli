@@ -339,7 +339,7 @@ async function invokeQualityReview(
 }
 
 describe("Chat agentic workflow runtime", () => {
-  test("normalizes only aliases of detail-read sources to canonical source ids", () => {
+  test("normalizes detail-read aliases and closes the packet source inventory", () => {
     const broker = {
       detailEvidenceLedger: () => [{
         source: {
@@ -351,10 +351,12 @@ describe("Chat agentic workflow runtime", () => {
           projectKey: "DEMO",
         },
       }],
+      canonicalDetailSourceIdForRef: (reference: string) =>
+        reference === "research-entity:read-demo-1" ? "jira:DEMO-1" : undefined,
     } as ResearchCapabilityBroker;
     const normalized = normalizeKnownSourceReferencesV1(broker, {
       schema: "atlcli.chat-evidence-packet/v1",
-      sourceIds: ["DEMO-1", "UNKNOWN-2"],
+      sourceIds: ["DEMO-1", "research-entity:read-demo-1", "research-anchor:unread"],
       claims: [{ text: "Synthetic claim", sourceIds: ["DEMO-1"] }],
       relationships: [{
         fromSourceId: "https://tenant-a.atlassian.net/browse/DEMO-1",
@@ -365,7 +367,11 @@ describe("Chat agentic workflow runtime", () => {
       gaps: [],
     });
     expect(normalized).toMatchObject({
-      sourceIds: ["jira:DEMO-1", "UNKNOWN-2"],
+      sourceIds: [
+        "jira:DEMO-1",
+        "research-anchor:unread",
+        "UNKNOWN-2",
+      ],
       claims: [{ sourceIds: ["jira:DEMO-1"] }],
       relationships: [{
         fromSourceId: "jira:DEMO-1",
@@ -598,6 +604,67 @@ describe("Chat agentic workflow runtime", () => {
     });
   });
 
+  test("detail-reads one canonical source once when several variants rediscover it", async () => {
+    const calls: string[] = [];
+    let activeDetails = 0;
+    let maximumActiveDetails = 0;
+    const search = tool(async (value: { query: { text: string } }) => {
+      calls.push(`search:${value.query.text}`);
+      return JSON.stringify({
+        items: [{ entityRef: `research-entity:${value.query.text}` }],
+        page: { complete: true },
+      });
+    }, {
+      name: "wiki_search",
+      description: "synthetic search",
+      schema: z.object({ query: z.object({ text: z.string() }) }).strict(),
+    });
+    const rank = tool(async (value: { entityRefs: string[] }) => JSON.stringify({
+      items: value.entityRefs.map((entityRef, index) => ({
+        entityRef,
+        sourceId: "wiki:one-canonical-source",
+        rank: index + 1,
+      })),
+    }), {
+      name: "research_candidate_rank",
+      description: "synthetic rank",
+      schema: z.object({
+        product: z.enum(["jira", "confluence"]),
+        entityRefs: z.array(z.string()),
+      }).strict(),
+    });
+    const detail = tool(async (value: { entityRef: string }) => {
+      activeDetails += 1;
+      maximumActiveDetails = Math.max(maximumActiveDetails, activeDetails);
+      await Promise.resolve();
+      calls.push(`detail:${value.entityRef}`);
+      activeDetails -= 1;
+      return JSON.stringify({ source: { id: "wiki:one-canonical-source" } });
+    }, {
+      name: "wiki_page_get",
+      description: "synthetic detail",
+      schema: z.object({ entityRef: z.string() }).strict(),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: [search, rank, detail],
+      retrievalLedger: {
+        plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        allowedInitialQueries: () => [{ text: "first" }, { text: "alternate" }],
+      } as unknown as ChatCandidateLedgerControllerV1,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+
+    const result = JSON.parse(String(await acquisition.invoke({})));
+
+    expect(result.details).toHaveLength(1);
+    expect(calls.filter((entry) => entry.startsWith("detail:"))).toEqual([
+      "detail:research-entity:first",
+    ]);
+    expect(maximumActiveDetails).toBe(1);
+  });
+
   test("runs the compound acquisition through the real broker and durable candidate ledger", async () => {
     const limits = {
       ...request.limits,
@@ -710,6 +777,134 @@ describe("Chat agentic workflow runtime", () => {
         admittedRank: 1,
       }],
     });
+  });
+
+  test("runs Jira and Confluence acquisition concurrently through one broker admission ledger", async () => {
+    const limits = {
+      ...request.limits,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 2,
+      maxItemsPerProduct: 4,
+    };
+    const scopedRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Compare DEMO delivery with its KB design.",
+      scope: {
+        ...request.scope,
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["KB"],
+      },
+      limits,
+    };
+    const broker = new ResearchCapabilityBroker(scopedRequest, {
+      jira: {
+        async searchPage() {
+          return { items: [{ issueKey: "DEMO-1", projectKey: "DEMO", title: "Delivery" }] };
+        },
+        async getIssue(input) {
+          return {
+            issueKey: input.issueKey,
+            projectKey: "DEMO",
+            title: "Delivery",
+            content: { text: "Implements KB design.", linkTargets: [], truncated: false, inputBytes: 21 },
+          };
+        },
+      },
+      wiki: {
+        async searchPage() {
+          return { items: [{ contentId: "1001", spaceKey: "KB", title: "Design" }] };
+        },
+        async getPage(input) {
+          return {
+            contentId: input.contentId,
+            spaceKey: "KB",
+            title: "Design",
+            content: { text: "Defines DEMO delivery.", linkTargets: [], truncated: false, inputBytes: 22 },
+          };
+        },
+      },
+    }, { budget: new ResearchRunBudget(limits) });
+    const workspace = createMemoryResearchWorkspace();
+    const retrievalLedger = new CandidateLedgerController({
+      plan: createChatRetrievalPlanV1({
+        conversationId: "conversation:parallel-acquisition",
+        turnId: "turn:parallel-acquisition",
+        question: scopedRequest.question,
+        anchors: [],
+        scopeBindings: [],
+        boundProjectKeys: ["DEMO"],
+        boundSpaceKeys: ["KB"],
+        searchProducts: ["jira", "confluence"],
+        exactContextProducts: [],
+        limits,
+        agentic: true,
+        proposal: {
+          searches: [{
+            searchId: "search:jira",
+            product: "jira",
+            variants: [
+              { variantId: "jira-core", query: { text: "delivery" } },
+              { variantId: "jira-alt", query: { text: "implementation" } },
+            ],
+            maxPages: 1,
+          }, {
+            searchId: "search:confluence",
+            product: "confluence",
+            variants: [
+              { variantId: "wiki-core", query: { text: "design" } },
+              { variantId: "wiki-alt", query: { text: "architecture" } },
+            ],
+            maxPages: 1,
+          }],
+        },
+      }),
+      workspace,
+      siteOrigin: scopedRequest.scope.siteOrigin,
+    });
+    await retrievalLedger.initialize();
+    const rawTools = createChatPtcToolsV1(broker, {
+      searchProducts: ["jira", "confluence"],
+      boundProjectKeys: ["DEMO"],
+      boundSpaceKeys: ["KB"],
+      beforeInvoke: (capability, value) =>
+        retrievalLedger.assertToolInput(capability, value),
+      onResult: (capability, result, callId, value) =>
+        retrievalLedger.observe(capability, result, callId, value),
+    });
+    const jira = createPlannedSearchAcquisitionToolV1({
+      product: "jira",
+      tools: rawTools,
+      retrievalLedger,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+    const confluence = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: rawTools,
+      retrievalLedger,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+
+    const [jiraResult, confluenceResult] = await Promise.all([
+      jira.invoke({}),
+      confluence.invoke({}),
+    ]);
+
+    expect(JSON.parse(String(jiraResult))).toMatchObject({
+      discoveredCandidates: 2,
+      details: [{ source: { sourceId: "jira:DEMO-1" } }],
+      gaps: [],
+    });
+    expect(JSON.parse(String(confluenceResult))).toMatchObject({
+      discoveredCandidates: 2,
+      details: [{ source: { sourceId: "wiki:1001" } }],
+      gaps: [],
+    });
+    expect(retrievalLedger.snapshot().candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceId: "jira:DEMO-1", state: "detail-read" }),
+      expect.objectContaining({ sourceId: "wiki:1001", state: "detail-read" }),
+    ]));
   });
 
   test("blocks another search after saturation while preserving later ranking and detail evals", async () => {
