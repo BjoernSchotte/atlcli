@@ -520,6 +520,9 @@ export default defineBackground({
     qualityPolicyValue?: ChatQualityPolicyV1,
     hostIdentity?: ChatHostIdentityV1,
     resumeAnswer?: ChatUserQuestionAnswerV1,
+    resumeCheckpoint?: {
+      kind: "stream-interruption" | "steering";
+    },
   ) => {
     const request = normalizeResearchRequestV1(value);
     const policy = normalizeResearchOneShotPolicyV1(policyValue);
@@ -559,6 +562,7 @@ export default defineBackground({
         ...(hostIdentity ? { hostIdentity } : {}),
         ...(qualityPolicy ? { qualityPolicy } : {}),
         ...(resumeAnswer ? { resumeAnswer } : {}),
+        ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
       })) as OffscreenResponse | undefined;
       if (
         !response ||
@@ -1833,7 +1837,7 @@ export default defineBackground({
         binding: state.binding,
         at: new Date().toISOString(),
       });
-      return interactions.update((current) =>
+      return await interactions.update((current) =>
         applyChatInteractionControlV1(current, control)
       );
     } finally {

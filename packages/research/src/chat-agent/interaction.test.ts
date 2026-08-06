@@ -6,6 +6,8 @@ import {
   acknowledgeChatStopV1,
   admitNextChatFollowUpV1,
   assertChatInteractionBindingV1,
+  bindChatSteeringResumeV1,
+  completeChatSteeringV1,
   consumeChatSteeringV1,
   createChatInteractionStateV1,
   editChatFollowUpV1,
@@ -41,6 +43,10 @@ const resume = {
     wikiProvider: "rest" as const,
   },
   qualityPolicy: chatQualityPolicyV1("auto"),
+  exactAnchors: [{
+    anchorRef: "research-anchor:durable-interaction-anchor",
+    bindingId: "scope-binding:current:page-1001",
+  }],
 };
 
 function state() {
@@ -189,33 +195,60 @@ describe("durable Chat interaction state", () => {
     });
     expect(steered.queue.map((entry) => entry.content)).toEqual(["Ordinary next turn"]);
     expect(steered.pendingSteering?.instruction).toBe("Prioritize the direct contradiction.");
-    const consumed = consumeChatSteeringV1({
+    const bound = bindChatSteeringResumeV1({
       state: steered,
       expectedRevision: steered.revision,
       steeringId: "chat-steering:one",
       expectedSteeringRevision: 1,
+      turnId: "chat-turn:one",
+      resume,
       at: at(3),
+    });
+    const consumed = consumeChatSteeringV1({
+      state: bound,
+      expectedRevision: bound.revision,
+      steeringId: "chat-steering:one",
+      expectedSteeringRevision: 1,
+      at: at(4),
     });
     expect(consumed.steering.id).toBe("chat-steering:one");
     expect(consumed.state.pendingSteering).toBeUndefined();
+    expect(consumed.state.acceptedSteering).toMatchObject({
+      turnId: "chat-turn:one",
+      instruction: "Prioritize the direct contradiction.",
+      resume: {
+        exactAnchors: [{
+          anchorRef: "research-anchor:durable-interaction-anchor",
+          bindingId: "scope-binding:current:page-1001",
+        }],
+      },
+    });
     expect(consumed.state.queue).toHaveLength(1);
-    const stopped = requestChatStopV1({
+    const steeringComplete = completeChatSteeringV1({
       state: consumed.state,
       expectedRevision: consumed.state.revision,
-      at: at(4),
+      steeringId: "chat-steering:one",
+      expectedSteeringRevision: 1,
+      at: at(5),
+    });
+    expect(steeringComplete.acceptedSteering).toBeUndefined();
+    const stopped = requestChatStopV1({
+      state: steeringComplete,
+      expectedRevision: steeringComplete.revision,
+      at: at(6),
     });
     const acknowledged = acknowledgeChatStopV1({
       state: stopped,
       expectedRevision: stopped.revision,
       expectedStopRevision: 1,
-      at: at(5),
+      at: at(7),
     });
-    expect(acknowledged.stop).toMatchObject({ revision: 1, acknowledgedAt: at(5) });
+    expect(acknowledged.stop).toMatchObject({ revision: 1, acknowledgedAt: at(7) });
     expect(() => acknowledgeChatStopV1({
       state: acknowledged,
       expectedRevision: acknowledged.revision,
       expectedStopRevision: 1,
-      at: at(6),
+      at: at(8),
     })).toThrow("stale or unavailable");
   });
 
@@ -259,12 +292,21 @@ describe("durable Chat interaction state", () => {
       instruction: "Focus on the decision.",
       at: "2026-08-06T10:00:04.000Z",
     });
-    const consumed = consumeChatSteeringV1({
+    const bound = bindChatSteeringResumeV1({
       state: second,
       expectedRevision: second.revision,
       steeringId: "chat-steering:2",
       expectedSteeringRevision: 1,
+      turnId: "chat-turn:steering-controls",
+      resume,
       at: "2026-08-06T10:00:05.000Z",
+    });
+    const consumed = consumeChatSteeringV1({
+      state: bound,
+      expectedRevision: bound.revision,
+      steeringId: "chat-steering:2",
+      expectedSteeringRevision: 1,
+      at: "2026-08-06T10:00:06.000Z",
     });
     expect(consumed.steering.instruction).toBe("Focus on the decision.");
     expect(consumed.state.pendingSteering).toBeUndefined();

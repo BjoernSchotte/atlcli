@@ -244,10 +244,23 @@ describe("routeMessage (pure router)", () => {
       request,
       policy,
       qualityPolicy,
+      resumeCheckpoint: { kind: "steering" },
     }, {
       ...okDeps,
-      runResearch: async (_runId, _sessionId, _turnId, _windowId, mode, _request, receivedPolicy, receivedQuality) => {
-        observed.push(mode, receivedPolicy, receivedQuality);
+      runResearch: async (
+        _runId,
+        _sessionId,
+        _turnId,
+        _windowId,
+        mode,
+        _request,
+        receivedPolicy,
+        receivedQuality,
+        _identity,
+        _answer,
+        receivedCheckpoint,
+      ) => {
+        observed.push(mode, receivedPolicy, receivedQuality, receivedCheckpoint);
         return researchReport;
       },
     })).toEqual({
@@ -256,7 +269,12 @@ describe("routeMessage (pure router)", () => {
       ok: true,
       report: researchReport,
     });
-    expect(observed).toEqual(["chat", policy, qualityPolicy]);
+    expect(observed).toEqual([
+      "chat",
+      policy,
+      qualityPolicy,
+      { kind: "steering" },
+    ]);
     expect(await routeMessage({
       kind: "research:cancel",
       runId: "run-1",
@@ -300,7 +318,12 @@ describe("routeMessage (pure router)", () => {
       request,
       policy,
     })).not.toContain("apiKey");
-    expect(observed).toEqual(["chat", policy, qualityPolicy]);
+    expect(observed).toEqual([
+      "chat",
+      policy,
+      qualityPolicy,
+      { kind: "steering" },
+    ]);
   });
 
   it("routes a revision-fenced Chat command without caller timestamps or credentials", async () => {

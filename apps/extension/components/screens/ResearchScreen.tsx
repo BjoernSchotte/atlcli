@@ -566,6 +566,11 @@ interface ScopePreflightRetry {
   selection?: ResearchScopeCandidateSelectionV1;
   alreadyResolved?: boolean;
   conversationId?: string;
+  qualityPolicy?: ChatQualityPolicyV1;
+  chatCheckpointResume?: {
+    turnId: string;
+    kind: "stream-interruption" | "steering";
+  };
 }
 
 export function ResearchBriefClarificationNotice({
@@ -1410,6 +1415,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             state: "steering" as const,
           }]
         : []),
+      ...(!state.pendingSteering && state.acceptedSteering
+        ? [{
+            id: state.acceptedSteering.id,
+            content: state.acceptedSteering.instruction,
+            state: "steering" as const,
+          }]
+        : []),
     ];
     const durableIds = new Set(durableTurns.map((turn) => turn.id));
     setChatTurns((current) => {
@@ -1870,7 +1882,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setSubmittedRequest(structuredClone(request));
       if (activeInteractionMode === "chat") {
         resolvedChatRequest = request;
-        resolvedChatQualityPolicy = chatQualityPolicyForModeV1(chatThinkingMode);
+        resolvedChatQualityPolicy = retry?.qualityPolicy ??
+          chatQualityPolicyForModeV1(chatThinkingMode);
       }
       if (activeInteractionMode === "deep") {
         const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
@@ -1943,6 +1956,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         policy,
         ...(activeInteractionMode === "chat"
           ? { qualityPolicy: resolvedChatQualityPolicy! }
+          : {}),
+        ...(activeInteractionMode === "chat" && retry?.chatCheckpointResume
+          ? { chatCheckpointResume: retry.chatCheckpointResume }
           : {}),
         onSessionStart: (session) => {
           if (activeInteractionMode === "chat") {
@@ -2239,7 +2255,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           instruction: content,
         });
         expectedDirectSteeringAbort.current = true;
-        abortRef.current?.abort();
         setActionStatus(t("research.chat.steeringCheckpoint"));
       } catch (value) {
         setError(value instanceof Error ? value.message : t("research.error"));
@@ -2383,7 +2398,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   }, [immediateSteering, port, running, t]);
 
   useEffect(() => {
-    const steering = chatInteractionRef.current?.pendingSteering;
+    const steering = chatInteractionRef.current?.pendingSteering ??
+      chatInteractionRef.current?.acceptedSteering;
     if (interactionMode !== "chat" || running || pendingChatQuestion ||
         !steering || queueDrainInFlight.current || !port?.controlActiveChat) return;
     let cancelled = false;
@@ -2391,22 +2407,36 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     void (async () => {
       try {
         const current = await loadChatInteraction();
-        const pending = current?.pendingSteering;
-        if (!pending || cancelled) return;
-        await controlChat({
-          kind: "consume_steering",
-          expectedRevision: current.revision,
-          steeringId: pending.id,
-          expectedSteeringRevision: pending.revision,
-        });
+        if (!current || cancelled) return;
+        let accepted = current.acceptedSteering;
+        if (!accepted && current.pendingSteering) {
+          const pending = current.pendingSteering;
+          const consumed = await controlChat({
+            kind: "consume_steering",
+            expectedRevision: current.revision,
+            steeringId: pending.id,
+            expectedSteeringRevision: pending.revision,
+          });
+          accepted = consumed.acceptedSteering;
+        }
+        if (!accepted || cancelled) return;
         if (cancelled) return;
         setChatTurns((turns) => [
-          ...turns.filter((turn) => turn.id !== pending.id),
-          { id: pending.id, content: pending.instruction, state: "sent" },
+          ...turns.filter((turn) => turn.id !== accepted.id),
+          { id: accepted.id, content: accepted.instruction, state: "sent" },
         ]);
-        const accepted = await run(undefined, pending.instruction, pending.id);
-        if (!accepted) {
-          failedQueuedTurnId.current = pending.id;
+        const completed = await run({
+          request: accepted.resume.request,
+          alreadyResolved: true,
+          conversationId: current.conversationId,
+          qualityPolicy: accepted.resume.qualityPolicy,
+          chatCheckpointResume: {
+            turnId: accepted.turnId,
+            kind: "steering",
+          },
+        }, undefined, accepted.id, undefined, "chat");
+        if (!completed) {
+          failedQueuedTurnId.current = accepted.id;
         } else {
           setActionStatus(t("research.chat.steeringApplied"));
         }

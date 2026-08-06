@@ -1495,7 +1495,11 @@ globalThis.fetch = async (input, init) => {
       }
     }
 
-    if (serializedMessages.includes("cancel-before-ptc") && modelCalls === 1) {
+    if (
+      serializedMessages.includes("cancel-before-ptc") &&
+      !serializedMessages.includes("Host-accepted steering for the current turn") &&
+      modelCalls === 1
+    ) {
       await waitForRelease("never", request.signal);
     }
     if (
@@ -2969,6 +2973,9 @@ async function runPackedChatTurnInBackground(
     turnId: string;
     qualityPolicy?: ChatQualityPolicyV1;
     resumeAnswer?: import("@atlcli/research").ChatUserQuestionAnswerV1;
+    resumeCheckpoint?: {
+      kind: "stream-interruption" | "steering";
+    };
   },
 ): Promise<PackedChatRunResponse> {
   return page.evaluate(async ({ input, policy, hostIdentity }) => {
@@ -2986,6 +2993,7 @@ async function runPackedChatTurnInBackground(
       hostIdentity,
       ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
       ...(input.resumeAnswer ? { resumeAnswer: input.resumeAnswer } : {}),
+      ...(input.resumeCheckpoint ? { resumeCheckpoint: input.resumeCheckpoint } : {}),
     });
   }, {
     input,
@@ -6281,6 +6289,138 @@ test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV
   expect(resumed.report.schema).toBe("atlcli.chat-answer/v1");
   expect(resumed.report.messageMarkdown).toContain("packed implementation statement");
 
+  const events = await harnessEvents(page);
+  const modelWorkers = new Set(events
+    .filter((event) => event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com"))
+    .map((event) => event.workerId)
+    .filter((workerId): workerId is string => typeof workerId === "string"));
+  expect(modelWorkers.size).toBeGreaterThanOrEqual(2);
+  expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("steers and resumes the same ordinary Chat checkpoint across fresh packed MV3 workers", async () => {
+  await installEventCapture(page);
+  const runId = "packed-chat-checkpoint-steering";
+  const sessionId = `research-session:${runId}`;
+  const turnId = `research-turn:${runId}`;
+  const request = {
+    ...packedExactContextRequest("confluence"),
+    question: "packed-exact-page: cancel-before-ptc: Summarize the attached page.",
+  };
+  await page.evaluate(async ({ key, value, sessionId, principal }) => {
+    await chrome.storage.session.set({ [key]: value });
+    await chrome.storage.local.set({
+      "atlcli.research.active-chat-conversation-id.v1": sessionId,
+      "atlcli.chat.host-principal-id.v1": principal,
+    });
+  }, {
+    key: RESEARCH_ANTHROPIC_SESSION_KEY,
+    value: FAKE_KEY,
+    sessionId,
+    principal: PACKED_CHAT_HOST_IDENTITY.userId,
+  });
+  const running = runPackedChatTurnInBackground(page, {
+    request,
+    runId,
+    sessionId,
+    turnId,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+  await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+    event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com")
+  ), { timeout: 20_000 }).toBe(true);
+  const initial = await readPackedWorkspaceJson<{ revision: number }>(
+    page,
+    sessionId,
+    "/.atlcli/chat/v1/interaction.json",
+  );
+  expect(initial?.revision).toBeGreaterThan(0);
+  if (!initial) return;
+  const steered = await page.evaluate(async ({ revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed Chat window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:chat-control",
+      windowId: window.id,
+      command: {
+        kind: "steer",
+        expectedRevision: revision,
+        steeringId: "chat-steering:packed-checkpoint",
+        instruction: "Focus the remaining answer on the implementation evidence.",
+      },
+    });
+  }, { revision: initial.revision });
+  expect(steered).toMatchObject({
+    kind: "research:chat-control-result",
+    ok: true,
+    state: {
+      pendingSteering: {
+        id: "chat-steering:packed-checkpoint",
+        turnId,
+      },
+    },
+  });
+  await expect(running).resolves.toMatchObject({
+    kind: "research:run-result",
+    runId,
+    ok: false,
+    code: "paused",
+  });
+  if (!steered || steered.ok !== true || !steered.state.pendingSteering) return;
+  const persistedSteering = await readPackedWorkspaceJson<{
+    revision: number;
+    pendingSteering?: { id: string; revision: number; turnId?: string };
+  }>(page, sessionId, "/.atlcli/chat/v1/interaction.json");
+  expect(persistedSteering).toMatchObject({
+    pendingSteering: {
+      id: "chat-steering:packed-checkpoint",
+      turnId,
+    },
+  });
+  if (!persistedSteering?.pendingSteering) return;
+  const consumed = await page.evaluate(async ({ revision, steeringRevision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed Chat window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:chat-control",
+      windowId: window.id,
+      command: {
+        kind: "consume_steering",
+        expectedRevision: revision,
+        steeringId: "chat-steering:packed-checkpoint",
+        expectedSteeringRevision: steeringRevision,
+      },
+    });
+  }, {
+    revision: persistedSteering.revision,
+    steeringRevision: persistedSteering.pendingSteering.revision,
+  });
+  expect(consumed, JSON.stringify(consumed)).toMatchObject({
+    kind: "research:chat-control-result",
+    ok: true,
+    state: {
+      acceptedSteering: {
+        id: "chat-steering:packed-checkpoint",
+        turnId,
+      },
+    },
+  });
+  const resumed = await runPackedChatTurnInBackground(page, {
+    request,
+    runId: `${runId}-resume`,
+    sessionId,
+    turnId,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+    resumeCheckpoint: { kind: "steering" },
+  });
+  expect(resumed.ok, JSON.stringify({ resumed, events: await harnessEvents(page) })).toBe(true);
+  if (!resumed.ok) return;
+  expect(resumed.report.schema).toBe("atlcli.chat-answer/v1");
+  expect(resumed.report.messageMarkdown).toContain("packed implementation statement");
+  const interaction = await readPackedWorkspaceJson<{
+    acceptedSteering?: unknown;
+  }>(page, sessionId, "/.atlcli/chat/v1/interaction.json");
+  expect(interaction?.acceptedSteering).toBeUndefined();
   const events = await harnessEvents(page);
   const modelWorkers = new Set(events
     .filter((event) => event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com"))

@@ -93,6 +93,32 @@ const qualityPolicy = {
 } as const;
 
 describe("dedicated research worker host", () => {
+  it("transports a typed Chat checkpoint continuation without token replay state", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const running = host.run({
+      runId: "chat-steering-resume-1",
+      sessionId: "chat-session:steering-resume",
+      turnId: "chat-turn:steering-resume",
+      apiKey: "synthetic-key",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      resumeCheckpoint: { kind: "steering" },
+    });
+    expect(worker.posted[0]).toEqual(expect.objectContaining({
+      kind: "research-worker:run",
+      resumeCheckpoint: { kind: "steering" },
+    }));
+    expect(JSON.stringify(worker.posted[0])).not.toContain("token");
+    worker.emit({
+      kind: "research-worker:complete",
+      runId: "chat-steering-resume-1",
+      answer,
+    });
+    expect(await running).toBe(answer);
+  });
+
   it("serializes revision-fenced Chat queue controls through the owning worker", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });

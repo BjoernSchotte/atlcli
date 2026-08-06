@@ -10,6 +10,7 @@ import {
 } from "deepagents/node";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  ResearchContractError,
   type ResearchOneShotEventV1,
   type ResearchRequestV1,
 } from "../contracts.js";
@@ -30,6 +31,10 @@ import {
   CHAT_INTERACTION_STATE_PATH_V1,
   CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
   ChatUserQuestionRequiredError,
+  WorkspaceChatInteractionControllerV1,
+  bindChatSteeringResumeV1,
+  consumeChatSteeringV1,
+  requestChatSteeringV1,
   type ChatInteractionStateV1,
 } from "./interaction.js";
 import { CHAT_SESSION_PATH_V1, type ChatSessionV1 } from "./session.js";
@@ -330,6 +335,97 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(completedInteraction.pendingQuestion).toBeUndefined();
     expect(completedInteraction.resolvedQuestions.at(-1)?.answer.value)
       .toEqual({ kind: "selection", optionIds: ["window:seven"] });
+  });
+
+  test("replans the same durable turn after host-accepted steering", async () => {
+    const input = request("Answer this simple conversational question.");
+    const workspace = createMemoryResearchWorkspace();
+    const binding = {
+      ...hostIdentity,
+      threadId: input.turn.conversationId,
+      tenantOrigin: input.turn.scope.siteOrigin,
+    };
+    const interactions = await WorkspaceChatInteractionControllerV1.bind({
+      workspace,
+      conversationId: input.turn.conversationId,
+      binding,
+      at: "2026-08-06T12:30:00.000Z",
+    });
+    const requested = await interactions.update((state) =>
+      requestChatSteeringV1({
+        state,
+        expectedRevision: state.revision,
+        steeringId: "chat-steering:runtime",
+        instruction: "Focus on the open decision.",
+        at: "2026-08-06T12:30:01.000Z",
+      })
+    );
+    await interactions.update((state) =>
+      bindChatSteeringResumeV1({
+        state,
+        expectedRevision: state.revision,
+        steeringId: requested.pendingSteering!.id,
+        expectedSteeringRevision: requested.pendingSteering!.revision,
+        turnId: input.turn.turnId,
+        resume: {
+          request: input.brokerRequest,
+          qualityPolicy: chatQualityPolicyV1("quick"),
+        },
+        at: "2026-08-06T12:30:02.000Z",
+      })
+    );
+    const interrupted = new AbortController();
+    interrupted.abort(new ResearchContractError(
+      "paused",
+      "The Chat turn reached its steering checkpoint.",
+    ));
+    await expect(runtime.runChatAgent({
+      ...input,
+      model: model(false),
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      signal: interrupted.signal,
+    })).rejects.toMatchObject({ code: "paused" });
+    const waiting = JSON.parse(
+      (await workspace.readFile(CHAT_SESSION_PATH_V1))!,
+    ) as ChatSessionV1;
+    expect(waiting.conversation.recentTurns.at(-1)).toMatchObject({
+      status: "waiting",
+      waitingReason: "steering",
+    });
+
+    const restoredInteractions = await WorkspaceChatInteractionControllerV1.bind({
+      workspace,
+      conversationId: input.turn.conversationId,
+      binding,
+      at: "2026-08-06T12:30:03.000Z",
+    });
+    await restoredInteractions.update((state) =>
+      consumeChatSteeringV1({
+        state,
+        expectedRevision: state.revision,
+        steeringId: state.pendingSteering!.id,
+        expectedSteeringRevision: state.pendingSteering!.revision,
+        at: "2026-08-06T12:30:04.000Z",
+      }).state
+    );
+    const resumed = await runtime.runChatAgent({
+      ...input,
+      model: model(false),
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      resumeCheckpoint: { kind: "steering" },
+    });
+    expect(resumed.messageMarkdown).toBe("A bounded synthetic Chat answer.");
+    const completedInteractions = await WorkspaceChatInteractionControllerV1.bind({
+      workspace,
+      conversationId: input.turn.conversationId,
+      binding,
+      at: "2026-08-06T12:30:05.000Z",
+    });
+    expect(completedInteractions.snapshot().acceptedSteering).toBeUndefined();
   });
 
   test("emits durable user-facing milestones around analysis and answer validation", async () => {

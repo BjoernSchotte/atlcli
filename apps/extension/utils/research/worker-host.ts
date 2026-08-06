@@ -51,6 +51,9 @@ interface ResearchAgentWorkerRunInput {
   qualityPolicy?: ChatQualityPolicyV1;
   hostIdentity?: ChatHostIdentityV1;
   resumeAnswer?: ChatUserQuestionAnswerV1;
+  resumeCheckpoint?: {
+    kind: "stream-interruption" | "steering";
+  };
   resume?: true;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
@@ -155,6 +158,7 @@ export class ResearchAgentWorkerHost {
         ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
         ...(input.hostIdentity ? { hostIdentity: input.hostIdentity } : {}),
         ...(input.resumeAnswer ? { resumeAnswer: input.resumeAnswer } : {}),
+        ...(input.resumeCheckpoint ? { resumeCheckpoint: input.resumeCheckpoint } : {}),
       });
     }).finally(() => {
       const active = this.#active.get(input.runId);

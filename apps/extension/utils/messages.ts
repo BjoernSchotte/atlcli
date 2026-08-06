@@ -220,6 +220,9 @@ export type ExtRequest =
       qualityPolicy?: ChatQualityPolicyV1;
       hostIdentity?: ChatHostIdentityV1;
       resumeAnswer?: ChatUserQuestionAnswerV1;
+      resumeCheckpoint?: {
+        kind: "stream-interruption" | "steering";
+      };
     }
   | {
       /** Resume one host-validated durable turn without accepting new scope or policy. */
@@ -668,6 +671,15 @@ function isChatUserQuestionAnswerV1(value: unknown): value is ChatUserQuestionAn
     (answer.decision === "accepted" || answer.decision === "rejected");
 }
 
+function isChatCheckpointResumeV1(value: unknown): value is {
+  kind: "stream-interruption" | "steering";
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as { kind?: unknown };
+  return hasOnlyKeys(value, ["kind"]) &&
+    (candidate.kind === "stream-interruption" || candidate.kind === "steering");
+}
+
 /**
  * Internal messages the service worker forwards to the offscreen document.
  * Namespaced (`offscreen:`) so the SW's own panel-facing listener ignores them
@@ -691,6 +703,9 @@ export type OffscreenRequest =
       qualityPolicy?: ChatQualityPolicyV1;
       hostIdentity?: ChatHostIdentityV1;
       resumeAnswer?: ChatUserQuestionAnswerV1;
+      resumeCheckpoint?: {
+        kind: "stream-interruption" | "steering";
+      };
     }
   | {
       kind: "offscreen:research-resume";
@@ -853,8 +868,8 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (kind === "research:run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; windowId?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "windowId", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; windowId?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "windowId", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
@@ -865,7 +880,9 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null)) &&
       (run.qualityPolicy === undefined || (typeof run.qualityPolicy === "object" && run.qualityPolicy !== null)) &&
       (run.mode !== "chat" || isChatHostIdentityV1(run.hostIdentity)) &&
-      (run.resumeAnswer === undefined || (run.mode === "chat" && isChatUserQuestionAnswerV1(run.resumeAnswer)));
+      (run.resumeAnswer === undefined || (run.mode === "chat" && isChatUserQuestionAnswerV1(run.resumeAnswer))) &&
+      (run.resumeCheckpoint === undefined ||
+        (run.mode === "chat" && isChatCheckpointResumeV1(run.resumeCheckpoint)));
   }
   if (kind === "research:resume") {
     const resume = value as { runId?: unknown; sessionId?: unknown; windowId?: unknown };
@@ -1172,8 +1189,8 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
@@ -1184,7 +1201,9 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null)) &&
       (run.qualityPolicy === undefined || (typeof run.qualityPolicy === "object" && run.qualityPolicy !== null)) &&
       (run.mode !== "chat" || isChatHostIdentityV1(run.hostIdentity)) &&
-      (run.resumeAnswer === undefined || (run.mode === "chat" && isChatUserQuestionAnswerV1(run.resumeAnswer)));
+      (run.resumeAnswer === undefined || (run.mode === "chat" && isChatUserQuestionAnswerV1(run.resumeAnswer))) &&
+      (run.resumeCheckpoint === undefined ||
+        (run.mode === "chat" && isChatCheckpointResumeV1(run.resumeCheckpoint)));
   }
   if (candidate.kind === "offscreen:research-resume") {
     const resume = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown };

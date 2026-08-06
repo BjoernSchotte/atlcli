@@ -37,6 +37,25 @@ describe("research error redaction", () => {
     });
   });
 
+  it("preserves a typed contract error across a duplicated bundle boundary", () => {
+    expect(classifyResearchError({
+      name: "ChatContractError",
+      code: "invalid-request",
+      message: "The Chat steering revision is stale.",
+    })).toEqual({
+      code: "invalid-request",
+      message: "The Chat steering revision is stale.",
+    });
+    expect(classifyResearchError({
+      name: "ProviderError",
+      code: "access-denied",
+      message: "Untrusted provider-shaped error.",
+    })).toEqual({
+      code: "provider-error",
+      message: "The research provider failed.",
+    });
+  });
+
   it("classifies inaccessible catalog entities without echoing a response body", () => {
     const classified = classifyResearchError(
       new Error("Confluence API error (404): PRIVATE_NOT_FOUND_PAYLOAD"),

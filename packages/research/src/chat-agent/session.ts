@@ -51,6 +51,7 @@ export interface ChatTurnV1 {
     steeringRevision: number;
   };
   status: "running" | "complete" | "failed" | "cancelled" | "waiting";
+  waitingReason?: "hitl" | "stream-interruption" | "steering";
   startedAt: string;
   completedAt?: string;
   acceptedStrategy?: ChatStrategyV1;
@@ -612,6 +613,7 @@ export function pauseChatTurnV1(input: {
   session: ChatSessionV1;
   expectedSessionRevision: number;
   turnId: string;
+  reason?: "hitl" | "stream-interruption" | "steering";
   at: string;
 }): ChatSessionV1 {
   if (input.expectedSessionRevision !== input.session.revision) {
@@ -624,7 +626,12 @@ export function pauseChatTurnV1(input: {
   const recentTurns = input.session.conversation.recentTurns.map((turn) => {
     if (turn.id !== input.turnId || turn.status !== "running") return turn;
     matched = true;
-    return { ...turn, revision: turn.revision + 1, status: "waiting" as const };
+    return {
+      ...turn,
+      revision: turn.revision + 1,
+      status: "waiting" as const,
+      waitingReason: input.reason ?? "hitl",
+    };
   });
   if (!matched) throw new ChatContractError("invalid-request", "Chat turn is not running.");
   return {
@@ -647,6 +654,7 @@ export function resumeChatTurnV1(input: {
   objective: string;
   qualityMode: ChatQualityModeV1;
   scopeFingerprint: string;
+  reason?: "hitl" | "stream-interruption" | "steering";
   at: string;
 }): ChatSessionV1 {
   if (input.expectedSessionRevision !== input.session.revision) {
@@ -666,8 +674,25 @@ export function resumeChatTurnV1(input: {
         "Chat HITL resume request does not match the waiting turn.",
       );
     }
+    const expectedReason = input.reason ?? "hitl";
+    if ((turn.waitingReason ?? "hitl") !== expectedReason) {
+      throw new ChatContractError(
+        "invalid-request",
+        "Chat checkpoint resume reason does not match the waiting turn.",
+      );
+    }
     matched = true;
-    return { ...turn, revision: turn.revision + 1, status: "running" as const };
+    const { waitingReason: _waitingReason, ...resumed } = turn;
+    return {
+      ...resumed,
+      revision: turn.revision + 1,
+      status: "running" as const,
+      controlFence: {
+        sessionRevision: input.session.revision,
+        abortEpoch: input.session.operations.abortEpoch,
+        steeringRevision: input.session.operations.steeringRevision,
+      },
+    };
   });
   if (!matched) throw new ChatContractError("invalid-request", "Chat turn is not waiting for an answer.");
   return {
@@ -849,6 +874,15 @@ export function parseChatSessionV1(value: unknown): ChatSessionV1 {
     if (!(["running", "complete", "failed", "cancelled", "waiting"] as const)
       .includes(turn.status)) {
       throw new ChatContractError("invalid-request", "Stored Chat turn status is invalid.");
+    }
+    if (turn.status === "waiting") {
+      if (turn.waitingReason !== undefined &&
+          !(["hitl", "stream-interruption", "steering"] as const)
+            .includes(turn.waitingReason)) {
+        throw new ChatContractError("invalid-request", "Stored Chat waiting reason is invalid.");
+      }
+    } else if (turn.waitingReason !== undefined) {
+      throw new ChatContractError("invalid-request", "Stored Chat waiting reason is stale.");
     }
     positiveInteger(turn.controlFence?.sessionRevision, "Chat turn session fence");
     nonNegativeInteger(turn.controlFence?.abortEpoch, "Chat turn abort fence");

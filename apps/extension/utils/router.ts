@@ -87,6 +87,9 @@ export interface RouterDeps {
     qualityPolicy?: ChatQualityPolicyV1,
     hostIdentity?: ChatHostIdentityV1,
     resumeAnswer?: ChatUserQuestionAnswerV1,
+    resumeCheckpoint?: {
+      kind: "stream-interruption" | "steering";
+    },
   ) => Promise<ResearchReport | ChatAnswerV1>;
   resumeResearch?: (
     runId: string,
@@ -299,6 +302,7 @@ export async function routeMessage(
           msg.qualityPolicy,
           msg.hostIdentity,
           msg.resumeAnswer,
+          msg.resumeCheckpoint,
         );
         return { kind: "research:run-result", runId: msg.runId, ok: true, report };
       } catch (error) {

@@ -9,6 +9,7 @@ import {
   createRestScopeCatalogProviders,
   normalizeResearchOneShotPolicyV1,
   normalizeChatQualityPolicyV1,
+  chatQualityPolicyV1,
   normalizeResearchRequestV1,
   prepareDirectChatRequestV1,
   prepareResearchBriefPreflightV1,
@@ -24,10 +25,12 @@ import {
   type ResearchRequestV1,
   type ResearchSessionV1,
   type ChatTurnRequestV1,
+  type ChatResumeEnvelopeV1,
   type ChatPresentationStreamEventV1,
   type ChatHostIdentityV1,
   ChatUserQuestionRequiredError,
   applyChatInteractionControlV1,
+  bindChatSteeringResumeV1,
   type WorkspaceChatInteractionControllerV1,
 } from "@atlcli/research/browser";
 import { runChatAgent, runResearchAgent } from "@atlcli/research/browser/agent";
@@ -51,6 +54,10 @@ let activeRun: {
   runId: string;
   controller: AbortController;
   interactions?: WorkspaceChatInteractionControllerV1;
+  steeringResume?: {
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+  };
 } | undefined;
 
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
@@ -85,9 +92,25 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           );
         }
         const control = controlMessage.control;
-        const state = await run.interactions.update((current) =>
-          applyChatInteractionControlV1(current, control)
-        );
+        const state = await run.interactions.update((current) => {
+          const controlled = applyChatInteractionControlV1(current, control);
+          if (control.kind !== "steer") return controlled;
+          if (!run.steeringResume) {
+            throw new ResearchContractError(
+              "invalid-request",
+              "The active Chat turn cannot bind a steering checkpoint.",
+            );
+          }
+          return bindChatSteeringResumeV1({
+            state: controlled,
+            expectedRevision: controlled.revision,
+            steeringId: control.steeringId,
+            expectedSteeringRevision: controlled.pendingSteering!.revision,
+            turnId: run.steeringResume.turnId,
+            resume: run.steeringResume.resume,
+            at: control.at,
+          });
+        });
         post({
           kind: "research-worker:chat-control-result",
           runId: controlMessage.runId,
@@ -95,6 +118,12 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           ok: true,
           state,
         });
+        if (control.kind === "steer" && !run.controller.signal.aborted) {
+          queueMicrotask(() => run.controller.abort(new ResearchContractError(
+            "paused",
+            "The Chat turn reached its durable steering checkpoint.",
+          )));
+        }
       } catch (error) {
         const classified = classifyResearchError(error);
         post({
@@ -142,6 +171,15 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         const request = prepareDirectChatRequestV1(
           normalizeResearchRequestV1(message.request),
         );
+        const qualityPolicy = message.qualityPolicy
+          ? normalizeChatQualityPolicyV1(message.qualityPolicy)
+          : chatQualityPolicyV1("auto");
+        if (activeRun?.runId === runId) {
+          activeRun.steeringResume = {
+            turnId,
+            resume: { request, qualityPolicy },
+          };
+        }
         const profile: Profile = {
           name: "chat-session",
           baseUrl: request.scope.siteOrigin,
@@ -189,15 +227,21 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             budget,
             workspace,
             hostIdentity,
-            ...(message.qualityPolicy
-              ? { qualityPolicy: normalizeChatQualityPolicyV1(message.qualityPolicy) }
-              : {}),
+            qualityPolicy,
             ...(message.resumeAnswer
               ? { resumeAnswer: message.resumeAnswer }
+              : {}),
+            ...(message.resumeCheckpoint
+              ? { resumeCheckpoint: message.resumeCheckpoint }
               : {}),
             signal: controller.signal,
             onInteractionReady: (interactions) => {
               if (activeRun?.runId === runId) activeRun.interactions = interactions;
+            },
+            onResumeEnvelopeReady: (resumeEnvelope) => {
+              if (activeRun?.runId === runId) {
+                activeRun.steeringResume = { turnId, resume: resumeEnvelope };
+              }
             },
             onProgress,
             onEvent,

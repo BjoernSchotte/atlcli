@@ -76,6 +76,22 @@ describe("message guards", () => {
         userId: "browser-principal:synthetic",
         providerCacheIdentity: "provider-cache:synthetic",
       },
+      resumeCheckpoint: { kind: "steering" },
+    })).toBe(true);
+    expect(isExtRequest({
+      ...panelChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+      resumeCheckpoint: { kind: "raw-token-replay" },
+    })).toBe(false);
+    expect(isExtRequest({
+      ...panelChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
       resumeAnswer: { ...resumeAnswer, value: { kind: "raw-chain-of-thought" } },
     })).toBe(false);
     expect(isExtRequest({
@@ -810,6 +826,22 @@ describe("message guards", () => {
         providerCacheIdentity: "provider-cache:synthetic",
       },
     })).toBe(true);
+    expect(isOffscreenRequest({
+      ...offscreenChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+      resumeCheckpoint: { kind: "stream-interruption" },
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      ...offscreenChatRun,
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+      resumeCheckpoint: { kind: "token-replay", cursor: 7 },
+    })).toBe(false);
     expect(isOffscreenRequest({
       kind: "offscreen:research-pause",
       runId: "run-1",

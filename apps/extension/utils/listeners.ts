@@ -61,6 +61,9 @@ export interface OffscreenListenerDeps {
     qualityPolicy?: ChatQualityPolicyV1,
     hostIdentity?: ChatHostIdentityV1,
     resumeAnswer?: ChatUserQuestionAnswerV1,
+    resumeCheckpoint?: {
+      kind: "stream-interruption" | "steering";
+    },
   ) => Promise<ResearchReport | ChatAnswerV1>;
   resumeResearch?: (
     runId: string,
@@ -422,6 +425,7 @@ export function handleOffscreenMessage(
           message.qualityPolicy,
           message.hostIdentity,
           message.resumeAnswer,
+          message.resumeCheckpoint,
         )
         : Promise.reject(new Error("Research worker host is not configured.")))
         .then((report) => sendResponse({

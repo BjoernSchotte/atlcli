@@ -983,7 +983,9 @@ export function chromeResearchPort(): ResearchPort {
         );
         await chrome.storage.local.set({ [ACTIVE_CHAT_CONVERSATION_KEY]: sessionId });
       }
-      const turnId = options?.chatResume?.turnId ?? `research-turn:${crypto.randomUUID()}`;
+      const turnId = options?.chatResume?.turnId ??
+        options?.chatCheckpointResume?.turnId ??
+        `research-turn:${crypto.randomUUID()}`;
       const policy = normalizeResearchOneShotPolicyV1(options?.policy);
       const hostIdentity = options?.mode === "chat"
         ? await browserChatHostIdentityV1()
@@ -1048,6 +1050,9 @@ export function chromeResearchPort(): ResearchPort {
             ...(hostIdentity ? { hostIdentity } : {}),
             ...(options?.qualityPolicy ? { qualityPolicy: options.qualityPolicy } : {}),
             ...(options?.chatResume ? { resumeAnswer: options.chatResume.answer } : {}),
+            ...(options?.chatCheckpointResume
+              ? { resumeCheckpoint: { kind: options.chatCheckpointResume.kind } }
+              : {}),
           })) as typeof response;
         } catch (error) {
           if (options?.signal?.aborted) {

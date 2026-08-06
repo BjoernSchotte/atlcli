@@ -906,7 +906,7 @@ Automated proof:
 - [x] HITL pause/reload/answer/resume works with every supported question shape.
 - [x] Queue messages remain FIFO and separately editable/deletable; immediate
       steering does not become an ordinary queued follow-up.
-- [ ] Steering revises only eligible remaining work and re-runs scope/HITL checks.
+- [x] Steering revises only eligible remaining work and re-runs scope/HITL checks.
 - [x] Stop acknowledgement meets an evidence-backed bound and no cancelled result
       can enter synthesis.
 - [x] Event snapshots contain no raw private/debug/reasoning fields and cover both
@@ -1002,6 +1002,24 @@ tests pass. A packed production MV3 E2E restored the third connected turn,
 semantic activity, and final answer after offscreen-worker recreation without
 persisting reasoning summaries, source bodies, or credentials. The complete
 packed production extension suite passes all 42 lifecycle tests.
+
+Checkpointed steering proof (2026-08-06): immediate steering is now bound by the
+active host to the original turn, normalized request, quality policy, and opaque
+exact-anchor capability set before the model checkpoint is paused. A fresh
+DeepAgentsJS host resumes the same LangGraph `thread_id` with
+`Command(update=...)`; it retains the original objective, injects only the
+host-accepted steering instruction, and re-enters the normal strategy,
+scope/HITL, retrieval-plan, and final-review fences. Opaque exact-anchor refs are
+restored only when their host-private binding IDs still exist in the same
+accepted scope; changed-scope and forged resumes fail before provider I/O. The
+packed production E2E pauses during a model call, persists and consumes the
+revision-fenced steering request through the background after the first worker
+has exited, constructs a fresh worker, reads the original exact page, and
+completes the same turn without claiming token replay. Core continuation,
+interaction, broker, session, runtime, protocol, presenter, typecheck, and all
+43 packed MV3 lifecycle tests pass. The test also exposed and fixed an IndexedDB
+lifecycle race: persisted background controls now settle before their connection
+is closed.
 
 Live acceptance:
 

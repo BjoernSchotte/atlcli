@@ -24,6 +24,8 @@ import type {
 } from "@atlcli/research";
 import {
   applyChatInteractionControlV1,
+  bindChatSteeringResumeV1,
+  completeChatSteeringV1,
   createChatInteractionStateV1,
   stampChatInteractionCommandV1,
 } from "@atlcli/research";
@@ -1011,6 +1013,122 @@ describe("portable Research screen", () => {
 
     releaseRun?.(report);
     await dom.flush();
+  });
+
+  it("resumes the same durable Chat turn after accepted steering", async () => {
+    let interaction = createChatInteractionStateV1({
+      conversationId: "research-session:checkpoint-steering",
+      binding: {
+        userId: "browser-principal:checkpoint-steering",
+        providerCacheIdentity: "anthropic:browser-principal:checkpoint-steering",
+        threadId: "research-session:checkpoint-steering",
+        tenantOrigin: "https://example.atlassian.net",
+      },
+      createdAt: "2026-08-06T11:00:00.000Z",
+    });
+    let rejectInitial: ((reason: unknown) => void) | undefined;
+    let originalRequest: ResearchRequestV1 | undefined;
+    let originalQuality: Parameters<NonNullable<ResearchPort["run"]>>[1] extends infer Options
+      ? Options extends { qualityPolicy?: infer Quality } ? Quality : never
+      : never;
+    const calls: Array<{
+      question: string;
+      checkpoint?: { turnId: string; kind: "stream-interruption" | "steering" };
+    }> = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      getChatInteraction: async () => structuredClone(interaction),
+      controlActiveChat: async (command) => {
+        interaction = applyChatInteractionControlV1(
+          interaction,
+          stampChatInteractionCommandV1(command, "2026-08-06T11:00:01.000Z"),
+        );
+        if (command.kind === "steer") {
+          if (!originalRequest || !originalQuality) throw new Error("Missing active steering envelope.");
+          interaction = bindChatSteeringResumeV1({
+            state: interaction,
+            expectedRevision: interaction.revision,
+            steeringId: command.steeringId,
+            expectedSteeringRevision: interaction.pendingSteering!.revision,
+            turnId: "research-turn:checkpoint-steering",
+            resume: {
+              request: originalRequest,
+              qualityPolicy: originalQuality,
+            },
+            at: "2026-08-06T11:00:02.000Z",
+          });
+          queueMicrotask(() => rejectInitial?.(
+            new ResearchContractError("paused", "The Chat steering checkpoint is ready."),
+          ));
+        }
+        return structuredClone(interaction);
+      },
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (request, options) => {
+        calls.push({
+          question: request.question,
+          ...(options?.chatCheckpointResume
+            ? { checkpoint: options.chatCheckpointResume }
+            : {}),
+        });
+        if (calls.length === 1) {
+          originalRequest = structuredClone(request);
+          originalQuality = structuredClone(options!.qualityPolicy!);
+          options?.onSessionStart?.({
+            sessionId: interaction.conversationId,
+            turnId: "research-turn:checkpoint-steering",
+          });
+          return new Promise<ResearchReportV1>((_resolve, reject) => {
+            rejectInitial = reject;
+          });
+        }
+        const accepted = interaction.acceptedSteering;
+        if (!accepted) throw new Error("The steering envelope was not accepted.");
+        interaction = completeChatSteeringV1({
+          state: interaction,
+          expectedRevision: interaction.revision,
+          steeringId: accepted.id,
+          expectedSteeringRevision: accepted.revision,
+          at: "2026-08-06T11:00:03.000Z",
+        });
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-chat-thinking", "quick");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "Summarize the attached page.");
+    await dom.click("research-run");
+    await dom.setValue("copilot-chat-textarea", "Focus on the decision and its evidence.");
+    await pressComposerKey("Enter", { metaKey: true, shiftKey: true });
+    await dom.flush(20);
+
+    expect(calls).toEqual([
+      { question: "Summarize the attached page." },
+      {
+        question: "Summarize the attached page.",
+        checkpoint: {
+          turnId: "research-turn:checkpoint-steering",
+          kind: "steering",
+        },
+      },
+    ]);
+    expect(interaction.pendingSteering).toBeUndefined();
+    expect(interaction.acceptedSteering).toBeUndefined();
   });
 
   it("uses the configured key, infers scope, runs, and renders safe structured output", async () => {

@@ -404,12 +404,36 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         policy,
         qualityPolicy,
         hostIdentity,
+        resumeCheckpoint: { kind: "steering" },
       },
       cap.sendResponse,
       {
         ...okOffscreenDeps,
-        runResearch: async (runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality, receivedIdentity) => {
-          received.push(runId, sessionId, turnId, apiKey, mode, receivedRequest, receivedPolicy, receivedQuality, receivedIdentity);
+        runResearch: async (
+          runId,
+          sessionId,
+          turnId,
+          apiKey,
+          mode,
+          receivedRequest,
+          receivedPolicy,
+          receivedQuality,
+          receivedIdentity,
+          _answer,
+          receivedCheckpoint,
+        ) => {
+          received.push(
+            runId,
+            sessionId,
+            turnId,
+            apiKey,
+            mode,
+            receivedRequest,
+            receivedPolicy,
+            receivedQuality,
+            receivedIdentity,
+            receivedCheckpoint,
+          );
           return report;
         },
       },
@@ -425,6 +449,7 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       policy,
       qualityPolicy,
       hostIdentity,
+      { kind: "steering" },
     ]);
     expect(cap.values).toEqual([{
       kind: "offscreen:research-run-result",

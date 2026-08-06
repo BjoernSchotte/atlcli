@@ -321,6 +321,55 @@ describe("durable Chat session state", () => {
       .toBe("research-turn:hitl");
   });
 
+  test("fences a steering checkpoint from HITL or generic continuation", async () => {
+    const initial = session();
+    const fingerprint = await chatScopeFingerprintV1({
+      scope: scope("DEMO"),
+      scopeBindings: [binding("DEMO")],
+    });
+    const running = beginChatTurnV1({
+      session: initial,
+      expectedSessionRevision: initial.revision,
+      turnId: "research-turn:steering",
+      objective: "Summarize the attached page.",
+      qualityMode: "auto",
+      scopeFingerprint: fingerprint,
+      startedAt: "2026-08-06T08:10:00.000Z",
+    });
+    const waiting = pauseChatTurnV1({
+      session: running,
+      expectedSessionRevision: running.revision,
+      turnId: "research-turn:steering",
+      reason: "steering",
+      at: "2026-08-06T08:10:01.000Z",
+    });
+    expect(waiting.conversation.recentTurns.at(-1)?.waitingReason).toBe("steering");
+    expect(() => resumeChatTurnV1({
+      session: waiting,
+      expectedSessionRevision: waiting.revision,
+      turnId: "research-turn:steering",
+      objective: "Summarize the attached page.",
+      qualityMode: "auto",
+      scopeFingerprint: fingerprint,
+      reason: "hitl",
+      at: "2026-08-06T08:10:02.000Z",
+    })).toThrow("reason does not match");
+    const resumed = resumeChatTurnV1({
+      session: waiting,
+      expectedSessionRevision: waiting.revision,
+      turnId: "research-turn:steering",
+      objective: "Summarize the attached page.",
+      qualityMode: "auto",
+      scopeFingerprint: fingerprint,
+      reason: "steering",
+      at: "2026-08-06T08:10:03.000Z",
+    });
+    expect(resumed.conversation.recentTurns.at(-1)).toMatchObject({
+      status: "running",
+    });
+    expect(resumed.conversation.recentTurns.at(-1)?.waitingReason).toBeUndefined();
+  });
+
   test("does not carry obsolete evidence authority across a scope switch", async () => {
     const firstFingerprint = await chatScopeFingerprintV1({
       scope: scope("DEMO"),

@@ -733,6 +733,11 @@ export interface ResearchRunOptions {
     turnId: string;
     answer: import("./chat-agent/interaction.js").ChatUserQuestionAnswerV1;
   };
+  /** Resume the same ordinary-Chat LangGraph checkpoint after a typed pause. */
+  chatCheckpointResume?: {
+    turnId: string;
+    kind: "stream-interruption" | "steering";
+  };
   /**
    * The host owns durable session identity. Presenters may use this opaque
    * reference to associate a streamed user turn with its later continuation,

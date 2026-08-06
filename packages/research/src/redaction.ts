@@ -26,6 +26,46 @@ function classifiedError(
   return { code, message };
 }
 
+const RESEARCH_ERROR_CODES = new Set<ResearchErrorCode>([
+  "invalid-request",
+  "missing-key",
+  "invalid-key",
+  "not-authenticated",
+  "not-atlassian",
+  "access-denied",
+  "rate-limited",
+  "provider-error",
+  "limit-exceeded",
+  "cancelled",
+  "paused",
+  "scope-approval-required",
+  "clarification-required",
+  "plan-approval-required",
+  "invalid-report",
+  "unknown",
+]);
+
+function bundledContractError(value: unknown): {
+  code: ResearchErrorCode;
+  message: string;
+} | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as { name?: unknown; code?: unknown; message?: unknown };
+  if (
+    candidate.name !== "ResearchContractError" &&
+    candidate.name !== "ChatContractError"
+  ) return undefined;
+  if (
+    typeof candidate.code !== "string" ||
+    !RESEARCH_ERROR_CODES.has(candidate.code as ResearchErrorCode) ||
+    typeof candidate.message !== "string"
+  ) return undefined;
+  return {
+    code: candidate.code as ResearchErrorCode,
+    message: redactResearchSecrets(candidate.message),
+  };
+}
+
 export function classifyResearchError(value: unknown): {
   code: ResearchErrorCode;
   message: string;
@@ -33,6 +73,8 @@ export function classifyResearchError(value: unknown): {
   if (value instanceof ResearchContractError) {
     return { code: value.code, message: redactResearchSecrets(value) };
   }
+  const bundled = bundledContractError(value);
+  if (bundled) return bundled;
   const message = redactResearchSecrets(value);
   const normalized = message.toLowerCase();
   if (normalized.includes("api key") && normalized.includes("missing")) {

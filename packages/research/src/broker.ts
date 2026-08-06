@@ -168,10 +168,17 @@ export interface ResearchRetainedEvidenceRestoreOutcomeV1 {
   missing: number;
 }
 
+export interface ResearchExactAnchorResumeV1 {
+  anchorRef: string;
+  bindingId: string;
+}
+
 interface BrokerOptions {
   createCursorId?: () => string;
   createEntityId?: () => string;
   createAnchorId?: () => string;
+  /** Host-private opaque refs restored only for the same durable turn. */
+  exactAnchorResume?: readonly ResearchExactAnchorResumeV1[];
   createSectionId?: () => string;
   createCaptureId?: () => string;
   exactAuxiliaryNeeds?: readonly ChatAuxiliaryReadNeedV1[];
@@ -495,6 +502,30 @@ export class ResearchCapabilityBroker {
     this.#scopeBindings = [...(options.scopeBindings ?? options.evidence?.scopeBindings ??
       request.scopeSeeds?.map((seed) => seed.binding) ?? [])];
     this.#scopeBindings.forEach((binding) => this.#registerExactEntityBinding(binding));
+    if (options.exactAnchorResume) {
+      const exactByBindingId = new Map(
+        [...this.#exactEntityBindings.entries()].map(([key, exact]) => [
+          exact.binding.id,
+          { key, exact },
+        ]),
+      );
+      for (const resumed of options.exactAnchorResume) {
+        if (!/^research-anchor:[A-Za-z0-9-]{1,200}$/.test(resumed.anchorRef) ||
+            typeof resumed.bindingId !== "string" || resumed.bindingId.length > 512) {
+          throw new ResearchContractError("invalid-request", "A resumed exact-anchor binding is invalid.");
+        }
+        const registered = exactByBindingId.get(resumed.bindingId);
+        if (!registered || this.#exactAnchorBindings.has(resumed.anchorRef) ||
+            this.#exactAnchorRefs.has(registered.key)) {
+          throw new ResearchContractError(
+            "access-denied",
+            "A resumed exact-anchor binding is unavailable for this turn.",
+          );
+        }
+        this.#exactAnchorRefs.set(registered.key, resumed.anchorRef);
+        this.#exactAnchorBindings.set(resumed.anchorRef, registered.exact);
+      }
+    }
     this.#gate = new ConcurrencyGate(request.limits.maxConcurrentCalls);
   }
 
@@ -891,6 +922,19 @@ export class ResearchCapabilityBroker {
             (exact.product === "jira" ? "Bound Jira issue" : "Bound Confluence page"),
         };
       });
+  }
+
+  /** Host-private continuation state; never include this mapping in model input. */
+  exactAnchorResume(): ResearchExactAnchorResumeV1[] {
+    return [...this.#exactAnchorRefs.entries()]
+      .map(([key, anchorRef]) => {
+        const exact = this.#exactEntityBindings.get(key);
+        if (!exact) {
+          throw new ResearchContractError("unknown", "An exact-anchor continuation binding is missing.");
+        }
+        return { anchorRef, bindingId: exact.binding.id };
+      })
+      .sort((left, right) => left.bindingId.localeCompare(right.bindingId, "en-US"));
   }
 
   #invalidateExactDocument(sourceId: string): void {

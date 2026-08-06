@@ -165,6 +165,39 @@ describe("Chat exact-anchor retrieval", () => {
     });
   });
 
+  test("restores a turn-bound opaque anchor in a fresh broker without widening scope", async () => {
+    const scopedRequest = request({
+      seeds: [
+        seed({ product: "confluence", entityKind: "space", key: "~account-id", name: "Personal space", id: "space-personal" }),
+        seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" }),
+      ],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    });
+    const first = new ResearchCapabilityBroker(scopedRequest, providers([]), {
+      createAnchorId: () => "durable-anchor",
+    });
+    const original = first.exactAnchors()[0]!;
+    const continuation = first.exactAnchorResume();
+
+    const calls: string[] = [];
+    const resumed = new ResearchCapabilityBroker(scopedRequest, providers(calls), {
+      exactAnchorResume: continuation,
+      createAnchorId: () => "must-not-be-used",
+    });
+    expect(resumed.exactAnchors()).toEqual([original]);
+    await invokeDirect(resumed, original.anchorRef);
+    expect(calls).toEqual(["wiki.get:1001"]);
+
+    const changedScope = request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "2002", name: "Other page", id: "page-2002" })],
+      exact: ["confluence"],
+    });
+    expect(() => new ResearchCapabilityBroker(changedScope, providers([]), {
+      exactAnchorResume: continuation,
+    })).toThrow("unavailable for this turn");
+  });
+
   test("records section references from a complete page read without a second HTTP request", async () => {
     const calls: string[] = [];
     const fake = providers(calls);

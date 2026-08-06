@@ -1,6 +1,7 @@
 import { ChatContractError } from "./contracts.js";
 import type { ChatSessionBindingV1 } from "./session.js";
 import type { ResearchWorkspace } from "../workspace.js";
+import type { ResearchExactAnchorResumeV1 } from "../broker.js";
 import { normalizeResearchRequestV1, type ResearchRequestV1 } from "../contracts.js";
 import {
   normalizeChatQualityPolicyV1,
@@ -19,6 +20,32 @@ export const CHAT_INTERACTION_STATE_PATH_V1 =
 const MAX_QUEUE_ITEMS = 32;
 const MAX_RESOLVED_QUESTIONS = 32;
 const MAX_OPTIONS = 12;
+
+function normalizeExactAnchorResumeV1(
+  value: readonly ResearchExactAnchorResumeV1[] | undefined,
+): ResearchExactAnchorResumeV1[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 64) {
+    throw new ChatContractError("invalid-request", "Chat exact-anchor continuation is invalid.");
+  }
+  const anchorRefs = new Set<string>();
+  const bindingIds = new Set<string>();
+  const normalized = value.map((entry) => {
+    if (!entry || typeof entry !== "object" ||
+        !/^research-anchor:[A-Za-z0-9-]{1,200}$/.test(entry.anchorRef) ||
+        typeof entry.bindingId !== "string" || entry.bindingId.length < 1 ||
+        entry.bindingId.length > 512 || anchorRefs.has(entry.anchorRef) ||
+        bindingIds.has(entry.bindingId)) {
+      throw new ChatContractError("invalid-request", "Chat exact-anchor continuation is invalid.");
+    }
+    anchorRefs.add(entry.anchorRef);
+    bindingIds.add(entry.bindingId);
+    return { anchorRef: entry.anchorRef, bindingId: entry.bindingId };
+  });
+  return normalized.sort((left, right) =>
+    left.bindingId.localeCompare(right.bindingId, "en-US")
+  );
+}
 
 export interface ChatUserQuestionOptionV1 {
   id: string;
@@ -71,6 +98,8 @@ export interface ChatUserQuestionAnswerV1 {
 export interface ChatResumeEnvelopeV1 {
   request: ResearchRequestV1;
   qualityPolicy: ChatQualityPolicyV1;
+  /** Host-private opaque capability bindings needed by the resumed graph. */
+  exactAnchors?: ResearchExactAnchorResumeV1[];
 }
 
 /** Portable pause signal projected by every Chat host shape. */
@@ -97,6 +126,8 @@ export interface ChatPendingSteeringV1 {
   revision: number;
   instruction: string;
   requestedAt: string;
+  turnId?: string;
+  resume?: ChatResumeEnvelopeV1;
 }
 
 export interface ChatStopRequestV1 {
@@ -113,6 +144,10 @@ export interface ChatInteractionStateV1 {
   updatedAt: string;
   queue: ChatQueuedFollowUpV1[];
   pendingSteering?: ChatPendingSteeringV1;
+  acceptedSteering?: ChatPendingSteeringV1 & {
+    turnId: string;
+    resume: ChatResumeEnvelopeV1;
+  };
   stop?: ChatStopRequestV1;
   pendingQuestion?: {
     turnId: string;
@@ -662,7 +697,7 @@ export function requestChatSteeringV1(input: {
   at: string;
 }): ChatInteractionStateV1 {
   assertRevision(input.state, input.expectedRevision);
-  if (input.state.pendingSteering) {
+  if (input.state.pendingSteering || input.state.acceptedSteering) {
     throw new ChatContractError("invalid-request", "Chat steering is already pending.");
   }
   return next(input.state, input.at, {
@@ -671,6 +706,38 @@ export function requestChatSteeringV1(input: {
       revision: 1,
       instruction: text(input.instruction, "Chat steering instruction", 2_000),
       requestedAt: iso(input.at, "Chat steering request time"),
+    },
+  });
+}
+
+/** Bind presenter-requested steering to the active host-owned turn envelope. */
+export function bindChatSteeringResumeV1(input: {
+  state: ChatInteractionStateV1;
+  expectedRevision: number;
+  steeringId: string;
+  expectedSteeringRevision: number;
+  turnId: string;
+  resume: ChatResumeEnvelopeV1;
+  at: string;
+}): ChatInteractionStateV1 {
+  assertRevision(input.state, input.expectedRevision);
+  const steering = input.state.pendingSteering;
+  if (!steering || steering.id !== input.steeringId ||
+      steering.revision !== input.expectedSteeringRevision ||
+      steering.turnId !== undefined || steering.resume !== undefined) {
+    throw new ChatContractError("invalid-request", "Chat steering is stale or already bound.");
+  }
+  return next(input.state, input.at, {
+    pendingSteering: {
+      ...steering,
+      turnId: id(input.turnId, "Chat steering turn ID"),
+      resume: {
+        request: normalizeResearchRequestV1(input.resume.request),
+        qualityPolicy: normalizeChatQualityPolicyV1(input.resume.qualityPolicy),
+        ...(normalizeExactAnchorResumeV1(input.resume.exactAnchors)
+          ? { exactAnchors: normalizeExactAnchorResumeV1(input.resume.exactAnchors) }
+          : {}),
+      },
     },
   });
 }
@@ -708,12 +775,36 @@ export function consumeChatSteeringV1(input: {
   assertRevision(input.state, input.expectedRevision);
   const steering = input.state.pendingSteering;
   if (!steering || steering.id !== input.steeringId ||
-      steering.revision !== input.expectedSteeringRevision) {
+      steering.revision !== input.expectedSteeringRevision ||
+      !steering.turnId || !steering.resume) {
     throw new ChatContractError("invalid-request", "Chat steering is stale or unavailable.");
   }
-  const state = next(input.state, input.at, {});
+  const acceptedSteering = {
+    ...steering,
+    turnId: steering.turnId,
+    resume: steering.resume,
+  };
+  const state = next(input.state, input.at, { acceptedSteering });
   delete state.pendingSteering;
   return { state, steering: structuredClone(steering) };
+}
+
+export function completeChatSteeringV1(input: {
+  state: ChatInteractionStateV1;
+  expectedRevision: number;
+  steeringId: string;
+  expectedSteeringRevision: number;
+  at: string;
+}): ChatInteractionStateV1 {
+  assertRevision(input.state, input.expectedRevision);
+  const steering = input.state.acceptedSteering;
+  if (!steering || steering.id !== input.steeringId ||
+      steering.revision !== input.expectedSteeringRevision) {
+    throw new ChatContractError("invalid-request", "Accepted Chat steering is stale or unavailable.");
+  }
+  const state = next(input.state, input.at, {});
+  delete state.acceptedSteering;
+  return state;
 }
 
 export function editChatSteeringV1(input: {
@@ -871,6 +962,25 @@ export function parseChatInteractionStateV1(value: unknown): ChatInteractionStat
     positiveInteger(state.pendingSteering.revision, "Chat steering revision");
     text(state.pendingSteering.instruction, "Chat steering instruction", 2_000);
     iso(state.pendingSteering.requestedAt, "Chat steering request time");
+    if (state.pendingSteering.turnId !== undefined || state.pendingSteering.resume !== undefined) {
+      id(state.pendingSteering.turnId, "Chat steering turn ID");
+      if (!state.pendingSteering.resume || typeof state.pendingSteering.resume !== "object") {
+        throw new ChatContractError("invalid-request", "Chat steering resume envelope is invalid.");
+      }
+      normalizeResearchRequestV1(state.pendingSteering.resume.request);
+      normalizeChatQualityPolicyV1(state.pendingSteering.resume.qualityPolicy);
+      normalizeExactAnchorResumeV1(state.pendingSteering.resume.exactAnchors);
+    }
+  }
+  if (state.acceptedSteering) {
+    id(state.acceptedSteering.id, "Accepted Chat steering ID");
+    positiveInteger(state.acceptedSteering.revision, "Accepted Chat steering revision");
+    text(state.acceptedSteering.instruction, "Accepted Chat steering instruction", 2_000);
+    iso(state.acceptedSteering.requestedAt, "Accepted Chat steering request time");
+    id(state.acceptedSteering.turnId, "Accepted Chat steering turn ID");
+    normalizeResearchRequestV1(state.acceptedSteering.resume.request);
+    normalizeChatQualityPolicyV1(state.acceptedSteering.resume.qualityPolicy);
+    normalizeExactAnchorResumeV1(state.acceptedSteering.resume.exactAnchors);
   }
   if (state.stop) {
     positiveInteger(state.stop.revision, "Chat stop revision");
@@ -886,6 +996,7 @@ export function parseChatInteractionStateV1(value: unknown): ChatInteractionStat
     }
     normalizeResearchRequestV1(state.pendingQuestion.resume.request);
     normalizeChatQualityPolicyV1(state.pendingQuestion.resume.qualityPolicy);
+    normalizeExactAnchorResumeV1(state.pendingQuestion.resume.exactAnchors);
   }
   for (const resolved of state.resolvedQuestions) {
     id(resolved.turnId, "Chat resolved question turn ID");

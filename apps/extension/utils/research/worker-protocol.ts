@@ -43,6 +43,9 @@ export type ResearchWorkerRequestV1 =
       qualityPolicy?: ChatQualityPolicyV1;
       hostIdentity?: ChatHostIdentityV1;
       resumeAnswer?: ChatUserQuestionAnswerV1;
+      resumeCheckpoint?: {
+        kind: "stream-interruption" | "steering";
+      };
       resume?: false;
     }
   | {

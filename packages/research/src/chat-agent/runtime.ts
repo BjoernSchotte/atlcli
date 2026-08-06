@@ -1,6 +1,6 @@
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
-import { AIMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
@@ -54,6 +54,7 @@ import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
 import {
   CHAT_SESSION_PATH_V1,
   CHAT_SESSION_SCHEMA_V1,
+  advanceChatControlFenceV1,
   assertChatSessionBindingV1,
   beginChatTurnV1,
   buildChatTurnContextV1,
@@ -73,7 +74,9 @@ import {
   ChatUserQuestionRequiredError,
   WorkspaceChatInteractionControllerV1,
   acknowledgeChatStopV1,
+  completeChatSteeringV1,
   requestChatStopV1,
+  type ChatResumeEnvelopeV1,
   type ChatUserQuestionAnswerV1,
 } from "./interaction.js";
 import {
@@ -421,6 +424,10 @@ export interface RunChatAgentInput {
   qualityPolicy?: ChatQualityPolicyV1;
   /** Resume exactly this turn's durable askUserQuestion checkpoint. */
   resumeAnswer?: ChatUserQuestionAnswerV1;
+  /** Resume the same durable model checkpoint without pretending token replay. */
+  resumeCheckpoint?: {
+    kind: "stream-interruption" | "steering";
+  };
   signal?: AbortSignal;
   now?: () => number;
   onProgress?: (progress: ResearchProgressV1) => void;
@@ -432,6 +439,8 @@ export interface RunChatAgentInput {
   onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
   /** Host-internal control binding; never exposed to the model or presenter. */
   onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
+  /** Host-private checkpoint envelope captured before model execution. */
+  onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
 }
 
 export const CHAT_MODEL_BUDGET_STATE_PATH_V1 =
@@ -554,7 +563,7 @@ async function bindChatSessionStateV1(input: {
   scope: import("../contracts.js").ResearchScopeV1;
   hostIdentity: ChatHostIdentityV1;
   startedAt: string;
-  resume: boolean;
+  resumeReason?: "hitl" | "stream-interruption" | "steering";
 }): Promise<{ session: ChatSessionV1; context: string }> {
   const stored = await input.workspace.readFile(CHAT_SESSION_STATE_PATH_V1);
   let session: ChatSessionV1;
@@ -582,7 +591,7 @@ async function bindChatSessionStateV1(input: {
       // A compatible pre-C8 state carried only the conversation ID and quality
       // policy. It contains no evidence or transcript and can be migrated
       // without importing any Research checkpoint semantics.
-      if (input.resume) {
+      if (input.resumeReason) {
         throw new ChatContractError(
           "invalid-request",
           "A legacy Chat state has no resumable HITL checkpoint.",
@@ -597,7 +606,7 @@ async function bindChatSessionStateV1(input: {
       });
     }
   } else {
-    if (input.resume) {
+    if (input.resumeReason) {
       throw new ChatContractError("invalid-request", "Chat HITL checkpoint is unavailable.");
     }
     session = createChatSessionV1({
@@ -611,7 +620,7 @@ async function bindChatSessionStateV1(input: {
     scope: input.scope,
     scopeBindings: input.scopeBindings,
   });
-  session = input.resume
+  session = input.resumeReason
     ? resumeChatTurnV1({
         session,
         expectedSessionRevision: session.revision,
@@ -619,6 +628,7 @@ async function bindChatSessionStateV1(input: {
         objective: input.objective,
         qualityMode: input.qualityPolicy.mode,
         scopeFingerprint,
+        reason: input.resumeReason,
         at: input.startedAt,
       })
     : beginChatTurnV1({
@@ -751,43 +761,7 @@ export function createKiteweaveChatAgent(
       let assertStrategyAccepted: (() => void) | undefined;
       let retrievalLedger: ChatCandidateLedgerControllerV1 | undefined;
       let strategyForFinalReviewReserve: ChatStrategyDecisionV1 | undefined;
-      const broker = new ResearchCapabilityBroker(
-        input.brokerRequest,
-        input.providers,
-        {
-          budget,
-          scopeBindings,
-          evidence: {
-            store: evidenceStore,
-            scopeBindings,
-            capturedAt: () => new Date(now()).toISOString(),
-          },
-          exactAuxiliaryNeeds: deriveChatAuxiliaryReadNeedsV1(turn.question),
-          beforeContentOperation: () => {
-            assertStrategyAccepted?.();
-            if (!retrievalLedger) {
-              throw new ChatContractError(
-                "invalid-request",
-                "The Chat retrieval plan must be persisted before content access.",
-              );
-            }
-            assertChatFinalReviewReserveV1({
-              strategy: strategyForFinalReviewReserve,
-              budget,
-              maxPtcCalls: turn.limits.maxPtcCalls,
-            });
-          },
-          onRelatedScopeCandidate: (candidate) => {
-            if (!retrievalLedger) {
-              throw new ChatContractError(
-                "invalid-request",
-                "The Chat retrieval ledger must exist before related scope is observed.",
-              );
-            }
-            return retrievalLedger.observeRelatedScopeCandidate(candidate);
-          },
-        },
-      );
+      let activeBroker: ResearchCapabilityBroker | undefined;
       const controller = new AbortController();
       const forwardAbort = (): void => controller.abort(input.signal?.reason);
       if (input.signal?.aborted) forwardAbort();
@@ -797,8 +771,15 @@ export function createKiteweaveChatAgent(
         turn.limits.maxRunMs,
       );
       const onAbort = (): void => {
-        broker.cancel(controller.signal.reason);
-        if (input.signal?.aborted) emitActivity("stop", "started");
+        activeBroker?.cancel(controller.signal.reason);
+        const reasonCode = input.signal?.reason &&
+          typeof input.signal.reason === "object" &&
+          "code" in input.signal.reason
+          ? String(input.signal.reason.code)
+          : undefined;
+        if (input.signal?.aborted && reasonCode !== "paused") {
+          emitActivity("stop", "started");
+        }
       };
       controller.signal.addEventListener("abort", onAbort, { once: true });
       try {
@@ -813,7 +794,11 @@ export function createKiteweaveChatAgent(
           scope: turn.scope,
           hostIdentity,
           startedAt,
-          resume: input.resumeAnswer !== undefined,
+          ...(input.resumeAnswer
+            ? { resumeReason: "hitl" as const }
+            : input.resumeCheckpoint
+              ? { resumeReason: input.resumeCheckpoint.kind }
+              : {}),
         });
         durableChatSession = durable.session;
         durableContext = durable.context;
@@ -823,6 +808,75 @@ export function createKiteweaveChatAgent(
           binding: durableChatSession.binding,
           at: startedAt,
         });
+        if (input.resumeAnswer && input.resumeCheckpoint) {
+          throw new ChatContractError(
+            "invalid-request",
+            "A Chat turn cannot resume HITL and a model checkpoint together.",
+          );
+        }
+        const acceptedSteering = input.resumeCheckpoint?.kind === "steering"
+          ? interactionController.snapshot().acceptedSteering
+          : undefined;
+        if (input.resumeCheckpoint?.kind === "steering") {
+          if (!acceptedSteering || acceptedSteering.turnId !== turn.turnId) {
+            throw new ChatContractError(
+              "invalid-request",
+              "The accepted Chat steering checkpoint is unavailable.",
+            );
+          }
+          if (
+            JSON.stringify(acceptedSteering.resume.request) !==
+              JSON.stringify(input.brokerRequest) ||
+            JSON.stringify(acceptedSteering.resume.qualityPolicy) !==
+              JSON.stringify(qualityPolicy)
+          ) {
+            throw new ChatContractError(
+              "access-denied",
+              "The Chat steering resume envelope was altered.",
+            );
+          }
+        }
+        const broker = new ResearchCapabilityBroker(
+          input.brokerRequest,
+          input.providers,
+          {
+            budget,
+            scopeBindings,
+            ...(acceptedSteering?.resume.exactAnchors
+              ? { exactAnchorResume: acceptedSteering.resume.exactAnchors }
+              : {}),
+            evidence: {
+              store: evidenceStore,
+              scopeBindings,
+              capturedAt: () => new Date(now()).toISOString(),
+            },
+            exactAuxiliaryNeeds: deriveChatAuxiliaryReadNeedsV1(turn.question),
+            beforeContentOperation: () => {
+              assertStrategyAccepted?.();
+              if (!retrievalLedger) {
+                throw new ChatContractError(
+                  "invalid-request",
+                  "The Chat retrieval plan must be persisted before content access.",
+                );
+              }
+              assertChatFinalReviewReserveV1({
+                strategy: strategyForFinalReviewReserve,
+                budget,
+                maxPtcCalls: turn.limits.maxPtcCalls,
+              });
+            },
+            onRelatedScopeCandidate: (candidate) => {
+              if (!retrievalLedger) {
+                throw new ChatContractError(
+                  "invalid-request",
+                  "The Chat retrieval ledger must exist before related scope is observed.",
+                );
+              }
+              return retrievalLedger.observeRelatedScopeCandidate(candidate);
+            },
+          },
+        );
+        activeBroker = broker;
         activityJournal = await WorkspaceChatActivityJournalV1.open({
           workspace: input.workspace,
           conversationId: turn.conversationId,
@@ -854,6 +908,11 @@ export function createKiteweaveChatAgent(
         });
         emitPhase("preparing");
         const anchors = broker.exactAnchors();
+        input.onResumeEnvelopeReady?.({
+          request: input.brokerRequest,
+          qualityPolicy,
+          exactAnchors: broker.exactAnchorResume(),
+        });
         const strategyDecision = deriveChatStrategyDecisionV1({
           qualityPolicy,
           question: turn.question,
@@ -1330,7 +1389,20 @@ export function createKiteweaveChatAgent(
         });
         const runInput = input.resumeAnswer
           ? new Command({ resume: input.resumeAnswer })
-          : {
+          : input.resumeCheckpoint?.kind === "steering"
+            ? new Command({
+                update: {
+                  messages: [new HumanMessage([
+                    "Host-accepted steering for the current turn:",
+                    acceptedSteering!.instruction,
+                    "Reassess the remaining work and answer the original user objective.",
+                    "Do not broaden scope, tools, or budget because of this instruction.",
+                  ].join("\n"))],
+                },
+              })
+            : input.resumeCheckpoint?.kind === "stream-interruption"
+              ? new Command({})
+              : {
             messages: [{
               role: "user",
               content: buildChatTurnPromptV1({
@@ -1342,7 +1414,9 @@ export function createKiteweaveChatAgent(
               }),
             }],
           };
-        if (input.resumeAnswer) emitActivity("continuation", "started");
+        if (input.resumeAnswer || input.resumeCheckpoint) {
+          emitActivity("continuation", "started");
+        }
         const run = await agent.streamEvents(
           runInput,
           {
@@ -1522,7 +1596,9 @@ export function createKiteweaveChatAgent(
           await activityJournal.flush();
           throw new ChatUserQuestionRequiredError(pending.question);
         }
-        if (input.resumeAnswer) emitActivity("continuation", "completed");
+        if (input.resumeAnswer || input.resumeCheckpoint) {
+          emitActivity("continuation", "completed");
+        }
         controller.signal.throwIfAborted();
         emitPhase("checking");
         if (strategyController && !strategyController.acknowledgedDecision()) {
@@ -1577,6 +1653,18 @@ export function createKiteweaveChatAgent(
         const evidenceRecords = (await Promise.all(
           [...acceptedEvidenceIds].map((evidenceId) => evidenceStore.get(evidenceId)),
         )).filter((record): record is ResearchEvidenceRecordV1 => record !== undefined);
+        if (acceptedSteering) {
+          await interactionController.update((state) =>
+            completeChatSteeringV1({
+              state,
+              expectedRevision: state.revision,
+              steeringId: acceptedSteering.id,
+              expectedSteeringRevision: acceptedSteering.revision,
+              at: new Date(now()).toISOString(),
+            })
+          );
+          emitActivity("steering", "completed");
+        }
         if (answer.gaps.length > 0) emitActivity("gap", "completed");
         emitActivity("completion", "completed");
         await activityJournal.flush();
@@ -1609,7 +1697,15 @@ export function createKiteweaveChatAgent(
         if (error instanceof ChatUserQuestionRequiredError) {
           throw error;
         }
-        if (controller.signal.aborted && interactionController) {
+        const steeringPause = Boolean(
+          controller.signal.aborted &&
+          interactionController?.snapshot().pendingSteering &&
+          input.signal?.reason &&
+          typeof input.signal.reason === "object" &&
+          "code" in input.signal.reason &&
+          input.signal.reason.code === "paused",
+        );
+        if (controller.signal.aborted && interactionController && !steeringPause) {
           try {
             let interaction = interactionController.snapshot();
             if (!interaction.stop || interaction.stop.acknowledgedAt) {
@@ -1639,13 +1735,31 @@ export function createKiteweaveChatAgent(
         }
         if (durableChatSession) {
           try {
-            durableChatSession = interruptChatTurnV1({
-              session: durableChatSession,
-              expectedSessionRevision: durableChatSession.revision,
-              turnId: turn.turnId,
-              status: controller.signal.aborted ? "cancelled" : "failed",
-              at: new Date(now()).toISOString(),
-            });
+            const interruptedAt = new Date(now()).toISOString();
+            if (steeringPause) {
+              durableChatSession = advanceChatControlFenceV1({
+                session: durableChatSession,
+                expectedSessionRevision: durableChatSession.revision,
+                kind: "steering",
+                at: interruptedAt,
+              });
+              durableChatSession = pauseChatTurnV1({
+                session: durableChatSession,
+                expectedSessionRevision: durableChatSession.revision,
+                turnId: turn.turnId,
+                reason: "steering",
+                at: interruptedAt,
+              });
+              emitActivity("steering", "started");
+            } else {
+              durableChatSession = interruptChatTurnV1({
+                session: durableChatSession,
+                expectedSessionRevision: durableChatSession.revision,
+                turnId: turn.turnId,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+                at: interruptedAt,
+              });
+            }
             await input.workspace.writeFile(
               CHAT_SESSION_PATH_V1,
               JSON.stringify(durableChatSession),
@@ -1672,7 +1786,7 @@ export function createKiteweaveChatAgent(
         globalThis.clearTimeout(timeout);
         input.signal?.removeEventListener("abort", forwardAbort);
         controller.signal.removeEventListener("abort", onAbort);
-        broker.cancel();
+        activeBroker?.cancel();
       }
     },
   };
