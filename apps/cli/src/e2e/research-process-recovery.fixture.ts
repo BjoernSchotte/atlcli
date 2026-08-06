@@ -262,11 +262,12 @@ async function createDependencies(
     fail: (_opts, _code, _errCode, message): never => { throw new Error(message); },
     scheduleAbort: (callback, milliseconds) => setTimeout(callback, milliseconds),
     cancelScheduledAbort: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-    listenForInterrupt: (callback) => {
-      process.once("SIGINT", callback);
-      return () => process.removeListener("SIGINT", callback);
-    },
-  };
+  listenForInterrupt: (callback) => {
+    process.once("SIGINT", callback);
+    return () => process.removeListener("SIGINT", callback);
+  },
+  listenForChatInput: () => () => {},
+};
 }
 
 async function main(): Promise<void> {

@@ -3,6 +3,7 @@ import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
+import { createInterface as createLineInterface } from "node:readline";
 import {
   ERROR_CODES,
   type OutputOptions,
@@ -96,6 +97,7 @@ import {
   resolveChatScopeClarificationV1,
 } from "@atlcli/research/node";
 import { createCliChatAgentPortV1 } from "./chat-agent-port.js";
+import { handleCliChatControlLineV1 } from "./chat-controls.js";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
   composeResearchGraphV1,
@@ -316,6 +318,7 @@ export interface ResearchCliDependencies {
   scheduleAbort(callback: () => void, milliseconds: number): unknown;
   cancelScheduledAbort(handle: unknown): void;
   listenForInterrupt(callback: () => void): () => void;
+  listenForChatInput(callback: (line: string) => void | Promise<void>): () => void;
 }
 
 export function researchArtifactPath(now = new Date()): string {
@@ -2776,6 +2779,16 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
     process.once("SIGINT", callback);
     return () => process.removeListener("SIGINT", callback);
   },
+  listenForChatInput(callback) {
+    if (!process.stdin.isTTY) return () => {};
+    const terminal = createLineInterface({ input: process.stdin, terminal: false });
+    const onLine = (line: string): void => { void callback(line); };
+    terminal.on("line", onLine);
+    return () => {
+      terminal.removeListener("line", onLine);
+      terminal.close();
+    };
+  },
 };
 
 interface RunEstablishedResearchCliSessionInput {
@@ -3217,6 +3230,8 @@ async function runDirectChatCliConversation(input: {
   apiKey: string;
 }): Promise<void> {
   const controller = new AbortController();
+  let removeChatInputListener = (): void => {};
+  let controlInput = Promise.resolve();
   const timeout = input.dependencies.scheduleAbort(
     () => controller.abort(new Error("Chat run timed out.")),
     input.request.limits.maxRunMs,
@@ -3263,6 +3278,32 @@ async function runDirectChatCliConversation(input: {
         });
       },
     });
+    const startChatInputListener = (): void => {
+      removeChatInputListener();
+      removeChatInputListener = input.dependencies.listenForChatInput((line) => {
+        controlInput = controlInput.then(async () => {
+          const result = await handleCliChatControlLineV1({
+            line,
+            port,
+            siteOrigin: input.request.scope.siteOrigin,
+            createId: (kind) => `chat-${kind}:${randomUUID()}`,
+          });
+          if (result.message) {
+            input.dependencies.writeStderr(
+              `[chat] ${result.message.replace(/\n/gu, "\n[chat] ")}\n`,
+            );
+          }
+        }).catch((error: unknown) => {
+          input.dependencies.writeStderr(
+            `[chat] control failed: ${error instanceof Error ? error.message : "unknown error"}\n`,
+          );
+        });
+      });
+    };
+    startChatInputListener();
+    input.dependencies.writeStderr(
+      "[chat] Enter text to queue a follow-up; use /help for steering and queue controls.\n",
+    );
     const stream = {
       signal: controller.signal,
       onSessionStart(session: { conversationId: string; turnId: string }) {
@@ -3296,33 +3337,107 @@ async function runDirectChatCliConversation(input: {
         }
       },
     };
-    while (true) {
-      try {
-        answer = checkpoint
-          ? await port.answerQuestion({
+    const qualityPolicy = input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto");
+    const executeTurn = async (request: ResearchRequestV1): Promise<ChatAnswerV1> => {
+      let action: "start" | "answer" | "steering" | "stream-interruption" = "start";
+      let interruptionRetries = 0;
+      while (true) {
+        try {
+          if (action === "start") {
+            checkpoint = undefined;
+            return await port.startTurn({
+              request,
+              qualityPolicy,
+              conversationId: input.sessionId,
+            }, stream);
+          }
+          if (!checkpoint) {
+            throw new Error("Chat paused without publishing its durable checkpoint.");
+          }
+          if (action === "answer") {
+            const pending = await port.getPendingQuestion(input.request.scope.siteOrigin);
+            if (!pending) throw new Error("The durable Chat question is unavailable.");
+            removeChatInputListener();
+            let userAnswer: ChatUserQuestionAnswerV1;
+            try {
+              userAnswer = await input.dependencies.askChatUserQuestion(pending.question);
+            } finally {
+              startChatInputListener();
+            }
+            return await port.answerQuestion({
               siteOrigin: input.request.scope.siteOrigin,
               conversationId: checkpoint.conversationId,
               turnId: checkpoint.turnId,
-              answer: await input.dependencies.askChatUserQuestion(
-                (await port.getPendingQuestion(input.request.scope.siteOrigin))!.question,
-              ),
-            }, stream)
-          : await port.startTurn({
-              request: input.request,
-              qualityPolicy: input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto"),
-              conversationId: input.sessionId,
+              answer: userAnswer,
             }, stream);
-        break;
-      } catch (error) {
-        if (!(error instanceof ChatUserQuestionRequiredError)) throw error;
-        if (!checkpoint) {
-          throw new Error("Chat paused without publishing its durable checkpoint.");
+          }
+          return await port.resumeTurn({
+            siteOrigin: input.request.scope.siteOrigin,
+            conversationId: checkpoint.conversationId,
+            turnId: checkpoint.turnId,
+            kind: action,
+          }, stream);
+        } catch (error) {
+          if (error instanceof ChatUserQuestionRequiredError) {
+            action = "answer";
+            continue;
+          }
+          const paused = error && typeof error === "object" && "code" in error &&
+            error.code === "paused";
+          if (!paused) throw error;
+          await controlInput;
+          const state = await port.getInteraction(input.request.scope.siteOrigin);
+          if (state?.pendingSteering) {
+            const pending = state.pendingSteering;
+            await port.control({
+              kind: "consume_steering",
+              expectedRevision: state.revision,
+              steeringId: pending.id,
+              expectedSteeringRevision: pending.revision,
+            });
+            action = "steering";
+            continue;
+          }
+          if (state?.streamInterruption && interruptionRetries === 0) {
+            interruptionRetries += 1;
+            action = "stream-interruption";
+            continue;
+          }
+          throw error;
         }
       }
+    };
+    const answers: ChatAnswerV1[] = [];
+    answer = await executeTurn(input.request);
+    answers.push(answer);
+    await controlInput;
+    while (true) {
+      const state = await port.getInteraction(input.request.scope.siteOrigin);
+      const queued = state?.queue[0];
+      if (!state || !queued) break;
+      input.dependencies.writeStderr(`[chat] follow-up=${queued.id} status=started\n`);
+      const queuedAnswer = await executeTurn(
+        normalizeResearchRequestV1({ ...input.request, question: queued.content }),
+      );
+      const current = await port.getInteraction(input.request.scope.siteOrigin);
+      const admitted = current?.queue.find((candidate) => candidate.id === queued.id);
+      if (!current || !admitted) {
+        throw new Error("The completed queued Chat message lost its durable queue record.");
+      }
+      await port.control({
+        kind: "remove",
+        expectedRevision: current.revision,
+        messageId: admitted.id,
+        expectedMessageRevision: admitted.revision,
+      });
+      input.dependencies.writeStderr(`[chat] follow-up=${queued.id} status=completed\n`);
+      answer = queuedAnswer;
+      answers.push(answer);
     }
+    const markdown = answers.map((entry) => entry.messageMarkdown).join("\n\n---\n\n");
     const artifactPath = input.dependencies.artifactPath();
     try {
-      await input.dependencies.writeAtomic(artifactPath, answer.messageMarkdown);
+      await input.dependencies.writeAtomic(artifactPath, markdown);
       input.dependencies.writeStderr(`[chat] artifact=${artifactPath}\n`);
     } catch (error) {
       input.dependencies.writeStderr(
@@ -3330,17 +3445,19 @@ async function runDirectChatCliConversation(input: {
       );
     }
     if (input.cli.outputPath) {
-      await input.dependencies.writeAtomic(input.cli.outputPath, answer.messageMarkdown);
+      await input.dependencies.writeAtomic(input.cli.outputPath, markdown);
     }
     if (input.opts.json) {
       input.dependencies.emitOutput(
-        { sessionId: input.sessionId, artifactPath, answer },
+        { sessionId: input.sessionId, artifactPath, answer, answers },
         input.opts,
       );
     } else {
-      input.dependencies.writeStdout(answer.messageMarkdown);
+      input.dependencies.writeStdout(markdown);
     }
   } finally {
+    removeChatInputListener();
+    await controlInput;
     input.dependencies.cancelScheduledAbort(timeout);
     removeInterruptListener();
   }
@@ -3869,6 +3986,9 @@ Options:
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
 Jira and Confluence access is read-only. Press Ctrl+C to stop the active turn.
+While a turn is active, enter text to queue a FIFO follow-up. Use /steer <instruction>
+for immediate steering at the next safe checkpoint, /queue to inspect pending input,
+/edit <id> <text> or /delete <id> to change it, /stop to cancel, and /help for help.
 `;
 }
 

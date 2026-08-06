@@ -16,6 +16,7 @@ import {
   WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchEvidenceStoreV1,
   WorkspaceResearchOutlineStoreV1,
+  WorkspaceChatInteractionControllerV1,
   CAPABILITY_FREE_QUALITY_ADAPTER_V1,
   ResearchRunBudget,
   createResearchClaimV1,
@@ -146,6 +147,7 @@ function cliHarness(
     createTurnId?: () => string;
     chatQuestion?: ChatUserQuestionV1;
     chatQuestionAnswer?: ChatUserQuestionAnswerV1;
+    chatInputLines?: string[];
   } = {},
 ): CliHarness {
   const stdout: string[] = [];
@@ -156,6 +158,7 @@ function cliHarness(
   const chatRunInputs: Parameters<ResearchCliDependencies["runChatAgent"]>[0][] = [];
   const durableStore = options.durableStore ?? new InMemoryResearchSessionStoreV1();
   let interrupt: (() => void) | undefined;
+  let chatInputIndex = 0;
   const dependencies: ResearchCliDependencies = {
     resolveProfile: async () => options.profile ?? profile,
     resolveScope: async ({ request }) => ({
@@ -359,6 +362,11 @@ function cliHarness(
       return () => {
         interrupt = undefined;
       };
+    },
+    listenForChatInput(callback) {
+      const line = options.chatInputLines?.[chatInputIndex++];
+      if (line !== undefined) queueMicrotask(() => { void callback(line); });
+      return () => {};
     },
   };
   return {
@@ -1152,6 +1160,90 @@ describe("research CLI one-shot contract", () => {
     });
   });
 
+  test("queues terminal input and drains it as the next durable Chat turn", async () => {
+    let turn = 0;
+    const harness = cliHarness({
+      chatInputLines: ["Which explicit decision follows from that?"],
+      createTurnId: () => `research-turn:queued-${++turn}`,
+    });
+    await handleChat(
+      ["Summarize DOCSY."],
+      { space: "DOCSY", thinking: "auto" },
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(harness.chatRunInputs.map((entry) => ({
+      question: entry.request.question,
+      sessionId: entry.sessionId,
+      turnId: entry.turnId,
+    }))).toEqual([
+      {
+        question: "Summarize DOCSY.",
+        sessionId: "research-session:cli-plan",
+        turnId: "research-turn:queued-1",
+      },
+      {
+        question: "Which explicit decision follows from that?",
+        sessionId: "research-session:cli-plan",
+        turnId: "research-turn:queued-2",
+      },
+    ]);
+    expect(harness.stderr.join("")).toContain("status=completed");
+    expect(harness.stdout[0]).toContain("\n\n---\n\n");
+  });
+
+  test("steers an active terminal Chat at a durable checkpoint and resumes the same turn", async () => {
+    const harness = cliHarness({
+      createTurnId: () => "research-turn:cli-steering",
+    });
+    let submitLine: ((line: string) => void | Promise<void>) | undefined;
+    harness.dependencies.listenForChatInput = (callback) => {
+      submitLine = callback;
+      return () => { submitLine = undefined; };
+    };
+    harness.dependencies.runChatAgent = async (input) => {
+      harness.chatRunInputs.push(input);
+      if (input.resumeCheckpoint?.kind === "steering") return chatAnswer;
+      const identity = cliChatHostIdentityV1(input.profile);
+      const interactions = await WorkspaceChatInteractionControllerV1.bind({
+        workspace: input.workspace,
+        conversationId: input.sessionId,
+        binding: {
+          ...identity,
+          threadId: input.sessionId,
+          tenantOrigin: input.request.scope.siteOrigin,
+        },
+        at: "2026-08-06T12:00:00.000Z",
+      });
+      input.onInteractionReady?.(interactions);
+      input.onResumeEnvelopeReady?.({
+        request: input.request,
+        qualityPolicy: input.qualityPolicy,
+      });
+      await submitLine?.("/steer Check the explicit contradiction first.");
+      for (let attempt = 0; attempt < 10 && !input.signal.aborted; attempt += 1) {
+        await Promise.resolve();
+      }
+      if (!input.signal.aborted) throw new Error("The CLI steering input did not pause the turn.");
+      throw input.signal.reason;
+    };
+
+    await handleChat(
+      ["Compare the accepted positions."],
+      { space: "DOCSY", thinking: "deep" },
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(harness.chatRunInputs).toHaveLength(2);
+    expect(harness.chatRunInputs[1]).toMatchObject({
+      sessionId: "research-session:cli-plan",
+      turnId: "research-turn:cli-steering",
+      resumeCheckpoint: { kind: "steering" },
+    });
+  });
+
   test("runs three real Chat-root turns across a fresh CLI host and reuses accepted evidence", async () => {
     const durableStore = new InMemoryResearchSessionStoreV1();
     const turnIds = [
@@ -1286,10 +1378,7 @@ JSON.parse(await tools.jiraIssueGet({ entityRef: ranked.items[0].entityRef }));`
           qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
           structuredOutput: "tool",
         },
-        hostIdentity: {
-          userId: "principal:synthetic-cli-session",
-          providerCacheIdentity: "provider-cache:synthetic-cli-session",
-        },
+        hostIdentity: cliChatHostIdentityV1(input.profile),
         turn: {
           schema: "atlcli.chat-turn-request/v1",
           conversationId: input.sessionId,

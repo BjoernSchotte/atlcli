@@ -1122,8 +1122,20 @@ conversations through this port while Research sessions remain visible only in
 the explicit Deep Research mode. Focused CLI, core-port, portable presenter, and
 extension suites pass 123 tests; full typecheck and the production extension
 build pass; all 44 packed MV3 lifecycle tests pass after explicitly proving the
-Chat/Research history split. User-driven CLI queue/edit/delete/steering remains
-open before the cross-adapter scenario matrix and live parity gates can close.
+Chat/Research history split.
+
+The CLI now also presents the same revision-fenced live-control contract through
+a minimal line-oriented adapter: plain terminal input queues FIFO follow-ups,
+`/queue` inspects them, `/edit` and `/delete` mutate exact message revisions,
+`/steer` binds the active host-private resume envelope and pauses at the next
+safe checkpoint, and `/stop` shares cooperative cancellation with Ctrl+C. A
+successful answer drains the oldest durable follow-up and removes it only after
+the next turn completes. Focused tests prove the parser/control projection, a
+two-turn queued drain, active steering and same-turn resume, and the lower-level
+port lifecycle. This deliberately remains a thin presenter rather than a second
+CLI agent or workflow. The complete cross-adapter scenario matrix, user-language
+activity projection, history/source presentation, and live parity gates remain
+open.
 
 Live acceptance:
 
