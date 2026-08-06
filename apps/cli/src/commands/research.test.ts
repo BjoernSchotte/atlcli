@@ -34,6 +34,9 @@ import {
   ChatUserQuestionRequiredError,
   CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
   CHAT_USER_QUESTION_SCHEMA_V1,
+  CHAT_INTERACTION_STATE_PATH_V1,
+  createChatInteractionStateV1,
+  recordChatUserQuestionV1,
   type ChatUserQuestionAnswerV1,
   type ChatUserQuestionV1,
   type ResearchSessionV1,
@@ -54,6 +57,7 @@ import {
   promptChatUserQuestionV1,
   researchArtifactPath,
   writeResearchMarkdownAtomic,
+  cliChatHostIdentityV1,
   type ResearchCliDependencies,
   type ResearchCliWorkspace,
 } from "./research.js";
@@ -245,6 +249,30 @@ function cliHarness(
     async runChatAgent(input) {
       chatRunInputs.push(input);
       if (options.chatQuestion && !input.resumeAnswer) {
+        const identity = cliChatHostIdentityV1(input.profile);
+        const state = createChatInteractionStateV1({
+          conversationId: input.sessionId,
+          binding: {
+            ...identity,
+            threadId: input.sessionId,
+            tenantOrigin: input.request.scope.siteOrigin,
+          },
+          createdAt: "2026-08-06T12:00:00.000Z",
+        });
+        await input.workspace.writeFile(
+          CHAT_INTERACTION_STATE_PATH_V1,
+          JSON.stringify(recordChatUserQuestionV1({
+            state,
+            expectedRevision: state.revision,
+            turnId: input.turnId,
+            question: options.chatQuestion,
+            resume: {
+              request: input.request,
+              qualityPolicy: input.qualityPolicy,
+            },
+            at: "2026-08-06T12:00:00.001Z",
+          })),
+        );
         throw new ChatUserQuestionRequiredError(options.chatQuestion);
       }
       input.onChatPresentation({

@@ -545,6 +545,71 @@ describe("research brief clarification presentation", () => {
 });
 
 describe("portable Research screen", () => {
+  it("opens ordinary Chat history through the shared port instead of Research sessions", async () => {
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => report,
+      listRetainedSessions: async () => [{
+        schema: "atlcli.research-retained-session/v1",
+        sessionId: "research-session:must-not-render-in-chat",
+        revision: 1,
+        turnId: "research-turn:must-not-render-in-chat",
+        status: "complete",
+        updatedAt: "2026-08-06T12:00:00.000Z",
+        question: "Research-only history",
+        scope: {
+          jiraProjectKeys: [],
+          confluenceSpaceKeys: ["KB"],
+        },
+      }],
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    const chat = fakeChatPort({
+      async listHistory() {
+        return [{
+          conversationId: "research-session:ordinary-chat-history",
+          latestTurnId: "research-turn:ordinary-chat-history",
+          latestObjective: "What changed on this page?",
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          status: "complete",
+        }];
+      },
+      async replay() {
+        return {
+          conversationId: "research-session:ordinary-chat-history",
+          turnId: "research-turn:ordinary-chat-history",
+          objective: "What changed on this page?",
+          events: [],
+          finalAnswer: chatAnswer,
+        };
+      },
+    });
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "KB", chat)} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+    await openConversationMenu();
+    expect(dom.find("research-conversation-menu").textContent)
+      .toContain("What changed on this page?");
+    expect(dom.find("research-conversation-menu").textContent)
+      .not.toContain("Research-only history");
+    await dom.click("chat-conversation-history-0");
+    expect(dom.find("research-chat-report").textContent)
+      .toContain("The shared Chat port answered from the attached page.");
+  });
+
   it("routes ordinary Chat through ChatAgentPortV1 while keeping Research separate", async () => {
     let researchRuns = 0;
     const starts: Array<{ question: string; quality: string }> = [];
@@ -1839,6 +1904,7 @@ describe("portable Research screen", () => {
     );
     await dom.flush();
 
+    await dom.click("research-mode-deep");
     await openConversationMenu();
     expect(dom.find("research-resumable-sessions").textContent)
       .toContain("Continue the interrupted research.");
@@ -1851,7 +1917,7 @@ describe("portable Research screen", () => {
     expect(dom.find("research-activity").textContent).not.toContain(
       "The selected sources are being investigated",
     );
-    expect(dom.find("research-chat-answer").textContent)
+    expect(dom.find("research-formatted-report").textContent)
       .toContain("The page explicitly links the issue.");
   });
 
@@ -1910,6 +1976,7 @@ describe("portable Research screen", () => {
     );
     await dom.flush();
 
+    await dom.click("research-mode-deep");
     await openConversationMenu();
     expect(dom.find("research-retained-sessions").textContent)
       .toContain("What did the first research turn establish?");
@@ -1963,6 +2030,7 @@ describe("portable Research screen", () => {
     );
     await dom.flush();
 
+    await dom.click("research-mode-deep");
     await openConversationMenu();
     await dom.setValue("research-steering-input-0", "Prioritize the approved comparison.");
     await dom.click("research-steering-submit-0");

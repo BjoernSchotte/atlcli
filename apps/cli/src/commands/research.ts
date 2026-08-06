@@ -93,6 +93,7 @@ import {
   projectChatScopeClarificationReviewV1,
   resolveChatScopeClarificationV1,
 } from "@atlcli/research/node";
+import { createCliChatAgentPortV1 } from "./chat-agent-port.js";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
   composeResearchGraphV1,
@@ -258,6 +259,7 @@ export interface ResearchCliChatAgentInput {
   policy: ResearchOneShotPolicyV1;
   qualityPolicy: ChatQualityPolicyV1;
   resumeAnswer?: ChatUserQuestionAnswerV1;
+  resumeCheckpoint?: { kind: "stream-interruption" | "steering" };
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   onChatPresentation: (event: ChatPresentationStreamEventV1) => void;
@@ -2723,6 +2725,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       workspace: input.workspace,
       qualityPolicy: input.qualityPolicy,
       resumeAnswer: input.resumeAnswer,
+      resumeCheckpoint: input.resumeCheckpoint,
       signal: input.signal,
       onEvent: input.onEvent,
       onChatPresentation: input.onChatPresentation,
@@ -3203,8 +3206,8 @@ async function runDirectChatCliConversation(input: {
   profile: Profile;
   request: ResearchRequestV1;
   workspace: ResearchWorkspace;
+  store: ResearchSessionStoreV1;
   sessionId: string;
-  turnId: string;
   apiKey: string;
 }): Promise<void> {
   const controller = new AbortController();
@@ -3220,56 +3223,93 @@ async function runDirectChatCliConversation(input: {
       `[chat] model=${RESEARCH_MODEL_ID} quality=${input.cli.qualityPolicy?.mode ?? "auto"} profile=${input.profile.name} session=${input.sessionId}\n`,
     );
     input.dependencies.writeStderr("[chat] running — press Ctrl+C to stop\n");
-    let resumeAnswer: ChatUserQuestionAnswerV1 | undefined;
+    let checkpoint: { conversationId: string; turnId: string } | undefined;
     let answer: ChatAnswerV1;
-    while (true) {
-      try {
-        answer = await input.dependencies.runChatAgent({
+    const port = createCliChatAgentPortV1({
+      store: input.store,
+      workspace: input.workspace,
+      conversationId: input.sessionId,
+      siteOrigin: input.request.scope.siteOrigin,
+      hostIdentity: cliChatHostIdentityV1(input.profile),
+      createTurnId: input.dependencies.createDurableTurnId,
+      async execute(execution) {
+        return input.dependencies.runChatAgent({
           apiKey: input.apiKey,
           profile: input.profile,
-          request: input.request,
+          request: execution.request,
           workspace: input.workspace,
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          conversation: { sessionId: input.sessionId },
+          sessionId: execution.conversationId,
+          turnId: execution.turnId,
+          conversation: { sessionId: execution.conversationId },
           policy: input.cli.policy,
-          qualityPolicy: input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto"),
-          ...(resumeAnswer ? { resumeAnswer } : {}),
-          signal: controller.signal,
+          qualityPolicy: execution.qualityPolicy,
+          ...(execution.resumeAnswer ? { resumeAnswer: execution.resumeAnswer } : {}),
+          ...(execution.resumeCheckpoint
+            ? { resumeCheckpoint: execution.resumeCheckpoint }
+            : {}),
+          signal: execution.signal,
           writeDiagnostic: (message) =>
             input.dependencies.writeStderr(`[chat] ${message}\n`),
-          onEvent: (event) => {
-            if (event.kind === "phase") {
-              input.dependencies.writeStderr(`[chat] phase=${event.phase}\n`);
-            } else if (event.kind === "capability") {
-              input.dependencies.writeStderr(
-                `[chat] tool=${event.toolId} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}\n`,
-              );
-            } else if (event.kind === "progress") {
-              input.dependencies.writeStderr(
-                `[chat] calls=${event.completed}/${event.maximum}\n`,
-              );
-            } else if (event.kind === "decision" &&
-                event.decisionId.startsWith("chat-strategy:")) {
-              input.dependencies.writeStderr(
-                `[chat] strategy=${event.reasonCode}\n`,
-              );
-            }
-          },
-          onChatPresentation: (event) => {
-            if (event.status === "started") {
-              input.dependencies.writeStderr(`[chat] ${event.channel} `);
-            } else if (event.status === "delta") {
-              input.dependencies.writeStderr(event.delta ?? "");
-            } else {
-              input.dependencies.writeStderr("\n");
-            }
-          },
+          onEvent: execution.stream?.onEvent ?? (() => {}),
+          onChatPresentation: execution.stream?.onPresentation ?? (() => {}),
         });
+      },
+    });
+    const stream = {
+      signal: controller.signal,
+      onSessionStart(session: { conversationId: string; turnId: string }) {
+        checkpoint = session;
+      },
+      onEvent(event: ResearchOneShotEventV1) {
+        if (event.kind === "phase") {
+          input.dependencies.writeStderr(`[chat] phase=${event.phase}\n`);
+        } else if (event.kind === "capability") {
+          input.dependencies.writeStderr(
+            `[chat] tool=${event.toolId} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}\n`,
+          );
+        } else if (event.kind === "progress") {
+          input.dependencies.writeStderr(
+            `[chat] calls=${event.completed}/${event.maximum}\n`,
+          );
+        } else if (event.kind === "decision" &&
+            event.decisionId.startsWith("chat-strategy:")) {
+          input.dependencies.writeStderr(
+            `[chat] strategy=${event.reasonCode}\n`,
+          );
+        }
+      },
+      onPresentation(event: ChatPresentationStreamEventV1) {
+        if (event.status === "started") {
+          input.dependencies.writeStderr(`[chat] ${event.channel} `);
+        } else if (event.status === "delta") {
+          input.dependencies.writeStderr(event.delta ?? "");
+        } else {
+          input.dependencies.writeStderr("\n");
+        }
+      },
+    };
+    while (true) {
+      try {
+        answer = checkpoint
+          ? await port.answerQuestion({
+              siteOrigin: input.request.scope.siteOrigin,
+              conversationId: checkpoint.conversationId,
+              turnId: checkpoint.turnId,
+              answer: await input.dependencies.askChatUserQuestion(
+                (await port.getPendingQuestion(input.request.scope.siteOrigin))!.question,
+              ),
+            }, stream)
+          : await port.startTurn({
+              request: input.request,
+              qualityPolicy: input.cli.qualityPolicy ?? chatQualityPolicyForModeV1("auto"),
+              conversationId: input.sessionId,
+            }, stream);
         break;
       } catch (error) {
         if (!(error instanceof ChatUserQuestionRequiredError)) throw error;
-        resumeAnswer = await input.dependencies.askChatUserQuestion(error.question);
+        if (!checkpoint) {
+          throw new Error("Chat paused without publishing its durable checkpoint.");
+        }
       }
     }
     const artifactPath = input.dependencies.artifactPath();
@@ -3487,8 +3527,8 @@ export async function handleChat(
       profile,
       request,
       workspace,
+      store: opened.store,
       sessionId,
-      turnId: dependencies.createDurableTurnId(),
       apiKey,
     });
   } finally {

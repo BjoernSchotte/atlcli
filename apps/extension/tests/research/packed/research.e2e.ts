@@ -7102,6 +7102,8 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(afterReopen.session.state.turns[0]?.graph).toEqual(beforeReopen.session.state.turns[0]?.graph);
   expect(await countPackedResearchSessionRows(page, completedSession.sessionId)).toEqual(rowsBeforeReopen);
 
+  await page.getByTestId("research-mode-deep").click();
+  await expect(page.getByTestId("research-mode-deep")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("research-conversation-menu-toggle").click();
   const retainedCard = page.locator('[data-testid^="research-retained-session-"]')
     .filter({ hasText: completedObjective });
@@ -7164,6 +7166,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await expect(planReviewCards).toHaveCount(cancellationPlanReviewCount + 1);
   await planReviewCards.first().locator('button[data-testid^="research-plan-review-approve-"]').click();
   await expect(planReviewCards).toHaveCount(cancellationPlanReviewCount);
+  await page.getByTestId("research-mode-deep").click();
   await page.getByTestId("research-conversation-menu-toggle").click();
   const cancellationResumableCard = page.locator('div[data-testid^="research-resumable-session-"]')
     .filter({ hasText: cancelledObjective });

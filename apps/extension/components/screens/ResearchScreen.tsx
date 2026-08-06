@@ -57,6 +57,7 @@ import {
 } from "@atlcli/research";
 import type {
   ChatAgentPortV1,
+  ChatConversationHistoryItemV1,
   ResearchBriefClarificationRequiredV1,
   ResearchSessionClarificationReviewV1,
   ResearchSessionScopeClarificationReviewV1,
@@ -1354,6 +1355,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [retainedSessions, setRetainedSessions] = useState<
     ResearchRetainedSessionV1[]
   >([]);
+  const [chatHistory, setChatHistory] = useState<ChatConversationHistoryItemV1[]>([]);
   const [scopeReviews, setScopeReviews] = useState<
     ResearchSessionScopeReviewV1[]
   >([]);
@@ -1502,6 +1504,22 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       .catch(() => undefined);
     return () => { active = false; };
   }, [chatPort, port, site?.origin]);
+
+  useEffect(() => {
+    let active = true;
+    if (!chatPort || !site?.origin) {
+      setChatHistory([]);
+      return () => { active = false; };
+    }
+    void chatPort.listHistory(site.origin)
+      .then((history) => {
+        if (active) setChatHistory(history);
+      })
+      .catch(() => {
+        if (active) setChatHistory([]);
+      });
+    return () => { active = false; };
+  }, [chatPort, site?.origin, report]);
 
   useEffect(() => {
     let active = true;
@@ -1693,6 +1711,30 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     } catch {
       setRetainedSessions([]);
     }
+  }
+
+  async function openChatConversation(conversationId: string): Promise<void> {
+    if (!chatPort || !site?.origin || running) return;
+    const replay = await chatPort.replay({
+      siteOrigin: site.origin,
+      conversationId,
+    });
+    if (!replay) return;
+    activeChatConversationIdRef.current = replay.conversationId;
+    setChatTurns([{
+      id: `replay:${replay.turnId}`,
+      content: replay.objective,
+      state: "sent",
+    }]);
+    setActivity(replay.events.map((event) => ({
+      kind: "activity" as const,
+      seq: event.revision,
+      at: event.at,
+      code: event.code,
+      status: event.status,
+    })));
+    setReport(replay.finalAnswer ?? null);
+    setConversationMenuOpen(false);
   }
 
   async function refreshScopeReviews(): Promise<void> {
@@ -3295,12 +3337,40 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <h2 className="m-0 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t("research.chat.history.title")}
           </h2>
-          {resumableSessions.length === 0 && retainedSessions.length === 0 && (
+          {interactionMode === "chat" && chatHistory.length === 0 && (
             <p className="mb-0 mt-2 px-2 text-sm text-muted-foreground">
               {t("research.chat.history.empty")}
             </p>
           )}
-          {resumableSessions.length > 0 && (
+          {interactionMode === "deep" && resumableSessions.length === 0 && retainedSessions.length === 0 && (
+            <p className="mb-0 mt-2 px-2 text-sm text-muted-foreground">
+              {t("research.chat.history.empty")}
+            </p>
+          )}
+          {interactionMode === "chat" && chatHistory.length > 0 && (
+            <div className="mt-2 space-y-1" data-testid="chat-conversation-history">
+              {chatHistory.map((conversation, index) => (
+                <Button
+                  key={conversation.conversationId}
+                  className="h-auto w-full justify-start px-2 py-2 text-left"
+                  variant="ghost"
+                  disabled={running}
+                  data-testid={`chat-conversation-history-${index}`}
+                  onClick={() => void openChatConversation(conversation.conversationId)}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {conversation.latestObjective ?? t("research.chat.history.new")}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {new Date(conversation.updatedAt).toLocaleString(locale)}
+                    </span>
+                  </span>
+                </Button>
+              ))}
+            </div>
+          )}
+          {interactionMode === "deep" && resumableSessions.length > 0 && (
             <div className="mt-2 space-y-1" data-testid="research-resumable-sessions">
               {resumableSessions.map((session, index) => (
                 <div className="rounded-lg border p-2 text-xs" key={session.sessionId} data-testid={`research-resumable-session-${index}`}>
@@ -3333,7 +3403,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               ))}
             </div>
           )}
-          {retainedSessions.length > 0 && (
+          {interactionMode === "deep" && retainedSessions.length > 0 && (
             <div className="mt-2 space-y-1" data-testid="research-retained-sessions">
               {retainedSessions.map((session, index) => {
                 const preparing = followUpActionId === session.sessionId;

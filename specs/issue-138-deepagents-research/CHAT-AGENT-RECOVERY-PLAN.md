@@ -1058,20 +1058,20 @@ specific agents.
 
 Implementation:
 
-- [ ] Define one `ChatAgentPortV1` for start, stream, answer-HITL, queue, edit,
+- [x] Define one `ChatAgentPortV1` for start, stream, answer-HITL, queue, edit,
       delete, steer, stop, resume, history, and artifact/source access.
-- [ ] Keep `--thinking quick|auto|deep` in CLI and expose only user-meaningful
+- [x] Keep `--thinking quick|auto|deep` in CLI and expose only user-meaningful
       deadline overrides, not workflow internals.
-- [ ] Make Chat with `auto` the clear extension default; keep Deep Research as a
+- [x] Make Chat with `auto` the clear extension default; keep Deep Research as a
       separate explicit selector.
-- [ ] Route the extension Chat worker to the Chat root and Research worker/resume
+- [x] Route the extension Chat worker to the Chat root and Research worker/resume
       paths to the Research root.
 - [ ] Render conversation history, context chips, strategy/activity, sources,
       queue, steering, stop, HITL, and streamed Markdown through the same event and
       control contracts.
-- [ ] Implement the ordinary-browser adapter against the same ports; do not create
+- [x] Implement the ordinary-browser adapter against the same ports; do not create
       a browser-only agent or capability policy.
-- [ ] Keep BYOK/provider configuration outside the composer and independent from
+- [x] Keep BYOK/provider configuration outside the composer and independent from
       Chat quality mode.
 
 Automated proof:
@@ -1079,12 +1079,28 @@ Automated proof:
 - [ ] Contract tests run the same deterministic Quick, Auto-direct, Auto-agentic,
       Deep-direct, Deep-agentic, HITL, follow-up, steering, and stop scenarios
       through every adapter.
-- [ ] CLI owns the fast complete workflow/recovery matrix; packed MV3 owns worker
+- [x] CLI owns the fast complete workflow/recovery matrix; packed MV3 owns worker
       recreation, IndexedDB, active browser session, streaming, and representative
       control recovery; ordinary browser owns port/presenter parity plus targeted
       E2E.
-- [ ] Presenter input cannot alter scope, durable state, strategy, evidence,
+- [x] Presenter input cannot alter scope, durable state, strategy, evidence,
       budgets, or completion authority.
+
+Parity proof (2026-08-06): `ChatAgentPortV1` is now the provider-neutral product
+boundary used by the portable React presenter, packed MV3 sidepanel, and CLI.
+The port exposes only user actions and projections; provider keys, model
+construction, scope authority, resume envelopes, evidence bodies, budgets, and
+completion authority remain host-owned. The CLI adapter restores HITL and model
+checkpoints from its retained workspace, supports revision-fenced controls,
+history, replay, stop, Markdown artifacts, and metadata-only sources, and the
+ordinary Chat command now invokes this port instead of calling the agent runtime
+directly. The browser conversation drawer lists and replays ordinary Chat
+conversations through this port while Research sessions remain visible only in
+the explicit Deep Research mode. Focused CLI, core-port, portable presenter, and
+extension suites pass 123 tests; full typecheck and the production extension
+build pass; all 44 packed MV3 lifecycle tests pass after explicitly proving the
+Chat/Research history split. User-driven CLI queue/edit/delete/steering remains
+open before the cross-adapter scenario matrix and live parity gates can close.
 
 Live acceptance:
 
