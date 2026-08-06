@@ -9,9 +9,6 @@ describe("user-facing CLI Chat activity", () => {
   test("covers every semantic activity code without internal identifiers", () => {
     for (const code of RESEARCH_ACTIVITY_CODES_V1) {
       const rendered = formatCliChatActivityV1({
-        kind: "activity",
-        seq: 1,
-        at: "2026-08-06T12:00:00.000Z",
         code,
         status: "started",
       }, "en");

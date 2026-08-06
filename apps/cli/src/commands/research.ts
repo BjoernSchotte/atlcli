@@ -3247,6 +3247,14 @@ async function runDirectChatCliConversation(input: {
     input.dependencies.writeStderr(
       `[chat] model=${RESEARCH_MODEL_ID} quality=${input.cli.qualityPolicy?.mode ?? "auto"} profile=${input.profile.name} session=${input.sessionId}\n`,
     );
+    const contextLabels = [
+      ...input.request.scope.confluenceSpaceKeys.map((key) => `Confluence ${key}`),
+      ...input.request.scope.jiraProjectKeys.map((key) => `Jira ${key}`),
+      ...(input.request.scopeSeeds?.map((seed) => seed.binding.name) ?? []),
+    ];
+    input.dependencies.writeStderr(
+      `[chat] Context: ${contextLabels.length > 0 ? [...new Set(contextLabels)].join(", ") : "question only"}\n`,
+    );
     input.dependencies.writeStderr("[chat] running — press Ctrl+C to stop\n");
     let checkpoint: { conversationId: string; turnId: string } | undefined;
     let answer: ChatAnswerV1;
@@ -3463,12 +3471,114 @@ async function runDirectChatCliConversation(input: {
   }
 }
 
+async function handleChatSessions(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  dependencies: ResearchCliDependencies,
+): Promise<void> {
+  const allowed = new Set(["profile", "json", "help", "h"]);
+  const unknown = Object.keys(flags).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown chat history option: --${unknown[0]}.`);
+  }
+  const command = args[0] ?? "list";
+  if (command === "help" || hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    dependencies.emitOutput(
+      "atlcli chat sessions <list|show|sources|artifact> [conversation-id]",
+      opts,
+    );
+    return;
+  }
+  if (!["list", "show", "sources", "artifact"].includes(command)) {
+    throw new Error("Chat history command must be list, show, sources, or artifact.");
+  }
+  const profile = await dependencies.resolveProfile(getFlag(flags, "profile"));
+  if (!profile) {
+    dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found.");
+  }
+  const siteOrigin = new URL(profile.baseUrl).origin;
+  const identity = cliChatHostIdentityV1(profile);
+  const opened = await dependencies.openSessionStore();
+  try {
+    const targetId = args[1];
+    const seedPage = await opened.store.list({ limit: 1 });
+    const seedId = targetId ?? seedPage.sessions[0]?.sessionId;
+    if (!seedId) {
+      dependencies.emitOutput(command === "list" ? [] : null, opts);
+      return;
+    }
+    const workspace = await opened.store.workspace(seedId);
+    const port = createCliChatAgentPortV1({
+      store: opened.store,
+      workspace,
+      conversationId: seedId,
+      siteOrigin,
+      hostIdentity: identity,
+      createTurnId: dependencies.createDurableTurnId,
+      async execute() {
+        throw new Error("Chat history inspection cannot start model work.");
+      },
+    });
+    if (command === "list") {
+      const history = await port.listHistory(siteOrigin);
+      if (opts.json) {
+        dependencies.emitOutput(history, opts);
+      } else {
+        dependencies.writeStdout(history.length === 0
+          ? "No retained Chat conversations.\n"
+          : `${history.map((entry) => [
+              entry.conversationId,
+              entry.status ?? "empty",
+              entry.updatedAt,
+              entry.latestObjective ?? "",
+            ].join("\t")).join("\n")}\n`);
+      }
+      return;
+    }
+    if (!targetId) throw new Error(`${command} requires a conversation ID.`);
+    const replay = await port.replay({ siteOrigin, conversationId: targetId });
+    if (!replay) throw new Error("The retained Chat conversation was not found.");
+    if (command === "show") {
+      if (opts.json) {
+        dependencies.emitOutput(replay, opts);
+      } else {
+        for (const event of replay.events) {
+          dependencies.writeStderr(
+            `[chat] ${formatCliChatActivityV1(event, "en")}\n`,
+          );
+        }
+        dependencies.writeStdout(replay.finalAnswer?.messageMarkdown ?? "No final answer.\n");
+      }
+      return;
+    }
+    const checkpoint = {
+      siteOrigin,
+      conversationId: targetId,
+      turnId: replay.turnId,
+    };
+    if (command === "sources") {
+      dependencies.emitOutput(await port.sources(checkpoint), opts);
+      return;
+    }
+    const artifact = await port.artifact(checkpoint);
+    if (opts.json) dependencies.emitOutput(artifact, opts);
+    else dependencies.writeStdout(artifact?.markdown ?? "");
+  } finally {
+    opened.close();
+  }
+}
+
 export async function handleChat(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
   dependencies: ResearchCliDependencies = defaultResearchCliDependencies,
 ): Promise<void> {
+  if (args[0] === "sessions") {
+    await handleChatSessions(args.slice(1), flags, opts, dependencies);
+    return;
+  }
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
     dependencies.emitOutput(chatHelp(), opts);
     return;
@@ -3962,6 +4072,7 @@ export async function handleResearch(
 export function chatHelp(): string {
   return `atlcli chat <question>
 atlcli chat --session <conversation-id> <follow-up>
+atlcli chat sessions <list|show|sources|artifact> [conversation-id]
 
 Ask a bounded, read-only Jira or Confluence question without composing a Deep Research graph.
 The first turn uses only explicit --project/--space context or scope named in the question;

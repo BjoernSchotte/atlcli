@@ -1089,7 +1089,7 @@ Implementation:
       separate explicit selector.
 - [x] Route the extension Chat worker to the Chat root and Research worker/resume
       paths to the Research root.
-- [ ] Render conversation history, context chips, strategy/activity, sources,
+- [x] Render conversation history, context chips, strategy/activity, sources,
       queue, steering, stop, HITL, and streamed Markdown through the same event and
       control contracts.
 - [x] Implement the ordinary-browser adapter against the same ports; do not create
@@ -1146,6 +1146,17 @@ longer printed by the ordinary CLI presenter. Provider-approved reasoning
 summaries and provisional answer Markdown still stream incrementally on their
 separate presentation channel. Mapping coverage and a real CLI command path are
 regression-tested; the installed-MV3 human-language review remains a live gate.
+
+CLI history/source proof (2026-08-06): `atlcli chat sessions list`, `show`,
+`sources`, and `artifact` now project the same port history, semantic replay,
+metadata-only citations, and accepted Markdown as the browser conversation
+drawer. Inspection never constructs a model or reads a provider key. Active CLI
+turns also present the explicitly approved Jira, Confluence, or exact attached
+context before work begins. Together with the existing browser context chips,
+streamed Markdown, HITL, queue, edit/delete, steering, stop, and activity UI,
+every requested presentation surface is now wired through the shared event and
+control contracts. Cross-adapter scenario equivalence and private live parity
+remain independent open gates.
 
 Live acceptance:
 

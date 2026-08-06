@@ -30,7 +30,10 @@ const TITLES: Record<ResearchActivityCodeV1, Record<Locale, string>> = {
 };
 
 export function formatCliChatActivityV1(
-  event: Extract<ResearchOneShotEventV1, { kind: "activity" }>,
+  event: {
+    code: ResearchActivityCodeV1;
+    status: "started" | "completed" | "failed";
+  },
   locale: Locale,
 ): string {
   const marker = event.status === "started" ? "◇" : event.status === "completed" ? "✓" : "!";

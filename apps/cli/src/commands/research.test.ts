@@ -37,6 +37,11 @@ import {
   CHAT_USER_QUESTION_SCHEMA_V1,
   CHAT_INTERACTION_STATE_PATH_V1,
   createChatInteractionStateV1,
+  createChatSessionV1,
+  beginChatTurnV1,
+  completeChatTurnV1,
+  chatScopeFingerprintV1,
+  CHAT_SESSION_PATH_V1,
   recordChatUserQuestionV1,
   type ChatUserQuestionAnswerV1,
   type ChatUserQuestionV1,
@@ -1202,6 +1207,79 @@ describe("research CLI one-shot contract", () => {
     ]);
     expect(harness.stderr.join("")).toContain("status=completed");
     expect(harness.stdout[0]).toContain("\n\n---\n\n");
+  });
+
+  test("lists, replays and projects sources and Markdown through the Chat port", async () => {
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    const conversationId = "research-session:chat-history";
+    await durableStore.create(createResearchSessionV1({
+      sessionId: conversationId,
+      ownerId: "owner:chat-history",
+      createdAt: "2026-08-06T12:00:00.000Z",
+      leaseExpiresAt: "2026-08-06T12:10:00.000Z",
+    }));
+    const workspace = await durableStore.workspace(conversationId);
+    const identity = cliChatHostIdentityV1(profile);
+    let session = createChatSessionV1({
+      conversationId,
+      identity,
+      tenantOrigin: new URL(profile.baseUrl).origin,
+      createdAt: "2026-08-06T12:00:00.000Z",
+    });
+    session = beginChatTurnV1({
+      session,
+      expectedSessionRevision: session.revision,
+      turnId: "research-turn:chat-history",
+      objective: "Summarize the accepted page.",
+      qualityMode: "auto",
+      scopeFingerprint: await chatScopeFingerprintV1({
+        scope: {
+          siteOrigin: new URL(profile.baseUrl).origin,
+          jiraProjectKeys: [],
+          confluenceSpaceKeys: ["DOCSY"],
+        },
+        scopeBindings: [],
+      }),
+      startedAt: "2026-08-06T12:00:00.000Z",
+    });
+    session = completeChatTurnV1({
+      session,
+      expectedSessionRevision: session.revision,
+      turnId: "research-turn:chat-history",
+      answer: chatAnswer,
+      acceptedStrategy: chatAnswer.strategy,
+      activityRefs: [],
+      evidenceRecords: [],
+      completedAt: "2026-08-06T12:00:01.000Z",
+    });
+    await workspace.writeFile(CHAT_SESSION_PATH_V1, JSON.stringify(session));
+    const harness = cliHarness({ durableStore });
+
+    await handleChat(["sessions", "list"], {}, { json: false }, harness.dependencies);
+    await handleChat(
+      ["sessions", "show", conversationId],
+      {},
+      { json: false },
+      harness.dependencies,
+    );
+    await handleChat(
+      ["sessions", "sources", conversationId],
+      { json: true },
+      { json: true },
+      harness.dependencies,
+    );
+    await handleChat(
+      ["sessions", "artifact", conversationId],
+      {},
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(harness.stdout.join("\n")).toContain(conversationId);
+    expect(harness.stdout.join("\n")).toContain("Synthetic chat answer.");
+    expect(harness.stdout.join("\n")).toContain('"sources": []');
+    expect(harness.runInputs).toHaveLength(0);
+    expect(harness.chatRunInputs).toHaveLength(0);
   });
 
   test("steers an active terminal Chat at a durable checkpoint and resumes the same turn", async () => {
