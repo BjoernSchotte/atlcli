@@ -16,6 +16,8 @@ import {
 } from "../components/screens/ResearchScreen.js";
 import { I18nProvider } from "../utils/i18n/context.js";
 import type {
+  ChatAgentPortV1,
+  ChatAnswerV1,
   ResearchBriefClarificationRequiredV1,
   ResearchSessionClarificationReviewV1,
   ResearchSessionScopeClarificationReviewV1,
@@ -28,6 +30,7 @@ import {
   completeChatStreamInterruptionV1,
   completeChatSteeringV1,
   createChatInteractionStateV1,
+  defineChatAgentPortV1,
   recordChatStreamInterruptionV1,
   stampChatInteractionCommandV1,
 } from "@atlcli/research";
@@ -346,7 +349,11 @@ const v2Report: ResearchReportV2 = {
   markdown: "# Evidence-backed research\n\n- The validated Jira issue establishes the implementation fact.",
 };
 
-function screenProps(port: ResearchPort, spaceKey = "KB"): ScreenProps {
+function screenProps(
+  port: ResearchPort,
+  spaceKey = "KB",
+  chat?: ChatAgentPortV1,
+): ScreenProps {
   return {
     ports: {
       host: {
@@ -356,6 +363,7 @@ function screenProps(port: ResearchPort, spaceKey = "KB"): ScreenProps {
         capabilities: ["research"],
       },
       research: port,
+      ...(chat ? { chat } : {}),
     } as unknown as AppPorts,
     page: {
       status: "loaded",
@@ -388,6 +396,52 @@ function screenProps(port: ResearchPort, spaceKey = "KB"): ScreenProps {
     navigate: () => undefined,
   };
 }
+
+function fakeChatPort(
+  overrides: Partial<ChatAgentPortV1> = {},
+): ChatAgentPortV1 {
+  return defineChatAgentPortV1({
+    async startTurn() { throw new Error("Unexpected Chat start."); },
+    async answerQuestion() { throw new Error("Unexpected Chat answer."); },
+    async resumeTurn() { throw new Error("Unexpected Chat resume."); },
+    async getPendingQuestion() { return null; },
+    async getInteraction() { return null; },
+    async control() { throw new Error("Unexpected Chat control."); },
+    async stop() { return "stopped"; },
+    async listHistory() { return []; },
+    async replay() { return null; },
+    async artifact() { return null; },
+    async sources() { return null; },
+    async resetConversation() {},
+    ...overrides,
+  });
+}
+
+const chatAnswer: ChatAnswerV1 = {
+  schema: "atlcli.chat-answer/v1",
+  messageMarkdown: "The shared Chat port answered from the attached page.",
+  citations: [],
+  evidenceRefs: [],
+  gaps: [],
+  strategy: {
+    qualityMode: "quick",
+    path: "direct",
+    delegated: false,
+    reasonCode: "quick-direct",
+    reasonCodes: ["quick-direct", "single-exact-context"],
+    ambiguityDisposition: "none",
+    requiredCapabilities: ["exact-read", "chat-answer"],
+    expectedComplexity: "simple",
+    qualityRisks: [],
+  },
+  run: {
+    model: "synthetic-provider-neutral-model",
+    startedAt: "2026-08-06T12:00:00.000Z",
+    completedAt: "2026-08-06T12:00:01.000Z",
+    durationMs: 1_000,
+    counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 1 },
+  },
+};
 
 describe("research scope inference", () => {
   it("binds the exact current page as well as its containing space", () => {
@@ -491,6 +545,68 @@ describe("research brief clarification presentation", () => {
 });
 
 describe("portable Research screen", () => {
+  it("routes ordinary Chat through ChatAgentPortV1 while keeping Research separate", async () => {
+    let researchRuns = 0;
+    const starts: Array<{ question: string; quality: string }> = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => {
+        researchRuns += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    const chat = fakeChatPort({
+      async startTurn(input, stream) {
+        starts.push({
+          question: input.request.question,
+          quality: input.qualityPolicy.mode,
+        });
+        stream?.onSessionStart?.({
+          conversationId: "research-session:ordinary-browser-port",
+          turnId: "research-turn:ordinary-browser-port",
+        });
+        stream?.onPresentation?.({
+          kind: "chat-presentation",
+          seq: 1,
+          at: "2026-08-06T12:00:00.000Z",
+          channel: "answer-markdown",
+          status: "delta",
+          delta: "The shared Chat port",
+        });
+        return chatAnswer;
+      },
+    });
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "KB", chat)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-chat-thinking", "quick");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "Summarize the attached page.");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(starts).toEqual([{
+      question: "Summarize the attached page.",
+      quality: "quick",
+    }]);
+    expect(researchRuns).toBe(0);
+    expect(dom.find("research-chat-answer").textContent)
+      .toContain("The shared Chat port answered");
+  });
+
   it("renders the compact chat surface and opens an intentionally empty add menu", async () => {
     const port: ResearchPort = {
       hasApiKey: async () => true,

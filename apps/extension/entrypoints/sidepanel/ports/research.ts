@@ -5,7 +5,11 @@ import {
   type ResearchPort,
   type ResearchReport,
 } from "../../../utils/research/contracts.js";
-import { ChatUserQuestionRequiredError } from "@atlcli/research";
+import {
+  ChatUserQuestionRequiredError,
+  defineChatAgentPortV1,
+  type ChatAgentPortV1,
+} from "@atlcli/research";
 import type {
   ChatHostIdentityV1,
   ResearchResumableSessionV1,
@@ -134,6 +138,94 @@ async function readActiveChatReplayV1(siteOrigin: string): Promise<{
       events: journal.eventsForReferences(turn.activityRefs),
       ...(turn.finalAnswer ? { finalAnswer: turn.finalAnswer } : {}),
     };
+  } finally {
+    store.close();
+  }
+}
+
+async function readChatSessionProjectionV1(input: {
+  siteOrigin: string;
+  conversationId: string;
+}): Promise<{
+  session: import("@atlcli/research").ChatSessionV1;
+  eventsForTurn(turnId: string): Promise<ChatActivityEventV1[]>;
+} | null> {
+  if (!RESEARCH_SESSION_ID_PATTERN.test(input.conversationId)) return null;
+  const identity = await browserChatHostIdentityV1();
+  const store = await IndexedDbResearchSessionStoreV1.open();
+  try {
+    if (!await store.read(input.conversationId)) return null;
+    const workspace = await store.workspace(input.conversationId);
+    const serialized = await workspace.readFile(CHAT_SESSION_PATH_V1);
+    if (serialized === undefined) return null;
+    const session = parseChatSessionV1(JSON.parse(serialized));
+    assertChatSessionBindingV1({
+      session,
+      conversationId: input.conversationId,
+      identity,
+      tenantOrigin: input.siteOrigin,
+    });
+    const journal = await WorkspaceChatActivityJournalV1.open({
+      workspace,
+      conversationId: input.conversationId,
+      persistIfMissing: false,
+    });
+    const eventsByTurn = new Map(session.conversation.recentTurns.map((turn) => [
+      turn.id,
+      journal.eventsForReferences(turn.activityRefs),
+    ]));
+    return {
+      session,
+      async eventsForTurn(turnId) {
+        return structuredClone(eventsByTurn.get(turnId) ?? []);
+      },
+    };
+  } finally {
+    store.close();
+  }
+}
+
+async function listChatHistoryV1(siteOrigin: string): Promise<
+  import("@atlcli/research").ChatConversationHistoryItemV1[]
+> {
+  const identity = await browserChatHostIdentityV1();
+  const store = await IndexedDbResearchSessionStoreV1.open();
+  try {
+    const history: import("@atlcli/research").ChatConversationHistoryItemV1[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await store.list({ limit: 100, ...(cursor ? { cursor } : {}) });
+      for (const stored of page.sessions) {
+        const workspace = await store.workspace(stored.sessionId);
+        const serialized = await workspace.readFile(CHAT_SESSION_PATH_V1);
+        if (serialized === undefined) continue;
+        try {
+          const session = parseChatSessionV1(JSON.parse(serialized));
+          assertChatSessionBindingV1({
+            session,
+            conversationId: stored.sessionId,
+            identity,
+            tenantOrigin: siteOrigin,
+          });
+          const latest = session.conversation.recentTurns.at(-1);
+          history.push({
+            conversationId: session.conversationId,
+            updatedAt: session.updatedAt,
+            ...(latest
+              ? {
+                  latestTurnId: latest.id,
+                  latestObjective: latest.objective,
+                  status: latest.status,
+                }
+              : {}),
+          });
+        } catch {
+          // Foreign principals, tenants and non-Chat sessions remain invisible.
+        }
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    return history.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   } finally {
     store.close();
   }
@@ -1240,4 +1332,166 @@ export function chromeResearchPort(): ResearchPort {
       }
     },
   };
+}
+
+/** Chrome transport for the shared ordinary-Chat product port. */
+export function chromeChatAgentPort(research: ResearchPort): ChatAgentPortV1 {
+  let activeController: AbortController | null = null;
+
+  const execute = async (input: {
+    request: import("@atlcli/research").ResearchRequestV1;
+    qualityPolicy: import("@atlcli/research").ChatQualityPolicyV1;
+    conversationId?: string;
+    resumeAnswer?: import("@atlcli/research").ChatUserQuestionAnswerV1;
+    resumeCheckpoint?: { turnId: string; kind: "stream-interruption" | "steering" };
+  }, stream?: import("@atlcli/research").ChatAgentStreamV1): Promise<ChatAnswerV1> => {
+    if (activeController) {
+      throw new ResearchContractError("invalid-request", "A Chat turn is already active.");
+    }
+    const controller = new AbortController();
+    activeController = controller;
+    const forwardAbort = (): void => controller.abort(stream?.signal?.reason);
+    stream?.signal?.addEventListener("abort", forwardAbort, { once: true });
+    if (stream?.signal?.aborted) forwardAbort();
+    try {
+      const result = await research.run(input.request, {
+        mode: "chat",
+        signal: controller.signal,
+        qualityPolicy: input.qualityPolicy,
+        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+        ...(input.resumeAnswer && input.resumeCheckpoint
+          ? { chatResume: { turnId: input.resumeCheckpoint.turnId, answer: input.resumeAnswer } }
+          : {}),
+        ...(!input.resumeAnswer && input.resumeCheckpoint
+          ? { chatCheckpointResume: input.resumeCheckpoint }
+          : {}),
+        onSessionStart: (session) => {
+          if (!session.turnId) return;
+          stream?.onSessionStart?.({
+            conversationId: session.sessionId,
+            turnId: session.turnId,
+          });
+        },
+        onEvent: stream?.onEvent,
+        onChatPresentation: stream?.onPresentation,
+      });
+      if (result.schema !== "atlcli.chat-answer/v1") {
+        throw new ResearchContractError("invalid-report", "The Chat host returned a Research report.");
+      }
+      return result;
+    } finally {
+      stream?.signal?.removeEventListener("abort", forwardAbort);
+      if (activeController === controller) activeController = null;
+    }
+  };
+
+  return defineChatAgentPortV1({
+    startTurn: (input, stream) => execute(input, stream),
+    async answerQuestion(input, stream) {
+      const pending = await research.getPendingChatQuestion?.(input.siteOrigin);
+      if (!pending || pending.conversationId !== input.conversationId ||
+          pending.turnId !== input.turnId) {
+        throw new ResearchContractError("invalid-request", "The Chat question checkpoint is stale.");
+      }
+      return execute({
+        request: pending.request,
+        qualityPolicy: pending.qualityPolicy,
+        conversationId: pending.conversationId,
+        resumeAnswer: input.answer,
+        resumeCheckpoint: { turnId: pending.turnId, kind: "stream-interruption" },
+      }, stream);
+    },
+    async resumeTurn(input, stream) {
+      const interaction = await research.getChatInteraction?.(input.siteOrigin);
+      if (!interaction || interaction.conversationId !== input.conversationId) {
+        throw new ResearchContractError("invalid-request", "The Chat checkpoint is unavailable.");
+      }
+      const checkpoint = input.kind === "stream-interruption"
+        ? interaction.streamInterruption
+        : interaction.acceptedSteering;
+      if (!checkpoint || checkpoint.turnId !== input.turnId) {
+        throw new ResearchContractError("invalid-request", "The Chat checkpoint is stale.");
+      }
+      return execute({
+        request: checkpoint.resume.request,
+        qualityPolicy: checkpoint.resume.qualityPolicy,
+        conversationId: interaction.conversationId,
+        resumeCheckpoint: { turnId: checkpoint.turnId, kind: input.kind },
+      }, stream);
+    },
+    async getPendingQuestion(siteOrigin) {
+      const pending = await research.getPendingChatQuestion?.(siteOrigin);
+      return pending
+        ? {
+            conversationId: pending.conversationId,
+            turnId: pending.turnId,
+            question: pending.question,
+          }
+        : null;
+    },
+    async getInteraction(siteOrigin) {
+      return await research.getChatInteraction?.(siteOrigin) ?? null;
+    },
+    async control(command) {
+      if (!research.controlActiveChat) {
+        throw new ResearchContractError("invalid-request", "Chat controls are unavailable.");
+      }
+      return research.controlActiveChat(command);
+    },
+    async stop() {
+      if (!activeController) return "stopped";
+      activeController.abort(new DOMException("The Chat turn was stopped.", "AbortError"));
+      return "stop_requested";
+    },
+    listHistory: listChatHistoryV1,
+    async replay(input) {
+      const conversationId = input.conversationId ?? (
+        await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY)
+      )[ACTIVE_CHAT_CONVERSATION_KEY];
+      if (typeof conversationId !== "string") return null;
+      const projection = await readChatSessionProjectionV1({
+        siteOrigin: input.siteOrigin,
+        conversationId,
+      });
+      const turn = projection?.session.conversation.recentTurns.at(-1);
+      if (!projection || !turn) return null;
+      return {
+        conversationId,
+        turnId: turn.id,
+        objective: turn.objective,
+        events: await projection.eventsForTurn(turn.id),
+        ...(turn.finalAnswer ? { finalAnswer: turn.finalAnswer } : {}),
+      };
+    },
+    async artifact(input) {
+      const projection = await readChatSessionProjectionV1(input);
+      const turn = projection?.session.conversation.recentTurns.find((candidate) =>
+        candidate.id === input.turnId
+      );
+      return turn?.finalAnswer
+        ? {
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            mediaType: "text/markdown",
+            markdown: turn.finalAnswer.messageMarkdown,
+          }
+        : null;
+    },
+    async sources(input) {
+      const projection = await readChatSessionProjectionV1(input);
+      const turn = projection?.session.conversation.recentTurns.find((candidate) =>
+        candidate.id === input.turnId
+      );
+      return turn?.finalAnswer
+        ? {
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            sources: structuredClone(turn.finalAnswer.citations),
+          }
+        : null;
+    },
+    async resetConversation() {
+      await research.resetChatConversation?.();
+    },
+  });
 }

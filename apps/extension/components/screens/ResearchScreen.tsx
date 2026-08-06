@@ -56,6 +56,7 @@ import {
   RESEARCH_PACKET_BODY_SCHEMA_V2,
 } from "@atlcli/research";
 import type {
+  ChatAgentPortV1,
   ResearchBriefClarificationRequiredV1,
   ResearchSessionClarificationReviewV1,
   ResearchSessionScopeClarificationReviewV1,
@@ -104,8 +105,8 @@ interface PendingChatQuestionState {
   conversationId: string;
   turnId: string;
   question: ChatUserQuestionV1;
-  request: ResearchRequestV1;
-  qualityPolicy: ChatQualityPolicyV1;
+  request?: ResearchRequestV1;
+  qualityPolicy?: ChatQualityPolicyV1;
 }
 
 const RESEARCH_INTERACTION_MODE_POLICY = {
@@ -1277,6 +1278,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const t = useT();
   const { locale } = useI18n();
   const port = ports.research;
+  const chatPort = ports.chat;
   const site = useMemo(() => currentSite(page), [page]);
   const [hasKey, setHasKey] = useState(false);
   const [question, setQuestion] = useState("");
@@ -1441,8 +1443,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   }
 
   async function loadChatInteraction(): Promise<ChatInteractionStateV1 | null> {
-    if (!port?.getChatInteraction || !site?.origin) return null;
-    const state = await port.getChatInteraction(site.origin);
+    if (!site?.origin || (!chatPort && !port?.getChatInteraction)) return null;
+    const state = chatPort
+      ? await chatPort.getInteraction(site.origin)
+      : await port!.getChatInteraction!(site.origin);
     publishChatInteraction(state);
     return state;
   }
@@ -1459,15 +1463,17 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   }
 
   async function controlChat(
-    command: Parameters<NonNullable<ResearchPort["controlActiveChat"]>>[0],
+    command: Parameters<ChatAgentPortV1["control"]>[0],
   ): Promise<ChatInteractionStateV1> {
-    if (!port?.controlActiveChat) {
+    if (!chatPort && !port?.controlActiveChat) {
       throw new ResearchContractError(
         "invalid-request",
         t("research.chat.steeringUnavailable"),
       );
     }
-    const state = await port.controlActiveChat(command);
+    const state = chatPort
+      ? await chatPort.control(command)
+      : await port!.controlActiveChat!(command);
     publishChatInteraction(state);
     return state;
   }
@@ -1484,8 +1490,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   useEffect(() => {
     let active = true;
-    if (!port?.getPendingChatQuestion || !site?.origin) return () => { active = false; };
-    void port.getPendingChatQuestion(site.origin)
+    if ((!chatPort && !port?.getPendingChatQuestion) || !site?.origin) return () => { active = false; };
+    void (chatPort
+      ? chatPort.getPendingQuestion(site.origin)
+      : port!.getPendingChatQuestion!(site.origin))
       .then((pending) => {
         if (!active || !pending) return;
         activeChatConversationIdRef.current = pending.conversationId;
@@ -1493,23 +1501,27 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [port, site?.origin]);
+  }, [chatPort, port, site?.origin]);
 
   useEffect(() => {
     let active = true;
-    if (!port?.getChatInteraction || !site?.origin) return () => { active = false; };
-    void port.getChatInteraction(site.origin)
+    if ((!chatPort && !port?.getChatInteraction) || !site?.origin) return () => { active = false; };
+    void (chatPort
+      ? chatPort.getInteraction(site.origin)
+      : port!.getChatInteraction!(site.origin))
       .then((state) => {
         if (active) publishChatInteraction(state);
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [port, site?.origin]);
+  }, [chatPort, port, site?.origin]);
 
   useEffect(() => {
     let active = true;
-    if (!port?.getChatReplay || !site?.origin) return () => { active = false; };
-    void port.getChatReplay(site.origin)
+    if ((!chatPort && !port?.getChatReplay) || !site?.origin) return () => { active = false; };
+    void (chatPort
+      ? chatPort.replay({ siteOrigin: site.origin })
+      : port!.getChatReplay!(site.origin))
       .then((replay) => {
         if (!active || !replay) return;
         activeChatConversationIdRef.current = replay.conversationId;
@@ -1531,7 +1543,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [port, site?.origin]);
+  }, [chatPort, port, site?.origin]);
 
   useEffect(() => {
     setChatQuestionText("");
@@ -1948,44 +1960,77 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setProgress(t(activeInteractionMode === "chat" ? "research.chat.running" : "research.running"));
       setActivity([]);
       setReport(null);
-      const result = await port!.run(request, {
-        signal: controller.signal,
-        mode: activeInteractionMode === "chat" ? "chat" : "research",
-        ...(activeInteractionMode === "chat" && (retry?.conversationId ?? activeChatConversationIdRef.current)
-          ? { conversationId: retry?.conversationId ?? activeChatConversationIdRef.current! }
-          : {}),
-        policy,
-        ...(activeInteractionMode === "chat"
-          ? { qualityPolicy: resolvedChatQualityPolicy! }
-          : {}),
-        ...(activeInteractionMode === "chat" && retry?.chatCheckpointResume
-          ? { chatCheckpointResume: retry.chatCheckpointResume }
-          : {}),
-        onSessionStart: (session) => {
-          if (activeInteractionMode === "chat") {
-            startedChatSession = session;
-            activeChatConversationIdRef.current = session.sessionId;
-          } else {
-            trackActiveSession(session.sessionId);
-          }
-        },
-        onProgress: () => setProgress(t(
-          activeInteractionMode === "chat" ? "research.chat.running" : "research.running",
-        )),
-        onEvent: (event) => setActivity((current) =>
-          appendTimelineEvent(current, event)
-        ),
-        onChatPresentation: (event) => setActivity((current) =>
-          appendTimelineEvent(current, event)
-        ),
-      });
+      const conversationId = retry?.conversationId ?? activeChatConversationIdRef.current ?? undefined;
+      const result = activeInteractionMode === "chat" && chatPort
+        ? retry?.chatCheckpointResume && conversationId
+          ? await chatPort.resumeTurn({
+              siteOrigin: request.scope.siteOrigin,
+              conversationId,
+              turnId: retry.chatCheckpointResume.turnId,
+              kind: retry.chatCheckpointResume.kind,
+            }, {
+              signal: controller.signal,
+              onSessionStart: (session) => {
+                startedChatSession = {
+                  sessionId: session.conversationId,
+                  turnId: session.turnId,
+                };
+                activeChatConversationIdRef.current = session.conversationId;
+              },
+              onEvent: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+              onPresentation: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+            })
+          : await chatPort.startTurn({
+              request,
+              qualityPolicy: resolvedChatQualityPolicy!,
+              ...(conversationId ? { conversationId } : {}),
+            }, {
+              signal: controller.signal,
+              onSessionStart: (session) => {
+                startedChatSession = {
+                  sessionId: session.conversationId,
+                  turnId: session.turnId,
+                };
+                activeChatConversationIdRef.current = session.conversationId;
+              },
+              onEvent: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+              onPresentation: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+            })
+        : await port!.run(request, {
+            signal: controller.signal,
+            mode: activeInteractionMode === "chat" ? "chat" : "research",
+            ...(activeInteractionMode === "chat" && conversationId ? { conversationId } : {}),
+            policy,
+            ...(activeInteractionMode === "chat"
+              ? { qualityPolicy: resolvedChatQualityPolicy! }
+              : {}),
+            ...(activeInteractionMode === "chat" && retry?.chatCheckpointResume
+              ? { chatCheckpointResume: retry.chatCheckpointResume }
+              : {}),
+            onSessionStart: (session) => {
+              if (activeInteractionMode === "chat") {
+                startedChatSession = session;
+                activeChatConversationIdRef.current = session.sessionId;
+              } else {
+                trackActiveSession(session.sessionId);
+              }
+            },
+            onProgress: () => setProgress(t(
+              activeInteractionMode === "chat" ? "research.chat.running" : "research.running",
+            )),
+            onEvent: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+            onChatPresentation: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+          });
       setReport(result);
       setProgress("");
       return true;
     } catch (value) {
       if (value instanceof ChatUserQuestionRequiredError) {
-        const recovered = port?.getPendingChatQuestion && site?.origin
-          ? await port.getPendingChatQuestion(site.origin).catch(() => null)
+        const recovered = site?.origin
+          ? await (chatPort
+              ? chatPort.getPendingQuestion(site.origin)
+              : port?.getPendingChatQuestion?.(site.origin) ?? Promise.resolve(null))
+            .catch(() => null)
           : null;
         const fallback = startedChatSession?.turnId && resolvedChatRequest && resolvedChatQualityPolicy
           ? {
@@ -2012,9 +2057,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           resolvedChatRequest?.scope.siteOrigin ?? site?.origin;
         const interruptedChat = errorCode === "paused" &&
           (interactionModeOverride ?? interactionMode) === "chat" &&
-          Boolean(interruptedSiteOrigin && (await port?.getChatInteraction?.(
-            interruptedSiteOrigin,
-          ).catch(() => null))?.streamInterruption);
+          Boolean(interruptedSiteOrigin && (await (chatPort
+            ? chatPort.getInteraction(interruptedSiteOrigin)
+            : port?.getChatInteraction?.(interruptedSiteOrigin) ?? Promise.resolve(null))
+            .catch(() => null))?.streamInterruption);
         setActionStatus(t(interruptedChat
           ? "research.chat.streamInterrupted"
           : errorCode === "paused"
@@ -2046,7 +2092,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   async function submitChatQuestionAnswer(): Promise<void> {
     const pending = pendingChatQuestion;
-    if (!pending || !port || running) return;
+    if (!pending || (!chatPort && !port) || running || !site?.origin) return;
     let value: ChatUserQuestionAnswerV1["value"];
     if (pending.question.responseKind === "free_text") {
       value = { kind: "text", text: chatQuestionText.trim() };
@@ -2074,26 +2120,47 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const result = await port.run(pending.request, {
-        signal: controller.signal,
-        mode: "chat",
-        conversationId: pending.conversationId,
-        qualityPolicy: pending.qualityPolicy,
-        chatResume: { turnId: pending.turnId, answer },
-        onSessionStart: (session) => {
-          activeChatConversationIdRef.current = session.sessionId;
-        },
-        onProgress: () => setProgress(t("research.chat.running")),
-        onEvent: (event) => setActivity((current) => appendTimelineEvent(current, event)),
-        onChatPresentation: (event) => setActivity((current) => appendTimelineEvent(current, event)),
-      });
+      const result = chatPort
+        ? await chatPort.answerQuestion({
+            siteOrigin: site.origin,
+            conversationId: pending.conversationId,
+            turnId: pending.turnId,
+            answer,
+          }, {
+            signal: controller.signal,
+            onSessionStart: (session) => {
+              activeChatConversationIdRef.current = session.conversationId;
+            },
+            onEvent: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+            onPresentation: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+          })
+        : pending.request && pending.qualityPolicy
+          ? await port!.run(pending.request, {
+              signal: controller.signal,
+              mode: "chat",
+              conversationId: pending.conversationId,
+              qualityPolicy: pending.qualityPolicy,
+              chatResume: { turnId: pending.turnId, answer },
+              onSessionStart: (session) => {
+                activeChatConversationIdRef.current = session.sessionId;
+              },
+              onProgress: () => setProgress(t("research.chat.running")),
+              onEvent: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+              onChatPresentation: (event) => setActivity((current) => appendTimelineEvent(current, event)),
+            })
+          : (() => {
+              throw new ResearchContractError("invalid-request", "The Chat question checkpoint is incomplete.");
+            })();
       setPendingChatQuestion(null);
       setReport(result);
       setProgress("");
     } catch (value) {
       if (value instanceof ChatUserQuestionRequiredError) {
-        const next = await port.getPendingChatQuestion?.(pending.request.scope.siteOrigin)
-          .catch(() => null);
+        const next = await (chatPort
+          ? chatPort.getPendingQuestion(site.origin)
+          : pending.request
+            ? port?.getPendingChatQuestion?.(pending.request.scope.siteOrigin) ?? Promise.resolve(null)
+            : Promise.resolve(null)).catch(() => null);
         if (next) setPendingChatQuestion(next);
         setActionStatus(t("research.chat.question.waiting"));
       } else {
@@ -2188,7 +2255,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           ? { baseQuestion: submittedRequest.question }
           : {}),
       };
-      if (interactionMode === "chat" && port?.controlActiveChat) {
+      if (interactionMode === "chat" && (chatPort || port?.controlActiveChat)) {
         try {
           const state = await currentChatInteraction();
           await controlChat({
@@ -2241,7 +2308,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     }
     if (interactionMode === "chat") {
       chatTurnSequence.current += 1;
-      if (!port?.controlActiveChat) {
+      if (!chatPort && !port?.controlActiveChat) {
         const queued = {
           id: `research-steering-turn:${chatTurnSequence.current}`,
           revision: 1,
@@ -2296,7 +2363,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   async function saveQueuedTurnEdit(turnId: string): Promise<void> {
     const content = queuedTurnDraft.trim();
     if (!content) return;
-    if (interactionMode === "chat" && port?.controlActiveChat) {
+    if (interactionMode === "chat" && (chatPort || port?.controlActiveChat)) {
       try {
         const state = await currentChatInteraction();
         const queued = state.queue.find((candidate) => candidate.id === turnId);
@@ -2336,7 +2403,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   }
 
   async function removeQueuedTurn(turnId: string): Promise<void> {
-    if (interactionMode === "chat" && port?.controlActiveChat) {
+    if (interactionMode === "chat" && (chatPort || port?.controlActiveChat)) {
       try {
         const state = await currentChatInteraction();
         const queued = state.queue.find((candidate) => candidate.id === turnId);
@@ -2413,7 +2480,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     const steering = chatInteractionRef.current?.pendingSteering ??
       chatInteractionRef.current?.acceptedSteering;
     if (interactionMode !== "chat" || running || pendingChatQuestion ||
-        !steering || queueDrainInFlight.current || !port?.controlActiveChat) return;
+        !steering || queueDrainInFlight.current || (!chatPort && !port?.controlActiveChat)) return;
     let cancelled = false;
     queueDrainInFlight.current = true;
     void (async () => {
@@ -2461,7 +2528,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       }
     })();
     return () => { cancelled = true; };
-  }, [chatInteractionRevision, interactionMode, pendingChatQuestion, port, running, t]);
+  }, [chatInteractionRevision, chatPort, interactionMode, pendingChatQuestion, port, running, t]);
 
   useEffect(() => {
     const interruption = chatInteractionRef.current?.streamInterruption;
@@ -2512,7 +2579,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           failedQueuedTurnId.current = queued.id;
           return;
         }
-        if (port?.controlActiveChat) {
+        if (chatPort || port?.controlActiveChat) {
           const state = await loadChatInteraction();
           const admitted = state?.queue.find((candidate) => candidate.id === queued.id);
           if (state && admitted) {
@@ -3047,7 +3114,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   async function startNewConversation(): Promise<void> {
     if (running) return;
-    await port?.resetChatConversation?.();
+    if (chatPort) await chatPort.resetConversation();
+    else await port?.resetChatConversation?.();
     setChatThinkingMode("auto");
     selectInteractionMode("chat", "auto");
     setQuestion("");
@@ -3741,7 +3809,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                     disabled={running ? false : question.trim().length === 0}
                     onClick={() => {
                       if (running) {
-                        abortRef.current?.abort(new ResearchContractError("cancelled", t("research.stopped")));
+                        if (interactionMode === "chat" && chatPort) void chatPort.stop();
+                        else abortRef.current?.abort(new ResearchContractError("cancelled", t("research.stopped")));
                         return;
                       }
                       const value = question;
@@ -3973,7 +4042,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             )}
             <Button
               variant="outline"
-              onClick={() => abortRef.current?.abort()}
+              onClick={() => {
+                if (interactionMode === "chat" && chatPort) void chatPort.stop();
+                else abortRef.current?.abort();
+              }}
               disabled={!running}
               data-testid="research-cancel"
             >

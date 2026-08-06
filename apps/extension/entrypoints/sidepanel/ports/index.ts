@@ -32,7 +32,7 @@ import { chromePdfExportPort } from "./pdf.js";
 import { chromeDocxExportPort, chromeDocxTemplateStore } from "./docx.js";
 import { chromeTemplateLibrary } from "./templates.js";
 import { chromeSettingsStore } from "./settings.js";
-import { chromeResearchPort } from "./research.js";
+import { chromeChatAgentPort, chromeResearchPort } from "./research.js";
 
 /**
  * What the Chrome side panel can actually do today.
@@ -58,6 +58,7 @@ export const CHROME_CAPABILITIES: readonly HostCapability[] = [
 export function createChromePorts(): AppPorts {
   const manifest = chrome.runtime.getManifest();
   const site = createSiteContext();
+  const research = chromeResearchPort();
 
   return {
     host: {
@@ -102,7 +103,8 @@ export function createChromePorts(): AppPorts {
     docxTemplates: chromeDocxTemplateStore(site),
     templates: chromeTemplateLibrary(site),
     settings: chromeSettingsStore(),
-    research: chromeResearchPort(),
+    research,
+    chat: chromeChatAgentPort(research),
     // `countScopePages` is deliberately NOT supplied — see the note above.
   };
 }
