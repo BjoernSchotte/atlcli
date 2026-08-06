@@ -128,6 +128,74 @@ export interface ChatInteractionStateV1 {
   }>;
 }
 
+/**
+ * Host-neutral, revision-fenced controls for a live ordinary-Chat turn.
+ * Presenters may request these mutations, but only the host that owns the
+ * active workspace is allowed to apply them.
+ */
+export type ChatInteractionControlV1 =
+  | {
+      kind: "enqueue";
+      expectedRevision: number;
+      messageId: string;
+      content: string;
+      at: string;
+    }
+  | {
+      kind: "edit";
+      expectedRevision: number;
+      messageId: string;
+      expectedMessageRevision: number;
+      content: string;
+      at: string;
+    }
+  | {
+      kind: "remove";
+      expectedRevision: number;
+      messageId: string;
+      expectedMessageRevision: number;
+      at: string;
+    }
+  | {
+      kind: "steer";
+      expectedRevision: number;
+      steeringId: string;
+      instruction: string;
+      at: string;
+    }
+  | {
+      kind: "consume_steering";
+      expectedRevision: number;
+      steeringId: string;
+      expectedSteeringRevision: number;
+      at: string;
+    }
+  | {
+      kind: "edit_steering";
+      expectedRevision: number;
+      steeringId: string;
+      expectedSteeringRevision: number;
+      instruction: string;
+      at: string;
+    }
+  | {
+      kind: "remove_steering";
+      expectedRevision: number;
+      steeringId: string;
+      expectedSteeringRevision: number;
+      at: string;
+    };
+
+/** Presenter-safe form; the trusted host supplies the durable timestamp. */
+export type ChatInteractionCommandV1 =
+  | Omit<Extract<ChatInteractionControlV1, { kind: "enqueue" }>, "at">
+  | Omit<Extract<ChatInteractionControlV1, { kind: "edit" }>, "at">
+  | Omit<Extract<ChatInteractionControlV1, { kind: "remove" }>, "at">
+  | Omit<Extract<ChatInteractionControlV1, { kind: "steer" }>, "at">
+  | Omit<Extract<ChatInteractionControlV1, { kind: "consume_steering" }>, "at">
+  | Omit<Extract<ChatInteractionControlV1, { kind: "edit_steering" }>, "at">
+  | Omit<Extract<ChatInteractionControlV1, { kind: "remove_steering" }>, "at">;
+
 function text(value: unknown, label: string, maximum: number): string {
   if (typeof value !== "string") {
     throw new ChatContractError("invalid-request", `${label} is invalid.`);
@@ -168,6 +236,123 @@ function positiveInteger(value: unknown, label: string): number {
     throw new ChatContractError("invalid-request", `${label} is invalid.`);
   }
   return normalized;
+}
+
+export function normalizeChatInteractionControlV1(
+  value: unknown,
+): ChatInteractionControlV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ChatContractError("invalid-request", "Chat interaction control is invalid.");
+  }
+  const control = value as Record<string, unknown>;
+  const expectedRevision = positiveInteger(
+    control.expectedRevision,
+    "Chat interaction expected revision",
+  );
+  const at = iso(control.at, "Chat interaction control time");
+  if (control.kind === "enqueue") {
+    return {
+      kind: "enqueue",
+      expectedRevision,
+      messageId: id(control.messageId, "Chat queued message ID"),
+      content: text(control.content, "Chat queued message", 2_000),
+      at,
+    };
+  }
+  if (control.kind === "edit") {
+    return {
+      kind: "edit",
+      expectedRevision,
+      messageId: id(control.messageId, "Chat queued message ID"),
+      expectedMessageRevision: positiveInteger(
+        control.expectedMessageRevision,
+        "Chat queued message expected revision",
+      ),
+      content: text(control.content, "Chat queued message", 2_000),
+      at,
+    };
+  }
+  if (control.kind === "remove") {
+    return {
+      kind: "remove",
+      expectedRevision,
+      messageId: id(control.messageId, "Chat queued message ID"),
+      expectedMessageRevision: positiveInteger(
+        control.expectedMessageRevision,
+        "Chat queued message expected revision",
+      ),
+      at,
+    };
+  }
+  if (control.kind === "steer") {
+    return {
+      kind: "steer",
+      expectedRevision,
+      steeringId: id(control.steeringId, "Chat steering ID"),
+      instruction: text(control.instruction, "Chat steering instruction", 2_000),
+      at,
+    };
+  }
+  if (control.kind === "consume_steering") {
+    return {
+      kind: "consume_steering",
+      expectedRevision,
+      steeringId: id(control.steeringId, "Chat steering ID"),
+      expectedSteeringRevision: positiveInteger(
+        control.expectedSteeringRevision,
+        "Chat steering expected revision",
+      ),
+      at,
+    };
+  }
+  if (control.kind === "edit_steering") {
+    return {
+      kind: "edit_steering",
+      expectedRevision,
+      steeringId: id(control.steeringId, "Chat steering ID"),
+      expectedSteeringRevision: positiveInteger(
+        control.expectedSteeringRevision,
+        "Chat steering expected revision",
+      ),
+      instruction: text(control.instruction, "Chat steering instruction", 2_000),
+      at,
+    };
+  }
+  if (control.kind === "remove_steering") {
+    return {
+      kind: "remove_steering",
+      expectedRevision,
+      steeringId: id(control.steeringId, "Chat steering ID"),
+      expectedSteeringRevision: positiveInteger(
+        control.expectedSteeringRevision,
+        "Chat steering expected revision",
+      ),
+      at,
+    };
+  }
+  throw new ChatContractError("invalid-request", "Chat interaction control is invalid.");
+}
+
+export function normalizeChatInteractionCommandV1(
+  value: unknown,
+): ChatInteractionCommandV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ChatContractError("invalid-request", "Chat interaction command is invalid.");
+  }
+  const command = value as Record<string, unknown>;
+  return (({ at: _at, ...normalized }) => normalized)(
+    normalizeChatInteractionControlV1({
+      ...command,
+      at: "2000-01-01T00:00:00.000Z",
+    }),
+  );
+}
+
+export function stampChatInteractionCommandV1(
+  command: ChatInteractionCommandV1,
+  at: string,
+): ChatInteractionControlV1 {
+  return normalizeChatInteractionControlV1({ ...command, at });
 }
 
 function assertRevision(state: ChatInteractionStateV1, expectedRevision: number): void {
@@ -490,6 +675,29 @@ export function requestChatSteeringV1(input: {
   });
 }
 
+/** Apply one already-normalized host control to a durable interaction snapshot. */
+export function applyChatInteractionControlV1(
+  state: ChatInteractionStateV1,
+  control: ChatInteractionControlV1,
+): ChatInteractionStateV1 {
+  switch (control.kind) {
+    case "enqueue":
+      return enqueueChatFollowUpV1({ state, ...control });
+    case "edit":
+      return editChatFollowUpV1({ state, ...control });
+    case "remove":
+      return removeChatFollowUpV1({ state, ...control });
+    case "steer":
+      return requestChatSteeringV1({ state, ...control });
+    case "consume_steering":
+      return consumeChatSteeringV1({ state, ...control }).state;
+    case "edit_steering":
+      return editChatSteeringV1({ state, ...control });
+    case "remove_steering":
+      return removeChatSteeringV1({ state, ...control });
+  }
+}
+
 export function consumeChatSteeringV1(input: {
   state: ChatInteractionStateV1;
   expectedRevision: number;
@@ -506,6 +714,47 @@ export function consumeChatSteeringV1(input: {
   const state = next(input.state, input.at, {});
   delete state.pendingSteering;
   return { state, steering: structuredClone(steering) };
+}
+
+export function editChatSteeringV1(input: {
+  state: ChatInteractionStateV1;
+  expectedRevision: number;
+  steeringId: string;
+  expectedSteeringRevision: number;
+  instruction: string;
+  at: string;
+}): ChatInteractionStateV1 {
+  assertRevision(input.state, input.expectedRevision);
+  const steering = input.state.pendingSteering;
+  if (!steering || steering.id !== input.steeringId ||
+      steering.revision !== input.expectedSteeringRevision) {
+    throw new ChatContractError("invalid-request", "Chat steering is stale or unavailable.");
+  }
+  return next(input.state, input.at, {
+    pendingSteering: {
+      ...steering,
+      revision: steering.revision + 1,
+      instruction: text(input.instruction, "Chat steering instruction", 2_000),
+    },
+  });
+}
+
+export function removeChatSteeringV1(input: {
+  state: ChatInteractionStateV1;
+  expectedRevision: number;
+  steeringId: string;
+  expectedSteeringRevision: number;
+  at: string;
+}): ChatInteractionStateV1 {
+  assertRevision(input.state, input.expectedRevision);
+  const steering = input.state.pendingSteering;
+  if (!steering || steering.id !== input.steeringId ||
+      steering.revision !== input.expectedSteeringRevision) {
+    throw new ChatContractError("invalid-request", "Chat steering is stale or unavailable.");
+  }
+  const state = next(input.state, input.at, {});
+  delete state.pendingSteering;
+  return state;
 }
 
 export function requestChatStopV1(input: {

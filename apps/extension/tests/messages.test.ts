@@ -122,6 +122,26 @@ describe("message guards", () => {
       request: { mustNotCross: true },
     })).toBe(false);
     expect(isExtRequest({ kind: "research:cancel-session", runId: "run-1" })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:chat-control",
+      windowId: 7,
+      command: {
+        kind: "enqueue",
+        expectedRevision: 1,
+        messageId: "chat-message:next",
+        content: "Check this next.",
+      },
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:chat-control",
+      windowId: 7,
+      command: {
+        kind: "enqueue",
+        expectedRevision: 0,
+        messageId: "chat-message:next",
+        content: "Check this next.",
+      },
+    })).toBe(false);
     expect(isExtRequest({ kind: "research:pause-session", runId: "run-1" })).toBe(true);
     expect(isExtRequest({
       kind: "research:pause-session",
@@ -760,6 +780,29 @@ describe("message guards", () => {
       request: {},
     } as const;
     expect(isOffscreenRequest(offscreenChatRun)).toBe(false);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-chat-control",
+      runId: "run-chat-control",
+      controlId: "chat-control:1",
+      control: {
+        kind: "enqueue",
+        expectedRevision: 1,
+        messageId: "chat-message:next",
+        content: "Check this next.",
+        at: "2026-08-06T10:00:00.000Z",
+      },
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-chat-control",
+      runId: "run-chat-control",
+      controlId: "chat-control:1",
+      control: {
+        kind: "enqueue",
+        expectedRevision: 1,
+        messageId: "chat-message:next",
+        content: "Check this next.",
+      },
+    })).toBe(false);
     expect(isOffscreenRequest({
       ...offscreenChatRun,
       hostIdentity: {

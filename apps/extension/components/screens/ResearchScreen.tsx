@@ -67,6 +67,7 @@ import type {
   ResearchScopeCandidateV1,
   ResearchScopeClarificationRequiredV1,
   ChatQualityPolicyV1,
+  ChatInteractionStateV1,
   ChatUserQuestionAnswerV1,
   ChatUserQuestionV1,
 } from "@atlcli/research";
@@ -1262,6 +1263,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   }>>([]);
   const [queuedChatMessages, setQueuedChatMessages] = useState<Array<{
     id: string;
+    revision: number;
     content: string;
     baseQuestion?: string;
   }>>([]);
@@ -1272,6 +1274,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   } | null>(null);
   const [queuedTurnBeingEdited, setQueuedTurnBeingEdited] = useState<string | null>(null);
   const [queuedTurnDraft, setQueuedTurnDraft] = useState("");
+  const [chatInteractionRevision, setChatInteractionRevision] = useState(0);
   const [composerAddMenuOpen, setComposerAddMenuOpen] = useState(false);
   const [conversationMenuOpen, setConversationMenuOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<ResearchInteractionMode>("chat");
@@ -1353,10 +1356,88 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const chatTurnSequence = useRef(0);
   const activeSessionIdRef = useRef<string | null>(null);
   const activeChatConversationIdRef = useRef<string | null>(null);
+  const chatInteractionRef = useRef<ChatInteractionStateV1 | null>(null);
   const queueDrainInFlight = useRef(false);
   const failedQueuedTurnId = useRef<string | null>(null);
   const expectedDirectSteeringAbort = useRef(false);
   const planReviewListingGeneration = useRef(0);
+
+  function publishChatInteraction(state: ChatInteractionStateV1 | null): void {
+    chatInteractionRef.current = state;
+    setChatInteractionRevision(state?.revision ?? 0);
+    if (!state) {
+      setQueuedChatMessages([]);
+      return;
+    }
+    setQueuedChatMessages((current) => state.queue.map((message) => ({
+      id: message.id,
+      revision: message.revision,
+      content: message.content,
+      ...(current.find((candidate) => candidate.id === message.id)?.baseQuestion
+        ? { baseQuestion: current.find((candidate) => candidate.id === message.id)!.baseQuestion }
+        : {}),
+    })));
+    const durableTurns = [
+      ...state.queue.map((message) => ({
+        id: message.id,
+        content: message.content,
+        state: "queued" as const,
+      })),
+      ...(state.pendingSteering
+        ? [{
+            id: state.pendingSteering.id,
+            content: state.pendingSteering.instruction,
+            state: "steering" as const,
+          }]
+        : []),
+    ];
+    const durableIds = new Set(durableTurns.map((turn) => turn.id));
+    setChatTurns((current) => {
+      const retained = current.filter((turn) =>
+        turn.state === "sent" || durableIds.has(turn.id)
+      ).map((turn) => {
+        const durable = durableTurns.find((candidate) => candidate.id === turn.id);
+        return durable ? { ...turn, ...durable } : turn;
+      });
+      const retainedIds = new Set(retained.map((turn) => turn.id));
+      return [
+        ...retained,
+        ...durableTurns.filter((turn) => !retainedIds.has(turn.id)),
+      ];
+    });
+  }
+
+  async function loadChatInteraction(): Promise<ChatInteractionStateV1 | null> {
+    if (!port?.getChatInteraction || !site?.origin) return null;
+    const state = await port.getChatInteraction(site.origin);
+    publishChatInteraction(state);
+    return state;
+  }
+
+  async function currentChatInteraction(): Promise<ChatInteractionStateV1> {
+    const existing = chatInteractionRef.current ?? await loadChatInteraction();
+    if (!existing) {
+      throw new ResearchContractError(
+        "invalid-request",
+        t("research.chat.steeringUnavailable"),
+      );
+    }
+    return existing;
+  }
+
+  async function controlChat(
+    command: Parameters<NonNullable<ResearchPort["controlActiveChat"]>>[0],
+  ): Promise<ChatInteractionStateV1> {
+    if (!port?.controlActiveChat) {
+      throw new ResearchContractError(
+        "invalid-request",
+        t("research.chat.steeringUnavailable"),
+      );
+    }
+    const state = await port.controlActiveChat(command);
+    publishChatInteraction(state);
+    return state;
+  }
 
   useEffect(() => {
     let active = true;
@@ -1376,6 +1457,17 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         if (!active || !pending) return;
         activeChatConversationIdRef.current = pending.conversationId;
         setPendingChatQuestion(pending);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [port, site?.origin]);
+
+  useEffect(() => {
+    let active = true;
+    if (!port?.getChatInteraction || !site?.origin) return () => { active = false; };
+    void port.getChatInteraction(site.origin)
+      .then((state) => {
+        if (active) publishChatInteraction(state);
       })
       .catch(() => undefined);
     return () => { active = false; };
@@ -1864,6 +1956,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setRunning(false);
       setPauseRequested(false);
       expectedDirectSteeringAbort.current = false;
+      if ((interactionModeOverride ?? interactionMode) === "chat") {
+        void loadChatInteraction().catch(() => undefined);
+      }
       void refreshResumableSessions();
       void refreshRetainedSessions();
       void refreshScopeReviews();
@@ -1932,6 +2027,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     } finally {
       abortRef.current = null;
       setRunning(false);
+      void loadChatInteraction().catch(() => undefined);
     }
   }
 
@@ -2011,11 +2107,27 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       chatTurnSequence.current += 1;
       const queued = {
         id: `research-user-turn:${chatTurnSequence.current}`,
+        revision: 1,
         content,
         ...(interactionMode === "chat" && submittedRequest?.question
           ? { baseQuestion: submittedRequest.question }
           : {}),
       };
+      if (interactionMode === "chat" && port?.controlActiveChat) {
+        try {
+          const state = await currentChatInteraction();
+          await controlChat({
+            kind: "enqueue",
+            expectedRevision: state.revision,
+            messageId: queued.id,
+            content,
+          });
+          setActionStatus(t("research.chat.queued"));
+        } catch (value) {
+          setError(value instanceof Error ? value.message : t("research.error"));
+        }
+        return;
+      }
       setQueuedChatMessages((current) => [...current, queued]);
       setChatTurns((current) => [...current, { ...queued, state: "queued" }]);
       setActionStatus(t("research.chat.queued"));
@@ -2054,16 +2166,37 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     }
     if (interactionMode === "chat") {
       chatTurnSequence.current += 1;
-      const queued = {
-        id: `research-steering-turn:${chatTurnSequence.current}`,
-        content,
-        ...(submittedRequest?.question ? { baseQuestion: submittedRequest.question } : {}),
-      };
-      setQueuedChatMessages((current) => [queued, ...current]);
-      setChatTurns((current) => [...current, { id: queued.id, content, state: "steering" }]);
-      expectedDirectSteeringAbort.current = true;
-      abortRef.current?.abort();
-      setActionStatus(t("research.chat.steeringCheckpoint"));
+      if (!port?.controlActiveChat) {
+        const queued = {
+          id: `research-steering-turn:${chatTurnSequence.current}`,
+          revision: 1,
+          content,
+          ...(submittedRequest?.question ? { baseQuestion: submittedRequest.question } : {}),
+        };
+        setQueuedChatMessages((current) => [queued, ...current]);
+        setChatTurns((current) => [
+          ...current,
+          { id: queued.id, content, state: "steering" },
+        ]);
+        expectedDirectSteeringAbort.current = true;
+        abortRef.current?.abort();
+        setActionStatus(t("research.chat.steeringCheckpoint"));
+        return;
+      }
+      try {
+        const state = await currentChatInteraction();
+        await controlChat({
+          kind: "steer",
+          expectedRevision: state.revision,
+          steeringId: `research-steering-turn:${chatTurnSequence.current}`,
+          instruction: content,
+        });
+        expectedDirectSteeringAbort.current = true;
+        abortRef.current?.abort();
+        setActionStatus(t("research.chat.steeringCheckpoint"));
+      } catch (value) {
+        setError(value instanceof Error ? value.message : t("research.error"));
+      }
       return;
     }
     if (!activeSessionId) {
@@ -2086,9 +2219,37 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     setQueuedTurnDraft(turn.content);
   }
 
-  function saveQueuedTurnEdit(turnId: string): void {
+  async function saveQueuedTurnEdit(turnId: string): Promise<void> {
     const content = queuedTurnDraft.trim();
     if (!content) return;
+    if (interactionMode === "chat" && port?.controlActiveChat) {
+      try {
+        const state = await currentChatInteraction();
+        const queued = state.queue.find((candidate) => candidate.id === turnId);
+        if (queued) {
+          await controlChat({
+            kind: "edit",
+            expectedRevision: state.revision,
+            messageId: queued.id,
+            expectedMessageRevision: queued.revision,
+            content,
+          });
+        } else if (state.pendingSteering?.id === turnId) {
+          await controlChat({
+            kind: "edit_steering",
+            expectedRevision: state.revision,
+            steeringId: state.pendingSteering.id,
+            expectedSteeringRevision: state.pendingSteering.revision,
+            instruction: content,
+          });
+        } else {
+          throw new ResearchContractError("invalid-request", t("research.chat.steeringUnavailable"));
+        }
+      } catch (value) {
+        setError(value instanceof Error ? value.message : t("research.error"));
+        return;
+      }
+    }
     failedQueuedTurnId.current = null;
     setQueuedChatMessages((current) => current.map((candidate) =>
       candidate.id === turnId ? { ...candidate, content } : candidate
@@ -2100,7 +2261,33 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     setQueuedTurnDraft("");
   }
 
-  function removeQueuedTurn(turnId: string): void {
+  async function removeQueuedTurn(turnId: string): Promise<void> {
+    if (interactionMode === "chat" && port?.controlActiveChat) {
+      try {
+        const state = await currentChatInteraction();
+        const queued = state.queue.find((candidate) => candidate.id === turnId);
+        if (queued) {
+          await controlChat({
+            kind: "remove",
+            expectedRevision: state.revision,
+            messageId: queued.id,
+            expectedMessageRevision: queued.revision,
+          });
+        } else if (state.pendingSteering?.id === turnId) {
+          await controlChat({
+            kind: "remove_steering",
+            expectedRevision: state.revision,
+            steeringId: state.pendingSteering.id,
+            expectedSteeringRevision: state.pendingSteering.revision,
+          });
+        } else {
+          throw new ResearchContractError("invalid-request", t("research.chat.steeringUnavailable"));
+        }
+      } catch (value) {
+        setError(value instanceof Error ? value.message : t("research.error"));
+        return;
+      }
+    }
     if (failedQueuedTurnId.current === turnId) failedQueuedTurnId.current = null;
     setQueuedChatMessages((current) => current.filter((candidate) => candidate.id !== turnId));
     setChatTurns((current) => current.filter((turn) => turn.id !== turnId));
@@ -2149,6 +2336,45 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   }, [immediateSteering, port, running, t]);
 
   useEffect(() => {
+    const steering = chatInteractionRef.current?.pendingSteering;
+    if (interactionMode !== "chat" || running || pendingChatQuestion ||
+        !steering || queueDrainInFlight.current || !port?.controlActiveChat) return;
+    let cancelled = false;
+    queueDrainInFlight.current = true;
+    void (async () => {
+      try {
+        const current = await loadChatInteraction();
+        const pending = current?.pendingSteering;
+        if (!pending || cancelled) return;
+        await controlChat({
+          kind: "consume_steering",
+          expectedRevision: current.revision,
+          steeringId: pending.id,
+          expectedSteeringRevision: pending.revision,
+        });
+        if (cancelled) return;
+        setChatTurns((turns) => [
+          ...turns.filter((turn) => turn.id !== pending.id),
+          { id: pending.id, content: pending.instruction, state: "sent" },
+        ]);
+        const accepted = await run(undefined, pending.instruction, pending.id);
+        if (!accepted) {
+          failedQueuedTurnId.current = pending.id;
+        } else {
+          setActionStatus(t("research.chat.steeringApplied"));
+        }
+      } catch (value) {
+        if (!cancelled) {
+          setError(value instanceof Error ? value.message : t("research.error"));
+        }
+      } finally {
+        queueDrainInFlight.current = false;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [chatInteractionRevision, interactionMode, pendingChatQuestion, port, running, t]);
+
+  useEffect(() => {
     const queued = queuedChatMessages[0];
     const session = activeSessionId
       ? retainedSessions.find((candidate) => candidate.sessionId === activeSessionId)
@@ -2163,7 +2389,20 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           failedQueuedTurnId.current = queued.id;
           return;
         }
-        setQueuedChatMessages((current) => current.filter((candidate) => candidate.id !== queued.id));
+        if (port?.controlActiveChat) {
+          const state = await loadChatInteraction();
+          const admitted = state?.queue.find((candidate) => candidate.id === queued.id);
+          if (state && admitted) {
+            await controlChat({
+              kind: "remove",
+              expectedRevision: state.revision,
+              messageId: admitted.id,
+              expectedMessageRevision: admitted.revision,
+            });
+          }
+        } else {
+          setQueuedChatMessages((current) => current.filter((candidate) => candidate.id !== queued.id));
+        }
         setChatTurns((current) => current.map((turn) =>
           turn.id === queued.id ? { ...turn, state: "sent" } : turn
         ));
@@ -3025,7 +3264,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                       <Button
                         size="sm"
                         disabled={!queuedTurnDraft.trim()}
-                        onClick={() => saveQueuedTurnEdit(turn.id)}
+                        onClick={() => void saveQueuedTurnEdit(turn.id)}
                         data-testid={`research-queued-save-${turn.id}`}
                       >
                         {t("research.chat.saveQueued")}
@@ -3083,7 +3322,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                           className="size-7 text-destructive hover:text-destructive"
                           aria-label={t("research.chat.removeQueued")}
                           title={t("research.chat.removeQueued")}
-                          onClick={() => removeQueuedTurn(turn.id)}
+                          onClick={() => void removeQueuedTurn(turn.id)}
                           data-testid={`research-queued-remove-${turn.id}`}
                         >
                           <Trash2 className="size-3.5" aria-hidden="true" />

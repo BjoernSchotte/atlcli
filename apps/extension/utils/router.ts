@@ -44,6 +44,8 @@ import type {
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
   ChatHostIdentityV1,
+  ChatInteractionCommandV1,
+  ChatInteractionStateV1,
   ChatUserQuestionAnswerV1,
 } from "@atlcli/research";
 import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
@@ -187,6 +189,10 @@ export interface RouterDeps {
   cancelResearch?: (runId: string) => Promise<boolean>;
   requestResearchPause?: (runId: string) => Promise<"pause_requested" | "paused">;
   cancelResearchSession?: (runId: string) => Promise<boolean>;
+  controlActiveChat?: (
+    windowId: number,
+    command: ChatInteractionCommandV1,
+  ) => Promise<ChatInteractionStateV1>;
 }
 
 /**
@@ -919,6 +925,31 @@ export async function routeMessage(
         runId: msg.runId,
         cancelled: cancelled ?? false,
       };
+    }
+    case "research:chat-control": {
+      if (!deps.controlActiveChat) {
+        return {
+          kind: "research:chat-control-result",
+          ok: false,
+          code: "provider-error",
+          error: "Chat interaction control is not configured.",
+        };
+      }
+      try {
+        return {
+          kind: "research:chat-control-result",
+          ok: true,
+          state: await deps.controlActiveChat(msg.windowId, msg.command),
+        };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:chat-control-result",
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
     }
     case "research:pause-session": {
       if (!deps.requestResearchPause) {

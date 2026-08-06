@@ -9,10 +9,12 @@ import {
   consumeChatSteeringV1,
   createChatInteractionStateV1,
   editChatFollowUpV1,
+  editChatSteeringV1,
   enqueueChatFollowUpV1,
   parseChatInteractionStateV1,
   recordChatUserQuestionV1,
   removeChatFollowUpV1,
+  removeChatSteeringV1,
   requestChatSteeringV1,
   requestChatStopV1,
   resolveChatUserQuestionV1,
@@ -215,6 +217,57 @@ describe("durable Chat interaction state", () => {
       expectedStopRevision: 1,
       at: at(6),
     })).toThrow("stale or unavailable");
+  });
+
+  test("edits, removes, and consumes a revision-fenced steering request", () => {
+    const initial = createChatInteractionStateV1({
+      conversationId: "chat-session:steering-controls",
+      binding,
+      createdAt: "2026-08-06T10:00:00.000Z",
+    });
+    const steered = requestChatSteeringV1({
+      state: initial,
+      expectedRevision: initial.revision,
+      steeringId: "chat-steering:1",
+      instruction: "Check the linked issue first.",
+      at: "2026-08-06T10:00:01.000Z",
+    });
+    const edited = editChatSteeringV1({
+      state: steered,
+      expectedRevision: steered.revision,
+      steeringId: "chat-steering:1",
+      expectedSteeringRevision: 1,
+      instruction: "Check the linked page first.",
+      at: "2026-08-06T10:00:02.000Z",
+    });
+    expect(edited.pendingSteering).toMatchObject({
+      revision: 2,
+      instruction: "Check the linked page first.",
+    });
+    const removed = removeChatSteeringV1({
+      state: edited,
+      expectedRevision: edited.revision,
+      steeringId: "chat-steering:1",
+      expectedSteeringRevision: 2,
+      at: "2026-08-06T10:00:03.000Z",
+    });
+    expect(removed.pendingSteering).toBeUndefined();
+    const second = requestChatSteeringV1({
+      state: removed,
+      expectedRevision: removed.revision,
+      steeringId: "chat-steering:2",
+      instruction: "Focus on the decision.",
+      at: "2026-08-06T10:00:04.000Z",
+    });
+    const consumed = consumeChatSteeringV1({
+      state: second,
+      expectedRevision: second.revision,
+      steeringId: "chat-steering:2",
+      expectedSteeringRevision: 1,
+      at: "2026-08-06T10:00:05.000Z",
+    });
+    expect(consumed.steering.instruction).toBe("Focus on the decision.");
+    expect(consumed.state.pendingSteering).toBeUndefined();
   });
 
   test("durably validates every supported HITL question and answer shape", () => {

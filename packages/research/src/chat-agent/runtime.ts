@@ -428,6 +428,8 @@ export interface RunChatAgentInput {
   onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
   onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
   onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+  /** Host-internal control binding; never exposed to the model or presenter. */
+  onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
 }
 
 export const CHAT_MODEL_BUDGET_STATE_PATH_V1 =
@@ -800,6 +802,7 @@ export function createKiteweaveChatAgent(
           binding: durableChatSession.binding,
           at: startedAt,
         });
+        input.onInteractionReady?.(interactionController);
         if (input.resumeAnswer &&
             interactionController.snapshot().pendingQuestion?.question.id !==
               input.resumeAnswer.questionId) {

@@ -22,6 +22,11 @@ import type {
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
+import {
+  applyChatInteractionControlV1,
+  createChatInteractionStateV1,
+  stampChatInteractionCommandV1,
+} from "@atlcli/research";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
@@ -863,6 +868,78 @@ describe("portable Research screen", () => {
 
     await dom.click("research-queued-remove-research-user-turn:2");
     expect(dom.find("research-chat").textContent).not.toContain("Check source two after the report.");
+
+    releaseRun?.(report);
+    await dom.flush();
+  });
+
+  it("persists queue, edit, and delete commands through the active Chat host", async () => {
+    let releaseRun: ((value: ResearchReportV1) => void) | undefined;
+    let interaction = createChatInteractionStateV1({
+      conversationId: "research-session:durable-queue",
+      binding: {
+        userId: "browser-principal:durable-queue",
+        providerCacheIdentity: "anthropic:browser-principal:durable-queue",
+        threadId: "research-session:durable-queue",
+        tenantOrigin: "https://example.atlassian.net",
+      },
+      createdAt: "2026-08-06T10:00:00.000Z",
+    });
+    const commands: string[] = [];
+    let tick = 1;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      getChatInteraction: async () => structuredClone(interaction),
+      controlActiveChat: async (command) => {
+        commands.push(command.kind);
+        interaction = applyChatInteractionControlV1(
+          interaction,
+          stampChatInteractionCommandV1(
+            command,
+            `2026-08-06T10:00:${String(tick++).padStart(2, "0")}.000Z`,
+          ),
+        );
+        return structuredClone(interaction);
+      },
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (_request, options) => {
+        options?.onSessionStart?.({ sessionId: interaction.conversationId });
+        return await new Promise<ResearchReportV1>((resolve) => { releaseRun = resolve; });
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-chat-thinking", "quick");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "Summarize the current page.");
+    await dom.click("research-run");
+    await dom.setValue("copilot-chat-textarea", "Check the decision section next.");
+    await pressComposerKey("Enter");
+    await dom.click("research-queued-edit-research-user-turn:2");
+    await dom.setValue(
+      "research-queued-edit-research-user-turn:2",
+      "Check the evidence section next.",
+    );
+    await dom.click("research-queued-save-research-user-turn:2");
+    await dom.click("research-queued-remove-research-user-turn:2");
+
+    expect(commands).toEqual(["enqueue", "edit", "remove"]);
+    expect(interaction.queue).toEqual([]);
+    expect(dom.find("research-chat").textContent)
+      .not.toContain("Check the evidence section next.");
 
     releaseRun?.(report);
     await dom.flush();

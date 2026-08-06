@@ -13,6 +13,7 @@ import type {
 import {
   CHAT_USER_QUESTION_SCHEMA_V1,
   ChatUserQuestionRequiredError,
+  createChatInteractionStateV1,
 } from "@atlcli/research";
 
 const noEntity: EntityDetection = { windowId: 7, url: null, entity: null, seq: 0 };
@@ -300,6 +301,47 @@ describe("routeMessage (pure router)", () => {
       policy,
     })).not.toContain("apiKey");
     expect(observed).toEqual(["chat", policy, qualityPolicy]);
+  });
+
+  it("routes a revision-fenced Chat command without caller timestamps or credentials", async () => {
+    const state = createChatInteractionStateV1({
+      conversationId: "research-session:chat-control",
+      binding: {
+        userId: "browser-principal:chat-control",
+        providerCacheIdentity: "anthropic:browser-principal:chat-control",
+        threadId: "research-session:chat-control",
+        tenantOrigin: "https://example.atlassian.net",
+      },
+      createdAt: "2026-08-06T10:00:00.000Z",
+    });
+    const received: unknown[] = [];
+    const response = await routeMessage({
+      kind: "research:chat-control",
+      windowId: 7,
+      command: {
+        kind: "enqueue",
+        expectedRevision: 1,
+        messageId: "chat-message:next",
+        content: "Check this next.",
+      },
+    }, {
+      ...okDeps,
+      controlActiveChat: async (windowId, command) => {
+        received.push(windowId, command);
+        return state;
+      },
+    });
+    expect(received).toEqual([7, {
+      kind: "enqueue",
+      expectedRevision: 1,
+      messageId: "chat-message:next",
+      content: "Check this next.",
+    }]);
+    expect(response).toEqual({
+      kind: "research:chat-control-result",
+      ok: true,
+      state,
+    });
   });
 
   it("preserves a typed Chat question instead of flattening it into a research error", async () => {

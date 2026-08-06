@@ -877,7 +877,7 @@ Implementation:
 
 - [x] Add the shared durable `askUserQuestion` tool for multiple-choice, free-text,
       constrained mixed answers, and declared-assumption continuation.
-- [ ] Add one host-neutral FIFO queue with edit/delete-before-admission and a
+- [x] Add one host-neutral FIFO queue with edit/delete-before-admission and a
       separate immediate steering command applied at a durable checkpoint.
 - [ ] Propagate stop through root, children, broker, pagination, catalog,
       interpreter bridge, and provider calls; quarantine obsolete late results.
@@ -904,7 +904,7 @@ Implementation:
 Automated proof:
 
 - [x] HITL pause/reload/answer/resume works with every supported question shape.
-- [ ] Queue messages remain FIFO and separately editable/deletable; immediate
+- [x] Queue messages remain FIFO and separately editable/deletable; immediate
       steering does not become an ordinary queued follow-up.
 - [ ] Steering revises only eligible remaining work and re-runs scope/HITL checks.
 - [x] Stop acknowledgement meets an evidence-backed bound and no cancelled result
@@ -973,6 +973,20 @@ host regression test proves that a late completion cannot enter the result. All
 41 packed lifecycle tests pass after the transport change. Catalog cancellation
 and the remaining implementation-wide propagation box stay open pending the
 shared host-port slice.
+
+Durable queue and steering-envelope proof (2026-08-06): one shared interaction
+contract now revision-fences FIFO enqueue/edit/delete and the separate immediate
+steering envelope. The active Chat worker serializes mutations while it owns the
+turn; a fresh host can restore and mutate the same state after worker loss. The
+sidepanel persists ordinary follow-ups instead of keeping a presenter-local
+queue, admits them in FIFO order only after the current turn settles, and keeps
+immediate steering out of that queue. Focused core, worker, background-router,
+offscreen, message-boundary, and React tests pass. A packed production MV3 E2E
+held an active model call, enqueued and edited a follow-up through the owning
+worker, cancelled the run cooperatively, then reopened the workspace and found
+the edited message with its durable revision. The complete production bundle
+passes all 42 packed lifecycle tests after this change. Steering-directed
+replanning and user-language semantic event replay remain separate open gates.
 
 Live acceptance:
 

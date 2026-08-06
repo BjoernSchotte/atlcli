@@ -770,6 +770,17 @@ export interface ResearchPort {
     request: ResearchRequestV1;
     qualityPolicy: ChatQualityPolicyV1;
   } | null>;
+  /** Restore the durable FIFO/steering state for the active Chat conversation. */
+  getChatInteraction?(siteOrigin: string): Promise<
+    import("./chat-agent/interaction.js").ChatInteractionStateV1 | null
+  >;
+  /**
+   * Apply one presenter command through the host that owns the active worker
+   * or, when no turn is running, directly through the retained workspace.
+   */
+  controlActiveChat?(
+    command: import("./chat-agent/interaction.js").ChatInteractionCommandV1,
+  ): Promise<import("./chat-agent/interaction.js").ChatInteractionStateV1>;
   /**
    * Start the next direct-chat turn in a fresh durable conversation. The host
    * clears only its active-conversation pointer; retained conversation state

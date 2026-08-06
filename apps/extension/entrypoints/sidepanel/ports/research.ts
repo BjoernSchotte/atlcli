@@ -17,6 +17,7 @@ import type {
   ResearchSessionPlanReviewV1,
   ResearchSessionScopeReviewV1,
   ChatUserQuestionV1,
+  ChatInteractionStateV1,
 } from "@atlcli/research";
 import {
   assertChatInteractionBindingV1,
@@ -56,6 +57,38 @@ async function browserChatHostIdentityV1(): Promise<ChatHostIdentityV1> {
   };
 }
 
+async function readActiveChatInteractionV1(siteOrigin: string): Promise<{
+  conversationId: string;
+  state: ChatInteractionStateV1;
+} | null> {
+  const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
+  const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+  if (typeof conversationId !== "string" || !RESEARCH_SESSION_ID_PATTERN.test(conversationId)) {
+    return null;
+  }
+  const identity = await browserChatHostIdentityV1();
+  const store = await IndexedDbResearchSessionStoreV1.open();
+  try {
+    if (!await store.read(conversationId)) return null;
+    const workspace = await store.workspace(conversationId);
+    const serialized = await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1);
+    if (serialized === undefined) return null;
+    const state = parseChatInteractionStateV1(JSON.parse(serialized));
+    assertChatInteractionBindingV1({
+      state,
+      conversationId,
+      binding: {
+        ...identity,
+        threadId: conversationId,
+        tenantOrigin: siteOrigin,
+      },
+    });
+    return { conversationId, state };
+  } finally {
+    store.close();
+  }
+}
+
 function safeFilename(value: string): string {
   const normalized = value
     .normalize("NFKD")
@@ -91,39 +124,50 @@ export function chromeResearchPort(): ResearchPort {
     },
 
     async getPendingChatQuestion(siteOrigin) {
-      const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
-      const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
-      if (typeof conversationId !== "string" || !RESEARCH_SESSION_ID_PATTERN.test(conversationId)) {
-        return null;
+      const active = await readActiveChatInteractionV1(siteOrigin);
+      if (!active?.state.pendingQuestion) return null;
+      return {
+        conversationId: active.conversationId,
+        turnId: active.state.pendingQuestion.turnId,
+        question: active.state.pendingQuestion.question,
+        request: active.state.pendingQuestion.resume.request,
+        qualityPolicy: active.state.pendingQuestion.resume.qualityPolicy,
+      };
+    },
+
+    async getChatInteraction(siteOrigin) {
+      return (await readActiveChatInteractionV1(siteOrigin))?.state ?? null;
+    },
+
+    async controlActiveChat(command) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
       }
-      const identity = await browserChatHostIdentityV1();
-      const store = await IndexedDbResearchSessionStoreV1.open();
-      try {
-        if (!await store.read(conversationId)) return null;
-        const workspace = await store.workspace(conversationId);
-        const serialized = await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1);
-        if (serialized === undefined) return null;
-        const state = parseChatInteractionStateV1(JSON.parse(serialized));
-        assertChatInteractionBindingV1({
-          state,
-          conversationId,
-          binding: {
-            ...identity,
-            threadId: conversationId,
-            tenantOrigin: siteOrigin,
-          },
-        });
-        if (!state.pendingQuestion) return null;
-        return {
-          conversationId,
-          turnId: state.pendingQuestion.turnId,
-          question: state.pendingQuestion.question,
-          request: state.pendingQuestion.resume.request,
-          qualityPolicy: state.pendingQuestion.resume.qualityPolicy,
-        };
-      } finally {
-        store.close();
+      const response = await chrome.runtime.sendMessage({
+        kind: "research:chat-control",
+        windowId: window.id,
+        command,
+      }) as
+        | { kind: "research:chat-control-result"; ok: true; state: ChatInteractionStateV1 }
+        | {
+            kind: "research:chat-control-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:chat-control-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The Chat interaction host returned no result.",
+        );
       }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.state;
     },
 
     async resetChatConversation() {

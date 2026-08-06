@@ -12,6 +12,7 @@ import {
   CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
   CHAT_USER_QUESTION_SCHEMA_V1,
   ChatUserQuestionRequiredError,
+  type ChatInteractionStateV1,
 } from "@atlcli/research";
 import type {
   ResearchWorkerRequestV1,
@@ -92,6 +93,63 @@ const qualityPolicy = {
 } as const;
 
 describe("dedicated research worker host", () => {
+  it("serializes revision-fenced Chat queue controls through the owning worker", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const running = host.run({
+      runId: "chat-control-1",
+      sessionId: "chat-session:control-1",
+      turnId: "chat-turn:control-1",
+      apiKey: "synthetic-key",
+      mode: "chat",
+      request,
+      qualityPolicy,
+    });
+    const controlled = host.control("chat-control-1", "control:enqueue-1", {
+      kind: "enqueue",
+      expectedRevision: 1,
+      messageId: "chat-message:next",
+      content: "Ask this next.",
+      at: "2026-08-06T12:00:00.000Z",
+    });
+    expect(worker.posted.at(-1)).toMatchObject({
+      kind: "research-worker:chat-control",
+      runId: "chat-control-1",
+      controlId: "control:enqueue-1",
+      control: { kind: "enqueue", messageId: "chat-message:next" },
+    });
+    const interaction: ChatInteractionStateV1 = {
+      schema: "atlcli.chat-interaction-state/v1",
+      conversationId: "chat-session:control-1",
+      revision: 2,
+      binding: {
+        userId: "browser-principal:control",
+        providerCacheIdentity: "anthropic:browser-principal:control",
+        threadId: "chat-session:control-1",
+        tenantOrigin: "https://example.atlassian.net",
+      },
+      updatedAt: "2026-08-06T12:00:00.000Z",
+      queue: [{
+        id: "chat-message:next",
+        revision: 1,
+        content: "Ask this next.",
+        enqueuedAt: "2026-08-06T12:00:00.000Z",
+        updatedAt: "2026-08-06T12:00:00.000Z",
+      }],
+      resolvedQuestions: [],
+    };
+    worker.emit({
+      kind: "research-worker:chat-control-result",
+      runId: "chat-control-1",
+      controlId: "control:enqueue-1",
+      ok: true,
+      state: interaction,
+    });
+    expect(await controlled).toEqual(interaction);
+    worker.emit({ kind: "research-worker:complete", runId: "chat-control-1", answer });
+    expect(await running).toBe(answer);
+  });
+
   it("transports a durable Chat question and its exact resume answer", async () => {
     const question = {
       schema: CHAT_USER_QUESTION_SCHEMA_V1,

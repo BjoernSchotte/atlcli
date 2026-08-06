@@ -14,8 +14,10 @@ import {
   classifyResearchError,
   type ChatHostIdentityV1,
   type ChatUserQuestionAnswerV1,
+  type ChatInteractionStateV1,
 } from "@atlcli/research";
 import type {
+  ChatWorkerControlV1,
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
 } from "./worker-protocol.js";
@@ -32,6 +34,10 @@ interface ActiveRun {
   reject: (reason: unknown) => void;
   interruption?: ResearchContractError;
   fallback?: ReturnType<typeof globalThis.setTimeout>;
+  controls: Map<string, {
+    resolve: (state: ChatInteractionStateV1) => void;
+    reject: (reason: unknown) => void;
+  }>;
 }
 
 interface ResearchAgentWorkerRunInput {
@@ -68,11 +74,19 @@ export class ResearchAgentWorkerHost {
     }
     const worker = this.#createWorker();
     return new Promise<ResearchReport | ChatAnswerV1>((resolve, reject) => {
-      this.#active.set(input.runId, { worker, reject });
+      this.#active.set(input.runId, { worker, reject, controls: new Map() });
       worker.onmessage = (event) => {
         const message = event.data;
         if (message.runId !== input.runId) return;
         const active = this.#active.get(input.runId);
+        if (message.kind === "research-worker:chat-control-result") {
+          const pending = active?.controls.get(message.controlId);
+          if (!pending) return;
+          active!.controls.delete(message.controlId);
+          if (message.ok) pending.resolve(message.state);
+          else pending.reject(new ResearchContractError(message.code, message.error));
+          return;
+        }
         if (active?.interruption) {
           if (
             message.kind === "research-worker:complete" ||
@@ -147,6 +161,9 @@ export class ResearchAgentWorkerHost {
       if (active?.worker === worker) {
         if (active.fallback) globalThis.clearTimeout(active.fallback);
         this.#active.delete(input.runId);
+        for (const pending of active.controls.values()) {
+          pending.reject(new ResearchContractError("cancelled", "The Chat run ended before its control was accepted."));
+        }
       }
       worker.terminate();
     });
@@ -157,6 +174,29 @@ export class ResearchAgentWorkerHost {
       runId,
       new ResearchContractError("cancelled", "The research run was cancelled."),
     );
+  }
+
+  control(
+    runId: string,
+    controlId: string,
+    control: ChatWorkerControlV1,
+  ): Promise<ChatInteractionStateV1> {
+    const active = this.#active.get(runId);
+    if (!active || active.interruption || active.controls.has(controlId)) {
+      return Promise.reject(new ResearchContractError(
+        "invalid-request",
+        "The active Chat run cannot accept this control input.",
+      ));
+    }
+    return new Promise<ChatInteractionStateV1>((resolve, reject) => {
+      active.controls.set(controlId, { resolve, reject });
+      active.worker.postMessage({
+        kind: "research-worker:chat-control",
+        runId,
+        controlId,
+        control,
+      });
+    });
   }
 
   /** Stop a worker at an already persisted durable pause checkpoint. */

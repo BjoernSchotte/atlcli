@@ -13,6 +13,7 @@ import type { RouterDeps } from "../utils/router.js";
 import {
   CHAT_USER_QUESTION_SCHEMA_V1,
   ChatUserQuestionRequiredError,
+  createChatInteractionStateV1,
 } from "@atlcli/research";
 
 const preparation = {
@@ -525,6 +526,49 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       kind: "offscreen:research-pause-result",
       runId: "run-pause",
       paused: true,
+    }]);
+  });
+
+  it("keeps Chat controls correlated through the offscreen worker host", async () => {
+    const state = createChatInteractionStateV1({
+      conversationId: "research-session:chat-control",
+      binding: {
+        userId: "browser-principal:chat-control",
+        providerCacheIdentity: "anthropic:browser-principal:chat-control",
+        threadId: "research-session:chat-control",
+        tenantOrigin: "https://example.atlassian.net",
+      },
+      createdAt: "2026-08-06T10:00:00.000Z",
+    });
+    const cap = captureResponse<OffscreenResponse>();
+    const received: unknown[] = [];
+    const control = {
+      kind: "enqueue" as const,
+      expectedRevision: 1,
+      messageId: "chat-message:next",
+      content: "Check this next.",
+      at: "2026-08-06T10:00:01.000Z",
+    };
+    expect(handleOffscreenMessage({
+      kind: "offscreen:research-chat-control",
+      runId: "run-chat-control",
+      controlId: "chat-control:1",
+      control,
+    }, cap.sendResponse, {
+      ...okOffscreenDeps,
+      controlChat: async (runId, controlId, receivedControl) => {
+        received.push(runId, controlId, receivedControl);
+        return state;
+      },
+    })).toBe(true);
+    await cap.called;
+    expect(received).toEqual(["run-chat-control", "chat-control:1", control]);
+    expect(cap.values).toEqual([{
+      kind: "offscreen:research-chat-control-result",
+      runId: "run-chat-control",
+      controlId: "chat-control:1",
+      ok: true,
+      state,
     }]);
   });
 

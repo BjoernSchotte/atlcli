@@ -16,6 +16,8 @@ import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import {
   ChatUserQuestionRequiredError,
   type ChatHostIdentityV1,
+  type ChatInteractionCommandV1,
+  type ChatInteractionStateV1,
   type ChatUserQuestionAnswerV1,
 } from "@atlcli/research";
 import {
@@ -85,6 +87,12 @@ import {
   researchPolicyFromBriefV1,
   type ResearchSessionV1,
   type ResearchScopePreflightOptionsV1,
+  WorkspaceChatInteractionControllerV1,
+  applyChatInteractionControlV1,
+  assertChatInteractionBindingV1,
+  CHAT_INTERACTION_STATE_PATH_V1,
+  parseChatInteractionStateV1,
+  stampChatInteractionCommandV1,
 } from "@atlcli/research/browser";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
@@ -126,6 +134,10 @@ import {
  */
 const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
 const TAB_OBSERVER_STORAGE_KEY = "tab-observer-state-v1";
+const ACTIVE_CHAT_CONVERSATION_KEY = "atlcli.research.active-chat-conversation-id.v1";
+const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
+const CHAT_HOST_PRINCIPAL_PATTERN = /^browser-principal:[0-9a-f-]{36}$/u;
+const CHAT_CONVERSATION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/u;
 const commonExportCatalog = new IndexedDbExportJobCatalog();
 const commonExportBytes = new IndexedDbExportByteStore();
 
@@ -482,7 +494,10 @@ export default defineBackground({
    * this map in the service worker lets an explicit UI cancellation identify
    * its own session without accepting a caller-provided session ID.
    */
-  const activeResearchRuns = new Map<string, { sessionId: string }>();
+  const activeResearchRuns = new Map<string, {
+    sessionId: string;
+    mode: "chat" | "research";
+  }>();
 
   /**
    * A resumed durable session must have exactly one owner in a live service
@@ -528,7 +543,7 @@ export default defineBackground({
     if (activeResearchRuns.has(runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
     }
-    activeResearchRuns.set(runId, { sessionId });
+    activeResearchRuns.set(runId, { sessionId, mode });
     offscreenActivity.begin();
     try {
       await ensureOffscreen();
@@ -668,7 +683,7 @@ export default defineBackground({
       if (activeResearchRuns.has(runId)) {
         throw new ResearchContractError("invalid-request", "Research run id is already active.");
       }
-      activeResearchRuns.set(runId, { sessionId: resumed.sessionId });
+      activeResearchRuns.set(runId, { sessionId: resumed.sessionId, mode: "research" });
       offscreenActivity.begin();
       try {
         await ensureOffscreen();
@@ -1729,6 +1744,103 @@ export default defineBackground({
     });
   };
 
+  const controlActiveChat = async (
+    windowId: number,
+    command: ChatInteractionCommandV1,
+  ): Promise<ChatInteractionStateV1> => {
+    const detection = await getCurrentEntity(windowId);
+    const profile = detection.url ? profileFromTabUrl(detection.url) : null;
+    if (!profile) {
+      throw new ResearchContractError(
+        "access-denied",
+        "The active Atlassian tab is unavailable for Chat control.",
+      );
+    }
+    const stored = await chrome.storage.local.get([
+      ACTIVE_CHAT_CONVERSATION_KEY,
+      CHAT_HOST_PRINCIPAL_KEY,
+    ]);
+    const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+    const userId = stored[CHAT_HOST_PRINCIPAL_KEY];
+    if (typeof conversationId !== "string" ||
+        !CHAT_CONVERSATION_ID_PATTERN.test(conversationId) ||
+        typeof userId !== "string" ||
+        !CHAT_HOST_PRINCIPAL_PATTERN.test(userId)) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The active Chat conversation is unavailable.",
+      );
+    }
+    const tenantOrigin = new URL(profile.baseUrl).origin;
+    const store = await IndexedDbResearchSessionStoreV1.open();
+    try {
+      if (!await store.read(conversationId)) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The active Chat conversation is unavailable.",
+        );
+      }
+      const workspace = await store.workspace(conversationId);
+      const serialized = await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1);
+      if (serialized === undefined) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The active Chat interaction is unavailable.",
+        );
+      }
+      const state = parseChatInteractionStateV1(JSON.parse(serialized));
+      assertChatInteractionBindingV1({
+        state,
+        conversationId,
+        binding: {
+          userId,
+          providerCacheIdentity: `anthropic:${userId}`,
+          threadId: conversationId,
+          tenantOrigin,
+        },
+      });
+      const control = stampChatInteractionCommandV1(command, new Date().toISOString());
+      const active = [...activeResearchRuns.entries()].find(([, candidate]) =>
+        candidate.mode === "chat" && candidate.sessionId === conversationId
+      );
+      if (active) {
+        await ensureOffscreen();
+        const [runId] = active;
+        const controlId = `chat-control:${crypto.randomUUID()}`;
+        const response = (await chrome.runtime.sendMessage({
+          kind: "offscreen:research-chat-control",
+          runId,
+          controlId,
+          control,
+        })) as OffscreenResponse | undefined;
+        if (!response ||
+            response.kind !== "offscreen:research-chat-control-result" ||
+            response.runId !== runId ||
+            response.controlId !== controlId) {
+          throw new ResearchContractError(
+            "provider-error",
+            "The Chat interaction host returned no correlated result.",
+          );
+        }
+        if (!response.ok) {
+          throw new ResearchContractError(response.code, response.error);
+        }
+        return response.state;
+      }
+      const interactions = await WorkspaceChatInteractionControllerV1.bind({
+        workspace,
+        conversationId,
+        binding: state.binding,
+        at: new Date().toISOString(),
+      });
+      return interactions.update((current) =>
+        applyChatInteractionControlV1(current, control)
+      );
+    } finally {
+      store.close();
+    }
+  };
+
   const cancelResearch = async (runId: string): Promise<boolean> => {
     await ensureOffscreen();
     const response = (await chrome.runtime.sendMessage({
@@ -1951,6 +2063,7 @@ export default defineBackground({
         action,
       }),
       resolveResearchScope,
+      controlActiveChat,
       cancelResearch,
       requestResearchPause,
       cancelResearchSession,

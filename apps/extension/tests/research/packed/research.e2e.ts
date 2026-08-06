@@ -6311,6 +6311,115 @@ test("cooperatively stops packed Chat and durably acknowledges the cancellation"
   expect((await harnessEvents(page)).some((event) => event.kind === "worker-error")).toBe(false);
 });
 
+test("persists and edits a queued Chat follow-up through the packed MV3 worker", async () => {
+  await installEventCapture(page);
+  const runId = "packed-chat-durable-queue";
+  const sessionId = `research-session:${runId}`;
+  await page.evaluate(async ({ key, value, sessionId, principal }) => {
+    await chrome.storage.session.set({ [key]: value });
+    await chrome.storage.local.set({
+      "atlcli.research.active-chat-conversation-id.v1": sessionId,
+      "atlcli.chat.host-principal-id.v1": principal,
+    });
+  }, {
+    key: RESEARCH_ANTHROPIC_SESSION_KEY,
+    value: FAKE_KEY,
+    sessionId,
+    principal: PACKED_CHAT_HOST_IDENTITY.userId,
+  });
+  const running = runPackedChatTurnInBackground(page, {
+    request: {
+      ...packedExactContextRequest("confluence"),
+      question: "cancel-before-ptc: Summarize the attached page.",
+    },
+    runId,
+    sessionId,
+    turnId: `research-turn:${runId}`,
+    qualityPolicy: chatQualityPolicyV1("quick"),
+  });
+  await expect.poll(async () => (await harnessEvents(page)).some((event) =>
+    event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com")
+  ), { timeout: 20_000 }).toBe(true);
+  const initial = await readPackedWorkspaceJson<{
+    revision: number;
+  }>(page, sessionId, "/.atlcli/chat/v1/interaction.json");
+  expect(initial?.revision).toBeGreaterThan(0);
+  if (!initial) return;
+  const queued = await page.evaluate(async ({ revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed Chat window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:chat-control",
+      windowId: window.id,
+      command: {
+        kind: "enqueue",
+        expectedRevision: revision,
+        messageId: "chat-message:packed-next",
+        content: "Check the decision section next.",
+      },
+    });
+  }, { revision: initial.revision });
+  expect(queued).toMatchObject({
+    kind: "research:chat-control-result",
+    ok: true,
+    state: {
+      queue: [{
+        id: "chat-message:packed-next",
+        revision: 1,
+        content: "Check the decision section next.",
+      }],
+    },
+  });
+  if (!queued || queued.ok !== true) return;
+  const edited = await page.evaluate(async ({ revision }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed Chat window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:chat-control",
+      windowId: window.id,
+      command: {
+        kind: "edit",
+        expectedRevision: revision,
+        messageId: "chat-message:packed-next",
+        expectedMessageRevision: 1,
+        content: "Check the evidence section next.",
+      },
+    });
+  }, { revision: queued.state.revision });
+  expect(edited).toMatchObject({
+    kind: "research:chat-control-result",
+    ok: true,
+    state: {
+      queue: [{
+        id: "chat-message:packed-next",
+        revision: 2,
+        content: "Check the evidence section next.",
+      }],
+    },
+  });
+
+  await page.evaluate((runId) =>
+    chrome.runtime.sendMessage({ kind: "research:cancel-session", runId }),
+  runId);
+  await expect(running).resolves.toMatchObject({
+    kind: "research:run-result",
+    runId,
+    ok: false,
+    code: "cancelled",
+  });
+  const restored = await readPackedWorkspaceJson<{
+    queue: Array<{ id: string; revision: number; content: string }>;
+  }>(page, sessionId, "/.atlcli/chat/v1/interaction.json");
+  expect(restored?.queue).toEqual([{
+    id: "chat-message:packed-next",
+    revision: 2,
+    content: "Check the evidence section next.",
+    enqueuedAt: expect.any(String),
+    updatedAt: expect.any(String),
+  }]);
+  expect((await harnessEvents(page)).some((event) => event.kind === "worker-error")).toBe(false);
+});
+
 test("reads a late section from a long attached page in packed MV3", async () => {
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {

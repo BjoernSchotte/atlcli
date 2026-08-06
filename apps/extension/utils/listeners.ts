@@ -28,7 +28,12 @@ import type {
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
 import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
-import type { ChatHostIdentityV1, ChatUserQuestionAnswerV1 } from "@atlcli/research";
+import type {
+  ChatHostIdentityV1,
+  ChatInteractionControlV1,
+  ChatInteractionStateV1,
+  ChatUserQuestionAnswerV1,
+} from "@atlcli/research";
 
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {
@@ -65,6 +70,11 @@ export interface OffscreenListenerDeps {
   ) => Promise<ResearchReport>;
   pauseResearch?: (runId: string) => Promise<boolean>;
   cancelResearch?: (runId: string) => Promise<boolean>;
+  controlChat?: (
+    runId: string,
+    controlId: string,
+    control: ChatInteractionControlV1,
+  ) => Promise<ChatInteractionStateV1>;
 }
 
 const toMessage = (err: unknown): string =>
@@ -290,6 +300,14 @@ export function handleExtMessage(
             cancelled: false,
           });
           break;
+        case "research:chat-control":
+          sendResponse({
+            kind: "research:chat-control-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
         case "research:pause-session":
           sendResponse({
             kind: "research:pause-session-result",
@@ -464,6 +482,29 @@ export function handleOffscreenMessage(
           runId: message.runId,
           cancelled: false,
         }));
+      break;
+    case "offscreen:research-chat-control":
+      (deps.controlChat
+        ? deps.controlChat(message.runId, message.controlId, message.control)
+        : Promise.reject(new Error("Chat interaction control is not configured.")))
+        .then((state) => sendResponse({
+          kind: "offscreen:research-chat-control-result",
+          runId: message.runId,
+          controlId: message.controlId,
+          ok: true,
+          state,
+        }))
+        .catch((error) => {
+          const classified = classifyResearchError(error);
+          sendResponse({
+            kind: "offscreen:research-chat-control-result",
+            runId: message.runId,
+            controlId: message.controlId,
+            ok: false,
+            code: classified.code,
+            error: classified.message,
+          });
+        });
       break;
     case "offscreen:research-pause":
       (deps.pauseResearch?.(message.runId) ?? Promise.resolve(false))

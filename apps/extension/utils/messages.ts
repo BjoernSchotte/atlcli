@@ -39,8 +39,15 @@ import type {
   ResearchScopePreflightOptionsV1,
   ResearchScopePreflightOutcomeV1,
   ChatHostIdentityV1,
+  ChatInteractionCommandV1,
+  ChatInteractionControlV1,
+  ChatInteractionStateV1,
   ChatUserQuestionAnswerV1,
   ChatUserQuestionV1,
+} from "@atlcli/research";
+import {
+  normalizeChatInteractionCommandV1,
+  normalizeChatInteractionControlV1,
 } from "@atlcli/research";
 import {
   isChatPresentationStreamEventV1,
@@ -265,6 +272,11 @@ export type ExtRequest =
   | { kind: "research:list-scope-clarification-reviews"; windowId: number }
   | ({ kind: "research:resolve-scope-clarification-review"; windowId: number } & ResearchScopeClarificationReviewActionRequest)
   | ({ kind: "research:continue-scope-clarification-review"; windowId: number } & ResearchScopeClarificationPlanningActionRequest)
+  | {
+      kind: "research:chat-control";
+      windowId: number;
+      command: ChatInteractionCommandV1;
+    }
   /** Stop only the in-flight worker; recovery remains possible. */
   | { kind: "research:cancel"; runId: string }
   /** Request a cooperative stop at the next durable retrieval checkpoint. */
@@ -561,6 +573,17 @@ export type ExtResponse =
       code: ResearchErrorCode;
       error: string;
     }
+  | {
+      kind: "research:chat-control-result";
+      ok: true;
+      state: ChatInteractionStateV1;
+    }
+  | {
+      kind: "research:chat-control-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
   | { kind: "research:cancel-result"; runId: string; cancelled: boolean }
   | {
       kind: "research:pause-session-result";
@@ -676,6 +699,12 @@ export type OffscreenRequest =
       turnId: string;
       apiKey: string;
     }
+  | {
+      kind: "offscreen:research-chat-control";
+      runId: string;
+      controlId: string;
+      control: ChatInteractionControlV1;
+    }
   | { kind: "offscreen:research-pause"; runId: string }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
@@ -711,6 +740,21 @@ export type OffscreenResponse =
   | {
       kind: "offscreen:research-resume-result";
       runId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | {
+      kind: "offscreen:research-chat-control-result";
+      runId: string;
+      controlId: string;
+      ok: true;
+      state: ChatInteractionStateV1;
+    }
+  | {
+      kind: "offscreen:research-chat-control-result";
+      runId: string;
+      controlId: string;
       ok: false;
       code: ResearchErrorCode;
       error: string;
@@ -770,6 +814,7 @@ export interface ResponseMap {
   "research:list-scope-clarification-reviews": Extract<ExtResponse, { kind: "research:list-scope-clarification-reviews-result" }>;
   "research:resolve-scope-clarification-review": Extract<ExtResponse, { kind: "research:resolve-scope-clarification-review-result" }>;
   "research:continue-scope-clarification-review": Extract<ExtResponse, { kind: "research:continue-scope-clarification-review-result" }>;
+  "research:chat-control": Extract<ExtResponse, { kind: "research:chat-control-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
   "research:pause-session": Extract<ExtResponse, { kind: "research:pause-session-result" }>;
   "research:cancel-session": Extract<ExtResponse, { kind: "research:cancel-session-result" }>;
@@ -782,6 +827,17 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; jobId?: unknown; windowId?: unknown };
   const kind = candidate.kind;
+  if (kind === "research:chat-control") {
+    const command = value as { windowId?: unknown; command?: unknown };
+    if (!hasOnlyKeys(value, ["kind", "windowId", "command"]) ||
+        !isWindowId(command.windowId)) return false;
+    try {
+      normalizeChatInteractionCommandV1(command.command);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (kind === "pdf:compile") return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   if (kind === "pdf:cancel") return hasOnlyKeys(value, ["kind", "jobId"]) && isPdfJobId(candidate.jobId);
   if (kind === "docx:prepare-runtime") {
@@ -1137,6 +1193,25 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       isResearchSessionId(resume.sessionId) &&
       isResearchTurnId(resume.turnId) &&
       isResearchApiKey(resume.apiKey);
+  }
+  if (candidate.kind === "offscreen:research-chat-control") {
+    const control = value as {
+      runId?: unknown;
+      controlId?: unknown;
+      control?: unknown;
+    };
+    return hasOnlyKeys(value, ["kind", "runId", "controlId", "control"]) &&
+      isResearchRunId(control.runId) &&
+      typeof control.controlId === "string" &&
+      /^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$/u.test(control.controlId) &&
+      (() => {
+        try {
+          normalizeChatInteractionControlV1(control.control);
+          return true;
+        } catch {
+          return false;
+        }
+      })();
   }
   if (candidate.kind === "offscreen:research-cancel" || candidate.kind === "offscreen:research-pause") {
     const cancel = value as { runId?: unknown };

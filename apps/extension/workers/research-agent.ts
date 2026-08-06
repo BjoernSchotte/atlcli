@@ -27,6 +27,8 @@ import {
   type ChatPresentationStreamEventV1,
   type ChatHostIdentityV1,
   ChatUserQuestionRequiredError,
+  applyChatInteractionControlV1,
+  type WorkspaceChatInteractionControllerV1,
 } from "@atlcli/research/browser";
 import { runChatAgent, runResearchAgent } from "@atlcli/research/browser/agent";
 import {
@@ -45,7 +47,11 @@ function post(message: ResearchWorkerResponseV1): void {
   globalThis.postMessage(message);
 }
 
-let activeRun: { runId: string; controller: AbortController } | undefined;
+let activeRun: {
+  runId: string;
+  controller: AbortController;
+  interactions?: WorkspaceChatInteractionControllerV1;
+} | undefined;
 
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   const message = event.data as Partial<ResearchWorkerRequestV1> | null;
@@ -60,6 +66,47 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           : "The research run was cancelled.",
       ));
     }
+    return;
+  }
+  if (message?.kind === "research-worker:chat-control" &&
+      typeof message.runId === "string" &&
+      typeof message.controlId === "string") {
+    const controlMessage = message as Extract<
+      ResearchWorkerRequestV1,
+      { kind: "research-worker:chat-control" }
+    >;
+    const run = activeRun;
+    void (async () => {
+      try {
+        if (!run || run.runId !== controlMessage.runId || !run.interactions) {
+          throw new ResearchContractError(
+            "invalid-request",
+            "The active Chat interaction is not ready for control input.",
+          );
+        }
+        const control = controlMessage.control;
+        const state = await run.interactions.update((current) =>
+          applyChatInteractionControlV1(current, control)
+        );
+        post({
+          kind: "research-worker:chat-control-result",
+          runId: controlMessage.runId,
+          controlId: controlMessage.controlId,
+          ok: true,
+          state,
+        });
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        post({
+          kind: "research-worker:chat-control-result",
+          runId: controlMessage.runId,
+          controlId: controlMessage.controlId,
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        });
+      }
+    })();
     return;
   }
   if (
@@ -149,6 +196,9 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
               ? { resumeAnswer: message.resumeAnswer }
               : {}),
             signal: controller.signal,
+            onInteractionReady: (interactions) => {
+              if (activeRun?.runId === runId) activeRun.interactions = interactions;
+            },
             onProgress,
             onEvent,
             onChatPresentation,

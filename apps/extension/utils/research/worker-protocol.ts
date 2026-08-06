@@ -11,15 +11,25 @@ import type {
 } from "./contracts.js";
 import type {
   ChatHostIdentityV1,
+  ChatInteractionControlV1,
+  ChatInteractionStateV1,
   ChatUserQuestionAnswerV1,
   ChatUserQuestionV1,
 } from "@atlcli/research";
+
+export type ChatWorkerControlV1 = ChatInteractionControlV1;
 
 export type ResearchWorkerRequestV1 =
   | {
       kind: "research-worker:interrupt";
       runId: string;
       disposition: "cancelled" | "paused";
+    }
+  | {
+      kind: "research-worker:chat-control";
+      runId: string;
+      controlId: string;
+      control: ChatWorkerControlV1;
     }
   | {
       kind: "research-worker:run";
@@ -49,6 +59,21 @@ export type ResearchWorkerRequestV1 =
     };
 
 export type ResearchWorkerResponseV1 =
+  | {
+      kind: "research-worker:chat-control-result";
+      runId: string;
+      controlId: string;
+      ok: true;
+      state: ChatInteractionStateV1;
+    }
+  | {
+      kind: "research-worker:chat-control-result";
+      runId: string;
+      controlId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
   | {
       kind: "research-worker:chat-presentation";
       runId: string;
