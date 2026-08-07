@@ -337,6 +337,21 @@ export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 // export: PDF_CANONICAL_SOURCE_REVISION
 export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
     fonts: readonly PdfRuntimeFontAsset[];
@@ -352,7 +367,8 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
-    "3"
+    "3",
+    "4"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -370,11 +386,20 @@ export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
 // export: PDF_TEMPLATE_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "e6c5098ecb4e19857abd6f95c096b3daf6ed748c814a97088fc8af062600e9ca";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -384,6 +409,12 @@ export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
     "asset.footerDecoration",
     "decoration.pageBorder"
 ];
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "16055eda491a674b713f77124cd2d5201fc2aff037b97d28662d21778b37e124";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -740,7 +771,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -1524,6 +1555,21 @@ export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 // export: PDF_CANONICAL_SOURCE_REVISION
 export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
     fonts: readonly PdfRuntimeFontAsset[];
@@ -1539,7 +1585,8 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
-    "3"
+    "3",
+    "4"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -1557,11 +1604,20 @@ export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
 // export: PDF_TEMPLATE_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "e6c5098ecb4e19857abd6f95c096b3daf6ed748c814a97088fc8af062600e9ca";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -1571,6 +1627,12 @@ export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
     "asset.footerDecoration",
     "decoration.pageBorder"
 ];
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "16055eda491a674b713f77124cd2d5201fc2aff037b97d28662d21778b37e124";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -1927,7 +1989,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -2711,6 +2773,21 @@ export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 // export: PDF_CANONICAL_SOURCE_REVISION
 export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
     fonts: readonly PdfRuntimeFontAsset[];
@@ -2726,7 +2803,8 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
-    "3"
+    "3",
+    "4"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -2744,11 +2822,20 @@ export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
 // export: PDF_TEMPLATE_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "e6c5098ecb4e19857abd6f95c096b3daf6ed748c814a97088fc8af062600e9ca";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -2758,6 +2845,12 @@ export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
     "asset.footerDecoration",
     "decoration.pageBorder"
 ];
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "16055eda491a674b713f77124cd2d5201fc2aff037b97d28662d21778b37e124";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -3114,7 +3207,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -3682,6 +3775,21 @@ export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 // export: PDF_CANONICAL_SOURCE_REVISION
 export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
 // export: PDF_MAX_ASSET_BYTES
 export declare const PDF_MAX_ASSET_BYTES: number;
 
@@ -3695,7 +3803,8 @@ export declare const PDF_SCAN_CHUNK_BYTES: number;
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
-    "3"
+    "3",
+    "4"
 ];
 
 // export: PDF_TEMPLATE_ASSET_SLOTS_V1
@@ -3710,11 +3819,20 @@ export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
 // export: PDF_TEMPLATE_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "e6c5098ecb4e19857abd6f95c096b3daf6ed748c814a97088fc8af062600e9ca";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -3728,11 +3846,17 @@ export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
 // export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1: readonly string[];
 
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2: readonly string[];
+
 // export: PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
 export declare const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<Record<string, string>>;
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "16055eda491a674b713f77124cd2d5201fc2aff037b97d28662d21778b37e124";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -3834,7 +3958,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -3876,8 +4000,14 @@ export declare function preservePdfSourceCellColor(sourceColor: string | undefin
 // export: projectPdfDesignThroughCatalog
 export declare function projectPdfDesignThroughCatalog(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
 
+// export: projectPdfDesignThroughCatalogV2
+export declare function projectPdfDesignThroughCatalogV2(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
+
 // export: readPdfDesignCapability
 export declare function readPdfDesignCapability<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
+
+// export: readPdfDesignCapabilityV2
+export declare function readPdfDesignCapabilityV2<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
 
 // export: ResolvedPdfTemplateAssetV1
 export interface ResolvedPdfTemplateAssetV1 {

@@ -652,31 +652,35 @@ guard also exit 0.
 
 **Implementation**
 
-- [ ] Preserve `PDF_TEMPLATE_CAPABILITIES_V1`,
+- [x] Preserve `PDF_TEMPLATE_CAPABILITIES_V1`,
       `PDF_TEMPLATE_CAPABILITY_DIGEST_V1`, and the V1 presentation revision
       byte-for-byte.
-- [ ] Add catalog/presentation V2 with the composition, branding, typography,
+- [x] Add catalog/presentation V2 with the composition, branding, typography,
       color, and layout leaves listed above. Give every descriptor exactly one
       renderer consumer and one presentation classification or details-only
       classification.
-- [ ] Pin and assert the V2 catalog digest and presentation revision in
+- [x] Pin and assert the V2 catalog digest and presentation revision in
       `design-catalog.test.ts`; include guards that V1 values did not change.
-- [ ] Replace single global catalog assumptions in renderer helpers with an
+- [x] Replace single global catalog assumptions in renderer helpers with an
       explicit catalog argument or versioned V1/V2 helper. A V1 path must never
       read V2-only leaves.
-- [ ] In `template-pack.ts`, add canonical revision 4 and a closed
+- [x] In `template-pack.ts`, add canonical revision 4 and a closed
       revision-to-catalog registry. Reject unknown revisions and mismatched
       revision/catalog pairs with stable error reasons.
-- [ ] Keep the exact `canonicalSourceFor` branches for revisions 1–3. Add a new
+- [x] Keep the exact `canonicalSourceFor` branches for revisions 1–3. Add a new
       revision-4 branch rather than modifying prior branches or default options.
-- [ ] Add compatibility tests that load known revision-1/2/3 packs and compare
+      At the T2 boundary the branch rejects canonical generation explicitly
+      until T3 installs the renderer; it must never ignore declared composition
+      data or silently render the old cover.
+- [x] Add compatibility tests that load known revision-1/2/3 packs and compare
       regenerated canonical source to their existing bytes.
-- [ ] Add negative tests: revision 4 + V1 digest, revision 3 + V2 digest,
+- [x] Add negative tests: revision 4 + V1 digest, revision 3 + V2 digest,
       correct id/version with wrong digest, missing V2 conditional values, and
       unsupported revision 5.
-- [ ] Keep the current DOCX authoring runtime explicitly pinned to V1/revision
+- [x] Keep the current DOCX authoring runtime explicitly pinned to V1/revision
       3. Add a code comment and assertion so a future alias change cannot migrate
       durable projects accidentally.
+- [x] Regenerate and verify the PDF API report and closure classification.
 
 **Verify**
 
@@ -684,8 +688,10 @@ guard also exit 0.
 rtk bun run test packages/pdf/src/design-catalog.test.ts packages/pdf/src/template-pack.test.ts packages/pdf/src/template-authoring-runtime.test.ts
 ```
 
-Expected: exit 0; V1 digest/revisions remain unchanged, V2/revision 4 validates,
-and every catalog/revision mismatch fails before Typst compilation.
+Expected: 34 tests pass; V1 digest/revisions remain unchanged, the V2/revision-4
+manifest contract validates, its pre-T3 canonical-generation guard is explicit,
+and every catalog/revision mismatch fails before Typst compilation. Typecheck,
+browser build, full build, and the API-report guard also exit 0.
 
 **STOP:** If preserving revisions 1–3 requires changing their canonical source
 or re-baselining existing PDFs, stop and split a migration plan. Compatibility

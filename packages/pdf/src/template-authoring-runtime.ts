@@ -29,7 +29,7 @@ import {
 } from "./design-catalog.js";
 import {
   PDF_CANONICAL_SOURCE_API_V1,
-  PDF_CANONICAL_SOURCE_REVISION,
+  PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
   PDF_TEMPLATE_WRITERS_V1,
   generateCanonicalPdfTemplateSourceV1,
   validatePdfTemplateManifest,
@@ -370,7 +370,9 @@ export class PdfTemplateRuntimeMaterializer
       },
       canonicalSource: {
         api: PDF_CANONICAL_SOURCE_API_V1,
-        revision: PDF_CANONICAL_SOURCE_REVISION,
+        // DOCX-derived durable projects stay on the characterized V1/rev3
+        // contract until an explicit migration is implemented.
+        revision: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
       },
       assetDescriptors: visual.descriptors,
       assets: visual.references,

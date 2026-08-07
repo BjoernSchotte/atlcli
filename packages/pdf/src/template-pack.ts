@@ -7,8 +7,10 @@
  *  3. `validatePdfTemplatePack` validates the actual payload bytes and VFS.
  */
 import {
+  CapabilityValidationError,
   computePayloadSha256,
   unpackTemplate,
+  validateDesignAgainstCatalog,
   validateManifest,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type TemplateAssetDescriptorV1,
@@ -24,7 +26,9 @@ import {
 import { decodeSvgSource, findSvgSafetyViolation } from "@atlcli/confluence";
 import {
   PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
 } from "./design-catalog.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
@@ -57,11 +61,21 @@ export const PDF_TEMPLATE_WRITERS_V1 = {
 } as const;
 
 export const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
-export const PDF_CANONICAL_SOURCE_REVISION = "3";
+export const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+export const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+export const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+export const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+/** Durable DOCX-derived authoring remains pinned to its characterized renderer. */
+export const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION =
+  PDF_CANONICAL_SOURCE_REVISION_3;
+/** Back-compatible alias retained at revision 3. */
+export const PDF_CANONICAL_SOURCE_REVISION =
+  PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION;
 export const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS = [
-  "1",
-  "2",
-  "3",
+  PDF_CANONICAL_SOURCE_REVISION_1,
+  PDF_CANONICAL_SOURCE_REVISION_2,
+  PDF_CANONICAL_SOURCE_REVISION_3,
+  PDF_CANONICAL_SOURCE_REVISION_4,
 ] as const;
 
 export type PdfTemplateValidationPhase =
@@ -87,6 +101,7 @@ export type PdfTemplateValidationReason =
   | "payload-digest-mismatch"
   | "non-bundled-font"
   | "unsupported-canonical-revision"
+  | "invalid-composition"
   | "canonical-source-mismatch"
   | "non-canonical-template-source";
 
@@ -183,6 +198,37 @@ const MAX_BORDER_WIDTH_MM = 10;
 const SUPPORTED_CANONICAL_REVISIONS = new Set<string>(
   PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
 );
+
+interface PdfCanonicalRevisionContract {
+  catalog: TemplateCapabilityCatalogV1;
+  digest: string;
+  catalogRequired: boolean;
+}
+
+const CANONICAL_REVISION_CONTRACTS: Readonly<
+  Record<string, PdfCanonicalRevisionContract>
+> = Object.freeze({
+  [PDF_CANONICAL_SOURCE_REVISION_1]: {
+    catalog: PDF_TEMPLATE_CAPABILITIES_V1,
+    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    catalogRequired: false,
+  },
+  [PDF_CANONICAL_SOURCE_REVISION_2]: {
+    catalog: PDF_TEMPLATE_CAPABILITIES_V1,
+    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    catalogRequired: true,
+  },
+  [PDF_CANONICAL_SOURCE_REVISION_3]: {
+    catalog: PDF_TEMPLATE_CAPABILITIES_V1,
+    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    catalogRequired: true,
+  },
+  [PDF_CANONICAL_SOURCE_REVISION_4]: {
+    catalog: PDF_TEMPLATE_CAPABILITIES_V2,
+    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+    catalogRequired: true,
+  },
+});
 
 function reject(
   phase: PdfTemplateValidationPhase,
@@ -319,13 +365,122 @@ function validateBorder(
   }
 }
 
+function readDesignPath(design: WikiPdfTemplateDesignV1, path: string): unknown {
+  let cursor: unknown = design;
+  for (const segment of path.split(".")) {
+    if (typeof cursor !== "object" || cursor === null) return undefined;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor;
+}
+
+function requireRevision4DesignPaths(
+  design: WikiPdfTemplateDesignV1,
+  paths: readonly string[]
+): void {
+  for (const path of paths) {
+    if (readDesignPath(design, path) === undefined) {
+      reject(
+        "pdf-manifest",
+        "invalid-composition",
+        `design.${path}`,
+        "is required by the selected revision-4 composition"
+      );
+    }
+  }
+}
+
+function validateRevision4Composition(
+  manifest: TemplateManifest,
+  decorationIds: ReadonlySet<string>
+): void {
+  const design = manifest.design!;
+  const compositions = design.compositions;
+  if (!compositions) {
+    reject(
+      "pdf-manifest",
+      "invalid-composition",
+      "design.compositions",
+      "is required by canonical revision 4"
+    );
+  }
+  if (compositions.cover.kind === "type-cut") {
+    requireRevision4DesignPaths(design, [
+      "tokens.colors.coverTitleInverse",
+      "tokens.layout.coverTitleFrameHeight",
+      "typography.roles.coverTitleCompact.font",
+      "typography.roles.coverTitleCompact.size",
+      "typography.roles.coverTitleCompact.weight",
+      "typography.roles.coverTitleMinimum.font",
+      "typography.roles.coverTitleMinimum.size",
+      "typography.roles.coverTitleMinimum.weight",
+    ]);
+    if (!manifest.assets?.["asset.coverBackground"]) {
+      reject(
+        "pdf-manifest",
+        "invalid-composition",
+        "assets.asset.coverBackground",
+        "is required by the type-cut cover"
+      );
+    }
+    if (!decorationIds.has("asset.coverBackground")) {
+      reject(
+        "pdf-manifest",
+        "invalid-composition",
+        "decorations",
+        "must contain the first-page cover-background decoration"
+      );
+    }
+  }
+
+  const closing = compositions.closingPage;
+  if (closing.kind !== "brand-lockup") return;
+  requireRevision4DesignPaths(design, [
+    "tokens.colors.closingPageBackground",
+    "tokens.colors.closingBrandText",
+    "tokens.layout.closingBrandBottomInset",
+    "tokens.layout.closingBrandBlockWidth",
+  ]);
+  if (closing.logo === "show") {
+    requireRevision4DesignPaths(design, [
+      "tokens.layout.closingBrandLogoWidth",
+      "tokens.layout.closingBrandLogoHeight",
+      "tokens.layout.closingBrandLogoGap",
+    ]);
+    if (!manifest.assets?.["asset.logo"]) {
+      reject(
+        "pdf-manifest",
+        "invalid-composition",
+        "assets.asset.logo",
+        "is required when brand-lockup logo is shown"
+      );
+    }
+  }
+  if (closing.website === "show") {
+    requireRevision4DesignPaths(design, [
+      "tokens.layout.closingBrandTextGap",
+      "typography.roles.closingWebsite.font",
+      "typography.roles.closingWebsite.size",
+      "typography.roles.closingWebsite.weight",
+    ]);
+  }
+  if (closing.legalNotice === "show") {
+    requireRevision4DesignPaths(design, [
+      "tokens.layout.closingBrandTextGap",
+      "typography.roles.closingLegal.font",
+      "typography.roles.closingLegal.size",
+      "typography.roles.closingLegal.weight",
+    ]);
+  }
+}
+
 /**
  * Phase 2: validate only PDF catalog ownership, writers, scopes, and geometry.
  * This function does not inspect payload bytes.
  */
 export function validatePdfTemplateManifest(
   manifest: TemplateManifest,
-  catalog: TemplateCapabilityCatalogV1 = PDF_TEMPLATE_CAPABILITIES_V1
+  catalog?: TemplateCapabilityCatalogV1
 ): TemplateManifest {
   if (manifest.engine.kind !== "typst" || manifest.engine.api !== "wiki.pdf-template/v1") {
     reject(
@@ -333,20 +488,6 @@ export function validatePdfTemplateManifest(
       "canonical-source-mismatch",
       "engine",
       "must target wiki.pdf-template/v1"
-    );
-  }
-  // Force the caller to provide the actual renderer-owned catalog rather than
-  // a same-shaped arbitrary object. This is an execution allowlist, not a UI
-  // hint.
-  if (
-    catalog.id !== PDF_TEMPLATE_CAPABILITIES_V1.id ||
-    catalog.version !== PDF_TEMPLATE_CAPABILITIES_V1.version
-  ) {
-    reject(
-      "pdf-manifest",
-      "canonical-source-mismatch",
-      "catalog",
-      "does not match the PDF V1 capability catalog"
     );
   }
   if (
@@ -371,12 +512,32 @@ export function validatePdfTemplateManifest(
       `revision "${manifest.canonicalSource.revision}" needs an explicit template migration; supported revisions: ${PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS.join(", ")}`
     );
   }
+  const revision =
+    manifest.canonicalSource?.revision ?? PDF_CANONICAL_SOURCE_REVISION_1;
+  const contract = CANONICAL_REVISION_CONTRACTS[revision];
+  if (!contract) {
+    reject(
+      "pdf-manifest",
+      "unsupported-canonical-revision",
+      "canonicalSource.revision",
+      `revision "${revision}" needs an explicit template migration`
+    );
+  }
+  // An explicit catalog parameter is an execution allowlist, not a same-shaped
+  // UI hint. The revision registry owns the exact accepted object.
+  if (catalog !== undefined && catalog !== contract.catalog) {
+    reject(
+      "pdf-manifest",
+      "canonical-source-mismatch",
+      "catalog",
+      `does not match canonical revision ${revision}`
+    );
+  }
   if (manifest.capabilityCatalog !== undefined) {
     if (
-      manifest.capabilityCatalog.id !== PDF_TEMPLATE_CAPABILITIES_V1.id ||
-      manifest.capabilityCatalog.version !==
-        PDF_TEMPLATE_CAPABILITIES_V1.version ||
-      manifest.capabilityCatalog.digest !== PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+      manifest.capabilityCatalog.id !== contract.catalog.id ||
+      manifest.capabilityCatalog.version !== contract.catalog.version ||
+      manifest.capabilityCatalog.digest !== contract.digest
     ) {
       reject(
         "pdf-manifest",
@@ -385,16 +546,41 @@ export function validatePdfTemplateManifest(
         "does not match the renderer-owned PDF capability catalog"
       );
     }
-  } else if (
-    manifest.canonicalSource?.revision === "2" ||
-    manifest.canonicalSource?.revision === "3"
-  ) {
+  } else if (contract.catalogRequired) {
     reject(
       "pdf-manifest",
       "canonical-source-mismatch",
       "capabilityCatalog",
-      "is required by canonical source revision 2 or later"
+      `is required by canonical source revision ${revision}`
     );
+  }
+
+  if (revision === PDF_CANONICAL_SOURCE_REVISION_4) {
+    if (!manifest.design) {
+      reject(
+        "pdf-manifest",
+        "invalid-composition",
+        "design",
+        "canonical revision 4 requires a design"
+      );
+    }
+    try {
+      validateDesignAgainstCatalog(
+        manifest.design,
+        PDF_TEMPLATE_CAPABILITIES_V2,
+        "authoring"
+      );
+    } catch (error) {
+      if (error instanceof CapabilityValidationError) {
+        reject(
+          "pdf-manifest",
+          "invalid-composition",
+          error.path ?? "design",
+          error.message
+        );
+      }
+      throw error;
+    }
   }
 
   const assets = manifest.assets ?? {};
@@ -539,6 +725,9 @@ export function validatePdfTemplateManifest(
         "has no matching decoration"
       );
     }
+  }
+  if (revision === PDF_CANONICAL_SOURCE_REVISION_4) {
+    validateRevision4Composition(manifest, seen);
   }
   return manifest;
 }
@@ -782,6 +971,13 @@ function canonicalSourceFor(
         { ...labels },
         visuals,
         { positionedLogo: true }
+      );
+    case "4":
+      reject(
+        "pack-integrity",
+        "non-canonical-template-source",
+        "canonicalSource.revision",
+        "canonical revision 4 is valid but its composition renderer is installed by T3/T4"
       );
     default:
       reject(
@@ -1062,6 +1258,7 @@ export async function validatePdfTemplatePack(
     );
   }
   const sourceSha256 = await sha256Hex(entryBytes);
+  const revisionContract = CANONICAL_REVISION_CONTRACTS[canonical.revision]!;
   const acceptedAssets = Object.freeze(
     Object.fromEntries(
       Object.entries(assets).map(([slot, asset]) => [
@@ -1078,13 +1275,13 @@ export async function validatePdfTemplatePack(
       capabilityCatalog: {
         id:
           manifest.capabilityCatalog?.id ??
-          PDF_TEMPLATE_CAPABILITIES_V1.id,
+          revisionContract.catalog.id,
         version:
           manifest.capabilityCatalog?.version ??
-          PDF_TEMPLATE_CAPABILITIES_V1.version,
+          revisionContract.catalog.version,
         digest:
           manifest.capabilityCatalog?.digest ??
-          PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+          revisionContract.digest,
       },
       design: structuredClone(manifest.design!),
       fallbackLocale: fallback.locale,
@@ -1122,7 +1319,7 @@ export async function loadPdfTemplatePack(
   const manifest = validateManifest(unpacked.manifest, {
     availableFonts: PDF_RUNTIME_ASSETS.fonts,
   });
-  validatePdfTemplateManifest(manifest, PDF_TEMPLATE_CAPABILITIES_V1);
+  validatePdfTemplateManifest(manifest);
   return validatePdfTemplatePack(manifest, unpacked.files);
 }
 
