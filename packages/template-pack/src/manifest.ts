@@ -43,11 +43,11 @@ export const SUPPORTED_SCHEMA_VERSION = 1;
 /**
  * Pinned Typst compiler version used to gate `engine.compilerRange`. Mirrors
  * the Typst version inside `PDF_BROWSER_COMPILER_VERSION`
- * (`@atlcli/pdf-compiler-browser`, currently `"… / Typst 0.14.2"`). Kept as a
+ * (`@atlcli/pdf-compiler-browser`, currently `"… / Typst 0.15.1"`). Kept as a
  * local constant so this pure package need not depend on the WASM compiler; a
  * host may pass the authoritative value via {@link ValidateManifestOptions}.
  */
-export const PINNED_TYPST_VERSION = "0.14.2";
+export const PINNED_TYPST_VERSION = "0.15.1";
 
 /** Recognized `engine.api` values, keyed by `engine.kind`. */
 export const KNOWN_ENGINE_API = {
@@ -122,8 +122,8 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
 export interface ValidateManifestOptions {
   /**
    * Pinned Typst version to gate `engine.compilerRange` against. Accepts a bare
-   * semver (`"0.14.2"`) or the descriptive `PDF_BROWSER_COMPILER_VERSION` form
-   * (`"typst.ts 0.7.0 / Typst 0.14.2"`, the last version token is used).
+   * semver (`"0.15.1"`) or the descriptive `PDF_BROWSER_COMPILER_VERSION` form
+   * (the last version token is used).
    * Defaults to {@link PINNED_TYPST_VERSION}.
    */
   pinnedTypstVersion?: string;
@@ -315,7 +315,9 @@ export function validateManifest(
       if (!satisfiesRange(pinned, compilerRange)) {
         throw new ManifestValidationError(
           "compiler-range-mismatch",
-          `Pinned Typst ${pinned} does not satisfy engine.compilerRange "${compilerRange}"`,
+          `Template engine range "${compilerRange}" does not accept required Typst ${pinned}. ` +
+            `Migrate the original recipe without overwriting it: atlcli pdf-template ` +
+            `migrate-runtime <recipe.yaml> --output <recipe.typst-${pinned}.yaml>`,
           "engine.compilerRange"
         );
       }

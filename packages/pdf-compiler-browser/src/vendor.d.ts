@@ -15,9 +15,13 @@ declare module "@atlcli/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/ty
   }
 
   export class TypstCompilerBuilder {
+    free(): void;
     add_raw_font(data: Uint8Array): Promise<void>;
     build(): Promise<TypstCompiler>;
   }
+
+  export function embedded_typst_commit(): string | undefined;
+  export function embedded_typst_version(): string;
 
   export default function initTypst(options: {
     module_or_path: ArrayBuffer | URL | Response;

@@ -1,0 +1,121 @@
+{
+  "schema": "atlcli.typst-0151-adoption-evidence/1",
+  "recordedAt": "2026-08-07",
+  "runtime": {
+    "compilerVersion": "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1",
+    "typstTsCommit": "2ff4a660328415013d739fe69e12b2f06f12ed82",
+    "typstCoreCommit": "301531fcfc4cb7ba9d688aa8a0738e8a6372c122",
+    "releaseTag": "web-compiler-v0.8.0-rc3.typst0151.1",
+    "packageSha256": "7b7746c3e630d510b13c888127f00a39e7f84b6cc8402fce952c394594f8a20b",
+    "glueSha256": "542926574dc2659de3fcb34b3e286f8aa1fc42f7a91d19d6e0fd2a123bf3753a",
+    "wasmSha256": "39d2ce3cda6cc41ed267a8dd641a358785bca65c99df39bdd55574f7f688cd27"
+  },
+  "sourceProof": {
+    "cleanBuilds": 2,
+    "byteIdentical": true,
+    "ciRun": "https://github.com/BjoernSchotte/typst.ts/actions/runs/31175218426",
+    "cspStaticGate": "pass",
+    "officialCoreDirectBuild": {
+      "result": "fail-as-characterized",
+      "commit": "9dfd3a08500b7896045f907433cf7b4b02434fad",
+      "reason": "typst.ts requires the Myriad-specific Frame::content_hint API",
+      "decision": "temporarily pin the patch-equivalent BjoernSchotte/typst forward-port; upstream the eight core patches to Myriad-Dreamin/typst before submitting typst.ts"
+    }
+  },
+  "gates": {
+    "frozenInstallAndVendor": "pass",
+    "rustCompilerCheck": "pass",
+    "focusedCompilerAndParity": "pass:36",
+    "packMigrationAndCli": "pass:60",
+    "packedConsumerAndBenchmarkContracts": "pass:19",
+    "browserEntrypoints": "pass:29",
+    "browserExportHarness": "pass:6",
+    "conformanceCases": "pass:20",
+    "viewerBrowser": "pass:1",
+    "extensionOutputScan": "pass:49",
+    "extensionPrebuiltWorker": "pass:2",
+    "typecheck": "pass",
+    "build": "pass:26-tasks",
+    "fullOfflineSuite": {
+      "result": "qualified-pass",
+      "total": 6356,
+      "attempts": [
+        "6339-pass:16-skip:1-unrelated-export-job-jsonl-timing-flake",
+        "6338-pass:16-skip:2-unrelated-docs-pull-path-stability-flakes"
+      ],
+      "isolatedReruns": [
+        "export-job-runtime:pass-50-of-50",
+        "docs-pull-path-stability:pass-16-of-16-outside-network-sandbox"
+      ],
+      "qualification": "All failures were outside the PDF/runtime change surface, changed between full-suite attempts, and passed repeated isolated reruns. Every Typst 0.15.1 focused, build, package, browser, extension, parity, performance, and LIVE gate passed."
+    },
+    "liveDocsy": {
+      "result": "pass:5-skip:3",
+      "profile": "mayflower",
+      "space": "DOCSY",
+      "remoteWrites": 0,
+      "privateIdentifiersRecorded": false
+    }
+  },
+  "runtimeLane": {
+    "runnerClass": "local-darwin-arm64-apple-m5-max-18c-128g",
+    "qualification": "Relative same-session comparisons are decisive; local peak-RSS and compile-time spreads exceed 1.5 percent on text/mixed and are retained as noisy rather than presented as controlled-runner precision.",
+    "imageHeavy": {
+      "baseline": {
+        "repeat": 3,
+        "peakRssMiB": 1922.58,
+        "wasmHighWaterMiB": 1326.38,
+        "compileMsMedian": 2982
+      },
+      "forwardPort": {
+        "repeat": 3,
+        "peakRssMiB": 1929.56,
+        "peakRssSpreadPercent": 0.29,
+        "wasmHighWaterMiB": 1326,
+        "compileMsMedian": 3236
+      },
+      "verdict": "pass: RSS +0.36 percent, WASM -0.03 percent, compile +8.52 percent"
+    },
+    "textHeavyPaired": {
+      "baseline": {
+        "repeat": 7,
+        "peakRssMiB": 961.25,
+        "peakRssSpreadPercent": 3.48,
+        "wasmHighWaterMiB": 391.75,
+        "compileMsMedian": 2824
+      },
+      "forwardPort": {
+        "repeat": 7,
+        "peakRssMiB": 923.3,
+        "peakRssSpreadPercent": 2.06,
+        "wasmHighWaterMiB": 336.88,
+        "compileMsMedian": 1729
+      },
+      "verdict": "pass: every forward-port RSS run stayed below every baseline run; WASM -14.01 percent; compile -38.77 percent"
+    },
+    "mixedPaired": {
+      "baseline": {
+        "repeat": 7,
+        "peakRssMiB": 905.39,
+        "peakRssSpreadPercent": 2.49,
+        "wasmHighWaterMiB": 224.81,
+        "compileMsMedian": 1103
+      },
+      "forwardPort": {
+        "repeat": 7,
+        "peakRssMiB": 917.98,
+        "peakRssSpreadPercent": 3.46,
+        "wasmHighWaterMiB": 220.56,
+        "compileMsMedian": 1089
+      },
+      "verdict": "pass: RSS +1.39 percent, WASM -1.89 percent, compile -1.27 percent"
+    }
+  },
+  "upstream": {
+    "pullRequestsCreated": 0,
+    "typstCoreBranch": "BjoernSchotte/typst:codex/typst-0.15.1",
+    "typstTsIntegrationBranch": "BjoernSchotte/typst.ts:codex/typst-0.15.1-integration",
+    "typstTsIntegrationCommits": ["9e04e846", "439f22de"],
+    "nextStep": "contribute core patches to Myriad-Dreamin/typst, replace the temporary core pin, then submit the two typst.ts commits only with explicit operator authorization"
+  }
+}

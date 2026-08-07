@@ -35,6 +35,7 @@ import {
 import type { TemplateGeneratedPackCompilerV1 } from "@atlcli/pdf-template-authoring";
 import {
   MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES,
+  migratePdfTemplateRecipeToTypst0151V1,
   validatePdfTemplateRecipeV1,
   type TemplateAssetMediaTypeV1,
   type WikiPdfTemplateRecipeV1,
@@ -45,6 +46,7 @@ import {
   isNode,
   isScalar,
   parseAllDocuments,
+  stringify,
   visit,
   type Document,
   type ParsedNode,
@@ -374,26 +376,33 @@ export async function materializePdfTemplateYamlRecipe(
   }
 }
 
-/** Atomically publish a verified archive without overwriting an existing file. */
-export async function writePdfTemplateRecipeArchive(
+export async function migratePdfTemplateYamlRecipeToTypst0151(
+  inputPath: string,
+  outputPath: string
+): Promise<WikiPdfTemplateRecipeV1> {
+  const sourcePath = resolve(inputPath);
+  const recipe = parsePdfTemplateRecipeYaml(await readRecipeFile(sourcePath));
+  const migrated = migratePdfTemplateRecipeToTypst0151V1(recipe);
+  const yaml = stringify(migrated, { lineWidth: 0 });
+  await writeNoClobber(outputPath, new TextEncoder().encode(yaml), "recipe");
+  return migrated;
+}
+
+async function writeNoClobber(
   outputPath: string,
-  bytes: Uint8Array
+  bytes: Uint8Array,
+  kind: "archive" | "recipe"
 ): Promise<void> {
   const target = resolve(outputPath);
   const parent = dirname(target);
   await mkdir(parent, { recursive: true, mode: 0o700 });
-  const temporary = resolve(
-    parent,
-    `.${basename(target)}.${randomUUID()}.tmp`
-  );
+  const temporary = resolve(parent, `.${basename(target)}.${randomUUID()}.tmp`);
   const handle = await open(temporary, "wx", 0o600);
   let published = false;
   try {
     await handle.writeFile(bytes);
     await handle.sync();
     await handle.close();
-    // A hard-link publish is the no-clobber equivalent of a sibling rename:
-    // it is atomic on the same filesystem and fails if target already exists.
     await link(temporary, target);
     published = true;
   } catch (error) {
@@ -405,5 +414,13 @@ export async function writePdfTemplateRecipeArchive(
     await handle.close().catch(() => undefined);
     await unlink(temporary).catch(() => undefined);
   }
-  if (!published) failIo(`Could not publish PDF template archive: ${outputPath}`);
+  if (!published) failIo(`Could not publish PDF template ${kind}: ${outputPath}`);
+}
+
+/** Atomically publish a verified archive without overwriting an existing file. */
+export async function writePdfTemplateRecipeArchive(
+  outputPath: string,
+  bytes: Uint8Array
+): Promise<void> {
+  await writeNoClobber(outputPath, bytes, "archive");
 }

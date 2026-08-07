@@ -56,6 +56,10 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
+import { TYPST_VENDOR_PINS } from "../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+
+export const TYPST_COMPILER_WASM_SHA256 =
+  TYPST_VENDOR_PINS["typst_ts_web_compiler_bg.wasm"]!;
 
 /** Quoted `node:`/`bun:` module specifier — a real import/require target. */
 const NODE_BUN_RE = /["'`](node|bun):[A-Za-z0-9_./-]*["'`]/g;
@@ -140,7 +144,7 @@ const REQUIRED_PDF_ARTIFACTS = [
     label: "Typst compiler WASM",
     pattern: /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
     minimumSize: 20_000_000,
-    sha256: "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd",
+    sha256: TYPST_COMPILER_WASM_SHA256,
   },
   {
     label: "DOCX code font",

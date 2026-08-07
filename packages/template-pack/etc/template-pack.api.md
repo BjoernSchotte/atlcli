@@ -348,6 +348,9 @@ export declare const MAX_TEMPLATE_PACK_FILE_BYTES: number;
 // export: MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES
 export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 
+// export: migratePdfTemplateRecipeToTypst0151V1
+export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
+
 // export: PackIssue
 export interface PackIssue {
     severity: PackIssueSeverity;
@@ -381,7 +384,7 @@ export interface PdfTemplateRecipeTemplateV1 {
 }
 
 // export: PINNED_TYPST_VERSION
-export declare const PINNED_TYPST_VERSION = "0.14.2";
+export declare const PINNED_TYPST_VERSION = "0.15.1";
 
 // export: RequiredFont
 export interface RequiredFont {
@@ -577,6 +580,9 @@ export interface TypographyRole {
     weight?: DesignWeight;
     tracking?: DesignLength;
 }
+
+// export: TYPST_0151_RECIPE_COMPILER_RANGE
+export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
 // export: unflattenDesign
 export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;
@@ -1144,6 +1150,9 @@ export declare const MAX_TEMPLATE_PACK_FILE_BYTES: number;
 // export: MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES
 export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 
+// export: migratePdfTemplateRecipeToTypst0151V1
+export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
+
 // export: PackIssue
 export interface PackIssue {
     severity: PackIssueSeverity;
@@ -1177,7 +1186,7 @@ export interface PdfTemplateRecipeTemplateV1 {
 }
 
 // export: PINNED_TYPST_VERSION
-export declare const PINNED_TYPST_VERSION = "0.14.2";
+export declare const PINNED_TYPST_VERSION = "0.15.1";
 
 // export: RequiredFont
 export interface RequiredFont {
@@ -1373,6 +1382,9 @@ export interface TypographyRole {
     weight?: DesignWeight;
     tracking?: DesignLength;
 }
+
+// export: TYPST_0151_RECIPE_COMPILER_RANGE
+export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
 // export: unflattenDesign
 export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;
@@ -1940,6 +1952,9 @@ export declare const MAX_TEMPLATE_PACK_FILE_BYTES: number;
 // export: MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES
 export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 
+// export: migratePdfTemplateRecipeToTypst0151V1
+export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
+
 // export: PackIssue
 export interface PackIssue {
     severity: PackIssueSeverity;
@@ -1973,7 +1988,7 @@ export interface PdfTemplateRecipeTemplateV1 {
 }
 
 // export: PINNED_TYPST_VERSION
-export declare const PINNED_TYPST_VERSION = "0.14.2";
+export declare const PINNED_TYPST_VERSION = "0.15.1";
 
 // export: RequiredFont
 export interface RequiredFont {
@@ -2169,6 +2184,9 @@ export interface TypographyRole {
     weight?: DesignWeight;
     tracking?: DesignLength;
 }
+
+// export: TYPST_0151_RECIPE_COMPILER_RANGE
+export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
 // export: unflattenDesign
 export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;
@@ -2736,6 +2754,9 @@ export declare const MAX_TEMPLATE_PACK_FILE_BYTES: number;
 // export: MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES
 export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 
+// export: migratePdfTemplateRecipeToTypst0151V1
+export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
+
 // export: PackIssue
 export interface PackIssue {
     severity: PackIssueSeverity;
@@ -2769,7 +2790,7 @@ export interface PdfTemplateRecipeTemplateV1 {
 }
 
 // export: PINNED_TYPST_VERSION
-export declare const PINNED_TYPST_VERSION = "0.14.2";
+export declare const PINNED_TYPST_VERSION = "0.15.1";
 
 // export: RequiredFont
 export interface RequiredFont {
@@ -2965,6 +2986,9 @@ export interface TypographyRole {
     weight?: DesignWeight;
     tracking?: DesignLength;
 }
+
+// export: TYPST_0151_RECIPE_COMPILER_RANGE
+export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
 // export: unflattenDesign
 export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;

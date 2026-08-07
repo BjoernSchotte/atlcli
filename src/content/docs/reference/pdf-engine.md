@@ -90,15 +90,15 @@ Unknown languages degrade to plain readable code and a report note.
 
 | Component | Pinned value | Verification |
 |-----------|--------------|--------------|
-| Web compiler wrapper | `@myriaddreamin/typst-ts-web-compiler` 0.7.0 | Exact package version and Bun patch |
-| Embedded Typst engine | 0.14.2 | PDF `Creator` metadata and compiler fixture |
-| Compiler WASM | SHA-256 `1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd` | Build inventory gate |
+| Web compiler wrapper | fork distribution `@myriaddreamin/typst-ts-web-compiler` 0.8.0-rc3.typst0151.1 | Exact fork commit, package provenance, and artifact hashes |
+| Embedded Typst engine | 0.15.1 | Runtime-exported version and exact core commit |
+| Compiler WASM | SHA-256 `39d2ce3cda6cc41ed267a8dd641a358785bca65c99df39bdd55574f7f688cd27` | Build inventory gate |
 | Source Sans 3 Regular / Italic / SemiBold / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
 | Source Serif 4 Regular / Italic / SemiBold / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
 | Source Code Pro Regular / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
 | Noto Sans Symbols 2 / Noto Emoji | Google release assets and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch, coverage generation, and inventory gates |
 
-Each production browser host artifact includes the 28.3 MB compiler WASM,
+Each production browser host artifact includes the 30.17 MB compiler WASM,
 twelve static font files and their shipped license texts. Before compiling, the
 engine resolves a deterministic subset from the final document/template state.
 Browser hosts keep all imports statically discoverable but fetch only that

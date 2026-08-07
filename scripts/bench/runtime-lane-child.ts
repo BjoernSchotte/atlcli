@@ -2,7 +2,7 @@
  * Runtime candidate-lane child (issue #118 Phase 2): run ONE candidate Typst
  * runtime over the materialized image-heavy corpus in an isolated process.
  *
- *   bun --conditions=development scripts/bench/runtime-lane-child.ts <baseline|rc8> <corpusDir>
+ *   bun --conditions=development scripts/bench/runtime-lane-child.ts forward-port <corpusDir>
  *
  * The pipeline is IDENTICAL for every candidate (prepare original →
  * serialize → compile); only the runtime differs, so differences are
@@ -33,9 +33,9 @@ const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const candidate = process.argv[2];
 const corpusArg = process.argv[3];
-if ((candidate !== "baseline" && candidate !== "rc8") || !corpusArg) {
+if (candidate !== "forward-port" || !corpusArg) {
   throw new Error(
-    "Usage: runtime-lane-child.ts <baseline|rc8> <corpusDir|text-heavy|mixed>",
+    "Usage: runtime-lane-child.ts forward-port <corpusDir|text-heavy|mixed>",
   );
 }
 
@@ -164,7 +164,7 @@ const prepareMs = performance.now() - prepareStarted;
 let pdfBytes = 0;
 let compileMs = 0;
 let compilerVersion = "";
-if (candidate === "baseline") {
+{
   const wasm = readFileSync(
     join(
       ROOT,
@@ -184,39 +184,6 @@ if (candidate === "baseline") {
     );
   pdfBytes = result.pdf.byteLength;
   compilerVersion = result.compilerVersion;
-} else {
-  // Published prerelease, upstream feature set unchanged (PLAN candidate 2).
-  const glue = await import(
-    join(
-      ROOT,
-      "node_modules/typst-ts-web-compiler-rc8/pkg/typst_ts_web_compiler.mjs",
-    )
-  );
-  const wasm = readFileSync(
-    join(
-      ROOT,
-      "node_modules/typst-ts-web-compiler-rc8/pkg/typst_ts_web_compiler_bg.wasm",
-    ),
-  );
-  const out = await glue.default({ module_or_path: wasm.buffer });
-  wasmMemory = out.memory as WebAssembly.Memory;
-  const builder = new glue.TypstCompilerBuilder();
-  for (const font of fonts) await builder.add_raw_font(font);
-  const compiler = await builder.build();
-  compiler.reset_shadow();
-  compiler.add_source("/main.typ", bundle.main);
-  compiler.add_source("/atlcli.typ", bundle.template);
-  for (const asset of bundle.assets)
-    compiler.map_shadow(`/${asset.path}`, asset.bytes);
-  const started = performance.now();
-  const result = compiler.compile("/main.typ", [], "pdf", 3) as {
-    result?: Uint8Array;
-  };
-  compileMs = performance.now() - started;
-  compiler.reset_shadow();
-  if (!result.result) throw new Error("rc8 compile produced no PDF");
-  pdfBytes = result.result.byteLength;
-  compilerVersion = "typst.ts 0.8.0-rc3 / Typst 0.15.0";
 }
 
 console.log(

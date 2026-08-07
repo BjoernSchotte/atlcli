@@ -6,9 +6,9 @@
  *
  *   bun --conditions=development scripts/bench/run-runtime-lane.ts [--repeat 3] [--candidate name]
  *
- * Candidates: `baseline` (vendored typst.ts 0.7.0 / Typst 0.14.2) and `rc8`
- * (published typst.ts 0.8.0-rc3 / Typst 0.15.0-rc.1, upstream feature set
- * unchanged, devDependency alias — the production vendor pin is untouched).
+ * Candidate: `forward-port` (the production-vendored fork artifact with exact
+ * Typst 0.15.1). The immutable 0.14.2 aggregates remain in the runtime spec;
+ * the old runtime is deliberately no longer installable as a second lane.
  * The corpus comes from the materialized cache written by the Chrome
  * memory-harness prebench (`apps/extension/tests/pdf/memory/public/image-heavy`).
  */
@@ -24,7 +24,7 @@ const CORPUS_DIR = join(
   ROOT,
   "apps/extension/tests/pdf/memory/public/image-heavy",
 );
-export const RUNTIME_LANE_CANDIDATES = ["baseline", "rc8"] as const;
+export const RUNTIME_LANE_CANDIDATES = ["forward-port"] as const;
 export const RUNTIME_LANE_CORPORA = [
   "image-heavy",
   "text-heavy",
@@ -78,13 +78,10 @@ export function parseRuntimeLaneOptions(
 function artifactStats(
   candidate: RuntimeLaneCandidate,
 ): Record<string, unknown> {
-  const packageDir =
-    candidate === "baseline"
-      ? join(
-          ROOT,
-          "packages/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg",
-        )
-      : join(ROOT, "node_modules/typst-ts-web-compiler-rc8/pkg");
+  const packageDir = join(
+    ROOT,
+    "packages/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg",
+  );
   const files = ["typst_ts_web_compiler.mjs", "typst_ts_web_compiler_bg.wasm"];
   return Object.fromEntries(
     files.map((name) => {

@@ -22,8 +22,10 @@ import {
   type WikiPdfTemplateLocalizationV1,
 } from "./localization.js";
 import { ManifestValidationError } from "./manifest-error.js";
+import { satisfiesRange } from "./manifest.js";
 
 export const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+export const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
 export interface PdfTemplateRecipeTemplateV1 {
   id: string;
@@ -48,6 +50,29 @@ export interface WikiPdfTemplateRecipeV1 {
   design: WikiPdfTemplateDesignV1;
   localization: WikiPdfTemplateLocalizationV1;
   assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+/**
+ * Return a distinct, validated recipe object for the 0.15.1 runtime without
+ * mutating the author's source object, design, localization, or assets.
+ */
+export function migratePdfTemplateRecipeToTypst0151V1(
+  value: unknown
+): WikiPdfTemplateRecipeV1 {
+  const recipe = validatePdfTemplateRecipeV1(value);
+  if (satisfiesRange("0.15.1", recipe.template.compilerRange)) {
+    fail(
+      "recipe.template.compilerRange",
+      `already accepts Typst 0.15.1 (${recipe.template.compilerRange})`
+    );
+  }
+  return validatePdfTemplateRecipeV1({
+    ...structuredClone(recipe),
+    template: {
+      ...structuredClone(recipe.template),
+      compilerRange: TYPST_0151_RECIPE_COMPILER_RANGE,
+    },
+  });
 }
 
 const STABLE_ID_RE = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/u;

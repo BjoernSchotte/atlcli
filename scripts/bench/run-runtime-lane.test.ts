@@ -19,11 +19,11 @@ describe("runtime lane options", () => {
         "--repeat",
         "2",
         "--candidate",
-        "baseline",
+        "forward-port",
         "--corpus",
         "mixed",
       ]),
-    ).toEqual({ repeat: 2, candidates: ["baseline"], corpus: "mixed" });
+    ).toEqual({ repeat: 2, candidates: ["forward-port"], corpus: "mixed" });
   });
 
   test.each([

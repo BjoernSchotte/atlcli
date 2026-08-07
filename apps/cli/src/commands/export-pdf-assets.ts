@@ -1,5 +1,5 @@
 /**
- * The CLI's PDF compiler assets (spec 008 T3.1): the patched typst.ts wasm plus
+ * The CLI's PDF compiler assets (spec 008 T3.1): the pinned typst.ts WASM plus
  * the 12 canonical fonts, materialized as EMBEDDED assets and fed into the
  * runtime-agnostic {@link BrowserPdfCompiler}.
  *
@@ -22,7 +22,7 @@
  * Unlike the mermaid rasterizer, a load failure here is a HARD error: PDF export
  * cannot degrade to a "diagram-as-code" fallback, so the loader throws.
  */
-import typstWasm from "@myriaddreamin/typst-ts-web-compiler/wasm" with { type: "file" };
+import typstWasm from "@atlcli/pdf-compiler-browser/wasm" with { type: "file" };
 import sourceSansRegular from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf" with { type: "file" };
 import sourceSansItalic from "@atlcli/pdf/fonts/SourceSans3-It.ttf" with { type: "file" };
 import sourceSansSemibold from "@atlcli/pdf/fonts/SourceSans3-Semibold.ttf" with { type: "file" };

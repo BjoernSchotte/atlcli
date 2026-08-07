@@ -196,7 +196,7 @@ function scanPdfBytes(bytes: Uint8Array): ScanTally {
  * `/Lang` on some structure element cannot be mistaken for the document-level
  * declaration that PDF/UA requires.
  *
- * The built-in template's compiler (typst.ts 0.7.0 / Typst 0.14.2) writes the
+ * The built-in template's compiler (typst.ts fork / Typst 0.15.1) writes the
  * catalog uncompressed, so a byte scan is sufficient and no stream inflation is
  * needed — verified by compiling real PDFs, see the test named above.
  *

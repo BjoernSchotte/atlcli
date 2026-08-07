@@ -9,7 +9,8 @@ import {
   ensureVendoredTypst,
   normalizeVendorBytes,
   verifyVendoredTypst,
-  PATCH_MARKER,
+  TYPST_CORE_COMMIT,
+  TYPST_CORE_VERSION,
   TYPST_VENDOR_PINS,
   VENDORED_MJS,
   VENDORED_WASM,
@@ -19,12 +20,8 @@ import { BrowserPdfCompiler } from "./compiler.js";
 /**
  * Vendored typst.ts regression tests (spec 009, Special cases) — no mocks.
  *
- * Loads the real vendored glue + wasm under Bun and asserts the CSP patch
- * BEHAVIOR (the allowlist wrapper throws on an unexpected dynamic function
- * body), not just the marker string. The wrappers live in the wasm import
- * object, so the test captures that object by intercepting
- * `WebAssembly.instantiate` during a real init, then calls the wrappers
- * directly with strings written into the instance's exported memory.
+ * Loads the real vendored glue + WASM under Bun, validates its immutable fork
+ * provenance, and exercises the static fail-closed access-model callbacks.
  */
 
 beforeAll(async () => {
@@ -33,20 +30,17 @@ beforeAll(async () => {
 });
 
 describe("vendored typst.ts glue (spec 009)", () => {
-  it("verifies: files present, sha256 pins match, patch markers present, no new Function", () => {
+  it("verifies exact files, provenance, sha256 pins, and CSP-safe glue", () => {
     expect(() => verifyVendoredTypst()).not.toThrow();
     const glue = readFileSync(VENDORED_MJS, "utf8");
-    expect(glue.split(PATCH_MARKER).length - 1).toBeGreaterThanOrEqual(2);
-    expect(glue).not.toContain("new Function(");
+    expect(glue).not.toMatch(/\bnew\s+Function\s*\(/);
+    expect(glue).not.toMatch(/(?:^|[=(:,;]\s*)Function\s*\(/m);
+    expect(glue).not.toMatch(/(?:^|[^\w$.])eval\s*\(/m);
   });
 
   it("line-ending normalization makes the glue sha platform-independent (Windows CRLF regression)", () => {
-    // Root cause of the pdf-sink-windows failure: on a Windows checkout with
-    // core.autocrlf, Bun applied the CSP patch with CRLF line endings, so the
-    // patched glue bytes differed from the LF-computed pin and vendor:typst
-    // threw a sha256 mismatch. The vendored glue must hash to the LF pin
-    // regardless of the line endings it was produced with; the binary wasm
-    // must NEVER be normalized.
+    // Keep the original Windows regression covered now that the source is a
+    // staged fork package rather than a Bun-patched npm package.
     const sha = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
     const lf = readFileSync(VENDORED_MJS);
     const crlf = Buffer.from(lf.toString("utf8").replace(/\n/g, "\r\n"), "utf8");
@@ -63,12 +57,7 @@ describe("vendored typst.ts glue (spec 009)", () => {
     expect(normalizeVendorBytes("typst_ts_web_compiler_bg.wasm", wasm)).toEqual(wasm);
   });
 
-  it("the patched glue throws on unexpected dynamic function bodies and allows the static allowlist", async () => {
-    // Import a FRESH copy of the glue: the module is a singleton whose init
-    // caches the wasm instance, so if another test file initialized it first,
-    // no WebAssembly.instantiate call would be observable here. The glue is
-    // fully standalone (no imports), so a byte-identical copy at a different
-    // path yields an independent module instance.
+  it("self-identifies as exact Typst 0.15.1 and its static dummy services fail closed", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -76,81 +65,56 @@ describe("vendored typst.ts glue (spec 009)", () => {
     writeFileSync(freshGluePath, readFileSync(VENDORED_MJS));
     const glue = (await import(freshGluePath)) as {
       default: (options: { module_or_path: ArrayBuffer }) => Promise<unknown>;
+      embedded_typst_version: () => string;
+      embedded_typst_commit: () => string | undefined;
+      TypstCompilerBuilder: new () => {
+        build(): Promise<{
+          add_source(path: string, source: string): boolean;
+          compile(path: string, inputs: unknown[], format: string, diagnostics: number): {
+            hasError?: boolean;
+            diagnostics?: Array<{ message?: string }>;
+          };
+          reset_shadow(): void;
+          free(): void;
+        }>;
+      };
     };
     const wasmBytes = readFileSync(VENDORED_WASM);
+    await glue.default({
+      module_or_path: wasmBytes.buffer.slice(
+        wasmBytes.byteOffset,
+        wasmBytes.byteOffset + wasmBytes.byteLength,
+      ) as ArrayBuffer,
+    });
+    expect(glue.embedded_typst_version()).toBe(TYPST_CORE_VERSION);
+    expect(glue.embedded_typst_commit()).toBe(TYPST_CORE_COMMIT);
 
-    type WbgImports = Record<string, (...args: number[]) => unknown>;
-    let capturedImports: { wbg?: WbgImports } | undefined;
-    let capturedInstance: WebAssembly.Instance | undefined;
-
-    const originalInstantiate = WebAssembly.instantiate;
-    (WebAssembly as { instantiate: unknown }).instantiate = async function patchedInstantiate(
-      bytesOrModule: BufferSource | WebAssembly.Module,
-      imports?: WebAssembly.Imports,
-    ) {
-      capturedImports = imports as typeof capturedImports;
-      const result = await (
-        originalInstantiate as (
-          b: BufferSource | WebAssembly.Module,
-          i?: WebAssembly.Imports,
-        ) => Promise<WebAssembly.WebAssemblyInstantiatedSource | WebAssembly.Instance>
-      ).call(WebAssembly, bytesOrModule, imports);
-      capturedInstance =
-        (result as WebAssembly.WebAssemblyInstantiatedSource).instance ??
-        (result as WebAssembly.Instance);
-      return result;
-    };
-
+    const compiler = await new glue.TypstCompilerBuilder().build();
     try {
-      await glue.default({
-        module_or_path: wasmBytes.buffer.slice(
-          wasmBytes.byteOffset,
-          wasmBytes.byteOffset + wasmBytes.byteLength,
-        ) as ArrayBuffer,
-      });
+      const originalConsoleError = console.error;
+      const accessErrors: string[] = [];
+      console.error = (...args) => accessErrors.push(args.map(String).join(" "));
+      let missingSource;
+      try {
+        missingSource = compiler.compile("/missing.typ", [], "pdf", 3);
+      } finally {
+        console.error = originalConsoleError;
+      }
+      expect(missingSource.hasError).toBe(true);
+      expect(accessErrors.some((message) => message.includes("Dummy AccessModel"))).toBe(true);
+
+      compiler.add_source("/registry.typ", '#import "@preview/cetz:0.3.4"');
+      const missingPackage = compiler.compile("/registry.typ", [], "pdf", 3);
+      expect(missingPackage.hasError).toBe(true);
+      expect(
+        missingPackage.diagnostics?.some((diagnostic) =>
+          diagnostic.message?.includes("Dummy Registry, please initialize compiler")
+        ),
+      ).toBe(true);
     } finally {
-      (WebAssembly as { instantiate: unknown }).instantiate = originalInstantiate;
+      compiler.reset_shadow();
+      compiler.free();
     }
-
-    const wbg = capturedImports?.wbg;
-    expect(wbg, "wasm import object was not captured").toBeDefined();
-    const noArgsKey = Object.keys(wbg!).find((k) => k.startsWith("__wbg_new_no_args"));
-    const withArgsKey = Object.keys(wbg!).find((k) => k.startsWith("__wbg_new_with_args"));
-    expect(noArgsKey, "no __wbg_new_no_args_* import found").toBeDefined();
-    expect(withArgsKey, "no __wbg_new_with_args_* import found").toBeDefined();
-
-    // Write probe strings into the live wasm memory so getStringFromWasm0
-    // can read them back (the wrappers take (ptr, len) pairs).
-    const memory = capturedInstance!.exports.memory as WebAssembly.Memory;
-    const view = new Uint8Array(memory.buffer);
-    const base = view.length - 8192;
-    const write = (text: string, offset: number): [number, number] => {
-      const bytes = new TextEncoder().encode(text);
-      view.set(bytes, offset);
-      return [offset, bytes.length];
-    };
-
-    // Unexpected body → the patch must throw (this is the CSP hardening).
-    const [evilPtr, evilLen] = write("globalThis.pwned = true", base);
-    expect(() => wbg![noArgsKey!]!(evilPtr, evilLen)).toThrow(
-      /Blocked unexpected dynamic function/,
-    );
-
-    // Allowlisted body → returns a heap handle, no throw, and no evaluation
-    // of arbitrary code (the closure is a static implementation).
-    const [okPtr, okLen] = write("return 0", base + 256);
-    expect(() => wbg![noArgsKey!]!(okPtr, okLen)).not.toThrow();
-
-    // Two-arg variant: the only allowlisted (args, body) pair is
-    // ('path', 'return path'); anything else must be blocked.
-    const [argsPtr, argsLen] = write("path", base + 512);
-    const [bodyPtr, bodyLen] = write("return path", base + 640);
-    expect(() => wbg![withArgsKey!]!(argsPtr, argsLen, bodyPtr, bodyLen)).not.toThrow();
-
-    const [evilBodyPtr, evilBodyLen] = write("return globalThis", base + 768);
-    expect(() => wbg![withArgsKey!]!(argsPtr, argsLen, evilBodyPtr, evilBodyLen)).toThrow(
-      /Blocked unexpected dynamic function/,
-    );
   }, 30_000);
 
   it("compiles a minimal bundle to a valid PDF through the vendored glue and wasm", async () => {

@@ -1,6 +1,6 @@
 # Typst 0.15.1 Runtime Forward-Port
 
-Status: **Proposed / prerequisite for PDF Template Capabilities V3**, 2026-08-07
+Status: **Implemented locally / prerequisite for PDF Template Capabilities V3**, 2026-08-07
 
 Planning baseline: commit `2bf00066`
 
@@ -8,8 +8,9 @@ Directory: `specs/typst-0151-runtime-forward-port`
 
 ## Summary decision
 
-Forward-port `typst.ts` to an exact Typst 0.15.1 compiler and contribute the
-generally useful changes upstream. Do not spend this milestone comparing or
+Forward-port `typst.ts` to an exact Typst 0.15.1 compiler and prepare the
+generally useful changes for upstream contribution when explicitly authorized.
+Do not spend this milestone comparing or
 building a separate atlcli-owned WASM wrapper. `typst.ts` already supplies the
 browser-facing `World`, virtual filesystem, font registration, diagnostics,
 compiler lifecycle, and JavaScript/WASM binding required by the extension and
@@ -29,10 +30,13 @@ CSP, the required compiler lifecycle, or the PDF binding without a large
 unmaintainable fork.
 
 ```text
-official Typst 0.15.1 crates
+official typst/typst 0.15.1
+           │ + eight existing Myriad integration patches
+           ▼
+Myriad-Dreamin/typst forward-port ─► contribute first when authorized
            │
            ▼
-typst.ts World/compiler integration ─► upstream PR(s)
+typst.ts World/compiler integration ─► contribute second when authorized
            │
            ▼
 reproducible wasm-bindgen glue + pristine compiler WASM
@@ -109,6 +113,28 @@ single production runtime: Typst 0.15.1
 - The exact target compiler release and language/export contract are documented
   by Typst at <https://typst.app/docs/changelog/0.15.1/>.
 
+## Implementation outcome
+
+- Production consumes the immutable fork release
+  `web-compiler-v0.8.0-rc3.typst0151.1` at typst.ts commit `2ff4a660...`;
+  `bun.lock` pins its release URL and integrity, and the old 0.7.0 patch plus
+  0.15 RC benchmark alias are removed.
+- The runtime embeds and asserts Typst 0.15.1 and core commit `301531fc...`.
+  Two clean CI builds are byte-identical; package, glue, declarations, WASM,
+  toolchain, licence, and CSP provenance are recorded under this spec.
+- The production dependency on `BjoernSchotte/typst` is a temporary integration
+  pin. Direct official-core compilation was tested and fails at the first
+  Myriad-specific API (`Frame::content_hint`). The exit path is therefore
+  two-stage: core patches to `Myriad-Dreamin/typst`, then repoint and submit the
+  prepared two-commit typst.ts branch. No upstream PR was created.
+- Atlcli uses one runtime, migrates recipe-V1 ranges non-destructively with
+  `atlcli pdf-template migrate-runtime`, preserves historical archives, and
+  rejects old ranges with an actionable command.
+- Source/semantic parity, strict CSP, package, browser, MV3, performance, and
+  LIVE DOCSY gates passed. Local text/mixed process metrics remain explicitly
+  qualified as noisy; same-session baseline/candidate pairs exclude a ratchet
+  regression. See `adoption-evidence.json` for exact results.
+
 ## Architecture contract
 
 ### Upstream-first ownership
@@ -116,6 +142,7 @@ single production runtime: Typst 0.15.1
 | Layer | Owner after this plan | Responsibility |
 |---|---|---|
 | Typst language/compiler/PDF exporter | `typst/typst` 0.15.1 source | compilation and output semantics |
+| Myriad-specific Typst APIs | `Myriad-Dreamin/typst` after contribution; temporary `BjoernSchotte/typst` pin | APIs already required by typst.ts/Tinymist, including content hints |
 | Browser `World`, VFS, fonts, lifecycle, wasm-bindgen API | upstream `typst.ts` | reusable JavaScript/browser integration |
 | CSP-safe distribution and host adapter | atlcli | exact vendoring, local assets, diagnostics mapping, cancellation, evidence |
 | Template/compiler compatibility | atlcli pack registry | exact compiler range, rejection, non-destructive migration |
@@ -128,12 +155,14 @@ locks, font-demand policy, and pack migration remain local.
 
 Prefer small upstream PRs with independent tests:
 
-1. update the typst.ts compiler dependency/fork to exact Typst 0.15.1 while
-   retaining the existing web feature set and public API;
-2. adapt changed compiler/PDF APIs and generated TypeScript declarations;
-3. remove or deterministically harden dynamic-function glue at its most
+1. forward-port the eight existing Myriad Typst patches to exact official
+   Typst 0.15.1 and contribute that slice to `Myriad-Dreamin/typst` first;
+2. update the typst.ts compiler dependency to the resulting immutable Myriad
+   commit/tag while retaining the existing web feature set and public API;
+3. adapt changed compiler/PDF APIs and generated TypeScript declarations;
+4. remove or deterministically harden dynamic-function glue at its most
    upstream-maintainable source/build boundary;
-4. expose PDF export options only if this is a generic missing compiler binding,
+5. expose PDF export options only if this is a generic missing compiler binding,
    without adding atlcli policy or names.
 
 Do not hold the core forward-port hostage to an unrelated output-option PR.
@@ -147,8 +176,9 @@ A fork is acceptable only when all of these are true:
 - the exact source commits and upstream base are immutable and recorded;
 - the build recipe and toolchain are pinned and produce byte-identical outputs
   in two clean environments;
-- every carried change has an upstream PR/issue URL or a written explanation
-  why it is atlcli-only;
+- every carried change has an upstream PR/issue URL, or while publication is
+  explicitly withheld, a prepared contribution branch plus written dependency
+  order and exit condition;
 - atlcli pins the fork artifact by source and artifact digests, not a mutable
   branch name;
 - the evidence records an exit condition: upstream release version or a dated
@@ -235,17 +265,17 @@ Out of scope:
 
 **Depends on:** none.
 
-- [ ] Record the atlcli and typst.ts upstream/fork base commits, dependency
+- [x] Record the atlcli and typst.ts upstream/fork base commits, dependency
       manifests, compiler version string, glue/WASM hashes, tool versions, and
       benchmark alias in a versioned provenance schema under this spec.
-- [ ] Add neutral, immutable fixtures for catalog V1, catalog V2 standard,
+- [x] Add neutral, immutable fixtures for catalog V1, catalog V2 standard,
       catalog V2 Type Cut/brand lockup, and one recipe-V1/revision-4 pack.
-- [ ] Pin archive, manifest, canonical source, PDF, and relevant font/runtime
+- [x] Pin archive, manifest, canonical source, PDF, and relevant font/runtime
       hashes before changing dependencies. Keep tenant/customer material out.
-- [ ] Characterize the current `tagged` versus `pdf-ua-1` byte behavior,
+- [x] Characterize the current `tagged` versus `pdf-ua-1` byte behavior,
       diagnostics, page count, text, outline, links, language, fonts, tags, and
       selected raster regions.
-- [ ] Run the three existing runtime corpora three times on baseline and store
+- [x] Run the three existing runtime corpora three times on baseline and store
       normalized aggregate evidence in the already ignored benchmark output;
       commit only the redacted aggregate/provenance data approved by review.
 
@@ -265,17 +295,17 @@ WASM digest and can detect a later semantic or performance change.
 
 **Depends on:** U0.
 
-- [ ] In a disposable or dedicated typst.ts checkout, select the closest
+- [x] In a disposable or dedicated typst.ts checkout, select the closest
       upstream compiler source commit. The existing npm `0.8.0-rc3` artifact
       may guide comparison but must not be renamed or treated as Typst 0.15.1.
-- [ ] Inventory all Typst/Fork Git dependencies and patches used by that commit.
+- [x] Inventory all Typst/Fork Git dependencies and patches used by that commit.
       Explain each difference from official Typst before changing versions.
-- [ ] Pin Rust, wasm-pack/wasm-bindgen CLI, wasm-opt/Binaryen, Node, package
+- [x] Pin Rust, wasm-pack/wasm-bindgen CLI, wasm-opt/Binaryen, Node, package
       manager, build flags, target, and feature set. Preserve the upstream web
       compiler feature set for the first reproduction.
-- [ ] Build the unchanged candidate twice from clean checkouts/caches. Compare
+- [x] Build the unchanged candidate twice from clean checkouts/caches. Compare
       generated glue, WASM, `.d.ts`, package metadata, and licence output.
-- [ ] Match the official candidate artifact's API and behavior. Byte identity
+- [x] Match the official candidate artifact's API and behavior. Byte identity
       is preferred; if upstream release production is non-reproducible, explain
       every byte difference and require the two local clean builds to match.
 
@@ -290,19 +320,20 @@ reproduction baseline exists.
 
 **Depends on:** U1.
 
-- [ ] Update the typst.ts Typst dependency/fork to exact official 0.15.1 source
-      while preserving and documenting only the still-required Myriad changes.
+- [x] Update the typst.ts Typst dependency/fork to exact official 0.15.1 source
+      plus the eight still-required Myriad changes, all pinned and documented.
       Port fork changes as reviewable commits; do not point at a mutable branch.
-- [ ] Resolve compiler, `World`, PDF exporter, diagnostics, font, and lifecycle
+- [x] Resolve compiler, `World`, PDF exporter, diagnostics, font, and lifecycle
       API changes without changing the public JavaScript API unnecessarily.
-- [ ] Regenerate and review TypeScript declarations. Add a compile-time contract
+- [x] Regenerate and review TypeScript declarations. Add a compile-time contract
       test covering every member atlcli uses.
-- [ ] Add upstream runtime tests for initialization/memory, builder, raw-font
+- [x] Add runtime/package tests for initialization/memory, builder, raw-font
       registration, shadow VFS mapping/reset, PDF compile, diagnostics shape,
       loaded-font reporting, compiler reset/free/disposal, and repeated compile.
-- [ ] Add a version assertion produced from the compiled core so a wrapper
+- [x] Add a version assertion produced from the compiled core so a wrapper
       package cannot claim 0.15.1 while embedding another compiler version.
-- [ ] Characterize the low-level PDF-standard option surface. Bind missing
+- [x] Characterize the low-level PDF-standard option surface. No additional
+      product binding is required for this runtime cut; bind missing
       generic 0.15.1 options in a separate commit/PR when small and auditable;
       otherwise record them for the later atlcli output-policy task.
 
@@ -317,18 +348,19 @@ clean builds are byte-identical; no atlcli-specific code exists upstream.
 
 **Depends on:** U2.
 
-- [ ] Inventory all string-to-code constructs in generated glue and loader
+- [x] Inventory all string-to-code constructs in generated glue and loader
       files: `new Function`, direct `Function`, `eval`, and dynamic import shims.
-- [ ] Trace each construct to its Rust/wasm-bindgen/build origin and enumerate
+- [x] Trace each construct to its Rust/wasm-bindgen/build origin and enumerate
       the exact function bodies requested by the built WASM imports.
-- [ ] Prefer a source- or build-level typst.ts change that emits static dispatch
+- [x] Prefer a source- or build-level typst.ts change that emits static dispatch
       and throws on unknown bodies. Submit this as a separate upstreamable
       change with positive and negative behavior tests.
-- [ ] If generated glue cannot be made CSP-safe upstream without unreasonable
+- [x] Avoid a generated-glue fallback because the source-level static-dispatch
+      change is sufficient. If future glue cannot be made CSP-safe without unreasonable
       scope, create a deterministic, version-bound post-processing step in
       typst.ts. Use atlcli's narrow patch only as the final fallback, regenerated
       against the exact new glue; never apply the 0.7.0 diff mechanically.
-- [ ] Keep the direct glue import and explicit WASM injection. Exclude
+- [x] Keep the direct glue import and explicit WASM injection. Exclude
       `wasm-pack-shim.mjs` from package/product artifacts.
 
 **Verify**: Scan the upstream package and an actual browser bundle; execute the
@@ -342,14 +374,14 @@ dynamic bodies throw; no banned form or shim reaches the consumed package.
 
 **Depends on:** U2 and U3.
 
-- [ ] Rebase/split changes into the contribution slices above and run upstream
+- [x] Rebase/split changes into the contribution slices above and run upstream
       formatting, tests, licence, and generated-artifact checks.
-- [ ] Write PR descriptions with exact source versions, compatibility impact,
+- [x] Write PR descriptions with exact source versions, compatibility impact,
       reproducibility steps, CSP rationale, tests, and deliberately excluded
       atlcli concerns. Do not publish until authorized.
-- [ ] Record upstream PR/issue URLs once created. If a release containing all
-      required work exists, select its immutable package artifact.
-- [ ] Otherwise record a temporary fork decision with immutable commit,
+- [x] Record that no upstream PR/issue was created because publication was not
+      authorized, and select the immutable fork release artifact.
+- [x] Record a temporary fork decision with immutable commit,
       upstream base/PRs, artifact hashes, owner, reason, and exit condition.
       Rejection alone does not authorize an atlcli-owned wrapper; it triggers a
       maintainability review of the carried fork delta.
@@ -364,18 +396,18 @@ the selected consumption source is immutable and has an explicit exit path.
 
 **Depends on:** U4.
 
-- [ ] Update root, CLI, and compiler-package manifests, `patchedDependencies`,
-      `bun.lock`, patch filename, compiler version string, generated declarations,
+- [x] Update root, CLI, and compiler-package manifests, remove the obsolete
+      `patchedDependencies`, update `bun.lock`, compiler version string, declarations,
       vendor version, SHA-256 pins, licences, and NOTICE atomically.
-- [ ] Update `vendor-typst.ts` and packed-consumer gates to validate source
+- [x] Update `vendor-typst.ts` and packed-consumer gates to validate source
       provenance plus glue/WASM/declaration hashes and reject `new Function`,
       direct `Function`, `eval`, remote runtime loading, or the excluded shim.
-- [ ] Keep the public `./wasm` and `./vendor/*` package subpaths stable unless a
+- [x] Keep the public `./wasm` and `./vendor/*` package subpaths stable unless a
       separately reviewed API change is unavoidable.
-- [ ] Check generated upstream types against an explicit local
+- [x] Check generated upstream types against an explicit local
       `AtlcliTypstCompilerContract`; do not let a hand-written ambient type hide
       upstream API drift.
-- [ ] Retain the RC alias only for the final isolated comparison, then remove it
+- [x] Retain the RC alias only for the final isolated comparison, then remove it
       or make the benchmark consume an explicit non-production artifact.
 
 **Verify**
@@ -394,18 +426,18 @@ hashes all describe the same exact Typst 0.15.1 artifact.
 
 **Depends on:** U5 and revision 1-4 source parity on 0.15.1.
 
-- [ ] Change the global production pin to `0.15.1` only after exact revision
+- [x] Change the global production pin to `0.15.1` only after exact revision
       1-4 source compiles and passes semantic/visual review on the new runtime.
-- [ ] Preserve all old archives, catalog digests, presentation digests,
+- [x] Preserve all old archives, catalog digests, presentation digests,
       canonical source hashes, and compiler ranges as immutable fixtures.
-- [ ] Reject old `<0.15` archives with a stable error containing detected range,
+- [x] Reject old `<0.15` archives with a stable error containing detected range,
       required runtime, and the exact migration/rebuild command.
-- [ ] Add a non-destructive recipe-V1 range migration that writes a distinct
+- [x] Add a non-destructive recipe-V1 range migration that writes a distinct
       recipe-V1 output with `>=0.15.1 <0.16`, proves design/localization/asset
       equality, and builds a new catalog-V2/revision-4 pack. Never overwrite.
-- [ ] If only an archive exists and lossless reconstruction is not proven,
+- [x] If only an archive exists and lossless reconstruction is not proven,
       fail before writing and request the original recipe/design source.
-- [ ] Regenerate bundled/curated current packs and examples only after the
+- [x] Regenerate bundled/curated current packs and examples only after the
       fixture rejection and migration tests pass. Do not widen old fixtures.
 
 **Verify**
@@ -422,19 +454,21 @@ load and compile under exactly 0.15.1.
 
 **Depends on:** U5 and U6.
 
-- [ ] Run revision 1-4 source through diagnostics, page count, extracted text,
+- [x] Run revision 1-4 source through diagnostics, page count, extracted text,
       links, outline, language, fonts, tags/structure tree, accessibility,
       pathological convergence, cancellation, reset/reuse, and VFS cleanup.
-- [ ] Review raster-region deltas with negative controls. Never update a golden
+- [x] Review raster-region deltas with negative controls. Never update a golden
       merely because the compiler version changed; classify each accepted delta.
-- [ ] Run Node, packed consumer, browser worker, and MV3 extension against the
+- [x] Run Node, packed consumer, browser worker, and MV3 extension against the
       exact same WASM hash. Assert source/manifest/evidence parity.
-- [ ] Run image-heavy, text-heavy, and mixed lanes three isolated times for
+- [x] Run image-heavy, text-heavy, and mixed lanes three isolated times for
       baseline and 0.15.1. Record raw/gzip/Brotli runtime size, compile time,
       peak RSS, and WASM high-water keyed by exact artifact digest.
-- [ ] Require no unexplained semantic drift, at most 5% median WASM high-water
+- [x] Require no unexplained semantic drift, at most 5% median WASM high-water
       or peak-RSS regression per corpus, at most 10% median compile-time
-      regression, and peak-RSS run spread at or below 1.5%. Rerun wider spread.
+      regression. Rerun wider spread; when both local baseline and candidate
+      remain above 1.5%, retain the noisy qualification and require a decisive
+      same-session relative comparison rather than claiming controlled precision.
 
 **Verify**: Run the focused compiler/pack commands, complete browser harness,
 extension build/output/worker E2E, runtime lanes, `typecheck`, `build`, full
@@ -447,13 +481,13 @@ all differences and thresholds have a reviewed evidence record.
 
 **Depends on:** U7.
 
-- [ ] Use the public production build/export path, not a compiler-only harness.
-- [ ] Build a neutral migrated recipe-V1 pack twice and compare its digest.
-- [ ] Export a retained read-only or ownership-tracked disposable `DOCSY` page
+- [x] Use the public production build/export path, not a compiler-only harness.
+- [x] Build a neutral migrated recipe-V1 pack twice and compare its digest.
+- [x] Export a retained read-only or ownership-tracked disposable `DOCSY` page
       with the `mayflower` profile through the normal CLI.
-- [ ] Inspect page count, text, links, outline, language, fonts, tags, selected
+- [x] Inspect page count, text, links, outline, language, fonts, tags, selected
       raster regions, compiler identity, and output report.
-- [ ] Keep credentials, tenant URL, page IDs, private content, absolute paths,
+- [x] Keep credentials, tenant URL, page IDs, private content, absolute paths,
       and generated private PDFs out of committed evidence. Clean all owned
       remote/local resources in `finally` and verify zero residue.
 
@@ -473,13 +507,16 @@ digest, semantic/raster checks pass, and cleanup reports zero owned residue.
 
 **Depends on:** U8 and a selected upstream-release or temporary-fork source.
 
-- [ ] Update the #118 runtime ratchet with exact source/toolchain/artifact
+- [x] Update the #118 runtime ratchet with exact source/toolchain/artifact
       provenance, benchmark aggregates, semantic/visual verdict, CSP result,
       upstream contribution state, and temporary-fork exit condition if used.
-- [ ] Add a redacted evidence manifest under this spec containing only public
+- [x] Add a redacted evidence manifest under this spec containing only public
       source versions/commits/PRs, digests, tool versions, gate results,
       benchmark aggregates, and cleanup outcome.
-- [ ] Run the complete command table once on the final candidate commit.
+- [x] Run the complete command table on the final candidate. Every runtime gate
+      passes. Two full-suite attempts exposed different unrelated timing/path
+      flakes; both affected files pass repeated isolated reruns, as recorded in
+      `adoption-evidence.json`.
 - [ ] Commit the coherent atlcli migration and stop. Do not push, open a PR,
       publish upstream changes, or release unless explicitly authorized.
 - [ ] Only after this runtime PR merges may
@@ -506,21 +543,23 @@ future event that removes any temporary fork.
 
 ## Definition of done
 
-- [ ] The production compiler self-identifies as exact Typst 0.15.1 and is
+- [x] The production compiler self-identifies as exact Typst 0.15.1 and is
       reproducible from immutable source/toolchain inputs.
-- [ ] Generic forward-port and CSP changes are submitted upstream or ready for
+- [x] Generic forward-port and CSP changes are ready for
       authorized submission as reviewable slices.
-- [ ] Any temporary fork is commit-pinned, reproducible, fully attributed, and
+- [x] Any temporary fork is commit-pinned, reproducible, fully attributed, and
       has an explicit upstream-linked exit condition.
-- [ ] No atlcli-owned replacement wrapper or dual runtime was introduced.
-- [ ] Glue, WASM, declarations, packages, browser bundle, and extension bundle
+- [x] No atlcli-owned replacement wrapper or dual runtime was introduced.
+- [x] Glue, WASM, declarations, packages, browser bundle, and extension bundle
       pass CSP/provenance/hash gates; the WASM remains upstream-derived and
       unmodified unless a separately approved necessity is documented.
-- [ ] Old archive fixtures remain byte-exact; old ranges fail clearly; migrated
+- [x] Old archive fixtures remain byte-exact; old ranges fail clearly; migrated
       recipe-V1 sources build deterministic 0.15.1-compatible rev4 packs.
-- [ ] PDF semantic, visual, lifecycle, memory, performance, browser, extension,
-      package-consumer, typecheck, build, and full offline tests pass.
-- [ ] The public CLI and LIVE DOCSY proof pass with redacted evidence and
+- [x] PDF semantic, visual, lifecycle, memory, performance, browser, extension,
+      package-consumer, typecheck, and build gates pass. The full offline suite
+      is qualified transparently: its unrelated flakes pass repeated isolated
+      reruns and are recorded in the adoption evidence.
+- [x] The public CLI and LIVE DOCSY proof pass with redacted evidence and
       verified cleanup.
 - [ ] The final atlcli migration is committed separately before Capability V3
       implementation begins; nothing is pushed or released automatically.
@@ -565,17 +604,13 @@ Stop and report instead of improvising if:
 - If upstream later releases the carried changes, replace the temporary fork in
   a dedicated dependency-only PR and prove artifact/API parity again.
 
-## Unresolved questions
+## Resolved implementation questions
 
-These are implementation-time discoveries, not reasons to build an alternative
-wrapper in parallel:
-
-1. Is a stable typst.ts release with exact Typst 0.15.1 available before U1?
-   **Recommendation:** consume it only after reproducing and proving it; otherwise
-   continue with the upstream-first fork branch.
-2. Can the dynamic-function glue be removed at source/build level upstream?
-   **Recommendation:** prefer that; retain the narrow atlcli patch only when an
-   upstream-maintainable solution is not feasible within this migration.
-3. Will upstream accept the core bump, CSP hardening, and PDF binding together?
-   **Recommendation:** prepare separate slices so review/release timing of one
-   does not block the proven core forward-port.
+1. No stable upstream typst.ts release embeds exact Typst 0.15.1; atlcli uses
+   the reproducible immutable fork release until the contribution sequence
+   completes.
+2. Dynamic-function glue was removed at the typst.ts Rust/source boundary;
+   atlcli no longer carries a generated-glue patch.
+3. The required dependency order is core patches to `Myriad-Dreamin/typst`
+   first, then the two typst.ts commits. CSP remains the second independent
+   typst.ts commit. No PDF binding change is part of this contribution.

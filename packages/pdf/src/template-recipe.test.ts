@@ -114,7 +114,7 @@ function recipe(): WikiPdfTemplateRecipeV1 {
       id: "fixture.executive-v4",
       name: "Executive V4",
       version: "1.0.0",
-      compilerRange: ">=0.14 <0.15",
+      compilerRange: ">=0.15.1 <0.16",
     },
     design: design(),
     localization: structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST.localization!),

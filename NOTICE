@@ -11,10 +11,12 @@ original attribution preserved.
 
 Third-party notices:
 
-- typst.ts web compiler (https://github.com/Myriad-Dreamin/typst.ts),
-  version 0.7.0 with embedded Typst 0.14.2, licensed under the Apache License
-  2.0. The WebAssembly build is distributed in object-code form inside the
-  extension; source is available at the URL above.
+- typst.ts web compiler (https://github.com/BjoernSchotte/typst.ts), forked
+  from https://github.com/Myriad-Dreamin/typst.ts, distribution version
+  0.8.0-rc3.typst0151.1 with embedded Typst 0.15.1, licensed under the Apache
+  License 2.0. The WebAssembly build is distributed in object-code form inside
+  atlcli artifacts; exact source commits and toolchain provenance ship beside
+  the object code in PROVENANCE.json.
 - beautiful-mermaid (https://github.com/lukilabs/beautiful-mermaid),
   Copyright Craft Docs / Luki Labs, licensed under the MIT License.
 - elkjs (https://github.com/kieler/elkjs), a JavaScript build of the Eclipse

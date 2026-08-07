@@ -34,7 +34,7 @@ import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 /**
  * Approved sha256 of the built-in template's default PDF over
  * {@link PARITY_BLOCKS} with the pinned compiler
- * `typst.ts 0.7.0 / Typst 0.14.2`.
+ * `typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1`.
  *
  * The original pre-migration digest was intentionally superseded after commit
  * `147a617` separated rich heading presentation from the plain navigation
@@ -55,8 +55,10 @@ import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 // Reviewed issue-102 baseline: explicit prepared Shiki tokens replace Typst's
 // renderer-owned raw highlighting and add proportional code-line spacing while
 // preserving source text and structure.
-const APPROVED_DEFAULT_OUTPUT_DIGEST = "5708085239a95d02af4daf559a2c535dfa41e0d25eae32580c24d9c16efbae1d";
-const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
+// Re-approved for the exact 0.15.1 runtime after the semantic, accessibility,
+// chapter, composition raster/negative-control, browser, and MV3 gates pass.
+const APPROVED_DEFAULT_OUTPUT_DIGEST = "c22fffd618b9164189272fa372c612397e6d90ccd04802faba5fbee8af796071";
+const PINNED_COMPILER = "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
 
 const PARITY_BLOCKS: ExportBlock[] = [
   { type: "heading", level: 1, content: [{ type: "text", text: "Design Surface" }] },

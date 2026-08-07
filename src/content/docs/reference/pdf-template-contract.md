@@ -165,7 +165,7 @@ grid(columns: (1fr, auto), chapter-head, meta.space)
 In words: **the first chapter that begins on this page; if none begins here, the
 chapter still running.** Three details of that resolution are load-bearing, and
 all three were verified against the pinned compiler
-(`typst.ts 0.7.0 / Typst 0.14.2`):
+(`typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1`):
 
 - **A chapter opening on this page counts.** Inside a page header, `here()`
   resolves to the *top* of the page, so a `.before(here())` selector excludes a

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   PDFJS_ARTIFACT_PATTERNS,
+  TYPST_COMPILER_WASM_SHA256,
   scanText,
   validatePdfArtifactInventory,
 } from "../scripts/check-output-build.js";
@@ -147,7 +148,7 @@ describe("PDF artifact inventory", () => {
     { path: "assets/pdf-compiler-abc.js", size: 30_000 },
     { path: "assets/pdf.min-abc.mjs", size: 452_000, sha256: "4ba2f15599b03fde8755ad91349920c21dadd3e8fd6b6460a7663d46d4cf21b5" },
     { path: "assets/pdf.worker.min-abc.mjs", size: 1_260_000, sha256: "2ab9e09667296dab1a618868b3ce6e6c23d5b8f48120ae7c5b34e7e335ed01fa" },
-    { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 28_000_000, sha256: "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd" },
+    { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 30_000_000, sha256: TYPST_COMPILER_WASM_SHA256 },
     { path: "assets/JetBrainsMono-Regular-abc.ttf", size: 273_900, sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f" },
     { path: "assets/SourceSans3-Regular-abc.ttf", size: 100_000, sha256: "4644c81b86ec9caaa76b634889968ed3c4f4f52f054855933acc7c2b21e53b0f" },
     { path: "assets/SourceSans3-It-abc.ttf", size: 100_000, sha256: "192afd78f0f54a3c69eaf02d43f4d9a821e9d6110e41d3d25d61a7385cd580e4" },

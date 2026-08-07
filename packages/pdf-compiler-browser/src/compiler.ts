@@ -4,6 +4,8 @@
 // self-reference so the same specifier works from workspace source, from
 // dist, and inside packed tarballs (see exports "./vendor/*").
 import initTypst, {
+  embedded_typst_commit,
+  embedded_typst_version,
   TypstCompilerBuilder,
   type TypstCompiler,
 } from "@atlcli/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs";
@@ -18,7 +20,10 @@ import {
 } from "@atlcli/pdf/browser";
 import { mapPdfDiagnostics } from "@atlcli/pdf/internal";
 
-export const PDF_BROWSER_COMPILER_VERSION = "typst.ts 0.7.0 / Typst 0.14.2";
+export const PDF_BROWSER_COMPILER_VERSION =
+  "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
+export const PDF_BROWSER_TYPST_CORE_COMMIT =
+  "301531fcfc4cb7ba9d688aa8a0738e8a6372c122";
 
 export interface BrowserPdfCompilerFontSourceV1 {
   assetId: string;
@@ -208,6 +213,15 @@ export class BrowserPdfCompiler {
       throwIfAborted(context?.signal);
       this.runtimePromise ??= initTypst({ module_or_path: this.assets.wasm });
       const runtime = await this.runtimePromise;
+      const runtimeVersion = embedded_typst_version();
+      const runtimeCommit = embedded_typst_commit();
+      if (runtimeVersion !== "0.15.1" || runtimeCommit !== PDF_BROWSER_TYPST_CORE_COMMIT) {
+        throw new Error(
+          `PDF compiler runtime provenance mismatch: expected Typst 0.15.1 ` +
+            `(${PDF_BROWSER_TYPST_CORE_COMMIT}), got ${runtimeVersion} ` +
+            `(${runtimeCommit ?? "unknown"}).`,
+        );
+      }
       throwIfAborted(context?.signal);
       // Same Symbol.for pattern as the after-vfs-loaded probe: the Chrome/V8
       // harness registers here to read WASM linear-memory high-water for the

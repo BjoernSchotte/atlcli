@@ -85,7 +85,7 @@ The manifest file is `wiki-pdf-template.json`:
 | `engine.kind` | `"typst" \| "docx"` | Yes | Selects the render contract. |
 | `engine.api` | `string` | Yes | `wiki.pdf-template/v1` (typst) or `wiki.docx-template/v1` (docx). |
 | `engine.entry` | `string` | Yes | Payload file to render; must exist in the archive. |
-| `engine.compilerRange` | `string` | Typst only | Semver range, e.g. `">=0.14 <0.15"`. |
+| `engine.compilerRange` | `string` | Typst only | Semver range, currently `">=0.15.1 <0.16"`. |
 | `requiredFonts` | `RequiredFont[]` | Optional | `{ family, style, weight }` per face. Declarative only — availability is **not** cross-checked in this format. |
 | `settings` | `Record<string, ManifestSetting>` | Optional | Open, typed dictionary of Level-B settings. Setting `type` is one of `text \| boolean \| choice \| color \| number \| asset`. |
 | `capabilityCatalog` | object | Executable PDF | Exact catalog id, version, and digest used to validate the complete design. |
@@ -199,7 +199,7 @@ host can render an upgrade/downgrade hint:
 |--------|---------|
 | `unknown-schema-version` | `schemaVersion` is anything other than `1`. |
 | `unknown-api` | `engine.api` is not the known value for the declared `engine.kind`. |
-| `compiler-range-mismatch` | For a `typst` pack, the pinned Typst compiler version does not satisfy `engine.compilerRange`. |
+| `compiler-range-mismatch` | The pack does not accept Typst 0.15.1. Migrate the original recipe with `atlcli pdf-template migrate-runtime <recipe.yaml> --output <recipe.typst-0.15.1.yaml>` and build that distinct output. |
 | `shape-error` | A required field is missing or mistyped, or `compilerRange` uses an unsupported form. |
 
 The compiler-range check is a pure semver comparison against the pinned compiler

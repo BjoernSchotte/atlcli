@@ -306,7 +306,9 @@ export type LinkTarget = {
 };
 
 // export: loadPdfTemplatePack
-export declare function loadPdfTemplatePack(bytes: Uint8Array): Promise<ValidatedPdfTemplatePackV1>;
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: MANUSCRIPT_PDF_TEMPLATE_ID
 export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
@@ -1524,7 +1526,9 @@ export type LinkTarget = {
 };
 
 // export: loadPdfTemplatePack
-export declare function loadPdfTemplatePack(bytes: Uint8Array): Promise<ValidatedPdfTemplatePackV1>;
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: MANUSCRIPT_PDF_TEMPLATE_ID
 export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
@@ -2742,7 +2746,9 @@ export type LinkTarget = {
 };
 
 // export: loadPdfTemplatePack
-export declare function loadPdfTemplatePack(bytes: Uint8Array): Promise<ValidatedPdfTemplatePackV1>;
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: MANUSCRIPT_PDF_TEMPLATE_ID
 export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
@@ -3735,7 +3741,9 @@ export declare function isMissingAltText(alt: string | undefined): boolean;
 export declare const LANDSCAPE_TEXT_WIDTH_PT = 717;
 
 // export: loadPdfTemplatePack
-export declare function loadPdfTemplatePack(bytes: Uint8Array): Promise<ValidatedPdfTemplatePackV1>;
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: MANUSCRIPT_PDF_TEMPLATE_ID
 export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";

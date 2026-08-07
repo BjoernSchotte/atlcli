@@ -161,7 +161,7 @@ function recipe(name: string, variant: Variant = {}): WikiPdfTemplateRecipeV1 {
       id: `fixture.pipeline.${name}`,
       name: `Pipeline ${name}`,
       version: "1.0.0",
-      compilerRange: ">=0.14 <0.15",
+      compilerRange: ">=0.15.1 <0.16",
     },
     design,
     localization: structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST.localization!),

@@ -269,7 +269,7 @@ takes a plain `Uint8Array`.
 
 - `PdfCompilePort` (`@atlcli/pdf`): `compile(bundle, context?)` → `PdfCompileResult`.
 - `BrowserPdfCompiler` (`@atlcli/pdf-compiler-browser`): the shipped implementation over the
-  sha256-pinned, CSP-patched typst.ts wasm ("browser" names the wasm build target — it runs
+  SHA-256-pinned, provenance-bound typst.ts WASM ("browser" names the WASM build target — it runs
   under Node/Bun/browsers). Assets come in as `BrowserPdfCompilerAssets`
   (`{ wasm, fonts }` — see the [asset contract](/reference/asset-contract/)).
 - `PdfSourceBundle.fontRequirements`: deterministic, byte-free
