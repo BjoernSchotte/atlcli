@@ -4,7 +4,10 @@ import { tool } from "@langchain/core/tools";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod/v4";
-import { ResearchCapabilityBroker } from "../broker.js";
+import {
+  ResearchCapabilityBroker,
+  type ResearchReadProviders,
+} from "../broker.js";
 import { ResearchModelRunBudget, ResearchRunBudget } from "../budget.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
@@ -24,7 +27,10 @@ import {
   createChatRetrievalPlanV1,
 } from "./retrieval-plan.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
-import type { ChatQualityDispositionV1 } from "./quality.js";
+import type {
+  ChatQualityDispositionV1,
+  ChatRepairSkippedReasonV1,
+} from "./quality.js";
 import {
   CHAT_WORKFLOW_STATE_PATH_V1,
   chatSubagentEvalAttemptLimitV1,
@@ -39,7 +45,6 @@ import {
   type ChatSubagentEvalDiagnosticV1,
   type ChatSubagentModelStreamEventV1,
 } from "./workflow-runtime.js";
-
 const strategy: ChatStrategyDecisionV1 = {
   schema: "atlcli.chat-strategy-decision/v1",
   qualityMode: "deep",
@@ -223,11 +228,19 @@ function createHarness(input: {
   strategyReviewCurrent?: () => boolean;
   decideRepairAdmission?: (
     disposition: ChatQualityDispositionV1,
-  ) => { admit: boolean; reason?: "deadline-reserve" | "model-budget-reserve" };
+  ) => { admit: boolean; reason?: ChatRepairSkippedReasonV1 };
+  researchRequest?: ResearchRequestV1;
+  readProviders?: ResearchReadProviders;
+  exactReaderPrimaryMaxMs?: number;
 } = {}) {
-  const budget = new ResearchRunBudget(request.limits);
-  const modelBudget = new ResearchModelRunBudget(request.limits);
-  const broker = new ResearchCapabilityBroker(request, providers, { budget });
+  const activeRequest = input.researchRequest ?? request;
+  const budget = new ResearchRunBudget(activeRequest.limits);
+  const modelBudget = new ResearchModelRunBudget(activeRequest.limits);
+  const broker = new ResearchCapabilityBroker(
+    activeRequest,
+    input.readProviders ?? providers,
+    { budget, createAnchorId: () => "workflow-page" },
+  );
   const workspace = createMemoryResearchWorkspace();
   let compiledSubagents: Array<{
     name: string;
@@ -285,16 +298,19 @@ function createHarness(input: {
     workspace,
     conversationId: "chat-conversation:workflow",
     turnId: "chat-turn:workflow",
-    question: request.question,
-    siteOrigin: request.scope.siteOrigin,
-    taskContext: JSON.stringify({ question: request.question }),
-    limits: request.limits,
+    question: activeRequest.question,
+    siteOrigin: activeRequest.scope.siteOrigin,
+    taskContext: JSON.stringify({ question: activeRequest.question }),
+    limits: activeRequest.limits,
     locale: "de-DE",
-    exactContextProducts: [],
+    exactContextProducts: activeRequest.exactContextProducts ?? [],
     searchProducts: input.searchProducts ?? [],
     boundProjectKeys: [],
     boundSpaceKeys: [],
     signal: new AbortController().signal,
+    ...(input.exactReaderPrimaryMaxMs === undefined
+      ? {}
+      : { exactReaderPrimaryMaxMs: input.exactReaderPrimaryMaxMs }),
     ...(input.strategyReviewCurrent
       ? { strategyReviewCurrent: input.strategyReviewCurrent }
       : {}),
@@ -342,7 +358,7 @@ function createHarness(input: {
     ...(input.onEvalDiagnostic ? { onEvalDiagnostic: input.onEvalDiagnostic } : {}),
     ...(input.onModelStreamEvent ? { onModelStreamEvent: input.onModelStreamEvent } : {}),
   });
-  return { runtime, workspace, compiledSubagents };
+  return { runtime, workspace, compiledSubagents, broker };
 }
 
 async function invokeDispatch(
@@ -393,7 +409,11 @@ describe("Chat agentic workflow runtime", () => {
     const normalized = normalizeKnownSourceReferencesV1(broker, {
       schema: "atlcli.chat-evidence-packet/v1",
       sourceIds: ["DEMO-1", "research-entity:read-demo-1", "research-anchor:unread"],
-      claims: [{ text: "Synthetic claim", sourceIds: ["DEMO-1"] }],
+      claims: [{
+        text: "Synthetic claim",
+        sourceIds: ["DEMO-1"],
+        sourceRefs: ["DEMO-1"],
+      }],
       relationships: [{
         fromSourceId: "https://tenant-a.atlassian.net/browse/DEMO-1",
         toSourceId: "UNKNOWN-2",
@@ -433,8 +453,16 @@ describe("Chat agentic workflow runtime", () => {
       schema: "atlcli.chat-evidence-packet/v1",
       sourceIds: ["jira:DEMO-1", "jira:UNKNOWN-2"],
       claims: [
-        { text: "Grounded", sourceIds: ["jira:DEMO-1"] },
-        { text: "Unverified", sourceIds: ["jira:UNKNOWN-2"] },
+        {
+          text: "Grounded",
+          sourceIds: ["jira:DEMO-1"],
+          sourceRefs: ["jira:DEMO-1"],
+        },
+        {
+          text: "Unverified",
+          sourceIds: ["jira:UNKNOWN-2"],
+          sourceRefs: ["jira:UNKNOWN-2"],
+        },
       ],
       relationships: [{
         fromSourceId: "jira:DEMO-1",
@@ -446,7 +474,11 @@ describe("Chat agentic workflow runtime", () => {
     });
     expect(quarantined).toMatchObject({
       sourceIds: ["jira:DEMO-1"],
-      claims: [{ text: "Grounded", sourceIds: ["jira:DEMO-1"] }],
+      claims: [{
+        text: "Grounded",
+        sourceIds: ["jira:DEMO-1"],
+        sourceRefs: ["jira:DEMO-1"],
+      }],
       relationships: [],
       gaps: [expect.stringContaining("1 source reference was excluded")],
     });
@@ -504,9 +536,116 @@ describe("Chat agentic workflow runtime", () => {
     expect(exactReader?.middleware?.some((entry) =>
       entry.name === "ChatSubagentEvalGuard:exact-context-reader"
     )).toBe(false);
+    expect(exactReader?.middleware?.some((entry) =>
+      entry.name === "ChatExactReaderSectionReadGuard"
+    )).toBe(true);
     expect(harness.compiledSubagents.find((entry) =>
       entry.name === "chat-synthesizer-v1"
     )?.systemPrompt).toContain("sourceRefs");
+  });
+
+  test("allows one optional exact-reader section read and blocks later section loops", async () => {
+    const harness = createHarness();
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    const guard = exactReader?.middleware?.find((entry) =>
+      entry.name === "ChatExactReaderSectionReadGuard"
+    );
+    if (!guard?.wrapToolCall) throw new Error("missing exact-reader section guard");
+    let hostCalls = 0;
+    const first = await guard.wrapToolCall({
+      toolCall: {
+        id: "section:first",
+        name: "atlassian_bound_section_read",
+        args: {},
+      },
+      state: { messages: [] },
+    }, async () => {
+      hostCalls += 1;
+      return new ToolMessage({
+        tool_call_id: "section:first",
+        name: "atlassian_bound_section_read",
+        content: "first section",
+      });
+    });
+    expect(first).toBeInstanceOf(ToolMessage);
+
+    const second = await guard.wrapToolCall({
+      toolCall: {
+        id: "section:second",
+        name: "atlassian_bound_section_read",
+        args: {},
+      },
+      state: {
+        messages: [new ToolMessage({
+          tool_call_id: "section:first",
+          name: "atlassian_bound_section_read",
+          content: "first section",
+        })],
+      },
+    }, async () => {
+      hostCalls += 1;
+      return new ToolMessage({
+        tool_call_id: "section:second",
+        name: "atlassian_bound_section_read",
+        content: "must not run",
+      });
+    });
+    expect(hostCalls).toBe(1);
+    expect(second).toBeInstanceOf(ToolMessage);
+    if (!(second instanceof ToolMessage)) throw new Error("expected blocked ToolMessage");
+    expect(second.content).toContain("SECTION_READ_LIMIT_REACHED");
+    expect(second.status).not.toBe("error");
+  });
+
+  test("executes only the first section read when an exact reader batches several calls", async () => {
+    const harness = createHarness();
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    const guard = exactReader?.middleware?.find((entry) =>
+      entry.name === "ChatExactReaderSectionReadGuard"
+    );
+    if (!guard?.wrapToolCall) throw new Error("missing exact-reader section guard");
+    const batchedRequest = new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          id: "section:first",
+          name: "atlassian_bound_section_read",
+          args: {},
+          type: "tool_call",
+        },
+        {
+          id: "section:second",
+          name: "atlassian_bound_section_read",
+          args: {},
+          type: "tool_call",
+        },
+      ],
+    });
+    let hostCalls = 0;
+    const blocked = await guard.wrapToolCall({
+      toolCall: {
+        id: "section:second",
+        name: "atlassian_bound_section_read",
+        args: {},
+      },
+      state: { messages: [batchedRequest] },
+    }, async () => {
+      hostCalls += 1;
+      return new ToolMessage({
+        tool_call_id: "section:second",
+        name: "atlassian_bound_section_read",
+        content: "must not run",
+      });
+    });
+    expect(hostCalls).toBe(0);
+    expect(blocked).toBeInstanceOf(ToolMessage);
+    if (!(blocked instanceof ToolMessage)) throw new Error("expected blocked ToolMessage");
+    expect(blocked.content).toContain("SECTION_READ_LIMIT_REACHED");
+    expect(blocked.status).not.toBe("error");
   });
 
   test("bundles exact anchor reads behind one deterministic host capability", async () => {
@@ -620,7 +759,7 @@ describe("Chat agentic workflow runtime", () => {
     );
     expect(budget).toBeDefined();
     expect(exactReader?.systemPrompt).toContain(
-      "one compact, central, question-relevant claim per source",
+      "Every claim must name its canonical sourceIds and exact sourceRefs",
     );
     expect(chatSubagentModelOutputLimitV1({
       profileId: "exact-context-reader",
@@ -1292,7 +1431,8 @@ describe("Chat agentic workflow runtime", () => {
       entry.taskId === "task:search"
     );
     if (!dispatch) throw new Error("missing search dispatch");
-    await expect(invokeDispatch(harness.runtime, dispatch)).resolves.toEqual({
+    const boundedFallback = await invokeDispatch(harness.runtime, dispatch);
+    expect(boundedFallback).toEqual({
       schema: "atlcli.chat-evidence-packet/v1",
       sourceIds: [],
       claims: [],
@@ -1302,6 +1442,279 @@ describe("Chat agentic workflow runtime", () => {
       ],
     });
     expect(harness.runtime.dispatchSnapshot().taskStatuses["task:search"]).toBe("completed");
+  });
+
+  test("recovers one failed exact reader from its already-read evidence without replaying Atlassian", async () => {
+    let pageReads = 0;
+    let primaryAttempts = 0;
+    let recoveryAttempts = 0;
+    let primarySignalAborted = false;
+    let primaryAbortReasonName: string | undefined;
+    const recoveryPacket = {
+      schema: "atlcli.chat-evidence-packet/v1" as const,
+      sourceIds: ["wiki:1001"],
+      claims: [{
+        text: "The bounded conclusion is established.",
+        sourceIds: ["wiki:1001"],
+        sourceRefs: ["wiki:1001#invented-section"],
+      }],
+      relationships: [],
+      gaps: [],
+    };
+    const recoveryModel = {
+      withStructuredOutput: (schema: unknown, options: unknown) => ({
+        invoke: async (messages: unknown) => {
+          recoveryAttempts += 1;
+          expect(schema).toMatchObject({
+            type: "object",
+            properties: {
+              schema: {
+                type: "string",
+                const: "atlcli.chat-evidence-packet/v1",
+              },
+            },
+          });
+          expect(options).toMatchObject({
+            includeRaw: true,
+            method: "jsonSchema",
+          });
+          const projected = JSON.stringify(messages);
+          expect(projected).toContain("already-read projections");
+          expect(projected).toContain("wiki:1001");
+          expect(projected).toContain("bounded conclusion");
+          expect(projected).not.toContain("research-anchor:");
+          return {
+            raw: new AIMessage({
+              content: "",
+              tool_calls: [{
+                name: "KiteweaveExactEvidenceRecoveryV1",
+                args: recoveryPacket,
+                id: "tool:exact-recovery",
+                type: "tool_call",
+              }],
+              usage_metadata: {
+                input_tokens: 100,
+                output_tokens: 50,
+                total_tokens: 150,
+              },
+            }),
+            // Regression: LangChain can leave an empty parsed object for a
+            // valid streamed Anthropic structured tool call. The host still
+            // parses and validates the exact named raw tool arguments.
+            parsed: {},
+          };
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Summarize the attached synthetic page.",
+      scope: {
+        ...request.scope,
+        confluenceSpaceKeys: ["DEMO"],
+      },
+      scopeSeeds: [{
+        binding: {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:current:workflow-page",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:workflow-page",
+          key: "1001",
+          name: "Synthetic attached page",
+          source: "current_context",
+          authority: "approved",
+        },
+        precedence: 300,
+      }],
+      exactContextProducts: ["confluence"],
+    };
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      exactReaderPrimaryMaxMs: 10,
+      modelForPreference: () => recoveryModel,
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async getPage({ contentId }) {
+            pageReads += 1;
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: "Synthetic attached page",
+              content: {
+                text: "The synthetic page establishes the bounded conclusion.",
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 55,
+              },
+            };
+          },
+        },
+      },
+      async invoke(taskInput, config) {
+        if (taskInput.subagent_type === "chat-exact-context-reader-v1") {
+          primaryAttempts += 1;
+          await new Promise<never>((_resolve, reject) => {
+            const signal = config?.signal;
+            const fail = (): void => {
+              primarySignalAborted = signal?.aborted === true;
+              primaryAbortReasonName = signal?.reason instanceof Error
+                ? signal.reason.name
+                : undefined;
+              reject(signal?.reason ?? new Error("Synthetic exact reader timeout."));
+            };
+            if (signal?.aborted) fail();
+            else signal?.addEventListener("abort", fail, { once: true });
+          });
+        }
+        return analysisPacket();
+      },
+    });
+    const anchor = harness.broker.exactAnchors()[0];
+    if (!anchor) throw new Error("missing exact anchor");
+    await harness.broker.readExactAnchor({
+      schema: "atlcli.ptc/atlassian.bound.read.input/v1",
+      anchorRef: anchor.anchorRef,
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:exact",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchor.anchorRef} and extract bounded claims.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Analyze the bounded evidence.",
+          dependencyTaskIds: ["task:exact"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft a provisional answer.",
+          dependencyTaskIds: ["task:analysis"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique the provisional answer.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the accepted answer.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:exact"
+    );
+    if (!dispatch) throw new Error("missing exact dispatch");
+
+    await expect(invokeDispatch(harness.runtime, dispatch)).resolves.toMatchObject({
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: ["wiki:1001"],
+      claims: [{ sourceRefs: ["wiki:1001"] }],
+    });
+    expect({ pageReads, primaryAttempts, recoveryAttempts }).toEqual({
+      pageReads: 1,
+      primaryAttempts: 1,
+      recoveryAttempts: 1,
+    });
+    expect(primarySignalAborted).toBe(true);
+    expect(primaryAbortReasonName).toBe("GraphInterrupt");
+  });
+
+  test("fails closed instead of invoking exact recovery without admitted evidence", async () => {
+    let recoveryAttempts = 0;
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      scopeSeeds: [{
+        binding: {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:current:unread-page",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:unread-page",
+          key: "1002",
+          name: "Unread page",
+          source: "current_context",
+          authority: "approved",
+        },
+        precedence: 300,
+      }],
+      exactContextProducts: ["confluence"],
+    };
+    const recoveryModel = {
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          recoveryAttempts += 1;
+          throw new Error("Exact recovery must not run without evidence.");
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      modelForPreference: () => recoveryModel,
+      async invoke(taskInput) {
+        throw new Error("Synthetic unread exact specialist failure.");
+      },
+    });
+    const anchor = harness.broker.exactAnchors()[0];
+    if (!anchor) throw new Error("missing unread anchor");
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:exact-unread",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchor.anchorRef}.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Analyze evidence.",
+          dependencyTaskIds: ["task:exact-unread"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft.",
+          dependencyTaskIds: ["task:analysis"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Synthesize.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:exact-unread"
+    );
+    if (!dispatch) throw new Error("missing unread exact dispatch");
+
+    await expect(invokeDispatch(harness.runtime, dispatch)).rejects.toThrow(
+      "Synthetic unread exact specialist failure",
+    );
+    expect(recoveryAttempts).toBe(0);
   });
 
   test("uses native structured output only for side-effect-free answer children", async () => {
@@ -1436,6 +1849,73 @@ describe("Chat agentic workflow runtime", () => {
     const synthesisFormat = projectedResponseFormats.get("chat-synthesizer-v1");
     expect(repairFormat?.constructor.name).toBe("ProviderStrategy");
     expect(synthesisFormat?.constructor.name).toBe("ProviderStrategy");
+  });
+
+  test("retries one schema-invalid side-effect-free repair without replaying acquisition", async () => {
+    let repairAttempts = 0;
+    let analysisCalls = 0;
+    const harness = createHarness({
+      structuredOutput: "native",
+      withRetrievalAssessment: true,
+      projectResponseSchema: providerCompatibleChatJsonSchemaV1,
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-answer-critic-v1") {
+          return {
+            schema: "atlcli.chat-critique-packet/v1",
+            defects: [{
+              defectId: "chat-defect:retry-repair-format",
+              code: "question-not-answered",
+              severity: "material",
+              sourceIds: [],
+              repairAction: "resynthesize",
+              message: "The provisional answer needs one bounded repair.",
+            }],
+            readyForSynthesis: false,
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-repairer-v1") {
+          repairAttempts += 1;
+          if (repairAttempts === 1) {
+            throw new Error(
+              "Failed to parse structured output for tool 'ChatRepairedAnswerDraftV1': Model output did not satisfy the provided response schema.",
+            );
+          }
+          return answerDraft();
+        }
+        if (
+          taskInput.subagent_type === "chat-answer-drafter-v1" ||
+          taskInput.subagent_type === "chat-synthesizer-v1"
+        ) return answerDraft();
+        analysisCalls += 1;
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted claims.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const repair = quality.dispatches.find((entry) =>
+      entry.subagentType === "chat-answer-repairer-v1"
+    );
+    if (!repair) throw new Error("missing repair dispatch");
+
+    await expect(invokeDispatch(harness.runtime, repair)).resolves.toMatchObject({
+      messageMarkdown: "A bounded synthetic answer.",
+    });
+    expect(repairAttempts).toBe(2);
+    expect(analysisCalls).toBe(1);
   });
 
   test("forwards model stream events from host-executed DeepAgents specialists", async () => {
@@ -2045,9 +2525,9 @@ describe("Chat agentic workflow runtime", () => {
           dependencyTaskIds: [],
         },
         {
-          taskId: "task:contradictions",
-          profileId: "contradiction-checker",
-          objective: "Check contradictions.",
+          taskId: "task:relationships",
+          profileId: "relationship-tracer",
+          objective: "Trace relationships.",
           dependencyTaskIds: [],
         },
       ]),
@@ -2058,7 +2538,7 @@ describe("Chat agentic workflow runtime", () => {
     );
     const first = invokeDispatch(harness.runtime, requireDispatch(byId, "task:comparison"));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await expect(invokeDispatch(harness.runtime, requireDispatch(byId, "task:contradictions")))
+    await expect(invokeDispatch(harness.runtime, requireDispatch(byId, "task:relationships")))
       .rejects.toThrow("concurrency exceeded");
     releaseFirst();
     await first;

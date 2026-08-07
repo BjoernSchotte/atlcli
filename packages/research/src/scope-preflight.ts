@@ -112,7 +112,10 @@ function collectExactReferenceMatches(question: string, expectedTenantOrigin: st
           entityKindHint: "issue",
           exactReference: text,
         });
-      } else if (/^\/wiki\/(?:(?:spaces|display)\/[^/]+\/pages|pages)\/\d+(?:\/|$)/i.test(reference.pathname)) {
+      } else if (
+        /^\/wiki\/(?:(?:spaces|display)\/[^/]+\/pages|pages)\/\d+(?:\/|$)/i.test(reference.pathname) ||
+        /^\/wiki\/spaces\/[^/]+\/blog\/\d{4}\/\d{2}\/\d{2}\/\d+(?:\/|$)/i.test(reference.pathname)
+      ) {
         matches.push({
           start: match.index,
           end: match.index + text.length,

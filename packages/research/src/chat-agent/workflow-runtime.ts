@@ -2,9 +2,15 @@ import { createCodeInterpreterMiddleware, toCamelCase } from "@langchain/quickjs
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { ChatModelStreamEvent } from "@langchain/core/language_models/event";
-import { ToolMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
+import { GraphInterrupt } from "@langchain/langgraph";
 import {
   createMiddleware,
   modelRetryMiddleware,
@@ -69,6 +75,7 @@ import {
   persistChatQualityArtifactsV1,
   type ChatGroundednessAssessmentV1,
   type ChatQualityDispositionV1,
+  type ChatRepairSkippedReasonV1,
 } from "./quality.js";
 
 export const CHAT_WORKFLOW_STATE_PATH_V1 =
@@ -128,7 +135,7 @@ export interface ChatWorkflowAdvanceResponseV1 {
 
 export interface ChatRepairAdmissionDecisionV1 {
   admit: boolean;
-  reason?: "deadline-reserve" | "model-budget-reserve";
+  reason?: ChatRepairSkippedReasonV1;
 }
 
 export interface ChatWorkflowRuntimeBindingsV1 {
@@ -264,6 +271,113 @@ function exhaustedSearchGapPacketV1(product: ResearchProduct): ChatEvidencePacke
   };
 }
 
+const CHAT_EXACT_EVIDENCE_RECOVERY_DESCRIPTION_CHARS_V1 = 15_500;
+const CHAT_EXACT_READER_PRIMARY_MAX_MS_V1 = 30_000;
+const CHAT_EXACT_EVIDENCE_RECOVERY_MAX_MS_V1 = 60_000;
+
+function exactReaderPrimaryDeadlineInterruptV1(): GraphInterrupt {
+  return new GraphInterrupt([{
+    id: "kiteweave:chat-exact-reader-primary-deadline",
+    value: {
+      type: "kiteweave-internal-deadline",
+      recoverableFromAcceptedEvidence: true,
+    },
+  }]);
+}
+
+/**
+ * Project only evidence that the failed exact-reader task had already read.
+ * The projection is intentionally bounded below the task tool's description
+ * ceiling and contains no opaque capability refs, scope expansion, or tools.
+ */
+function exactEvidenceRecoveryDescriptionV1(input: {
+  broker: ResearchCapabilityBroker;
+  task: Readonly<ChatWorkflowTaskProposalV1>;
+  question: string;
+}): string | undefined {
+  const sourceIds = new Set(input.broker.exactAnchors()
+    .filter((anchor) => input.task.objective.includes(anchor.anchorRef))
+    .map((anchor) => input.broker.canonicalDetailSourceIdForRef(anchor.anchorRef))
+    .filter((sourceId): sourceId is string => sourceId !== undefined));
+  if (sourceIds.size === 0) return undefined;
+
+  const evidence = input.broker.detailEvidenceLedger()
+    .filter((entry) => sourceIds.has(entry.source.id));
+  if (evidence.length === 0) return undefined;
+  const sectionRefsBySource = new Map<string, string[]>();
+  for (const entry of input.broker.readSectionReferenceLedger()) {
+    if (!sourceIds.has(entry.sourceId)) continue;
+    const refs = sectionRefsBySource.get(entry.sourceId) ?? [];
+    refs.push(`${entry.sourceId}#${entry.sectionId}`);
+    sectionRefsBySource.set(entry.sourceId, refs);
+  }
+
+  let maximumTextChars = Math.max(800, Math.floor(10_000 / evidence.length));
+  const serialize = (): string => JSON.stringify({
+    schema: "atlcli.chat-exact-evidence-recovery-input/v1",
+    question: input.question.slice(0, 2_000),
+    objective: input.task.objective
+      .replace(/research-anchor:[A-Za-z0-9-]{1,200}/gu, "[assigned-source]")
+      .slice(0, 2_500),
+    instruction:
+      "Return one atlcli.chat-evidence-packet/v1 from only these already-read projections. Do not request tools, sources, or broader context.",
+    evidence: evidence.map((entry) => ({
+      source: {
+        id: entry.source.id,
+        product: entry.source.product,
+        title: entry.source.title,
+      },
+      content: {
+        text: entry.content.text.slice(0, maximumTextChars),
+        sourceProjectionTruncated: entry.content.truncated,
+        recoveryProjectionTruncated: entry.content.text.length > maximumTextChars,
+      },
+      allowedSourceRefs: [
+        entry.source.id,
+        ...(sectionRefsBySource.get(entry.source.id) ?? []),
+      ],
+    })),
+  });
+  let serialized = serialize();
+  while (
+    serialized.length > CHAT_EXACT_EVIDENCE_RECOVERY_DESCRIPTION_CHARS_V1 &&
+    maximumTextChars > 800
+  ) {
+    maximumTextChars = Math.max(800, maximumTextChars - 800);
+    serialized = serialize();
+  }
+  return serialized.length <= CHAT_EXACT_EVIDENCE_RECOVERY_DESCRIPTION_CHARS_V1
+    ? serialized
+    : undefined;
+}
+
+function bindRecoveredEvidenceReferencesV1(
+  broker: ResearchCapabilityBroker,
+  packet: ChatEvidencePacketV1,
+): ChatEvidencePacketV1 {
+  const knownSources = new Set(
+    broker.detailEvidenceLedger().map((entry) => entry.source.id),
+  );
+  const knownRefs = new Set([
+    ...knownSources,
+    ...broker.readSectionReferenceLedger().map((entry) =>
+      `${entry.sourceId}#${entry.sectionId}`
+    ),
+  ]);
+  return {
+    ...packet,
+    claims: packet.claims.map((claim) => {
+      const sourceIds = claim.sourceIds.filter((sourceId) => knownSources.has(sourceId));
+      const sourceRefs = claim.sourceRefs.filter((sourceRef) => knownRefs.has(sourceRef));
+      return {
+        ...claim,
+        sourceIds,
+        sourceRefs: sourceRefs.length > 0 ? sourceRefs : [...sourceIds],
+      };
+    }),
+  };
+}
+
 const taskInputSchema = z.object({
   description: z.string().min(1).max(16_000),
   subagent_type: z.string().min(1).max(240),
@@ -290,6 +404,10 @@ function sourceIdsFromResult(value: ChatSubagentResultV1): string[] {
     return [
       ...value.sourceIds,
       ...value.claims.flatMap((claim) => claim.sourceIds),
+      ...value.claims.flatMap((claim) => claim.sourceRefs.map((sourceRef) => {
+        const separator = sourceRef.indexOf("#");
+        return separator === -1 ? sourceRef : sourceRef.slice(0, separator);
+      })),
       ...value.relationships.flatMap((relationship) => [
         relationship.fromSourceId,
         relationship.toSourceId,
@@ -354,6 +472,20 @@ function assertKnownSourceReferencesV1(
     );
   }
   if ("sourceIds" in value) {
+    const knownRefs = new Set([
+      ...known,
+      ...broker.readSectionReferenceLedger().map((entry) =>
+        `${entry.sourceId}#${entry.sectionId}`
+      ),
+    ]);
+    const unknownRefs = [...new Set(value.claims.flatMap((claim) => claim.sourceRefs))]
+      .filter((sourceRef) => !knownRefs.has(sourceRef));
+    if (unknownRefs.length > 0) {
+      throw new ChatContractError(
+        "invalid-report",
+        `Chat subagent ${profileId} referenced a page section that was not read in detail.`,
+      );
+    }
     const packetSources = new Set(value.sourceIds);
     const escaped = sourceIdsFromResult(value)
       .filter((sourceId) => !packetSources.has(sourceId));
@@ -442,7 +574,13 @@ export function quarantineUnreadEvidenceReferencesV1(
   );
   if (unknown.size === 0) return value;
   const claims = value.claims.filter((claim) =>
-    claim.sourceIds.length > 0 && claim.sourceIds.every((sourceId) => known.has(sourceId))
+    claim.sourceIds.length > 0 &&
+    claim.sourceIds.every((sourceId) => known.has(sourceId)) &&
+    claim.sourceRefs.every((sourceRef) => {
+      const separator = sourceRef.indexOf("#");
+      const sourceId = separator === -1 ? sourceRef : sourceRef.slice(0, separator);
+      return known.has(sourceId);
+    })
   );
   const relationships = value.relationships.filter((relationship) =>
     known.has(relationship.fromSourceId) && known.has(relationship.toSourceId)
@@ -507,6 +645,23 @@ function parsedToolJsonV1(value: unknown, label: string): Record<string, unknown
     throw new ChatContractError("invalid-report", `${label} returned an invalid packet.`);
   }
   return parsed as Record<string, unknown>;
+}
+
+function isStructuredOutputSchemaFailureV1(error: unknown): boolean {
+  const visited = new Set<unknown>();
+  let current = error;
+  for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
+    if (visited.has(current)) break;
+    visited.add(current);
+    const candidate = current as { message?: unknown; cause?: unknown };
+    const message = typeof candidate.message === "string" ? candidate.message : "";
+    if (
+      /failed to parse structured output|did not satisfy (?:the )?(?:provided )?response schema|structured output parsing/iu
+        .test(message)
+    ) return true;
+    current = candidate.cause;
+  }
+  return false;
 }
 
 function nestedToolConfigV1(config: RunnableConfig): RunnableConfig {
@@ -743,7 +898,7 @@ function compileChatSubagentsV1(input: {
   modelBudget: ResearchModelRunBudget;
   onModelBudgetSnapshot: (state: ResearchModelBudgetStateV1) => Promise<void>;
 }): SubAgent[] {
-  return CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
+  const subagents = CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
     const searchProduct = profile.id === "confluence-search-reader"
       ? "confluence" as const
       : profile.id === "jira-search-reader"
@@ -972,6 +1127,44 @@ function compileChatSubagentsV1(input: {
         }
       },
     });
+    const exactReaderSectionReadGuard = createMiddleware({
+      name: "ChatExactReaderSectionReadGuard",
+      async wrapToolCall(request, handler) {
+        if (request.toolCall.name !== "atlassian_bound_section_read") {
+          return handler(request);
+        }
+        const completedSectionReads = request.state.messages.filter((message) =>
+          message instanceof ToolMessage &&
+          message.name === "atlassian_bound_section_read" &&
+          message.status !== "error"
+        ).length;
+        const currentModelMessage = [...request.state.messages].reverse().find((message) =>
+          message instanceof AIMessage &&
+          message.tool_calls?.some((toolCall) =>
+            toolCall.name === "atlassian_bound_section_read"
+          )
+        );
+        const firstBatchedSectionCallId = currentModelMessage instanceof AIMessage
+          ? currentModelMessage.tool_calls?.find((toolCall) =>
+              toolCall.name === "atlassian_bound_section_read"
+            )?.id
+          : undefined;
+        const isLaterBatchedSectionCall = firstBatchedSectionCallId !== undefined &&
+          request.toolCall.id !== firstBatchedSectionCallId;
+        if (completedSectionReads === 0 && !isLaterBatchedSectionCall) {
+          return handler(request);
+        }
+        return new ToolMessage({
+          tool_call_id: request.toolCall.id ?? "exact-reader:section-limit",
+          name: "atlassian_bound_section_read",
+          content: [
+            "SECTION_READ_LIMIT_REACHED.",
+            "The one optional section read for this exact-reader task is already complete.",
+            "Do not call another tool. Return the requested evidence packet now and disclose any remaining unread section as a gap.",
+          ].join(" "),
+        });
+      },
+    });
     const maxModelOutputTokens = chatSubagentModelOutputLimitV1({
       profileId: profile.id,
       modelPreference: profile.modelPreference,
@@ -1060,31 +1253,37 @@ function compileChatSubagentsV1(input: {
       // Retry stays outside the budget middleware so every provider attempt is
       // independently reserved. It retries only the current model call; tool
       // results and Atlassian reads are not replayed.
-      middleware: [modelRetry, modelBudgetMiddleware, ...(ptc.length === 0 ||
-          profile.id === "exact-context-reader"
-        ? []
-        : [evalGuard, createCodeInterpreterMiddleware({
-            ptc,
-            subagents: false,
-            toolName: "eval",
-            systemPrompt: "Use the documented tools.* functions only. Top-level await is available. Return the useful value as the final expression; console and delegation are unavailable.",
-            memoryLimitBytes: input.limits.maxInterpreterMemoryBytes,
-            maxStackSizeBytes: 320 * 1024,
-            executionTimeoutMs: Math.min(
-              profile.maxDurationMs,
-              input.limits.maxInterpreterMs,
-            ),
-            maxPtcCalls: childPtcCallLimit,
-            maxResultChars: Math.min(
-              input.limits.maxPtcOutputBytes,
-              boundedAcquisitionResultAvailable
-                ? input.limits.maxPtcOutputBytes
-                : profile.maxResultBytes,
-            ),
-            captureConsole: false,
-          })])],
+      middleware: [
+        modelRetry,
+        modelBudgetMiddleware,
+        ...(profile.id === "exact-context-reader"
+          ? [exactReaderSectionReadGuard]
+          : ptc.length === 0
+            ? []
+            : [evalGuard, createCodeInterpreterMiddleware({
+              ptc,
+              subagents: false,
+              toolName: "eval",
+              systemPrompt: "Use the documented tools.* functions only. Top-level await is available. Return the useful value as the final expression; console and delegation are unavailable.",
+              memoryLimitBytes: input.limits.maxInterpreterMemoryBytes,
+              maxStackSizeBytes: 320 * 1024,
+              executionTimeoutMs: Math.min(
+                profile.maxDurationMs,
+                input.limits.maxInterpreterMs,
+              ),
+              maxPtcCalls: childPtcCallLimit,
+              maxResultChars: Math.min(
+                input.limits.maxPtcOutputBytes,
+                boundedAcquisitionResultAvailable
+                  ? input.limits.maxPtcOutputBytes
+                  : profile.maxResultBytes,
+              ),
+              captureConsole: false,
+              })]),
+      ],
     };
   });
+  return subagents;
 }
 
 export function chatSubagentPtcCallLimitV1(input: {
@@ -1173,7 +1372,10 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   turnId: string;
   question: string;
   siteOrigin: string;
-  taskContext: string | (() => string);
+  taskContext: string | ((
+    task: Readonly<ChatWorkflowTaskProposalV1>,
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[],
+  ) => string);
   limits: ResearchLimitsV1;
   locale?: string;
   exactContextProducts: readonly ResearchProduct[];
@@ -1196,6 +1398,8 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   onModelStreamEvent?: (event: ChatSubagentModelStreamEventV1) => void;
   retrievalLedger?: ChatCandidateLedgerControllerV1;
   strategyReviewCurrent?: () => boolean;
+  /** Test seam for the inner exact-reader deadline; product callers use 90s. */
+  exactReaderPrimaryMaxMs?: number;
 }): {
   middleware: ReturnType<ChatWorkflowRuntimeBindingsV1["createSubAgentMiddleware"]>;
   proposalTool: DynamicStructuredTool;
@@ -1312,6 +1516,104 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       "DeepAgentsJS did not provide the declarative Chat task tool.",
     );
   }
+  const recoverExactEvidence = async (
+    description: string,
+    config: RunnableConfig,
+  ): Promise<ChatEvidencePacketV1> => {
+    const messages = [
+      new SystemMessage([
+        "You are Kiteweave's internal exact-evidence recovery boundary.",
+        "The user message contains only bounded evidence already read by one failed exact-context reader.",
+        `Return exactly one atlcli.chat-evidence-packet/v1 structured result${
+          input.locale?.toLowerCase().startsWith("de") ? " in German" : ""
+        }.`,
+        "Extract compact, central, question-relevant claims. Copy only source.id and allowedSourceRefs from the input. Disclose truncated or insufficient evidence as a gap.",
+        "No source-read, filesystem, network, eval, task, or delegation capability exists. Never request more context or expose source bodies in the result.",
+      ].join("\n\n")),
+      new HumanMessage(description),
+    ];
+    const maximumOutputTokens = Math.min(input.limits.maxModelOutputTokens, 3_072);
+    const reservation = input.modelBudget.reserve(
+      { messages, responseFormat: "atlcli.chat-evidence-packet/v1" },
+      maximumOutputTokens,
+      { calls: 1, inputTokens: 4_096, outputTokens: 5_000 },
+    );
+    await input.onModelBudgetSnapshot(input.modelBudget.state());
+    const controller = new AbortController();
+    const forwardAbort = (): void => controller.abort(
+      config.signal?.reason ?? new DOMException("Cancelled", "AbortError"),
+    );
+    if (config.signal?.aborted) forwardAbort();
+    else config.signal?.addEventListener("abort", forwardAbort, { once: true });
+    const timeout = setTimeout(() => controller.abort(
+      new DOMException(
+        "The exact evidence recovery exceeded its analysis window.",
+        "TimeoutError",
+      ),
+    ), CHAT_EXACT_EVIDENCE_RECOVERY_MAX_MS_V1);
+    let settled = false;
+    try {
+      const model = input.modelForPreference?.("fast") ?? input.model;
+      const structured = model.withStructuredOutput<ChatEvidencePacketV1>(
+        chatSubagentProfileByIdV1("exact-context-reader").responseSchema as Record<string, unknown>,
+        {
+          name: "KiteweaveExactEvidenceRecoveryV1",
+          includeRaw: true,
+          // The root model can have provider-side thinking enabled. Forced
+          // function calling is incompatible with that mode on Anthropic and
+          // can yield an empty tool input even though the model completed.
+          // LangChain's native JSON-Schema method is the provider-neutral
+          // structured-output contract for this tool-free recovery boundary.
+          method: "jsonSchema",
+        },
+      );
+      const response = await structured.invoke(messages, {
+        ...config,
+        signal: controller.signal,
+      });
+      input.modelBudget.settle(reservation, response.raw);
+      await input.onModelBudgetSnapshot(input.modelBudget.state());
+      settled = true;
+      if (input.modelBudget.exceedsLimits()) {
+        throw new ChatContractError(
+          "limit-exceeded",
+          "The model session budget was exhausted by exact evidence recovery.",
+        );
+      }
+      const rawToolArgs = response.raw instanceof AIMessage
+        ? response.raw.tool_calls?.find((toolCall) =>
+            toolCall.name === "KiteweaveExactEvidenceRecoveryV1"
+          )?.args
+        : undefined;
+      let parseFailure: unknown;
+      const candidates = [response.parsed, rawToolArgs];
+      for (const candidate of candidates) {
+        if (candidate === undefined || candidate === null) continue;
+        try {
+          return bindRecoveredEvidenceReferencesV1(
+            input.broker,
+            parseChatSubagentResultV1(
+              "exact-context-reader",
+              candidate,
+            ) as ChatEvidencePacketV1,
+          );
+        } catch (error) {
+          parseFailure = error;
+        }
+      }
+      throw parseFailure ?? new ChatContractError(
+        "invalid-report",
+        "Exact evidence recovery returned no structured packet.",
+      );
+    } finally {
+      clearTimeout(timeout);
+      config.signal?.removeEventListener("abort", forwardAbort);
+      if (!settled) {
+        // An uncertain provider call remains pessimistically charged.
+        await input.onModelBudgetSnapshot(input.modelBudget.state());
+      }
+    }
+  };
   const allowedProfileIds = CHAT_SUBAGENT_PROFILES_V1
     .filter((profile) => {
       if (profile.id === "exact-context-reader") {
@@ -1376,21 +1678,107 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
               ], true)
             : [diagnosticStreamCallback]
         : config.callbacks;
+      const invokePrimary = async (): Promise<unknown> => {
+        if (taskInput.subagent_type !== "chat-exact-context-reader-v1") {
+          return upstreamTask.invoke(taskInput, {
+            ...config,
+            ...(callbacks ? { callbacks } : {}),
+          });
+        }
+        const primaryMaxMs = Math.max(
+          1,
+          Math.min(
+            CHAT_EXACT_READER_PRIMARY_MAX_MS_V1,
+            Math.trunc(
+              input.exactReaderPrimaryMaxMs ??
+                CHAT_EXACT_READER_PRIMARY_MAX_MS_V1,
+            ),
+          ),
+        );
+        const controller = new AbortController();
+        const forwardAbort = (): void => controller.abort(
+          config.signal?.reason ?? new DOMException("Cancelled", "AbortError"),
+        );
+        if (config.signal?.aborted) forwardAbort();
+        else config.signal?.addEventListener("abort", forwardAbort, { once: true });
+        const timeout = setTimeout(() => controller.abort(
+          exactReaderPrimaryDeadlineInterruptV1(),
+        ), primaryMaxMs);
+        try {
+          return await upstreamTask.invoke(taskInput, {
+            ...config,
+            signal: controller.signal,
+            ...(callbacks ? { callbacks } : {}),
+          });
+        } finally {
+          clearTimeout(timeout);
+          config.signal?.removeEventListener("abort", forwardAbort);
+        }
+      };
       try {
-        return await upstreamTask.invoke(taskInput, {
-          ...config,
-          ...(callbacks ? { callbacks } : {}),
-        });
+        return await invokePrimary();
       } catch (error) {
+        let failure = error;
+        let exactRecoveryAttempted = false;
+        const sideEffectFreeFinalizer =
+          taskInput.subagent_type === "chat-answer-drafter-v1" ||
+          taskInput.subagent_type === "chat-answer-repairer-v1" ||
+          taskInput.subagent_type === "chat-synthesizer-v1";
+        if (sideEffectFreeFinalizer && isStructuredOutputSchemaFailureV1(failure)) {
+          if (taskId.taskId) modelStreamErrorByTaskId.delete(taskId.taskId);
+          try {
+            // These profiles cannot read, write, delegate, or call eval. One
+            // fresh invocation can therefore repair a transient schema-shaped
+            // provider response without replaying Atlassian work.
+            return await upstreamTask.invoke(taskInput, {
+              ...config,
+              ...(callbacks ? { callbacks } : {}),
+            });
+          } catch (retryError) {
+            failure = retryError;
+          }
+        }
+        if (
+          taskInput.subagent_type === "chat-exact-context-reader-v1" &&
+          !input.signal.aborted && !config.signal?.aborted &&
+          taskId.taskId
+        ) {
+          const task = taskById.get(taskId.taskId);
+          const recoveryDescription = task
+            ? exactEvidenceRecoveryDescriptionV1({
+                broker: input.broker,
+                task,
+                question: input.question,
+              })
+            : undefined;
+          if (recoveryDescription) {
+            exactRecoveryAttempted = true;
+            modelStreamErrorByTaskId.delete(taskId.taskId);
+            try {
+              // One provider-neutral structured-output pass over evidence
+              // already admitted by this task. It has no agent or tool loop,
+              // so it cannot replay an Atlassian read or widen scope.
+              return await recoverExactEvidence(recoveryDescription, {
+                signal: config.signal,
+              });
+            } catch (recoveryError) {
+              failure = recoveryError;
+              // The aborted primary stream can emit a late callback after the
+              // recovery begins. Never let that stale event hide the actual
+              // recovery failure classification.
+              modelStreamErrorByTaskId.delete(taskId.taskId);
+            }
+          }
+        }
         const product = taskInput.subagent_type === "chat-confluence-search-reader-v1"
           ? "confluence" as const
           : taskInput.subagent_type === "chat-jira-search-reader-v1"
             ? "jira" as const
             : undefined;
-        if (product && isBoundedSearchAcquisitionErrorV1(error)) {
+        if (product && isBoundedSearchAcquisitionErrorV1(failure)) {
           return exhaustedSearchGapPacketV1(product);
         }
-        const streamError = taskId.taskId
+        const streamError = taskId.taskId && !exactRecoveryAttempted
           ? modelStreamErrorByTaskId.get(taskId.taskId)
           : undefined;
         if (streamError) {
@@ -1399,7 +1787,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
             `Chat specialist ${taskId.taskId} failed during model streaming: ${streamError.message}`,
           );
         }
-        throw error;
+        throw failure;
       }
     },
     projectResult: (raw, task) => {

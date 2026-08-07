@@ -718,6 +718,26 @@ export function chatModelCallLimitV1(input: {
 const CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 = 15_000;
 const CHAT_REPAIR_TIME_RESERVE_MS_V1 = 15_000;
 
+export function decideChatRepairAdmissionV1(input: {
+  qualityMode: ChatQualityPolicyV1["mode"];
+  remainingMs: number;
+  hasModelReserve: boolean;
+}): { admit: boolean; reason?: "auto-latency-policy" | "deadline-reserve" | "model-budget-reserve" } {
+  if (input.qualityMode === "auto") {
+    return { admit: false, reason: "auto-latency-policy" };
+  }
+  if (
+    input.remainingMs <
+      CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 + CHAT_REPAIR_TIME_RESERVE_MS_V1
+  ) {
+    return { admit: false, reason: "deadline-reserve" };
+  }
+  if (!input.hasModelReserve) {
+    return { admit: false, reason: "model-budget-reserve" };
+  }
+  return { admit: true };
+}
+
 function collectUsage(messages: unknown): ResearchRunUsageV1 | undefined {
   if (!Array.isArray(messages)) return undefined;
   let inputTokens = 0;
@@ -1564,10 +1584,32 @@ export function createKiteweaveChatAgent(
               // retrieval; source bodies travel only through dependency
               // packets. This keeps child context small without forcing a
               // reader to guess raw Jira or Confluence identifiers.
-              taskContext: () => minimalChatSubagentTaskContextV1(
-                turn.question,
-                anchors,
-              ),
+              taskContext: (task, tasks) => {
+                if (task.profileId !== "exact-context-reader" || anchors.length === 0) {
+                  return minimalChatSubagentTaskContextV1(turn.question);
+                }
+                const explicit = anchors.filter((anchor) =>
+                  task.objective.includes(anchor.anchorRef)
+                );
+                if (explicit.length > 0) {
+                  return minimalChatSubagentTaskContextV1(turn.question, explicit);
+                }
+                const readers = tasks.filter((candidate) =>
+                  candidate.profileId === "exact-context-reader"
+                );
+                const readerIndex = Math.max(0, readers.findIndex((candidate) =>
+                  candidate.taskId === task.taskId
+                ));
+                const assigned = anchors.filter((_anchor, anchorIndex) =>
+                  anchorIndex % Math.max(1, readers.length) === readerIndex
+                );
+                return minimalChatSubagentTaskContextV1(
+                  turn.question,
+                  assigned.length > 0
+                    ? assigned
+                    : [anchors[readerIndex % anchors.length]!],
+                );
+              },
               limits: turn.limits,
               locale: turn.locale,
               exactContextProducts,
@@ -1597,20 +1639,20 @@ export function createKiteweaveChatAgent(
                 await retrievalLedger!.finalize();
               },
               decideRepairAdmission: () => {
+                // Auto keeps the independent critic and the final synthesizer,
+                // but folds the critic's typed defects directly into that final
+                // synthesis. A separate repair model call is reserved for Deep,
+                // where the user explicitly traded conversational latency for
+                // another bounded quality pass.
                 const elapsedMs = Math.max(0, now() - startedAtMs);
                 const remainingMs = Math.max(0, turn.limits.maxRunMs - elapsedMs);
-                if (
-                  remainingMs <
-                    CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 + CHAT_REPAIR_TIME_RESERVE_MS_V1
-                ) {
-                  return { admit: false, reason: "deadline-reserve" };
-                }
-                if (!modelBudget.canReserveCapacity(
-                  CHAT_REPAIR_AND_SYNTHESIS_MODEL_RESERVE_V1,
-                )) {
-                  return { admit: false, reason: "model-budget-reserve" };
-                }
-                return { admit: true };
+                return decideChatRepairAdmissionV1({
+                  qualityMode: qualityPolicy.mode,
+                  remainingMs,
+                  hasModelReserve: modelBudget.canReserveCapacity(
+                    CHAT_REPAIR_AND_SYNTHESIS_MODEL_RESERVE_V1,
+                  ),
+                });
               },
               retrievalLedger,
               now,

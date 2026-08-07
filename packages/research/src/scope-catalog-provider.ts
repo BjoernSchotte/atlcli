@@ -269,10 +269,16 @@ function confluencePageId(profile: Profile, reference: URL): string | undefined 
     return undefined;
   }
   const escapedBasePath = basePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(
+  const pageMatch = new RegExp(
     `^${escapedBasePath}/(?:(?:spaces|display)/[^/]+/pages|pages)/(\\d+)(?:/|$)`,
   ).exec(reference.pathname);
-  return match?.[1];
+  if (pageMatch?.[1]) return pageMatch[1];
+  // Cloud blog posts are Confluence content entities and use the same
+  // read-only page detail API. Treat their dated URL as an exact page anchor
+  // instead of degrading it to a broad space binding.
+  return new RegExp(
+    `^${escapedBasePath}/spaces/[^/]+/blog/\\d{4}/\\d{2}/\\d{2}/(\\d+)(?:/|$)`,
+  ).exec(reference.pathname)?.[1];
 }
 
 function referenceCandidate(

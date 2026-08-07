@@ -128,7 +128,7 @@ describe("Chat dynamic workflow admission", () => {
     );
     expect(exactReader?.maxDurationMs).toBe(240_000);
     expect(exactReader?.systemPrompt).toContain(
-      "one compact, central, question-relevant claim per source",
+      "Every claim must name its canonical sourceIds and exact sourceRefs",
     );
     for (const id of [
       "relationship-tracer",
@@ -436,6 +436,55 @@ describe("Chat dynamic workflow admission", () => {
     ]);
   });
 
+  test("binds task-specific child context and orders analysis after every acquisition task", async () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: {
+        ...agentic,
+        requiredCapabilities: ["exact-read", "comparison-analysis", "quality-review", "chat-answer"],
+      },
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      allowedProfileIds: [
+        "exact-context-reader",
+        "comparison-analyst",
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+      ],
+      taskContext: (task) => JSON.stringify({ assignedTaskId: task.taskId }),
+    });
+    await controller.tool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:first-reader",
+          profileId: "exact-context-reader",
+          objective: "Read the first exact source.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:second-reader",
+          profileId: "exact-context-reader",
+          objective: "Read the second exact source.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:compare",
+          profileId: "comparison-analyst",
+          objective: "Compare the acquired evidence.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    });
+
+    const workflow = controller.acceptedWorkflow()!;
+    expect(workflow.tasks.find((task) => task.taskId === "task:compare")?.dependencyTaskIds)
+      .toEqual(["task:first-reader", "task:second-reader"]);
+    expect(workflow.tasks.find((task) => task.taskId === "task:first-reader")?.objective)
+      .toContain('"assignedTaskId":"task:first-reader"');
+    expect(workflow.tasks.find((task) => task.taskId === "task:second-reader")?.objective)
+      .toContain('"assignedTaskId":"task:second-reader"');
+  });
+
   test("validates a bounded retrieval proposal before freezing dynamic task context", async () => {
     let context = JSON.stringify({ retrieval: { variants: ["initial"] } });
     const seenVariants: string[] = [];
@@ -678,6 +727,7 @@ describe("Chat dynamic workflow admission", () => {
       claims: Array.from({ length: 80 }, (_, index) => ({
         text: index === 0 ? "x".repeat(1_000) : `Claim ${index}`,
         sourceIds: [],
+        sourceRefs: [],
       })),
       relationships: [],
       gaps: Array.from({ length: 40 }, (_, index) =>
@@ -698,14 +748,14 @@ describe("Chat dynamic workflow admission", () => {
     expect(() => parseChatSubagentResultV1("exact-context-reader", {
       schema: "atlcli.chat-evidence-packet/v1",
       sourceIds: [],
-      claims: [{ text: "x".repeat(1_001), sourceIds: [] }],
+      claims: [{ text: "x".repeat(1_001), sourceIds: [], sourceRefs: [] }],
       relationships: [],
       gaps: [],
     })).toThrow("invalid structured packet");
     expect(() => parseChatSubagentResultV1("exact-context-reader", {
       schema: "atlcli.chat-evidence-packet/v1",
       sourceIds: [],
-      claims: [{ text: { nested: "forbidden" }, sourceIds: [] }],
+      claims: [{ text: { nested: "forbidden" }, sourceIds: [], sourceRefs: [] }],
       relationships: [],
       gaps: [],
     })).toThrow("invalid structured packet");

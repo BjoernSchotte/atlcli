@@ -165,6 +165,44 @@ describe("Chat exact-anchor retrieval", () => {
     });
   });
 
+  test("reads multiple approved exact pages across spaces without widening discovery scope", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async ({ contentId, signal }) => {
+      signal.throwIfAborted();
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: contentId === "1001" ? "PRIMARY" : "SECONDARY",
+        title: `Synthetic page ${contentId}`,
+        content: {
+          text: `Approved exact evidence for ${contentId}.`,
+          linkTargets: [],
+          truncated: false,
+          inputBytes: 34,
+        },
+      };
+    };
+    let anchorSequence = 0;
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [
+        seed({ product: "confluence", entityKind: "page", key: "1001", name: "First page", id: "page-1001" }),
+        seed({ product: "confluence", entityKind: "page", key: "2002", name: "Second page", id: "page-2002" }),
+      ],
+      // This remains the broad discovery boundary. The second exact page was
+      // independently host-approved and must not be rejected by that boundary.
+      wiki: ["PRIMARY"],
+      exact: ["confluence"],
+    }), fake, { createAnchorId: () => `cross-space-${++anchorSequence}` });
+
+    const anchors = broker.exactAnchors();
+    expect(anchors).toHaveLength(2);
+    const outputs = await Promise.all(anchors.map((anchor) => invokeDirect(broker, anchor.anchorRef)));
+
+    expect(outputs.map((output) => output.source.spaceKey).sort()).toEqual(["PRIMARY", "SECONDARY"]);
+    expect(calls.sort()).toEqual(["wiki.get:1001", "wiki.get:2002"]);
+  });
+
   test("reuses one exact read result when a specialist retries the same opaque anchor", async () => {
     const calls: string[] = [];
     const observed: string[] = [];

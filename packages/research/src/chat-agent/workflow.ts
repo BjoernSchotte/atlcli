@@ -97,7 +97,7 @@ const CHAT_EVIDENCE_PACKET_SCHEMA_V1 = Object.freeze({
   additionalProperties: false,
   required: ["schema", "sourceIds", "claims", "relationships", "gaps"],
   properties: {
-    schema: { const: "atlcli.chat-evidence-packet/v1" },
+    schema: { type: "string", const: "atlcli.chat-evidence-packet/v1" },
     sourceIds: STRING_ARRAY,
     claims: {
       type: "array",
@@ -105,10 +105,15 @@ const CHAT_EVIDENCE_PACKET_SCHEMA_V1 = Object.freeze({
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["text", "sourceIds"],
+        required: ["text", "sourceIds", "sourceRefs"],
         properties: {
           text: { type: "string", minLength: 1, maxLength: 1_000 },
           sourceIds: STRING_ARRAY,
+          sourceRefs: {
+            ...STRING_ARRAY,
+            description:
+              "Exact SOURCE_ID or SOURCE_ID#SECTION_ID references that support this claim.",
+          },
         },
       },
     },
@@ -141,7 +146,7 @@ const CHAT_ANALYSIS_PACKET_SCHEMA_V1 = Object.freeze({
   additionalProperties: false,
   required: ["schema", "claimRefs", "relationshipRefs", "contradictions", "gaps"],
   properties: {
-    schema: { const: "atlcli.chat-analysis-packet/v1" },
+    schema: { type: "string", const: "atlcli.chat-analysis-packet/v1" },
     claimRefs: STRING_ARRAY,
     relationshipRefs: STRING_ARRAY,
     contradictions: {
@@ -171,7 +176,7 @@ const CHAT_CRITIQUE_PACKET_SCHEMA_V1 = Object.freeze({
   additionalProperties: false,
   required: ["schema", "defects", "readyForSynthesis"],
   properties: {
-    schema: { const: "atlcli.chat-critique-packet/v1" },
+    schema: { type: "string", const: "atlcli.chat-critique-packet/v1" },
     defects: {
       type: "array",
       maxItems: 40,
@@ -208,6 +213,7 @@ const chatEvidencePacketSchemaV1 = z.object({
   claims: z.array(z.object({
     text: z.string().min(1).max(1_000),
     sourceIds: z.array(z.string().min(1).max(256)).max(100),
+    sourceRefs: z.array(z.string().min(1).max(256)).max(100),
   }).strict()).max(80),
   relationships: z.array(z.object({
     fromSourceId: z.string().min(1).max(256),
@@ -357,7 +363,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "exact-context-reader",
     phase: "acquisition",
     description: "Read only host-attached Jira or Confluence entities and the smallest relevant page sections.",
-    systemPrompt: "Read only opaque host-attached entities. Return one compact, central, question-relevant claim per source plus bounded source references, relationships, and material gaps. Once the required anchors are read, immediately return the aggregate packet. Never return source bodies or delegate.",
+    systemPrompt: "Read only opaque host-attached entities. Return compact, central, question-relevant claims plus relationships and material gaps. Every claim must name its canonical sourceIds and exact sourceRefs. For a claim supported by an identifiable read Confluence section, use SOURCE_ID#SECTION_ID from the returned outline; use a page-level SOURCE_ID only for a claim supported by the whole read page. Never expose opaque sectionRef capability tokens. Once the required anchors are read, immediately return the aggregate packet. Never return source bodies or delegate.",
     grantedCapabilityIds: [
       BOUND_ENTITY_READ_CAPABILITY_ID_V1,
       BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
@@ -375,7 +381,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "confluence-search-reader",
     phase: "acquisition",
     description: "Discover, rank, and detail-read only admitted Confluence candidates.",
-    systemPrompt: "Use only Confluence discovery, ranking, and detail capabilities. Return at most two central, question-relevant claims per detailed source, deduplicate equivalent claims, and keep relationships and gaps concise. Never return bodies, credentials, queries, or delegation.",
+    systemPrompt: "Use only Confluence discovery, ranking, and detail capabilities. Return at most two central, question-relevant claims per detailed source, deduplicate equivalent claims, and keep relationships and gaps concise. Every claim must name its canonical sourceIds and exact sourceRefs; use SOURCE_ID#SECTION_ID for an identifiable read section and page-level SOURCE_ID only for whole-page support. Never expose opaque sectionRef capability tokens, bodies, credentials, queries, or delegation.",
     grantedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get"],
     responseSchemaId: "atlcli.chat-evidence-packet/v1",
     responseSchema: CHAT_EVIDENCE_PACKET_SCHEMA_V1,
@@ -395,7 +401,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "jira-search-reader",
     phase: "acquisition",
     description: "Discover, rank, and detail-read only admitted Jira candidates.",
-    systemPrompt: "Use only Jira discovery, ranking, and detail capabilities. Return at most two central, question-relevant claims per detailed source, deduplicate equivalent claims, and keep relationships and gaps concise. Never return bodies, credentials, queries, or delegation.",
+    systemPrompt: "Use only Jira discovery, ranking, and detail capabilities. Return at most two central, question-relevant claims per detailed source, deduplicate equivalent claims, and keep relationships and gaps concise. Every claim must name its canonical sourceIds and sourceRefs. Never return bodies, credentials, queries, or delegation.",
     grantedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get"],
     responseSchemaId: "atlcli.chat-evidence-packet/v1",
     responseSchema: CHAT_EVIDENCE_PACKET_SCHEMA_V1,
@@ -686,6 +692,12 @@ export function admitChatWorkflowProposalV1(input: {
       return phaseRank(phase) < phaseRank("drafting");
     })
     .map((task) => task.taskId);
+  const acquisitionTaskIds = proposedTasks
+    .filter((task) => PROFILE_BY_ID.get(task.profileId)!.phase === "acquisition")
+    .map((task) => task.taskId);
+  const analysisTaskIds = proposedTasks
+    .filter((task) => PROFILE_BY_ID.get(task.profileId)!.phase === "analysis")
+    .map((task) => task.taskId);
   const preCriticTaskIds = proposedTasks
     .filter((task) => {
       const phase = PROFILE_BY_ID.get(task.profileId)!.phase;
@@ -693,7 +705,12 @@ export function admitChatWorkflowProposalV1(input: {
     })
     .map((task) => task.taskId);
   const tasks = proposedTasks.map((task) => {
-    const required = task.profileId === "answer-drafter"
+    const phase = PROFILE_BY_ID.get(task.profileId)!.phase;
+    const required = phase === "analysis"
+      ? acquisitionTaskIds
+      : phase === "reconciliation"
+        ? [...acquisitionTaskIds, ...analysisTaskIds]
+      : task.profileId === "answer-drafter"
       ? preDraftTaskIds.filter((taskId) => taskId !== task.taskId)
       : task.profileId === "answer-critic"
         ? preCriticTaskIds.filter((taskId) => taskId !== task.taskId)
@@ -902,8 +919,11 @@ function normalizeModelRetrievalPlanV1(
 export function createChatWorkflowProposalControllerV1(input: {
   strategy: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
-  /** Body-free host context appended to every admitted child objective. */
-  taskContext?: string | (() => string);
+  /** Body-free host context selected for each admitted child objective. */
+  taskContext?: string | ((
+    task: Readonly<ChatWorkflowTaskProposalV1>,
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[],
+  ) => string);
   /** Profiles whose required read capabilities exist in this bound turn. */
   allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
   beforeProposal?: () => void;
@@ -927,10 +947,15 @@ export function createChatWorkflowProposalControllerV1(input: {
   let accepted: AcceptedChatWorkflowV1 | undefined;
   let acceptedResponse: ChatWorkflowAdmissionResponseV1 | undefined;
   let accepting = false;
-  const taskContext = (): string | undefined => {
+  const taskContext = (
+    task: Readonly<ChatWorkflowTaskProposalV1>,
+    tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[],
+  ): string | undefined => {
     if (input.taskContext === undefined) return undefined;
     return boundedText(
-      typeof input.taskContext === "function" ? input.taskContext() : input.taskContext,
+      typeof input.taskContext === "function"
+        ? input.taskContext(task, tasks)
+        : input.taskContext,
       "Chat workflow task context",
       8_000,
     );
@@ -1012,7 +1037,6 @@ export function createChatWorkflowProposalControllerV1(input: {
         ...(normalizedRetrievalPlan ? { retrievalPlan: normalizedRetrievalPlan } : {}),
       };
       await input.beforeAdmission?.(workflowProposal);
-      const context = taskContext();
       const normalizedTasks = normalizeModelWorkflowDependenciesV1(
         proposal.tasks.map((task) => ({ ...task })),
       );
@@ -1021,12 +1045,15 @@ export function createChatWorkflowProposalControllerV1(input: {
         proposal: {
           schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1,
           maxConcurrency: proposal.maxConcurrency,
-          tasks: normalizedTasks.map((task) => ({
-            ...task,
-            objective: context
-              ? `${task.objective}\n\nHost-bound turn context:\n${context}`
-              : task.objective,
-          })),
+          tasks: normalizedTasks.map((task) => {
+            const context = taskContext(task, normalizedTasks);
+            return {
+              ...task,
+              objective: context
+                ? `${task.objective}\n\nHost-bound turn context:\n${context}`
+                : task.objective,
+            };
+          }),
           ...(normalizedRetrievalPlan ? { retrievalPlan: normalizedRetrievalPlan } : {}),
         },
       });

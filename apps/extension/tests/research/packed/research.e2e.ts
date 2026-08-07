@@ -318,18 +318,7 @@ const details = await Promise.all(ranked.items.slice(0, 2).map(async (item) => (
 `.trim();
 
 const JIRA_DIRECT_CHAT_ACQUISITION_CODE = `
-const result = JSON.parse(await tools.jiraIssueSearch({
-  query: { text: "packed-jira-only: Find the exact Jira project DEMO work item." }
-}));
-const entityRefs = [...new Set(result.items.map((item) => item.entityRef))];
-const ranked = entityRefs.length === 0
-  ? { items: [] }
-  : JSON.parse(await tools.researchCandidateRank({ product: "jira", entityRefs }));
-const details = await Promise.all(ranked.items.slice(0, 2).map(async (item) => ({
-  status: "available",
-  value: JSON.parse(await tools.jiraIssueGet({ entityRef: item.entityRef }))
-})));
-({ result, details });
+JSON.parse(await tools.chatJiraRetrievalAcquire({}));
 `.trim();
 
 const PACKED_REPORT_INPUT = {
@@ -366,30 +355,42 @@ const PACKED_JIRA_ONLY_REPORT_INPUT = {
 };
 
 const PACKED_JIRA_ONLY_CHAT_DRAFT = {
-  messageMarkdown:
-    "DEMO-1 documents the packed design location and was read in detail. [[source:jira:DEMO-1]]",
-  citationSourceIds: ["jira:DEMO-1"],
+  blocks: [{
+    markdown: "DEMO-1 documents the packed design location and was read in detail.",
+    sourceRefs: ["jira:DEMO-1"],
+    assertion: "positive",
+    scope: "none",
+  }],
   gaps: [],
 };
 
 const PACKED_EXACT_PAGE_CHAT_DRAFT = {
-  messageMarkdown:
-    "The attached page directly establishes the packed implementation statement. [[source:wiki:1001]]",
-  citationSourceIds: ["wiki:1001"],
+  blocks: [{
+    markdown: "The attached page directly establishes the packed implementation statement.",
+    sourceRefs: ["wiki:1001"],
+    assertion: "positive",
+    scope: "none",
+  }],
   gaps: [],
 };
 
 const PACKED_EXACT_ISSUE_CHAT_DRAFT = {
-  messageMarkdown:
-    "The attached issue directly establishes the packed implementation task. [[source:jira:DEMO-1]]",
-  citationSourceIds: ["jira:DEMO-1"],
+  blocks: [{
+    markdown: "The attached issue directly establishes the packed implementation task.",
+    sourceRefs: ["jira:DEMO-1"],
+    assertion: "positive",
+    scope: "none",
+  }],
   gaps: [],
 };
 
 const PACKED_LONG_PAGE_CHAT_DRAFT = {
-  messageMarkdown:
-    "The late page section establishes the packed navigation decision. [[source:wiki:1003]]",
-  citationSourceIds: ["wiki:1003"],
+  blocks: [{
+    markdown: "The late page section establishes the packed navigation decision.",
+    sourceRefs: ["wiki:1003"],
+    assertion: "positive",
+    scope: "none",
+  }],
   gaps: [{
     code: "incomplete-coverage",
     message: "One included page and unrelated background remain outside the verified detail projection.",
@@ -403,6 +404,7 @@ const PACKED_CHAT_EXACT_EVIDENCE_PACKET = {
   claims: [{
     text: "The attached page directly establishes the packed implementation statement.",
     sourceIds: ["wiki:1001"],
+    sourceRefs: ["wiki:1001"],
   }],
   relationships: [],
   gaps: [],
@@ -435,9 +437,10 @@ globalThis.packedChatWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   tasks: [
     { taskId: "task:exact", profileId: "exact-context-reader", objective: "Read the attached page directly.", dependencyTaskIds: [] },
     { taskId: "task:comparison", profileId: "comparison-analyst", objective: "Compare the accepted evidence with the requested criteria.", dependencyTaskIds: ["task:exact"] },
-    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft a provisional answer from the accepted evidence.", dependencyTaskIds: ["task:exact", "task:comparison"] },
-    { taskId: "task:critic", profileId: "answer-critic", objective: "Check grounding and disclose the single-source limitation.", dependencyTaskIds: ["task:exact", "task:comparison", "task:draft"] },
-    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the concise conversational answer.", dependencyTaskIds: ["task:exact", "task:comparison", "task:draft", "task:critic"] }
+    { taskId: "task:contradiction", profileId: "contradiction-checker", objective: "Check the accepted comparison for contradictions.", dependencyTaskIds: ["task:comparison"] },
+    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft a provisional answer from the accepted evidence.", dependencyTaskIds: ["task:exact", "task:comparison", "task:contradiction"] },
+    { taskId: "task:critic", profileId: "answer-critic", objective: "Check grounding and disclose the single-source limitation.", dependencyTaskIds: ["task:exact", "task:comparison", "task:contradiction", "task:draft"] },
+    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the concise conversational answer.", dependencyTaskIds: ["task:exact", "task:comparison", "task:contradiction", "task:draft", "task:critic"] }
   ],
   maxConcurrency: 1
 }));
@@ -445,30 +448,18 @@ packedChatWorkflow;
 `.trim();
 
 const PACKED_CHAT_AGENTIC_TASK_CODE = `
-if (typeof task !== "function") {
-  throw new Error("task-type:" + typeof task);
+let advance = JSON.parse(await tools.chatWorkflowAdvance({}));
+while (advance.status !== "complete") {
+  if (advance.status === "strategy-review-required") {
+    JSON.parse(await tools.chatStrategyReview({}));
+  } else if (advance.status === "quality-review-required") {
+    JSON.parse(await tools.chatQualityReview({}));
+  } else {
+    throw new Error("unexpected-packed-chat-workflow-status:" + advance.status);
+  }
+  advance = JSON.parse(await tools.chatWorkflowAdvance({}));
 }
-const workflow = globalThis.packedChatWorkflow;
-const runDispatch = async (dispatch) => {
-  if (!dispatch) throw new Error("missing-packed-chat-dispatch");
-  return task({
-    description: dispatch.description,
-    subagentType: dispatch.subagentType,
-    responseSchema: dispatch.responseSchema
-  });
-};
-const runTask = (taskId) => runDispatch(
-  workflow.dispatches.find((entry) => entry.taskId === taskId)
-);
-await runTask("task:exact");
-await runTask("task:comparison");
-JSON.parse(await tools.chatStrategyReview({}));
-await runTask("task:draft");
-await runTask("task:critic");
-const quality = JSON.parse(await tools.chatQualityReview({}));
-for (const dispatch of quality.dispatches) {
-  await runDispatch(dispatch);
-}
+advance;
 `.trim();
 
 const PACKED_WORKFLOW_CODE = `
@@ -1139,6 +1130,7 @@ const workerId = crypto.randomUUID();
 let modelCalls = 0;
 let packedJiraOnlyRun = false;
 let packedJiraOnlyAcquisitionRequested = false;
+const packedChatExactAcquiredAnchors = new Set();
 let packedHostParityRun = false;
 let packedSentinelRun = false;
 let packedResumeRun = false;
@@ -1605,9 +1597,15 @@ globalThis.fetch = async (input, init) => {
           modelCalls,
         );
       }
-      const structuredTool = Array.isArray(body.tools)
-        ? body.tools.find((candidate) => candidate?.name !== "eval")
-        : undefined;
+      const responseTools = Array.isArray(body.tools)
+        ? body.tools.filter((candidate) =>
+            typeof candidate?.name === "string" &&
+            candidate.name !== "eval" &&
+            candidate.name !== "ask_user_question" &&
+            /^[A-Z]/.test(candidate.name)
+          )
+        : [];
+      const structuredTool = responseTools[0];
       if (!structuredTool?.name) {
         channel.postMessage({ kind: "missing-structured-tool", workerId, toolNames });
         return providerMessage(
@@ -1628,7 +1626,13 @@ globalThis.fetch = async (input, init) => {
       );
     };
 
-    if (serializedRequest.includes("Read only opaque host-attached entities.")) {
+    if (
+      serializedRequest.includes("Read only opaque host-attached entities.") ||
+      (
+        toolNames.includes("chat_exact_context_acquire") &&
+        toolNames.includes("ChatEvidencePacketV1")
+      )
+    ) {
       const anchorRef = serializedRequest.match(/research-anchor:[A-Za-z0-9-]{1,200}/)?.[0];
       if (!anchorRef) {
         return providerMessage(
@@ -1637,16 +1641,14 @@ globalThis.fetch = async (input, init) => {
           modelCalls,
         );
       }
-      if (!serializedMessages.includes("atlcli.ptc/atlassian.bound.read.output/v1")) {
+      if (!packedChatExactAcquiredAnchors.has(anchorRef)) {
+        packedChatExactAcquiredAnchors.add(anchorRef);
         return providerMessage(
           [{
             type: "tool_use",
             id: "toolu_packed_chat_exact_reader_" + modelCalls,
-            name: "eval",
-            input: {
-              code: "JSON.parse(await tools.atlassianBoundRead({ anchorRef: " +
-                JSON.stringify(anchorRef) + " }))",
-            },
+            name: "chat_exact_context_acquire",
+            input: { anchorRefs: [anchorRef] },
           }],
           "tool_use",
           modelCalls,
@@ -1659,7 +1661,11 @@ globalThis.fetch = async (input, init) => {
       return structured(packedChatComparisonPacket);
     }
 
-    if (serializedRequest.includes("Draft one provisional answer from accepted evidence")) {
+    if (serializedRequest.includes("Identify only evidence-backed contradictions")) {
+      return structured(packedChatComparisonPacket);
+    }
+
+    if (serializedRequest.includes("Draft one provisional answer")) {
       return structured(packedExactPageChatDraft);
     }
 
@@ -1690,7 +1696,7 @@ globalThis.fetch = async (input, init) => {
       serializedRequest.includes("Answer as a normal chat response");
     if (packedJiraOnlyDirectChat) {
       packedJiraOnlyRun = true;
-      if (!packedJiraOnlyAcquisitionRequested) {
+      if (!serializedMessages.includes("atlcli.chat-planned-acquisition/v1")) {
         packedJiraOnlyAcquisitionRequested = true;
         return providerMessage(
           [{
@@ -6285,7 +6291,8 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
   );
   expect(summaries.length).toBeGreaterThan(0);
   expect(summaries.some((event) =>
-    event.presentationDelta?.includes("Checking the admitted evidence")
+    event.presentationDelta?.includes("Claims are being matched to the available evidence") &&
+    event.presentationDelta?.includes("Remaining evidence gaps")
   )).toBe(true);
   expect(JSON.stringify(summaries)).not.toContain("packed-provider-signature");
   const answerDeltas = events.filter((event) =>
@@ -7184,6 +7191,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await installEventCapture(page);
   const cancelledObjective = "cancel-before-ptc: Search Jira project DEMO and Confluence space KB.";
   await excludeCurrentContext(page);
+  await page.getByTestId("research-mode-chat").click();
   await page.getByTestId("research-mode-deep").click();
   await expect(page.getByTestId("research-mode-deep")).toHaveAttribute("aria-pressed", "true");
   // Switching back into Deep Research reveals the prepared follow-up's

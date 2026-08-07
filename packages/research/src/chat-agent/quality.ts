@@ -30,6 +30,10 @@ export const CHAT_QUALITY_DEFECT_CODES_V1 = [
 
 export type ChatQualityDefectCodeV1 =
   (typeof CHAT_QUALITY_DEFECT_CODES_V1)[number];
+export type ChatRepairSkippedReasonV1 =
+  | "auto-latency-policy"
+  | "deadline-reserve"
+  | "model-budget-reserve";
 export type ChatFinalGapCodeV1 =
   | "no-detail-evidence"
   | "unresolved-reference"
@@ -135,7 +139,7 @@ export interface ChatQualityDispositionV1 {
   repairDefectIds: string[];
   repairRequired: boolean;
   repairAdmitted: boolean;
-  repairSkippedReason?: "deadline-reserve" | "model-budget-reserve";
+  repairSkippedReason?: ChatRepairSkippedReasonV1;
   synthesisAllowed: boolean;
   requiredGapCodes: ChatQualityDefectCodeV1[];
   rejectedSourceIds: string[];
@@ -327,7 +331,7 @@ export function createChatQualityDispositionV1(input: {
   assessment: ChatGroundednessAssessmentV1;
   criticDefects: readonly ChatQualityDefectV1[];
   repairAdmitted?: boolean;
-  repairSkippedReason?: "deadline-reserve" | "model-budget-reserve";
+  repairSkippedReason?: ChatRepairSkippedReasonV1;
   now?: () => number;
 }): ChatQualityDispositionV1 {
   const known = new Set(input.assessment.knownDetailedSourceIds);

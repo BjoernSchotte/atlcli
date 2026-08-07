@@ -1067,11 +1067,11 @@ export class ResearchCapabilityBroker {
           ...(this.#exactAuxiliaryNeeds.has("metadata") ? { includeMetadata: true } : {}),
           signal: this.signal,
         });
-        const allowedProjects = this.#request.scope.jiraProjectKeys;
-        if (
-          detail.issueKey !== exact.entityId ||
-          (allowedProjects.length > 0 && !allowedProjects.includes(detail.projectKey))
-        ) {
+        // The opaque anchor is already backed by one host-approved exact
+        // binding. Broad project scope constrains discovery, not an explicitly
+        // attached issue; otherwise a turn containing exact entities from two
+        // projects would reject one of its own approved anchors.
+        if (detail.issueKey !== exact.entityId) {
           throw new ResearchContractError("access-denied", "Jira detail does not match the bound entity.");
         }
         const source = this.#jiraSource(detail);
@@ -1098,11 +1098,11 @@ export class ResearchCapabilityBroker {
         ...(this.#exactAuxiliaryNeeds.has("metadata") ? { includeMetadata: true } : {}),
         signal: this.signal,
       });
-      const allowedSpaces = this.#request.scope.confluenceSpaceKeys;
-      if (
-        detail.contentId !== exact.entityId ||
-        (allowedSpaces.length > 0 && !allowedSpaces.includes(detail.spaceKey))
-      ) {
+      // Confluence content IDs are tenant-unique and the provider is already
+      // bound to the accepted tenant. Space scope constrains discovery, not an
+      // explicitly attached page. Keeping the broad-space check here breaks
+      // legitimate multi-page turns whose exact anchors span spaces.
+      if (detail.contentId !== exact.entityId) {
         throw new ResearchContractError(
           "access-denied",
           "Confluence detail does not match the bound entity.",

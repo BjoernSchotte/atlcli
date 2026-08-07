@@ -181,6 +181,21 @@ describe("research scope preflight", () => {
     ]);
   });
 
+  test("recognizes a dated Confluence blog URL as an exact content entity instead of a space", () => {
+    const blog = `${origin}/wiki/spaces/NEWS/blog/2026/08/07/2002/Synthetic+update`;
+    const mentions = proposeResearchScopeMentionsV1({
+      question: `Compare the approved page with ${blog}.`,
+      expectedTenantOrigin: origin,
+    });
+
+    expect(mentions).toMatchObject([{
+      productHint: "confluence",
+      entityKindHint: "page",
+      source: "exact_link",
+      exactReference: blog,
+    }]);
+  });
+
   test("keeps approved exact links as entity-only bindings without widening to a project or space", async () => {
     const issue = `${origin}/browse/ATLCLI-42`;
     const page = `${origin}/wiki/spaces/DOCS/pages/1001/Architecture`;

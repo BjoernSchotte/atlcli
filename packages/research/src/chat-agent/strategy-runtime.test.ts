@@ -29,6 +29,7 @@ import {
   chatModelCallLimitV1,
   chatRootOutputTokenLimitV1,
   createKiteweaveChatAgent,
+  decideChatRepairAdmissionV1,
   isChatAnswerStructuredOutputErrorV1,
 } from "./runtime.js";
 import {
@@ -890,5 +891,28 @@ describe("real QuickJS Chat strategy trajectory", () => {
       qualityMode: "deep",
       execution: "agentic",
     })).toBe(12);
+  });
+
+  test("keeps Auto conversational while Deep may admit one bounded repair", () => {
+    expect(decideChatRepairAdmissionV1({
+      qualityMode: "auto",
+      remainingMs: 120_000,
+      hasModelReserve: true,
+    })).toEqual({ admit: false, reason: "auto-latency-policy" });
+    expect(decideChatRepairAdmissionV1({
+      qualityMode: "deep",
+      remainingMs: 120_000,
+      hasModelReserve: true,
+    })).toEqual({ admit: true });
+    expect(decideChatRepairAdmissionV1({
+      qualityMode: "deep",
+      remainingMs: 29_999,
+      hasModelReserve: true,
+    })).toEqual({ admit: false, reason: "deadline-reserve" });
+    expect(decideChatRepairAdmissionV1({
+      qualityMode: "deep",
+      remainingMs: 120_000,
+      hasModelReserve: false,
+    })).toEqual({ admit: false, reason: "model-budget-reserve" });
   });
 });

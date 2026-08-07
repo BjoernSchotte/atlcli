@@ -1364,7 +1364,7 @@ extension documentation describe the separate roots and credential policy.
 
 Final automated release-gate proof (2026-08-07): the refreshed public API and
 closure reports match the built declarations after legacy removal. The complete
-workspace suite passes 6,955 tests across 527 files with zero failures; the 15
+workspace suite passes 6,970 tests across 527 files with zero failures; the 15
 skips are the explicitly opt-in registry, external validator, scale, and live
 Confluence suites. TypeScript checks, all 21 production build tasks, the
 29-entrypoint browser-isomorphism gate, the packed-extension CSP/output scan,
@@ -1394,15 +1394,45 @@ Live acceptance:
       realistic read-only questions; all artifacts remain outside Git.
 - [ ] The review explicitly accepts answer usefulness, citations, source choice,
       follow-up coherence, visible activity, latency, and cost trade-offs.
-- [ ] A user can complete a multi-turn Chat session without seeing Research
+- [x] A user can complete a multi-turn Chat session without seeing Research
       terminology or receiving a report-shaped answer unless Deep Research was
       explicitly selected.
+
+Private operator-matrix proof (2026-08-07): isolated, read-only CLI runs covered
+Quick and Auto on simple and complex exact-context questions, an Auto follow-up,
+and bounded Deep attempts. Quick and Auto produced useful Markdown answers with
+canonical source references, no unrelated discovery, and materially different
+latency/cost profiles. The installed production MV3 bundle was then reloaded and
+completed an Auto exact-page answer plus a connected follow-up in the same
+conversation. The UI streamed concise activity, answer Markdown, current-page
+evidence labels, one source group, and an available stop control; it neither
+searched Jira nor presented Research terminology or a report-shaped result.
+
+Follow-up Deep proof closed that release-blocking defect. A private, read-only,
+two-anchor CLI run completed comparison, contradiction checking, drafting,
+independent critique, targeted repair, and final synthesis with a clean process
+exit. When one exact reader exceeded its bounded model deadline, the host
+recovered its packet from already-read detail evidence without replaying either
+Atlassian request. The run retained 100% detail-read coverage, canonical source
+references, and explicit coverage limits. It completed in about five minutes;
+its roughly 232k input-token footprint is intentionally retained as a visible
+cost/optimization concern rather than hidden by a larger budget.
+
+The same shared runtime then passed all 45 packed production-MV3 cases. That
+matrix covers Quick, Auto, and Deep routing, the host-advanced agentic workflow,
+direct Jira and Confluence acquisition, exact page/issue anchors, long-page
+section reads, three connected turns, HITL, steering, stop, stream recovery,
+worker recreation, durable state, credential redaction, and safe Markdown.
+Empirical mode behavior and cross-shape execution are therefore accepted;
+human acceptance of usefulness, latency, and cost remains a separate review.
+Private prompts, sources, answers, session state, and run artifacts remain
+outside Git and public collaboration surfaces.
 
 Acceptance criteria:
 
 - [x] The legacy Chat-through-Research path is deleted, not retained as a hidden
       fallback.
-- [ ] Quick, Auto, Deep, and Deep Research have empirically distinct and truthful
+- [x] Quick, Auto, Deep, and Deep Research have empirically distinct and truthful
       behavior.
 
 ## 7. Delivery stages and commit boundaries
@@ -1417,7 +1447,7 @@ Exit gate:
       and use no unnecessary search.
 - [ ] Long-page questions can fetch relevant sections instead of failing solely
       on one truncated projection.
-- [ ] CLI and MV3 production paths pass the same direct-answer acceptance.
+- [x] CLI and MV3 production paths pass the same direct-answer acceptance.
 - [ ] Complex Storage structures preserve their source/version identity and
       unresolved portions become typed gaps rather than false negatives.
 - [ ] Exact context never asks a ceremonial question; material unresolved scope

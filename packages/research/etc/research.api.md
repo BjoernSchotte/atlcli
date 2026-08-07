@@ -2367,7 +2367,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
-    taskContext?: string | (() => string);
+    taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
     beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
@@ -10336,7 +10336,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
-    taskContext?: string | (() => string);
+    taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
     beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
@@ -18285,7 +18285,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
-    taskContext?: string | (() => string);
+    taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
     beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
@@ -26371,7 +26371,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
-    taskContext?: string | (() => string);
+    taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
     beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
@@ -34792,7 +34792,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
-    taskContext?: string | (() => string);
+    taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
     beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;
@@ -45252,7 +45252,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
-    taskContext?: string | (() => string);
+    taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
     beforeAdmission?: (proposal: ChatWorkflowProposalV1) => void | Promise<void>;

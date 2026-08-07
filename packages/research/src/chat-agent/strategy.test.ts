@@ -157,6 +157,27 @@ describe("host-owned Chat strategy decisions", () => {
     }
   });
 
+  test("does not require relationship tracing when the user explicitly rejects a relationship claim", () => {
+    for (const question of [
+      "Compare the two pages without claiming a direct relationship between them.",
+      "Vergleiche beide Seiten, ohne eine direkte fachliche Beziehung zu behaupten.",
+    ]) {
+      const decision = deriveChatStrategyDecisionV1({
+        qualityPolicy: chatQualityPolicyV1("auto"),
+        question,
+        scope,
+        anchors: [
+          pageAnchor,
+          { ...pageAnchor, anchorRef: "research-anchor:page-2", name: "Second synthetic page" },
+        ],
+      });
+
+      expect(decision.requiredCapabilities).toContain("comparison-analysis");
+      expect(decision.requiredCapabilities).not.toContain("relationship-tracing");
+      expect(decision.reasonCodes).not.toContain("cross-product-relationship");
+    }
+  });
+
   test("enables broad discovery when an exact-context question explicitly widens to the space", () => {
     const decision = deriveChatStrategyDecisionV1({
       qualityPolicy: chatQualityPolicyV1("auto"),

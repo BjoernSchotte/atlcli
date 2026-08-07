@@ -106,6 +106,8 @@ const COMPARISON_INTENT_V1 =
   /\b(?:compare|comparison|contrast|difference|different|versus|vs\.?|vergleich(?:e|en)?|unterschied(?:e|en)?|gegenüberstellen)\b/iu;
 const RELATIONSHIP_INTENT_V1 =
   /\b(?:relationship|related|relate|linked?|links?|correspond|mapping|beziehung(?:en)?|zusammenhang|verknüpf(?:t|ung|ungen)|zugehörig|abbildung)\b/iu;
+const NO_RELATIONSHIP_INTENT_V1 =
+  /\b(?:without|do\s+not|don't)\s+(?:claim(?:ing)?|infer(?:ring)?|assum(?:e|ing))?\s*(?:a\s+|any\s+)?(?:direct\s+)?(?:relationship|relation|link|connection)\b|\b(?:ohne|keine|keinen|nicht)\s+(?:eine\s+)?(?:(?:direkte?|fachliche?)\s+){0,2}(?:beziehung|zusammenhang|verknüpfung)\b/iu;
 const JIRA_INTENT_V1 =
   /\b(?:jira|issue|issues|ticket|tickets|vorgang|vorgänge|arbeitselement|arbeitselemente)\b/iu;
 const CONTRADICTION_INTENT_V1 =
@@ -136,7 +138,8 @@ export function deriveChatStrategyDecisionV1(input: {
   unresolvedAmbiguity?: boolean;
 }): ChatStrategyDecisionV1 {
   const comparison = COMPARISON_INTENT_V1.test(input.question);
-  const relationship = RELATIONSHIP_INTENT_V1.test(input.question);
+  const relationship = RELATIONSHIP_INTENT_V1.test(input.question) &&
+    !NO_RELATIONSHIP_INTENT_V1.test(input.question);
   const jiraIntent = JIRA_INTENT_V1.test(input.question);
   const contradiction = CONTRADICTION_INTENT_V1.test(input.question);
   const noNewSearchIntent = NO_NEW_SEARCH_INTENT_V1.test(input.question);
