@@ -1274,10 +1274,10 @@ Implementation:
       **Remember on this device** opt-in that survives extension/browser reload,
       remains restricted to trusted extension contexts, and is removed from
       both session and device storage by **Forget key**.
-- [ ] Remove the old Chat branch from `runResearchAgent`, its legacy research
+- [x] Remove the old Chat branch from `runResearchAgent`, its legacy research
       prompt, compatibility-only UI routing, and obsolete tests only after all
       migration and release gates pass.
-- [ ] Update user, architecture, provider, security, troubleshooting, and
+- [x] Update user, architecture, provider, security, troubleshooting, and
       operations documentation in the same delivery commit.
 
 Proof record (2026-08-07): the customer-free gold registry now contains twenty
@@ -1335,6 +1335,17 @@ in rendered UI. A separately installed read-only MV3 acceptance check then
 reloaded the unpacked extension and confirmed that Settings still reported the
 device-remembered credential without another key entry; private page context
 and credential values remained local and untracked.
+
+Legacy-path removal proof (2026-08-07): `runResearchAgent` now rejects
+`mode: "chat"` before constructing a DeepAgent, no longer accepts Chat
+conversation or completion-objective inputs, and no longer installs Chat
+quality, provider-reasoning, filesystem, subagent, or summarization middleware.
+The former graphless Chat prompt was replaced by an explicitly named frozen
+research-characterization prompt used only with an injected test model. The
+extension worker continues to route Chat to `runChatAgent` and Research to
+`runResearchAgent`. Eighty-five focused root, invariant, contract, and Chrome
+adapter tests pass, including the no-root-construction regression; package and
+extension documentation describe the separate roots and credential policy.
 
 Automated proof:
 

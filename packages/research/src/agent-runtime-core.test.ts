@@ -8,7 +8,7 @@ import { z } from "zod/v4";
 import {
   buildCheckpointedDynamicSupervisorPrompt,
   buildResearchSupervisorTurnMessageV1,
-  buildLegacyResearchSystemPromptV1,
+  buildResearchCharacterizationSystemPromptV1,
   createResearchDurableSummarizationMiddleware,
   createResearchAgentRuntime,
   createResearchCheckpointTranscriptCompactionMiddleware,
@@ -28,7 +28,6 @@ import {
   projectExactDetailReportRequestV1,
   rehydrateResearchCheckpointRunInputV1,
   researchSupervisorContinuationPhaseIdV1,
-  resolveAnthropicChatReasoningV1,
   shouldRepairRejectedCheckpointContinuationV1,
   selectResearchSupervisorPtcToolsV1,
   validatedResearchGraphRequiredV1,
@@ -131,26 +130,10 @@ test("projects only host-read exact source containers into V1 report validation"
   expect(request.scope.confluenceSpaceKeys).toEqual([]);
 });
 
-test("permits only explicitly selected direct chat to run without a production graph", () => {
-  expect(validatedResearchGraphRequiredV1({ options: { mode: "chat" } })).toBe(false);
-  expect(validatedResearchGraphRequiredV1({ options: { mode: "research" } })).toBe(true);
+test("requires a production graph independently of the transport mode", () => {
   expect(validatedResearchGraphRequiredV1({})).toBe(true);
   expect(validatedResearchGraphRequiredV1({ model: fakeModel() })).toBe(false);
-});
-
-test("maps chat thinking modes to real Anthropic effort and adaptive-thinking controls", () => {
-  expect(resolveAnthropicChatReasoningV1({ requestedEffort: "lookup" })).toEqual({
-    effort: "low",
-    adaptiveThinking: false,
-  });
-  expect(resolveAnthropicChatReasoningV1({ requestedEffort: "auto" })).toEqual({
-    effort: "medium",
-    adaptiveThinking: true,
-  });
-  expect(resolveAnthropicChatReasoningV1({ requestedEffort: "deep" })).toEqual({
-    effort: "high",
-    adaptiveThinking: true,
-  });
+  expect(validatedResearchGraphRequiredV1({ researchGraph: {} as never })).toBe(false);
 });
 
 test("projects a body-free novelty baseline from accepted V1 and V2 packets", () => {
@@ -1701,23 +1684,23 @@ describe("durable graph revision PTC", () => {
   });
 });
 
-describe("legacy bounded acquisition prompt", () => {
+describe("graphless research characterization prompt", () => {
   test("uses the host-approved detail budget instead of a hidden three-item cap", () => {
-    const prompt = buildLegacyResearchSystemPromptV1(8);
+    const prompt = buildResearchCharacterizationSystemPromptV1(8);
     expect(prompt).toContain("tools.researchCandidateRank");
     expect(prompt).toContain("ranked.items.slice(0, 8)");
     expect(prompt).not.toContain("slice(0, 3)");
   });
 
-  test("does not search Jira for a Confluence-only direct chat", () => {
-    const prompt = buildLegacyResearchSystemPromptV1(1, ["confluence"]);
+  test("does not search Jira for a Confluence-only characterization", () => {
+    const prompt = buildResearchCharacterizationSystemPromptV1(1, ["confluence"]);
     expect(prompt).toContain("const wiki = await collect(tools.wikiSearch)");
     expect(prompt).not.toContain("collect(tools.jiraIssueSearch)");
     expect(prompt).not.toContain('rankedDetails("jira"');
   });
 
   test("requires fresh evidence acquisition for every durable conversation turn", () => {
-    const prompt = buildLegacyResearchSystemPromptV1(1, ["confluence"]);
+    const prompt = buildResearchCharacterizationSystemPromptV1(1, ["confluence"]);
     expect(prompt).toContain("For every user turn");
     expect(prompt).toContain("call eval once again");
     expect(prompt).toContain("within the same turn");
@@ -1725,7 +1708,7 @@ describe("legacy bounded acquisition prompt", () => {
   });
 
   test("follows only Jira references observed while reading an exact Confluence page", () => {
-    const prompt = buildLegacyResearchSystemPromptV1(4, ["confluence"], true);
+    const prompt = buildResearchCharacterizationSystemPromptV1(4, ["confluence"], true);
     expect(prompt).toContain("hasObservedJiraReference");
     expect(prompt).toContain("if (hasObservedJiraReference)");
     expect(prompt).toContain("jira = await collect(tools.jiraIssueSearch)");

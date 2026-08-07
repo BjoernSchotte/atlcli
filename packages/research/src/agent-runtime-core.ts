@@ -34,20 +34,15 @@ import {
 } from "./contracts.js";
 import {
   ANTHROPIC_QUALITY_ADAPTER_V1,
-  chatQualityPolicyV1,
   createPromptCacheSegmentsV1,
-  persistChatQualityPolicyV1,
   projectPromptCacheSystemContentV1,
   resolveResearchRoleModelV1,
-  type ChatQualityPolicyV1,
   type ProviderReasoningControlsV1,
   type ResearchModelProfileIdV1,
 } from "./quality-policy.js";
 import {
   AGENTIC_WORKFLOW_SCHEMA_V1,
   compileAgenticWorkflowV1,
-  resolveAgenticCompletionObjectiveV1,
-  type AgenticCompletionObjectiveV1,
 } from "./agentic-workflow-core.js";
 import {
   directChatHasExactCurrentPageV1,
@@ -520,7 +515,13 @@ export function researchRecursionLimitV1(graph?: ResearchGraphV1): number {
   );
 }
 
-export function buildLegacyResearchSystemPromptV1(
+/**
+ * Frozen graphless research prompt for injected-model characterization tests.
+ * Production Research requires an accepted graph and ordinary Chat uses the
+ * separate Chat runtime; this helper is not a production Chat compatibility
+ * path.
+ */
+export function buildResearchCharacterizationSystemPromptV1(
   maxDetailItemsPerProduct: number,
   products: readonly ResearchProduct[] = ["jira", "confluence"],
   followObservedJiraReferences = false,
@@ -535,7 +536,7 @@ export function buildLegacyResearchSystemPromptV1(
   if (!jira && !wiki) {
     throw new ResearchContractError(
       "invalid-request",
-      "Direct chat requires at least one bound Atlassian product.",
+      "Research characterization requires at least one bound Atlassian product.",
     );
   }
   const acquisition = jira && wiki
@@ -2988,37 +2989,6 @@ export function createResearchPromptCacheMiddlewareV1(
   ];
 }
 
-export interface AnthropicChatReasoningV1 {
-  effort: "low" | "medium" | "high";
-  adaptiveThinking: boolean;
-}
-
-/**
- * Translate host-owned chat policy into Anthropic's provider controls.
- * `auto` uses adaptive thinking at Anthropic's recommended Sonnet 4.6 balance;
- * `quick` prioritizes latency without thinking blocks; `deep` enables adaptive
- * thinking at high effort. None of these modes changes the chat workflow.
- */
-export function resolveAnthropicChatReasoningV1(
-  policy?: ChatQualityPolicyV1 | Pick<ResearchOneShotPolicyV1, "requestedEffort">,
-): AnthropicChatReasoningV1 {
-  const preference = policy && "providerReasoningPreference" in policy
-    ? policy.providerReasoningPreference
-    : policy?.requestedEffort === "lookup"
-      ? "fast"
-      : policy?.requestedEffort === "deep"
-        ? "thorough"
-        : "balanced";
-  const controls = ANTHROPIC_QUALITY_ADAPTER_V1.reasoningControls(preference);
-  if (!controls?.effort || controls.adaptiveThinking === undefined) {
-    throw new Error("Anthropic quality adapter did not return required controls.");
-  }
-  return {
-    effort: controls.effort,
-    adaptiveThinking: controls.adaptiveThinking,
-  };
-}
-
 function createAnthropicSubagentModels(
   apiKey: string,
   defaultModel: BaseChatModel,
@@ -3132,20 +3102,6 @@ export interface RunResearchAgentInput {
   options?: ResearchRunOptions;
   /** Host-owned virtual workspace; a bounded in-memory backend is the fallback. */
   workspace?: ResearchWorkspace;
-  /**
-   * Durable direct-chat thread identity. The host supplies a persistent
-   * workspace (filesystem for CLI, IndexedDB for browser) and reuses the same
-   * session ID for every turn in one conversation.
-   */
-  conversation?: {
-    sessionId: string;
-  };
-  /**
-   * Explicit terminal artifact contract. Today a graph produces a research
-   * report and graphless Chat produces a conversation answer; T3 may add an
-   * agentic conversation graph without changing the dispatcher contract.
-   */
-  completionObjective?: AgenticCompletionObjectiveV1;
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
   /**
@@ -3176,14 +3132,15 @@ export interface RunResearchAgentInput {
 }
 
 /**
- * Production deep research must always execute an approved graph. A direct
- * chat turn is the single explicit graphless production shape; characterization
- * callers may still inject a model without claiming to be a production run.
+ * Production deep research must always execute an approved graph.
+ * Characterization callers may still inject a model without claiming to be a
+ * production run, but ordinary Chat has its own runtime and is never admitted
+ * here.
  */
 export function validatedResearchGraphRequiredV1(
-  input: Pick<RunResearchAgentInput, "model" | "researchGraph" | "options">,
+  input: Pick<RunResearchAgentInput, "model" | "researchGraph">,
 ): boolean {
-  return !input.model && !input.researchGraph && input.options?.mode !== "chat";
+  return !input.model && !input.researchGraph;
 }
 
 /**
@@ -3295,6 +3252,12 @@ async function runResearchAgentWithBindings(
   input: RunResearchAgentInput,
   runtime: ResearchAgentRuntimeBindings,
 ): Promise<ResearchReport> {
+  if (input.options?.mode === "chat") {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Ordinary Chat must use runChatAgent; runResearchAgent accepts only research mode.",
+    );
+  }
   if (validatedResearchGraphRequiredV1(input)) {
     throw new ResearchContractError(
       "invalid-request",
@@ -3327,20 +3290,11 @@ async function runResearchAgentWithBindings(
       "Durable research execution must use the matching approved graph envelope.",
     );
   }
-  if (input.conversation && input.researchGraph) {
-    throw new ResearchContractError(
-      "invalid-request",
-      "Direct-chat conversation state cannot be combined with a research graph.",
-    );
-  }
   const now = input.now ?? Date.now;
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();
   const isDynamic = input.researchGraph !== undefined;
-  const completionObjective = resolveAgenticCompletionObjectiveV1({
-    requested: input.completionObjective,
-    hasWorkflowGraph: isDynamic,
-  });
+  const completionObjective = "research-report" as const;
   const durableDispatchJournal = input.durableSession
     ? new ResearchSessionDispatchJournalV1({
         store: input.durableSession.store,
@@ -3355,19 +3309,6 @@ async function runResearchAgentWithBindings(
   const workspace = input.durableSession
     ? await input.durableSession.store.workspace(input.durableSession.sessionId)
     : (input.workspace ?? createMemoryResearchWorkspace());
-  if (!isDynamic && input.options?.mode === "chat") {
-    await persistChatQualityPolicyV1(
-      workspace,
-      input.options.qualityPolicy ??
-        chatQualityPolicyV1(
-          input.options.policy?.requestedEffort === "lookup"
-            ? "quick"
-            : input.options.policy?.requestedEffort === "deep"
-              ? "deep"
-              : "auto",
-        ),
-    );
-  }
   const durableDataWorkspaces =
     input.durableSession &&
     hasResearchSessionDataWorkspaceStoreV1(input.durableSession.store)
@@ -3872,10 +3813,8 @@ async function runResearchAgentWithBindings(
           continuationId: resumedContinuation.continuationId,
           leaseEpoch: durableSessionState!.lease.epoch,
         })
-    : input.conversation
-      ? "chat"
-      : undefined;
-  const checkpointSessionId = input.durableSession?.sessionId ?? input.conversation?.sessionId;
+    : undefined;
+  const checkpointSessionId = input.durableSession?.sessionId;
   const checkpointThreadId = checkpointSessionId && supervisorCheckpointPhaseId
     ? researchSupervisorThreadIdForSessionV1(
         checkpointSessionId,
@@ -3905,25 +3844,11 @@ async function runResearchAgentWithBindings(
     maxCalls: input.request.limits.maxPtcCalls,
   });
 
-  const chatReasoning =
-    !isDynamic && input.options?.mode === "chat"
-      ? resolveAnthropicChatReasoningV1(
-          input.options.qualityPolicy ??
-            chatQualityPolicyV1(
-              input.options.policy?.requestedEffort === "lookup"
-                ? "quick"
-                : input.options.policy?.requestedEffort === "deep"
-                  ? "deep"
-                  : "auto",
-            ),
-        )
-      : undefined;
   const model =
     input.model ??
     createAnthropicModel(
       input.apiKey ?? "",
       input.request.limits.maxModelOutputTokens,
-      chatReasoning,
     );
   const modelsByRole = input.model
     ? undefined
@@ -5335,7 +5260,7 @@ async function runResearchAgentWithBindings(
     : undefined;
   const uncachedSupervisorPrompt =
     dynamicSupervisorSystemPrompt ??
-    buildLegacyResearchSystemPromptV1(
+    buildResearchCharacterizationSystemPromptV1(
       input.request.limits.maxDetailItemsPerProduct,
       directChatProductsV1(input.request),
       directChatHasExactCurrentPageV1(input.request),
@@ -5362,7 +5287,7 @@ async function runResearchAgentWithBindings(
   const promptCacheMiddleware = input.model
     ? []
     : createResearchPromptCacheMiddlewareV1(supervisorPromptSegments.private);
-  const durableSummarizationMiddleware = isDynamic || input.conversation
+  const durableSummarizationMiddleware = isDynamic
     ? createResearchDurableSummarizationMiddleware(runtime, {
         workspace,
         model,
@@ -5519,13 +5444,7 @@ async function runResearchAgentWithBindings(
           }),
         ]
       : [
-          ...(input.conversation
-            ? [
-                createMiddleware({ name: "FilesystemMiddleware" }),
-                createMiddleware({ name: "subAgentMiddleware" }),
-                durableSummarizationMiddleware!,
-              ]
-            : disabledMiddleware),
+          ...disabledMiddleware,
           ...(supervisorModelBudgetMiddleware
             ? [supervisorModelBudgetMiddleware]
             : []),
