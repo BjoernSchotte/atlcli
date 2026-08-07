@@ -854,32 +854,33 @@ the public `atlcli pdf-template build` → `atlcli wiki export` acceptance chain
 
 **Implementation**
 
-- [ ] Add `apps/cli/src/commands/pdf-template-yaml.ts` as the only filesystem
+- [x] Add `apps/cli/src/commands/pdf-template-yaml.ts` as the only filesystem
       adapter. Parse YAML with a directly declared dependency; do not rely on a
       transitive dependency from `@atlcli/core` or `@atlcli/confluence`.
-- [ ] Use strict parser options: core schema, unique keys, no custom tags,
+- [x] Use strict parser options: core schema, unique keys, no custom tags,
       aliases/merge disabled, and documented resource bounds. Convert parser
       diagnostics into stable `ATLCLI_ERR_VALIDATION` output with YAML line,
       column, and normalized contract path when available.
-- [ ] Resolve asset sources relative to the recipe directory. Use realpath/lstat
+- [x] Resolve asset sources relative to the recipe directory. Use realpath/lstat
       checks to prevent `..`, absolute paths, and symlinks from escaping that
       directory. Read only after recipe shape validation and enforce aggregate
       byte budgets before hashing.
-- [ ] Extend `atlcli pdf-template build` and `validate` to accept either an
+- [x] Extend `atlcli pdf-template build` and `validate` to accept either an
       existing authoring project directory or a `.yaml`/`.yml` recipe. Dispatch
       by stat + extension, not by catching arbitrary project-load errors.
-- [ ] Keep `import`, `review`, `preview`, and `undo` project-only. Error output
+- [x] Keep `import`, `review`, `preview`, and `undo` project-only. Error output
       must explain that YAML recipes are direct declarative builds and do not
       have DOCX decision history.
-- [ ] Add `--output` behavior matching current pack builds. Write to a temporary
-      sibling and rename only after validation, compilation, and packing pass;
-      preserve an existing output on failure.
-- [ ] Add `--json` result fields for recipe path, catalog version, canonical
+- [x] Add `--output` behavior matching current pack builds. Write to a temporary
+      sibling and publish with an atomic same-filesystem no-clobber operation
+      only after validation, compilation, and packing pass; preserve an existing
+      output on failure.
+- [x] Add `--json` result fields for recipe path, catalog version, canonical
       revision, pack digest, compile digest, and page count. Do not include
       absolute asset paths or YAML content.
-- [ ] Update help with a minimal recipe command and the trust boundary:
+- [x] Update help with a minimal recipe command and the trust boundary:
       `atlcli pdf-template build ./template.yaml --output ./brand.wiki-pdf-template`.
-- [ ] Add tests for valid YAML, malformed YAML, duplicate keys, custom tags,
+- [x] Add tests for valid YAML, malformed YAML, duplicate keys, custom tags,
       aliases, path traversal, symlink escape, asset budget, unknown fields,
       invalid URL/legal combinations, existing output preservation, JSON
       redaction, deterministic repeats, and `.yml` parity.
@@ -892,6 +893,11 @@ rtk bun run test apps/cli/src/commands/pdf-template-yaml.test.ts apps/cli/src/co
 
 Expected: exit 0; a neutral YAML recipe builds a verified pack, every unsafe
 input fails with a stable path, and failure never clobbers the target archive.
+
+The public `atlcli pdf-template build` command now builds and reloads a neutral
+revision-4 pack with the pinned production compiler. This proves the CLI recipe
+adapter and pack boundary, but it is not PDF acceptance: T7/T8 still own the
+required public `atlcli wiki export --format pdf --template ...` evidence.
 
 ### T7 — Prove real compiler, text, raster, link, browser, and pack parity
 

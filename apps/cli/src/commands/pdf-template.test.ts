@@ -121,6 +121,14 @@ function dependencies(
       onProgress: (event) => progress.push(event),
       readBytes: async (path) => new Uint8Array(await readFile(path)),
       createPreviewCompiler: async () => previewCompiler(),
+      createGeneratedPackCompiler: () => ({
+        async compile({ packBytes }) {
+          return {
+            digest: await sha256Hex(packBytes),
+            pageCount: 3,
+          };
+        },
+      }),
     },
   };
 }
