@@ -11,6 +11,7 @@ import {
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { sha256Hex } from "@atlcli/core";
+import { fileURLToPath } from "node:url";
 import {
   BUILTIN_PDF_TEMPLATE_MANIFEST,
   loadPdfTemplatePack,
@@ -187,6 +188,23 @@ function expectYamlError(run: () => unknown, pattern: RegExp): void {
 }
 
 describe("strict PDF template recipe YAML", () => {
+  it("keeps the downloadable documentation recipe machine-valid", async () => {
+    const documented = fileURLToPath(
+      new URL(
+        "../../../../public/examples/pdf-template-recipe/recipe.yaml",
+        import.meta.url
+      )
+    );
+    const parsed = parsePdfTemplateRecipeYaml(await readFile(documented, "utf8"));
+    expect(parsed.schema).toBe("wiki.pdf-template-recipe/v1");
+    const materialized = await materializePdfTemplateYamlRecipe({
+      recipePath: documented,
+      compiler,
+    });
+    expect(materialized.manifest.canonicalSource?.revision).toBe("4");
+    expect(materialized.manifest.capabilityCatalog?.version).toBe(2);
+  });
+
   it("rejects malformed YAML, duplicate keys, custom tags, aliases, and multiple documents", () => {
     expectYamlError(() => parsePdfTemplateRecipeYaml("schema: ["), /line 1/u);
     expectYamlError(

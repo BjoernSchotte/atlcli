@@ -961,32 +961,32 @@ skips, and no failures; the revision-4 pipeline test itself was not skipped.
 
 **Implementation**
 
-- [ ] Add task-first documentation under `src/content/docs/` for: prerequisites,
+- [x] Add task-first documentation under `src/content/docs/` for: prerequisites,
       a minimal YAML recipe, full field reference (type/default/required/bounds),
       asset preparation, build/validate commands, examples, errors,
       troubleshooting, security model, and related topics.
-- [ ] Document clearly that `.wiki-pdf-template` archives contain generated
+- [x] Document clearly that `.wiki-pdf-template` archives contain generated
       JSON even when authored from YAML.
-- [ ] Document all closing-page fields. State explicitly that copyright/legal
+- [x] Document all closing-page fields. State explicitly that copyright/legal
       text is not generated: users supply the exact desired string.
-- [ ] Add a local-only Mayflower YAML recipe in a disposable directory using
+- [x] Add a local-only Mayflower YAML recipe in a disposable directory using
       the approved logo/background assets. Do not add it or its outputs to git.
-- [ ] Build the pack twice and compare SHA-256 digests. Load both through
+- [x] Build the pack twice and compare SHA-256 digests. Load both through
       `loadPdfTemplatePack` and confirm V2/revision 4 and the exact declarative
       values.
-- [ ] Render synthetic titles covering one, two, three, and long lines. Inspect
+- [x] Render synthetic titles covering one, two, three, and long lines. Inspect
       the cover and closing-page rasters at 144 dpi. Record only non-sensitive
       pass/fail evidence; do not commit the source PDF, customer title, asset
       bytes, absolute paths, or screenshots.
-- [ ] Extend `apps/cli/src/commands/export-pdf.e2e.test.ts` with an optional
+- [x] Extend `apps/cli/src/commands/export-pdf.e2e.test.ts` with an optional
       environment-provided recipe or pack path. The live test reads one retained
       page in space `DOCSY` via profile `mayflower`, exports through the same
       production CLI path, and deletes all local artifacts in `finally`.
-- [ ] If the test creates a temporary Confluence page to exercise multiple
+- [x] If the test creates a temporary Confluence page to exercise multiple
       title lengths, use the existing `apps/cli/src/e2e/` ownership marker,
       scope breakers, and `finally` cleanup. Prove deletion before considering
       the task complete.
-- [ ] Never persist the retained page ID, tenant URL, token, customer content,
+- [x] Never persist the retained page ID, tenant URL, token, customer content,
       local recipe path, or produced PDF in the spec, fixtures, logs, commit, or
       PR text.
 
@@ -1015,6 +1015,22 @@ production PDF CLI with the generated pack, the PDF is tagged and outlined,
 cover/closing page count and extracted text match the recipe, and no remote or
 local test resource remains unintentionally.
 
+The private live proof used an ephemeral recipe directory and the approved
+local brand asset. The harness built the recipe twice through
+`atlcli pdf-template build`, compared pack digests and loaded revision-4/V2
+runtime data, exported four neutral synthetic title tiers through
+`atlcli wiki export --format pdf --template`, and rasterized each cover and
+closing page at 144 dpi. It then exported one retained DOCSY page read-only via
+profile `mayflower` through the same production command. The targeted live test
+completed with 57 assertions and no failures. Its `finally` cleanup removed the
+recipe, packs, PDFs, and rasters; no remote page was created. No private path,
+page ID, tenant URL, customer title, asset byte, or PDF was persisted.
+The final offline suite completed with 6,327 passes, 16 explicitly gated
+skips, and no failures; docs check/build, typecheck, and the repository build
+also passed. After tightening the private closing-text and exact-page-count
+oracles, the targeted live test, offline E2E setup test, typecheck, and docs
+build were rerun successfully.
+
 ## Test matrix
 
 | Layer | Required cases |
@@ -1033,28 +1049,28 @@ local test resource remains unintentionally.
 
 ## Definition of done
 
-- [ ] A template owner can express Type Cut and the complete brand-lockup
+- [x] A template owner can express Type Cut and the complete brand-lockup
       closing page in YAML without changing TypeScript or Typst.
-- [ ] `© Mayflower GmbH`, any alternative legal string, the website label/URL,
+- [x] `© Mayflower GmbH`, any alternative legal string, the website label/URL,
       logo visibility, and closing-page placement are pack configuration, not
       renderer literals.
-- [ ] The cover title is searchable/selectable and appears exactly once in PDF
+- [x] The cover title is searchable/selectable and appears exactly once in PDF
       text extraction for every supported length tier.
-- [ ] `features.closingPage.enabled: false` removes the closing page in revision
+- [x] `features.closingPage.enabled: false` removes the closing page in revision
       4 without changing revision-1/2/3 output.
-- [ ] V1 catalog digest and revision-1/2/3 canonical source remain unchanged.
-- [ ] V2/revision-4 mismatches and incomplete compositions fail before Typst.
-- [ ] YAML cannot inject Typst, escape its recipe root, use unsafe SVG, exceed
+- [x] V1 catalog digest and revision-1/2/3 canonical source remain unchanged.
+- [x] V2/revision-4 mismatches and incomplete compositions fail before Typst.
+- [x] YAML cannot inject Typst, escape its recipe root, use unsafe SVG, exceed
       budgets, or clobber an existing output after failure.
-- [ ] A real pinned Typst-WASM test proves the cover, closing page, text, link,
+- [x] A real pinned Typst-WASM test proves the cover, closing page, text, link,
       page count, raster geometry, and negative oracles.
-- [ ] CLI and browser hosts load and render the same generated pack.
-- [ ] The full repository tests, typecheck, browser gate, build, docs, API
+- [x] CLI and browser hosts load and render the same generated pack.
+- [x] The full repository tests, typecheck, browser gate, build, docs, API
       closure, and diff hygiene pass.
-- [ ] A live `mayflower`/`DOCSY` export passes through the production CLI path,
+- [x] A live `mayflower`/`DOCSY` export passes through the production CLI path,
       with no private identifiers/artifacts committed and all created resources
       cleaned up.
-- [ ] No push or release occurs without explicit operator instruction.
+- [x] No push or release occurs without explicit operator instruction.
 
 ## STOP conditions
 

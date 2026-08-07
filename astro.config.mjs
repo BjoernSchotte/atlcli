@@ -48,6 +48,7 @@ export default defineConfig({
             { label: 'Audit', link: '/confluence/audit/' },
             { label: 'Export', link: '/confluence/export/' },
             { label: 'Export Template Library', link: '/confluence/export-templates/' },
+            { label: 'Create a PDF Template from YAML', link: '/confluence/pdf-template-from-yaml/' },
             { label: 'Create a PDF Template from Word', link: '/confluence/pdf-template-from-word/' },
             { label: 'Macro Compatibility', link: '/confluence/macro-compatibility/' },
             { label: 'Ignore Patterns', link: '/confluence/ignore/' },
