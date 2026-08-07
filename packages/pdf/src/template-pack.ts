@@ -30,6 +30,10 @@ import {
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
 } from "./design-catalog.js";
+import {
+  resolvePdfCatalogRuntime,
+  type PdfCatalogRuntime,
+} from "./catalog-runtime.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -201,32 +205,38 @@ const SUPPORTED_CANONICAL_REVISIONS = new Set<string>(
 );
 
 interface PdfCanonicalRevisionContract {
-  catalog: TemplateCapabilityCatalogV1;
-  digest: string;
+  runtime: PdfCatalogRuntime;
   catalogRequired: boolean;
 }
+
+const PDF_CATALOG_RUNTIME_V1 = resolvePdfCatalogRuntime({
+  id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+  version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+  digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+});
+const PDF_CATALOG_RUNTIME_V2 = resolvePdfCatalogRuntime({
+  id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+  version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+  digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+});
 
 const CANONICAL_REVISION_CONTRACTS: Readonly<
   Record<string, PdfCanonicalRevisionContract>
 > = Object.freeze({
   [PDF_CANONICAL_SOURCE_REVISION_1]: {
-    catalog: PDF_TEMPLATE_CAPABILITIES_V1,
-    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    runtime: PDF_CATALOG_RUNTIME_V1,
     catalogRequired: false,
   },
   [PDF_CANONICAL_SOURCE_REVISION_2]: {
-    catalog: PDF_TEMPLATE_CAPABILITIES_V1,
-    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    runtime: PDF_CATALOG_RUNTIME_V1,
     catalogRequired: true,
   },
   [PDF_CANONICAL_SOURCE_REVISION_3]: {
-    catalog: PDF_TEMPLATE_CAPABILITIES_V1,
-    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    runtime: PDF_CATALOG_RUNTIME_V1,
     catalogRequired: true,
   },
   [PDF_CANONICAL_SOURCE_REVISION_4]: {
-    catalog: PDF_TEMPLATE_CAPABILITIES_V2,
-    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+    runtime: PDF_CATALOG_RUNTIME_V2,
     catalogRequired: true,
   },
 });
@@ -532,19 +542,14 @@ export function validatePdfTemplateManifest(
   }
   // An explicit catalog parameter is an execution allowlist, not a same-shaped
   // UI hint. The revision registry owns the exact accepted object.
-  if (catalog !== undefined && catalog !== contract.catalog) {
-    reject(
-      "pdf-manifest",
-      "canonical-source-mismatch",
-      "catalog",
-      `does not match canonical revision ${revision}`
-    );
+  if (catalog !== undefined && catalog !== contract.runtime.catalog) {
+    reject("pdf-manifest", "canonical-source-mismatch", "catalog", `does not match canonical revision ${revision}`);
   }
   if (manifest.capabilityCatalog !== undefined) {
     if (
-      manifest.capabilityCatalog.id !== contract.catalog.id ||
-      manifest.capabilityCatalog.version !== contract.catalog.version ||
-      manifest.capabilityCatalog.digest !== contract.digest
+      manifest.capabilityCatalog.id !== contract.runtime.reference.id ||
+      manifest.capabilityCatalog.version !== contract.runtime.reference.version ||
+      manifest.capabilityCatalog.digest !== contract.runtime.reference.digest
     ) {
       reject(
         "pdf-manifest",
@@ -572,11 +577,7 @@ export function validatePdfTemplateManifest(
       );
     }
     try {
-      validateDesignAgainstCatalog(
-        manifest.design,
-        PDF_TEMPLATE_CAPABILITIES_V2,
-        "authoring"
-      );
+      validateDesignAgainstCatalog(manifest.design, contract.runtime.catalog, "authoring");
     } catch (error) {
       if (error instanceof CapabilityValidationError) {
         reject(
@@ -1281,13 +1282,13 @@ export async function validatePdfTemplatePack(
       capabilityCatalog: {
         id:
           manifest.capabilityCatalog?.id ??
-          revisionContract.catalog.id,
+          revisionContract.runtime.reference.id,
         version:
           manifest.capabilityCatalog?.version ??
-          revisionContract.catalog.version,
+          revisionContract.runtime.reference.version,
         digest:
           manifest.capabilityCatalog?.digest ??
-          revisionContract.digest,
+          revisionContract.runtime.reference.digest,
       },
       design: structuredClone(manifest.design!),
       fallbackLocale: fallback.locale,

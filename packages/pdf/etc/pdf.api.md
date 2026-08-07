@@ -1088,6 +1088,7 @@ export interface ResolvedPdfSettings {
     designTrace: readonly PdfDesignResolutionTraceEntry[];
     ignoredDesignCapabilities: readonly string[];
     capabilityCatalogDigest: string;
+    capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
     labels: ResolvedPdfLabels;
     templateVisuals?: PdfTemplateVisualsV1;
 }
@@ -2308,6 +2309,7 @@ export interface ResolvedPdfSettings {
     designTrace: readonly PdfDesignResolutionTraceEntry[];
     ignoredDesignCapabilities: readonly string[];
     capabilityCatalogDigest: string;
+    capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
     labels: ResolvedPdfLabels;
     templateVisuals?: PdfTemplateVisualsV1;
 }
@@ -3528,6 +3530,7 @@ export interface ResolvedPdfSettings {
     designTrace: readonly PdfDesignResolutionTraceEntry[];
     ignoredDesignCapabilities: readonly string[];
     capabilityCatalogDigest: string;
+    capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
     labels: ResolvedPdfLabels;
     templateVisuals?: PdfTemplateVisualsV1;
 }
@@ -3856,17 +3859,29 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITIES_V2
 export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e53f3bf21a19e65a74d64a0cf31e7cc185fdb79607";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
+export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -3883,6 +3898,9 @@ export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1: readonly string[
 // export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2
 export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2: readonly string[];
 
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
+
 // export: PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
 export declare const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<Record<string, string>>;
 
@@ -3891,6 +3909,9 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627a
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf77fc685a6a652dbfe2f12621a840356197a87d3fe424e2";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -4034,6 +4055,9 @@ export declare function preservePdfSourceCellColor(sourceColor: string | undefin
 // export: projectPdfDesignThroughCatalog
 export declare function projectPdfDesignThroughCatalog(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
 
+// export: projectPdfDesignThroughCatalogSchemaV2
+export declare function projectPdfDesignThroughCatalogSchemaV2(design: unknown, catalog: TemplateCapabilityCatalogV2): Record<string, unknown>;
+
 // export: projectPdfDesignThroughCatalogV2
 export declare function projectPdfDesignThroughCatalogV2(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
 
@@ -4042,6 +4066,9 @@ export declare function projectPdfDesignV1SubsetFromCatalogV2(design: WikiPdfTem
 
 // export: readPdfDesignCapability
 export declare function readPdfDesignCapability<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
+
+// export: readPdfDesignCapabilityFromCatalogV2
+export declare function readPdfDesignCapabilityFromCatalogV2<T = unknown>(design: unknown, catalog: TemplateCapabilityCatalogV2, path: string): T;
 
 // export: readPdfDesignCapabilityV2
 export declare function readPdfDesignCapabilityV2<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;

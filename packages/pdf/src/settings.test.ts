@@ -393,6 +393,34 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
 });
 
 describe("typstSettingsDict", () => {
+  it("fails closed for every unknown declared catalog identity", () => {
+    for (const capabilityCatalog of [
+      {
+        id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+        digest: "0".repeat(64),
+      },
+      {
+        id: "foreign.pdf-template",
+        version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+      },
+      {
+        id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+        version: 999,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+      }
+    ]) {
+      const manifest = revision4Manifest(true);
+      manifest.capabilityCatalog = capabilityCatalog;
+      const error = expectSettingsError(
+        () => resolvePdfSettings({}, { manifest }),
+        "manifest.capabilityCatalog"
+      );
+      expect(error.constraint).toContain("Unsupported PDF capability catalog");
+    }
+  });
+
   it("preserves Catalog V2 and emits the revision-4 closing-page feature", () => {
     for (const enabled of [true, false]) {
       const resolved = resolvePdfSettings({}, {

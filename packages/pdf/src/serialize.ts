@@ -26,12 +26,8 @@ import {
   DEFAULT_CODE_THEME,
   resolveCodeTheme,
 } from "@atlcli/code-highlight/registry";
-import {
-  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
-  projectPdfDesignThroughCatalog,
-  projectPdfDesignThroughCatalogV2,
-  readPdfDesignCapability,
-} from "./design-catalog.js";
+import { readPdfDesignCapability } from "./design-catalog.js";
+import { resolvePdfCatalogRuntime } from "./catalog-runtime.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -2050,10 +2046,7 @@ export function serializePdfDocument(
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
-    catalogDesign:
-      settings.capabilityCatalogDigest === PDF_TEMPLATE_CAPABILITY_DIGEST_V2
-        ? projectPdfDesignThroughCatalogV2(settings.design)
-        : projectPdfDesignThroughCatalog(settings.design),
+    catalogDesign: resolvePdfCatalogRuntime(settings.capabilityCatalog).project(settings.design),
     locale: documentLocale(options.metadata.language, options.metadata.region),
     comments: new PdfCommentRegistry(),
   };

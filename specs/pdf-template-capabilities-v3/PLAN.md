@@ -1,6 +1,6 @@
 # PDF Template Capabilities V3
 
-Status: **Proposed / ready for implementation review**, 2026-08-07
+Status: **In progress — P0 merged; T1 implemented and verified**, 2026-08-07
 
 Planning baseline: commit `2bf00066`
 
@@ -588,37 +588,37 @@ atlcli-owned wrapper.
 
 **Implementation**
 
-- [ ] Add schema-V2 types and validators to
+- [x] Add schema-V2 types and validators to
       `packages/template-pack/src/capabilities.ts`. Do not alter schema-V1
       canonicalization, errors, exports, or digest results.
-- [ ] Implement deterministic constraint validation and evaluation as pure,
+- [x] Implement deterministic constraint validation and evaluation as pure,
       browser-safe functions. Constraint order must not affect the digest.
-- [ ] Add `validateDesignOverlayAgainstCatalogV2` (or an equivalently explicit
+- [x] Add `validateDesignOverlayAgainstCatalogV2` (or an equivalently explicit
       overlay-authoring mode): validate every supplied leaf and reject every
       unknown leaf while allowing omitted leaves. Never reuse the legacy mode,
       which may ignore data. After merge, require complete-baseline and PDF
       semantic validation.
-- [ ] Add ownership, stability, compiler range, and proof fields. Validate that
+- [x] Add ownership, stability, compiler range, and proof fields. Validate that
       `template`-owned descriptors can appear in recipe design, while `export`,
       `source`, and `renderer` descriptors cannot.
-- [ ] Add PDF catalog V3 and presentation V3 in
+- [x] Add PDF catalog V3 and presentation V3 in
       `packages/pdf/src/design-catalog.ts`. Move existing composition
       dependencies into catalog constraints and add the 0.15.1-proven target
       leaves from this plan.
-- [ ] Pin new catalog/presentation digests and assert V1/V2 values are
+- [x] Pin new catalog/presentation digests and assert V1/V2 values are
       unchanged.
-- [ ] Add a catalog-aware reader/validator instead of another global V3 alias.
+- [x] Add a catalog-aware reader/validator instead of another global V3 alias.
       Revision paths must pass their selected catalog explicitly.
-- [ ] Add an internal `PdfCatalogRuntime` registry selected by exact
+- [x] Add an internal `PdfCatalogRuntime` registry selected by exact
       id/version/digest. Replace the V2-versus-V1 branches in `settings.ts` and
       `serialize.ts`; unknown digests fail before settings projection or source
       serialization. T1 registers only the already executable V1/V2 runtimes;
       add the V3 runtime entry in T3 only when revision 5 exists. The catalog-V3
       definition remains internal/non-advertised at the T1 boundary.
-- [ ] Assert that the DOCX/project authoring constants and runtime remain on
+- [x] Assert that the DOCX/project authoring constants and runtime remain on
       their current catalog-V1/canonical-revision-3 path. Do not repoint a
       "latest" alias as part of catalog V3.
-- [ ] Regenerate Node/browser API reports and closure classifications.
+- [x] Regenerate Node/browser API reports and closure classifications.
 
 **Tests**
 

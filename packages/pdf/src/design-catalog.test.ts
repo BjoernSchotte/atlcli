@@ -4,7 +4,10 @@ import { resolve } from "node:path";
 import {
   CapabilityValidationError,
   computeCapabilityCatalogDigest,
+  computeCapabilityCatalogDigestV2,
   computeCapabilityPresentationRevision,
+  computeCapabilityPresentationRevisionV2,
+  evaluateCapabilityConstraintsV2,
   flattenDesign,
   unflattenDesign,
   validateCompleteBaseline,
@@ -23,20 +26,31 @@ import {
 import {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
   PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1,
   PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2,
+  PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3,
   PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1,
   PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2,
+  PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3,
   PDF_TEMPLATE_PRESENTATION_REVISION_V1,
   PDF_TEMPLATE_PRESENTATION_REVISION_V2,
+  PDF_TEMPLATE_PRESENTATION_REVISION_V3,
   materializeLegacyPdfDesign,
   projectPdfDesignThroughCatalog,
   projectPdfDesignThroughCatalogV2,
   readPdfDesignCapability,
   readPdfDesignCapabilityV2,
+  readPdfDesignCapabilityFromCatalogV2,
 } from "./design-catalog.js";
+import {
+  listExecutablePdfCatalogRuntimes,
+  PdfCatalogRuntimeError,
+  resolvePdfCatalogRuntime,
+} from "./catalog-runtime.js";
 import {
   PDF_BINDABLE_LEVEL_A_SETTINGS,
   resolvePdfSettings,
@@ -575,5 +589,122 @@ describe("PDF template capability catalog V2", () => {
     expect(() => projectPdfDesignThroughCatalog(design)).toThrow(
       /compositions\./
     );
+  });
+});
+
+describe("PDF template capability catalog V3 declaration", () => {
+  it("pins schema-V2 digests without changing historical identities", async () => {
+    expect(await computeCapabilityCatalogDigest(PDF_TEMPLATE_CAPABILITIES_V1)).toBe(
+      "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c"
+    );
+    expect(await computeCapabilityCatalogDigest(PDF_TEMPLATE_CAPABILITIES_V2)).toBe(
+      "bf635cc84dcad85e2a5b91e53f3bf21a19e65a74d64a0cf31e7cc185fdb79607"
+    );
+    expect(await computeCapabilityCatalogDigestV2(PDF_TEMPLATE_CAPABILITIES_V3)).toBe(
+      PDF_TEMPLATE_CAPABILITY_DIGEST_V3
+    );
+    expect(
+      await computeCapabilityPresentationRevisionV2(
+        PDF_TEMPLATE_CAPABILITIES_V3,
+        PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3,
+        PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
+      )
+    ).toBe(PDF_TEMPLATE_PRESENTATION_REVISION_V3);
+  });
+
+  it("declares every V3 capability with ownership, compiler, and proof metadata", () => {
+    expect(PDF_TEMPLATE_CAPABILITIES_V3.schema).toBe("atlcli.template-capability-catalog/2");
+    expect(PDF_TEMPLATE_CAPABILITIES_V3.version).toBe(3);
+    const primary = new Set(PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3.descriptors.map(({ target }) => target));
+    const details = new Set(PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3);
+    for (const descriptor of PDF_TEMPLATE_CAPABILITIES_V3.descriptors) {
+      expect(descriptor.owner, descriptor.path).toBe("template");
+      expect(descriptor.compilerRange, descriptor.path).toBe(">=0.15.1 <0.16");
+      expect(descriptor.proofs, descriptor.path).toContain("contract");
+      expect(descriptor.proofs, descriptor.path).toContain("canonical-source");
+      expect(Number(primary.has(descriptor.path)) + Number(details.has(descriptor.path)), descriptor.path).toBe(1);
+    }
+  });
+
+  it("evaluates page-model and composition dependencies from the catalog", () => {
+    const pageViolations = evaluateCapabilityConstraintsV2(
+      {
+        page: {
+          format: { kind: "custom", name: "a4" },
+          margin: {
+            mode: "logical",
+            top: "18mm",
+            bottom: "22mm",
+            left: "20mm"
+          }
+        }
+      },
+      PDF_TEMPLATE_CAPABILITIES_V3,
+      { compilerVersion: "0.15.1" }
+    );
+    expect(pageViolations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          effect: "required",
+          target: { kind: "path", id: "page.format.width" }
+        }),
+        expect.objectContaining({
+          effect: "required",
+          target: { kind: "path", id: "page.format.height" }
+        }),
+        expect.objectContaining({
+          effect: "forbidden",
+          target: { kind: "path", id: "page.format.name" }
+        }),
+        expect.objectContaining({
+          effect: "required",
+          target: { kind: "path", id: "page.margin.inside" }
+        }),
+        expect.objectContaining({
+          effect: "required",
+          target: { kind: "path", id: "page.margin.outside" }
+        }),
+        expect.objectContaining({
+          effect: "forbidden",
+          target: { kind: "path", id: "page.margin.left" }
+        })
+      ])
+    );
+
+    const typeCutViolations = evaluateCapabilityConstraintsV2(
+      { compositions: { cover: { kind: "type-cut" } } },
+      PDF_TEMPLATE_CAPABILITIES_V3,
+      { compilerVersion: "0.15.1" }
+    );
+    expect(typeCutViolations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          effect: "required",
+          target: { kind: "asset", id: "asset.coverBackground" }
+        }),
+        expect.objectContaining({
+          effect: "required",
+          target: { kind: "path", id: "compositions.cover.typeCut.angle" }
+        })
+      ])
+    );
+  });
+
+  it("uses catalog-explicit reads and keeps V3 out of the executable registry", () => {
+    expect(
+      readPdfDesignCapabilityFromCatalogV2<string>(
+        { page: { format: { kind: "preset" } } },
+        PDF_TEMPLATE_CAPABILITIES_V3,
+        "page.format.kind"
+      )
+    ).toBe("preset");
+    expect(listExecutablePdfCatalogRuntimes().map(({ reference }) => reference.version)).toEqual([1, 2]);
+    expect(() =>
+      resolvePdfCatalogRuntime({
+        id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
+      })
+    ).toThrow(PdfCatalogRuntimeError);
   });
 });
