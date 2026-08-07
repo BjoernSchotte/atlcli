@@ -114,7 +114,8 @@ const acceptedStrategy = JSON.parse(await tools.chatStrategyDecide({}));
 globalThis.syntheticWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   tasks: [
     { taskId: "task:compare", profileId: "comparison-analyst", objective: "Compare the bounded synthetic positions.", dependencyTaskIds: [] },
-    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft the bounded synthetic answer.", dependencyTaskIds: ["task:compare"] },
+    { taskId: "task:contradiction", profileId: "contradiction-checker", objective: "Check the bounded synthetic positions for contradictions.", dependencyTaskIds: ["task:compare"] },
+    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft the bounded synthetic answer.", dependencyTaskIds: ["task:compare", "task:contradiction"] },
     { taskId: "task:critic", profileId: "answer-critic", objective: "Check the bounded synthetic evidence state.", dependencyTaskIds: ["task:draft"] },
     { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the conversational answer.", dependencyTaskIds: ["task:draft", "task:critic"] }
   ],
@@ -132,6 +133,16 @@ JSON.parse(await tools.chatWorkflowAdvance({}));`;
     return built
       .respondWithTools([{ name: "eval", args: { code: proposalCode } }])
       .respondWithTools([{ name: "eval", args: { code: firstAdvanceCode } }])
+      .respondWithTools([{
+        name: "ChatAnalysisPacketV1",
+        args: {
+          schema: "atlcli.chat-analysis-packet/v1",
+          claimRefs: [],
+          relationshipRefs: [],
+          contradictions: [],
+          gaps: [],
+        },
+      }])
       .respondWithTools([{
         name: "ChatAnalysisPacketV1",
         args: {
@@ -771,15 +782,38 @@ describe("real QuickJS Chat strategy trajectory", () => {
     }
   });
 
-  test("fails closed when Auto bypasses its required strategy decision", async () => {
+  test("repairs one Auto response that initially bypasses its required strategy decision", async () => {
     const input = request("Answer this simple conversational question.");
-    await expect(runtime.runChatAgent({
+    const bypassThenRepair = fakeModel()
+      .respondWithTools([{
+        name: "ChatAnswerDraftV1",
+        args: {
+          messageMarkdown: "This premature answer must not be accepted.",
+          citationSourceIds: [],
+          gaps: [],
+        },
+      }])
+      .respondWithTools([{
+        name: "eval",
+        args: { code: "JSON.parse(await tools.chatStrategyDecide({}))" },
+      }])
+      .respondWithTools([{
+        name: "ChatAnswerDraftV1",
+        args: {
+          messageMarkdown: "A bounded synthetic Chat answer.",
+          citationSourceIds: [],
+          gaps: [],
+        },
+      }]);
+    const answer = await runtime.runChatAgent({
       ...input,
-      model: model(false),
+      model: bypassThenRepair,
       providers,
       workspace: createMemoryResearchWorkspace(),
       qualityPolicy: chatQualityPolicyV1("auto"),
-    })).rejects.toThrow("without acknowledging its accepted strategy decision");
+    });
+    expect(answer.strategy).toMatchObject({ path: "direct", qualityMode: "auto" });
+    expect(answer.messageMarkdown).toBe("A bounded synthetic Chat answer.");
   });
 
   test("reserves the final agentic evidence review instead of letting acquisition exhaust PTC", () => {

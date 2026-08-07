@@ -123,6 +123,13 @@ describe("Chat dynamic workflow admission", () => {
     expect(CHAT_SUBAGENT_PROFILES_V1.filter((entry) =>
       entry.id === "confluence-search-reader" || entry.id === "jira-search-reader"
     ).map((entry) => entry.maxDurationMs)).toEqual([240_000, 240_000]);
+    const exactReader = CHAT_SUBAGENT_PROFILES_V1.find((entry) =>
+      entry.id === "exact-context-reader"
+    );
+    expect(exactReader?.maxDurationMs).toBe(240_000);
+    expect(exactReader?.systemPrompt).toContain(
+      "one compact, central, question-relevant claim per source",
+    );
     for (const id of [
       "relationship-tracer",
       "comparison-analyst",
@@ -585,6 +592,83 @@ describe("Chat dynamic workflow admission", () => {
       readyForSynthesis: true,
       rawBody: "forbidden",
     })).toThrow("invalid structured packet");
+  });
+
+  test("requires the dynamic graph to cover every available strategy capability", async () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: {
+        ...agentic,
+        requiredCapabilities: ["exact-read", "quality-review", "chat-answer"],
+      },
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      allowedProfileIds: [
+        "exact-context-reader",
+        "comparison-analyst",
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+      ],
+    });
+    await expect(controller.tool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare the retained sources after acquisition.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    })).rejects.toThrow(
+      "Add the required profiles: exact-context-reader",
+    );
+    expect(controller.tool.description).toContain(
+      "requires these profiles in this proposal: exact-context-reader",
+    );
+    const accepted = JSON.parse(await controller.tool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:exact",
+        profileId: "exact-context-reader",
+        objective: "Read the retained exact evidence needed for this follow-up.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    })) as { dispatches: Array<{ subagentType: string }> };
+    expect(accepted.dispatches.map((entry) => entry.subagentType)).toContain(
+      "chat-exact-context-reader-v1",
+    );
+  });
+
+  test("splits oversized exact-source assignments before child dispatch", async () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: {
+        ...agentic,
+        requiredCapabilities: ["exact-read", "quality-review", "chat-answer"],
+      },
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      allowedProfileIds: [
+        "exact-context-reader",
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+      ],
+    });
+    const anchors = Array.from(
+      { length: 5 },
+      (_, index) => `research-anchor:synthetic-${index + 1}`,
+    );
+    await expect(controller.tool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:exact",
+        profileId: "exact-context-reader",
+        objective: `Read ${anchors.join(", ")}.`,
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    })).rejects.toThrow(
+      "Each exact-context-reader may receive at most 3 assigned anchorRefs",
+    );
+    expect(controller.tool.description).toContain(
+      "Assign at most 3 explicit opaque anchorRefs",
+    );
   });
 
   test("accepts packet field limits and rejects item, character, and nested-shape overflow", () => {

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { ResearchScopeBindingV1, ResearchScopeV1, ResearchSourceReferenceV1 } from "./contracts.js";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_REQUEST_SCHEMA_V1,
+  type ResearchScopeBindingV1,
+  type ResearchScopeV1,
+  type ResearchSourceReferenceV1,
+} from "./contracts.js";
+import { BOUND_ENTITY_READ_INPUT_SCHEMA_V1 } from "./capability-contracts.js";
+import { ResearchCapabilityBroker } from "./broker.js";
 import {
   WorkspaceResearchEvidenceStoreV1,
   createResearchEvidenceRecordV1,
@@ -78,6 +86,67 @@ async function sha256(value: string): Promise<string> {
 }
 
 describe("research evidence store", () => {
+  test("keeps a stale retained identity as a direct refresh anchor without reusing its body", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const created = await record();
+    const store = new WorkspaceResearchEvidenceStoreV1(workspace);
+    await store.put(created.record, created.chunks);
+    const detailReads: string[] = [];
+    const broker = new ResearchCapabilityBroker({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Refresh the previously accepted evidence without discovery.",
+      scope,
+      limits: { ...DEFAULT_RESEARCH_LIMITS_V1, maxEvidenceAgeMs: 1_000 },
+      wikiProvider: "rest",
+    }, {
+      jira: {
+        async searchPage() { throw new Error("search must not run"); },
+        async getIssue({ issueKey }) {
+          detailReads.push(issueKey);
+          return {
+            issueKey,
+            projectKey: "ATLCLI",
+            title: "Refreshed evidence fixture",
+            content: {
+              text: "The retained identity was refreshed through a direct read.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 57,
+            },
+          };
+        },
+      },
+      wiki: {
+        async searchPage() { throw new Error("search must not run"); },
+        async getPage() { throw new Error("wiki detail must not run"); },
+      },
+    }, {
+      scopeBindings: bindings,
+      evidence: {
+        store,
+        scopeBindings: bindings,
+        capturedAt: () => "2026-08-01T12:01:10.000Z",
+      },
+    });
+    await expect(broker.restoreRetainedEvidence({
+      evidenceIds: [created.record.id],
+      checkedAt: "2026-08-01T12:01:10.000Z",
+    })).resolves.toEqual({
+      considered: 1,
+      staged: 0,
+      stale: 1,
+      unauthorized: 0,
+      missing: 0,
+    });
+    const anchor = broker.exactAnchors()[0]!;
+    expect(anchor.product).toBe("jira");
+    await broker.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef: anchor.anchorRef,
+    });
+    expect(detailReads).toEqual(["ATLCLI-42"]);
+  });
+
   test("persists versioned source chunks across a fresh host and validates exact spans", async () => {
     const workspace = createMemoryResearchWorkspace();
     const created = await record();

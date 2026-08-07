@@ -34,6 +34,8 @@ import {
 export const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 =
   "atlcli.chat-workflow-proposal/v1" as const;
 
+const MAX_EXACT_ANCHORS_PER_CHAT_READER_V1 = 3;
+
 export const CHAT_SUBAGENT_PROFILE_IDS_V1 = [
   "exact-context-reader",
   "confluence-search-reader",
@@ -340,7 +342,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "exact-context-reader",
     phase: "acquisition",
     description: "Read only host-attached Jira or Confluence entities and the smallest relevant page sections.",
-    systemPrompt: "Read only opaque host-attached entities. Return bounded source references, supported claims, relationships, and gaps. Never return source bodies or delegate.",
+    systemPrompt: "Read only opaque host-attached entities. Return one compact, central, question-relevant claim per source plus bounded source references, relationships, and material gaps. Once the required anchors are read, immediately return the aggregate packet. Never return source bodies or delegate.",
     grantedCapabilityIds: [
       BOUND_ENTITY_READ_CAPABILITY_ID_V1,
       BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
@@ -350,7 +352,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "fast",
     maxInputChars: 12_000,
     maxResultBytes: 32_000,
-    maxDurationMs: 45_000,
+    maxDurationMs: 240_000,
   }),
   profile({
     id: "confluence-search-reader",
@@ -922,6 +924,22 @@ export function createChatWorkflowProposalControllerV1(input: {
     input.allowedProfileIds ?? CHAT_SUBAGENT_PROFILE_IDS_V1,
   );
   const allowedProfileList = [...allowedProfiles];
+  const requiredProfiles = input.allowedProfileIds === undefined
+    ? []
+    : [
+        ["exact-read", "exact-context-reader"],
+        ["jira-discovery", "jira-search-reader"],
+        ["confluence-discovery", "confluence-search-reader"],
+        ["relationship-tracing", "relationship-tracer"],
+        ["comparison-analysis", "comparison-analyst"],
+        ["contradiction-check", "contradiction-checker"],
+      ].flatMap(([capability, profileId]): ChatSubagentProfileIdV1[] =>
+        input.strategy.requiredCapabilities.includes(
+            capability as ChatStrategyDecisionV1["requiredCapabilities"][number],
+          ) && allowedProfiles.has(profileId as ChatSubagentProfileIdV1)
+          ? [profileId as ChatSubagentProfileIdV1]
+          : []
+      );
   const proposalTool = tool(async (proposal) => {
     if (accepted || accepting) {
       throw new ChatContractError(
@@ -938,6 +956,32 @@ export function createChatWorkflowProposalControllerV1(input: {
         "invalid-request",
         `The Chat workflow requested unavailable profiles (${unavailableProfiles.join(", ")}). ` +
           `Use only: ${allowedProfileList.join(", ")}.`,
+      );
+    }
+    const oversizedExactTasks = proposal.tasks.flatMap((task) => {
+      if (task.profileId !== "exact-context-reader") return [];
+      const assignedAnchors = new Set(
+        [...task.objective.matchAll(/\bresearch-anchor:[A-Za-z0-9-]{1,200}\b/gu)]
+          .map((match) => match[0]),
+      );
+      return assignedAnchors.size > MAX_EXACT_ANCHORS_PER_CHAT_READER_V1
+        ? [{ taskId: task.taskId, count: assignedAnchors.size }]
+        : [];
+    });
+    if (oversizedExactTasks.length > 0) {
+      throw new ChatContractError(
+        "invalid-request",
+        `Each exact-context-reader may receive at most ${MAX_EXACT_ANCHORS_PER_CHAT_READER_V1} assigned anchorRefs. Split: ${oversizedExactTasks.map((task) => `${task.taskId} (${task.count})`).join(", ")}.`,
+      );
+    }
+    const proposedProfiles = new Set(proposal.tasks.map((task) => task.profileId));
+    const missingRequiredProfiles = requiredProfiles.filter((profileId) =>
+      !proposedProfiles.has(profileId)
+    );
+    if (missingRequiredProfiles.length > 0) {
+      throw new ChatContractError(
+        "invalid-request",
+        `The Chat workflow does not cover the accepted strategy. Add the required profiles: ${missingRequiredProfiles.join(", ")}.`,
       );
     }
     accepting = true;
@@ -1003,6 +1047,8 @@ export function createChatWorkflowProposalControllerV1(input: {
     description:
       `Propose one bounded dependency graph after accepting an agentic strategy. ` +
       `The complete profile set available in this turn is: ${allowedProfileList.join(", ")}. ` +
+      `The accepted strategy requires these profiles in this proposal: ${requiredProfiles.join(", ") || "none"}. ` +
+      `Assign at most ${MAX_EXACT_ANCHORS_PER_CHAT_READER_V1} explicit opaque anchorRefs to each exact-context-reader task; split larger exact source sets into parallel readers. ` +
       "Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. Default to one parallel exact-context reader per bounded anchor so each child context and QuickJS result stays bounded. Group exact anchors only when the host objective establishes that their combined projections fit one task's byte and output limits. Keep admitted search variants for the same product in one search-reader task because its host controller owns the product-wide pagination and detail budget. Split other readers when their products, capability grants, independent facets, or latency benefit materially differ. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, and response schemas for dispatch.",
     schema: z.object({
       tasks: z.array(workflowTaskProposalSchema).min(4).max(9),

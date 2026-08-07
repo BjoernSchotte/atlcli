@@ -992,12 +992,12 @@ describe("research CLI one-shot contract", () => {
       confluenceSpaceKeys: ["DOCSY"],
     });
     expect(request.limits).toMatchObject({
-      maxSearchPagesPerProduct: 2,
+      maxSearchPagesPerProduct: 5,
       maxItemsPerProduct: 20,
       maxDetailItemsPerProduct: 6,
-      maxBodyCharsPerItem: 8_000,
+      maxBodyCharsPerItem: 12_000,
       maxPtcCalls: 64,
-      maxHttpCalls: 20,
+      maxHttpCalls: 24,
       maxTotalResponseBytes: 12_000_000,
       maxModelOutputTokens: 8_000,
       maxModelCostMicros: 2_000_000,
@@ -1022,12 +1022,12 @@ describe("research CLI one-shot contract", () => {
     expect(deepRequest.limits).toMatchObject({
       maxItemsPerProduct: 20,
       maxDetailItemsPerProduct: 8,
-      maxBodyCharsPerItem: 6_000,
+      maxBodyCharsPerItem: 20_000,
       maxPtcCalls: 72,
       maxHttpCalls: 40,
       maxTotalResponseBytes: 24_000_000,
       maxInterpreterMs: 180_000,
-      maxTotalModelInputTokens: 450_000,
+      maxTotalModelInputTokens: 750_000,
     });
   });
 
@@ -1207,6 +1207,7 @@ describe("research CLI one-shot contract", () => {
       mode: "deep",
       providerReasoningPreference: "thorough",
     });
+    expect(harness.chatRunInputs[1]?.request.limits.maxModelCalls).toBe(44);
     expect(harness.chatRunInputs[1]?.request.scope).toMatchObject({
       jiraProjectKeys: [],
       confluenceSpaceKeys: ["DOCSY"],
@@ -1448,14 +1449,10 @@ describe("research CLI one-shot contract", () => {
       content: "",
       tool_calls: [{ name, args, id, type: "tool_call" }],
     });
-    const wikiAcquisition = `
-const page = JSON.parse(await tools.wikiSearch({ query: { text: "Summarize the initial Confluence decision." } }));
-const ranked = JSON.parse(await tools.researchCandidateRank({ product: "confluence", entityRefs: page.items.map((item) => item.entityRef) }));
-JSON.parse(await tools.wikiPageGet({ entityRef: ranked.items[0].entityRef }));`;
-    const jiraAcquisition = `
-const page = JSON.parse(await tools.jiraIssueSearch({ query: { text: "Now read the materially different Jira action." } }));
-const ranked = JSON.parse(await tools.researchCandidateRank({ product: "jira", entityRefs: page.items.map((item) => item.entityRef) }));
-JSON.parse(await tools.jiraIssueGet({ entityRef: ranked.items[0].entityRef }));`;
+    const wikiAcquisition =
+      "JSON.parse(await tools.chatConfluenceRetrievalAcquire({}));";
+    const jiraAcquisition =
+      "JSON.parse(await tools.chatJiraRetrievalAcquire({}));";
     const modelFor = (question: string) => {
       const model = fakeModel();
       if (question.includes("initial Confluence")) {
@@ -1555,7 +1552,7 @@ JSON.parse(await tools.jiraIssueGet({ entityRef: ranked.items[0].entityRef }));`
     const restartedHost = createHarness();
     await handleChat(
       ["Which part of the same accepted detail matters most?"],
-      { session: "research-session:cli-plan", thinking: "quick" },
+      { session: "research-session:cli-plan" },
       { json: false },
       restartedHost.dependencies,
     );
@@ -1584,7 +1581,11 @@ JSON.parse(await tools.jiraIssueGet({ entityRef: ranked.items[0].entityRef }));`
       conversation: {
         recentTurns: [
           { id: "research-turn:cli-memory-first", status: "complete" },
-          { id: "research-turn:cli-memory-second", status: "complete" },
+          {
+            id: "research-turn:cli-memory-second",
+            status: "complete",
+            qualityMode: "quick",
+          },
           { id: "research-turn:cli-memory-third", status: "complete" },
         ],
       },

@@ -28,7 +28,7 @@ export function anthropicRootOutputTokensV1(
   mode: ChatModelFactoryInputV1["qualityPolicy"]["mode"],
   rootLimit: number,
 ): number {
-  const modeLimit = mode === "deep" ? 5_000 : 4_096;
+  const modeLimit = mode === "deep" ? 8_000 : 4_096;
   return Math.max(1, Math.min(rootLimit, modeLimit));
 }
 

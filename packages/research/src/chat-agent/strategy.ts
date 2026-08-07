@@ -112,7 +112,7 @@ const CONTRADICTION_INTENT_V1 =
 const BROAD_SCOPE_INTENT_V1 =
   /\b(?:across\s+(?:the\s+)?(?:space|project)|all\s+(?:pages|issues)|throughout\s+(?:the\s+)?(?:space|project)|whole\s+(?:space|project)|related\s+(?:pages|issues)|gesamte[nsr]?\s+(?:space|projekt)|alle\s+(?:seiten|vorgänge|tickets)|weitere\s+(?:seiten|vorgänge|tickets)|im\s+space|projektweit|spaceweit)\b/iu;
 const NO_NEW_SEARCH_INTENT_V1 =
-  /\b(?:do\s+not|don't|without)\s+(?:run\s+)?(?:a\s+)?(?:new\s+)?search\b|\b(?:keine|ohne)\s+(?:neue\s+)?suche\b|\bnicht\s+(?:erneut\s+|neu\s+)?suchen\b/iu;
+  /\b(?:do\s+not|don't|without)\s+(?:use\s+|add\s+|retrieve\s+|run\s+)?(?:any\s+|a\s+)?(?:new\s+)?(?:search|source|sources|evidence)\b|\b(?:keine|ohne)\s+(?:neue[ns]?\s+)?(?:suche|suchen|quelle|quellen|belege|evidenz)\b|\bnicht\s+(?:erneut\s+|neu\s+)?suchen\b/iu;
 
 function orderedUnique<T extends string>(
   values: readonly T[],

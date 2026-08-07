@@ -7,6 +7,7 @@ import {
 } from "./contracts.js";
 
 const DIRECT_EXACT_CONTEXT_CHARS_V1 = 50_000;
+const MULTI_EXACT_CONTEXT_TOTAL_CHARS_V1 = 120_000;
 
 /** Shared resource corridor for one conversational turn in every host shape. */
 export function applyChatQualityResourcePolicyV1(
@@ -35,9 +36,17 @@ export function applyChatQualityResourcePolicyV1(
       maxHttpCalls: deep ? 40 : Math.min(input.limits.maxHttpCalls, 24),
       maxTotalResponseBytes: deep ? 24_000_000 : mode === "auto" ? 12_000_000 : 8_000_000,
       maxInterpreterMs: deep ? 180_000 : input.limits.maxInterpreterMs,
+      // Deep Chat may split a large retained evidence set into several small
+      // specialists. Keep token and USD ceilings authoritative while allowing
+      // the measured supervisor/reader/critic call sequence to finish.
+      maxModelCalls: deep ? 44 : input.limits.maxModelCalls,
       maxModelOutputTokens: Math.min(input.limits.maxModelOutputTokens, quick ? 4_096 : 8_000),
       maxTotalModelInputTokens: deep
-        ? 500_000
+        // A measured twelve-source Deep Chat uses several isolated reader,
+        // comparison, critic, and synthesis calls. The USD ceiling remains
+        // authoritative; this input corridor prevents repeated system and
+        // evidence context from stopping the run before synthesis.
+        ? 750_000
         : mode === "auto"
           ? Math.max(input.limits.maxTotalModelInputTokens, 450_000)
           : input.limits.maxTotalModelInputTokens,
@@ -89,6 +98,11 @@ export function prepareDirectChatRequestV1(
   const seeds = input.scopeSeeds ?? [];
   const exactProducts = exactCurrentContextProducts(seeds);
   if (exactProducts.size === 0) return input;
+  const exactEntityCount = seeds.filter((seed) =>
+    (seed.binding.source === "current_context" ||
+      seed.binding.source === "exact_link") &&
+    (seed.binding.entityKind === "issue" || seed.binding.entityKind === "page")
+  ).length;
 
   const exactContextProducts = [...exactProducts].filter((product) => {
     if (asksForWholeScope(input.question, product)) return false;
@@ -105,7 +119,15 @@ export function prepareDirectChatRequestV1(
       // A single exact page is cheaper and more accurate when an ordinary
       // page-sized body is read once. Only genuinely long pages should fall
       // back to the navigable outline plus targeted section reads.
-      maxBodyCharsPerItem: DIRECT_EXACT_CONTEXT_CHARS_V1,
+      maxBodyCharsPerItem: exactEntityCount === 1
+        ? DIRECT_EXACT_CONTEXT_CHARS_V1
+        : Math.min(
+            input.limits.maxBodyCharsPerItem,
+            Math.max(
+              8_000,
+              Math.floor(MULTI_EXACT_CONTEXT_TOTAL_CHARS_V1 / exactEntityCount),
+            ),
+          ),
     },
   } satisfies ResearchRequestV1;
   return projected;

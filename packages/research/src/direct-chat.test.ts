@@ -59,7 +59,8 @@ describe("direct chat scope projection", () => {
       maxHttpCalls: 40,
       maxTotalResponseBytes: 24_000_000,
       maxInterpreterMs: 180_000,
-      maxTotalModelInputTokens: 500_000,
+      maxModelCalls: 44,
+      maxTotalModelInputTokens: 750_000,
     });
     expect(applyChatQualityResourcePolicyV1(request(), "auto").limits)
       .toMatchObject({
@@ -109,6 +110,23 @@ describe("direct chat scope projection", () => {
     const projected = prepareDirectChatRequestV1(input);
     expect(projected.exactContextProducts).toEqual(["confluence"]);
     expect(projected.limits.maxBodyCharsPerItem).toBe(50_000);
+  });
+
+  test("keeps a multi-source follow-up inside one bounded projection corridor", () => {
+    const input = applyChatQualityResourcePolicyV1(request(), "deep");
+    input.scopeSeeds = Array.from({ length: 12 }, (_, index) =>
+      createResearchEntityScopeSeedV1({
+        tenantOrigin: origin,
+        product: index < 8 ? "confluence" : "jira",
+        entityKind: index < 8 ? "page" : "issue",
+        key: index < 8 ? String(20_000 + index) : `DEMO-${index + 1}`,
+        name: `Retained exact source ${index + 1}`,
+        source: "exact_link",
+        authority: "approved",
+      })
+    );
+
+    expect(prepareDirectChatRequestV1(input).limits.maxBodyCharsPerItem).toBe(10_000);
   });
 
   test("keeps an explicitly added space alongside the bound page", () => {

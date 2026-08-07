@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ToolMessage } from "@langchain/core/messages";
+import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -27,6 +27,11 @@ import { createChatPtcToolsV1 } from "./retrieval.js";
 import type { ChatQualityDispositionV1 } from "./quality.js";
 import {
   CHAT_WORKFLOW_STATE_PATH_V1,
+  chatSubagentEvalAttemptLimitV1,
+  chatSubagentModelOutputLimitV1,
+  chatSubagentPtcCallLimitV1,
+  createExactContextAcquisitionToolV1,
+  minimalChatSubagentTaskContextV1,
   createChatAgenticWorkflowRuntimeV1,
   createPlannedSearchAcquisitionToolV1,
   normalizeKnownSourceReferencesV1,
@@ -134,6 +139,28 @@ function serializedBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+test("projects only the question and body-free anchor catalogue into shared child context", () => {
+  const context = minimalChatSubagentTaskContextV1("Compare the sources.", [{
+    anchorRef: "research-anchor:page-1",
+    product: "confluence",
+    entityKind: "page",
+    name: "Approved page",
+  }]);
+  expect(JSON.parse(context)).toEqual({
+    question: "Compare the sources.",
+    exactAnchors: [{
+      anchorRef: "research-anchor:page-1",
+      product: "confluence",
+      entityKind: "page",
+      name: "Approved page",
+    }],
+  });
+  expect(context).not.toContain(
+    "retrieval",
+  );
+  expect(context).not.toContain("content");
+});
+
 function analysisPacketNearBytes(targetBytes: number) {
   const packet = {
     ...analysisPacket(),
@@ -207,6 +234,7 @@ function createHarness(input: {
     middleware?: Array<{
       name?: string;
       tools?: Array<{ name: string }>;
+      wrapModelCall?: (request: unknown, handler: (request: unknown) => Promise<unknown>) => Promise<unknown>;
       wrapToolCall?: (request: unknown, handler: (request: unknown) => Promise<unknown>) => Promise<unknown>;
     }>;
   }> = [];
@@ -436,7 +464,22 @@ describe("Chat agentic workflow runtime", () => {
       "chat-synthesizer-v1",
     ]);
     for (const subagent of harness.compiledSubagents) {
-      expect(subagent.tools ?? []).toEqual([]);
+      if (subagent.name === "chat-exact-context-reader-v1") {
+        expect((subagent.tools ?? []).map((entry) =>
+          (entry as { name: string }).name
+        )).toEqual([
+          "chat_exact_context_acquire",
+          "atlassian_bound_section_read",
+        ]);
+      } else {
+        expect(subagent.tools ?? []).toEqual([]);
+      }
+      expect((subagent.middleware ?? []).slice(0, 2).map((entry) => entry.name)).toEqual([
+        "modelRetryMiddleware",
+        `ChatModelBudgetMiddleware:${subagent.name === "chat-synthesizer-v1"
+          ? "chat-synthesizer"
+          : subagent.name.replace(/^chat-|(?:-v1)$/gu, "")}`,
+      ]);
       expect((subagent.middleware ?? []).flatMap((entry) => entry.tools ?? [])
         .some((entry) => entry.name === "task")).toBe(false);
     }
@@ -446,9 +489,104 @@ describe("Chat agentic workflow runtime", () => {
     expect(confluenceReader?.systemPrompt).toContain("exactly one focused initial search query");
     expect(confluenceReader?.systemPrompt).toContain("return an explicit gap");
     expect(confluenceReader?.systemPrompt).not.toContain("wiki_search");
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Call those tools directly; eval, network, filesystem, and delegation are unavailable",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Call chat_exact_context_acquire exactly once",
+    );
+    expect(exactReader?.middleware?.some((entry) =>
+      entry.name === "ChatSubagentEvalGuard:exact-context-reader"
+    )).toBe(false);
     expect(harness.compiledSubagents.find((entry) =>
       entry.name === "chat-synthesizer-v1"
     )?.systemPrompt).toContain("[[source:SOURCE_ID]]");
+  });
+
+  test("bundles exact anchor reads behind one deterministic host capability", async () => {
+    const readRefs: string[] = [];
+    const direct = tool(async ({ anchorRef }) => {
+      readRefs.push(anchorRef);
+      return JSON.stringify({
+        schema: "atlcli.ptc/atlassian.bound.read.output/v1",
+        source: { id: `wiki:${anchorRef}`, product: "confluence", title: anchorRef, url: `https://example.invalid/${anchorRef}` },
+        content: { text: `body:${anchorRef}`, linkTargets: [], truncated: false, inputBytes: 10 },
+        relatedAnchors: [],
+        budget: {},
+      });
+    }, {
+      name: "atlassian_bound_read",
+      description: "synthetic exact read",
+      schema: z.object({ anchorRef: z.string() }).strict(),
+    });
+    const acquire = createExactContextAcquisitionToolV1({
+      tools: [direct],
+      maxDetails: 3,
+    });
+    const result = JSON.parse(await acquire.invoke({
+      anchorRefs: ["anchor-a", "anchor-b", "anchor-a"],
+    })) as { details: Array<{ source: { id: string } }> };
+
+    expect(readRefs).toEqual(["anchor-a", "anchor-b"]);
+    expect(result.details.map((entry) => entry.source.id)).toEqual([
+      "wiki:anchor-a",
+      "wiki:anchor-b",
+    ]);
+  });
+
+  test("lets the exact reader consume the bounded detail allowance instead of a tool-count heuristic", () => {
+    expect(chatSubagentPtcCallLimitV1({
+      profileId: "exact-context-reader",
+      plannedDetailLimit: 20,
+      exactContextProductCount: 1,
+      maxPtcCalls: 32,
+      grantedCapabilityCount: 2,
+    })).toBe(20);
+    expect(chatSubagentPtcCallLimitV1({
+      profileId: "relationship-tracer",
+      plannedDetailLimit: 20,
+      exactContextProductCount: 1,
+      maxPtcCalls: 32,
+      grantedCapabilityCount: 2,
+    })).toBe(6);
+    expect(chatSubagentEvalAttemptLimitV1({
+      profileId: "exact-context-reader",
+      plannedSearchAvailable: false,
+      plannedDetailLimit: 8,
+      exactContextProductCount: 2,
+    })).toBe(24);
+    expect(chatSubagentEvalAttemptLimitV1({
+      profileId: "confluence-search-reader",
+      plannedSearchAvailable: true,
+      plannedDetailLimit: 8,
+      exactContextProductCount: 0,
+    })).toBe(2);
+  });
+
+  test("retries one transient child model failure without retrying permanent failures", async () => {
+    const harness = createHarness();
+    const retry = harness.compiledSubagents[0]?.middleware?.find((entry) =>
+      entry.name === "modelRetryMiddleware"
+    );
+    expect(retry?.wrapModelCall).toBeFunction();
+    let transientAttempts = 0;
+    const response = await retry!.wrapModelCall!({}, async () => {
+      transientAttempts += 1;
+      if (transientAttempts === 1) throw new Error("overloaded_error");
+      return new AIMessage("recovered");
+    });
+    expect(transientAttempts).toBe(2);
+    expect(response).toBeInstanceOf(AIMessage);
+
+    let permanentAttempts = 0;
+    await expect(retry!.wrapModelCall!({}, async () => {
+      permanentAttempts += 1;
+      throw new Error("authentication failed");
+    })).rejects.toThrow("authentication failed");
+    expect(permanentAttempts).toBe(1);
   });
 
   test("binds every child to its host-owned provider-neutral model preference", () => {
@@ -467,6 +605,30 @@ describe("Chat agentic workflow runtime", () => {
     expect(byName.get("chat-comparison-analyst-v1")).toBe(balanced);
     expect(byName.get("chat-answer-critic-v1")).toBe(balanced);
     expect(byName.get("chat-synthesizer-v1")).toBe(thorough);
+  });
+
+  test("reserves enough structured output for a three-source exact evidence packet", () => {
+    const harness = createHarness();
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    const budget = exactReader?.middleware?.find((entry) =>
+      entry.name === "ChatModelBudgetMiddleware:exact-context-reader"
+    );
+    expect(budget).toBeDefined();
+    expect(exactReader?.systemPrompt).toContain(
+      "one compact, central, question-relevant claim per source",
+    );
+    expect(chatSubagentModelOutputLimitV1({
+      profileId: "exact-context-reader",
+      modelPreference: "fast",
+      rootLimit: 8_000,
+    })).toBe(3_072);
+    expect(chatSubagentModelOutputLimitV1({
+      profileId: "confluence-search-reader",
+      modelPreference: "fast",
+      rootLimit: 8_000,
+    })).toBe(2_048);
   });
 
   test("prefers a provider finalize-only binding for the terminal synthesizer", () => {
@@ -1097,10 +1259,16 @@ describe("Chat agentic workflow runtime", () => {
           dependencyTaskIds: [],
         },
         {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare the bounded search result.",
+          dependencyTaskIds: ["task:search"],
+        },
+        {
           taskId: "task:draft",
           profileId: "answer-drafter",
           objective: "Draft a provisional answer.",
-          dependencyTaskIds: ["task:search"],
+          dependencyTaskIds: ["task:analysis"],
         },
         {
           taskId: "task:critic",

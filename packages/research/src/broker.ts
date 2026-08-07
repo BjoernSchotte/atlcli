@@ -748,6 +748,11 @@ export class ResearchCapabilityBroker {
         outcome.unauthorized += 1;
         continue;
       }
+      // A stale body is never reused, but its already approved canonical
+      // identity remains the safest path to a fresh provider read. Preserve
+      // that exact capability so a follow-up refreshes the known entity
+      // directly instead of falling back to broad search discovery.
+      this.#registerRetainedExactCapability(record);
       const capturedAtMs = Date.parse(record.version.capturedAt);
       if (
         !Number.isFinite(capturedAtMs) ||
@@ -769,7 +774,6 @@ export class ResearchCapabilityBroker {
       if (!current || current.record.version.capturedAt < record.version.capturedAt) {
         this.#retainedExactEvidence.set(key, { record, content });
       }
-      this.#registerRetainedExactCapability(record);
       outcome.staged += 1;
     }
     return outcome;

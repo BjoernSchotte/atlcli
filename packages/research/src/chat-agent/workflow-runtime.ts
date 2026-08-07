@@ -7,6 +7,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
 import {
   createMiddleware,
+  modelRetryMiddleware,
   toolStrategy,
   type AgentMiddleware,
 } from "langchain";
@@ -22,6 +23,7 @@ import type {
 import {
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "../capability-contracts.js";
+import type { BoundEntityAnchorV1 } from "../capability-contracts.js";
 import type { ResearchLimitsV1, ResearchProduct } from "../contracts.js";
 import type { ProviderReasoningPreferenceV1 } from "../quality-policy.js";
 import {
@@ -68,6 +70,21 @@ import {
 
 export const CHAT_WORKFLOW_STATE_PATH_V1 =
   "/.atlcli/chat/v1/workflow.json" as const;
+
+export function minimalChatSubagentTaskContextV1(
+  question: string,
+  exactAnchors: readonly BoundEntityAnchorV1[] = [],
+): string {
+  return JSON.stringify({
+    question,
+    exactAnchors: exactAnchors.map((anchor) => ({
+      anchorRef: anchor.anchorRef,
+      product: anchor.product,
+      entityKind: anchor.entityKind,
+      name: anchor.name,
+    })),
+  });
+}
 
 export type ChatWorkflowTaskStatusV1 =
   | "admitted"
@@ -424,9 +441,13 @@ function profilePromptV1(input: {
       : "Write every user-visible answer fragment and provider-visible reasoning summary in English unless the task explicitly requests another language.",
     "This is a depth-one Kiteweave Chat specialist. You receive only the host-issued task objective and exact completed dependency packets; no parent or sibling conversation is available.",
     input.allowedToolNames.length > 0
-      ? `Your complete read-only QuickJS capability set is: ${input.allowedToolNames.join(", ")}. Use bounded eval steps when acquisition is required; the host limits unique queries, calls, time, and output.`
+      ? input.profile.id === "exact-context-reader"
+        ? `Your complete read-only typed tool set is: ${input.allowedToolNames.join(", ")}. Call those tools directly; eval, network, filesystem, and delegation are unavailable. The host limits calls, time, and output.`
+        : `Your complete read-only QuickJS capability set is: ${input.allowedToolNames.join(", ")}. Use bounded eval steps when acquisition is required; the host limits unique queries, calls, time, and output. Every eval runs in a fresh JavaScript isolate: never reference a variable from an earlier eval. Prior tool results remain in your message context, so use new local variables for each remaining batch and then return one aggregate structured packet.`
       : "No source-read, filesystem, network, eval, or delegation capability is available. Analyze only the dependency packets in the task description.",
-    input.profile.id === "confluence-search-reader" || input.profile.id === "jira-search-reader"
+    input.profile.id === "exact-context-reader"
+      ? `Call chat_exact_context_acquire exactly once with every unique anchorRef explicitly assigned in the host objective. Analyze the returned details and immediately return one aggregate evidence packet. If a returned Confluence outline proves that one question-critical section is unread, you may call atlassian_bound_section_read only for that section. Never repeat an anchor, search, rank, or widen scope.`
+      : input.profile.id === "confluence-search-reader" || input.profile.id === "jira-search-reader"
       ? input.queryVariantMode
         ? `Call tools.chatRetrievalAcquire({}) exactly once. That host controller executes only the admitted query variants, bounded pagination, deduplication, ranking, and at most ${detailBudget} detail reads. Analyze its returned detail evidence and immediately return the requested packet. Never call eval or another capability again, invent a query, or widen scope; disclose remaining gaps.`
         : `Use exactly one focused initial search query for this task. Continue only with opaque cursors returned by that search, for at most ${searchBudget} total search-page calls. Do not spend this task's budget on alternate query wording. Rank the collected candidates once, then detail-read at most ${detailBudget} admitted items. If the bounded search cannot establish the requested evidence, return an explicit gap instead of retrying or widening scope.`
@@ -615,6 +636,52 @@ export function createPlannedSearchAcquisitionToolV1(input: {
   });
 }
 
+export function createExactContextAcquisitionToolV1(input: {
+  tools: readonly DynamicStructuredTool[];
+  maxDetails: number;
+  /** Snake-case LangChain name; QuickJS exposes the camel-cased equivalent. */
+  toolName?: string;
+}): DynamicStructuredTool {
+  const detail = input.tools.find((candidate) => candidate.name === "atlassian_bound_read");
+  if (!detail) {
+    throw new ChatContractError(
+      "invalid-request",
+      "The exact Chat acquisition controller is missing its host read capability.",
+    );
+  }
+  const acquisitions = new Map<string, Promise<string>>();
+  return tool(async (value, config) => {
+    const anchorRefs = [...new Set(value.anchorRefs)];
+    const key = JSON.stringify(anchorRefs);
+    const existing = acquisitions.get(key);
+    if (existing) return existing;
+    const acquisition = (async () => {
+      const nestedConfig = nestedToolConfigV1(config);
+      const details: Record<string, unknown>[] = [];
+      for (const anchorRef of anchorRefs) {
+        details.push(parsedToolJsonV1(
+          await detail.invoke({ anchorRef }, nestedConfig),
+          "Chat exact detail read",
+        ));
+      }
+      return JSON.stringify({
+        schema: "atlcli.chat-exact-acquisition/v1",
+        details,
+        gaps: [],
+      });
+    })();
+    acquisitions.set(key, acquisition);
+    return acquisition;
+  }, {
+    name: input.toolName ?? "chat_exact_context_acquire",
+    description:
+      "Read one bounded batch of opaque host-attached Jira or Confluence anchors exactly once. Return their detail projections for immediate evidence extraction; never search, rank, or widen scope.",
+    schema: z.object({
+      anchorRefs: z.array(z.string().max(220)).min(1).max(Math.max(1, input.maxDetails)),
+    }).strict(),
+  });
+}
+
 function compileChatSubagentsV1(input: {
   model: BaseChatModel;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
@@ -679,6 +746,16 @@ function compileChatSubagentsV1(input: {
           maxSearchPages: input.limits.maxSearchPagesPerProduct,
           maxDetails: plannedDetailLimit,
         })]
+      : profile.id === "exact-context-reader"
+        ? [
+            createExactContextAcquisitionToolV1({
+              tools: rawPtc,
+              maxDetails: Math.min(plannedDetailLimit, 3),
+            }),
+            ...rawPtc.filter((candidate) =>
+              candidate.name === "atlassian_bound_section_read"
+            ),
+          ]
       : rawPtc;
     if (profile.id === "confluence-search-reader" || profile.id === "jira-search-reader") {
       const searchToolName = profile.id === "confluence-search-reader"
@@ -695,10 +772,12 @@ function compileChatSubagentsV1(input: {
       }
     }
     let evalAttempts = 0;
-    const maxEvalAttempts = profile.id === "confluence-search-reader" ||
-        profile.id === "jira-search-reader"
-      ? plannedSearchAvailable ? 2 : 8
-      : 4;
+    const maxEvalAttempts = chatSubagentEvalAttemptLimitV1({
+      profileId: profile.id,
+      plannedSearchAvailable,
+      plannedDetailLimit,
+      exactContextProductCount: input.exactContextProducts.length,
+    });
     const evalGuard = createMiddleware({
       name: `ChatSubagentEvalGuard:${profile.id}`,
       async wrapToolCall(request, handler) {
@@ -850,19 +929,11 @@ function compileChatSubagentsV1(input: {
         }
       },
     });
-    const answerOutputTokens = profile.id === "answer-critic"
-      ? 2_048
-      : profile.id === "chat-synthesizer"
-        ? 5_000
-        : profile.id === "answer-drafter" || profile.id === "answer-repairer"
-          ? 3_072
-          : undefined;
-    const maxModelOutputTokens = Math.min(
-      input.limits.maxModelOutputTokens,
-      answerOutputTokens ?? (profile.modelPreference === "fast"
-        ? 2_048
-        : profile.modelPreference === "balanced" ? 4_096 : 8_000),
-    );
+    const maxModelOutputTokens = chatSubagentModelOutputLimitV1({
+      profileId: profile.id,
+      modelPreference: profile.modelPreference,
+      rootLimit: input.limits.maxModelOutputTokens,
+    });
     const modelBudgetMiddleware: AgentMiddleware = createResearchModelBudgetMiddlewareV1(
       input.modelBudget,
       {
@@ -874,6 +945,53 @@ function compileChatSubagentsV1(input: {
         onSnapshot: async (_snapshot, state) => input.onModelBudgetSnapshot(state),
       },
     );
+    const modelRetry: AgentMiddleware = modelRetryMiddleware({
+      maxRetries: 1,
+      initialDelayMs: 100,
+      maxDelayMs: 100,
+      backoffFactor: 0,
+      jitter: false,
+      onFailure: "error",
+      retryOn: (error: Error) => {
+        const visited = new Set<unknown>();
+        let current: unknown = error;
+        for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
+          if (visited.has(current)) break;
+          visited.add(current);
+          const candidate = current as {
+            name?: unknown;
+            message?: unknown;
+            status?: unknown;
+            statusCode?: unknown;
+            cause?: unknown;
+          };
+          const status = typeof candidate.status === "number"
+            ? candidate.status
+            : typeof candidate.statusCode === "number"
+              ? candidate.statusCode
+              : undefined;
+          const name = typeof candidate.name === "string" ? candidate.name : "";
+          const message = typeof candidate.message === "string"
+            ? candidate.message.toLocaleLowerCase("en-US")
+            : "";
+          if (
+            status === 408 || status === 429 || status === 500 || status === 502 ||
+            status === 503 || status === 504 || status === 529 ||
+            /(?:connection|network|rate.?limit|timeout|overload|internal.?server)/iu.test(name) ||
+            /(?:overloaded_error|rate.?limit|timed? ?out|connection (?:reset|closed)|socket hang up|status (?:408|429|500|502|503|504|529))/iu.test(message)
+          ) return true;
+          current = candidate.cause;
+        }
+        return false;
+      },
+    });
+    const childPtcCallLimit = chatSubagentPtcCallLimitV1({
+      profileId: profile.id,
+      plannedDetailLimit,
+      exactContextProductCount: input.exactContextProducts.length,
+      maxPtcCalls: input.limits.maxPtcCalls,
+      grantedCapabilityCount: profile.grantedCapabilityIds.length,
+    });
     return {
       name: profile.subagentType,
       description: profile.description,
@@ -895,8 +1013,12 @@ function compileChatSubagentsV1(input: {
         ...(input.locale ? { locale: input.locale } : {}),
         queryVariantMode: input.retrievalLedger !== undefined,
       }),
-      tools: [],
-      middleware: [modelBudgetMiddleware, ...(ptc.length === 0
+      tools: profile.id === "exact-context-reader" ? ptc : [],
+      // Retry stays outside the budget middleware so every provider attempt is
+      // independently reserved. It retries only the current model call; tool
+      // results and Atlassian reads are not replayed.
+      middleware: [modelRetry, modelBudgetMiddleware, ...(ptc.length === 0 ||
+          profile.id === "exact-context-reader"
         ? []
         : [evalGuard, createCodeInterpreterMiddleware({
             ptc,
@@ -909,10 +1031,7 @@ function compileChatSubagentsV1(input: {
               profile.maxDurationMs,
               input.limits.maxInterpreterMs,
             ),
-            maxPtcCalls: Math.max(
-              1,
-              Math.min(input.limits.maxPtcCalls, profile.grantedCapabilityIds.length * 3),
-            ),
+            maxPtcCalls: childPtcCallLimit,
             maxResultChars: Math.min(
               input.limits.maxPtcOutputBytes,
               boundedAcquisitionResultAvailable
@@ -923,6 +1042,66 @@ function compileChatSubagentsV1(input: {
           })])],
     };
   });
+}
+
+export function chatSubagentPtcCallLimitV1(input: {
+  profileId: ChatSubagentProfileIdV1;
+  plannedDetailLimit: number;
+  exactContextProductCount: number;
+  maxPtcCalls: number;
+  grantedCapabilityCount: number;
+}): number {
+  const requested = input.profileId === "exact-context-reader"
+    ? input.plannedDetailLimit * Math.max(1, input.exactContextProductCount)
+    : input.grantedCapabilityCount * 3;
+  return Math.max(1, Math.min(input.maxPtcCalls, requested));
+}
+
+export function chatSubagentModelOutputLimitV1(input: {
+  profileId: ChatSubagentProfileIdV1;
+  modelPreference: ProviderReasoningPreferenceV1;
+  rootLimit: number;
+}): number {
+  const profileLimit = input.profileId === "exact-context-reader"
+    ? 3_072
+    : input.profileId === "answer-critic"
+      ? 2_048
+      : input.profileId === "chat-synthesizer"
+        ? 5_000
+        : input.profileId === "answer-drafter" || input.profileId === "answer-repairer"
+          ? 3_072
+          : input.modelPreference === "fast"
+            ? 2_048
+            : input.modelPreference === "balanced" ? 4_096 : 8_000;
+  return Math.max(1, Math.min(input.rootLimit, profileLimit));
+}
+
+export function chatSubagentEvalAttemptLimitV1(input: {
+  profileId: ChatSubagentProfileIdV1;
+  plannedSearchAvailable: boolean;
+  plannedDetailLimit: number;
+  exactContextProductCount: number;
+}): number {
+  if (input.profileId === "exact-context-reader") {
+    // One compiled profile serves every parallel exact-reader task. Keep its
+    // shared loop guard large enough for all bounded product readers plus a
+    // small syntax-recovery reserve; HTTP/PTC and per-task deadlines remain
+    // the hard execution ceilings.
+    return Math.min(
+      32,
+      Math.max(
+        8,
+        input.plannedDetailLimit * Math.max(1, input.exactContextProductCount) + 8,
+      ),
+    );
+  }
+  if (
+    input.profileId === "confluence-search-reader" ||
+    input.profileId === "jira-search-reader"
+  ) {
+    return input.plannedSearchAvailable ? 2 : 8;
+  }
+  return 4;
 }
 
 function cloneWorkflowStateV1(state: ChatWorkflowStateV1): ChatWorkflowStateV1 {

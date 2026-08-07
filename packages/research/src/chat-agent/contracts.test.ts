@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { AIMessage } from "@langchain/core/messages";
+import { AIMessage, SystemMessage } from "@langchain/core/messages";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ChatPresentationStreamEventV1,
@@ -420,6 +420,56 @@ describe("Chat answer contract", () => {
         }],
       },
     })).toThrow("unknown evidence");
+  });
+
+  test("never publishes a partial uncited sentence after an evidence-requiring read", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown:
+          "Die Seite trägt den Titel **Synthetic page** (nicht „Testseite",
+        citationSourceIds: [],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      strategyDecision: {
+        schema: "atlcli.chat-strategy-decision/v1",
+        qualityMode: "quick",
+        execution: "direct",
+        reasonCodes: ["quick-direct", "single-exact-context"],
+        ambiguityDisposition: "none",
+        requiredCapabilities: ["exact-read", "chat-answer"],
+        expectedComplexity: "simple",
+        qualityRisks: [],
+      },
+      run: {
+        ...run,
+        retrieval: {
+          discoveredCandidates: 1,
+          admittedCandidates: 1,
+          detailReadCandidates: 1,
+          excludedCandidates: 0,
+          deferredCandidates: 0,
+          detailReadCoverage: 1,
+          canonicalUrlCorrectness: 1,
+          observedRecall: null,
+          wrongSourceRate: null,
+          atlassianHttpCalls: 1,
+          latencyMs: 1_000,
+        },
+      },
+      locale: "de",
+    });
+
+    expect(answer.messageMarkdown).toContain(
+      "Für diese Antwort blieb keine detailbelegte Aussage übrig.",
+    );
+    expect(answer.messageMarkdown).not.toContain("nicht „Testseite");
+    expect(answer.gaps).toEqual([expect.objectContaining({
+      code: "no-detail-evidence",
+      sourceIds: [],
+    })]);
   });
 
   test("derives citations from validated detail-backed placeholders despite redundant array drift", () => {
@@ -1071,6 +1121,89 @@ describe("separate Chat root", () => {
       },
     );
     expect(visibleNames).toEqual(["eval", "ask_user_question"]);
+  });
+
+  test("recovers one premature answer by requiring the turn-local strategy acknowledgement", async () => {
+    let acknowledged = false;
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      strategyAcknowledged: () => acknowledged,
+    });
+    const requests: Array<{ toolChoice?: unknown; systemText: string }> = [];
+    const response = await middleware.wrapModelCall?.(
+      {
+        tools: [{ name: "eval" }, { name: "ask_user_question" }],
+        systemMessage: new SystemMessage("Stable Chat contract."),
+      } as never,
+      async (request) => {
+        requests.push({
+          toolChoice: request.toolChoice,
+          systemText: request.systemMessage?.text ?? "",
+        });
+        if (requests.length === 1) {
+          return new AIMessage("Premature answer.") as never;
+        }
+        acknowledged = true;
+        return new AIMessage({
+          content: "",
+          tool_calls: [{
+            id: "call:strategy",
+            name: "eval",
+            args: { code: "await tools.chatStrategyDecide({})" },
+            type: "tool_call",
+          }],
+        }) as never;
+      },
+    );
+    expect(requests).toHaveLength(2);
+    expect(requests[0]!.toolChoice).toBeUndefined();
+    expect(requests[1]!.toolChoice).toEqual({
+      type: "function",
+      function: { name: "eval" },
+    });
+    expect(requests[1]!.systemText).toContain("Protocol correction for this turn");
+    expect((response as AIMessage).tool_calls?.[0]?.name).toBe("eval");
+  });
+
+  test("forces one current-turn evidence access before accepting a retained-context answer", async () => {
+    let attempted = false;
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      evidenceAccessRequired: true,
+      evidenceAccessAttempted: () => attempted,
+    });
+    const requests: Array<{ toolChoice?: unknown; systemText: string }> = [];
+    const response = await middleware.wrapModelCall?.(
+      {
+        tools: [{ name: "eval" }, { name: "ask_user_question" }],
+        systemMessage: new SystemMessage("Stable Chat contract."),
+      } as never,
+      async (request) => {
+        requests.push({
+          toolChoice: request.toolChoice,
+          systemText: request.systemMessage?.text ?? "",
+        });
+        if (requests.length === 1) {
+          return new AIMessage("Answer copied from retained context.") as never;
+        }
+        attempted = true;
+        return new AIMessage({
+          content: "",
+          tool_calls: [{
+            id: "call:evidence",
+            name: "eval",
+            args: { code: "await tools.atlassianBoundRead({ anchorRef })" },
+            type: "tool_call",
+          }],
+        }) as never;
+      },
+    );
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.toolChoice).toEqual({
+      type: "function",
+      function: { name: "eval" },
+    });
+    expect(requests[1]!.systemText).toContain("Evidence correction for this turn");
+    expect((response as AIMessage).tool_calls?.[0]?.name).toBe("eval");
   });
 
   test("closes an accepted agentic workflow without a supervisor rewrite", async () => {

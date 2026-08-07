@@ -121,34 +121,40 @@ describe("host-owned Chat strategy decisions", () => {
   });
 
   test("reuses retained exact pages for a follow-up without turning allowed scope into discovery intent", () => {
-    const decision = deriveChatStrategyDecisionV1({
-      qualityPolicy: chatQualityPolicyV1("deep"),
-      question: "Review the previous answer and correct every unsupported claim.",
-      scope,
-      anchors: [
-        pageAnchor,
-        { ...pageAnchor, anchorRef: "research-anchor:page-2", name: "Second synthetic page" },
-      ],
-    });
-    expect(decision).toMatchObject({
-      execution: "agentic",
-      reasonCodes: ["multi-anchor"],
-      expectedComplexity: "moderate",
-    });
-    expect(decision.requiredCapabilities).toEqual([
-      "exact-read",
-      "quality-review",
-      "chat-answer",
-    ]);
-    expect(decision.requiredCapabilities).not.toContain("confluence-discovery");
-    expect(deriveChatAcquisitionProductsV1({
-      decision,
-      scope,
-      anchors: [pageAnchor],
-    })).toEqual({
-      searchProducts: [],
-      exactContextProducts: ["confluence"],
-    });
+    for (const question of [
+      "Review the previous answer and correct every unsupported claim.",
+      "Use the accepted evidence without any new sources.",
+      "Prüfe die Zuordnung anhand der akzeptierten Belege. Nutze keine neuen Quellen.",
+    ]) {
+      const decision = deriveChatStrategyDecisionV1({
+        qualityPolicy: chatQualityPolicyV1("deep"),
+        question,
+        scope,
+        anchors: [
+          pageAnchor,
+          { ...pageAnchor, anchorRef: "research-anchor:page-2", name: "Second synthetic page" },
+        ],
+      });
+      expect(decision).toMatchObject({
+        execution: "agentic",
+        reasonCodes: ["multi-anchor"],
+        expectedComplexity: "moderate",
+      });
+      expect(decision.requiredCapabilities).toEqual([
+        "exact-read",
+        "quality-review",
+        "chat-answer",
+      ]);
+      expect(decision.requiredCapabilities).not.toContain("confluence-discovery");
+      expect(deriveChatAcquisitionProductsV1({
+        decision,
+        scope,
+        anchors: [pageAnchor],
+      })).toEqual({
+        searchProducts: [],
+        exactContextProducts: ["confluence"],
+      });
+    }
   });
 
   test("enables broad discovery when an exact-context question explicitly widens to the space", () => {

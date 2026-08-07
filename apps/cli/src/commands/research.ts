@@ -55,6 +55,8 @@ import {
   chatQualityPolicyForModeV1,
   runResearchAgent,
   runChatAgent as runKiteweaveChatAgent,
+  CHAT_SESSION_PATH_V1,
+  parseChatSessionV1,
   type ResearchBriefPreflightOutcomeV1,
   type ChatQualityPolicyV1,
   type ChatAnswerV1,
@@ -138,6 +140,8 @@ export interface ResearchCliInput {
   policy: ResearchOneShotPolicyV1;
   /** Present only for direct Chat; research workflow policy remains separate. */
   qualityPolicy?: ChatQualityPolicyV1;
+  /** Whether this turn explicitly selected a mode instead of inheriting it. */
+  thinkingModeExplicit?: boolean;
   /** Revision-fenced answer to a durable Chat scope choice. */
   chatScopeSelection?: {
     revision: number;
@@ -709,6 +713,7 @@ export function parseChatCliInput(
     ...parsed,
     policy: chatPolicyForThinkingModeV1(thinkingMode),
     qualityPolicy: chatQualityPolicyForModeV1(thinkingMode),
+    thinkingModeExplicit: hasFlag(flags, "thinking"),
     planOnly: false,
     ...(revision === undefined ? {} : {
       chatScopeSelection: {
@@ -3262,7 +3267,11 @@ async function runDirectChatCliConversation(input: {
             ? { resumeCheckpoint: execution.resumeCheckpoint }
             : {}),
           signal: execution.signal,
-          writeDiagnostic: () => {},
+          writeDiagnostic: (message) => {
+            if (process.env.ATLCLI_CHAT_DIAGNOSTICS === "1") {
+              input.dependencies.writeStderr(`[chat-diagnostic] ${message}\n`);
+            }
+          },
           onEvent: execution.stream?.onEvent ?? (() => {}),
           onChatPresentation: execution.stream?.onPresentation ?? (() => {}),
           onInteractionReady: execution.onInteractionReady,
@@ -3583,6 +3592,7 @@ export async function handleChat(
   }
   const opened = await dependencies.openSessionStore();
   try {
+    let effectiveInput = input;
     let request: ResearchRequestV1;
     let workspace: ResearchWorkspace;
     let sessionId: string;
@@ -3736,6 +3746,30 @@ export async function handleChat(
         JSON.stringify(request),
       );
     }
+    if (input.newTurnSessionId && !input.thinkingModeExplicit) {
+      const retainedSession = await workspace.readFile(CHAT_SESSION_PATH_V1);
+      if (retainedSession) {
+        const parsedSession = parseChatSessionV1(JSON.parse(retainedSession));
+        const priorCompletedTurn = [...parsedSession.conversation.recentTurns]
+          .reverse()
+          .find((turn) => turn.status === "complete");
+        if (priorCompletedTurn) {
+          effectiveInput = {
+            ...input,
+            policy: chatPolicyForThinkingModeV1(priorCompletedTurn.qualityMode),
+            qualityPolicy: chatQualityPolicyForModeV1(priorCompletedTurn.qualityMode),
+          };
+        }
+      }
+    }
+    // Durable conversations retain approved scope and user ceilings, but each
+    // new turn must use the current shared runtime corridor for its inherited
+    // Chat mode. Otherwise a conversation created by an older build remains
+    // permanently pinned to obsolete call/body limits after an upgrade.
+    request = prepareDirectChatRequestV1(applyChatQualityResourcePolicyV1(
+      request,
+      effectiveInput.qualityPolicy?.mode ?? "auto",
+    ));
     const apiKey = readApiKey(dependencies);
     if (!apiKey) {
       throw new Error(
@@ -3743,7 +3777,7 @@ export async function handleChat(
       );
     }
     await runDirectChatCliConversation({
-      cli: input,
+      cli: effectiveInput,
       opts,
       dependencies,
       profile,

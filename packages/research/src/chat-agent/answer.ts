@@ -673,6 +673,25 @@ export function finalizeChatAnswerV1(input: {
   );
   messageMarkdown = removeEmptyMarkdownHeadingsV1(messageMarkdown);
   const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
+  const evidenceRequired = input.strategyDecision?.requiredCapabilities.some(
+    (capability) => capability !== "chat-answer",
+  ) === true;
+  const attemptedEvidenceRead = (input.run.retrieval?.detailReadCandidates ?? 0) > 0 ||
+    (input.run.retrieval?.atlassianHttpCalls ?? 0) > 0;
+  if (evidenceRequired && attemptedEvidenceRead && citationIds.length === 0) {
+    messageMarkdown = german
+      ? "Für diese Antwort blieb keine detailbelegte Aussage übrig."
+      : "No detail-backed claim remained for this answer.";
+    if (!gaps.some((gap) => gap.code === "no-detail-evidence")) {
+      gaps.push({
+        code: "no-detail-evidence",
+        message: german
+          ? "Der angeforderte Atlassian-Kontext lieferte keinen zitierbaren Detailbeleg."
+          : "The requested Atlassian context produced no citable detail evidence.",
+        sourceIds: [],
+      });
+    }
+  }
   if (messageMarkdown.replace(/^#+\s.*$/gmu, "").trim().length === 0) {
     messageMarkdown = german
       ? "Für diese Antwort blieb keine detailbelegte Aussage übrig."

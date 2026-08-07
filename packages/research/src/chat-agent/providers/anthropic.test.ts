@@ -85,7 +85,7 @@ describe("Anthropic Chat model binding", () => {
     expect(anthropicOutputTokensForPreferenceV1("thorough", 1_024)).toBe(1_024);
     expect(anthropicRootOutputTokensV1("quick", 8_000)).toBe(4_096);
     expect(anthropicRootOutputTokensV1("auto", 8_000)).toBe(4_096);
-    expect(anthropicRootOutputTokensV1("deep", 8_000)).toBe(5_000);
+    expect(anthropicRootOutputTokensV1("deep", 8_000)).toBe(8_000);
   });
 
   it("keeps Quick root synthesis larger than fast child packets", () => {

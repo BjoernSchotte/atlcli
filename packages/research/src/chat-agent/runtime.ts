@@ -1,6 +1,6 @@
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
@@ -111,6 +111,7 @@ import {
 import {
   createChatAgenticWorkflowRuntimeV1,
   createPlannedSearchAcquisitionToolV1,
+  minimalChatSubagentTaskContextV1,
   type ChatSubagentModelStreamEventV1,
   type ChatSubagentResultDiagnosticV1,
 } from "./workflow-runtime.js";
@@ -127,7 +128,7 @@ export function chatRootOutputTokenLimitV1(input: {
   configuredMaxOutputTokens: number;
   qualityMode: ChatQualityPolicyV1["mode"];
 }): number {
-  const modeLimit = input.qualityMode === "deep" ? 5_000 : 4_096;
+  const modeLimit = input.qualityMode === "deep" ? 8_000 : 4_096;
   return Math.min(input.configuredMaxOutputTokens, modeLimit);
 }
 
@@ -373,6 +374,9 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   options: {
     agenticWorkflowComplete?: () => boolean;
     nativeStructuredOutput?: boolean;
+    strategyAcknowledged?: () => boolean;
+    evidenceAccessRequired?: boolean;
+    evidenceAccessAttempted?: () => boolean;
   } = {},
 ) {
   let completedEvidenceStep = false;
@@ -415,6 +419,47 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         let response;
         try {
           response = await handler(filteredRequest);
+          const calledTools = diagnosticMessage(response).toolNames;
+          if (
+            options.strategyAcknowledged &&
+            !options.strategyAcknowledged() &&
+            !calledTools.includes("eval")
+          ) {
+            response = await handler({
+              ...filteredRequest,
+              systemMessage: filteredRequest.systemMessage.concat(
+                new SystemMessage([
+                  "Protocol correction for this turn:",
+                  "Do not answer yet. Call the eval tool now and acknowledge the host-provided strategy with tools.chatStrategyDecide({}).",
+                  "After that accepted acknowledgement, continue the original request without widening scope or repeating this correction.",
+                ].join("\n")),
+              ),
+              toolChoice: {
+                type: "function",
+                function: { name: "eval" },
+              },
+            });
+          } else if (
+            options.evidenceAccessRequired &&
+            !options.evidenceAccessAttempted?.() &&
+            !calledTools.includes("eval")
+          ) {
+            response = await handler({
+              ...filteredRequest,
+              systemMessage: filteredRequest.systemMessage.concat(
+                new SystemMessage([
+                  "Evidence correction for this turn:",
+                  "Do not answer from a prior assistant response or source title alone.",
+                  "Call the eval tool now and use the smallest admitted Atlassian read capability for the current bound context.",
+                  "After that single evidence attempt, answer only from its result or report a concise evidence gap.",
+                ].join("\n")),
+              ),
+              toolChoice: {
+                type: "function",
+                function: { name: "eval" },
+              },
+            });
+          }
         } catch (error) {
           if (
             !options.nativeStructuredOutput ||
@@ -1485,25 +1530,15 @@ export function createKiteweaveChatAgent(
               turnId: turn.turnId,
               question: turn.question,
               siteOrigin: turn.scope.siteOrigin,
-              taskContext: () => {
-                const currentRetrievalPlan = retrievalLedger!.plan();
-                return JSON.stringify({
-                  question: turn.question,
-                  scope: turn.scope,
-                  anchors,
-                  retrieval: {
-                    searches: currentRetrievalPlan.searches.map((search) => ({
-                      searchId: search.searchId,
-                      product: search.product,
-                      variants: search.variants,
-                      maxPages: search.maxPages,
-                    })),
-                    relationshipTraversals: currentRetrievalPlan.relationshipTraversals,
-                    completionSignals: currentRetrievalPlan.completionSignals,
-                    unresolvedTerms: currentRetrievalPlan.unresolvedTerms,
-                  },
-                });
-              },
+              // Children receive only the question and the body-free opaque
+              // anchor catalogue. The host still owns scope, bindings, and
+              // retrieval; source bodies travel only through dependency
+              // packets. This keeps child context small without forcing a
+              // reader to guess raw Jira or Confluence identifiers.
+              taskContext: () => minimalChatSubagentTaskContextV1(
+                turn.question,
+                anchors,
+              ),
               limits: turn.limits,
               locale: turn.locale,
               exactContextProducts,
@@ -1773,6 +1808,15 @@ export function createKiteweaveChatAgent(
                     },
                   }
                 : {}),
+              ...(strategyController
+                ? { strategyAcknowledged: () => strategyController.acknowledgedDecision() !== undefined }
+                : {}),
+              evidenceAccessRequired: strategyDecision.requiredCapabilities.some(
+                (capability) => capability !== "chat-answer",
+              ),
+              evidenceAccessAttempted: () =>
+                broker.detailEvidenceLedger().length > 0 ||
+                budget.counts().httpCalls > 0,
             }),
             durableSummarizationMiddleware,
             rootModelBudgetMiddleware,
