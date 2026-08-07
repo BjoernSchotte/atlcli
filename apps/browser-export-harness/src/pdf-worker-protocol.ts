@@ -1,9 +1,14 @@
-import type { PdfCompileResult, PdfSourceBundle } from "@atlcli/pdf/browser";
+import type {
+  PdfCompileContext,
+  PdfCompileResult,
+  PdfSourceBundle,
+} from "@atlcli/pdf/browser";
 
 export interface PdfWorkerCompileRequest {
   kind: "compile";
   requestId: number;
   bundle: PdfSourceBundle;
+  options?: Pick<PdfCompileContext, "outputPolicy">;
 }
 
 export type PdfWorkerRequest = PdfWorkerCompileRequest;

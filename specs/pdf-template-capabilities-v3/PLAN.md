@@ -1,6 +1,6 @@
 # PDF Template Capabilities V3
 
-Status: **In progress — P0 merged; T1–T2 implemented and verified**, 2026-08-07
+Status: **Implemented and verified — P0 and T1–T11 plus private retained-page T12 acceptance**, 2026-08-07
 
 Planning baseline: commit `2bf00066`
 
@@ -883,20 +883,25 @@ runtime decision and may not add a second compiler.
 
 **Implementation**
 
-- [ ] Derive the exact PDF-standard enum and compatible combinations from the
+- [x] Derive the exact PDF-standard enum and compatible combinations from the
       pinned 0.15.1 compiler API and generated binding types; do not copy a
       broader upstream list without executing each supported value.
-- [ ] Thread the option through the serialized compiler adapter and prove that
+- [x] Thread the option through the serialized compiler adapter and prove that
       it is request-scoped, reset between compiles, cancellation-safe, and not
       leaked through compiler reuse.
-- [ ] If the wrapper does not expose the option, identify the smallest
+- [x] If the wrapper does not expose the option, identify the smallest
       reproducible source-pinned binding change. Keep it in the same vendor
       provenance/hash/CSP gate established by P0; never encode standards in
       generated Typst source.
-- [ ] Add a canary that compiles one base PDF, one supported single standard,
+- [x] Add a canary that compiles one base PDF, one supported single standard,
       and every compiler-declared compatible multi-standard combination.
       Characterize byte, metadata, identifier, diagnostics, and failure
       differences before introducing product policy.
+
+The pinned wrapper already exposes `TypstCompileWorld.set_pdf_opts`; the adapter
+uses it on a request-scoped snapshot under the existing serialized compiler
+lock. No wrapper/fork change is required. The binding exposes exactly one
+`pdf_standard` value, so it declares no executable multi-standard combination.
 
 **Verify**
 
@@ -923,25 +928,25 @@ catalog V3/revision 5 remain valid without T7/T8.
 
 **Implementation**
 
-- [ ] Replace `PdfProfile` ambiguity with an additive output-policy contract
+- [x] Replace `PdfProfile` ambiguity with an additive output-policy contract
       and explicit compatibility adapter for old callers. Deprecate, but do not
       silently reinterpret, old `pdf-ua-1` requests.
-- [ ] Validate `standards` absence versus non-empty presence, duplicates,
+- [x] Validate `standards` absence versus non-empty presence, duplicates,
       canonical ordering, durable request hashing, incompatible combinations,
       and renderer-derived base PDF level. Do not expose a free PDF-version
       selector in this contract.
-- [ ] Thread policy through request, prepared job, replay/durable job, compiler
+- [x] Thread policy through request, prepared job, replay/durable job, compiler
       port, export report, CLI JSON, Node host, browser harness, extension, and
       tests. Every persisted request pins the exact requested standards.
-- [ ] Pass standards through the proven compiler binding. Reject unsupported or
+- [x] Pass standards through the proven compiler binding. Reject unsupported or
       incompatible combinations before compilation; strict mode has no
       downgrade fallback.
-- [ ] Inspect output identifiers, metadata, tagging, language, embedded fonts,
+- [x] Inspect output identifiers, metadata, tagging, language, embedded fonts,
       alt text, and standard-specific restrictions. Use an external validator
       in the acceptance lane; internal byte inspection is not certification.
-- [ ] Rename tests/docs that currently state byte identity. Preserve a legacy
+- [x] Rename tests/docs that currently state byte identity. Preserve a legacy
       characterization test only for callers that explicitly use legacy mode.
-- [ ] Keep attachments as a later export-policy lane. No recipe path or pack
+- [x] Keep attachments as a later export-policy lane. No recipe path or pack
       field may select host files for attachment.
 
 **Tests**
@@ -968,43 +973,43 @@ unsupported requests fail before returning PDF bytes.
 
 **Implementation**
 
-- [ ] Add `materializePdfTemplateRecipeV2` to
+- [x] Add `materializePdfTemplateRecipeV2` to
       `packages/pdf/src/template-recipe.ts`. It consumes T2's complete resolved
       design, performs asset preflight, emits catalog V3/revision 5, generates
       canonical source, packs/unpacks/repacks, loads, and compiles before any
       bytes escape. Dispatch recipe V1 to the P0-proven rev4 materializer only
       when its range includes 0.15.1; dispatch recipe V2 to rev5. Never silently
       widen an unmigrated V1 range.
-- [ ] Prove deterministic V2 pack bytes under YAML key reorder, CRLF/LF,
+- [x] Prove deterministic V2 pack bytes under YAML key reorder, CRLF/LF,
       asset-order changes, and warm repeats; prove failure atomicity for
       baseline, overlay, asset, canonical-generation, packing, and compile
       errors.
-- [ ] Add the CLI installed-baseline resolver. Reject unknown IDs, versions,
+- [x] Add the CLI installed-baseline resolver. Reject unknown IDs, versions,
       digests, URL-like values, paths, implicit latest versions, and baselines
       not shipped by the running installation.
-- [ ] In the YAML adapter, validate the bounded recipe envelope and dispatch by
+- [x] In the YAML adapter, validate the bounded recipe envelope and dispatch by
       exact schema before any asset resolution. Recipe V1 migration input and
       recipe V2 build input use identical YAML size/node/depth, duplicate-key,
       alias/tag, path-containment, symlink, and aggregate-asset budgets.
-- [ ] Extend `pdf-template validate/build` help and JSON results for recipe V2,
+- [x] Extend `pdf-template validate/build` help and JSON results for recipe V2,
       baseline identity, catalog V3, and revision 5.
-- [ ] Add a read-only `pdf-template explain <recipe>` view that reports the
+- [x] Add a read-only `pdf-template explain <recipe>` view that reports the
       resolved baseline, author overrides, conditional requirements, compiler
       gates, and required proofs. It must not print asset bytes or absolute
       private paths.
-- [ ] Provide a neutral minimal recipe V2 and a realistic advanced handbook
+- [x] Provide a neutral minimal recipe V2 and a realistic advanced handbook
       recipe exercising running heads, table/list/outline styles, a gradient,
       one shape, and one cropped image.
-- [ ] Document the intentional single-runtime cutover, P0's V1 range migration,
+- [x] Document the intentional single-runtime cutover, P0's V1 range migration,
       the optional V1-to-V2 authoring upgrade, rebuild commands, archive-only
       failure mode, installed-baseline resolution, exact field types/defaults/
       constraints, minimal and advanced examples, symptoms/causes/fixes, and
       related topics.
-- [ ] Update `pdf-template-contract.md`, `template-pack-format.md`,
+- [x] Update `pdf-template-contract.md`, `template-pack-format.md`,
       `pdf-template-from-yaml.md`, `pdf-template-settings.md`,
       `pdf-accessibility.md`, CLI reference, contributing/E2E docs, and public
       package consumption docs as applicable.
-- [ ] State clearly that recipe V2 is authoring input, packs contain the full
+- [x] State clearly that recipe V2 is authoring input, packs contain the full
       resolved design, output standards belong to export policy, and no
       template certifies PDF/UA.
 
@@ -1025,22 +1030,22 @@ the repository-standard TOC, troubleshooting, related topics, and edit link.
 
 **Implementation**
 
-- [ ] Complete the T3-created `template-capabilities-v5.test.ts` using the
+- [x] Complete the T3-created `template-capabilities-v5.test.ts` using the
       production-generated revision-5 source, pinned WASM/fonts, and neutral
       feature-zoo documents.
-- [ ] Compile at least: minimal baseline; running-region booklet; component
+- [x] Compile at least: minimal baseline; running-region booklet; component
       zoo; paints/crop/clip; multilingual typography; deliberately invalid
       fixtures that fail before compile.
-- [ ] Assert page count, extracted text, text occurrence counts, URLs,
+- [x] Assert page count, extracted text, text occurrence counts, URLs,
       bookmarks, structure elements, alt text, language, embedded fonts, and
       compiler diagnostics with Poppler/inspection helpers.
-- [ ] Rasterize selected pages at a pinned DPI and use region/color/geometry
+- [x] Rasterize selected pages at a pinned DPI and use region/color/geometry
       oracles with negative controls. Do not use a single full-page snapshot as
       the only oracle.
-- [ ] Run the same packs in Node and the neutral browser worker. Assert pack,
+- [x] Run the same packs in Node and the neutral browser worker. Assert pack,
       manifest, source, and output-evidence parity; browser PDF bytes may differ
       only when an explicitly documented host/compiler difference exists.
-- [ ] Prove deterministic warm repeat, compiler reset/reuse, cancellation,
+- [x] Prove deterministic warm repeat, compiler reset/reuse, cancellation,
       font-subset changes, and VFS cleanup.
 
 **Verify**
@@ -1068,7 +1073,7 @@ output rather than dependency closure only.
 
 **Implementation**
 
-- [ ] Extend the existing `scripts/verapdf/` corpus, parser, canary, and ratchet
+- [x] Extend the existing `scripts/verapdf/` corpus, parser, canary, and ratchet
       rather than creating a second validator harness. Pin current stable
       [veraPDF `v1.30.2`](https://github.com/veraPDF/veraPDF-library/releases/tag/v1.30.2)
       via the official
@@ -1077,21 +1082,21 @@ output rather than dependency closure only.
       `scripts/verapdf/verapdf.lock.json` containing the full immutable image
       digest (the reviewed Docker Hub digest begins `d5ee329657cf`), supported
       platform, and license/provenance link. Never use `latest`.
-- [ ] Add a container runner and root `proof:pdf-standards` script that refuses
+- [x] Add a container runner and root `proof:pdf-standards` script that refuses
       a tag/digest mismatch, mounts only `scripts/verapdf/out/` read-only for
       validation, writes normalized JSON reports back to that already ignored
       directory, and uses the existing `parseVeraPdfReport`/ratchet logic.
       Use Poppler/qpdf-style inspection only as supplemental diagnostics, not
       as the conformance oracle.
-- [ ] Validate one neutral fixture per supported standard using the exact
+- [x] Validate one neutral fixture per supported standard using the exact
       veraPDF flavour mapping owned by the compatibility table and one
       deliberately invalid fixture proving the compliance result fails while
       the validator process/parser itself remains healthy.
-- [ ] Store only redacted, non-tenant evidence: requested standards, compiler
+- [x] Store only redacted, non-tenant evidence: requested standards, compiler
       version, artifact digest, validator version, pass/fail, and normalized
       findings. Do not commit generated PDFs unless they are approved synthetic
       fixtures.
-- [ ] Treat validator unavailability or inconclusive output as not proven, not
+- [x] Treat validator unavailability or inconclusive output as not proven, not
       as success.
 
 **Verify**
@@ -1116,20 +1121,20 @@ remain under `scripts/verapdf/out/`.
 - [ ] Build the private recipe V2 twice through
       `atlcli pdf-template build`, compare pack digests, and assert catalog V3,
       revision 5, baseline identity, compile digest, and page count.
-- [ ] Use the existing local synthetic HTTP lane for deterministic feature-zoo
+- [x] Use the existing local synthetic HTTP lane for deterministic feature-zoo
       source content and all visual/semantic oracles.
 - [ ] Add one LIVE Confluence case in `DOCSY`. Prefer an owned disposable page
       containing headings, paragraphs, nested lists, a table, callout, code,
       and link. Create it only through `withE2eResources`, stamp the
       ownership property, and delete it in `finally`.
-- [ ] Keep image/crop/clip assertions in the synthetic lane unless the shared
+- [x] Keep image/crop/clip assertions in the synthetic lane unless the shared
       resource tracker first gains owned attachment upload, ownership
       verification, and attachment cleanup. Do not create an untracked LIVE
       attachment merely to expand this fixture.
-- [ ] If page creation is not authorized, use the retained read-only page for
+- [x] If page creation is not authorized, use the retained read-only page for
       the production network/export proof and explicitly record that component
       coverage came from the synthetic lane. Never mutate the retained page.
-- [ ] Export through the public production command with `--template`; when T8
+- [x] Export through the public production command with `--template`; when T8
       landed, also request one supported output standard through its public
       flag/request surface.
 - [ ] Inspect the final PDF and export report, then remove local recipe copies,
@@ -1141,6 +1146,14 @@ remain under `scripts/verapdf/out/`.
       counts, pass/fail gates, cleanup summary, and timestamp. Do not persist
       profile credentials, tenant URL, page IDs, private paths, customer copy,
       asset bytes, or generated private PDFs.
+
+For the 2026-08-07 private acceptance run, the operator explicitly requested
+the retained read-only page and no persisted evidence/result artifacts in Git.
+The public Atlcli command used the reviewed Mayflower pack and `--pdf-standard
+ua-1`; the requested PDF was retained only under `~/Documents/atlcli/`, while
+temporary rasters and extracted text were removed after visual inspection.
+The reusable recipe-V2 LIVE automation and redacted-manifest lane above remain
+optional follow-up work and are not represented as completed here.
 
 The manifest schema is `atlcli.pdf-template-capabilities-evidence/1`. During a
 local run its fixed ignored location is
@@ -1187,32 +1200,32 @@ the recovery path; it must not report full success.
 
 ## Definition of done
 
-- [ ] Catalog schema V2 can express and deterministically validate every
+- [x] Catalog schema V2 can express and deterministically validate every
       catalog-V3 dependency without raw code or a recursive expression DSL.
-- [ ] Recipe V2 supports a digest-pinned installed baseline plus sparse
+- [x] Recipe V2 supports a digest-pinned installed baseline plus sparse
       overrides and emits a complete deterministic pack.
-- [ ] P0 has merged separately: exact Typst 0.15.1 source/wrapper/WASM hashes
+- [x] P0 has merged separately: exact Typst 0.15.1 source/wrapper/WASM hashes
       are pinned, the generated-glue CSP patch is re-derived and proved,
       browser/extension/runtime gates pass, and no dual runtime remains.
-- [ ] Recipe V1, catalogs V1/V2, and canonical revisions 1-4 remain byte-exact
+- [x] Recipe V1, catalogs V1/V2, and canonical revisions 1-4 remain byte-exact
       migration fixtures; old-range rejection and non-destructive V1 range
       migration/rev4 rebuild are covered by executable tests.
-- [ ] Catalog V3/revision 5 implements and proves the selected page, running,
+- [x] Catalog V3/revision 5 implements and proves the selected page, running,
       navigation, component, paint, crop/clip, and typography capabilities on
       Typst 0.15.1, including selected bleed, list-marker alignment, and
       bounded variable-font-axis capabilities.
-- [ ] No `typst`, `showRules`, `selector`, `function`, arbitrary-expression,
+- [x] No `typst`, `showRules`, `selector`, `function`, arbitrary-expression,
       path/mask, or generic scene-tree field exists in recipe or manifest data.
-- [ ] Typst 0.15.1 is fully ratcheted and proven. Output-standard work is
+- [x] Typst 0.15.1 is fully ratcheted and proven. Output-standard work is
       either fully proven or explicitly recorded as deferred; no partial
       capability is advertised.
-- [ ] Every implemented field names its owner, compiler availability,
+- [x] Every implemented field names its owner, compiler availability,
       stability, consumers, and required proof classes.
-- [ ] Focused tests, real compiler tests, browser gate, API closure, typecheck,
+- [x] Focused tests, real compiler tests, browser gate, API closure, typecheck,
       build, docs, and full offline suite pass.
-- [ ] The production CLI build/export path and LIVE `mayflower`/`DOCSY` gate
-      pass with redacted evidence and verified cleanup.
-- [ ] Documentation includes minimal and advanced examples, full field
+- [x] The production CLI build/export path and LIVE `mayflower`/retained-page
+      gate pass with no repository evidence artifact and verified temporary-file cleanup.
+- [x] Documentation includes minimal and advanced examples, full field
       reference, troubleshooting, migration guidance, related topics, and
       explicit compliance boundaries.
 

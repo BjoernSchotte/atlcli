@@ -7,21 +7,28 @@ import {
   packTemplate,
   unpackTemplate,
   validateManifest,
+  validateManifestV3,
   validatePdfTemplateRecipeV1,
   type TemplateAssetMediaTypeV1,
   type TemplateManifest,
+  type WikiPdfTemplateDesignV1,
+  type WikiPdfTemplateDesignV3,
   type WikiPdfTemplateRecipeV1,
+  type WikiPdfTemplateRecipeV2,
 } from "@atlcli/template-pack";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
   projectPdfDesignThroughCatalogV2,
 } from "./design-catalog.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import {
   PDF_CANONICAL_SOURCE_API_V1,
   PDF_CANONICAL_SOURCE_REVISION_4,
+  PDF_CANONICAL_SOURCE_REVISION_5,
   PDF_TEMPLATE_ASSET_SLOTS_V1,
   generateCanonicalPdfTemplateSourceV1,
   loadPdfTemplatePack,
@@ -29,6 +36,7 @@ import {
   validatePdfTemplatePack,
   type PdfTemplateRuntimeSnapshotV1,
   type PdfTemplateVisualsV1,
+  type PdfTemplateManifestV5,
 } from "./template-pack.js";
 import {
   PDF_RECIPE_TEMPLATE_ASSET_IDENTITY_V1,
@@ -37,6 +45,11 @@ import {
   sha256PdfTemplateBytes,
   validatePdfTemplateAssetPreflight,
 } from "./template-assets.js";
+import {
+  BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1,
+  resolvePdfTemplateRecipeV2Design,
+  type PdfTemplateBaselineRegistryV1,
+} from "./recipe-baselines.js";
 
 const encoder = new TextEncoder();
 const ASSET_SLOTS = new Set<string>(PDF_TEMPLATE_ASSET_SLOTS_V1);
@@ -70,6 +83,23 @@ export interface MaterializedPdfTemplateRecipeV1 {
   compile: { digest: string; pageCount: number };
 }
 
+export interface MaterializePdfTemplateRecipeInputV2 {
+  recipe: WikiPdfTemplateRecipeV2;
+  resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+  compiler: TemplateGeneratedPackCompilerV1;
+  baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+export interface MaterializedPdfTemplateRecipeV2 {
+  bytes: Uint8Array;
+  packDigest: string;
+  manifest: PdfTemplateManifestV5;
+  canonicalTypst: string;
+  runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+  compile: { digest: string; pageCount: number };
+  baseline: { id: string; version: number; digest: string };
+}
+
 function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
   const sortedLeft = [...left].sort();
   const sortedRight = [...right].sort();
@@ -87,7 +117,7 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
 }
 
 function runtimeAssets(
-  recipe: WikiPdfTemplateRecipeV1,
+  recipe: Pick<WikiPdfTemplateRecipeV1 | WikiPdfTemplateRecipeV2, "assets">,
   resolved: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>
 ): TemplateRuntimeAssetV1[] {
   const declaredSlots = Object.keys(recipe.assets);
@@ -131,7 +161,7 @@ function runtimeAssets(
 }
 
 function assertCompositionAssetUse(
-  recipe: WikiPdfTemplateRecipeV1,
+  recipe: { design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 },
   assets: readonly TemplateRuntimeAssetV1[]
 ): void {
   const slots = new Set(assets.map(({ slot }) => slot));
@@ -282,5 +312,120 @@ export async function materializePdfTemplateRecipeV1(
     canonicalTypst,
     runtimeSnapshot: structuredClone(loaded.runtimeSnapshot),
     compile: { digest: compile.digest, pageCount: compile.pageCount },
+  };
+}
+
+/**
+ * Resolve, validate, materialize, round-trip, load, and compile Recipe V2 as a
+ * complete Catalog-V3/canonical-revision-5 pack. No archive bytes escape until
+ * every proof gate succeeds.
+ */
+export async function materializePdfTemplateRecipeV2(
+  input: MaterializePdfTemplateRecipeInputV2,
+): Promise<MaterializedPdfTemplateRecipeV2> {
+  const resolved = await resolvePdfTemplateRecipeV2Design(
+    input.recipe,
+    input.baselineRegistry ?? BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1,
+  );
+  const assets = runtimeAssets(resolved.recipe, input.resolvedAssets);
+  assertCompositionAssetUse({ design: resolved.design }, assets);
+  for (const asset of assets) await validatePdfTemplateAssetPreflight(asset);
+
+  const visual = materializePdfTemplateAssetFields(
+    assets,
+    resolved.design,
+    PDF_RECIPE_TEMPLATE_ASSET_IDENTITY_V1,
+  );
+  const manifest = validateManifestV3(
+    {
+      ...BUILTIN_PDF_TEMPLATE_MANIFEST,
+      id: resolved.recipe.template.id,
+      name: resolved.recipe.template.name,
+      version: resolved.recipe.template.version,
+      engine: {
+        ...BUILTIN_PDF_TEMPLATE_MANIFEST.engine,
+        compilerRange: resolved.compilerRange,
+      },
+      design: resolved.design,
+      localization: resolved.localization,
+      capabilityCatalog: {
+        id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+      },
+      canonicalSource: {
+        api: PDF_CANONICAL_SOURCE_API_V1,
+        revision: PDF_CANONICAL_SOURCE_REVISION_5,
+      },
+      assetDescriptors: visual.descriptors,
+      assets: visual.references,
+      decorations: visual.decorations,
+      bindings: undefined,
+      provenance: undefined,
+    },
+    {
+      availableFonts: PDF_RUNTIME_ASSETS.fonts.map(({ family, style, weight }) => ({
+        family,
+        style,
+        weight,
+      })),
+    },
+  );
+  validatePdfTemplateManifest(manifest);
+
+  const visuals: PdfTemplateVisualsV1 = {
+    assets: Object.fromEntries(
+      Object.entries(manifest.assets ?? {}).map(([slot, reference]) => {
+        const descriptor = manifest.assetDescriptors?.[reference.descriptor];
+        if (!descriptor) throw new Error(`PDF recipe asset ${slot} has no validated descriptor`);
+        return [
+          slot,
+          {
+            vfsPath: `template-assets/${reference.descriptor
+              .toLowerCase()
+              .replace(/[._]+/g, "-")}.${pdfTemplateAssetExtension(descriptor.mediaType)}`,
+            reference,
+          },
+        ];
+      }),
+    ) as PdfTemplateVisualsV1["assets"],
+    decorations: manifest.decorations ?? [],
+  };
+
+  const canonicalTypst = generateCanonicalPdfTemplateSourceV1(manifest, visuals);
+  const files: Record<string, Uint8Array> = {
+    ...visual.files,
+    [manifest.engine.entry]: encoder.encode(canonicalTypst),
+  };
+  await validatePdfTemplatePack(manifest, files);
+
+  const bytes = await packTemplate({ manifest, files });
+  const unpacked = unpackTemplate(bytes);
+  const repacked = await packTemplate(unpacked);
+  if (!bytesEqual(bytes, repacked)) {
+    throw new Error("Recipe V2 template pack round-trip was not byte-identical");
+  }
+  const loaded = await loadPdfTemplatePack(bytes);
+  const compile = await input.compiler.compile({
+    packBytes: new Uint8Array(bytes),
+    manifest: structuredClone(loaded.manifest) as TemplateManifest,
+    runtimeSnapshot: structuredClone(loaded.runtimeSnapshot) as unknown as Readonly<Record<string, unknown>>,
+  });
+  if (
+    !SHA256_RE.test(compile.digest) ||
+    !Number.isSafeInteger(compile.pageCount) ||
+    compile.pageCount < 1
+  ) {
+    throw new Error("Recipe V2 compiler returned invalid proof metadata");
+  }
+
+  return {
+    bytes: new Uint8Array(bytes),
+    packDigest: await sha256PdfTemplateBytes(bytes),
+    manifest: structuredClone(loaded.manifest) as PdfTemplateManifestV5,
+    canonicalTypst,
+    runtimeSnapshot: structuredClone(loaded.runtimeSnapshot),
+    compile: { digest: compile.digest, pageCount: compile.pageCount },
+    baseline: { ...resolved.baseline },
   };
 }

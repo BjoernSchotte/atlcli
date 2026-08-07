@@ -16,9 +16,15 @@ import {
   BUILTIN_PDF_TEMPLATE_MANIFEST,
   loadPdfTemplatePack,
 } from "@atlcli/pdf";
-import { BUILTIN_PDF_DESIGN } from "@atlcli/pdf/internal";
+import {
+  BUILTIN_PDF_DESIGN,
+  BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+} from "@atlcli/pdf/internal";
 import type { TemplateGeneratedPackCompilerV1 } from "@atlcli/pdf-template-authoring";
-import type { WikiPdfTemplateRecipeV1 } from "@atlcli/template-pack";
+import type {
+  WikiPdfTemplateRecipeV1,
+  WikiPdfTemplateRecipeV2,
+} from "@atlcli/template-pack";
 import { stringify } from "yaml";
 import {
   executePdfTemplateCommand,
@@ -31,6 +37,7 @@ import {
   PDF_TEMPLATE_RECIPE_MAX_YAML_BYTES,
   PdfTemplateYamlError,
   classifyPdfTemplateInput,
+  explainPdfTemplateYamlRecipe,
   materializePdfTemplateYamlRecipe,
   migratePdfTemplateYamlRecipeToTypst0151,
   parsePdfTemplateRecipeYaml,
@@ -135,6 +142,34 @@ function recipe(): WikiPdfTemplateRecipeV1 {
   };
 }
 
+function recipeV2(): WikiPdfTemplateRecipeV2 {
+  return {
+    schema: "wiki.pdf-template-recipe/v2",
+    template: { id: "fixture.cli-v5", name: "CLI V5", version: "1.0.0" },
+    baseline: {
+      id: "atlcli.editorial",
+      version: 1,
+      catalogVersion: 3,
+      digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+    },
+    design: {
+      components: {
+        table: { repeatHeader: true, banding: "rows", borders: "horizontal" },
+      },
+    },
+    assets: {
+      "asset.pageBackground": {
+        source: "visuals/cover.svg",
+        decorative: true,
+      },
+      "asset.headerDecoration": {
+        source: "visuals/logo.svg",
+        decorative: true,
+      },
+    },
+  };
+}
+
 const compiler: TemplateGeneratedPackCompilerV1 = {
   async compile({ packBytes }) {
     return { digest: await sha256Hex(packBytes), pageCount: 3 };
@@ -144,7 +179,7 @@ const compiler: TemplateGeneratedPackCompilerV1 = {
 async function writeRecipe(
   root: string,
   extension: ".yaml" | ".yml" = ".yaml",
-  value: WikiPdfTemplateRecipeV1 = recipe()
+  value: WikiPdfTemplateRecipeV1 | WikiPdfTemplateRecipeV2 = recipe()
 ): Promise<string> {
   await mkdir(join(root, "visuals"), { recursive: true });
   await Bun.write(
@@ -300,6 +335,52 @@ describe("PDF template recipe filesystem adapter", () => {
     expect(Array.from(first.bytes)).toEqual(Array.from(parity.bytes));
   });
 
+  it("dispatches recipe V2 to the installed baseline and revision 5", async () => {
+    const root = await workspace();
+    const path = await writeRecipe(root, ".yaml", recipeV2());
+    const built = await materializePdfTemplateYamlRecipe({ recipePath: path, compiler });
+    expect(built.manifest.capabilityCatalog?.version).toBe(3);
+    expect(built.manifest.canonicalSource?.revision).toBe("5");
+    expect("baseline" in built && built.baseline).toEqual({
+      id: "atlcli.editorial",
+      version: 1,
+      digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+    });
+
+    const crlfPath = join(root, "template-crlf.yaml");
+    await writeFile(crlfPath, stringify(recipeV2()).replaceAll("\n", "\r\n"));
+    const crlf = await materializePdfTemplateYamlRecipe({ recipePath: crlfPath, compiler });
+    expect(Array.from(crlf.bytes)).toEqual(Array.from(built.bytes));
+
+    const reordered = structuredClone(recipeV2());
+    reordered.assets = Object.fromEntries(Object.entries(reordered.assets).reverse());
+    const reorderedPath = join(root, "template-reordered.yaml");
+    await writeFile(reorderedPath, stringify(reordered));
+    const reorderedBuilt = await materializePdfTemplateYamlRecipe({
+      recipePath: reorderedPath,
+      compiler,
+    });
+    expect(Array.from(reorderedBuilt.bytes)).toEqual(Array.from(built.bytes));
+  });
+
+  it("explains Recipe V2 without resolving asset bytes or exposing private paths", async () => {
+    const root = await workspace();
+    const path = await writeRecipe(root, ".yaml", recipeV2());
+    await rm(join(root, "visuals"), { recursive: true, force: true });
+    const explanation = await explainPdfTemplateYamlRecipe(path);
+    expect(explanation).toMatchObject({
+      recipeSchema: "wiki.pdf-template-recipe/v2",
+      baseline: { id: "atlcli.editorial", version: 1 },
+      catalog: { version: 3 },
+      canonicalSource: { revision: "5" },
+      compilerRange: ">=0.15.1 <0.16",
+      authorOverrides: ["components.table"],
+      assetSlots: ["asset.headerDecoration", "asset.pageBackground"],
+    });
+    expect(explanation.requiredProofs).toContain("compile");
+    expect(JSON.stringify(explanation)).not.toContain(resolve(root));
+  });
+
   it("rejects traversal, escaping symlinks, and oversized assets before hashing", async () => {
     const traversalRoot = await workspace();
     const traversing = recipe();
@@ -433,6 +514,44 @@ describe("pdf-template recipe CLI dispatch", () => {
         locale: "en",
       })
     ).toContain("archive: brand.wiki-pdf-template");
+  });
+
+  it("builds recipe V2 through the public command and reports its pinned baseline", async () => {
+    const root = await workspace();
+    await writeRecipe(root, ".yaml", recipeV2());
+    const built = await executePdfTemplateCommand(
+      ["build", "template.yaml"],
+      { output: "v5.wiki-pdf-template", json: true },
+      dependencies(root),
+    );
+    expect(built.details).toMatchObject({
+      catalogVersion: 3,
+      canonicalRevision: "5",
+      baseline: {
+        id: "atlcli.editorial",
+        version: 1,
+        digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+      },
+    });
+    const loaded = await loadPdfTemplatePack(
+      new Uint8Array(await readFile(join(root, "v5.wiki-pdf-template"))),
+    );
+    expect(loaded.canonicalSource.revision).toBe("5");
+  });
+
+  it("explains Recipe V2 through the public read-only command", async () => {
+    const root = await workspace();
+    await writeRecipe(root, ".yaml", recipeV2());
+    const result = await executePdfTemplateCommand(
+      ["explain", "template.yaml"],
+      { json: true },
+      dependencies(root),
+    );
+    expect(result.details).toMatchObject({
+      schema: "atlcli.pdf-template-recipe-explanation/1",
+      catalog: { version: 3 },
+      authorOverrides: ["components.table"],
+    });
   });
 
   it("keeps review and undo project-only and documents the declarative boundary", async () => {

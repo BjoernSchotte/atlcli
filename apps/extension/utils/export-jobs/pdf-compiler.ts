@@ -95,6 +95,9 @@ export function createOffscreenPrivatePdfCompilePort(
           activityVisibility: "private",
           parentJobId: options.outerJobId,
           parentLeaseEpoch: options.outerLeaseEpoch,
+          ...(context.outputPolicy === undefined
+            ? {}
+            : { outputPolicy: context.outputPolicy }),
         });
         stored = true;
         await deps.catalog.putLegacyBridge({

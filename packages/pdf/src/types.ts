@@ -206,6 +206,10 @@ export interface PdfSourceBundle {
   fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
+/**
+ * @deprecated Legacy rendering/report label. It does not request PDF/UA
+ * conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
+ */
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 export type PdfTableCellTextMode = "auto" | "source";
@@ -343,6 +347,10 @@ export interface PdfExportReport {
   codeTheme: CodeThemeId;
   filename: string;
   profile: PdfProfile;
+  /** Explicit achieved-by-compiler standard request; absent is legacy tagged output. */
+  outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+  /** Standard evidence inspected from the emitted compiler bytes. */
+  outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
   compilerVersion: string;
   pageCount?: number;
   embeddedImages: number;

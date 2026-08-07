@@ -166,12 +166,17 @@ table. The dense section covers full-target raw links, custom link labels, compl
 status badges, mentions, and normal wrapping prose. A warm repeat compile is required to be
 byte-identical.
 
-## Known profile boundary
+## Output-standard boundary
 
-Standard export requires tagged output and rejects an untagged result. The pinned compiler does
-not expose a PDF/UA-1 selector. Therefore the engine deliberately makes no PDF/UA or PDF/A claim;
-adding either profile requires a separately validated implementation and independent conformance
-evidence.
+Standard export requires tagged output and rejects an untagged result. The
+pinned Typst 0.15.1 browser binding exposes a request-scoped PDF-standard option;
+atlcli wraps it in `atlcli.pdf-output-policy/1`, rejects unsupported requests
+before compilation, and checks the resulting header and XMP identifiers before
+emission. The old `PdfProfile` label is deprecated and is not reinterpreted.
+
+Internal byte inspection is evidence that the compiler received and represented
+the requested mode, not certification. The external veraPDF acceptance lane is
+the separate conformance boundary.
 
 ## Related topics
 

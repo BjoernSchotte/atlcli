@@ -116,7 +116,9 @@ async function compileJob(jobId: string): Promise<PdfWorkerResponse> {
       throw new Error("PDF job is missing, cancelled, or no longer ready to compile.");
     }
     const compiler = await getCompiler();
-    const result = await compiler.compile(claimed.bundle);
+    const result = await compiler.compile(claimed.bundle, {
+      ...(claimed.outputPolicy ? { outputPolicy: claimed.outputPolicy } : {}),
+    });
     if (!result.pdf) {
       const error = formatPdfCompilerDiagnostics(result.diagnostics);
       await failPdfJob(jobId, error, result.diagnostics);

@@ -45,7 +45,14 @@ function request(id: string): PdfExportJobRequestV1 {
       manifestVersion: "1.0.0",
     },
     settings: { outline: true },
-    options: { resolveMacros: false, exportedAt: 1_700_000_000_000 },
+    options: {
+      resolveMacros: false,
+      exportedAt: 1_700_000_000_000,
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      },
+    },
   };
 }
 
@@ -226,6 +233,10 @@ describe("extension PDF durable input resolver", () => {
       complete: true,
       filename: "Guide.pdf",
       settings: { outline: true },
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      },
       metadata: {
         title: "Guide",
         space: "DOCS",

@@ -88,6 +88,7 @@ import {
 import {
   PdfTemplateYamlError,
   classifyPdfTemplateInput,
+  explainPdfTemplateYamlRecipe,
   materializePdfTemplateYamlRecipe,
   migratePdfTemplateYamlRecipeToTypst0151,
   writePdfTemplateRecipeArchive,
@@ -490,6 +491,7 @@ function validateFlags(
     "clear-override": ["dir", "target"],
     "clear-optional": ["dir", "target"],
     validate: ["dir"],
+    explain: [],
     pack: ["dir", "output"],
   };
   const allowed = new Set([...common, ...(byCommand[command] ?? [])]);
@@ -2108,6 +2110,28 @@ async function runValidate(
   });
 }
 
+async function runExplain(
+  args: readonly string[],
+  flags: Record<string, string | boolean | string[]>,
+  dependencies: PdfTemplateCliDependencies,
+): Promise<PdfTemplateCliResultV1> {
+  const path = templateProjectPath("explain", args, flags, dependencies.cwd);
+  if ((await classifyPdfTemplateInput(path.absolute)) !== "recipe") {
+    throw usage("explain requires a recipe V2 .yaml/.yml file");
+  }
+  const explanation = await explainPdfTemplateYamlRecipe(path.absolute);
+  return {
+    schema: RESULT_SCHEMA,
+    command: "explain",
+    ok: true,
+    exitCode: 0,
+    projectPath: path.display,
+    diagnostics: [],
+    nextActions: [],
+    details: { ...explanation },
+  };
+}
+
 async function runRecipe(
   command: "build" | "validate",
   path: { absolute: string; display: string },
@@ -2164,6 +2188,9 @@ async function runRecipe(
       packDigest: built.packDigest,
       compileDigest: built.compile.digest,
       pageCount: built.compile.pageCount,
+      ...(built.manifest.canonicalSource?.revision === "5" && "baseline" in built
+        ? { baseline: built.baseline }
+        : {}),
     },
   };
 }
@@ -2419,6 +2446,8 @@ export async function executePdfTemplateCommand(
       return runPreview(args, flags, dependencies);
     case "validate":
       return runValidate(args, flags, dependencies);
+    case "explain":
+      return runExplain(args, flags, dependencies);
     case "migrate-runtime":
       return runMigrateRuntime(args, flags, dependencies);
     case "build":
@@ -2775,6 +2804,7 @@ Example:
   atlcli pdf-template preview ./brand-pdf-template
   atlcli pdf-template build ./brand-pdf-template --output ./brand.wiki-pdf-template
   atlcli pdf-template build ./template.yaml --output ./brand.wiki-pdf-template
+  atlcli pdf-template explain ./template-v2.yaml --json
   atlcli pdf-template migrate-runtime ./template.yaml --output ./template.typst-0.15.1.yaml
 
 Primary commands:
@@ -2787,7 +2817,7 @@ Primary commands:
 
 Expert and automation commands:
   analyze, reanalyze, diff, decide, set, clear-override, clear-optional,
-  validate, pack, migrate-runtime
+  validate, explain, pack, migrate-runtime
 
 Import defaults:
   --baseline builtin.editorial-indigo

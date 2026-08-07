@@ -83,6 +83,10 @@ describe("offscreen private PDF compiler bridge", () => {
               activityVisibility: "private",
               parentJobId: claimed.id,
               parentLeaseEpoch: claimed.leaseEpoch,
+              outputPolicy: {
+                schema: "atlcli.pdf-output-policy/1",
+                standards: ["ua-1"],
+              },
             });
             expect(await catalog.listLegacyBridges()).toEqual([{
               legacyJobId: jobId,
@@ -111,7 +115,12 @@ describe("offscreen private PDF compiler bridge", () => {
       },
     });
 
-    expect(await port.compile(bundle)).toEqual({
+    expect(await port.compile(bundle, {
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      },
+    })).toEqual({
       pdf,
       diagnostics: [],
       compilerVersion: "test",

@@ -17,7 +17,11 @@ import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type { TemplateLibraryEntry } from "@atlcli/core";
 import type { ExportReport } from "@atlcli/docx/browser";
 import type { ScanResult } from "@atlcli/docx/scan";
-import type { PdfExportReport, PdfTemplateSettings } from "@atlcli/pdf/browser";
+import type {
+  PdfExportReport,
+  PdfOutputPolicyV1,
+  PdfTemplateSettings,
+} from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../read-path.js";
 
 /**
@@ -104,6 +108,8 @@ export interface PdfExportRequest extends ExportScopeRequest {
    * instead so PDF and DOCX cannot drift.
    */
   settings?: PdfTemplateSettings;
+  /** Strict PDF/A or PDF/UA request; currently supplied by non-UI hosts/tests. */
+  outputPolicy?: PdfOutputPolicyV1;
 }
 
 export interface PdfExportPort {

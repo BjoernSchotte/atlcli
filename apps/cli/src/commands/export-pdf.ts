@@ -43,6 +43,7 @@ import {
   type PdfExportMetadata,
   type PdfExportReport,
   type PdfOutputSink,
+  type PdfOutputPolicyV1,
   type PdfResolvedAsset,
 } from "@atlcli/pdf";
 import type {
@@ -379,6 +380,7 @@ export interface ExportPdfArgs {
   strict: boolean;
   noCache: boolean;
   exportedAt?: Date;
+  outputPolicy?: PdfOutputPolicyV1;
   opts: OutputOptions;
 }
 
@@ -586,6 +588,9 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
         filename: basename(outputPath),
         signal: controller.signal,
         complete: scope.complete,
+        ...(args.outputPolicy !== undefined
+          ? { outputPolicy: args.outputPolicy }
+          : {}),
         onProgress: progress.report,
         page: {
           id: scope.metaPage.id,
@@ -639,6 +644,12 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
     const common = {
       format,
       codeTheme: report.codeTheme,
+      ...(report.outputPolicy !== undefined
+        ? { outputPolicy: report.outputPolicy }
+        : {}),
+      ...(report.outputStandardEvidence !== undefined
+        ? { outputStandardEvidence: report.outputStandardEvidence }
+        : {}),
       sourcePages,
       outputDetails: [outputDetail],
       issues,
@@ -797,6 +808,9 @@ export async function exportPdfAsOrdinaryJob(
           input: {
             metadata,
             filename: basename(resolvedOutputPath),
+            ...(request.options.outputPolicy !== undefined
+              ? { outputPolicy: request.options.outputPolicy }
+              : {}),
           },
           env: {
             assets: checkpointPdfAssetsV1(
@@ -878,6 +892,12 @@ export async function exportPdfAsOrdinaryJob(
         : reportProjection.sourcePages;
     const common = {
       format: "pdf" as const,
+      ...(report.outputPolicy !== undefined
+        ? { outputPolicy: report.outputPolicy }
+        : {}),
+      ...(report.outputStandardEvidence !== undefined
+        ? { outputStandardEvidence: report.outputStandardEvidence }
+        : {}),
       sourcePages,
       outputDetails: [outputDetail],
       issues,

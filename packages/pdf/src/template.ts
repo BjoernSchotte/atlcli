@@ -57,6 +57,7 @@ import {
 } from "./design-catalog.js";
 import { typstString } from "./escape.js";
 import type { PdfTemplateVisualsV1 } from "./template-pack.js";
+import { createAtlcliTypstTemplateLegacy } from "./template-legacy.js";
 
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
 const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
@@ -254,7 +255,30 @@ export function createAtlcliTypstTemplate(
   visuals?: PdfTemplateVisualsV1,
   options: AtlcliTypstTemplateOptions = {}
 ): string {
-  const catalogDesign = projectPdfDesignThroughCatalog(design);
+  const revision5 =
+    options.pageModelV5 !== undefined ||
+    options.semanticModelV5 !== undefined ||
+    options.decorationModelV5 !== undefined ||
+    options.imageGeometryV5 === true ||
+    options.typographyModelV5 !== undefined;
+  if (!revision5) {
+    return createAtlcliTypstTemplateLegacy(
+      design,
+      labels,
+      visuals,
+      options.positionedLogo === undefined
+        ? {}
+        : { positionedLogo: options.positionedLogo },
+    );
+  }
+  // Revision 5 has already crossed the complete Catalog-V3 validator in
+  // `createAtlcliTypstTemplateV5`. Its V1-shaped renderer projection can carry
+  // conditionally active V3 tokens (for example `coverTitleInverse`) that the
+  // historical Catalog-V1 validator must not reject. Revisions 1-4 retain the
+  // exact characterized Catalog-V1 path.
+  const catalogDesign = revision5
+    ? design
+    : projectPdfDesignThroughCatalog(design);
   const typography = options.typographyModelV5 ?? catalogDesign.typography;
   const fonts = typography.fonts;
   const roles = typography.roles;

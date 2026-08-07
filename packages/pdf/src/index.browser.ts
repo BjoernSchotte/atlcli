@@ -47,6 +47,23 @@ export type {
   PdfCompileContext,
 } from "./compiler.js";
 
+// --- Strict output-standard policy (Typst 0.15.1) ---
+export {
+  PDF_OUTPUT_STANDARDS_V1,
+  TYPST_PDF_STANDARDS_0_15_1,
+  PdfOutputPolicyError,
+  resolvePdfOutputPolicyV1,
+  resolveTypstPdfOptions0151,
+} from "./output-policy.js";
+export type {
+  PdfOutputPolicyV1,
+  PdfOutputStandardV1,
+  ResolvedPdfOutputPolicyV1,
+  TypstPdfOptions0151,
+  TypstPdfStandard0151,
+  PdfOutputStandardEvidenceV1,
+} from "./output-policy.js";
+
 // --- Pre-compile asset resolution (prepare.ts) ---
 export { preparePdfDocument } from "./prepare.js";
 export type { PreparePdfOptions } from "./prepare.js";
@@ -68,6 +85,7 @@ export type {
 // --- Font intake (fonts.ts, spec 007/008) ---
 export { parseFontMeta, verifyFontBytes } from "./fonts.js";
 export type {
+  ParsedFontAxis,
   ParsedFontFace,
   FontParseError,
   FontVerificationError,
@@ -75,7 +93,7 @@ export type {
 } from "./fonts.js";
 
 // --- Output validation (validate.ts) ---
-export { validatePdfOutput } from "./validate.js";
+export { validatePdfOutput, validatePdfOutputStandard } from "./validate.js";
 export type { PdfOutputInspection } from "./validate.js";
 
 // --- Runtime asset manifest (runtime-assets.ts) ---
@@ -89,6 +107,7 @@ export {
   assertResolvedPdfFontRequirementsV1,
 } from "./font-requirements.js";
 export type {
+  PdfFontDiagnosticV1,
   PdfFontRequirementReasonKindV1,
   PdfFontRequirementReasonV1,
   ResolvedPdfFontAssetRequirementV1,
@@ -153,6 +172,18 @@ export {
   computePdfTemplateBaselineDigestV1,
   resolvePdfTemplateRecipeV2Design,
 } from "./recipe-baselines.js";
+
+export {
+  materializePdfTemplateRecipeV1,
+  materializePdfTemplateRecipeV2,
+} from "./template-recipe.js";
+export type {
+  MaterializePdfTemplateRecipeInputV1,
+  MaterializePdfTemplateRecipeInputV2,
+  MaterializedPdfTemplateRecipeV1,
+  MaterializedPdfTemplateRecipeV2,
+  ResolvedPdfTemplateRecipeAssetV1,
+} from "./template-recipe.js";
 export type {
   PdfTemplateBaselineContentV1,
   ResolvedPdfTemplateBaselineV1,

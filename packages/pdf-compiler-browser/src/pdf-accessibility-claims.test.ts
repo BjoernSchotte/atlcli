@@ -29,7 +29,9 @@ import {
   validatePdfOutput,
   type ExportBlock,
   type PdfExportMetadata,
+  type PdfOutputPolicyV1,
   type PdfProfile,
+  validatePdfOutputStandard,
 } from "@atlcli/pdf/browser";
 import { serializePdfDocument } from "@atlcli/pdf/internal";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
@@ -91,7 +93,8 @@ let compiler: BrowserPdfCompiler;
 async function compile(
   blocks: ExportBlock[],
   settings: object = {},
-  profile?: PdfProfile
+  profile?: PdfProfile,
+  outputPolicy?: PdfOutputPolicyV1,
 ): Promise<Uint8Array> {
   const prepared = await preparePdfDocument(blocks, {
     resolve: async () => ({ bytes: tinyPng(), mediaType: "image/png" }),
@@ -101,7 +104,7 @@ async function compile(
     settings,
     ...(profile ? { profile } : {}),
   });
-  const result = await compiler.compile(bundle);
+  const result = await compiler.compile(bundle, outputPolicy ? { outputPolicy } : {});
   const errors = result.diagnostics.filter((d) => d.severity === "error");
   if (errors.length) throw new Error(`fixture failed to compile: ${JSON.stringify(errors)}`);
   return result.pdf!;
@@ -222,16 +225,36 @@ describe("PDF accessibility claims (spec 011 — pins the reference page)", () =
     expect(figures[0]).toMatch(/\/Alt\s*\(A distinctive alt sentence\)/);
   });
 
-  it("CLAIM: an export requested as pdf-ua-1 is byte-identical to a tagged one", async () => {
+  it("LEGACY CHARACTERIZATION: profile pdf-ua-1 is byte-identical to tagged", async () => {
     // The page states this identity as a fact — that `profile` records what a
     // host asked for, never what was achieved. A future partial `pdf-ua-1`
     // implementation would silently falsify that sentence without this test.
+    // Strict output conformance is now requested separately through
+    // atlcli.pdf-output-policy/1 and must never be inferred from this label.
     const [tagged, ua] = await Promise.all([
       compile(DOCUMENT, {}, "tagged"),
       compile(DOCUMENT, {}, "pdf-ua-1"),
     ]);
     expect(sha256Hex(ua)).toBe(sha256Hex(tagged));
     expect(inspectable(ua)).not.toContain("pdfuaid");
+  }, 180_000);
+
+  it("STRICT POLICY: ua-1 writes the identifier and retains accessibility structure", async () => {
+    const outputPolicy = {
+      schema: "atlcli.pdf-output-policy/1" as const,
+      standards: ["ua-1"] as const,
+    };
+    const strictUa = await compile(DOCUMENT, {}, undefined, outputPolicy);
+    const strictText = inspectable(strictUa);
+    expect(strictText).toContain("pdfuaid:part");
+    expect(strictText).toContain("/StructTreeRoot");
+    expect(strictText).toMatch(/\/Alt\s*\(A distinctive alt sentence\)/u);
+    expect(validatePdfOutputStandard(strictUa, outputPolicy)).toMatchObject({
+      requestedStandard: "ua-1",
+      pdfua: { part: "1" },
+      tagged: true,
+      hasLang: true,
+    });
   }, 180_000);
 
   it("LIMIT of that claim: a missing alt becomes a filename, not an absent /Alt", async () => {

@@ -366,7 +366,7 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
   const options = record(request.options, "request.options");
   onlyKeys(
     options,
-    ["resolveMacros", "codeTheme", "profile", "strict", "noCache", "exportedAt", "imageProfile", "imagePpi"],
+    ["resolveMacros", "codeTheme", "profile", "strict", "noCache", "exportedAt", "imageProfile", "imagePpi", "outputPolicy"],
     "request.options",
   );
   boolean(options.resolveMacros, "request.options.resolveMacros");
@@ -392,6 +392,23 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
     }
     if ((options.imageProfile ?? "original") === "original") {
       fail("request.options.imagePpi", "cannot combine with the original profile");
+    }
+  }
+  if (options.outputPolicy !== undefined) {
+    const policy = record(options.outputPolicy, "request.options.outputPolicy");
+    onlyKeys(policy, ["schema", "standards"], "request.options.outputPolicy");
+    if (policy.schema !== "atlcli.pdf-output-policy/1") {
+      fail("request.options.outputPolicy.schema", "must be atlcli.pdf-output-policy/1");
+    }
+    if (!Array.isArray(policy.standards) || policy.standards.length !== 1) {
+      fail("request.options.outputPolicy.standards", "must contain exactly one standard");
+    }
+    const allowed = [
+      "a-1b", "a-1a", "a-2b", "a-2u", "a-2a", "a-3b", "a-3u", "a-3a",
+      "a-4", "a-4f", "a-4e", "ua-1",
+    ];
+    if (!allowed.includes(String(policy.standards[0]))) {
+      fail("request.options.outputPolicy.standards[0]", "is unsupported");
     }
   }
 }

@@ -53,12 +53,20 @@ describe("durable CLI export job requests", () => {
       profile, outputPath: "/tmp/report.pdf", force: false, strict: true, noCache: true,
       exportedAt: new Date("2026-01-02T03:04:05Z"),
       codeTheme: "dracula",
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      },
     });
     expect(request.source.locator).toEqual({ kind: "space-key", spaceKey: "DOCS" });
     expect(request.output.overwriteExisting).toBe(false);
     expect(request.output.targetKind).toBe("file");
     expect(request.options).toMatchObject({ strict: true, noCache: true, exportedAt: 1767323045000 });
     expect(request.options.codeTheme).toBe("dracula");
+    expect(request.options.outputPolicy).toEqual({
+      schema: "atlcli.pdf-output-policy/1",
+      standards: ["ua-1"],
+    });
     expect(request.template).toEqual({
       kind: "builtin",
       id: "builtin-default",

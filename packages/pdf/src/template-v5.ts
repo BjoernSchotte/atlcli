@@ -15,6 +15,7 @@ import {
 import type { PdfTemplateVisualsV1 } from "./template-pack.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { createAtlcliTypstTemplate } from "./template.js";
+import { createAtlcliTypstTemplateV4 } from "./template-v4.js";
 
 function coverPhysicalMargins(
   margin: DesignPageMarginV3,
@@ -74,6 +75,10 @@ export function projectPdfDesignV5RuntimeSettings(
     },
     tokens: design.tokens,
     semanticPalettes: design.semanticPalettes,
+    compositions: {
+      cover: design.compositions.cover,
+      closingPage: design.compositions.closingPage,
+    },
   };
 }
 
@@ -85,8 +90,9 @@ export function createAtlcliTypstTemplateV5(
   const validated = validatePdfTemplateDesignV3(design, "design", {
     availableFonts: PDF_RUNTIME_ASSETS.fonts,
   });
-  return createAtlcliTypstTemplate(
-    projectPdfDesignV5RuntimeSettings(validated),
+  const runtimeDesign = projectPdfDesignV5RuntimeSettings(validated);
+  const revision5Base = createAtlcliTypstTemplate(
+    runtimeDesign,
     labels,
     visuals,
     {
@@ -106,5 +112,11 @@ export function createAtlcliTypstTemplateV5(
       imageGeometryV5: true,
       typographyModelV5: validated.typography,
     },
+  );
+  return createAtlcliTypstTemplateV4(
+    runtimeDesign,
+    labels,
+    visuals,
+    revision5Base,
   );
 }

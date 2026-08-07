@@ -114,7 +114,9 @@ function transferableResult(result: PdfCompileResult): {
 async function compile(request: PdfWorkerRequest): Promise<void> {
   try {
     const compiler = await getCompiler();
-    const compiled = transferableResult(await compiler.compile(request.bundle));
+    const compiled = transferableResult(
+      await compiler.compile(request.bundle, request.options ?? {}),
+    );
     const response: PdfWorkerResponse = {
       kind: "result",
       requestId: request.requestId,

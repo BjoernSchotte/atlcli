@@ -12,6 +12,8 @@ import initTypst, {
 import {
   PDF_RUNTIME_ASSETS,
   assertResolvedPdfFontRequirementsV1,
+  resolvePdfOutputPolicyV1,
+  resolveTypstPdfOptions0151,
   type PdfCompileContext,
   type PdfCompileResult,
   type PdfFontLoadEvidenceV1,
@@ -272,7 +274,27 @@ export class BrowserPdfCompiler {
       // between VFS population and compile, because typst.ts' access model is
       // process-global and another compiler instance could interleave there.
       if (memoryProbe) await memoryProbe();
-      const result = compiler.compile("/main.typ", [], "pdf", 3) as {
+      const outputPolicy = resolvePdfOutputPolicyV1(context.outputPolicy);
+      const pdfOptions = resolveTypstPdfOptions0151(context.pdfOptions);
+      if (outputPolicy !== undefined && pdfOptions !== undefined) {
+        throw new Error("Provide either PDF outputPolicy or low-level pdfOptions, not both.");
+      }
+      const standard = outputPolicy?.standards[0] ?? pdfOptions?.standard;
+      const result = (standard === undefined
+        ? compiler.compile("/main.typ", [], "pdf", 3)
+        : (() => {
+          const world = compiler.snapshot(undefined, "/main.typ", []);
+          try {
+            world.set_pdf_opts({
+              pdf_standard: standard,
+              pdf_tags: true,
+            });
+            throwIfAborted(context.signal);
+            return world.get_artifact(1, 3);
+          } finally {
+            world.free();
+          }
+        })()) as {
         result?: Uint8Array;
         diagnostics?: RawPdfDiagnostic[];
       };

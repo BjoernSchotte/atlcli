@@ -54,7 +54,11 @@ import {
   type PdfTemplateReferenceV1,
 } from "@atlcli/export-jobs";
 import { createFileExportJobPersistence } from "@atlcli/export-node";
-import { loadPdfTemplatePack } from "@atlcli/pdf";
+import {
+  PDF_OUTPUT_STANDARDS_V1,
+  loadPdfTemplatePack,
+  type PdfOutputPolicyV1,
+} from "@atlcli/pdf";
 import type { ExportReport as DocxEngineReport } from "@atlcli/docx";
 import {
   ExportRequestError,
@@ -377,6 +381,24 @@ async function handlePdfExport(
     return emitReportOutcome(usage(error instanceof Error ? error.message : String(error)), opts);
   }
 
+  const pdfStandardFlag = getFlag(flags, "pdf-standard");
+  let outputPolicy: PdfOutputPolicyV1 | undefined;
+  if (pdfStandardFlag !== undefined) {
+    if (!PDF_OUTPUT_STANDARDS_V1.includes(pdfStandardFlag as never)) {
+      return emitReportOutcome(
+        usage(
+          `--pdf-standard must be one of ${PDF_OUTPUT_STANDARDS_V1.join(", ")} ` +
+            `(got "${pdfStandardFlag}").`,
+        ),
+        opts,
+      );
+    }
+    outputPolicy = {
+      schema: "atlcli.pdf-output-policy/1",
+      standards: [pdfStandardFlag as (typeof PDF_OUTPUT_STANDARDS_V1)[number]],
+    };
+  }
+
   // Explicit image profile (issue #118 Phase 3). Validated here so a typo
   // fails as a usage error before any network or job activity.
   const imageProfileFlag = getFlag(flags, "pdf-images");
@@ -467,6 +489,7 @@ async function handlePdfExport(
     ...(exportedAt ? { exportedAt } : {}),
     ...(imageProfileFlag ? { imageProfile: imageProfileFlag } : {}),
     ...(imagePpi !== undefined ? { imagePpi } : {}),
+    ...(outputPolicy !== undefined ? { outputPolicy } : {}),
   });
   const { exportPdfAsOrdinaryJob } = await import("./export-pdf.js");
   const outcome = await exportPdfAsOrdinaryJob({
@@ -480,6 +503,7 @@ async function handlePdfExport(
     strict: hasFlag(flags, "strict"),
     noCache: hasFlag(flags, "no-cache"),
     ...(exportedAt ? { exportedAt } : {}),
+    ...(outputPolicy !== undefined ? { outputPolicy } : {}),
     opts,
   }, jobRequest, undefined, persistence);
   emitReportOutcome(outcome, opts);
@@ -2137,6 +2161,9 @@ PDF Options (--format pdf):
   --no-cache                Do not persist downloaded assets across invocations
   --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also
                             honors the SOURCE_DATE_EPOCH env var)
+  --pdf-standard <name>     Strict PDF/A or PDF/UA output: a-1b, a-1a, a-2b,
+                            a-2u, a-2a, a-3b, a-3u, a-3a, a-4, a-4f, a-4e,
+                            or ua-1. No downgrade fallback.
   --template, -t <pack>     Use a verified .wiki-pdf-template pack
   (--engine is not valid with --format pdf.)
 

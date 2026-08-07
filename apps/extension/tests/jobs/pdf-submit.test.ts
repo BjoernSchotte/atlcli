@@ -33,7 +33,12 @@ function input(overrides: Partial<PdfExportRequest> = {}): PdfExportRequest {
 
 describe("extension PDF job submission", () => {
   it("maps only replay-safe unresolved source/settings into the durable request", () => {
-    const request = createExtensionPdfJobRequest(input(), {
+    const request = createExtensionPdfJobRequest(input({
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      },
+    }), {
       now: () => 10,
       randomUUID: () => "pdf-job-1",
     });
@@ -49,6 +54,10 @@ describe("extension PDF job submission", () => {
       requestedFilename: "Guide.pdf",
       settings: { page: "letter", cover: false, watermark: { text: "Draft", opacity: 0.1 } },
       options: { resolveMacros: false, exportedAt: 10 },
+    });
+    expect(request.options.outputPolicy).toEqual({
+      schema: "atlcli.pdf-output-policy/1",
+      standards: ["ua-1"],
     });
     expect(JSON.stringify(request)).not.toContain("Body that must not enter the request");
   });

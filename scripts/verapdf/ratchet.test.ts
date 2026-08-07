@@ -5,7 +5,13 @@
  * (not rule-id alone), and warns when a baselined rule starts passing.
  */
 import { describe, expect, it } from "bun:test";
-import { baselineKey, parseVeraPdfReport, ratchet, type Baseline } from "./ratchet.js";
+import {
+  baselineKey,
+  parseVeraPdfCompliance,
+  parseVeraPdfReport,
+  ratchet,
+  type Baseline,
+} from "./ratchet.js";
 
 function reportWith(failedChecks: number, contexts: string[]): unknown {
   return {
@@ -57,6 +63,27 @@ describe("parseVeraPdfReport", () => {
 
   it("returns nothing for an empty/compliant report", () => {
     expect(parseVeraPdfReport({ report: { jobs: [] } }, "canary")).toEqual([]);
+  });
+});
+
+describe("parseVeraPdfCompliance", () => {
+  it("returns a conclusive validator verdict", () => {
+    expect(parseVeraPdfCompliance(reportWith(2, ["root/pages[0]"]))).toEqual({
+      compliant: false,
+      profileNames: ["PDF/UA-1"],
+      validationResults: 1,
+    });
+  });
+
+  it("rejects missing and inconclusive validation output", () => {
+    expect(() => parseVeraPdfCompliance({ report: { jobs: [] } })).toThrow(
+      "no validation result",
+    );
+    expect(() =>
+      parseVeraPdfCompliance({
+        report: { jobs: [{ validationResult: [{ profileName: "PDF/A-2B" }] }] },
+      }),
+    ).toThrow("inconclusive");
   });
 });
 

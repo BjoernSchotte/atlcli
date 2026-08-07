@@ -523,7 +523,10 @@ describe("PDF template manifest phase", () => {
     );
     fixture.files["atlcli.typ"] = encoder.encode(source);
     expect(await digest(await packTemplate(fixture))).toBe(
-      "80772dcc9ec53677829e9259dfe0877b1f50e4bc7b69cc43dcb6796dfe52aa45"
+      // The canonical source stays byte-pinned above. The archive identity
+      // changes because the 0.15.1 runtime inventory now includes the bounded
+      // Arabic fallback font in requiredFonts.
+      "381d5ada802536e841fd9ea758f92297297fea2ce6d407b43f51dc4b2d8f3e7b"
     );
     const cover = source.slice(
       source.indexOf('  if cover-config.at("enabled"'),
@@ -728,7 +731,7 @@ describe("PDF template pack integrity phase", () => {
     revision1.files["atlcli.typ"] = encoder.encode(source1);
     const revision1Pack = await packTemplate(revision1);
     expect(await digest(revision1Pack)).toBe(
-      "952984b9c9910438bf0fec465282c41236ece2f36af22c2612c5b993afb4a8aa"
+      "2e5e7851b933245920b56d3efabfa9f2a748d82f4b765803c6dc00cf183c519c"
     );
     expect(
       (await loadPdfTemplatePack(revision1Pack, { pinnedTypstVersion: "0.14.2" }))
@@ -738,16 +741,18 @@ describe("PDF template pack integrity phase", () => {
       /migrate-runtime <recipe\.yaml>/u
     );
 
+    // Source digests remain historical. Archive digests are re-pinned because
+    // requiredFonts now includes the 0.15.1 Arabic fallback inventory entry.
     for (const [revision, expectedSource, expectedPack] of [
       [
         PDF_CANONICAL_SOURCE_REVISION_2,
         "e5fbf3cbc79557ecd62a69eb70f8bd013b45b81b25d1d08b92e199969b6fe333",
-        "cf7451a49dc53af5f939303477b2eba02c1ee5ea1a014466b775337cf75d689c",
+        "220ae0f00651f39f15cbde786b2217848044a2b1cee793a7d9b551497c283b19",
       ],
       [
         PDF_CANONICAL_SOURCE_REVISION_3,
         "01a978f09f902705664eaadb309f1560adce791ac747b17c8885cd565696ecb8",
-        "56dab50285fa6cb43084a0e6398b969429c56ce280a1fbe5f151e25f96dfd729",
+        "05a6ba7a63dd1d52160f3fe755fc8197c4fabc83fcdbdf03819afadfa984c8a5",
       ],
     ] as const) {
       const fixture = await manifestWith(

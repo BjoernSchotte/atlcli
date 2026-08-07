@@ -340,6 +340,58 @@ export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
 // export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
 export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
+
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
@@ -352,6 +404,7 @@ export interface ParsedFontFace {
     subfamily: string;
     style: "normal" | "italic";
     weight: number;
+    axes?: readonly ParsedFontAxis[];
 }
 
 // export: parseFontMeta
@@ -380,6 +433,22 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_OUTPUT_STANDARDS_V1
+export declare const PDF_OUTPUT_STANDARDS_V1: readonly [
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -516,6 +585,8 @@ export interface PdfBytesHandle {
 // export: PdfCompileContext
 export interface PdfCompileContext {
     signal?: AbortSignal;
+    outputPolicy?: PdfOutputPolicyV1;
+    pdfOptions?: TypstPdfOptions0151;
 }
 
 // export: PdfCompilePort
@@ -585,6 +656,7 @@ export interface PdfExportMetadata {
     exporter?: string;
     language?: string;
     region?: string;
+    direction?: "ltr" | "rtl";
     exportedAt: Date;
 }
 
@@ -596,6 +668,8 @@ export interface PdfExportReport {
     codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
+    outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+    outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
     compilerVersion: string;
     pageCount?: number;
     embeddedImages: number;
@@ -659,6 +733,20 @@ export interface PdfOutputInspection {
     hasLang: boolean;
 }
 
+// export: PdfOutputPolicyError
+export declare class PdfOutputPolicyError extends Error {
+    constructor(message: string);
+}
+
+// export: PdfOutputPolicyV1
+export interface PdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1,
+        ...PdfOutputStandardV1[]
+    ];
+}
+
 // export: PdfOutputSink
 export interface PdfOutputSink {
     emit(name: string, bytes: PdfBytesHandle, context?: {
@@ -666,7 +754,30 @@ export interface PdfOutputSink {
     }): Promise<void>;
 }
 
+// export: PdfOutputStandardEvidenceV1
+export interface PdfOutputStandardEvidenceV1 {
+    schema: "atlcli.pdf-output-standard-evidence/1";
+    requestedStandard: PdfOutputStandardV1;
+    basePdfVersion: ResolvedPdfOutputPolicyV1["basePdfVersion"];
+    pdfa?: {
+        part: "1" | "2" | "3" | "4";
+        conformance?: "A" | "B" | "E" | "F" | "U";
+    };
+    pdfua?: {
+        part: "1";
+    };
+    hasDocumentIdentifier: boolean;
+    tagged: boolean;
+    hasLang: boolean;
+    embeddedFontFiles: number;
+}
+
+// export: PdfOutputStandardV1
+export type PdfOutputStandardV1 = (typeof PDF_OUTPUT_STANDARDS_V1)[number];
+
 // export: PdfProfile
+// @deprecated PdfProfile — Legacy rendering/report label. It does not request PDF/UA
+conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 // export: PdfResolvedAsset
@@ -680,9 +791,15 @@ export interface PdfResolvedAsset {
 export interface PdfRuntimeFontAsset {
     assetId: `canonical/${string}`;
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2" | "Noto Emoji";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Arabic" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
+    axes?: readonly {
+        tag: string;
+        min: number;
+        default: number;
+        max: number;
+    }[];
     sourceUrl: string;
     sha256: string;
 }
@@ -1040,6 +1157,7 @@ export interface PreparedPdfExportV1 {
     filename: string;
     codeTheme: CodeThemeId;
     profile: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     language?: string;
     sourceNotes: ExportNote[];
     bundleNotes: ExportNote[];
@@ -1135,6 +1253,7 @@ export interface ResolvedPdfFontRequirementsV1 {
     };
     key: string;
     assets: readonly ResolvedPdfFontAssetRequirementV1[];
+    diagnostics?: readonly PdfFontDiagnosticV1[];
 }
 
 // export: ResolvedPdfLabels
@@ -1145,6 +1264,15 @@ export interface ResolvedPdfLogo {
     bytes: Uint8Array;
     mediaType: "image/png" | "image/svg+xml";
     alt: string;
+}
+
+// export: ResolvedPdfOutputPolicyV1
+export interface ResolvedPdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1
+    ];
+    basePdfVersion: "1.4" | "1.5" | "1.6" | "1.7" | "2.0";
 }
 
 // export: ResolvedPdfSettings
@@ -1182,6 +1310,15 @@ export interface ResolvedPdfTemplateAssetV1 {
 // export: ResolvedPdfTemplateBaselineV1
 export interface ResolvedPdfTemplateBaselineV1 extends PdfTemplateBaselineContentV1 {
     digest: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
 }
 
 // export: ResolvedPdfTemplateRecipeV2
@@ -1225,6 +1362,9 @@ export interface ResolvePdfFontRequirementsInputV1 {
 // export: resolvePdfFontRequirementsV1
 export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
 
+// export: resolvePdfOutputPolicyV1
+export declare function resolvePdfOutputPolicyV1(value: PdfOutputPolicyV1 | undefined): ResolvedPdfOutputPolicyV1 | undefined;
+
 // export: resolvePdfSettings
 export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
 
@@ -1240,6 +1380,9 @@ export interface ResolvePdfSettingsContext {
 // export: resolvePdfTemplateRecipeV2Design
 export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
 
+// export: resolveTypstPdfOptions0151
+export declare function resolveTypstPdfOptions0151(value: TypstPdfOptions0151 | undefined): TypstPdfOptions0151 | undefined;
+
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
@@ -1250,6 +1393,7 @@ export interface RunPdfExportInput {
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
@@ -1300,11 +1444,43 @@ export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | Wiki
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
+// export: TYPST_PDF_STANDARDS_0_15_1
+export declare const TYPST_PDF_STANDARDS_0_15_1: readonly [
+    "1.4",
+    "1.5",
+    "1.6",
+    "1.7",
+    "2.0",
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
+
+// export: TypstPdfOptions0151
+export interface TypstPdfOptions0151 {
+    standard: TypstPdfStandard0151;
+}
+
+// export: TypstPdfStandard0151
+export type TypstPdfStandard0151 = (typeof TYPST_PDF_STANDARDS_0_15_1)[number];
+
 // export: ValidatedPdfTemplatePackV1
 export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
 
 // export: validatePdfTemplateManifest
 export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
@@ -1677,6 +1853,58 @@ export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
 // export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
 export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
+
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
@@ -1689,6 +1917,7 @@ export interface ParsedFontFace {
     subfamily: string;
     style: "normal" | "italic";
     weight: number;
+    axes?: readonly ParsedFontAxis[];
 }
 
 // export: parseFontMeta
@@ -1717,6 +1946,22 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_OUTPUT_STANDARDS_V1
+export declare const PDF_OUTPUT_STANDARDS_V1: readonly [
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -1853,6 +2098,8 @@ export interface PdfBytesHandle {
 // export: PdfCompileContext
 export interface PdfCompileContext {
     signal?: AbortSignal;
+    outputPolicy?: PdfOutputPolicyV1;
+    pdfOptions?: TypstPdfOptions0151;
 }
 
 // export: PdfCompilePort
@@ -1922,6 +2169,7 @@ export interface PdfExportMetadata {
     exporter?: string;
     language?: string;
     region?: string;
+    direction?: "ltr" | "rtl";
     exportedAt: Date;
 }
 
@@ -1933,6 +2181,8 @@ export interface PdfExportReport {
     codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
+    outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+    outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
     compilerVersion: string;
     pageCount?: number;
     embeddedImages: number;
@@ -1996,6 +2246,20 @@ export interface PdfOutputInspection {
     hasLang: boolean;
 }
 
+// export: PdfOutputPolicyError
+export declare class PdfOutputPolicyError extends Error {
+    constructor(message: string);
+}
+
+// export: PdfOutputPolicyV1
+export interface PdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1,
+        ...PdfOutputStandardV1[]
+    ];
+}
+
 // export: PdfOutputSink
 export interface PdfOutputSink {
     emit(name: string, bytes: PdfBytesHandle, context?: {
@@ -2003,7 +2267,30 @@ export interface PdfOutputSink {
     }): Promise<void>;
 }
 
+// export: PdfOutputStandardEvidenceV1
+export interface PdfOutputStandardEvidenceV1 {
+    schema: "atlcli.pdf-output-standard-evidence/1";
+    requestedStandard: PdfOutputStandardV1;
+    basePdfVersion: ResolvedPdfOutputPolicyV1["basePdfVersion"];
+    pdfa?: {
+        part: "1" | "2" | "3" | "4";
+        conformance?: "A" | "B" | "E" | "F" | "U";
+    };
+    pdfua?: {
+        part: "1";
+    };
+    hasDocumentIdentifier: boolean;
+    tagged: boolean;
+    hasLang: boolean;
+    embeddedFontFiles: number;
+}
+
+// export: PdfOutputStandardV1
+export type PdfOutputStandardV1 = (typeof PDF_OUTPUT_STANDARDS_V1)[number];
+
 // export: PdfProfile
+// @deprecated PdfProfile — Legacy rendering/report label. It does not request PDF/UA
+conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 // export: PdfResolvedAsset
@@ -2017,9 +2304,15 @@ export interface PdfResolvedAsset {
 export interface PdfRuntimeFontAsset {
     assetId: `canonical/${string}`;
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2" | "Noto Emoji";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Arabic" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
+    axes?: readonly {
+        tag: string;
+        min: number;
+        default: number;
+        max: number;
+    }[];
     sourceUrl: string;
     sha256: string;
 }
@@ -2377,6 +2670,7 @@ export interface PreparedPdfExportV1 {
     filename: string;
     codeTheme: CodeThemeId;
     profile: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     language?: string;
     sourceNotes: ExportNote[];
     bundleNotes: ExportNote[];
@@ -2472,6 +2766,7 @@ export interface ResolvedPdfFontRequirementsV1 {
     };
     key: string;
     assets: readonly ResolvedPdfFontAssetRequirementV1[];
+    diagnostics?: readonly PdfFontDiagnosticV1[];
 }
 
 // export: ResolvedPdfLabels
@@ -2482,6 +2777,15 @@ export interface ResolvedPdfLogo {
     bytes: Uint8Array;
     mediaType: "image/png" | "image/svg+xml";
     alt: string;
+}
+
+// export: ResolvedPdfOutputPolicyV1
+export interface ResolvedPdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1
+    ];
+    basePdfVersion: "1.4" | "1.5" | "1.6" | "1.7" | "2.0";
 }
 
 // export: ResolvedPdfSettings
@@ -2519,6 +2823,15 @@ export interface ResolvedPdfTemplateAssetV1 {
 // export: ResolvedPdfTemplateBaselineV1
 export interface ResolvedPdfTemplateBaselineV1 extends PdfTemplateBaselineContentV1 {
     digest: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
 }
 
 // export: ResolvedPdfTemplateRecipeV2
@@ -2562,6 +2875,9 @@ export interface ResolvePdfFontRequirementsInputV1 {
 // export: resolvePdfFontRequirementsV1
 export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
 
+// export: resolvePdfOutputPolicyV1
+export declare function resolvePdfOutputPolicyV1(value: PdfOutputPolicyV1 | undefined): ResolvedPdfOutputPolicyV1 | undefined;
+
 // export: resolvePdfSettings
 export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
 
@@ -2577,6 +2893,9 @@ export interface ResolvePdfSettingsContext {
 // export: resolvePdfTemplateRecipeV2Design
 export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
 
+// export: resolveTypstPdfOptions0151
+export declare function resolveTypstPdfOptions0151(value: TypstPdfOptions0151 | undefined): TypstPdfOptions0151 | undefined;
+
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
@@ -2587,6 +2906,7 @@ export interface RunPdfExportInput {
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
@@ -2637,11 +2957,43 @@ export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | Wiki
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
+// export: TYPST_PDF_STANDARDS_0_15_1
+export declare const TYPST_PDF_STANDARDS_0_15_1: readonly [
+    "1.4",
+    "1.5",
+    "1.6",
+    "1.7",
+    "2.0",
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
+
+// export: TypstPdfOptions0151
+export interface TypstPdfOptions0151 {
+    standard: TypstPdfStandard0151;
+}
+
+// export: TypstPdfStandard0151
+export type TypstPdfStandard0151 = (typeof TYPST_PDF_STANDARDS_0_15_1)[number];
+
 // export: ValidatedPdfTemplatePackV1
 export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
 
 // export: validatePdfTemplateManifest
 export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
@@ -3014,6 +3366,58 @@ export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
 // export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
 export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
+
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
@@ -3026,6 +3430,7 @@ export interface ParsedFontFace {
     subfamily: string;
     style: "normal" | "italic";
     weight: number;
+    axes?: readonly ParsedFontAxis[];
 }
 
 // export: parseFontMeta
@@ -3054,6 +3459,22 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_OUTPUT_STANDARDS_V1
+export declare const PDF_OUTPUT_STANDARDS_V1: readonly [
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -3190,6 +3611,8 @@ export interface PdfBytesHandle {
 // export: PdfCompileContext
 export interface PdfCompileContext {
     signal?: AbortSignal;
+    outputPolicy?: PdfOutputPolicyV1;
+    pdfOptions?: TypstPdfOptions0151;
 }
 
 // export: PdfCompilePort
@@ -3259,6 +3682,7 @@ export interface PdfExportMetadata {
     exporter?: string;
     language?: string;
     region?: string;
+    direction?: "ltr" | "rtl";
     exportedAt: Date;
 }
 
@@ -3270,6 +3694,8 @@ export interface PdfExportReport {
     codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
+    outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+    outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
     compilerVersion: string;
     pageCount?: number;
     embeddedImages: number;
@@ -3333,6 +3759,20 @@ export interface PdfOutputInspection {
     hasLang: boolean;
 }
 
+// export: PdfOutputPolicyError
+export declare class PdfOutputPolicyError extends Error {
+    constructor(message: string);
+}
+
+// export: PdfOutputPolicyV1
+export interface PdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1,
+        ...PdfOutputStandardV1[]
+    ];
+}
+
 // export: PdfOutputSink
 export interface PdfOutputSink {
     emit(name: string, bytes: PdfBytesHandle, context?: {
@@ -3340,7 +3780,30 @@ export interface PdfOutputSink {
     }): Promise<void>;
 }
 
+// export: PdfOutputStandardEvidenceV1
+export interface PdfOutputStandardEvidenceV1 {
+    schema: "atlcli.pdf-output-standard-evidence/1";
+    requestedStandard: PdfOutputStandardV1;
+    basePdfVersion: ResolvedPdfOutputPolicyV1["basePdfVersion"];
+    pdfa?: {
+        part: "1" | "2" | "3" | "4";
+        conformance?: "A" | "B" | "E" | "F" | "U";
+    };
+    pdfua?: {
+        part: "1";
+    };
+    hasDocumentIdentifier: boolean;
+    tagged: boolean;
+    hasLang: boolean;
+    embeddedFontFiles: number;
+}
+
+// export: PdfOutputStandardV1
+export type PdfOutputStandardV1 = (typeof PDF_OUTPUT_STANDARDS_V1)[number];
+
 // export: PdfProfile
+// @deprecated PdfProfile — Legacy rendering/report label. It does not request PDF/UA
+conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 // export: PdfResolvedAsset
@@ -3354,9 +3817,15 @@ export interface PdfResolvedAsset {
 export interface PdfRuntimeFontAsset {
     assetId: `canonical/${string}`;
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2" | "Noto Emoji";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Arabic" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
+    axes?: readonly {
+        tag: string;
+        min: number;
+        default: number;
+        max: number;
+    }[];
     sourceUrl: string;
     sha256: string;
 }
@@ -3714,6 +4183,7 @@ export interface PreparedPdfExportV1 {
     filename: string;
     codeTheme: CodeThemeId;
     profile: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     language?: string;
     sourceNotes: ExportNote[];
     bundleNotes: ExportNote[];
@@ -3809,6 +4279,7 @@ export interface ResolvedPdfFontRequirementsV1 {
     };
     key: string;
     assets: readonly ResolvedPdfFontAssetRequirementV1[];
+    diagnostics?: readonly PdfFontDiagnosticV1[];
 }
 
 // export: ResolvedPdfLabels
@@ -3819,6 +4290,15 @@ export interface ResolvedPdfLogo {
     bytes: Uint8Array;
     mediaType: "image/png" | "image/svg+xml";
     alt: string;
+}
+
+// export: ResolvedPdfOutputPolicyV1
+export interface ResolvedPdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1
+    ];
+    basePdfVersion: "1.4" | "1.5" | "1.6" | "1.7" | "2.0";
 }
 
 // export: ResolvedPdfSettings
@@ -3856,6 +4336,15 @@ export interface ResolvedPdfTemplateAssetV1 {
 // export: ResolvedPdfTemplateBaselineV1
 export interface ResolvedPdfTemplateBaselineV1 extends PdfTemplateBaselineContentV1 {
     digest: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
 }
 
 // export: ResolvedPdfTemplateRecipeV2
@@ -3899,6 +4388,9 @@ export interface ResolvePdfFontRequirementsInputV1 {
 // export: resolvePdfFontRequirementsV1
 export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
 
+// export: resolvePdfOutputPolicyV1
+export declare function resolvePdfOutputPolicyV1(value: PdfOutputPolicyV1 | undefined): ResolvedPdfOutputPolicyV1 | undefined;
+
 // export: resolvePdfSettings
 export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
 
@@ -3914,6 +4406,9 @@ export interface ResolvePdfSettingsContext {
 // export: resolvePdfTemplateRecipeV2Design
 export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
 
+// export: resolveTypstPdfOptions0151
+export declare function resolveTypstPdfOptions0151(value: TypstPdfOptions0151 | undefined): TypstPdfOptions0151 | undefined;
+
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
@@ -3924,6 +4419,7 @@ export interface RunPdfExportInput {
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
@@ -3974,11 +4470,43 @@ export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | Wiki
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
+// export: TYPST_PDF_STANDARDS_0_15_1
+export declare const TYPST_PDF_STANDARDS_0_15_1: readonly [
+    "1.4",
+    "1.5",
+    "1.6",
+    "1.7",
+    "2.0",
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
+
+// export: TypstPdfOptions0151
+export interface TypstPdfOptions0151 {
+    standard: TypstPdfStandard0151;
+}
+
+// export: TypstPdfStandard0151
+export type TypstPdfStandard0151 = (typeof TYPST_PDF_STANDARDS_0_15_1)[number];
+
 // export: ValidatedPdfTemplatePackV1
 export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
 
 // export: validatePdfTemplateManifest
 export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
@@ -4049,6 +4577,7 @@ export interface AtlcliTypstTemplateOptions {
     semanticModelV5?: AtlcliTypstSemanticModelV5;
     decorationModelV5?: AtlcliTypstDecorationModelV5;
     imageGeometryV5?: boolean;
+    typographyModelV5?: DesignTypography;
 }
 
 // export: buildUniformPdfPageBorderV1
@@ -4187,6 +4716,24 @@ export interface MaterializedPdfTemplateRecipeV1 {
     };
 }
 
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
 // export: materializeLegacyPdfDesign
 export declare function materializeLegacyPdfDesign(sparseDesign: WikiPdfTemplateDesignV1, characterizedBaseline: WikiPdfTemplateDesignV1, fallbackAliases?: Readonly<Record<string, string>>): {
     design: WikiPdfTemplateDesignV1;
@@ -4200,8 +4747,19 @@ export interface MaterializePdfTemplateRecipeInputV1 {
     compiler: TemplateGeneratedPackCompilerV1;
 }
 
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
 // export: materializePdfTemplateRecipeV1
 export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
 
 // export: PDF_ASSET_CONCURRENCY
 export declare const PDF_ASSET_CONCURRENCY = 4;
@@ -4579,6 +5137,9 @@ export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
+
 // export: validatePdfTemplateManifest
 export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
 
@@ -4623,6 +5184,7 @@ export interface AtlcliTypstTemplateOptions {
     semanticModelV5?: AtlcliTypstSemanticModelV5;
     decorationModelV5?: AtlcliTypstDecorationModelV5;
     imageGeometryV5?: boolean;
+    typographyModelV5?: DesignTypography;
 }
 
 // export: createAtlcliTypstTemplate

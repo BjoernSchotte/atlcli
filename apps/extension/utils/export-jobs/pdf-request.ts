@@ -85,6 +85,9 @@ export function createExtensionPdfJobRequest(
             ...(request.imagePpi !== undefined ? { imagePpi: request.imagePpi } : {}),
           }
         : {}),
+      ...(request.outputPolicy !== undefined
+        ? { outputPolicy: request.outputPolicy }
+        : {}),
     },
   });
 }

@@ -22,6 +22,7 @@ import { runManuscriptCase } from "./manuscript-case.js";
 import { runPdfAbortCase, runPdfCase } from "./pdf-case.js";
 import { runPdfJobParityCase } from "./pdf-job-parity-case.js";
 import { runPdfSettingsCase } from "./pdf-settings-case.js";
+import { runPdfV5Case } from "./pdf-v5-case.js";
 import { runPlaceholderCase } from "./placeholder-case.js";
 import { runScopeCase } from "./scope-case.js";
 import { runSourceSpoolRecoveryCase } from "./source-spool-recovery-case.js";
@@ -40,6 +41,7 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   pdf: runPdfCase,
   "pdf-job-parity": runPdfJobParityCase,
   "pdf-settings": runPdfSettingsCase,
+  "pdf-v5": runPdfV5Case,
   "docx-template-intake": runDocxTemplateIntakeCase,
   blocks: runBlocksCase,
   charts: runChartCase,

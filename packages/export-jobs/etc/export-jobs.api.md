@@ -1306,6 +1306,7 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
         exportedAt?: number;
         imageProfile?: "original" | "standard" | "print";
         imagePpi?: number;
+        outputPolicy?: PdfOutputPolicyV1;
     };
 }
 
@@ -1341,6 +1342,18 @@ export interface PdfExportWatermarkV1 {
     angle?: number;
     size?: number;
 }
+
+// export: PdfOutputPolicyV1
+export interface PdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1,
+        ...PdfOutputStandardV1[]
+    ];
+}
+
+// export: PdfOutputStandardV1
+export type PdfOutputStandardV1 = "a-1b" | "a-1a" | "a-2b" | "a-2u" | "a-2a" | "a-3b" | "a-3u" | "a-3a" | "a-4" | "a-4f" | "a-4e" | "ua-1";
 
 // export: PdfTemplatePackReferenceV1
 export interface PdfTemplatePackReferenceV1 {

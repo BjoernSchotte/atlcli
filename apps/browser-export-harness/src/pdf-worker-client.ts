@@ -20,6 +20,7 @@ interface QueueItem {
   requestId: number;
   bundle: PdfSourceBundle;
   signal?: AbortSignal;
+  outputPolicy?: PdfCompileContext["outputPolicy"];
   resolve: (result: PdfCompileResult) => void;
   reject: (error: unknown) => void;
   abort: () => void;
@@ -80,6 +81,7 @@ export class HarnessPdfWorkerClient implements PdfCompilePort {
         requestId: this.nextRequestId++,
         bundle,
         signal: context.signal,
+        outputPolicy: context.outputPolicy,
         resolve,
         reject,
         abort: () => this.abortItem(item),
@@ -119,7 +121,12 @@ export class HarnessPdfWorkerClient implements PdfCompilePort {
     this.active = item;
     const payload = copiedBundle(item.bundle);
     this.getWorker().postMessage(
-      { kind: "compile", requestId: item.requestId, bundle: payload.bundle },
+      {
+        kind: "compile",
+        requestId: item.requestId,
+        bundle: payload.bundle,
+        ...(item.outputPolicy ? { options: { outputPolicy: item.outputPolicy } } : {}),
+      },
       payload.transfer,
     );
   }

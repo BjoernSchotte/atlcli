@@ -190,6 +190,12 @@ export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
     "none"
 ];
 
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
+];
+
 // export: DESIGN_COVER_COMPOSITION_KINDS
 export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "standard",
@@ -223,6 +229,20 @@ export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal",
     "alpha-lower",
     "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
 ];
 
 // export: DESIGN_HEADER_MODES
@@ -261,6 +281,18 @@ export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
 
 // export: DESIGN_NAVIGATION_DEPTH_MIN_V3
 export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
 
 // export: DESIGN_OUTLINE_LEADERS_V3
 export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
@@ -338,6 +370,14 @@ export declare const DESIGN_VISIBILITIES: readonly [
     "hide"
 ];
 
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
 // export: DesignBookmarkNavigationV3
 export interface DesignBookmarkNavigationV3 {
     enabled: boolean;
@@ -399,6 +439,9 @@ export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
 
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
 
 // export: DesignComponentsV3
 export interface DesignComponentsV3 {
@@ -513,6 +556,20 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
@@ -551,6 +608,12 @@ export interface DesignNavigationV3 {
     headingNumbers: DesignHeadingNumberNavigationV3;
     pageNumbers: DesignPageNumberNavigationV3;
 }
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
 
 // export: DesignOutlineComponentV3
 export interface DesignOutlineComponentV3 {
@@ -764,7 +827,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -1148,6 +1212,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -1223,11 +1297,7 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
 
@@ -1249,7 +1319,12 @@ export interface ValidatePackResult {
 }
 
 // export: validatePdfTemplateDesignV3
-export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
@@ -1618,6 +1693,12 @@ export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
     "none"
 ];
 
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
+];
+
 // export: DESIGN_COVER_COMPOSITION_KINDS
 export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "standard",
@@ -1651,6 +1732,20 @@ export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal",
     "alpha-lower",
     "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
 ];
 
 // export: DESIGN_HEADER_MODES
@@ -1689,6 +1784,18 @@ export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
 
 // export: DESIGN_NAVIGATION_DEPTH_MIN_V3
 export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
 
 // export: DESIGN_OUTLINE_LEADERS_V3
 export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
@@ -1766,6 +1873,14 @@ export declare const DESIGN_VISIBILITIES: readonly [
     "hide"
 ];
 
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
 // export: DesignBookmarkNavigationV3
 export interface DesignBookmarkNavigationV3 {
     enabled: boolean;
@@ -1827,6 +1942,9 @@ export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
 
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
 
 // export: DesignComponentsV3
 export interface DesignComponentsV3 {
@@ -1941,6 +2059,20 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
@@ -1979,6 +2111,12 @@ export interface DesignNavigationV3 {
     headingNumbers: DesignHeadingNumberNavigationV3;
     pageNumbers: DesignPageNumberNavigationV3;
 }
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
 
 // export: DesignOutlineComponentV3
 export interface DesignOutlineComponentV3 {
@@ -2192,7 +2330,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -2576,6 +2715,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -2651,11 +2800,7 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
 
@@ -2677,7 +2822,12 @@ export interface ValidatePackResult {
 }
 
 // export: validatePdfTemplateDesignV3
-export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
@@ -3046,6 +3196,12 @@ export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
     "none"
 ];
 
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
+];
+
 // export: DESIGN_COVER_COMPOSITION_KINDS
 export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "standard",
@@ -3079,6 +3235,20 @@ export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal",
     "alpha-lower",
     "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
 ];
 
 // export: DESIGN_HEADER_MODES
@@ -3117,6 +3287,18 @@ export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
 
 // export: DESIGN_NAVIGATION_DEPTH_MIN_V3
 export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
 
 // export: DESIGN_OUTLINE_LEADERS_V3
 export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
@@ -3194,6 +3376,14 @@ export declare const DESIGN_VISIBILITIES: readonly [
     "hide"
 ];
 
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
 // export: DesignBookmarkNavigationV3
 export interface DesignBookmarkNavigationV3 {
     enabled: boolean;
@@ -3255,6 +3445,9 @@ export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
 
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
 
 // export: DesignComponentsV3
 export interface DesignComponentsV3 {
@@ -3369,6 +3562,20 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
@@ -3407,6 +3614,12 @@ export interface DesignNavigationV3 {
     headingNumbers: DesignHeadingNumberNavigationV3;
     pageNumbers: DesignPageNumberNavigationV3;
 }
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
 
 // export: DesignOutlineComponentV3
 export interface DesignOutlineComponentV3 {
@@ -3620,7 +3833,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -4004,6 +4218,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -4079,11 +4303,7 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
 
@@ -4105,7 +4325,12 @@ export interface ValidatePackResult {
 }
 
 // export: validatePdfTemplateDesignV3
-export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
@@ -4474,6 +4699,12 @@ export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
     "none"
 ];
 
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
+];
+
 // export: DESIGN_COVER_COMPOSITION_KINDS
 export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "standard",
@@ -4507,6 +4738,20 @@ export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal",
     "alpha-lower",
     "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
 ];
 
 // export: DESIGN_HEADER_MODES
@@ -4545,6 +4790,18 @@ export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
 
 // export: DESIGN_NAVIGATION_DEPTH_MIN_V3
 export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
 
 // export: DESIGN_OUTLINE_LEADERS_V3
 export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
@@ -4622,6 +4879,14 @@ export declare const DESIGN_VISIBILITIES: readonly [
     "hide"
 ];
 
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
 // export: DesignBookmarkNavigationV3
 export interface DesignBookmarkNavigationV3 {
     enabled: boolean;
@@ -4683,6 +4948,9 @@ export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
 
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
 
 // export: DesignComponentsV3
 export interface DesignComponentsV3 {
@@ -4797,6 +5065,20 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
@@ -4835,6 +5117,12 @@ export interface DesignNavigationV3 {
     headingNumbers: DesignHeadingNumberNavigationV3;
     pageNumbers: DesignPageNumberNavigationV3;
 }
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
 
 // export: DesignOutlineComponentV3
 export interface DesignOutlineComponentV3 {
@@ -5048,7 +5336,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -5432,6 +5721,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -5507,11 +5806,7 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
 
@@ -5533,7 +5828,12 @@ export interface ValidatePackResult {
 }
 
 // export: validatePdfTemplateDesignV3
-export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
