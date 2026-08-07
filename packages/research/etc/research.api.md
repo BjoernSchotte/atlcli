@@ -620,6 +620,32 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
+
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1: "atlcli.chat-answer-feedback-journal/v1";
+
+// export: CHAT_ANSWER_FEEDBACK_RATINGS_V1
+export declare const CHAT_ANSWER_FEEDBACK_RATINGS_V1: readonly [
+    "helpful",
+    "not-helpful"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_REASON_CODES_V1
+export declare const CHAT_ANSWER_FEEDBACK_REASON_CODES_V1: readonly [
+    "incorrect",
+    "incomplete",
+    "wrong-source",
+    "citation-problem",
+    "unclear",
+    "too-slow",
+    "other"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_SCHEMA_V1: "atlcli.chat-answer-feedback/v1";
+
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
@@ -898,6 +924,7 @@ export interface ChatAgentPortV1 {
     }): Promise<ChatConversationReplayV1 | null>;
     artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
     sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    submitFeedback(input: ChatAgentSubmitFeedbackV1): Promise<ChatAnswerFeedbackV1>;
     resetConversation(): Promise<void>;
 }
 
@@ -924,8 +951,39 @@ export interface ChatAgentStreamV1 {
     onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
+// export: ChatAgentSubmitFeedbackV1
+export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+}
+
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerFeedbackJournalV1
+export interface ChatAnswerFeedbackJournalV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    feedback: ChatAnswerFeedbackV1[];
+}
+
+// export: ChatAnswerFeedbackRatingV1
+export type ChatAnswerFeedbackRatingV1 = (typeof CHAT_ANSWER_FEEDBACK_RATINGS_V1)[number];
+
+// export: ChatAnswerFeedbackReasonCodeV1
+export type ChatAnswerFeedbackReasonCodeV1 = (typeof CHAT_ANSWER_FEEDBACK_REASON_CODES_V1)[number];
+
+// export: ChatAnswerFeedbackV1
+export interface ChatAnswerFeedbackV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    updatedAt: string;
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes: ChatAnswerFeedbackReasonCodeV1[];
+}
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -2617,6 +2675,12 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
+// export: normalizeChatAnswerFeedbackJournalV1
+export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
+
+// export: normalizeChatAnswerFeedbackV1
+export declare function normalizeChatAnswerFeedbackV1(value: unknown): ChatAnswerFeedbackV1;
 
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
@@ -7474,6 +7538,23 @@ export declare class WorkspaceChatActivityJournalV1 {
     referencesForTurn(turnId: string): string[];
     eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
     flush(): Promise<void>;
+}
+
+// export: WorkspaceChatAnswerFeedbackJournalV1
+export declare class WorkspaceChatAnswerFeedbackJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+    }): Promise<WorkspaceChatAnswerFeedbackJournalV1>;
+    record(input: {
+        turnId: string;
+        rating: ChatAnswerFeedbackRatingV1;
+        reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+        updatedAt: string;
+    }): Promise<ChatAnswerFeedbackV1>;
+    forTurn(turnId: string): ChatAnswerFeedbackV1 | null;
 }
 
 // export: WorkspaceChatInteractionControllerV1
@@ -8224,6 +8305,32 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
+
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1: "atlcli.chat-answer-feedback-journal/v1";
+
+// export: CHAT_ANSWER_FEEDBACK_RATINGS_V1
+export declare const CHAT_ANSWER_FEEDBACK_RATINGS_V1: readonly [
+    "helpful",
+    "not-helpful"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_REASON_CODES_V1
+export declare const CHAT_ANSWER_FEEDBACK_REASON_CODES_V1: readonly [
+    "incorrect",
+    "incomplete",
+    "wrong-source",
+    "citation-problem",
+    "unclear",
+    "too-slow",
+    "other"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_SCHEMA_V1: "atlcli.chat-answer-feedback/v1";
+
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
@@ -8502,6 +8609,7 @@ export interface ChatAgentPortV1 {
     }): Promise<ChatConversationReplayV1 | null>;
     artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
     sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    submitFeedback(input: ChatAgentSubmitFeedbackV1): Promise<ChatAnswerFeedbackV1>;
     resetConversation(): Promise<void>;
 }
 
@@ -8528,8 +8636,39 @@ export interface ChatAgentStreamV1 {
     onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
+// export: ChatAgentSubmitFeedbackV1
+export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+}
+
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerFeedbackJournalV1
+export interface ChatAnswerFeedbackJournalV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    feedback: ChatAnswerFeedbackV1[];
+}
+
+// export: ChatAnswerFeedbackRatingV1
+export type ChatAnswerFeedbackRatingV1 = (typeof CHAT_ANSWER_FEEDBACK_RATINGS_V1)[number];
+
+// export: ChatAnswerFeedbackReasonCodeV1
+export type ChatAnswerFeedbackReasonCodeV1 = (typeof CHAT_ANSWER_FEEDBACK_REASON_CODES_V1)[number];
+
+// export: ChatAnswerFeedbackV1
+export interface ChatAnswerFeedbackV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    updatedAt: string;
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes: ChatAnswerFeedbackReasonCodeV1[];
+}
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -10212,6 +10351,12 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
+// export: normalizeChatAnswerFeedbackJournalV1
+export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
+
+// export: normalizeChatAnswerFeedbackV1
+export declare function normalizeChatAnswerFeedbackV1(value: unknown): ChatAnswerFeedbackV1;
 
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
@@ -15060,6 +15205,23 @@ export declare class WorkspaceChatActivityJournalV1 {
     flush(): Promise<void>;
 }
 
+// export: WorkspaceChatAnswerFeedbackJournalV1
+export declare class WorkspaceChatAnswerFeedbackJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+    }): Promise<WorkspaceChatAnswerFeedbackJournalV1>;
+    record(input: {
+        turnId: string;
+        rating: ChatAnswerFeedbackRatingV1;
+        reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+        updatedAt: string;
+    }): Promise<ChatAnswerFeedbackV1>;
+    forTurn(turnId: string): ChatAnswerFeedbackV1 | null;
+}
+
 // export: WorkspaceChatInteractionControllerV1
 export declare class WorkspaceChatInteractionControllerV1 {
     #private;
@@ -15808,6 +15970,32 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
+
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1: "atlcli.chat-answer-feedback-journal/v1";
+
+// export: CHAT_ANSWER_FEEDBACK_RATINGS_V1
+export declare const CHAT_ANSWER_FEEDBACK_RATINGS_V1: readonly [
+    "helpful",
+    "not-helpful"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_REASON_CODES_V1
+export declare const CHAT_ANSWER_FEEDBACK_REASON_CODES_V1: readonly [
+    "incorrect",
+    "incomplete",
+    "wrong-source",
+    "citation-problem",
+    "unclear",
+    "too-slow",
+    "other"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_SCHEMA_V1: "atlcli.chat-answer-feedback/v1";
+
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
@@ -16086,6 +16274,7 @@ export interface ChatAgentPortV1 {
     }): Promise<ChatConversationReplayV1 | null>;
     artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
     sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    submitFeedback(input: ChatAgentSubmitFeedbackV1): Promise<ChatAnswerFeedbackV1>;
     resetConversation(): Promise<void>;
 }
 
@@ -16112,8 +16301,39 @@ export interface ChatAgentStreamV1 {
     onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
+// export: ChatAgentSubmitFeedbackV1
+export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+}
+
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerFeedbackJournalV1
+export interface ChatAnswerFeedbackJournalV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    feedback: ChatAnswerFeedbackV1[];
+}
+
+// export: ChatAnswerFeedbackRatingV1
+export type ChatAnswerFeedbackRatingV1 = (typeof CHAT_ANSWER_FEEDBACK_RATINGS_V1)[number];
+
+// export: ChatAnswerFeedbackReasonCodeV1
+export type ChatAnswerFeedbackReasonCodeV1 = (typeof CHAT_ANSWER_FEEDBACK_REASON_CODES_V1)[number];
+
+// export: ChatAnswerFeedbackV1
+export interface ChatAnswerFeedbackV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    updatedAt: string;
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes: ChatAnswerFeedbackReasonCodeV1[];
+}
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -17805,6 +18025,12 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
+// export: normalizeChatAnswerFeedbackJournalV1
+export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
+
+// export: normalizeChatAnswerFeedbackV1
+export declare function normalizeChatAnswerFeedbackV1(value: unknown): ChatAnswerFeedbackV1;
 
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
@@ -22662,6 +22888,23 @@ export declare class WorkspaceChatActivityJournalV1 {
     referencesForTurn(turnId: string): string[];
     eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
     flush(): Promise<void>;
+}
+
+// export: WorkspaceChatAnswerFeedbackJournalV1
+export declare class WorkspaceChatAnswerFeedbackJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+    }): Promise<WorkspaceChatAnswerFeedbackJournalV1>;
+    record(input: {
+        turnId: string;
+        rating: ChatAnswerFeedbackRatingV1;
+        reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+        updatedAt: string;
+    }): Promise<ChatAnswerFeedbackV1>;
+    forTurn(turnId: string): ChatAnswerFeedbackV1 | null;
 }
 
 // export: WorkspaceChatInteractionControllerV1
@@ -23421,6 +23664,32 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
+
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1: "atlcli.chat-answer-feedback-journal/v1";
+
+// export: CHAT_ANSWER_FEEDBACK_RATINGS_V1
+export declare const CHAT_ANSWER_FEEDBACK_RATINGS_V1: readonly [
+    "helpful",
+    "not-helpful"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_REASON_CODES_V1
+export declare const CHAT_ANSWER_FEEDBACK_REASON_CODES_V1: readonly [
+    "incorrect",
+    "incomplete",
+    "wrong-source",
+    "citation-problem",
+    "unclear",
+    "too-slow",
+    "other"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_SCHEMA_V1: "atlcli.chat-answer-feedback/v1";
+
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
@@ -23699,6 +23968,7 @@ export interface ChatAgentPortV1 {
     }): Promise<ChatConversationReplayV1 | null>;
     artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
     sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    submitFeedback(input: ChatAgentSubmitFeedbackV1): Promise<ChatAnswerFeedbackV1>;
     resetConversation(): Promise<void>;
 }
 
@@ -23734,8 +24004,39 @@ export interface ChatAgentStreamV1 {
     onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
+// export: ChatAgentSubmitFeedbackV1
+export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+}
+
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerFeedbackJournalV1
+export interface ChatAnswerFeedbackJournalV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    feedback: ChatAnswerFeedbackV1[];
+}
+
+// export: ChatAnswerFeedbackRatingV1
+export type ChatAnswerFeedbackRatingV1 = (typeof CHAT_ANSWER_FEEDBACK_RATINGS_V1)[number];
+
+// export: ChatAnswerFeedbackReasonCodeV1
+export type ChatAnswerFeedbackReasonCodeV1 = (typeof CHAT_ANSWER_FEEDBACK_REASON_CODES_V1)[number];
+
+// export: ChatAnswerFeedbackV1
+export interface ChatAnswerFeedbackV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    updatedAt: string;
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes: ChatAnswerFeedbackReasonCodeV1[];
+}
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -25620,6 +25921,12 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
+// export: normalizeChatAnswerFeedbackJournalV1
+export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
+
+// export: normalizeChatAnswerFeedbackV1
+export declare function normalizeChatAnswerFeedbackV1(value: unknown): ChatAnswerFeedbackV1;
 
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
@@ -30716,6 +31023,23 @@ export declare class WorkspaceChatActivityJournalV1 {
     flush(): Promise<void>;
 }
 
+// export: WorkspaceChatAnswerFeedbackJournalV1
+export declare class WorkspaceChatAnswerFeedbackJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+    }): Promise<WorkspaceChatAnswerFeedbackJournalV1>;
+    record(input: {
+        turnId: string;
+        rating: ChatAnswerFeedbackRatingV1;
+        reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+        updatedAt: string;
+    }): Promise<ChatAnswerFeedbackV1>;
+    forTurn(turnId: string): ChatAnswerFeedbackV1 | null;
+}
+
 // export: WorkspaceChatInteractionControllerV1
 export declare class WorkspaceChatInteractionControllerV1 {
     #private;
@@ -31491,6 +31815,32 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
+
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1: "atlcli.chat-answer-feedback-journal/v1";
+
+// export: CHAT_ANSWER_FEEDBACK_RATINGS_V1
+export declare const CHAT_ANSWER_FEEDBACK_RATINGS_V1: readonly [
+    "helpful",
+    "not-helpful"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_REASON_CODES_V1
+export declare const CHAT_ANSWER_FEEDBACK_REASON_CODES_V1: readonly [
+    "incorrect",
+    "incomplete",
+    "wrong-source",
+    "citation-problem",
+    "unclear",
+    "too-slow",
+    "other"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_SCHEMA_V1: "atlcli.chat-answer-feedback/v1";
+
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
@@ -31769,6 +32119,7 @@ export interface ChatAgentPortV1 {
     }): Promise<ChatConversationReplayV1 | null>;
     artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
     sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    submitFeedback(input: ChatAgentSubmitFeedbackV1): Promise<ChatAnswerFeedbackV1>;
     resetConversation(): Promise<void>;
 }
 
@@ -31804,8 +32155,39 @@ export interface ChatAgentStreamV1 {
     onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
+// export: ChatAgentSubmitFeedbackV1
+export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+}
+
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerFeedbackJournalV1
+export interface ChatAnswerFeedbackJournalV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    feedback: ChatAnswerFeedbackV1[];
+}
+
+// export: ChatAnswerFeedbackRatingV1
+export type ChatAnswerFeedbackRatingV1 = (typeof CHAT_ANSWER_FEEDBACK_RATINGS_V1)[number];
+
+// export: ChatAnswerFeedbackReasonCodeV1
+export type ChatAnswerFeedbackReasonCodeV1 = (typeof CHAT_ANSWER_FEEDBACK_REASON_CODES_V1)[number];
+
+// export: ChatAnswerFeedbackV1
+export interface ChatAnswerFeedbackV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    updatedAt: string;
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes: ChatAnswerFeedbackReasonCodeV1[];
+}
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -33695,6 +34077,12 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
+// export: normalizeChatAnswerFeedbackJournalV1
+export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
+
+// export: normalizeChatAnswerFeedbackV1
+export declare function normalizeChatAnswerFeedbackV1(value: unknown): ChatAnswerFeedbackV1;
 
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
@@ -38834,6 +39222,23 @@ export declare class WorkspaceChatActivityJournalV1 {
     flush(): Promise<void>;
 }
 
+// export: WorkspaceChatAnswerFeedbackJournalV1
+export declare class WorkspaceChatAnswerFeedbackJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+    }): Promise<WorkspaceChatAnswerFeedbackJournalV1>;
+    record(input: {
+        turnId: string;
+        rating: ChatAnswerFeedbackRatingV1;
+        reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+        updatedAt: string;
+    }): Promise<ChatAnswerFeedbackV1>;
+    forTurn(turnId: string): ChatAnswerFeedbackV1 | null;
+}
+
 // export: WorkspaceChatInteractionControllerV1
 export declare class WorkspaceChatInteractionControllerV1 {
     #private;
@@ -41373,6 +41778,32 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
+
+// export: CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1: "atlcli.chat-answer-feedback-journal/v1";
+
+// export: CHAT_ANSWER_FEEDBACK_RATINGS_V1
+export declare const CHAT_ANSWER_FEEDBACK_RATINGS_V1: readonly [
+    "helpful",
+    "not-helpful"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_REASON_CODES_V1
+export declare const CHAT_ANSWER_FEEDBACK_REASON_CODES_V1: readonly [
+    "incorrect",
+    "incomplete",
+    "wrong-source",
+    "citation-problem",
+    "unclear",
+    "too-slow",
+    "other"
+];
+
+// export: CHAT_ANSWER_FEEDBACK_SCHEMA_V1
+export declare const CHAT_ANSWER_FEEDBACK_SCHEMA_V1: "atlcli.chat-answer-feedback/v1";
+
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
@@ -41651,6 +42082,7 @@ export interface ChatAgentPortV1 {
     }): Promise<ChatConversationReplayV1 | null>;
     artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
     sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+    submitFeedback(input: ChatAgentSubmitFeedbackV1): Promise<ChatAnswerFeedbackV1>;
     resetConversation(): Promise<void>;
 }
 
@@ -41686,8 +42118,39 @@ export interface ChatAgentStreamV1 {
     onPresentation?: (event: import("../contracts.js").ChatPresentationStreamEventV1) => void;
 }
 
+// export: ChatAgentSubmitFeedbackV1
+export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+}
+
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerFeedbackJournalV1
+export interface ChatAnswerFeedbackJournalV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_JOURNAL_SCHEMA_V1;
+    conversationId: string;
+    revision: number;
+    feedback: ChatAnswerFeedbackV1[];
+}
+
+// export: ChatAnswerFeedbackRatingV1
+export type ChatAnswerFeedbackRatingV1 = (typeof CHAT_ANSWER_FEEDBACK_RATINGS_V1)[number];
+
+// export: ChatAnswerFeedbackReasonCodeV1
+export type ChatAnswerFeedbackReasonCodeV1 = (typeof CHAT_ANSWER_FEEDBACK_REASON_CODES_V1)[number];
+
+// export: ChatAnswerFeedbackV1
+export interface ChatAnswerFeedbackV1 {
+    schema: typeof CHAT_ANSWER_FEEDBACK_SCHEMA_V1;
+    conversationId: string;
+    turnId: string;
+    revision: number;
+    updatedAt: string;
+    rating: ChatAnswerFeedbackRatingV1;
+    reasonCodes: ChatAnswerFeedbackReasonCodeV1[];
+}
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -43577,6 +44040,12 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
+
+// export: normalizeChatAnswerFeedbackJournalV1
+export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
+
+// export: normalizeChatAnswerFeedbackV1
+export declare function normalizeChatAnswerFeedbackV1(value: unknown): ChatAnswerFeedbackV1;
 
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
@@ -48675,6 +49144,23 @@ export declare class WorkspaceChatActivityJournalV1 {
     referencesForTurn(turnId: string): string[];
     eventsForReferences(references: readonly string[]): ChatActivityEventV1[];
     flush(): Promise<void>;
+}
+
+// export: WorkspaceChatAnswerFeedbackJournalV1
+export declare class WorkspaceChatAnswerFeedbackJournalV1 {
+    #private;
+    private constructor();
+    static open(input: {
+        workspace: ResearchWorkspace;
+        conversationId: string;
+    }): Promise<WorkspaceChatAnswerFeedbackJournalV1>;
+    record(input: {
+        turnId: string;
+        rating: ChatAnswerFeedbackRatingV1;
+        reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
+        updatedAt: string;
+    }): Promise<ChatAnswerFeedbackV1>;
+    forTurn(turnId: string): ChatAnswerFeedbackV1 | null;
 }
 
 // export: WorkspaceChatInteractionControllerV1

@@ -15,6 +15,7 @@ function fixturePort(): ChatAgentPortV1 {
     async replay() { return null; },
     async artifact() { return null; },
     async sources() { return null; },
+    async submitFeedback() { throw new Error("not used"); },
     async resetConversation() {},
   };
 }
@@ -35,6 +36,7 @@ describe("host-neutral ChatAgentPortV1", () => {
       "sources",
       "startTurn",
       "stop",
+      "submitFeedback",
     ]);
     expect(port).not.toHaveProperty("apiKey");
     expect(port).not.toHaveProperty("provider");

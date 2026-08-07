@@ -33,6 +33,7 @@ import {
   parseChatSessionV1,
   parseChatInteractionStateV1,
   WorkspaceChatActivityJournalV1,
+  WorkspaceChatAnswerFeedbackJournalV1,
 } from "@atlcli/research/browser";
 import {
   RESEARCH_ANTHROPIC_SESSION_KEY,
@@ -180,6 +181,54 @@ async function readChatSessionProjectionV1(input: {
         return structuredClone(eventsByTurn.get(turnId) ?? []);
       },
     };
+  } finally {
+    store.close();
+  }
+}
+
+async function recordBrowserChatAnswerFeedbackV1(
+  input: import("@atlcli/research").ChatAgentSubmitFeedbackV1,
+): Promise<import("@atlcli/research").ChatAnswerFeedbackV1> {
+  if (!RESEARCH_SESSION_ID_PATTERN.test(input.conversationId)) {
+    throw new ResearchContractError("invalid-request", "The Chat conversation is invalid.");
+  }
+  const identity = await browserChatHostIdentityV1();
+  const store = await IndexedDbResearchSessionStoreV1.open();
+  try {
+    if (!await store.read(input.conversationId)) {
+      throw new ResearchContractError("invalid-request", "The Chat conversation is unavailable.");
+    }
+    const workspace = await store.workspace(input.conversationId);
+    const serialized = await workspace.readFile(CHAT_SESSION_PATH_V1);
+    if (serialized === undefined) {
+      throw new ResearchContractError("invalid-request", "The Chat conversation is unavailable.");
+    }
+    const session = parseChatSessionV1(JSON.parse(serialized));
+    assertChatSessionBindingV1({
+      session,
+      conversationId: input.conversationId,
+      identity,
+      tenantOrigin: input.siteOrigin,
+    });
+    const turn = session.conversation.recentTurns.find((candidate) =>
+      candidate.id === input.turnId
+    );
+    if (!turn?.finalAnswer || turn.status !== "complete") {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Chat answer feedback requires a completed answer.",
+      );
+    }
+    const journal = await WorkspaceChatAnswerFeedbackJournalV1.open({
+      workspace,
+      conversationId: input.conversationId,
+    });
+    return await journal.record({
+      turnId: input.turnId,
+      rating: input.rating,
+      reasonCodes: input.reasonCodes,
+      updatedAt: new Date().toISOString(),
+    });
   } finally {
     store.close();
   }
@@ -1490,6 +1539,7 @@ export function chromeChatAgentPort(research: ResearchPort): ChatAgentPortV1 {
           }
         : null;
     },
+    submitFeedback: recordBrowserChatAnswerFeedbackV1,
     async resetConversation() {
       await research.resetChatConversation?.();
     },

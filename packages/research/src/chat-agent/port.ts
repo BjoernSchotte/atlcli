@@ -8,6 +8,11 @@ import type {
   ChatUserQuestionAnswerV1,
   ChatUserQuestionV1,
 } from "./interaction.js";
+import type {
+  ChatAnswerFeedbackReasonCodeV1,
+  ChatAnswerFeedbackRatingV1,
+  ChatAnswerFeedbackV1,
+} from "./feedback.js";
 
 /** Ephemeral callbacks for one active Chat turn. They are never durable authority. */
 export interface ChatAgentStreamV1 {
@@ -40,6 +45,11 @@ export interface ChatAgentResumeTurnV1 extends ChatAgentCheckpointV1 {
 
 export interface ChatAgentAnswerQuestionV1 extends ChatAgentCheckpointV1 {
   answer: ChatUserQuestionAnswerV1;
+}
+
+export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
+  rating: ChatAnswerFeedbackRatingV1;
+  reasonCodes?: readonly ChatAnswerFeedbackReasonCodeV1[];
 }
 
 export interface ChatConversationHistoryItemV1 {
@@ -107,6 +117,7 @@ export interface ChatAgentPortV1 {
   }): Promise<ChatConversationReplayV1 | null>;
   artifact(input: ChatAgentCheckpointV1): Promise<ChatTurnArtifactV1 | null>;
   sources(input: ChatAgentCheckpointV1): Promise<ChatTurnSourcesV1 | null>;
+  submitFeedback(input: ChatAgentSubmitFeedbackV1): Promise<ChatAnswerFeedbackV1>;
   resetConversation(): Promise<void>;
 }
 
@@ -124,6 +135,7 @@ export function defineChatAgentPortV1(port: ChatAgentPortV1): ChatAgentPortV1 {
     replay: port.replay.bind(port),
     artifact: port.artifact.bind(port),
     sources: port.sources.bind(port),
+    submitFeedback: port.submitFeedback.bind(port),
     resetConversation: port.resetConversation.bind(port),
   });
 }

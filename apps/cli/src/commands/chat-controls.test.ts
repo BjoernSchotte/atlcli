@@ -13,6 +13,7 @@ const siteOrigin = "https://tenant-a.atlassian.net";
 function fixture() {
   let state: ChatInteractionStateV1 | null = null;
   let stopped = false;
+  const feedback: Array<{ rating: string; reasonCodes?: readonly string[] }> = [];
   const port = defineChatAgentPortV1({
     async startTurn() { throw new Error("not used"); },
     async answerQuestion() { throw new Error("not used"); },
@@ -38,9 +39,53 @@ function fixture() {
     },
     async stop() { stopped = true; return "stop_requested"; },
     async listHistory() { return []; },
-    async replay() { return null; },
+    async replay() {
+      return {
+        conversationId: "research-session:cli-controls",
+        turnId: "research-turn:complete",
+        objective: "Synthetic question.",
+        events: [],
+        finalAnswer: {
+          schema: "atlcli.chat-answer/v1",
+          messageMarkdown: "Synthetic answer.",
+          citations: [],
+          evidenceRefs: [],
+          gaps: [],
+          strategy: {
+            qualityMode: "quick",
+            path: "direct",
+            delegated: false,
+            reasonCode: "quick-direct",
+            reasonCodes: ["quick-direct"],
+            ambiguityDisposition: "none",
+            requiredCapabilities: ["chat-answer"],
+            expectedComplexity: "simple",
+            qualityRisks: [],
+          },
+          run: {
+            model: "synthetic",
+            startedAt: "2026-08-06T12:00:00.000Z",
+            completedAt: "2026-08-06T12:00:01.000Z",
+            durationMs: 1_000,
+            counts: { ptcCalls: 0, httpCalls: 0, jiraItems: 0, confluenceItems: 0 },
+          },
+        },
+      };
+    },
     async artifact() { return null; },
     async sources() { return null; },
+    async submitFeedback(input) {
+      feedback.push({ rating: input.rating, reasonCodes: input.reasonCodes });
+      return {
+        schema: "atlcli.chat-answer-feedback/v1",
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        revision: 1,
+        updatedAt: "2026-08-06T12:00:02.000Z",
+        rating: input.rating,
+        reasonCodes: [...(input.reasonCodes ?? [])],
+      };
+    },
     async resetConversation() {},
   });
   let id = 0;
@@ -50,7 +95,7 @@ function fixture() {
     siteOrigin,
     createId: (kind) => `chat-${kind}:${++id}`,
   });
-  return { run, stopped: () => stopped };
+  return { run, stopped: () => stopped, feedback };
 }
 
 describe("line-oriented CLI Chat controls", () => {
@@ -88,5 +133,18 @@ describe("line-oriented CLI Chat controls", () => {
     await expect(controls.run("/delete missing")).rejects.toThrow("unavailable");
     await expect(controls.run("/steer")).rejects.toThrow("Missing value");
     await expect(controls.run("/unknown")).rejects.toThrow("Unknown Chat control");
+  });
+
+  test("records body-free feedback for the latest completed answer", async () => {
+    const controls = fixture();
+    expect(await controls.run("/feedback helpful")).toMatchObject({ kind: "feedback" });
+    expect(await controls.run("/feedback not-helpful wrong-source,incomplete"))
+      .toMatchObject({ kind: "feedback" });
+    expect(controls.feedback).toEqual([
+      { rating: "helpful", reasonCodes: [] },
+      { rating: "not-helpful", reasonCodes: ["wrong-source", "incomplete"] },
+    ]);
+    await expect(controls.run("/feedback not-helpful private-comment"))
+      .rejects.toThrow("Unknown feedback reason");
   });
 });

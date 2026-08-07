@@ -3,6 +3,7 @@ import {
   CHAT_SESSION_PATH_V1,
   ChatContractError,
   WorkspaceChatActivityJournalV1,
+  WorkspaceChatAnswerFeedbackJournalV1,
   WorkspaceChatInteractionControllerV1,
   applyChatInteractionControlV1,
   assertChatInteractionBindingV1,
@@ -358,6 +359,34 @@ export function createCliChatAgentPortV1(
             sources: structuredClone(answer.citations),
           }
         : null;
+    },
+    async submitFeedback(feedback) {
+      assertCheckpoint(feedback);
+      const projection = await readConversation({
+        store: input.store,
+        conversationId: feedback.conversationId,
+        siteOrigin: feedback.siteOrigin,
+        hostIdentity: input.hostIdentity,
+      });
+      const turn = projection?.session.conversation.recentTurns.find((candidate) =>
+        candidate.id === feedback.turnId
+      );
+      if (!projection || !turn?.finalAnswer || turn.status !== "complete") {
+        throw new ChatContractError(
+          "invalid-request",
+          "Chat answer feedback requires a completed answer.",
+        );
+      }
+      const journal = await WorkspaceChatAnswerFeedbackJournalV1.open({
+        workspace: projection.workspace,
+        conversationId: feedback.conversationId,
+      });
+      return journal.record({
+        turnId: feedback.turnId,
+        rating: feedback.rating,
+        reasonCodes: feedback.reasonCodes,
+        updatedAt: (input.now?.() ?? new Date()).toISOString(),
+      });
     },
     async resetConversation() {
       // The one-shot CLI has no mutable active-conversation pointer.

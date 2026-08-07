@@ -1145,7 +1145,7 @@ the full CLI/MV3 fault matrix. All shapes preserve the same product semantics.
       for complex ones.
 - [ ] Add at least one browser and one CLI restart/steering scenario to the
       release-blocking suite.
-- [ ] Add lightweight answer feedback (for example useful/not useful plus an
+- [x] Add lightweight answer feedback (for example useful/not useful plus an
       optional reason) as an opt-in, privacy-safe online-evaluation signal.
 - [ ] Evaluate a cheap pre-supervisor domain/direct-versus-agentic classifier
       only after baseline Auto-routing data exists; adopt it only if it removes a

@@ -1246,7 +1246,7 @@ Implementation:
 - [ ] Calibrate any model judge against hand-labelled anchors and keep it
       diagnostic until human agreement/error thresholds are reviewed and
       accepted.
-- [ ] Add privacy-safe optional answer feedback without committing tenant-derived
+- [x] Add privacy-safe optional answer feedback without committing tenant-derived
       text.
 - [ ] Remove the old Chat branch from `runResearchAgent`, its legacy research
       prompt, compatibility-only UI routing, and obsolete tests only after all
@@ -1270,8 +1270,20 @@ serial comparison contract gives `legacy-chat`, Quick, Auto, Deep, and explicit
 Deep Research the identical scenario, corpus, scope, and budget while rejecting
 Chat report finalization or a Deep Research run without exactly one report.
 Focused evaluation and routing suites pass all twenty cases. Runtime scoring,
-judge calibration, optional feedback, legacy deletion, and release acceptance
-remain separate open gates.
+judge calibration, legacy deletion, and release acceptance remain separate open
+gates.
+
+Optional-feedback proof (2026-08-07): the shared `ChatAgentPortV1` now accepts
+helpful/not-helpful feedback for a completed, tenant-bound turn. Both CLI and
+MV3 adapters validate the durable conversation and final answer before writing
+a conversation-local journal. That journal permits only random conversation/
+turn identifiers, a rating, closed reason codes, revision, and timestamp; its
+schema has no question, answer, citation, URL, tenant, provider, reasoning, or
+free-text field. The line-oriented CLI exposes `/feedback`; the Sidebar presents
+small accessible helpful/not-helpful actions. Core privacy, replacement,
+foreign-conversation, CLI adapter/control, and Sidebar presenter tests pass;
+root typecheck, public API/closure guards, production MV3 build/output gate, and
+tracked-tree privacy scan also pass.
 
 Automated proof:
 

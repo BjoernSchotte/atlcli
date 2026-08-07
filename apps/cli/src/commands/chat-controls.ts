@@ -1,10 +1,12 @@
 import type {
+  ChatAnswerFeedbackReasonCodeV1,
   ChatAgentPortV1,
   ChatInteractionStateV1,
 } from "@atlcli/research/node";
+import { CHAT_ANSWER_FEEDBACK_REASON_CODES_V1 } from "@atlcli/research/node";
 
 export type CliChatControlResultV1 = {
-  kind: "ignored" | "help" | "queue" | "queued" | "edited" | "removed" | "steered" | "stopped";
+  kind: "ignored" | "help" | "queue" | "queued" | "edited" | "removed" | "steered" | "stopped" | "feedback";
   message: string;
   state?: ChatInteractionStateV1;
 };
@@ -52,6 +54,7 @@ export async function handleCliChatControlLineV1(input: {
         "/edit <id> <text>     edit a queued message",
         "/delete <id>          remove a queued message",
         "/stop                 stop the active turn",
+        "/feedback <helpful|not-helpful> [reason,...]  rate the latest completed answer",
       ].join("\n"),
     };
   }
@@ -66,6 +69,38 @@ export async function handleCliChatControlLineV1(input: {
     return {
       kind: "stopped",
       message: status === "stop_requested" ? "Stop requested." : "No Chat turn is active.",
+    };
+  }
+  if (line.startsWith("/feedback")) {
+    const value = requireValue(
+      argument(line, "/feedback"),
+      "/feedback <helpful|not-helpful> [reason,...]",
+    );
+    const [rating, reasons = ""] = value.split(/\s+/u, 2);
+    if (rating !== "helpful" && rating !== "not-helpful") {
+      throw new Error("Feedback must be helpful or not-helpful.");
+    }
+    const allowed = new Set<string>(CHAT_ANSWER_FEEDBACK_REASON_CODES_V1);
+    const reasonCodes = reasons
+      ? [...new Set(reasons.split(",").map((reason) => reason.trim()).filter(Boolean))]
+      : [];
+    if (reasonCodes.some((reason) => !allowed.has(reason))) {
+      throw new Error(
+        `Unknown feedback reason. Use: ${CHAT_ANSWER_FEEDBACK_REASON_CODES_V1.join(", ")}.`,
+      );
+    }
+    const replay = await input.port.replay({ siteOrigin: input.siteOrigin });
+    if (!replay?.finalAnswer) throw new Error("No completed Chat answer is available to rate.");
+    await input.port.submitFeedback({
+      siteOrigin: input.siteOrigin,
+      conversationId: replay.conversationId,
+      turnId: replay.turnId,
+      rating,
+      reasonCodes: reasonCodes as ChatAnswerFeedbackReasonCodeV1[],
+    });
+    return {
+      kind: "feedback",
+      message: rating === "helpful" ? "Feedback saved: helpful." : "Feedback saved: not helpful.",
     };
   }
   const current = await input.port.getInteraction(input.siteOrigin);

@@ -12,6 +12,8 @@ import {
   Search,
   Square,
   Telescope,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   X,
 } from "lucide-react";
@@ -1340,6 +1342,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [progress, setProgress] = useState("");
   const [activity, setActivity] = useState<ResearchTimelineEventV1[]>([]);
   const [report, setReport] = useState<ResearchReport | ChatAnswerV1 | null>(null);
+  const [answerFeedbackRating, setAnswerFeedbackRating] = useState<
+    "helpful" | "not-helpful" | null
+  >(null);
   const [raw, setRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingChatQuestion, setPendingChatQuestion] =
@@ -1485,6 +1490,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     publishChatInteraction(state);
     return state;
   }
+
+  useEffect(() => {
+    setAnswerFeedbackRating(null);
+  }, [report]);
 
   useEffect(() => {
     let active = true;
@@ -1741,6 +1750,37 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     })));
     setReport(replay.finalAnswer ?? null);
     setConversationMenuOpen(false);
+  }
+
+  async function submitAnswerFeedback(
+    rating: "helpful" | "not-helpful",
+  ): Promise<void> {
+    const conversationId = activeChatConversationIdRef.current;
+    if (!chatPort || !site?.origin || !conversationId || report?.schema !== "atlcli.chat-answer/v1") {
+      return;
+    }
+    try {
+      const replay = await chatPort.replay({
+        siteOrigin: site.origin,
+        conversationId,
+      });
+      if (!replay?.finalAnswer) {
+        throw new ResearchContractError(
+          "invalid-request",
+          t("research.chat.feedback.unavailable"),
+        );
+      }
+      await chatPort.submitFeedback({
+        siteOrigin: site.origin,
+        conversationId: replay.conversationId,
+        turnId: replay.turnId,
+        rating,
+      });
+      setAnswerFeedbackRating(rating);
+      setActionStatus(t("research.chat.feedback.saved"));
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.chat.feedback.unavailable"));
+    }
   }
 
   async function refreshScopeReviews(): Promise<void> {
@@ -3743,6 +3783,36 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                     ? <LegacyChatAnswer report={report} />
                     : <FormattedReport report={report} />}
                 <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
+                  {report.schema === "atlcli.chat-answer/v1" && chatPort && (
+                    <div
+                      className="mr-auto flex items-center gap-1"
+                      aria-label={t("research.chat.feedback.label")}
+                      data-testid="research-chat-feedback"
+                    >
+                      <Button
+                        size="icon"
+                        variant={answerFeedbackRating === "helpful" ? "secondary" : "ghost"}
+                        className="size-8"
+                        aria-label={t("research.chat.feedback.helpful")}
+                        aria-pressed={answerFeedbackRating === "helpful"}
+                        onClick={() => void submitAnswerFeedback("helpful")}
+                        data-testid="research-chat-feedback-helpful"
+                      >
+                        <ThumbsUp className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant={answerFeedbackRating === "not-helpful" ? "secondary" : "ghost"}
+                        className="size-8"
+                        aria-label={t("research.chat.feedback.notHelpful")}
+                        aria-pressed={answerFeedbackRating === "not-helpful"}
+                        onClick={() => void submitAnswerFeedback("not-helpful")}
+                        data-testid="research-chat-feedback-not-helpful"
+                      >
+                        <ThumbsDown className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"

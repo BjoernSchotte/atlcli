@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   CHAT_SESSION_PATH_V1,
+  CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
   InMemoryResearchSessionStoreV1,
   WorkspaceChatActivityJournalV1,
@@ -204,6 +205,31 @@ describe("CLI ChatAgentPortV1 adapter", () => {
       turnId,
       sources: [],
     });
+    expect(await port.submitFeedback({
+      siteOrigin,
+      conversationId,
+      turnId,
+      rating: "not-helpful",
+      reasonCodes: ["incomplete"],
+    })).toMatchObject({
+      conversationId,
+      turnId,
+      revision: 1,
+      rating: "not-helpful",
+      reasonCodes: ["incomplete"],
+    });
+    const storedFeedback = JSON.parse(
+      (await workspace.readFile(CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1))!,
+    );
+    expect(storedFeedback.feedback).toEqual([
+      expect.objectContaining({ turnId, rating: "not-helpful" }),
+    ]);
+    await expect(port.submitFeedback({
+      siteOrigin: "https://tenant-b.atlassian.net",
+      conversationId,
+      turnId,
+      rating: "helpful",
+    })).rejects.toThrow("different conversation or tenant");
 
     const initial = await port.getInteraction(siteOrigin);
     expect(initial).toBeNull();

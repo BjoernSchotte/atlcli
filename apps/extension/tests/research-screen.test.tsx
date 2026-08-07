@@ -412,6 +412,7 @@ function fakeChatPort(
     async replay() { return null; },
     async artifact() { return null; },
     async sources() { return null; },
+    async submitFeedback() { throw new Error("Unexpected Chat feedback."); },
     async resetConversation() {},
     ...overrides,
   });
@@ -613,6 +614,7 @@ describe("portable Research screen", () => {
   it("routes ordinary Chat through ChatAgentPortV1 while keeping Research separate", async () => {
     let researchRuns = 0;
     const starts: Array<{ question: string; quality: string }> = [];
+    const feedback: string[] = [];
     const port: ResearchPort = {
       hasApiKey: async () => true,
       setApiKey: async () => undefined,
@@ -651,6 +653,27 @@ describe("portable Research screen", () => {
         });
         return chatAnswer;
       },
+      async replay() {
+        return {
+          conversationId: "research-session:ordinary-browser-port",
+          turnId: "research-turn:ordinary-browser-port",
+          objective: "Summarize the attached page.",
+          events: [],
+          finalAnswer: chatAnswer,
+        };
+      },
+      async submitFeedback(input) {
+        feedback.push(input.rating);
+        return {
+          schema: "atlcli.chat-answer-feedback/v1",
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          revision: 1,
+          updatedAt: "2026-08-06T12:00:02.000Z",
+          rating: input.rating,
+          reasonCodes: [...(input.reasonCodes ?? [])],
+        };
+      },
     });
     await dom.render(
       <I18nProvider locale="en">
@@ -670,6 +693,11 @@ describe("portable Research screen", () => {
     expect(researchRuns).toBe(0);
     expect(dom.find("research-chat-answer").textContent)
       .toContain("The shared Chat port answered");
+    expect(dom.find("research-chat-feedback-helpful").getAttribute("aria-pressed")).toBe("false");
+    await dom.click("research-chat-feedback-helpful");
+    await dom.flush();
+    expect(feedback).toEqual(["helpful"]);
+    expect(dom.find("research-chat-feedback-helpful").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("renders the compact chat surface and opens an intentionally empty add menu", async () => {
