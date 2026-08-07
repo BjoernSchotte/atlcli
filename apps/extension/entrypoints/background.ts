@@ -48,10 +48,11 @@ import {
   normalizeChatQualityPolicyV1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
+import { normalizeAnthropicApiKey } from "../utils/research/credential.js";
 import {
-  RESEARCH_ANTHROPIC_SESSION_KEY,
-  normalizeAnthropicApiKey,
-} from "../utils/research/credential.js";
+  chromeBrowserCredentialStorageV1,
+  readBrowserApiKeyV1,
+} from "../utils/research/browser-credential-storage.js";
 import { profileFromTabUrl } from "../utils/profile.js";
 import {
   ResearchScopeCatalogBroker,
@@ -537,11 +538,8 @@ export default defineBackground({
         "The active Atlassian tab no longer matches the research site."
       );
     }
-    const stored = await chrome.storage.session.get([
-      RESEARCH_ANTHROPIC_SESSION_KEY,
-    ]);
     const apiKey = normalizeAnthropicApiKey(
-      stored[RESEARCH_ANTHROPIC_SESSION_KEY]
+      await readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
     );
     if (activeResearchRuns.has(runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
@@ -646,18 +644,16 @@ export default defineBackground({
         );
       }
       const request = researchRequestFromBriefV1(turn.brief);
-      const credentials = await chrome.storage.session.get([
-        RESEARCH_ANTHROPIC_SESSION_KEY,
-      ]);
       let apiKey: string;
       try {
         apiKey = normalizeAnthropicApiKey(
-          credentials[RESEARCH_ANTHROPIC_SESSION_KEY],
+          await readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
         );
       } catch (error) {
-        // A browser restart clears the session-only credential. Once the old
+        // A browser restart clears a session-only credential. Once the old
         // lease is released, record that durable wait rather than leaving the
-        // session looking actively runnable without its required input.
+        // session looking actively runnable without its required input. A
+        // device-remembered credential is rehydrated before this boundary.
         if (stored.status === "running" && Date.parse(now) >= Date.parse(stored.lease.expiresAt)) {
           await store.commit(stored.sessionId, {
             kind: "wait_authentication",

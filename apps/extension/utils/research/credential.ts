@@ -3,6 +3,9 @@ import { ResearchContractError } from "./contracts.js";
 export const RESEARCH_ANTHROPIC_SESSION_KEY =
   "research-anthropic-key-v1" as const;
 
+export const RESEARCH_ANTHROPIC_DEVICE_KEY =
+  "research-anthropic-device-key-v1" as const;
+
 export function normalizeAnthropicApiKey(value: unknown): string {
   if (typeof value !== "string") {
     throw new ResearchContractError("missing-key", "An Anthropic API key is required.");

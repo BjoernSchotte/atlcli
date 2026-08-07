@@ -36,9 +36,13 @@ import {
   WorkspaceChatAnswerFeedbackJournalV1,
 } from "@atlcli/research/browser";
 import {
-  RESEARCH_ANTHROPIC_SESSION_KEY,
-  normalizeAnthropicApiKey,
-} from "../../../utils/research/credential.js";
+  browserApiKeyPersistenceV1,
+  changeBrowserApiKeyPersistenceV1,
+  chromeBrowserCredentialStorageV1,
+  clearBrowserApiKeyV1,
+  readBrowserApiKeyV1,
+  storeBrowserApiKeyV1,
+} from "../../../utils/research/browser-credential-storage.js";
 import {
   isChatPresentationMessage,
   isResearchEvent,
@@ -291,27 +295,31 @@ function safeFilename(value: string): string {
 
 export function chromeResearchPort(): ResearchPort {
   let activeRunId: string | null = null;
+  const credentialStorage = chromeBrowserCredentialStorageV1();
 
   return {
     async hasApiKey() {
-      const stored = await chrome.storage.session.get([
-        RESEARCH_ANTHROPIC_SESSION_KEY,
-      ]);
-      return (
-        typeof stored[RESEARCH_ANTHROPIC_SESSION_KEY] === "string" &&
-        stored[RESEARCH_ANTHROPIC_SESSION_KEY].trim().length > 0
+      return (await readBrowserApiKeyV1(credentialStorage)) !== undefined;
+    },
+
+    async getApiKeyPersistence() {
+      return browserApiKeyPersistenceV1(credentialStorage);
+    },
+
+    async setApiKey(value, options) {
+      await storeBrowserApiKeyV1(
+        credentialStorage,
+        value,
+        options?.persistence ?? "session",
       );
     },
 
-    async setApiKey(value) {
-      const apiKey = normalizeAnthropicApiKey(value);
-      await chrome.storage.session.set({
-        [RESEARCH_ANTHROPIC_SESSION_KEY]: apiKey,
-      });
+    async setApiKeyPersistence(persistence) {
+      await changeBrowserApiKeyPersistenceV1(credentialStorage, persistence);
     },
 
     async clearApiKey() {
-      await chrome.storage.session.remove(RESEARCH_ANTHROPIC_SESSION_KEY);
+      await clearBrowserApiKeyV1(credentialStorage);
     },
 
     async getPendingChatQuestion(siteOrigin) {

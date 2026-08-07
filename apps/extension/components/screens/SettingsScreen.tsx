@@ -14,7 +14,14 @@ import { useAppSettings } from "../app/settings-context.js";
 import { Alert } from "../ui/alert.js";
 import { Card, CardContent } from "../ui/card.js";
 import { Button } from "../ui/button.js";
-import { FieldHelp, Input, Label, Select, SectionHeading } from "../ui/field.js";
+import {
+  CheckboxField,
+  FieldHelp,
+  Input,
+  Label,
+  Select,
+  SectionHeading,
+} from "../ui/field.js";
 
 const LOCALE_LABEL_KEYS = {
   en: "settings.language.en",
@@ -30,6 +37,7 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
   const research = ports.research;
   const [apiKey, setApiKey] = useState("");
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [rememberApiKey, setRememberApiKey] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,9 +46,15 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
       setHasApiKey(false);
       return () => { cancelled = true; };
     }
-    void research.hasApiKey()
-      .then((present) => {
-        if (!cancelled) setHasApiKey(present);
+    void Promise.all([
+      research.hasApiKey(),
+      research.getApiKeyPersistence?.() ?? Promise.resolve("session" as const),
+    ])
+      .then(([present, persistence]) => {
+        if (!cancelled) {
+          setHasApiKey(present);
+          setRememberApiKey(persistence === "device");
+        }
       })
       .catch(() => {
         if (!cancelled) setHasApiKey(false);
@@ -53,10 +67,26 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
     if (!research || !candidate) return;
     setAiError(null);
     try {
-      await research.setApiKey(candidate);
+      await research.setApiKey(candidate, {
+        persistence: rememberApiKey ? "device" : "session",
+      });
       setApiKey("");
       setHasApiKey(true);
     } catch (value) {
+      setAiError(value instanceof Error ? value.message : t("settings.ai.saveFailed"));
+    }
+  }
+
+  async function updateApiKeyPersistence(remember: boolean): Promise<void> {
+    if (!research) return;
+    const previous = rememberApiKey;
+    setRememberApiKey(remember);
+    setAiError(null);
+    if (!hasApiKey || !research.setApiKeyPersistence) return;
+    try {
+      await research.setApiKeyPersistence(remember ? "device" : "session");
+    } catch (value) {
+      setRememberApiKey(previous);
       setAiError(value instanceof Error ? value.message : t("settings.ai.saveFailed"));
     }
   }
@@ -121,11 +151,24 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
             {!research
               ? t("settings.ai.unavailable")
               : hasApiKey
-                ? t("research.key.stored")
+                ? t(
+                    rememberApiKey
+                      ? "settings.ai.keyStoredDevice"
+                      : "settings.ai.keyStoredSession",
+                  )
                 : apiKey.trim()
                   ? t("research.key.pending")
                   : t("research.key.missing")}
           </FieldHelp>
+          {research && (
+            <CheckboxField
+              data-testid="settings-ai-remember-key"
+              checked={rememberApiKey}
+              label={t("settings.ai.rememberDevice")}
+              help={t("settings.ai.rememberDeviceHelp")}
+              onChange={(event) => void updateApiKeyPersistence(event.target.checked)}
+            />
+          )}
           {(apiKey.trim() || hasApiKey) && research && (
             <div className="flex gap-2">
               {apiKey.trim() && (

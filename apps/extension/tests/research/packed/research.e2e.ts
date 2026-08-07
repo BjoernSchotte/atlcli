@@ -87,6 +87,7 @@ const PACKED_STRUCTURED_LONG_STORAGE = [
 ].join("");
 const FAKE_KEY = "sk-ant-packed-extension-test-only";
 const RESEARCH_ANTHROPIC_SESSION_KEY = "research-anthropic-key-v1";
+const RESEARCH_ANTHROPIC_DEVICE_KEY = "research-anthropic-device-key-v1";
 const PACKED_REDACTION_API_KEY = "sk-ant-test-packed-redaction-only";
 const PACKED_REDACTION_COOKIE = "atl_session=packed-redaction-cookie";
 const PACKED_REDACTION_BEARER = "packed-redaction-bearer";
@@ -6741,6 +6742,43 @@ test("reads a late section from a long attached page in packed MV3", async () =>
     .toHaveLength(1);
   expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
+test("rehydrates an explicitly device-remembered BYOK key after session loss", async () => {
+  await openResearchScreen(page);
+  await page.getByTestId("area-menu-toggle").click();
+  await page.getByTestId("nav-settings").click();
+  await page.getByTestId("settings-ai-key").fill(FAKE_KEY);
+  await page.getByTestId("settings-ai-remember-key").check();
+  await page.getByTestId("settings-ai-store-key").click();
+  await expect(page.getByTestId("settings-ai")).toContainText("remembered on this device");
+
+  expect(await page.evaluate(async (key) => chrome.storage.local.get(key),
+    RESEARCH_ANTHROPIC_DEVICE_KEY)).toEqual({
+      [RESEARCH_ANTHROPIC_DEVICE_KEY]: FAKE_KEY,
+    });
+  await page.evaluate(async (key) => chrome.storage.session.remove(key),
+    RESEARCH_ANTHROPIC_SESSION_KEY);
+  await page.reload();
+  await page.getByTestId("app-shell").waitFor();
+  await page.getByTestId("area-menu-toggle").click();
+  await page.getByTestId("nav-settings").click();
+
+  await expect(page.getByTestId("settings-ai-forget-key")).toBeEnabled();
+  expect(await page.evaluate(async (key) => chrome.storage.session.get(key),
+    RESEARCH_ANTHROPIC_SESSION_KEY)).toEqual({
+      [RESEARCH_ANTHROPIC_SESSION_KEY]: FAKE_KEY,
+    });
+  expect(await page.getByTestId("app-shell").textContent()).not.toContain(FAKE_KEY);
+
+  await page.getByTestId("settings-ai-forget-key").click();
+  expect(await page.evaluate(async ({ sessionKey, deviceKey }) => ({
+    session: await chrome.storage.session.get(sessionKey),
+    local: await chrome.storage.local.get(deviceKey),
+  }), {
+    sessionKey: RESEARCH_ANTHROPIC_SESSION_KEY,
+    deviceKey: RESEARCH_ANTHROPIC_DEVICE_KEY,
+  })).toEqual({ session: {}, local: {} });
 });
 
 test("redacts provider and browser credential text before durable browser persistence", async () => {

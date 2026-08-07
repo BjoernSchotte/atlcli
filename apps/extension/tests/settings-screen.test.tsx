@@ -31,13 +31,17 @@ function screenProps(research: ResearchPort): ScreenProps {
 describe("AI settings", () => {
   it("stores and forgets a BYOK key outside the research chat", async () => {
     let stored = false;
-    const values: string[] = [];
+    let persistence: "session" | "device" = "session";
+    const values: Array<{ value: string; persistence: "session" | "device" }> = [];
     const research: ResearchPort = {
       hasApiKey: async () => stored,
-      setApiKey: async (value) => {
-        values.push(value);
+      getApiKeyPersistence: async () => persistence,
+      setApiKey: async (value, options) => {
+        persistence = options?.persistence ?? "session";
+        values.push({ value, persistence });
         stored = true;
       },
+      setApiKeyPersistence: async (value) => { persistence = value; },
       clearApiKey: async () => { stored = false; },
       resolveScope: async () => {
         throw new Error("Scope resolution is not part of settings.");
@@ -57,11 +61,16 @@ describe("AI settings", () => {
     );
     await dom.setValue("settings-ai-key", "synthetic-key");
     expect(dom.find("settings-ai").textContent).toContain("not yet stored");
+    await dom.click("settings-ai-remember-key");
     await dom.click("settings-ai-store-key");
 
-    expect(values).toEqual(["synthetic-key"]);
-    expect(dom.find("settings-ai").textContent).toContain("chrome.storage.session");
+    expect(values).toEqual([{ value: "synthetic-key", persistence: "device" }]);
+    expect(dom.find("settings-ai").textContent).toContain("remembered on this device");
     expect(dom.find("settings-ai").textContent).toContain("local-model option");
+
+    await dom.click("settings-ai-remember-key");
+    expect(persistence).toBe("session");
+    expect(dom.find("settings-ai").textContent).toContain("browser session");
 
     await dom.click("settings-ai-forget-key");
     expect(stored).toBe(false);

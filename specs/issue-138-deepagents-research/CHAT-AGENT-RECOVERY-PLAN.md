@@ -1270,6 +1270,10 @@ Implementation:
       accepted.
 - [x] Add privacy-safe optional answer feedback without committing tenant-derived
       text.
+- [x] Keep browser BYOK session-only by default and add an explicit
+      **Remember on this device** opt-in that survives extension/browser reload,
+      remains restricted to trusted extension contexts, and is removed from
+      both session and device storage by **Forget key**.
 - [ ] Remove the old Chat branch from `runResearchAgent`, its legacy research
       prompt, compatibility-only UI routing, and obsolete tests only after all
       migration and release gates pass.
@@ -1321,6 +1325,16 @@ accepted deterministic envelope; negative tests prove wrong-source, no-quality-
 gain, duplicate-identity, and invalid-threshold failures. Runtime observations
 and operator acceptance remain open rather than being replaced by synthetic
 gate tests.
+
+Browser-BYOK persistence proof (2026-08-07): focused storage and Settings tests
+prove session-only default storage, explicit session-to-device and
+device-to-session migration, trusted-context access restrictions, restoration
+after session loss, and deletion from both storage areas. The packed production
+MV3 test proves a remembered key survives a presenter reload without appearing
+in rendered UI. A separately installed read-only MV3 acceptance check then
+reloaded the unpacked extension and confirmed that Settings still reported the
+device-remembered credential without another key entry; private page context
+and credential values remained local and untracked.
 
 Automated proof:
 

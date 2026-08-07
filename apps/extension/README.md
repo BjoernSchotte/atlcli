@@ -79,7 +79,21 @@ this manual step is only needed for `build` (production) artifacts.
 Inspect the service worker via the **service worker** link on the card; the
 offscreen document appears in the card's inspect list while a WASM job is active.
 
-## Labs · Research
+## Kiteweave AI: Chat and Research
+
+The AI workspace has two separate agent runtimes:
+
+- **Chat** answers ordinary questions and follow-ups. **Automatic** chooses the
+  bounded strategy, **Quick** prioritizes latency, and **Think deeper** may use
+  a short supervisor workflow with focused subagents. It does not execute the
+  long Deep Research graph.
+- **Research** is the explicit long-running mode for broader, cited Jira and
+  Confluence investigation and a downloadable Markdown report.
+
+Both modes bind an attached page directly by its ID. Jira is added only when
+the question, an explicit context, or a Jira reference discovered in the page
+requires it. Chat and Research share read-only capability contracts, but Chat
+never falls through to the Research runtime.
 
 The Research spike creates one cited Markdown report from bounded, read-only
 Jira and Confluence searches. It uses `claude-sonnet-4-6` through
@@ -90,16 +104,22 @@ through `@langchain/quickjs`.
 
 1. Open a Jira or Confluence page on the Atlassian Cloud site you want to
    research, then open the extension side panel.
-2. Select **Research**.
-3. Enter an Anthropic API key. The extension stores it only in
-   `chrome.storage.session`; **Forget key** removes it immediately.
+2. Select **Chat** or **Research**.
+3. Enter an Anthropic API key under **Settings → AI**. Session-only storage is
+   the default and is cleared when Chrome or the extension restarts. Optional
+   **Remember on this device** stores the key in this Chrome profile until it
+   is forgotten or the extension is removed. Both storage areas are restricted
+   to trusted extension pages and workers; websites and content scripts cannot
+   read the key. **Forget key** removes both copies immediately.
 4. Enter a question. Name the Jira project key and Confluence space key in the
    question, or fill the two explicit key fields. Explicit fields are locked;
    the detected current Jira/Confluence context is a separate removable seed
    and cannot replace them.
 5. Optionally select **From** and **To**, review the resolved site and limits,
    and confirm the disclosure.
-6. Select **Run research**. Use **Cancel** to terminate the active worker.
+6. Send the Chat message or select **Run research**. Use the visible stop
+   control to terminate the active worker. A stopped turn remains resumable at
+   its last safe durable checkpoint.
 7. Review **Formatted** or **Raw Markdown**, then copy or download the `.md`
    result.
 

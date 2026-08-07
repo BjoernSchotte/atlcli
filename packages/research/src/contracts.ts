@@ -783,11 +783,17 @@ export interface ChatPresentationStreamEventV1 {
  * The only research surface visible to the portable React application.
  *
  * Credential methods deliberately do not return a key. A host may remember it
- * for the current browser session, but the app can only ask whether one exists.
+ * for the current browser session or, with explicit user opt-in, on the current
+ * device; the app can only inspect and change that storage policy.
  */
 export interface ResearchPort {
   hasApiKey(): Promise<boolean>;
-  setApiKey(apiKey: string): Promise<void>;
+  getApiKeyPersistence?(): Promise<"session" | "device">;
+  setApiKey(
+    apiKey: string,
+    options?: { persistence?: "session" | "device" },
+  ): Promise<void>;
+  setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
   clearApiKey(): Promise<void>;
   /** Restore a durable ordinary-Chat question after presenter/worker recreation. */
   getPendingChatQuestion?(siteOrigin: string): Promise<{
