@@ -29,7 +29,10 @@ export interface ChatModelBindingV1 {
   /** Reduce only provider-unsupported JSON Schema keywords; host validation remains strict. */
   projectResponseSchema?: (
     schema: Readonly<Record<string, unknown>>,
-  ) => Readonly<Record<string, unknown>>;
+  ) => {
+    type: "object";
+    [key: string]: unknown;
+  };
 }
 
 export interface ChatModelFactoryInputV1 {

@@ -26,6 +26,7 @@ export const CHAT_STRATEGY_REVIEW_STATE_PATH_V1 =
 export const CHAT_STRATEGY_REASON_CODES_V1 = [
   "quick-direct",
   "single-exact-context",
+  "single-title-discovery",
   "no-atlassian-acquisition",
   "multi-anchor",
   "broad-scope-discovery",
@@ -113,6 +114,7 @@ const BROAD_SCOPE_INTENT_V1 =
   /\b(?:across\s+(?:the\s+)?(?:space|project)|all\s+(?:pages|issues)|throughout\s+(?:the\s+)?(?:space|project)|whole\s+(?:space|project)|related\s+(?:pages|issues)|gesamte[nsr]?\s+(?:space|projekt)|alle\s+(?:seiten|vorgänge|tickets)|weitere\s+(?:seiten|vorgänge|tickets)|im\s+space|projektweit|spaceweit)\b/iu;
 const NO_NEW_SEARCH_INTENT_V1 =
   /\b(?:do\s+not|don't|without)\s+(?:use\s+|add\s+|retrieve\s+|run\s+)?(?:any\s+|a\s+)?(?:new\s+)?(?:search|source|sources|evidence)\b|\b(?:keine|ohne)\s+(?:neue[ns]?\s+)?(?:suche|suchen|quelle|quellen|belege|evidenz)\b|\bnicht\s+(?:erneut\s+|neu\s+)?suchen\b/iu;
+const QUOTED_TITLE_INTENT_V1 = /["“„][^"“”„\n]{3,180}["”]/u;
 
 function orderedUnique<T extends string>(
   values: readonly T[],
@@ -150,8 +152,12 @@ export function deriveChatStrategyDecisionV1(input: {
   ]);
   const crossProduct = activeProducts.size > 1;
   const multiAnchor = input.anchors.length > 1;
+  const singleTitleDiscovery = input.anchors.length === 0 &&
+    scopeProducts.size === 1 &&
+    QUOTED_TITLE_INTENT_V1.test(input.question) &&
+    !comparison && !relationship && !contradiction && !broadScopeIntent;
   const broadDiscovery = !noNewSearchIntent && scopeProducts.size > 0 &&
-    (input.anchors.length === 0 || broadScopeIntent);
+    (input.anchors.length === 0 || broadScopeIntent) && !singleTitleDiscovery;
   const noAcquisition = input.anchors.length === 0 &&
     (scopeProducts.size === 0 || noNewSearchIntent);
   const unresolvedAmbiguity = input.unresolvedAmbiguity === true;
@@ -161,6 +167,7 @@ export function deriveChatStrategyDecisionV1(input: {
   if (input.anchors.length === 1 && !comparison && !relationship && !contradiction) {
     reasons.push("single-exact-context");
   }
+  if (singleTitleDiscovery) reasons.push("single-title-discovery");
   if (noAcquisition) reasons.push("no-atlassian-acquisition");
   if (multiAnchor) reasons.push("multi-anchor");
   if (broadDiscovery) reasons.push("broad-scope-discovery");
@@ -195,7 +202,7 @@ export function deriveChatStrategyDecisionV1(input: {
   if (
     !noNewSearchIntent &&
     input.scope.confluenceSpaceKeys.length > 0 &&
-    (!anchorProducts.has("confluence") || broadScopeIntent)
+    (!anchorProducts.has("confluence") || broadScopeIntent || singleTitleDiscovery)
   ) {
     capabilities.push("confluence-discovery");
   }

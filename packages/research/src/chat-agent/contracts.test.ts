@@ -14,10 +14,13 @@ import {
 import { createMemoryResearchWorkspace } from "../workspace.js";
 import { finalizeChatAnswerV1 } from "./answer.js";
 import {
+  CHAT_AGENT_DRAFT_SCHEMA_V2,
   CHAT_SESSION_STATE_PATH_V1,
   ChatContractError,
+  normalizeChatAgentDraftV2,
   normalizeChatGapCodeV1,
   providerCompatibleChatAnswerSchemaV1,
+  providerCompatibleChatAnswerSchemaV2,
   type ChatTurnRequestV1,
 } from "./contracts.js";
 import {
@@ -27,6 +30,7 @@ import {
   projectChatAgentDiagnosticActivityV1,
   projectChatReasoningSummaryDeltaV1,
   streamedJsonStringFieldV1,
+  streamedJsonStringFieldsV1,
   type ChatAgentRuntimeBindings,
 } from "./runtime.js";
 import {
@@ -132,8 +136,32 @@ describe("Chat answer contract", () => {
     }
     expect(serialized).toContain("citationSourceIds");
     expect(serialized).toContain("additionalProperties");
+    const current = JSON.stringify(providerCompatibleChatAnswerSchemaV2());
+    expect(current).toContain("blocks");
+    expect(current).toContain("sourceRefs");
+    expect(current).not.toContain("maxItems");
     expect(normalizeChatGapCodeV1("search-incomplete")).toBe("incomplete-coverage");
     expect(normalizeChatGapCodeV1("unverified-relationship")).toBe("unresolved-reference");
+  });
+
+  test("normalizes the minimal provider block shape before host evidence validation", () => {
+    expect(normalizeChatAgentDraftV2(CHAT_AGENT_DRAFT_SCHEMA_V2.parse({
+      blocks: [{
+        markdown: "### Result",
+        sourceRefs: [],
+        assertion: "none",
+        scope: "none",
+      }],
+    }))).toEqual({
+      blocks: [{
+        id: "answer-block:1",
+        markdown: "### Result",
+        sourceRefs: [],
+        assertion: "none",
+        scope: "none",
+      }],
+      gaps: [],
+    });
   });
 
   test("replaces evidence placeholders only with host-owned canonical links", () => {
@@ -187,6 +215,216 @@ describe("Chat answer contract", () => {
       expectedComplexity: "simple",
       qualityRisks: [],
     });
+  });
+
+  test("removes orphan citation lines and humanizes internal wiki IDs", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "[[source:wiki:1001]]",
+          "",
+          "The page wiki:1001 establishes the synthetic claim. [[source:wiki:1001]]",
+        ].join("\n"),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).not.toContain("wiki:1001");
+    expect(answer.messageMarkdown.match(/\[Synthetic page\]\(https:\/\/tenant-a\.atlassian\.net\/wiki\/spaces\/SPACE\/pages\/1001\)/gu)).toHaveLength(1);
+    expect(answer.messageMarkdown).toContain("The page Synthetic page establishes");
+    expect(answer.evidenceRefs).toEqual(["wiki:1001"]);
+  });
+
+  test("keeps supported answer blocks when a neighbouring block has unread evidence", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        blocks: [
+          {
+            id: "answer-block:supported",
+            markdown: "The accepted page establishes the rollout decision.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "none",
+          },
+          {
+            id: "answer-block:unsupported",
+            markdown: "A second page establishes the implementation status.",
+            sourceRefs: ["wiki:1002"],
+            assertion: "positive",
+            scope: "none",
+          },
+        ],
+        gaps: [],
+      },
+      sources: [
+        syntheticPageSource,
+        {
+          ...syntheticPageSource,
+          id: "wiki:1002",
+          title: "Unread page",
+          contentId: "1002",
+          url: "https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1002",
+        },
+      ],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).toContain("establishes the rollout decision");
+    expect(answer.messageMarkdown).not.toContain("implementation status");
+    expect(answer.evidenceRefs).toEqual(["wiki:1001"]);
+    expect(answer.gaps).toEqual([expect.objectContaining({
+      code: "no-detail-evidence",
+    })]);
+  });
+
+  test("normalizes harmless model metadata drift without rejecting the whole answer", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        blocks: [
+          {
+            id: "heading",
+            markdown: "### Result",
+            sourceRefs: ["wiki:1001"],
+            assertion: "none",
+            scope: "source",
+          },
+          {
+            id: "fact",
+            markdown: "The accepted page establishes the rollout decision.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "source",
+          },
+          {
+            id: "fact",
+            markdown: "A duplicate provider block must not be published twice.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "none",
+          },
+          {
+            id: "missing-evidence",
+            markdown: "An uncited factual block is not publishable.",
+            sourceRefs: [],
+            assertion: "positive",
+            scope: "none",
+          },
+        ],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).toContain("### Result");
+    expect(answer.messageMarkdown).toContain("establishes the rollout decision");
+    expect(answer.messageMarkdown).not.toContain("published twice");
+    expect(answer.messageMarkdown).not.toContain("uncited factual block");
+    expect(answer.evidenceRefs).toEqual(["wiki:1001"]);
+    expect(answer.gaps).toEqual([expect.objectContaining({ code: "no-detail-evidence" })]);
+  });
+
+  test("rejects provider prose that omits its required evidence classification", () => {
+    expect(CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse({
+      blocks: [{ markdown: "This provider paragraph has no evidence classification." }],
+    }).success).toBe(false);
+  });
+
+  test("rejects an over-broad absence block without discarding positive partial findings", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        blocks: [
+          {
+            id: "answer-block:positive",
+            markdown: "The issue that was read documents the completed migration.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "none",
+          },
+          {
+            id: "answer-block:absence",
+            markdown: "No other matching implementation exists in the bound space.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "absence",
+            scope: "bound-scope",
+          },
+        ],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run: {
+        ...run,
+        retrieval: {
+          discoveredCandidates: 4,
+          admittedCandidates: 4,
+          detailReadCandidates: 1,
+          excludedCandidates: 0,
+          deferredCandidates: 3,
+          detailReadCoverage: 0.25,
+          canonicalUrlCorrectness: 1,
+          observedRecall: null,
+          wrongSourceRate: null,
+          atlassianHttpCalls: 2,
+          latencyMs: 500,
+        },
+      },
+    });
+
+    expect(answer.messageMarkdown).toContain("documents the completed migration");
+    expect(answer.messageMarkdown).not.toContain("No other matching implementation exists");
+    expect(answer.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "incomplete-coverage" }),
+    ]));
+  });
+
+  test("renders structured list blocks without empty items or broken numbering", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        blocks: [
+          {
+            id: "answer-block:heading",
+            markdown: "### Priorities",
+            sourceRefs: [],
+            assertion: "none",
+            scope: "none",
+          },
+          {
+            id: "answer-block:first",
+            markdown: "3. First supported priority.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "none",
+          },
+          {
+            id: "answer-block:second",
+            markdown: "7. Second supported priority.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "none",
+          },
+        ],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).toContain("1. First supported priority");
+    expect(answer.messageMarkdown).toContain("2. Second supported priority");
+    expect(answer.messageMarkdown).not.toMatch(/^\s*\d+[.)]\s*$/mu);
   });
 
   test("preserves validated Confluence section locators as heading deep links", () => {
@@ -716,7 +954,7 @@ describe("Chat answer contract", () => {
     });
     expect(bounded.messageMarkdown).not.toContain("contains no other constraint");
     expect(bounded.messageMarkdown).toContain("does not establish what is absent");
-    expect(bounded.messageMarkdown).toContain("Coverage limit");
+    expect(bounded.messageMarkdown).toContain("### Limits");
     expect(bounded.gaps).toEqual([expect.objectContaining({
       code: "incomplete-coverage",
       sourceIds: ["wiki:1001"],
@@ -840,7 +1078,7 @@ describe("Chat answer contract", () => {
     expect(answer.messageMarkdown).toContain(
       "Da 6 von 10 zugelassenen Kandidaten im Detail gelesen wurden",
     );
-    expect(answer.messageMarkdown).toContain("2 Negativbehauptungen");
+    expect(answer.messageMarkdown).toContain("Aussagen über fehlende Dokumentation");
     expect(answer.messageMarkdown).toContain("6 von 10 zugelassenen Kandidaten");
     expect(answer.gaps).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "incomplete-coverage", sourceIds: [] }),
@@ -1100,6 +1338,10 @@ describe("separate Chat root", () => {
     )).toBe("Hello☺");
     expect(streamedJsonStringFieldV1('{"gaps":["not an answer"]}', "messageMarkdown"))
       .toBeUndefined();
+    expect(streamedJsonStringFieldsV1(
+      '{"blocks":[{"markdown":"First"},{"markdown":"Second\\npart"}]}',
+      "markdown",
+    )).toEqual(["First", "Second\npart"]);
   });
 
   test("exposes only eval and durable HITL while hiding DeepAgents scaffolding", async () => {

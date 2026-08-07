@@ -87,10 +87,10 @@ describe("Chat dynamic workflow admission", () => {
       entry.id === "chat-synthesizer"
     );
     expect(synthesizer?.systemPrompt).toContain(
-      "Every factual paragraph must answer a requested comparison dimension",
+      "Every factual block must answer the user's question",
     );
     expect(synthesizer?.systemPrompt).toContain(
-      "Include only material gaps that could change the requested answer",
+      "Include only material gaps that could change the answer",
     );
     expect(synthesizer?.systemPrompt).toContain("do not invent auxiliary gaps");
   });

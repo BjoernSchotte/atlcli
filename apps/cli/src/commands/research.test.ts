@@ -1458,10 +1458,14 @@ describe("research CLI one-shot contract", () => {
       if (question.includes("initial Confluence")) {
         return model
           .respond(toolResult("eval", { code: wikiAcquisition }, "toolu_cli_wiki"))
-          .respond(toolResult("ChatAnswerDraftV1", {
-            messageMarkdown:
-              "The page records one accepted decision. [[source:wiki:1001]]",
-            citationSourceIds: ["wiki:1001"],
+          .respond(toolResult("ChatAnswerDraftV2", {
+            blocks: [{
+              id: "answer-block:initial-decision",
+              markdown: "The page records one accepted decision.",
+              sourceRefs: ["wiki:1001"],
+              assertion: "positive",
+              scope: "none",
+            }],
             gaps: [],
           }, "toolu_cli_wiki_answer"));
       }
@@ -1476,19 +1480,27 @@ describe("research CLI one-shot contract", () => {
                 }, "toolu_cli_retained")
               : new Error("The retained CLI evidence anchor was not projected.");
           })
-          .respond(toolResult("ChatAnswerDraftV1", {
-            messageMarkdown:
-              "The same accepted decision remains the relevant detail. [[source:wiki:1001]]",
-            citationSourceIds: ["wiki:1001"],
+          .respond(toolResult("ChatAnswerDraftV2", {
+            blocks: [{
+              id: "answer-block:retained-decision",
+              markdown: "The same accepted decision remains the relevant detail.",
+              sourceRefs: ["wiki:1001"],
+              assertion: "positive",
+              scope: "none",
+            }],
             gaps: [],
           }, "toolu_cli_retained_answer"));
       }
       return model
         .respond(toolResult("eval", { code: jiraAcquisition }, "toolu_cli_jira"))
-        .respond(toolResult("ChatAnswerDraftV1", {
-          messageMarkdown:
-            "The Jira issue tracks a different action. [[source:jira:ATLCLI-1]]",
-          citationSourceIds: ["jira:ATLCLI-1"],
+        .respond(toolResult("ChatAnswerDraftV2", {
+          blocks: [{
+            id: "answer-block:jira-action",
+            markdown: "The Jira issue tracks a different action.",
+            sourceRefs: ["jira:ATLCLI-1"],
+            assertion: "positive",
+            scope: "none",
+          }],
           gaps: [],
         }, "toolu_cli_jira_answer"));
     };
@@ -1589,6 +1601,10 @@ describe("research CLI one-shot contract", () => {
           { id: "research-turn:cli-memory-third", status: "complete" },
         ],
       },
+    });
+    expect(persisted.conversation.recentTurns[1].finalAnswer).toMatchObject({
+      evidenceRefs: ["wiki:1001"],
+      citations: [expect.objectContaining({ sourceId: "wiki:1001" })],
     });
   });
 

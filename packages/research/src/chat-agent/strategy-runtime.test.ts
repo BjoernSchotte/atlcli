@@ -157,8 +157,13 @@ JSON.parse(await tools.chatWorkflowAdvance({}));`;
       .respondWithTools([{
         name: "ChatProvisionalAnswerDraftV1",
         args: {
-          messageMarkdown: "A bounded provisional synthetic answer.",
-          citationSourceIds: [],
+          blocks: [{
+            id: "answer-block:provisional",
+            markdown: "A bounded provisional synthetic answer.",
+            sourceRefs: [],
+            assertion: "none",
+            scope: "none",
+          }],
           gaps: [{
             code: "no-detail-evidence",
             message: "The synthetic agentic fixture has no detailed source evidence.",
@@ -180,10 +185,15 @@ JSON.parse(await tools.chatWorkflowAdvance({}));`;
       }])
       .respondWithTools([{ name: "eval", args: { code: finalAdvanceCode } }])
       .respondWithTools([{
-        name: "ChatAnswerDraftV1",
+        name: "ChatAnswerDraftV2",
         args: {
-          messageMarkdown: "A bounded synthetic agentic Chat answer.",
-          citationSourceIds: [],
+          blocks: [{
+            id: "answer-block:agentic",
+            markdown: "A bounded synthetic agentic Chat answer.",
+            sourceRefs: [],
+            assertion: "none",
+            scope: "none",
+          }],
           gaps: [{
             code: "no-detail-evidence",
             message: "The synthetic agentic fixture has no detailed source evidence.",
@@ -209,10 +219,15 @@ JSON.parse(await tools.chatWorkflowAdvance({}));`;
     }]);
   }
   return built.respondWithTools([{
-    name: "ChatAnswerDraftV1",
+    name: "ChatAnswerDraftV2",
     args: {
-      messageMarkdown: "A bounded synthetic Chat answer.",
-      citationSourceIds: [],
+      blocks: [{
+        id: "answer-block:direct",
+        markdown: "A bounded synthetic Chat answer.",
+        sourceRefs: [],
+        assertion: "none",
+        scope: "none",
+      }],
       gaps: [],
     },
   }]);
@@ -335,11 +350,15 @@ describe("real QuickJS Chat strategy trajectory", () => {
         },
       }])
       .respondWithTools([{
-        name: "ChatAnswerDraftV1",
+        name: "ChatAnswerDraftV2",
         args: {
-          messageMarkdown:
-            "The bounded design establishes the accepted architecture. [[source:wiki:1001]]",
-          citationSourceIds: ["wiki:1001"],
+          blocks: [{
+            id: "answer-block:bounded-design",
+            markdown: "The bounded design establishes the accepted architecture.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "none",
+          }],
           gaps: [],
         },
       }]);
@@ -572,8 +591,8 @@ describe("real QuickJS Chat strategy trajectory", () => {
     const input = request("Answer this simple conversational question.");
     const workspace = createMemoryResearchWorkspace();
     const invalidModel = fakeModel()
-      .respondWithTools([{ name: "ChatAnswerDraftV1", args: {} }])
-      .respondWithTools([{ name: "ChatAnswerDraftV1", args: {} }]);
+      .respondWithTools([{ name: "ChatAnswerDraftV2", args: {} }])
+      .respondWithTools([{ name: "ChatAnswerDraftV2", args: {} }]);
 
     await expect(runtime.runChatAgent({
       ...input,
@@ -596,8 +615,13 @@ describe("real QuickJS Chat strategy trajectory", () => {
     const nativeModel = fakeModel()
       .respond(new AIMessage("not valid structured JSON"))
       .respond(new AIMessage(JSON.stringify({
-        messageMarkdown: "A repaired native Chat answer.",
-        citationSourceIds: [],
+        blocks: [{
+          id: "answer-block:native-repair",
+          markdown: "A repaired native Chat answer.",
+          sourceRefs: [],
+          assertion: "none",
+          scope: "none",
+        }],
         gaps: [],
       })));
 
@@ -632,7 +656,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
       qualityMode: "quick",
     })).toBe(3_000);
     expect(isChatAnswerStructuredOutputErrorV1(new Error(
-      "Failed to parse structured output for tool 'ChatAnswerDraftV1'",
+      "Failed to parse structured output for tool 'ChatAnswerDraftV2'",
     ))).toBe(true);
     expect(isChatAnswerStructuredOutputErrorV1(new Error(
       "Failed to parse structured output for tool 'providerStrategy'",
@@ -786,10 +810,15 @@ describe("real QuickJS Chat strategy trajectory", () => {
     const input = request("Answer this simple conversational question.");
     const bypassThenRepair = fakeModel()
       .respondWithTools([{
-        name: "ChatAnswerDraftV1",
+        name: "ChatAnswerDraftV2",
         args: {
-          messageMarkdown: "This premature answer must not be accepted.",
-          citationSourceIds: [],
+          blocks: [{
+            id: "answer-block:premature",
+            markdown: "This premature answer must not be accepted.",
+            sourceRefs: [],
+            assertion: "none",
+            scope: "none",
+          }],
           gaps: [],
         },
       }])
@@ -798,10 +827,15 @@ describe("real QuickJS Chat strategy trajectory", () => {
         args: { code: "JSON.parse(await tools.chatStrategyDecide({}))" },
       }])
       .respondWithTools([{
-        name: "ChatAnswerDraftV1",
+        name: "ChatAnswerDraftV2",
         args: {
-          messageMarkdown: "A bounded synthetic Chat answer.",
-          citationSourceIds: [],
+          blocks: [{
+            id: "answer-block:repaired",
+            markdown: "A bounded synthetic Chat answer.",
+            sourceRefs: [],
+            assertion: "none",
+            scope: "none",
+          }],
           gaps: [],
         },
       }]);

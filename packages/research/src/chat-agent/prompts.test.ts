@@ -13,7 +13,8 @@ describe("Chat supervisor prompt", () => {
     expect(prompt).toContain("raw search, rank, and detail tools are intentionally unavailable");
     expect(prompt).toContain("gaps field MUST be an actual JSON array");
     expect(prompt).toContain("below 700 words");
-    expect(prompt).toContain("A citation on a heading does not cite the paragraphs beneath it");
+    expect(prompt).toContain("Headings and non-factual transitions use assertion=none");
+    expect(prompt).toContain("sourceRefs");
     expect(prompt).toContain("list item, or table row");
     expect(prompt).not.toContain("tools.researchCandidateRank");
   });
@@ -61,6 +62,22 @@ describe("Chat supervisor prompt", () => {
 
     expect(prompt).toContain("reasoning summaries in German");
     expect(prompt).toContain("source titles, Jira keys, and URLs unchanged");
+  });
+
+  test("keeps Quick structured answers inside the smaller direct-output corridor", () => {
+    const quick = buildChatSystemPromptV1({
+      qualityMode: "quick",
+      maxDetailItemsPerProduct: 4,
+      locale: "de",
+    });
+    const auto = buildChatSystemPromptV1({
+      qualityMode: "auto",
+      maxDetailItemsPerProduct: 4,
+      locale: "de",
+    });
+
+    expect(quick).toContain("below 350 words and 24 blocks");
+    expect(auto).toContain("below 700 words and 60 blocks");
   });
 
   test("projects only body-free planned-acquisition controls to direct Chat", () => {

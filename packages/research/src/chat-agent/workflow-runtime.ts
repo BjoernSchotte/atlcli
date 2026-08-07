@@ -8,6 +8,7 @@ import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
 import {
   createMiddleware,
   modelRetryMiddleware,
+  providerStrategy,
   toolStrategy,
   type AgentMiddleware,
 } from "langchain";
@@ -36,8 +37,10 @@ import type { ResearchWorkspace } from "../workspace.js";
 import { createResearchModelBudgetMiddlewareV1 } from "../model-budget-middleware.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V1,
+  CHAT_AGENT_DRAFT_SCHEMA_V2,
   ChatContractError,
-  type ChatAgentDraftV1,
+  normalizeChatAgentDraftV2,
+  type ChatAgentDraft,
 } from "./contracts.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
 import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
@@ -299,10 +302,39 @@ function sourceIdsFromResult(value: ChatSubagentResultV1): string[] {
   if ("defects" in value) {
     return value.defects.flatMap((entry) => entry.sourceIds);
   }
+  if ("blocks" in value) {
+    return [
+      ...value.blocks.flatMap((block) =>
+        block.sourceRefs.map((sourceRef) => {
+          const separator = sourceRef.indexOf("#");
+          return separator === -1 ? sourceRef : sourceRef.slice(0, separator);
+        })
+      ),
+      ...value.gaps.flatMap((gap) => gap.sourceIds),
+    ];
+  }
   return [
     ...value.citationSourceIds,
     ...value.gaps.flatMap((gap) => gap.sourceIds),
   ];
+}
+
+function parseChatAnswerDraftV1(value: unknown): ChatAgentDraft {
+  const current = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(value);
+  if (current.success) return normalizeChatAgentDraftV2(current.data);
+  return CHAT_AGENT_DRAFT_SCHEMA_V1.parse(value);
+}
+
+function chatDraftMarkdownV1(draft: ChatAgentDraft): string {
+  return "blocks" in draft
+    ? draft.blocks.map((block) => block.markdown).join("\n\n")
+    : draft.messageMarkdown;
+}
+
+function chatDraftHasEvidenceV1(draft: ChatAgentDraft): boolean {
+  return "blocks" in draft
+    ? draft.blocks.some((block) => block.sourceRefs.length > 0)
+    : /\[\[source:[^\]]+\]\]/u.test(draft.messageMarkdown);
 }
 
 function assertKnownSourceReferencesV1(
@@ -356,6 +388,17 @@ export function normalizeKnownSourceReferencesV1(
         candidate;
     }
     if (Array.isArray(candidate)) {
+      if (key === "sourceRefs") {
+        return candidate.map((item) => {
+          if (typeof item !== "string") return item;
+          const separator = item.indexOf("#");
+          const sourceId = separator === -1 ? item : item.slice(0, separator);
+          const suffix = separator === -1 ? "" : item.slice(separator);
+          const normalizedSource = aliases.get(sourceId) ??
+            broker.canonicalDetailSourceIdForRef(sourceId) ?? sourceId;
+          return `${normalizedSource}${suffix}`;
+        });
+      }
       if (key === "sourceIds" || key === "citationSourceIds") {
         return candidate.map((item) =>
           typeof item === "string"
@@ -1116,7 +1159,10 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   structuredOutput: "native" | "tool";
   projectResponseSchema?: (
     schema: Readonly<Record<string, unknown>>,
-  ) => Readonly<Record<string, unknown>>;
+  ) => {
+    type: "object";
+    [key: string]: unknown;
+  };
   strategy: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
   modelBudget: ResearchModelRunBudget;
@@ -1158,9 +1204,9 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   allowedProfileIds: readonly ChatSubagentProfileIdV1[];
   acceptedWorkflow(): AcceptedChatWorkflowV1 | undefined;
   acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
-  finalDraft(): ChatAgentDraftV1 | undefined;
+  finalDraft(): ChatAgentDraft | undefined;
   qualityDisposition(): ChatQualityDispositionV1 | undefined;
-  assertComplete(): ChatAgentDraftV1;
+  assertComplete(): ChatAgentDraft;
   dispatchSnapshot(): ReturnType<AgenticDispatchInterceptionAdapter["snapshot"]>;
 } {
   if (input.strategy.execution !== "agentic") {
@@ -1186,7 +1232,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     );
     return persistence;
   };
-  let finalDraft: ChatAgentDraftV1 | undefined;
+  let finalDraft: ChatAgentDraft | undefined;
   let acceptedWorkflow: AcceptedChatWorkflowV1 | undefined;
   let groundednessAssessment: ChatGroundednessAssessmentV1 | undefined;
   let qualityDisposition: ChatQualityDispositionV1 | undefined;
@@ -1405,7 +1451,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     },
     projectDependencyResult: (_taskId, result) => structuredClone(result),
     projectResponseFormat: input.structuredOutput === "native"
-      ? (schema) => {
+      ? (schema, admission) => {
           const typed = schema as {
             type: "object";
             properties?: Record<string, unknown>;
@@ -1413,11 +1459,19 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
             additionalProperties?: boolean;
             [key: string]: unknown;
           };
-          // Keep every DeepAgents child on the same portable ToolStrategy.
-          // Anthropic provider-native structured streaming can emit a terminal
-          // overload after partial JSON has already reached the UI; that stream
-          // cannot be retried safely. Tool-call argument chunks remain genuinely
-          // streamable and work across providers without a second child path.
+          if (
+            admission.subagentType === "chat-answer-drafter-v1" ||
+            admission.subagentType === "chat-answer-repairer-v1" ||
+            admission.subagentType === "chat-synthesizer-v1"
+          ) {
+            // These children have no read tools or side effects. A provider
+            // with native structured output can therefore avoid the extra
+            // tool-call/retry loop safely; provider-neutral bindings continue
+            // to use the portable DeepAgents response path below.
+            return providerStrategy(input.projectResponseSchema?.(typed) ?? typed);
+          }
+          // Tool-bearing and analytical children stay on ToolStrategy so a
+          // transient provider stream can never replay an Atlassian read.
           return toolStrategy(typed);
         }
       : undefined,
@@ -1449,10 +1503,8 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       state.acceptedResults[taskId] = structuredClone(accepted);
       state.taskStatuses[taskId] = "completed";
       if (profileId === "chat-synthesizer") {
-        const synthesized = CHAT_AGENT_DRAFT_SCHEMA_V1.parse(accepted);
-        const hasEvidenceParagraph = /\[\[source:[^\]]+\]\]/u.test(
-          synthesized.messageMarkdown,
-        );
+        const synthesized = parseChatAnswerDraftV1(accepted);
+        const hasEvidenceParagraph = chatDraftHasEvidenceV1(synthesized);
         const fallbackProfile = qualityDisposition?.repairAdmitted
           ? "answer-repairer"
           : qualityDisposition?.repairRequired
@@ -1464,16 +1516,24 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
             )?.[0]
           : undefined;
         const fallback = fallbackTaskId
-          ? CHAT_AGENT_DRAFT_SCHEMA_V1.safeParse(state.acceptedResults[fallbackTaskId])
+          ? (() => {
+              try {
+                return { success: true as const, data: parseChatAnswerDraftV1(
+                  state.acceptedResults[fallbackTaskId],
+                ) };
+              } catch {
+                return { success: false as const };
+              }
+            })()
           : undefined;
-        const synthesizedSubstance = synthesized.messageMarkdown
+        const synthesizedSubstance = chatDraftMarkdownV1(synthesized)
           .replace(/^#+\s.*$/gmu, "")
           .replace(/^\s*---+\s*$/gmu, "")
           .trim().length;
         const fallbackHasEvidence = fallback?.success &&
-          /\[\[source:[^\]]+\]\]/u.test(fallback.data.messageMarkdown);
+          chatDraftHasEvidenceV1(fallback.data);
         const fallbackHasSubstance = fallback?.success &&
-          fallback.data.messageMarkdown.replace(/^#+\s.*$/gmu, "").trim().length >= 20;
+          chatDraftMarkdownV1(fallback.data).replace(/^#+\s.*$/gmu, "").trim().length >= 20;
         if (
           fallback?.success &&
           ((!hasEvidenceParagraph && fallbackHasEvidence) ||

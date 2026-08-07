@@ -189,6 +189,27 @@ describe("host-owned Chat strategy decisions", () => {
     expect(decision.requiredCapabilities).toContain("confluence-discovery");
   });
 
+  test("keeps a single quoted-title lookup direct in Auto and Deep", () => {
+    for (const mode of ["auto", "deep"] as const) {
+      const decision = deriveChatStrategyDecisionV1({
+        qualityPolicy: chatQualityPolicyV1(mode),
+        question: "Summarize the page “Synthetic rollout decision”.",
+        scope,
+        anchors: [],
+      });
+      expect(decision).toMatchObject({
+        execution: "direct",
+        reasonCodes: ["single-title-discovery"],
+        expectedComplexity: "simple",
+        qualityRisks: [],
+      });
+      expect(decision.requiredCapabilities).toEqual([
+        "confluence-discovery",
+        "chat-answer",
+      ]);
+    }
+  });
+
   test("honors an explicit no-new-search instruction even when scope is available", () => {
     const decision = deriveChatStrategyDecisionV1({
       qualityPolicy: chatQualityPolicyV1("deep"),

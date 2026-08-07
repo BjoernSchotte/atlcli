@@ -600,6 +600,128 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     };
 };
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2: {
+    readonly title: "ChatAnswerDraftV2";
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "blocks"
+    ];
+    readonly properties: {
+        readonly blocks: {
+            readonly type: "array";
+            readonly minItems: 1;
+            readonly maxItems: 100;
+            readonly description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.";
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "markdown",
+                    "sourceRefs",
+                    "assertion",
+                    "scope"
+                ];
+                readonly properties: {
+                    readonly id: {
+                        readonly type: "string";
+                        readonly maxLength: 200;
+                    };
+                    readonly markdown: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 8000;
+                    };
+                    readonly sourceRefs: {
+                        readonly type: "array";
+                        readonly maxItems: 16;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 512;
+                        };
+                    };
+                    readonly assertion: {
+                        readonly enum: readonly [
+                            "positive",
+                            "absence",
+                            "none"
+                        ];
+                        readonly description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.";
+                    };
+                    readonly scope: {
+                        readonly enum: readonly [
+                            "none",
+                            "source",
+                            "selected-sources",
+                            "bound-scope"
+                        ];
+                        readonly description: "Use the narrowest supported absence scope, or none for non-absence blocks.";
+                    };
+                };
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
 // export: CHAT_AGENT_DRAFT_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
@@ -619,8 +741,77 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
+    blocks: z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        markdown: z.ZodString;
+        sourceRefs: z.ZodArray<z.ZodString>;
+        assertion: z.ZodEnum<{
+            none: "none";
+            positive: "positive";
+            absence: "absence";
+        }>;
+        scope: z.ZodEnum<{
+            none: "none";
+            source: "source";
+            "selected-sources": "selected-sources";
+            "bound-scope": "bound-scope";
+        }>;
+    }, z.core.$strict>>;
+    gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+            clarification: "clarification";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V2
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V2: "ChatAnswerDraftV2";
+
+// export: CHAT_ANSWER_BLOCK_ASSERTIONS_V2
+export declare const CHAT_ANSWER_BLOCK_ASSERTIONS_V2: readonly [
+    "positive",
+    "absence",
+    "none"
+];
+
+// export: CHAT_ANSWER_BLOCK_SCHEMA_V2
+export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
+    id: z.ZodString;
+    markdown: z.ZodString;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    assertion: z.ZodEnum<{
+        none: "none";
+        positive: "positive";
+        absence: "absence";
+    }>;
+    scope: z.ZodEnum<{
+        none: "none";
+        source: "source";
+        "selected-sources": "selected-sources";
+        "bound-scope": "bound-scope";
+    }>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_BLOCK_SCOPES_V2
+export declare const CHAT_ANSWER_BLOCK_SCOPES_V2: readonly [
+    "none",
+    "source",
+    "selected-sources",
+    "bound-scope"
+];
 
 // export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
 export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
@@ -796,6 +987,7 @@ export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
 export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
     "quick-direct",
     "single-exact-context",
+    "single-title-discovery",
     "no-atlassian-acquisition",
     "multi-anchor",
     "broad-scope-discovery",
@@ -909,8 +1101,17 @@ export interface ChatAgentCheckpointV1 {
     turnId: string;
 }
 
+// export: ChatAgentDraft
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentDraftV2
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+    blocks: ChatAnswerBlockV2[];
+    gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
 
 // export: ChatAgentPortV1
 export interface ChatAgentPortV1 {
@@ -967,6 +1168,9 @@ export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerBlockV2
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
 
 // export: ChatAnswerFeedbackJournalV1
 export interface ChatAnswerFeedbackJournalV1 {
@@ -1280,7 +1484,10 @@ export interface ChatModelBindingV1 {
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
-    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
+        type: "object";
+        [key: string]: unknown;
+    };
 }
 
 // export: ChatModelFactoryInputV1
@@ -1748,7 +1955,7 @@ export interface ChatSubagentProfileV1 {
 }
 
 // export: ChatSubagentResultV1
-export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraft;
 
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
@@ -2740,6 +2947,9 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
 
+// export: normalizeChatAgentDraftV2
+export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
+
 // export: normalizeChatAnswerFeedbackJournalV1
 export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
 
@@ -3064,6 +3274,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
 
 // export: providerCompatibleChatAnswerSchemaV1
 export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: providerCompatibleChatAnswerSchemaV2
+export declare function providerCompatibleChatAnswerSchemaV2(): {
     type: "object";
     [key: string]: unknown;
 };
@@ -8353,6 +8569,128 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     };
 };
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2: {
+    readonly title: "ChatAnswerDraftV2";
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "blocks"
+    ];
+    readonly properties: {
+        readonly blocks: {
+            readonly type: "array";
+            readonly minItems: 1;
+            readonly maxItems: 100;
+            readonly description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.";
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "markdown",
+                    "sourceRefs",
+                    "assertion",
+                    "scope"
+                ];
+                readonly properties: {
+                    readonly id: {
+                        readonly type: "string";
+                        readonly maxLength: 200;
+                    };
+                    readonly markdown: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 8000;
+                    };
+                    readonly sourceRefs: {
+                        readonly type: "array";
+                        readonly maxItems: 16;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 512;
+                        };
+                    };
+                    readonly assertion: {
+                        readonly enum: readonly [
+                            "positive",
+                            "absence",
+                            "none"
+                        ];
+                        readonly description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.";
+                    };
+                    readonly scope: {
+                        readonly enum: readonly [
+                            "none",
+                            "source",
+                            "selected-sources",
+                            "bound-scope"
+                        ];
+                        readonly description: "Use the narrowest supported absence scope, or none for non-absence blocks.";
+                    };
+                };
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
 // export: CHAT_AGENT_DRAFT_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
@@ -8372,8 +8710,77 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
+    blocks: z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        markdown: z.ZodString;
+        sourceRefs: z.ZodArray<z.ZodString>;
+        assertion: z.ZodEnum<{
+            none: "none";
+            positive: "positive";
+            absence: "absence";
+        }>;
+        scope: z.ZodEnum<{
+            none: "none";
+            source: "source";
+            "selected-sources": "selected-sources";
+            "bound-scope": "bound-scope";
+        }>;
+    }, z.core.$strict>>;
+    gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+            clarification: "clarification";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V2
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V2: "ChatAnswerDraftV2";
+
+// export: CHAT_ANSWER_BLOCK_ASSERTIONS_V2
+export declare const CHAT_ANSWER_BLOCK_ASSERTIONS_V2: readonly [
+    "positive",
+    "absence",
+    "none"
+];
+
+// export: CHAT_ANSWER_BLOCK_SCHEMA_V2
+export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
+    id: z.ZodString;
+    markdown: z.ZodString;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    assertion: z.ZodEnum<{
+        none: "none";
+        positive: "positive";
+        absence: "absence";
+    }>;
+    scope: z.ZodEnum<{
+        none: "none";
+        source: "source";
+        "selected-sources": "selected-sources";
+        "bound-scope": "bound-scope";
+    }>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_BLOCK_SCOPES_V2
+export declare const CHAT_ANSWER_BLOCK_SCOPES_V2: readonly [
+    "none",
+    "source",
+    "selected-sources",
+    "bound-scope"
+];
 
 // export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
 export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
@@ -8549,6 +8956,7 @@ export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
 export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
     "quick-direct",
     "single-exact-context",
+    "single-title-discovery",
     "no-atlassian-acquisition",
     "multi-anchor",
     "broad-scope-discovery",
@@ -8662,8 +9070,17 @@ export interface ChatAgentCheckpointV1 {
     turnId: string;
 }
 
+// export: ChatAgentDraft
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentDraftV2
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+    blocks: ChatAnswerBlockV2[];
+    gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
 
 // export: ChatAgentPortV1
 export interface ChatAgentPortV1 {
@@ -8720,6 +9137,9 @@ export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerBlockV2
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
 
 // export: ChatAnswerFeedbackJournalV1
 export interface ChatAnswerFeedbackJournalV1 {
@@ -9033,7 +9453,10 @@ export interface ChatModelBindingV1 {
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
-    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
+        type: "object";
+        [key: string]: unknown;
+    };
 }
 
 // export: ChatModelFactoryInputV1
@@ -9501,7 +9924,7 @@ export interface ChatSubagentProfileV1 {
 }
 
 // export: ChatSubagentResultV1
-export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraft;
 
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
@@ -10484,6 +10907,9 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
 
+// export: normalizeChatAgentDraftV2
+export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
+
 // export: normalizeChatAnswerFeedbackJournalV1
 export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
 
@@ -10808,6 +11234,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
 
 // export: providerCompatibleChatAnswerSchemaV1
 export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: providerCompatibleChatAnswerSchemaV2
+export declare function providerCompatibleChatAnswerSchemaV2(): {
     type: "object";
     [key: string]: unknown;
 };
@@ -16086,6 +16518,128 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     };
 };
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2: {
+    readonly title: "ChatAnswerDraftV2";
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "blocks"
+    ];
+    readonly properties: {
+        readonly blocks: {
+            readonly type: "array";
+            readonly minItems: 1;
+            readonly maxItems: 100;
+            readonly description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.";
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "markdown",
+                    "sourceRefs",
+                    "assertion",
+                    "scope"
+                ];
+                readonly properties: {
+                    readonly id: {
+                        readonly type: "string";
+                        readonly maxLength: 200;
+                    };
+                    readonly markdown: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 8000;
+                    };
+                    readonly sourceRefs: {
+                        readonly type: "array";
+                        readonly maxItems: 16;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 512;
+                        };
+                    };
+                    readonly assertion: {
+                        readonly enum: readonly [
+                            "positive",
+                            "absence",
+                            "none"
+                        ];
+                        readonly description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.";
+                    };
+                    readonly scope: {
+                        readonly enum: readonly [
+                            "none",
+                            "source",
+                            "selected-sources",
+                            "bound-scope"
+                        ];
+                        readonly description: "Use the narrowest supported absence scope, or none for non-absence blocks.";
+                    };
+                };
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
 // export: CHAT_AGENT_DRAFT_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
@@ -16105,8 +16659,77 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
+    blocks: z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        markdown: z.ZodString;
+        sourceRefs: z.ZodArray<z.ZodString>;
+        assertion: z.ZodEnum<{
+            none: "none";
+            positive: "positive";
+            absence: "absence";
+        }>;
+        scope: z.ZodEnum<{
+            none: "none";
+            source: "source";
+            "selected-sources": "selected-sources";
+            "bound-scope": "bound-scope";
+        }>;
+    }, z.core.$strict>>;
+    gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+            clarification: "clarification";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V2
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V2: "ChatAnswerDraftV2";
+
+// export: CHAT_ANSWER_BLOCK_ASSERTIONS_V2
+export declare const CHAT_ANSWER_BLOCK_ASSERTIONS_V2: readonly [
+    "positive",
+    "absence",
+    "none"
+];
+
+// export: CHAT_ANSWER_BLOCK_SCHEMA_V2
+export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
+    id: z.ZodString;
+    markdown: z.ZodString;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    assertion: z.ZodEnum<{
+        none: "none";
+        positive: "positive";
+        absence: "absence";
+    }>;
+    scope: z.ZodEnum<{
+        none: "none";
+        source: "source";
+        "selected-sources": "selected-sources";
+        "bound-scope": "bound-scope";
+    }>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_BLOCK_SCOPES_V2
+export declare const CHAT_ANSWER_BLOCK_SCOPES_V2: readonly [
+    "none",
+    "source",
+    "selected-sources",
+    "bound-scope"
+];
 
 // export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
 export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
@@ -16282,6 +16905,7 @@ export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
 export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
     "quick-direct",
     "single-exact-context",
+    "single-title-discovery",
     "no-atlassian-acquisition",
     "multi-anchor",
     "broad-scope-discovery",
@@ -16395,8 +17019,17 @@ export interface ChatAgentCheckpointV1 {
     turnId: string;
 }
 
+// export: ChatAgentDraft
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentDraftV2
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+    blocks: ChatAnswerBlockV2[];
+    gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
 
 // export: ChatAgentPortV1
 export interface ChatAgentPortV1 {
@@ -16453,6 +17086,9 @@ export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerBlockV2
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
 
 // export: ChatAnswerFeedbackJournalV1
 export interface ChatAnswerFeedbackJournalV1 {
@@ -16766,7 +17402,10 @@ export interface ChatModelBindingV1 {
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
-    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
+        type: "object";
+        [key: string]: unknown;
+    };
 }
 
 // export: ChatModelFactoryInputV1
@@ -17234,7 +17873,7 @@ export interface ChatSubagentProfileV1 {
 }
 
 // export: ChatSubagentResultV1
-export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraft;
 
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
@@ -18226,6 +18865,9 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
 
+// export: normalizeChatAgentDraftV2
+export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
+
 // export: normalizeChatAnswerFeedbackJournalV1
 export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
 
@@ -18550,6 +19192,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
 
 // export: providerCompatibleChatAnswerSchemaV1
 export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: providerCompatibleChatAnswerSchemaV2
+export declare function providerCompatibleChatAnswerSchemaV2(): {
     type: "object";
     [key: string]: unknown;
 };
@@ -23848,6 +24496,128 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     };
 };
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2: {
+    readonly title: "ChatAnswerDraftV2";
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "blocks"
+    ];
+    readonly properties: {
+        readonly blocks: {
+            readonly type: "array";
+            readonly minItems: 1;
+            readonly maxItems: 100;
+            readonly description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.";
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "markdown",
+                    "sourceRefs",
+                    "assertion",
+                    "scope"
+                ];
+                readonly properties: {
+                    readonly id: {
+                        readonly type: "string";
+                        readonly maxLength: 200;
+                    };
+                    readonly markdown: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 8000;
+                    };
+                    readonly sourceRefs: {
+                        readonly type: "array";
+                        readonly maxItems: 16;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 512;
+                        };
+                    };
+                    readonly assertion: {
+                        readonly enum: readonly [
+                            "positive",
+                            "absence",
+                            "none"
+                        ];
+                        readonly description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.";
+                    };
+                    readonly scope: {
+                        readonly enum: readonly [
+                            "none",
+                            "source",
+                            "selected-sources",
+                            "bound-scope"
+                        ];
+                        readonly description: "Use the narrowest supported absence scope, or none for non-absence blocks.";
+                    };
+                };
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
 // export: CHAT_AGENT_DRAFT_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
@@ -23867,8 +24637,77 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
+    blocks: z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        markdown: z.ZodString;
+        sourceRefs: z.ZodArray<z.ZodString>;
+        assertion: z.ZodEnum<{
+            none: "none";
+            positive: "positive";
+            absence: "absence";
+        }>;
+        scope: z.ZodEnum<{
+            none: "none";
+            source: "source";
+            "selected-sources": "selected-sources";
+            "bound-scope": "bound-scope";
+        }>;
+    }, z.core.$strict>>;
+    gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+            clarification: "clarification";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V2
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V2: "ChatAnswerDraftV2";
+
+// export: CHAT_ANSWER_BLOCK_ASSERTIONS_V2
+export declare const CHAT_ANSWER_BLOCK_ASSERTIONS_V2: readonly [
+    "positive",
+    "absence",
+    "none"
+];
+
+// export: CHAT_ANSWER_BLOCK_SCHEMA_V2
+export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
+    id: z.ZodString;
+    markdown: z.ZodString;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    assertion: z.ZodEnum<{
+        none: "none";
+        positive: "positive";
+        absence: "absence";
+    }>;
+    scope: z.ZodEnum<{
+        none: "none";
+        source: "source";
+        "selected-sources": "selected-sources";
+        "bound-scope": "bound-scope";
+    }>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_BLOCK_SCOPES_V2
+export declare const CHAT_ANSWER_BLOCK_SCOPES_V2: readonly [
+    "none",
+    "source",
+    "selected-sources",
+    "bound-scope"
+];
 
 // export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
 export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
@@ -24044,6 +24883,7 @@ export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
 export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
     "quick-direct",
     "single-exact-context",
+    "single-title-discovery",
     "no-atlassian-acquisition",
     "multi-anchor",
     "broad-scope-discovery",
@@ -24157,8 +24997,17 @@ export interface ChatAgentCheckpointV1 {
     turnId: string;
 }
 
+// export: ChatAgentDraft
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentDraftV2
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+    blocks: ChatAnswerBlockV2[];
+    gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
 
 // export: ChatAgentPortV1
 export interface ChatAgentPortV1 {
@@ -24224,6 +25073,9 @@ export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerBlockV2
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
 
 // export: ChatAnswerFeedbackJournalV1
 export interface ChatAnswerFeedbackJournalV1 {
@@ -24537,7 +25389,10 @@ export interface ChatModelBindingV1 {
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
-    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
+        type: "object";
+        [key: string]: unknown;
+    };
 }
 
 // export: ChatModelFactoryInputV1
@@ -25005,7 +25860,7 @@ export interface ChatSubagentProfileV1 {
 }
 
 // export: ChatSubagentResultV1
-export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraft;
 
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
@@ -26190,6 +27045,9 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
 
+// export: normalizeChatAgentDraftV2
+export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
+
 // export: normalizeChatAnswerFeedbackJournalV1
 export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
 
@@ -26517,6 +27375,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
 
 // export: providerCompatibleChatAnswerSchemaV1
 export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: providerCompatibleChatAnswerSchemaV2
+export declare function providerCompatibleChatAnswerSchemaV2(): {
     type: "object";
     [key: string]: unknown;
 };
@@ -32063,6 +32927,128 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     };
 };
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2: {
+    readonly title: "ChatAnswerDraftV2";
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "blocks"
+    ];
+    readonly properties: {
+        readonly blocks: {
+            readonly type: "array";
+            readonly minItems: 1;
+            readonly maxItems: 100;
+            readonly description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.";
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "markdown",
+                    "sourceRefs",
+                    "assertion",
+                    "scope"
+                ];
+                readonly properties: {
+                    readonly id: {
+                        readonly type: "string";
+                        readonly maxLength: 200;
+                    };
+                    readonly markdown: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 8000;
+                    };
+                    readonly sourceRefs: {
+                        readonly type: "array";
+                        readonly maxItems: 16;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 512;
+                        };
+                    };
+                    readonly assertion: {
+                        readonly enum: readonly [
+                            "positive",
+                            "absence",
+                            "none"
+                        ];
+                        readonly description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.";
+                    };
+                    readonly scope: {
+                        readonly enum: readonly [
+                            "none",
+                            "source",
+                            "selected-sources",
+                            "bound-scope"
+                        ];
+                        readonly description: "Use the narrowest supported absence scope, or none for non-absence blocks.";
+                    };
+                };
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
 // export: CHAT_AGENT_DRAFT_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
@@ -32082,8 +33068,77 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
+    blocks: z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        markdown: z.ZodString;
+        sourceRefs: z.ZodArray<z.ZodString>;
+        assertion: z.ZodEnum<{
+            none: "none";
+            positive: "positive";
+            absence: "absence";
+        }>;
+        scope: z.ZodEnum<{
+            none: "none";
+            source: "source";
+            "selected-sources": "selected-sources";
+            "bound-scope": "bound-scope";
+        }>;
+    }, z.core.$strict>>;
+    gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+            clarification: "clarification";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V2
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V2: "ChatAnswerDraftV2";
+
+// export: CHAT_ANSWER_BLOCK_ASSERTIONS_V2
+export declare const CHAT_ANSWER_BLOCK_ASSERTIONS_V2: readonly [
+    "positive",
+    "absence",
+    "none"
+];
+
+// export: CHAT_ANSWER_BLOCK_SCHEMA_V2
+export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
+    id: z.ZodString;
+    markdown: z.ZodString;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    assertion: z.ZodEnum<{
+        none: "none";
+        positive: "positive";
+        absence: "absence";
+    }>;
+    scope: z.ZodEnum<{
+        none: "none";
+        source: "source";
+        "selected-sources": "selected-sources";
+        "bound-scope": "bound-scope";
+    }>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_BLOCK_SCOPES_V2
+export declare const CHAT_ANSWER_BLOCK_SCOPES_V2: readonly [
+    "none",
+    "source",
+    "selected-sources",
+    "bound-scope"
+];
 
 // export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
 export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
@@ -32259,6 +33314,7 @@ export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
 export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
     "quick-direct",
     "single-exact-context",
+    "single-title-discovery",
     "no-atlassian-acquisition",
     "multi-anchor",
     "broad-scope-discovery",
@@ -32372,8 +33428,17 @@ export interface ChatAgentCheckpointV1 {
     turnId: string;
 }
 
+// export: ChatAgentDraft
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentDraftV2
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+    blocks: ChatAnswerBlockV2[];
+    gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
 
 // export: ChatAgentPortV1
 export interface ChatAgentPortV1 {
@@ -32439,6 +33504,9 @@ export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerBlockV2
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
 
 // export: ChatAnswerFeedbackJournalV1
 export interface ChatAnswerFeedbackJournalV1 {
@@ -32752,7 +33820,10 @@ export interface ChatModelBindingV1 {
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
-    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
+        type: "object";
+        [key: string]: unknown;
+    };
 }
 
 // export: ChatModelFactoryInputV1
@@ -33220,7 +34291,7 @@ export interface ChatSubagentProfileV1 {
 }
 
 // export: ChatSubagentResultV1
-export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraft;
 
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
@@ -34410,6 +35481,9 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
 
+// export: normalizeChatAgentDraftV2
+export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
+
 // export: normalizeChatAnswerFeedbackJournalV1
 export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
 
@@ -34737,6 +35811,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
 
 // export: providerCompatibleChatAnswerSchemaV1
 export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: providerCompatibleChatAnswerSchemaV2
+export declare function providerCompatibleChatAnswerSchemaV2(): {
     type: "object";
     [key: string]: unknown;
 };
@@ -40060,6 +41140,128 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     };
 };
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2: {
+    readonly title: "ChatAnswerDraftV2";
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "blocks"
+    ];
+    readonly properties: {
+        readonly blocks: {
+            readonly type: "array";
+            readonly minItems: 1;
+            readonly maxItems: 100;
+            readonly description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.";
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "markdown",
+                    "sourceRefs",
+                    "assertion",
+                    "scope"
+                ];
+                readonly properties: {
+                    readonly id: {
+                        readonly type: "string";
+                        readonly maxLength: 200;
+                    };
+                    readonly markdown: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 8000;
+                    };
+                    readonly sourceRefs: {
+                        readonly type: "array";
+                        readonly maxItems: 16;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 512;
+                        };
+                    };
+                    readonly assertion: {
+                        readonly enum: readonly [
+                            "positive",
+                            "absence",
+                            "none"
+                        ];
+                        readonly description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.";
+                    };
+                    readonly scope: {
+                        readonly enum: readonly [
+                            "none",
+                            "source",
+                            "selected-sources",
+                            "bound-scope"
+                        ];
+                        readonly description: "Use the narrowest supported absence scope, or none for non-absence blocks.";
+                    };
+                };
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
 // export: CHAT_AGENT_DRAFT_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
@@ -40079,8 +41281,77 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
+    blocks: z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        markdown: z.ZodString;
+        sourceRefs: z.ZodArray<z.ZodString>;
+        assertion: z.ZodEnum<{
+            none: "none";
+            positive: "positive";
+            absence: "absence";
+        }>;
+        scope: z.ZodEnum<{
+            none: "none";
+            source: "source";
+            "selected-sources": "selected-sources";
+            "bound-scope": "bound-scope";
+        }>;
+    }, z.core.$strict>>;
+    gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+            clarification: "clarification";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V2
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V2: "ChatAnswerDraftV2";
+
+// export: CHAT_ANSWER_BLOCK_ASSERTIONS_V2
+export declare const CHAT_ANSWER_BLOCK_ASSERTIONS_V2: readonly [
+    "positive",
+    "absence",
+    "none"
+];
+
+// export: CHAT_ANSWER_BLOCK_SCHEMA_V2
+export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
+    id: z.ZodString;
+    markdown: z.ZodString;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    assertion: z.ZodEnum<{
+        none: "none";
+        positive: "positive";
+        absence: "absence";
+    }>;
+    scope: z.ZodEnum<{
+        none: "none";
+        source: "source";
+        "selected-sources": "selected-sources";
+        "bound-scope": "bound-scope";
+    }>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_BLOCK_SCOPES_V2
+export declare const CHAT_ANSWER_BLOCK_SCOPES_V2: readonly [
+    "none",
+    "source",
+    "selected-sources",
+    "bound-scope"
+];
 
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
@@ -40094,8 +41365,20 @@ export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
 
+// export: ChatAgentDraft
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentDraftV2
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+    blocks: ChatAnswerBlockV2[];
+    gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
+
+// export: ChatAnswerBlockV2
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
 
 // export: ChatAnswerGapV1
 export interface ChatAnswerGapV1 {
@@ -40205,6 +41488,9 @@ export declare function createChatSessionStateV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
 }): ChatSessionStateV1;
 
+// export: normalizeChatAgentDraftV2
+export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
+
 // export: normalizeChatGapCodeV1
 export declare function normalizeChatGapCodeV1(value: string): ChatGapCodeV1;
 
@@ -40213,6 +41499,12 @@ export declare function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): Ch
 
 // export: providerCompatibleChatAnswerSchemaV1
 export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: providerCompatibleChatAnswerSchemaV2
+export declare function providerCompatibleChatAnswerSchemaV2(): {
     type: "object";
     [key: string]: unknown;
 };
@@ -42095,6 +43387,128 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
     };
 };
 
+// export: CHAT_AGENT_DRAFT_JSON_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2: {
+    readonly title: "ChatAnswerDraftV2";
+    readonly type: "object";
+    readonly additionalProperties: false;
+    readonly required: readonly [
+        "blocks"
+    ];
+    readonly properties: {
+        readonly blocks: {
+            readonly type: "array";
+            readonly minItems: 1;
+            readonly maxItems: 100;
+            readonly description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.";
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "markdown",
+                    "sourceRefs",
+                    "assertion",
+                    "scope"
+                ];
+                readonly properties: {
+                    readonly id: {
+                        readonly type: "string";
+                        readonly maxLength: 200;
+                    };
+                    readonly markdown: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 8000;
+                    };
+                    readonly sourceRefs: {
+                        readonly type: "array";
+                        readonly maxItems: 16;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 512;
+                        };
+                    };
+                    readonly assertion: {
+                        readonly enum: readonly [
+                            "positive",
+                            "absence",
+                            "none"
+                        ];
+                        readonly description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.";
+                    };
+                    readonly scope: {
+                        readonly enum: readonly [
+                            "none",
+                            "source",
+                            "selected-sources",
+                            "bound-scope"
+                        ];
+                        readonly description: "Use the narrowest supported absence scope, or none for non-absence blocks.";
+                    };
+                };
+            };
+        };
+        readonly gaps: {
+            readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
+            readonly maxItems: 50;
+            readonly items: {
+                readonly type: "object";
+                readonly additionalProperties: false;
+                readonly required: readonly [
+                    "code",
+                    "message",
+                    "sourceIds"
+                ];
+                readonly properties: {
+                    readonly code: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 64;
+                    };
+                    readonly message: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                        readonly maxLength: 1000;
+                    };
+                    readonly sourceIds: {
+                        readonly type: "array";
+                        readonly maxItems: 100;
+                        readonly items: {
+                            readonly type: "string";
+                            readonly minLength: 1;
+                            readonly maxLength: 256;
+                        };
+                    };
+                };
+            };
+        };
+        readonly continuation: {
+            readonly type: "object";
+            readonly additionalProperties: false;
+            readonly required: readonly [
+                "kind",
+                "prompt"
+            ];
+            readonly properties: {
+                readonly kind: {
+                    readonly enum: readonly [
+                        "follow-up",
+                        "deep-research",
+                        "clarification"
+                    ];
+                };
+                readonly prompt: {
+                    readonly type: "string";
+                    readonly minLength: 1;
+                    readonly maxLength: 1000;
+                };
+            };
+        };
+    };
+};
+
 // export: CHAT_AGENT_DRAFT_SCHEMA_V1
 export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
@@ -42114,8 +43528,77 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_SCHEMA_V2
+export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
+    blocks: z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        markdown: z.ZodString;
+        sourceRefs: z.ZodArray<z.ZodString>;
+        assertion: z.ZodEnum<{
+            none: "none";
+            positive: "positive";
+            absence: "absence";
+        }>;
+        scope: z.ZodEnum<{
+            none: "none";
+            source: "source";
+            "selected-sources": "selected-sources";
+            "bound-scope": "bound-scope";
+        }>;
+    }, z.core.$strict>>;
+    gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        message: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>>;
+    continuation: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "follow-up": "follow-up";
+            "deep-research": "deep-research";
+            clarification: "clarification";
+        }>;
+        prompt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
 // export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
 export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V2
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V2: "ChatAnswerDraftV2";
+
+// export: CHAT_ANSWER_BLOCK_ASSERTIONS_V2
+export declare const CHAT_ANSWER_BLOCK_ASSERTIONS_V2: readonly [
+    "positive",
+    "absence",
+    "none"
+];
+
+// export: CHAT_ANSWER_BLOCK_SCHEMA_V2
+export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
+    id: z.ZodString;
+    markdown: z.ZodString;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    assertion: z.ZodEnum<{
+        none: "none";
+        positive: "positive";
+        absence: "absence";
+    }>;
+    scope: z.ZodEnum<{
+        none: "none";
+        source: "source";
+        "selected-sources": "selected-sources";
+        "bound-scope": "bound-scope";
+    }>;
+}, z.core.$strict>;
+
+// export: CHAT_ANSWER_BLOCK_SCOPES_V2
+export declare const CHAT_ANSWER_BLOCK_SCOPES_V2: readonly [
+    "none",
+    "source",
+    "selected-sources",
+    "bound-scope"
+];
 
 // export: CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1
 export declare const CHAT_ANSWER_FEEDBACK_JOURNAL_PATH_V1: "/.atlcli/chat/v1/answer-feedback.json";
@@ -42291,6 +43774,7 @@ export declare const CHAT_STRATEGY_QUALITY_RISKS_V1: readonly [
 export declare const CHAT_STRATEGY_REASON_CODES_V1: readonly [
     "quick-direct",
     "single-exact-context",
+    "single-title-discovery",
     "no-atlassian-acquisition",
     "multi-anchor",
     "broad-scope-discovery",
@@ -42404,8 +43888,17 @@ export interface ChatAgentCheckpointV1 {
     turnId: string;
 }
 
+// export: ChatAgentDraft
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
+
 // export: ChatAgentDraftV1
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ChatAgentDraftV2
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+    blocks: ChatAnswerBlockV2[];
+    gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
 
 // export: ChatAgentPortV1
 export interface ChatAgentPortV1 {
@@ -42471,6 +43964,9 @@ export interface ChatAgentSubmitFeedbackV1 extends ChatAgentCheckpointV1 {
 
 // export: ChatAnalysisPacketV1
 export type ChatAnalysisPacketV1 = z.infer<typeof chatAnalysisPacketSchemaV1>;
+
+// export: ChatAnswerBlockV2
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
 
 // export: ChatAnswerFeedbackJournalV1
 export interface ChatAnswerFeedbackJournalV1 {
@@ -42784,7 +44280,10 @@ export interface ChatModelBindingV1 {
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
-    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+    projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
+        type: "object";
+        [key: string]: unknown;
+    };
 }
 
 // export: ChatModelFactoryInputV1
@@ -43252,7 +44751,7 @@ export interface ChatSubagentProfileV1 {
 }
 
 // export: ChatSubagentResultV1
-export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraftV1;
+export type ChatSubagentResultV1 = ChatEvidencePacketV1 | ChatAnalysisPacketV1 | ChatCritiquePacketV1 | ChatAgentDraft;
 
 // export: chatThinkingModeFromPolicyV1
 export declare function chatThinkingModeFromPolicyV1(policy: Pick<ResearchOneShotPolicyV1, "requestedEffort">): ChatThinkingModeV1;
@@ -44442,6 +45941,9 @@ export declare function normalizeChatActivityEventV1(value: unknown): ChatActivi
 // export: normalizeChatActivityJournalV1
 export declare function normalizeChatActivityJournalV1(value: unknown): ChatActivityJournalV1;
 
+// export: normalizeChatAgentDraftV2
+export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
+
 // export: normalizeChatAnswerFeedbackJournalV1
 export declare function normalizeChatAnswerFeedbackJournalV1(value: unknown): ChatAnswerFeedbackJournalV1;
 
@@ -44769,6 +46271,12 @@ export declare const PROVIDER_REASONING_PREFERENCES_V1: readonly [
 
 // export: providerCompatibleChatAnswerSchemaV1
 export declare function providerCompatibleChatAnswerSchemaV1(): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: providerCompatibleChatAnswerSchemaV2
+export declare function providerCompatibleChatAnswerSchemaV2(): {
     type: "object";
     [key: string]: unknown;
 };

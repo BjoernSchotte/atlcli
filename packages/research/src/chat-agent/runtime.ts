@@ -41,13 +41,13 @@ import { finalizeChatAnswerV1 } from "./answer.js";
 import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
 import {
-  CHAT_AGENT_DRAFT_SCHEMA_V1,
-  CHAT_AGENT_DRAFT_TOOL_NAME_V1,
+  CHAT_AGENT_DRAFT_SCHEMA_V2,
+  CHAT_AGENT_DRAFT_TOOL_NAME_V2,
   CHAT_SESSION_STATE_PATH_V1,
   CHAT_SESSION_STATE_SCHEMA_V1,
   ChatContractError,
   normalizeChatTurnRequestV1,
-  providerCompatibleChatAnswerSchemaV1,
+  providerCompatibleChatAnswerSchemaV2,
   type ChatAnswerV1,
   type ChatSessionStateV1,
   type ChatTurnRequestV1,
@@ -139,7 +139,7 @@ export function isChatAnswerStructuredOutputErrorV1(value: unknown): boolean {
     if (visited.has(current)) return false;
     visited.add(current);
     if (current instanceof Error) {
-      if (/Failed to parse structured output for tool ['"](?:ChatAnswerDraftV1|providerStrategy)['"]/u
+      if (/Failed to parse structured output for tool ['"](?:ChatAnswerDraftV2|providerStrategy)['"]/u
         .test(current.message)) return true;
       current = current.cause;
       continue;
@@ -471,7 +471,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             ...filteredRequest,
             systemPrompt: [
               filteredRequest.systemPrompt,
-              "The previous terminal answer did not satisfy the required JSON schema. Retry the terminal answer exactly once from the already accepted evidence; do not call eval, ask a question, retrieve, or widen scope. Keep messageMarkdown below 700 words. Use actual JSON arrays for citationSourceIds and gaps. End every evidence-derived factual paragraph, list item, or table row on the same line with its exact [[source:SOURCE_ID]] placeholder; a heading citation does not cover later paragraphs.",
+              "The previous terminal answer did not satisfy the required JSON schema. Retry the terminal answer exactly once from the already accepted evidence; do not call eval, ask a question, retrieve, or widen scope. Return ChatAnswerDraftV2 with ordered blocks and an actual gaps array. Put exactly one factual paragraph, list item, or table row in each block. Copy exact accepted evidence references into sourceRefs. Positive facts use assertion=positive and scope=none. Negative findings use assertion=absence and the narrowest truthful scope. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs.",
             ].filter(Boolean).join("\n\n"),
           });
         }
@@ -785,6 +785,36 @@ export function streamedJsonStringFieldV1(
     cursor += 6;
   }
   return value;
+}
+
+/** Project every occurrence of a string field from a streamed JSON envelope. */
+export function streamedJsonStringFieldsV1(
+  input: string,
+  fieldName: string,
+): string[] {
+  const marker = JSON.stringify(fieldName);
+  const values: string[] = [];
+  let cursor = 0;
+  while (cursor < input.length) {
+    const markerIndex = input.indexOf(marker, cursor);
+    if (markerIndex < 0) break;
+    const value = streamedJsonStringFieldV1(input.slice(markerIndex), fieldName);
+    if (value !== undefined) values.push(value);
+    cursor = markerIndex + marker.length;
+  }
+  return values;
+}
+
+function streamedChatDraftMarkdownV2(input: string): string {
+  const blocks = streamedJsonStringFieldsV1(input, "markdown")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  return blocks || streamedJsonStringFieldV1(input, "messageMarkdown") || "";
+}
+
+function isChatAnswerDraftToolNameV2(name: string | undefined): boolean {
+  return name === CHAT_AGENT_DRAFT_TOOL_NAME_V2 || name === "ChatAnswerDraftV1";
 }
 
 function normalizeStoredChatSessionStateV1(
@@ -1362,9 +1392,8 @@ export function createKiteweaveChatAgent(
           emittedAnswerChars: number;
         }): void => {
           if (state.structuredText.length > turn.limits.maxReportChars * 4) return;
-          const projected = (
-            streamedJsonStringFieldV1(state.structuredText, "messageMarkdown") ?? ""
-          ).slice(0, turn.limits.maxReportChars);
+          const projected = streamedChatDraftMarkdownV2(state.structuredText)
+            .slice(0, turn.limits.maxReportChars);
           if (projected.length <= state.emittedAnswerChars) return;
           const delta = projected.slice(state.emittedAnswerChars);
           if (!state.answerStarted) {
@@ -1847,15 +1876,15 @@ export function createKiteweaveChatAgent(
             ? {}
             : {
                 responseFormat: modelBinding.structuredOutput === "tool"
-                  ? toolStrategy(CHAT_AGENT_DRAFT_SCHEMA_V1, {
+                  ? toolStrategy(CHAT_AGENT_DRAFT_SCHEMA_V2, {
                       handleError: (error) => {
                         structuredRepairAttempts += 1;
                         if (structuredRepairAttempts > 1) throw error;
-                        return "The Chat answer did not match the required schema. Call ChatAnswerDraftV1 exactly once more with non-empty messageMarkdown, citationSourceIds as an actual JSON array of strings, and gaps as an actual JSON array of { code, message, sourceIds } objects. Never JSON-encode either array into a string. Do not call eval or any content capability again.";
+                        return "The Chat answer did not match the required schema. Call ChatAnswerDraftV2 exactly once more with a non-empty blocks array and an actual gaps array. Put one factual paragraph, list item, or table row in each block; copy exact accepted sourceRefs; use assertion=positive/scope=none for positive facts, assertion=absence with the narrowest truthful scope for negative findings, and assertion=none/scope=none/no sourceRefs for headings and non-factual transitions. Do not call eval or any content capability again.";
                       },
                       toolMessageContent: "Chat answer accepted.",
                     })
-                  : providerStrategy(providerCompatibleChatAnswerSchemaV1()),
+                  : providerStrategy(providerCompatibleChatAnswerSchemaV2()),
               }),
         });
         input.onProgress?.({
@@ -1943,9 +1972,8 @@ export function createKiteweaveChatAgent(
           };
           const emitProjectedAnswer = (): void => {
             if (structuredAnswerText.length > maximumAnswerChars * 4) return;
-            const projected = (
-              streamedJsonStringFieldV1(structuredAnswerText, "messageMarkdown") ?? ""
-            ).slice(0, maximumAnswerChars);
+            const projected = streamedChatDraftMarkdownV2(structuredAnswerText)
+              .slice(0, maximumAnswerChars);
             if (projected.length <= emittedAnswerChars) return;
             if (!answerStarted) {
               answerStarted = true;
@@ -2071,7 +2099,7 @@ export function createKiteweaveChatAgent(
                   : {};
                 const name = typeof content.name === "string" ? content.name : "";
                 if (index >= 0 && name) toolNames.set(index, name);
-                if (name === CHAT_AGENT_DRAFT_TOOL_NAME_V1) {
+                if (isChatAnswerDraftToolNameV2(name)) {
                   activeAnswerIndexes.add(index);
                   beginAnswerGeneration();
                   if (typeof content.args === "string") {
@@ -2091,7 +2119,7 @@ export function createKiteweaveChatAgent(
                 const name = typeof fields.name === "string"
                   ? fields.name
                   : toolNames.get(index);
-                if (name !== CHAT_AGENT_DRAFT_TOOL_NAME_V1 ||
+                if (!isChatAnswerDraftToolNameV2(name) ||
                   fields.type !== "tool_call_chunk" ||
                   typeof fields.args !== "string") continue;
                 if (!activeAnswerIndexes.has(index)) {
@@ -2110,7 +2138,7 @@ export function createKiteweaveChatAgent(
               const name = typeof content.name === "string"
                 ? content.name
                 : toolNames.get(index);
-              if (name !== CHAT_AGENT_DRAFT_TOOL_NAME_V1) continue;
+              if (!isChatAnswerDraftToolNameV2(name)) continue;
               if (!activeAnswerIndexes.has(index)) beginAnswerGeneration();
               if (content.args && typeof content.args === "object") {
                 structuredAnswerText = JSON.stringify(content.args);

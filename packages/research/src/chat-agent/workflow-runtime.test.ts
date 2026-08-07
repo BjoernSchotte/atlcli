@@ -210,7 +210,10 @@ function createHarness(input: {
   structuredOutput?: "native" | "tool";
   projectResponseSchema?: (
     schema: Readonly<Record<string, unknown>>,
-  ) => Readonly<Record<string, unknown>>;
+  ) => {
+    type: "object";
+    [key: string]: unknown;
+  };
   onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
   onModelStreamEvent?: (event: ChatSubagentModelStreamEventV1) => void;
   searchProducts?: Array<"jira" | "confluence">;
@@ -503,7 +506,7 @@ describe("Chat agentic workflow runtime", () => {
     )).toBe(false);
     expect(harness.compiledSubagents.find((entry) =>
       entry.name === "chat-synthesizer-v1"
-    )?.systemPrompt).toContain("[[source:SOURCE_ID]]");
+    )?.systemPrompt).toContain("sourceRefs");
   });
 
   test("bundles exact anchor reads behind one deterministic host capability", async () => {
@@ -1301,7 +1304,7 @@ describe("Chat agentic workflow runtime", () => {
     expect(harness.runtime.dispatchSnapshot().taskStatuses["task:search"]).toBe("completed");
   });
 
-  test("keeps every DeepAgents child on portable structured output", async () => {
+  test("uses native structured output only for side-effect-free answer children", async () => {
     const projectedResponseFormats = new Map<string, unknown>();
     const harness = createHarness({
       structuredOutput: "native",
@@ -1346,28 +1349,32 @@ describe("Chat agentic workflow runtime", () => {
     const synthesisFormat = projectedResponseFormats.get("chat-synthesizer-v1");
     expect(Array.isArray(internalFormat)).toBe(true);
     expect((internalFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
-    expect(Array.isArray(draftFormat)).toBe(true);
-    expect((draftFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
-    expect(Array.isArray(synthesisFormat)).toBe(true);
-    expect((synthesisFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
-    const synthesisSchema = (synthesisFormat as Array<{ schema: unknown }>)[0]?.schema;
+    expect(draftFormat?.constructor.name).toBe("ProviderStrategy");
+    expect(synthesisFormat?.constructor.name).toBe("ProviderStrategy");
+    const synthesisSchema = (synthesisFormat as { schema?: unknown })?.schema;
     expect(JSON.stringify(dispatch.responseSchema)).toContain("maxItems");
     expect(JSON.stringify((internalFormat as Array<{ schema: unknown }>)[0]?.schema)).toContain("maxItems");
-    expect(JSON.stringify((draftFormat as Array<{ schema: unknown }>)[0]?.schema)).toContain("maxItems");
-    expect(JSON.stringify(synthesisSchema)).toContain("maxItems");
+    expect(JSON.stringify((draftFormat as { schema?: unknown })?.schema)).not.toContain("maxItems");
+    expect(JSON.stringify(synthesisSchema)).not.toContain("maxItems");
     expect(synthesisSchema).toMatchObject({
       type: "object",
       properties: {
-        messageMarkdown: {
-          type: "string",
-          description: expect.stringContaining("[[source:SOURCE_ID]]"),
+        blocks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              markdown: { type: "string" },
+              sourceRefs: { type: "array" },
+              assertion: { enum: ["positive", "absence", "none"] },
+            },
+          },
         },
-        citationSourceIds: { type: "array" },
       },
     });
   });
 
-  test("keeps an admitted repairer and synthesis on the same portable strategy", async () => {
+  test("keeps an admitted repairer and synthesis on the same native side-effect-free strategy", async () => {
     const projectedResponseFormats = new Map<string, unknown>();
     const harness = createHarness({
       structuredOutput: "native",
@@ -1427,10 +1434,8 @@ describe("Chat agentic workflow runtime", () => {
 
     const repairFormat = projectedResponseFormats.get("chat-answer-repairer-v1");
     const synthesisFormat = projectedResponseFormats.get("chat-synthesizer-v1");
-    expect(Array.isArray(repairFormat)).toBe(true);
-    expect((repairFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
-    expect(Array.isArray(synthesisFormat)).toBe(true);
-    expect((synthesisFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
+    expect(repairFormat?.constructor.name).toBe("ProviderStrategy");
+    expect(synthesisFormat?.constructor.name).toBe("ProviderStrategy");
   });
 
   test("forwards model stream events from host-executed DeepAgents specialists", async () => {
@@ -1958,6 +1963,10 @@ describe("Chat agentic workflow runtime", () => {
       .toEqual([repair.taskId]);
     const finalDraft = harness.runtime.assertComplete();
     expect(goldScore(wrongDraft)).toBe(0);
+    expect("messageMarkdown" in finalDraft).toBe(true);
+    if (!("messageMarkdown" in finalDraft)) {
+      throw new Error("Expected the legacy synthetic draft shape.");
+    }
     expect(goldScore(finalDraft)).toBe(3);
     expect(finalDraft).toEqual(repairedDraft);
   });

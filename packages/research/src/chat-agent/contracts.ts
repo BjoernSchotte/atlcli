@@ -179,6 +179,7 @@ export function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRe
 }
 
 export const CHAT_AGENT_DRAFT_TOOL_NAME_V1 = "ChatAnswerDraftV1" as const;
+export const CHAT_AGENT_DRAFT_TOOL_NAME_V2 = "ChatAnswerDraftV2" as const;
 
 export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
   messageMarkdown: z.string().min(1).max(24_000).describe(
@@ -201,6 +202,88 @@ export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
 }).strict().meta({ title: CHAT_AGENT_DRAFT_TOOL_NAME_V1 });
 
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
+
+export const CHAT_ANSWER_BLOCK_ASSERTIONS_V2 = [
+  "positive",
+  "absence",
+  "none",
+] as const;
+export const CHAT_ANSWER_BLOCK_SCOPES_V2 = [
+  "none",
+  "source",
+  "selected-sources",
+  "bound-scope",
+] as const;
+
+/**
+ * A small semantic unit, not a Markdown AST. Keeping evidence identity and
+ * absence scope beside the text lets the host reject one unsupported claim
+ * without deleting neighbouring supported prose or damaging list structure.
+ */
+export const CHAT_ANSWER_BLOCK_SCHEMA_V2 = z.object({
+  id: z.string().min(1).max(200),
+  markdown: z.string().min(1).max(8_000),
+  sourceRefs: z.array(z.string().min(1).max(512)).max(16),
+  assertion: z.enum(CHAT_ANSWER_BLOCK_ASSERTIONS_V2),
+  scope: z.enum(CHAT_ANSWER_BLOCK_SCOPES_V2),
+}).strict();
+
+const CHAT_ANSWER_BLOCK_INPUT_SCHEMA_V2 = z.object({
+  id: z.string().min(1).max(200).optional(),
+  markdown: z.string().min(1).max(8_000),
+  sourceRefs: z.array(z.string().min(1).max(512)).max(16),
+  assertion: z.enum(CHAT_ANSWER_BLOCK_ASSERTIONS_V2),
+  scope: z.enum(CHAT_ANSWER_BLOCK_SCOPES_V2),
+}).strict();
+
+export const CHAT_AGENT_DRAFT_SCHEMA_V2 = z.object({
+  blocks: z.array(CHAT_ANSWER_BLOCK_INPUT_SCHEMA_V2).min(1).max(100).describe(
+    "Ordered conversational Markdown blocks. Each factual paragraph, list item, or table row is one block with its exact accepted source references.",
+  ),
+  gaps: z.array(z.object({
+    code: CHAT_GAP_CODE_SCHEMA_V1,
+    message: z.string().min(1).max(1_000),
+    sourceIds: z.array(z.string().min(1).max(256)).max(100),
+  }).strict()).max(50).optional(),
+  continuation: z.object({
+    kind: z.enum(["follow-up", "deep-research", "clarification"]),
+    prompt: z.string().min(1).max(1_000),
+  }).strict().optional(),
+}).strict().meta({ title: CHAT_AGENT_DRAFT_TOOL_NAME_V2 });
+
+export type ChatAnswerBlockV2 = z.infer<typeof CHAT_ANSWER_BLOCK_SCHEMA_V2>;
+type ChatAgentDraftInputV2 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V2>;
+export type ChatAgentDraftV2 = Omit<ChatAgentDraftInputV2, "blocks" | "gaps"> & {
+  blocks: ChatAnswerBlockV2[];
+  gaps: NonNullable<ChatAgentDraftInputV2["gaps"]>;
+};
+
+export function normalizeChatAgentDraftV2(
+  value: ChatAgentDraftInputV2,
+): ChatAgentDraftV2 {
+  return {
+    ...value,
+    gaps: value.gaps ?? [],
+    blocks: value.blocks.map((block, index): ChatAnswerBlockV2 => {
+      const sourceRefs = block.sourceRefs ?? [];
+      const assertion = block.assertion ??
+        (sourceRefs.length > 0 ? "positive" : "none");
+      return {
+        id: block.id ?? `answer-block:${index + 1}`,
+        markdown: block.markdown,
+        sourceRefs: [...sourceRefs],
+        assertion,
+        scope: assertion === "absence"
+          ? block.scope === undefined || block.scope === "none"
+            ? "source"
+            : block.scope
+          : "none",
+      };
+    }),
+  };
+}
+
+export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
 
 export const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1 = {
   type: "object",
@@ -247,6 +330,48 @@ export const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1 = {
         prompt: { type: "string", minLength: 1, maxLength: 1_000 },
       },
     },
+  },
+} as const;
+
+export const CHAT_AGENT_DRAFT_JSON_SCHEMA_V2 = {
+  title: CHAT_AGENT_DRAFT_TOOL_NAME_V2,
+  type: "object",
+  additionalProperties: false,
+  required: ["blocks"],
+  properties: {
+    blocks: {
+      type: "array",
+      minItems: 1,
+      maxItems: 100,
+      description: "Ordered conversational Markdown blocks. Put exactly one factual paragraph, list item, or table row in each block. Headings and short transitions use assertion=none.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["markdown", "sourceRefs", "assertion", "scope"],
+        properties: {
+          id: {
+            type: "string",
+            maxLength: 200,
+          },
+          markdown: { type: "string", minLength: 1, maxLength: 8_000 },
+          sourceRefs: {
+            type: "array",
+            maxItems: 16,
+            items: { type: "string", minLength: 1, maxLength: 512 },
+          },
+          assertion: {
+            enum: CHAT_ANSWER_BLOCK_ASSERTIONS_V2,
+            description: "Use positive for factual claims, absence for negative findings, and none only for headings or separators.",
+          },
+          scope: {
+            enum: CHAT_ANSWER_BLOCK_SCOPES_V2,
+            description: "Use the narrowest supported absence scope, or none for non-absence blocks.",
+          },
+        },
+      },
+    },
+    gaps: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1.properties.gaps,
+    continuation: CHAT_AGENT_DRAFT_JSON_SCHEMA_V1.properties.continuation,
   },
 } as const;
 
@@ -297,6 +422,13 @@ export function providerCompatibleChatAnswerSchemaV1(): {
   [key: string]: unknown;
 } {
   return providerCompatibleChatJsonSchemaV1(CHAT_AGENT_DRAFT_JSON_SCHEMA_V1);
+}
+
+export function providerCompatibleChatAnswerSchemaV2(): {
+  type: "object";
+  [key: string]: unknown;
+} {
+  return providerCompatibleChatJsonSchemaV1(CHAT_AGENT_DRAFT_JSON_SCHEMA_V2);
 }
 
 export function createChatSessionStateV1(input: {

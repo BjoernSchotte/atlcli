@@ -991,10 +991,13 @@ Automated proof:
 
 Proof note (2026-08-06): the production MV3 bundle passes all 38 packed lifecycle
 tests, including the bounded ephemeral summary channel. A real Sonnet 4.6 model
-smoke proved summarized-reasoning delivery through the native model stream. All
-Chat answer roles use LangChain's provider-neutral, repairable ToolStrategy; the
-host incrementally projects only the accumulated `messageMarkdown` argument and
-keeps the final Zod contract authoritative. A typed ephemeral reset retracts a
+smoke proved summarized-reasoning delivery through the native model stream. The
+model binding selects LangChain's portable `ToolStrategy` or provider-native
+structured output without changing the host contract. Side-effect-free answer
+children may use provider-native output, while tool-bearing readers remain on
+the portable path so a structured-output retry cannot repeat an Atlassian read.
+The host incrementally projects only answer-field deltas and keeps the final Zod
+contract authoritative. A typed ephemeral reset retracts a
 provisional generation before LangChain's one permitted schema-repair generation,
 without journaling either draft. Provider-approved summary deltas are projected
 incrementally into bounded localized semantic milestones, so provider wording,
@@ -1016,6 +1019,19 @@ for byte. Synthetic provider tests split an escaped quotation across incremental
 tool-argument deltas and prove final schema parsing; presenter tests prove that a
 repair reset removes the obsolete provisional generation. The private question,
 tenant content, source identifiers, and artifacts remain outside Git.
+
+Block-finalization live proof (2026-08-07): the terminal answer contract now
+uses ordered semantic blocks with exact source references and explicit absence
+scope. Host validation removes one unsupported block without deleting adjacent
+supported prose, re-numbers retained Markdown lists, renders canonical citations
+once, rejects over-broad negative claims, and never publishes provider prose
+whose evidence metadata is missing. A private realistic multi-source Auto run
+and a separate Deep run both completed through provider-native, side-effect-free
+answer children without replaying any Atlassian read. The Deep run finished
+inside five minutes with a cited Markdown answer. A content-free structural audit
+found no raw internal source IDs, orphan citation-only lines, empty list items,
+empty headings, or internal diagnostic phrases. The private questions, tenant
+content, identifiers, and generated artifacts remain outside Git.
 
 Core and packed-MV3 HITL checkpoint proof (2026-08-06): ordinary Chat now owns a dedicated
 workspace-backed LangGraph checkpoint thread, separate from every Deep Research

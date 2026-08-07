@@ -12,8 +12,12 @@ import { chatFinalGapCodeForQualityDefectV1 } from "./quality.js";
 import {
   CHAT_ANSWER_SCHEMA_V1,
   CHAT_AGENT_DRAFT_SCHEMA_V1,
+  CHAT_AGENT_DRAFT_SCHEMA_V2,
   ChatContractError,
+  normalizeChatAgentDraftV2,
+  type ChatAgentDraftV2,
   type ChatAgentDraftV1,
+  type ChatAnswerBlockV2,
   type ChatAnswerGapV1,
   type ChatAnswerV1,
   type ChatRunSummaryV1,
@@ -22,6 +26,204 @@ import type {
   ChatStrategyDecisionV1,
   ChatStrategyReviewV1,
 } from "./strategy.js";
+
+function answerSourceIdV2(sourceRef: string): string {
+  const separator = sourceRef.indexOf("#");
+  return separator === -1 ? sourceRef : sourceRef.slice(0, separator);
+}
+
+function detailProjectionCompleteV2(evidence: ResearchDetailEvidenceV1): boolean {
+  return evidence.coverage?.completeDocumentRead === true ||
+    (!evidence.coverage && !evidence.content.truncated);
+}
+
+function sourceReferenceIsDetailedV2(
+  sourceRef: string,
+  evidence: readonly ResearchDetailEvidenceV1[],
+  sections: readonly ResearchReadSectionReferenceV1[],
+): boolean {
+  const separator = sourceRef.indexOf("#");
+  const sourceId = answerSourceIdV2(sourceRef);
+  if (separator === -1) {
+    return evidence.some((entry) => entry.source.id === sourceId);
+  }
+  const sectionId = sourceRef.slice(separator + 1);
+  return evidence.some((entry) =>
+    entry.source.id === sourceId && entry.section?.sectionId === sectionId
+  ) || sections.some((entry) =>
+    entry.sourceId === sourceId && entry.sectionId === sectionId
+  );
+}
+
+function absenceScopeIsSupportedV2(input: {
+  block: ChatAnswerBlockV2;
+  detailEvidence: readonly ResearchDetailEvidenceV1[];
+  run: ChatRunSummaryV1;
+}): boolean {
+  if (input.block.assertion !== "absence") return true;
+  if (input.block.scope === "source") {
+    return input.block.sourceRefs.every((sourceRef) => {
+      const sourceId = answerSourceIdV2(sourceRef);
+      const separator = sourceRef.indexOf("#");
+      if (separator !== -1) {
+        return input.detailEvidence.some((entry) =>
+          entry.source.id === sourceId &&
+          entry.section?.sectionId === sourceRef.slice(separator + 1) &&
+          !entry.content.truncated
+        );
+      }
+      return input.detailEvidence.some((entry) =>
+        entry.source.id === sourceId && !entry.content.truncated
+      );
+    });
+  }
+  if (input.block.scope === "selected-sources") {
+    return input.block.sourceRefs.every((sourceRef) => {
+      const sourceId = answerSourceIdV2(sourceRef);
+      return input.detailEvidence.some((entry) =>
+        entry.source.id === sourceId &&
+        entry.section === undefined &&
+        detailProjectionCompleteV2(entry)
+      );
+    });
+  }
+  const retrieval = input.run.retrieval;
+  return retrieval !== undefined &&
+    retrieval.deferredCandidates === 0 &&
+    retrieval.admittedCandidates === retrieval.detailReadCandidates &&
+    retrieval.detailReadCoverage === 1 &&
+    retrieval.observedRecall === 1;
+}
+
+function appendEvidencePlaceholdersV2(
+  markdown: string,
+  sourceRefs: readonly string[],
+): string {
+  const clean = markdown
+    .replace(/\[\[source:[^\]]+\]\]/gu, "")
+    .replace(/\s+$/gu, "")
+    .trim();
+  const placeholders = [...new Set(sourceRefs)]
+    .map((sourceRef) => `[[source:${sourceRef}]]`)
+    .join(" ");
+  if (!placeholders) return clean;
+  return clean.endsWith("|")
+    ? clean.replace(/\|\s*$/u, ` ${placeholders} |`)
+    : `${clean} ${placeholders}`;
+}
+
+function joinAnswerBlocksV2(blocks: readonly string[]): string {
+  const compact = (value: string): boolean =>
+    /^\s*(?:[-*+]\s+|\d+[.)]\s+|\|)/u.test(value);
+  let output = "";
+  let previous: string | undefined;
+  for (const block of blocks) {
+    if (!output) output = block;
+    else output += `${previous && compact(previous) && compact(block) ? "\n" : "\n\n"}${block}`;
+    previous = block;
+  }
+  return output;
+}
+
+function projectStructuredDraftV2(input: {
+  draft: ChatAgentDraftV2;
+  sources: readonly ResearchSourceReferenceV1[];
+  detailEvidence: readonly ResearchDetailEvidenceV1[];
+  readSectionReferences: readonly ResearchReadSectionReferenceV1[];
+  qualityDisposition?: ChatQualityDispositionV1;
+  run: ChatRunSummaryV1;
+  locale?: string;
+}): ChatAgentDraftV1 {
+  const sourceIds = new Set(input.sources.map((source) => source.id));
+  const rejectedIds = new Set(input.qualityDisposition?.rejectedSourceIds ?? []);
+  const retained: string[] = [];
+  const retainedSourceIds = new Set<string>();
+  const seenBlockIds = new Set<string>();
+  const removedSourceIds = new Set<string>();
+  let unsupportedBlocks = 0;
+  let unsupportedAbsenceBlocks = 0;
+
+  for (const block of input.draft.blocks) {
+    if (seenBlockIds.has(block.id)) {
+      unsupportedBlocks += 1;
+      continue;
+    }
+    seenBlockIds.add(block.id);
+    const normalizedRefs = block.assertion === "none"
+      ? []
+      : [...new Set(block.sourceRefs)];
+    if (block.assertion !== "none" && normalizedRefs.length === 0) {
+      unsupportedBlocks += 1;
+      continue;
+    }
+    if (block.assertion === "absence" && block.scope === "none") {
+      unsupportedAbsenceBlocks += 1;
+      continue;
+    }
+    const invalidReference = normalizedRefs.some((sourceRef) => {
+      const sourceId = answerSourceIdV2(sourceRef);
+      return !sourceIds.has(sourceId) ||
+        rejectedIds.has(sourceId) ||
+        !sourceReferenceIsDetailedV2(
+          sourceRef,
+          input.detailEvidence,
+          input.readSectionReferences,
+        );
+    });
+    if (invalidReference) {
+      unsupportedBlocks += 1;
+      normalizedRefs.forEach((sourceRef) => removedSourceIds.add(answerSourceIdV2(sourceRef)));
+      continue;
+    }
+    if (!absenceScopeIsSupportedV2({
+      block,
+      detailEvidence: input.detailEvidence,
+      run: input.run,
+    })) {
+      unsupportedAbsenceBlocks += 1;
+      normalizedRefs.forEach((sourceRef) => removedSourceIds.add(answerSourceIdV2(sourceRef)));
+      continue;
+    }
+    normalizedRefs.forEach((sourceRef) => retainedSourceIds.add(answerSourceIdV2(sourceRef)));
+    retained.push(appendEvidencePlaceholdersV2(block.markdown, normalizedRefs));
+  }
+
+  const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
+  const gaps = input.draft.gaps.map((gap) => ({
+    ...gap,
+    sourceIds: [...gap.sourceIds],
+  }));
+  if (unsupportedBlocks > 0) {
+    gaps.push({
+      code: "no-detail-evidence",
+      message: german
+        ? "Einige vorgeschlagene Aussagen konnten mit den gelesenen Detailquellen nicht sicher belegt werden und wurden ausgelassen."
+        : "Some proposed claims could not be supported safely by the detailed sources and were omitted.",
+      sourceIds: [...removedSourceIds].filter((sourceId) => sourceIds.has(sourceId)),
+    });
+  }
+  if (unsupportedAbsenceBlocks > 0) {
+    gaps.push({
+      code: "incomplete-coverage",
+      message: german
+        ? "Einige Negativaussagen wurden ausgelassen, weil ihr behaupteter Umfang nicht vollständig gelesen wurde."
+        : "Some absence claims were omitted because their asserted scope was not read completely.",
+      sourceIds: [...removedSourceIds].filter((sourceId) => sourceIds.has(sourceId)),
+    });
+  }
+  const messageMarkdown = joinAnswerBlocksV2(retained).trim() ||
+    (german
+      ? "Für diese Antwort blieb keine detailbelegte Aussage übrig."
+      : "No detail-backed claim remained for this answer.");
+  return {
+    messageMarkdown,
+    citationSourceIds: [...retainedSourceIds],
+    gaps,
+    ...(input.draft.continuation
+      ? { continuation: { ...input.draft.continuation } }
+      : {}),
+  };
+}
 
 function mergeEquivalentGapsV1(gaps: readonly ChatAnswerGapV1[]): ChatAnswerGapV1[] {
   const merged = new Map<string, ChatAnswerGapV1>();
@@ -194,6 +396,48 @@ function removeEmptyMarkdownHeadingsV1(markdown: string): string {
     const nextHeading = markdownHeadingV1(next);
     return !nextHeading || nextHeading.level > heading.level;
   }).join("\n").replace(/\n{3,}/gu, "\n\n").trim();
+}
+
+function normalizeFinalMarkdownStructureV1(markdown: string): string {
+  const lines = markdown
+    .split("\n")
+    .filter((line) => !/^\s*(?:[-*+]|\d+[.)])\s*$/u.test(line));
+  let orderedListIndex = 0;
+  let inOrderedList = false;
+  const normalized = lines.map((line) => {
+    const match = /^(\s*)\d+([.)])\s+(.+)$/u.exec(line);
+    if (!match) {
+      if (line.trim().length > 0) inOrderedList = false;
+      return line.replace(/[ \t]+$/gu, "");
+    }
+    orderedListIndex = inOrderedList ? orderedListIndex + 1 : 1;
+    inOrderedList = true;
+    return `${match[1]}${orderedListIndex}${match[2]} ${match[3]}`;
+  });
+  return removeEmptyMarkdownHeadingsV1(
+    normalized.join("\n").replace(/\n{3,}/gu, "\n\n").trim(),
+  );
+}
+
+function removeStandaloneEvidencePlaceholderLinesV1(markdown: string): string {
+  return markdown
+    .split("\n")
+    .filter((line) => !/^\s*(?:\[\[source:[^\]]+\]\]\s*)+$/u.test(line))
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+function humanizeInternalSourceIdsV1(
+  value: string,
+  sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
+): string {
+  let result = value;
+  for (const [sourceId, source] of sources) {
+    if (!sourceId.startsWith("wiki:")) continue;
+    result = result.split(sourceId).join(source.title);
+  }
+  return result;
 }
 
 function removeUnsupportedMissingProductClaimsV1(
@@ -398,6 +642,21 @@ export function finalizeChatAnswerV1(input: {
   run: ChatRunSummaryV1;
   locale?: string;
 }): ChatAnswerV1 {
+  const structured = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
+  if (structured.success) {
+    return finalizeChatAnswerV1({
+      ...input,
+      draft: projectStructuredDraftV2({
+        draft: normalizeChatAgentDraftV2(structured.data),
+        sources: input.sources,
+        detailEvidence: input.detailEvidence,
+        readSectionReferences: input.readSectionReferences ?? [],
+        qualityDisposition: input.qualityDisposition,
+        run: input.run,
+        locale: input.locale,
+      }),
+    });
+  }
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V1.safeParse(input.draft);
   if (!parsed.success) {
     throw new ChatContractError("invalid-report", "The Chat answer did not match the required contract.");
@@ -468,6 +727,7 @@ export function finalizeChatAnswerV1(input: {
     messageMarkdown,
   );
   messageMarkdown = documentationAbsenceProjection.markdown;
+  messageMarkdown = removeStandaloneEvidencePlaceholderLinesV1(messageMarkdown);
   const citationPlaceholders = chatEvidencePlaceholdersV1(messageMarkdown);
   const citationIds = [...new Set(citationPlaceholders.map((entry) => entry.sourceId))];
   const citationKeys = [...new Set(citationPlaceholders.map((entry) =>
@@ -514,7 +774,6 @@ export function finalizeChatAnswerV1(input: {
     });
   }
   const gaps = draft.gaps.map((gap) => ({ ...gap, sourceIds: [...gap.sourceIds] }));
-  const hostCoverageNotices: string[] = [];
   const retrieval = input.run.retrieval;
   const incompleteRetrieval = retrieval !== undefined &&
     retrieval.admittedCandidates > 0 && (
@@ -540,38 +799,35 @@ export function finalizeChatAnswerV1(input: {
   if (unsupportedPlaceholderKeys.length > 0) {
     const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
     const notice = german
-      ? `${unsupportedPlaceholderKeys.length} nicht detailbelegte Aussage wurde aus der Antwort entfernt.`
-      : `${unsupportedPlaceholderKeys.length} claim without detailed evidence was removed from the answer.`;
+      ? "Einige vorgeschlagene Aussagen konnten mit den gelesenen Detailquellen nicht sicher belegt werden und wurden ausgelassen."
+      : "Some proposed claims could not be supported safely by the detailed sources and were omitted.";
     gaps.push({
       code: "no-detail-evidence",
       message: notice,
       sourceIds: [],
     });
-    hostCoverageNotices.push(notice);
   }
   if (jiraClaimProjection.removedLines > 0) {
     const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
     const notice = german
-      ? `${jiraClaimProjection.removedLines} Jira-Zuordnung ohne gleichzeiligen Detailbeleg wurde aus der Antwort entfernt.`
-      : `${jiraClaimProjection.removedLines} Jira mapping without a same-line detail citation was removed from the answer.`;
+      ? "Einige vorgeschlagene Jira-Zuordnungen hatten keinen direkten Detailbeleg und wurden ausgelassen."
+      : "Some proposed Jira mappings lacked direct detail evidence and were omitted.";
     gaps.push({
       code: "no-detail-evidence",
       message: notice,
       sourceIds: [],
     });
-    hostCoverageNotices.push(notice);
   }
   if (documentationAbsenceProjection.removedLines > 0) {
     const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
     const notice = german
-      ? `${documentationAbsenceProjection.removedLines} Negativbehauptungen über fehlende Dokumentation ohne zeilengleichen Detailbeleg wurden aus der Antwort entfernt.`
-      : `${documentationAbsenceProjection.removedLines} documentation-absence claims without a same-line detail citation were removed from the answer.`;
+      ? "Einige Aussagen über fehlende Dokumentation waren nicht direkt belegt und wurden ausgelassen."
+      : "Some claims about missing documentation lacked direct evidence and were omitted.";
     gaps.push({
       code: "no-detail-evidence",
       message: notice,
       sourceIds: [],
     });
-    hostCoverageNotices.push(notice);
   }
   if (incompleteRetrieval) {
     const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
@@ -595,7 +851,6 @@ export function finalizeChatAnswerV1(input: {
         sourceIds: [],
       });
     }
-    hostCoverageNotices.push(notice);
   }
   for (const [sourceId, coverage] of citedCoverage) {
     if (coverage.complete || !coverage.incomplete) continue;
@@ -631,7 +886,6 @@ export function finalizeChatAnswerV1(input: {
       message,
       sourceIds: [sourceId],
     });
-    hostCoverageNotices.push(message);
   }
   for (const placeholder of citationPlaceholders) {
     const source = sourceById.get(placeholder.sourceId)!;
@@ -671,7 +925,7 @@ export function finalizeChatAnswerV1(input: {
     messageMarkdown,
     missingProducts,
   );
-  messageMarkdown = removeEmptyMarkdownHeadingsV1(messageMarkdown);
+  messageMarkdown = normalizeFinalMarkdownStructureV1(messageMarkdown);
   const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
   const evidenceRequired = input.strategyDecision?.requiredCapabilities.some(
     (capability) => capability !== "chat-answer",
@@ -706,10 +960,6 @@ export function finalizeChatAnswerV1(input: {
         sourceIds: [],
       });
     }
-    hostCoverageNotices.push(notice);
-  }
-  if (hostCoverageNotices.length > 0) {
-    messageMarkdown += `\n\n> **${german ? "Abdeckungsgrenze" : "Coverage limit"}:** ${[...new Set(hostCoverageNotices)].join(" ")}`;
   }
   const fallbackReason = input.qualityPolicy.mode === "quick"
     ? "quick-direct" as const
@@ -793,6 +1043,10 @@ export function finalizeChatAnswerV1(input: {
       "A direct Chat answer cannot attach an agentic quality disposition.",
     );
   }
+  messageMarkdown = humanizeInternalSourceIdsV1(messageMarkdown, sourceById);
+  for (const gap of gaps) {
+    gap.message = humanizeInternalSourceIdsV1(gap.message, sourceById);
+  }
   const mergedGaps = mergeEquivalentGapsV1(gaps);
   gaps.splice(0, gaps.length, ...mergedGaps);
   const visibleGapMessages = gaps
@@ -815,6 +1069,7 @@ export function finalizeChatAnswerV1(input: {
         : []),
     ].join("\n");
   }
+  messageMarkdown = normalizeFinalMarkdownStructureV1(messageMarkdown);
   if (messageMarkdown.length === 0 || messageMarkdown.length > 24_000) {
     throw new ChatContractError("limit-exceeded", "The Chat answer exceeds its bounded Markdown size.");
   }
