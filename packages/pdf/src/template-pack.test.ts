@@ -186,6 +186,7 @@ function revision4Design(): NonNullable<TemplateManifest["design"]> {
     cover: {
       kind: "type-cut",
       logo: "hide",
+      metadataPosition: "bottom",
       typeCut: { angle: 43, stop: 58 },
     },
     closingPage: {
@@ -206,6 +207,7 @@ function revision4Design(): NonNullable<TemplateManifest["design"]> {
   });
   Object.assign(design.tokens.layout, {
     coverTitleFrameHeight: "35mm",
+    coverMetaBottomInset: "24mm",
     closingBrandBottomInset: "24mm",
     closingBrandBlockWidth: "90mm",
     closingBrandLogoWidth: "42mm",
@@ -401,6 +403,8 @@ describe("PDF template manifest phase", () => {
     expect(cover).toContain('(rgb("#202A44"), 58%)');
     expect(cover).toContain('(rgb("#FFFFFF"), 58%)');
     expect(cover).not.toContain("logo-path");
+    expect(cover).toContain("left + bottom");
+    expect(cover).toContain("dy: -24mm");
     expect(source).toContain("template-page-decorations()");
     expect(source).toContain('image("template-assets/cover.svg"');
 
@@ -426,6 +430,16 @@ describe("PDF template manifest phase", () => {
     );
     expect(() => validatePdfTemplateManifest(missing)).toThrow(
       /tokens\.colors\.coverTitleInverse/
+    );
+
+    const missingBottomInset = structuredClone(fixture.manifest);
+    delete missingBottomInset.design!.tokens.layout.coverMetaBottomInset;
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(missingBottomInset),
+      "invalid-composition"
+    );
+    expect(() => validatePdfTemplateManifest(missingBottomInset)).toThrow(
+      /tokens\.layout\.coverMetaBottomInset/
     );
 
     const missingLogo = structuredClone(fixture.manifest);

@@ -1110,6 +1110,18 @@ Stop and report instead of improvising if any of these occurs:
 
 ## Deferred follow-ups
 
+### Implemented follow-up: bottom-anchored cover metadata
+
+- [x] Add optional `compositions.cover.metadataPosition` with `flow` as the
+      backward-compatible absence behavior and `bottom` for Type Cut covers.
+- [x] Add declarative `tokens.layout.coverMetaBottomInset` and reject bottom
+      positioning when the token is absent.
+- [x] Render the rule and metadata grid as one bottom-anchored Typst block.
+- [x] Cover schema, recipe, catalog, canonical renderer, compiler, CLI, and
+      documentation paths with neutral tests and examples.
+- [x] Rebuild the private Mayflower pack and verify the real Confluence export;
+      keep all brand and customer artifacts outside the repository.
+
 - Migrate durable DOCX authoring projects and accepted decisions from catalog
   V1 to V2 with an explicit migration/reanalysis UX.
 - Add composition controls to a browser template Studio.

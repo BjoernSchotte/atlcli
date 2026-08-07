@@ -104,6 +104,7 @@ function recipe(name: string, variant: Variant = {}): WikiPdfTemplateRecipeV1 {
     cover: {
       kind: "type-cut",
       logo: "hide",
+      metadataPosition: "bottom",
       typeCut: { angle: TITLE_FRAME.angleDeg, stop: variant.stop ?? TITLE_FRAME.stop },
     },
     closingPage: {
@@ -129,6 +130,7 @@ function recipe(name: string, variant: Variant = {}): WikiPdfTemplateRecipeV1 {
     coverTopPad: "0mm",
     coverEyebrowGap: "0pt",
     coverTitleFrameHeight: `${TITLE_FRAME.heightMm}mm`,
+    coverMetaBottomInset: "24mm",
     closingBrandBottomInset: "24mm",
     closingBrandBlockWidth: "92mm",
     closingBrandLogoWidth: "42mm",
@@ -607,6 +609,9 @@ export function registerTemplateCompositionV4PipelineTests(): void {
             pdfs.both
           )
         );
+        const versionLabel = bbox.find(({ text }) => text === "VERSION");
+        expect(versionLabel).toBeDefined();
+        expect(versionLabel!.yMin).toBeGreaterThan(650);
         const cover = await rasterPage(directory, pdfs.both, 1);
         assertTitleTracksDiagonal(cover, bbox);
         expect(colorPoints(cover, CYAN)).toHaveLength(0);

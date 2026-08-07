@@ -12,6 +12,7 @@ function revision4Design(
   options: {
     kind?: "standard" | "type-cut";
     logo?: "show" | "hide";
+    metadataPosition?: "flow" | "bottom";
     closingEnabled?: boolean;
   } = {}
 ) {
@@ -23,6 +24,9 @@ function revision4Design(
       ? {
           kind,
           logo: options.logo ?? "hide",
+          ...(options.metadataPosition === undefined
+            ? {}
+            : { metadataPosition: options.metadataPosition }),
           typeCut: { angle: 43, stop: 58 },
         }
       : { kind, logo: options.logo ?? "show" },
@@ -37,6 +41,7 @@ function revision4Design(
   if (kind === "type-cut") {
     design.tokens.colors.coverTitleInverse = "#FFFFFF";
     design.tokens.layout.coverTitleFrameHeight = "35mm";
+    design.tokens.layout.coverMetaBottomInset = "24mm";
     design.typography.roles.coverTitle = {
       font: "heading",
       size: "44pt",
@@ -145,6 +150,28 @@ describe("atlcli Typst template settings rendering", () => {
     expect(source).toContain('relative: "parent"');
     expect(source).toContain("TYPE_CUT_TITLE_OVERFLOW");
     expect(source).not.toContain("logo-path");
+  });
+
+  it("anchors the cover rule and metadata grid at the declared bottom inset", () => {
+    const source = coverSource(
+      createAtlcliTypstTemplateV4(
+        revision4Design({ metadataPosition: "bottom" })
+      )
+    );
+    expect(source).toContain("left + bottom");
+    expect(source).toContain("dy: -24mm");
+    expect(source.match(/#grid\(/gu)).toHaveLength(1);
+    expect(source.match(/#line\(/gu)).toHaveLength(1);
+    expect(source.indexOf("left + bottom")).toBeGreaterThan(
+      source.indexOf("type-cut-title-block(selected")
+    );
+  });
+
+  it("keeps absent metadataPosition on the historical flow layout", () => {
+    const source = coverSource(createAtlcliTypstTemplateV4(revision4Design()));
+    expect(source).not.toContain("left + bottom");
+    expect(source).toContain("#v(25pt)");
+    expect(source.match(/#grid\(/gu)).toHaveLength(1);
   });
 
   it("uses optional escaped cover eyebrow copy and preserves its space-label fallback", () => {

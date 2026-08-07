@@ -433,6 +433,9 @@ function validateRevision4Composition(
       );
     }
   }
+  if (compositions.cover.metadataPosition === "bottom") {
+    requireRevision4DesignPaths(design, ["tokens.layout.coverMetaBottomInset"]);
+  }
 
   const closing = compositions.closingPage;
   if (closing.kind !== "brand-lockup") return;

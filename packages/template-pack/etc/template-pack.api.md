@@ -119,6 +119,12 @@ export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "type-cut"
 ];
 
+// export: DESIGN_COVER_METADATA_POSITIONS
+export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
+    "flow",
+    "bottom"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 
@@ -174,11 +180,15 @@ export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)
 export interface DesignCoverCompositionV1 {
     kind: DesignCoverCompositionKind;
     logo: DesignVisibility;
+    metadataPosition?: DesignCoverMetadataPosition;
     typeCut?: {
         angle: number;
         stop: number;
     };
 }
+
+// export: DesignCoverMetadataPosition
+export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -905,6 +915,12 @@ export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "type-cut"
 ];
 
+// export: DESIGN_COVER_METADATA_POSITIONS
+export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
+    "flow",
+    "bottom"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 
@@ -960,11 +976,15 @@ export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)
 export interface DesignCoverCompositionV1 {
     kind: DesignCoverCompositionKind;
     logo: DesignVisibility;
+    metadataPosition?: DesignCoverMetadataPosition;
     typeCut?: {
         angle: number;
         stop: number;
     };
 }
+
+// export: DesignCoverMetadataPosition
+export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -1691,6 +1711,12 @@ export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "type-cut"
 ];
 
+// export: DESIGN_COVER_METADATA_POSITIONS
+export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
+    "flow",
+    "bottom"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 
@@ -1746,11 +1772,15 @@ export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)
 export interface DesignCoverCompositionV1 {
     kind: DesignCoverCompositionKind;
     logo: DesignVisibility;
+    metadataPosition?: DesignCoverMetadataPosition;
     typeCut?: {
         angle: number;
         stop: number;
     };
 }
+
+// export: DesignCoverMetadataPosition
+export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -2477,6 +2507,12 @@ export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
     "type-cut"
 ];
 
+// export: DESIGN_COVER_METADATA_POSITIONS
+export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
+    "flow",
+    "bottom"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 
@@ -2532,11 +2568,15 @@ export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)
 export interface DesignCoverCompositionV1 {
     kind: DesignCoverCompositionKind;
     logo: DesignVisibility;
+    metadataPosition?: DesignCoverMetadataPosition;
     typeCut?: {
         angle: number;
         stop: number;
     };
 }
+
+// export: DesignCoverMetadataPosition
+export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {

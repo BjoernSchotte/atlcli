@@ -51,6 +51,7 @@ function design(): WikiPdfTemplateDesignV1 {
     cover: {
       kind: "type-cut",
       logo: "show",
+      metadataPosition: "bottom",
       typeCut: { angle: 43, stop: 64 },
     },
     closingPage: {
@@ -73,6 +74,7 @@ function design(): WikiPdfTemplateDesignV1 {
   });
   Object.assign(value.tokens.layout, {
     coverTitleFrameHeight: "92mm",
+    coverMetaBottomInset: "24mm",
     closingBrandBottomInset: "24mm",
     closingBrandBlockWidth: "92mm",
     closingBrandLogoWidth: "42mm",
@@ -199,6 +201,14 @@ describe("materializePdfTemplateRecipeV1", () => {
       api: "wiki.pdf-canonical-typst",
       revision: "4",
     });
+    expect(built.manifest.design?.compositions?.cover.metadataPosition).toBe(
+      "bottom"
+    );
+    expect(
+      new TextDecoder().decode(unpackTemplate(built.bytes).files["atlcli.typ"])
+    ).toContain(
+      "dy: -24mm"
+    );
     const paths = Object.values(built.manifest.assetDescriptors ?? {}).map(
       ({ path }) => path
     );
