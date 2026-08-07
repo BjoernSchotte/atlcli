@@ -41,7 +41,7 @@ monorepo through **two supported install paths**, neither of which needs a packa
   the vendored PDF compiler is regenerated from).
 - `bun run build` (or `bunx turbo run build --filter=./packages/*`) so every package has its
   `dist/` output; the `@atlcli/pdf` prepack additionally verifies the sha256-pinned font set
-  and `@atlcli/pdf-compiler-browser` vendors the patched typst.ts glue + wasm.
+  and `@atlcli/pdf-compiler-browser` vendors provenance-bound typst.ts glue + WASM.
 
 ## Runtime support matrix
 
@@ -175,7 +175,7 @@ await runPdfExport({ blocks: doc.blocks, metadata, filename: "handbook.pdf" },
 ```
 
 `nodePdfEnv` wires the token-auth asset resolver (verified disk cache under
-`~/.atlcli/cache/assets`), the CSP-patched wasm compiler with twelve canonical
+`~/.atlcli/cache/assets`), the CSP-safe wasm compiler with twelve canonical
 fonts exposed as hash-bound lazy sources, and a directory output sink. Each
 compile reads only its resolved subset from the installed packages. For DOCX with zero
 template setup, `nodeDocxEnv({ outPath })` resolves a programmatically built default template
@@ -232,7 +232,7 @@ import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 | Imports resolve to `src/*.ts` under Bun | You ran with `--conditions=development` (or a bundler dev server applied the `development` condition) | Drop the flag / use a production build, or consume tarballs (their manifests are stripped) |
 | `Cannot find module 'bun:sqlite'` under Node | You imported `@atlcli/confluence/internal` | Only the default barrel is Node-clean; the internal sync machinery is Bun-only |
 | `bytes.slice is not a function` (or `bytes.length` is `undefined`) inside a `PdfOutputSink` | The PDF sink is handed a `PdfBytesHandle`, not a `Uint8Array` | `await bytes.asUint8Array()` for the array, or `asBlob()`/`objectUrl()` for a download — see [Emitting compiled bytes](/reference/export-api/#emitting-compiled-bytes-pdfoutputsink--pdfbyteshandle) |
-| PDF compile throws `Blocked unexpected dynamic function` | Working as designed — the CSP-hardened compiler refuses non-allowlisted dynamic code | Report it; do not swap in the unpatched upstream glue |
+| PDF runtime provenance mismatch | Installed glue and WASM do not come from the same pinned fork artifact | Reinstall from the lockfile; do not substitute upstream glue or WASM |
 | Missing fonts at pack time | `packages/pdf/.fonts/` not populated | Run `bun run fonts:ensure` at the repo root (prepack does this automatically) |
 
 ## Related topics

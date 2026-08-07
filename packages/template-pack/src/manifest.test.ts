@@ -72,7 +72,7 @@ describe("validateManifest gate", () => {
           kind: "typst",
           api: "wiki.pdf-template/v1",
           entry: "template.typ",
-          compilerRange: ">=0.15 <0.16",
+          compilerRange: ">=0.14 <0.15",
         },
       },
       "compiler-range-mismatch"
@@ -86,10 +86,10 @@ describe("validateManifest gate", () => {
         kind: "typst",
         api: "wiki.pdf-template/v1",
         entry: "template.typ",
-        compilerRange: ">=0.14 <0.15",
+        compilerRange: ">=0.15.1 <0.16",
       },
     });
-    expect(m.engine.compilerRange).toBe(">=0.14 <0.15");
+    expect(m.engine.compilerRange).toBe(">=0.15.1 <0.16");
   });
 
   it("does not compiler-gate docx manifests", () => {
@@ -268,6 +268,8 @@ describe("satisfiesRange", () => {
   });
 
   it("gates against the pinned version by default", () => {
-    expect(PINNED_TYPST_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(PINNED_TYPST_VERSION).toBe("0.15.1");
+    expect(satisfiesRange(PINNED_TYPST_VERSION, ">=0.15.1 <0.16")).toBe(true);
+    expect(satisfiesRange(PINNED_TYPST_VERSION, ">=0.14 <0.15")).toBe(false);
   });
 });

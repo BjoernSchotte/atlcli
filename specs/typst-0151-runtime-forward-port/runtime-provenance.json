@@ -1,0 +1,99 @@
+{
+  "schema": "atlcli.typst-runtime-provenance/1",
+  "recordedAt": "2026-08-07",
+  "atlcli": {
+    "planningBaseline": "2bf00066",
+    "runtimeBranchBaseline": "4c4e147087df4d030dab0c7a104db7a8b295c392",
+    "bun": "1.3.14"
+  },
+  "productionBaseline": {
+    "wrapper": {
+      "package": "@myriaddreamin/typst-ts-web-compiler",
+      "version": "0.7.0",
+      "typstTsCommit": "0501ced21131dccc68d12c5602cdb20909a52541",
+      "npmIntegrity": "sha512-nMwMcfOBy5pABPDuVM7/u8425SxhPUM+OJe6daqqgVOT3+neCTz4JKwx2L8XasfEHTNvd0cUI07LR9q5ADo7Gw==",
+      "license": "Apache-2.0"
+    },
+    "typst": "0.14.2",
+    "compilerRange": ">=0.14 <0.15",
+    "cspPatch": {
+      "path": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch",
+      "sha256": "0724aa077937e5353787f307aa886cb3d7733dc63cc940e1d3ece25b2bf140ea"
+    },
+    "artifacts": {
+      "typst_ts_web_compiler.mjs": "245e8dd52ce65c7249f5f082f20b60c7a53a5ba3c2a9ee7b4fcbd366a7315d3e",
+      "typst_ts_web_compiler.d.ts": "3ab44c13ea19bdb8347e537bebcbba26260af3a925c49659f2f987acfb887970",
+      "typst_ts_web_compiler_bg.wasm": "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd",
+      "typst_ts_web_compiler_bg.wasm.d.ts": "708d6892b2b82cfc9f71919c5f4f419f115a2fd2e6c7fba791c8ef20dd53b961"
+    },
+    "fontSetSha256": "851a1379a856c82dcfff331f7b6c59f429d83b2a031e2edecd7b7629005ad4dd"
+  },
+  "comparisonCandidate": {
+    "packageVersion": "0.8.0-rc3",
+    "typstTsCommit": "e1974e566ba63dcf8ecdd6730cff25de26c7dbd2",
+    "typst": "0.15.0",
+    "npmIntegrity": "sha512-akc8TlhBzldlU1DtbDvR/6ufzgJmQrZMqfYY2fCFbH7y/+h3YdmnyF+twtVqwv+g6YuFXm/Oc1wwa6cYQX4/aw=="
+  },
+  "forwardPort": {
+    "typstTs": {
+      "repository": "https://github.com/BjoernSchotte/typst.ts",
+      "branch": "codex/typst-0.15.1",
+      "upstreamBase": "d58db0f09356ae05fd8c09927107e37e8475f2bf",
+      "candidateCommit": "2ff4a660328415013d739fe69e12b2f06f12ed82",
+      "integrationBranch": "codex/typst-0.15.1-integration",
+      "integrationCommits": [
+        "9e04e846",
+        "439f22de"
+      ],
+      "release": {
+        "tag": "web-compiler-v0.8.0-rc3.typst0151.1",
+        "url": "https://github.com/BjoernSchotte/typst.ts/releases/tag/web-compiler-v0.8.0-rc3.typst0151.1",
+        "asset": "myriaddreamin-typst-ts-web-compiler-0.8.0-rc3.typst0151.1.tgz",
+        "assetSha256": "7b7746c3e630d510b13c888127f00a39e7f84b6cc8402fce952c394594f8a20b",
+        "checksumAsset": "https://github.com/BjoernSchotte/typst.ts/releases/download/web-compiler-v0.8.0-rc3.typst0151.1/SHA256SUMS",
+        "checksumAssetSha256": "1e49ea31d5e5291945965ff9f773eceda0e0ed60ceb766de63e8a9469839e0fb",
+        "bunIntegrity": "sha512-zq4Un/kw5cLAgCLlcKX9KVZsWFmAdzr943fmYBIhJnZAd4WOZC1r8B8xFloUXeOpxW2TayCv+Pl8nNu/Nte7FA=="
+      },
+      "reproducibleBuildCi": "https://github.com/BjoernSchotte/typst.ts/actions/runs/31175218426"
+    },
+    "typstCore": {
+      "repository": "https://github.com/BjoernSchotte/typst",
+      "branch": "codex/typst-0.15.1",
+      "officialVersion": "0.15.1",
+      "officialCommit": "9dfd3a08500b7896045f907433cf7b4b02434fad",
+      "candidateCommit": "301531fcfc4cb7ba9d688aa8a0738e8a6372c122",
+      "myriadPatches": 8,
+      "rangeDiff": "patch-equivalent",
+      "dependencyReason": "typst.ts depends on Myriad-specific Typst APIs; official typst/typst 0.15.1 fails at missing Frame::content_hint",
+      "upstreamSequence": [
+        "forward-port the eight core patches to Myriad-Dreamin/typst",
+        "replace the temporary BjoernSchotte/typst pin with the merged Myriad-Dreamin/typst commit or tag",
+        "submit the two-commit typst.ts integration branch only after that replacement"
+      ]
+    },
+    "toolchain": {
+      "rust": "1.92.0",
+      "target": "wasm32-unknown-unknown",
+      "wasmPack": "0.15.0",
+      "wasmPackDarwinArm64Sha256": "0abff4a03d670b6c00ea31d0e1608a72407e355f3d3765e9c30eb45cd5b7e318",
+      "wasmBindgen": "0.2.118",
+      "wasmOpt": "version_117",
+      "node": "22.14.0",
+      "npm": "11.5.1",
+      "yarn": "1.22.22",
+      "features": ["web", "misc"]
+    },
+    "artifacts": {
+      "typst_ts_web_compiler.mjs": "542926574dc2659de3fcb34b3e286f8aa1fc42f7a91d19d6e0fd2a123bf3753a",
+      "typst_ts_web_compiler.d.ts": "0e9c80a098df748d1a3a40b0485e51f98808d78e7a7851b8414f436379661cb9",
+      "typst_ts_web_compiler_bg.wasm": "39d2ce3cda6cc41ed267a8dd641a358785bca65c99df39bdd55574f7f688cd27",
+      "typst_ts_web_compiler_bg.wasm.d.ts": "3a54e348147d1704a07832f0fa5ab6ade4a0f7b2ac5cd17520214a30e4d4b6b7"
+    },
+    "upstreamContribution": {
+      "state": "prepared-not-submitted",
+      "pullRequest": null,
+      "reason": "operator explicitly requested no upstream pull request",
+      "exitCondition": "core patches merge into Myriad-Dreamin/typst and typst.ts releases an artifact containing the forward-port and CSP fix"
+    }
+  }
+}

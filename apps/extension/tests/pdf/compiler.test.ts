@@ -877,8 +877,14 @@ This is a real PDF.
     expect(inspection.embeddedFontFiles).toBeGreaterThanOrEqual(3);
 
     const pdfSource = new TextDecoder("latin1").decode(result.pdf);
-    expect(pdfSource).toContain(`/URI (${DENSE_TABLE_LINK})`);
-    expect(pdfSource).toContain(`/URI (${CUSTOM_LABEL_LINK})`);
+    expect(
+      pdfSource.includes(`/URI (${DENSE_TABLE_LINK})`) ||
+        pdfSource.includes(`/URI(${DENSE_TABLE_LINK})`),
+    ).toBe(true);
+    expect(
+      pdfSource.includes(`/URI (${CUSTOM_LABEL_LINK})`) ||
+        pdfSource.includes(`/URI(${CUSTOM_LABEL_LINK})`),
+    ).toBe(true);
     expect(pdfSource).toMatch(/SourceCodePro-Bold/);
 
     expect(bundle.main).toContain('[#text("Normal")], [#text("Norm\u200Bal")]');

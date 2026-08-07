@@ -52,7 +52,12 @@
     {
       "path": "404.html",
       "byteLength": 13129,
-      "sha256": "a94fc5c32760a8e17cca66ac5b58d78809a4116a995fa1f0a80d49442943eb71"
+      "sha256": "36166ad9c014ad36bf96b7625a36d8cbb3b953ea0e6cef91ed24abf6174a6ce5"
+    },
+    {
+      "path": "_astro/InteractiveChart.astro_astro_type_script_index_0_lang.DsVw4269.js",
+      "byteLength": 88186,
+      "sha256": "bc9fd5214f771439da61bf992170548c4092fc6d8faeaaeaeb4225e962e0d66c"
     },
     {
       "path": "_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.BcSo_yiZ.js",
@@ -75,9 +80,9 @@
       "sha256": "3a5b919ac33d8d19bb5dde4662a0e287ec71991605b307e1eb9d1762c68f64a3"
     },
     {
-      "path": "_astro/middleware.DkjEun16.css",
-      "byteLength": 64861,
-      "sha256": "9d5c750b81f224328e7fd7c02fa958a08f1fb05ae6975609992e4f2bfed26416"
+      "path": "_astro/middleware.DMEje7QF.css",
+      "byteLength": 67641,
+      "sha256": "d4f86271f0a2e4e0a9da682478b78713697b0f8299b00abd25c3943402a34157"
     },
     {
       "path": "_astro/page.B4ePGq7V.js",
@@ -97,7 +102,7 @@
     {
       "path": "ar/publish/guide/index.html",
       "byteLength": 23888,
-      "sha256": "2b11a8c9575ade67b78a90611e4b6fa27658db64bad82505235e7dafe4c2ae82"
+      "sha256": "6ac3eed1e3c23748d1dc82d82447c2e2e9cd51342a4a95a8ce4f07a5b0e17870"
     },
     {
       "path": "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt",
@@ -167,7 +172,7 @@
     {
       "path": "pagefind/pagefind-entry.json",
       "byteLength": 228,
-      "sha256": "346db59fcc2178c2bdf3ed9bb101c96bec5704fc5e39ab4d3401600055f6c458"
+      "sha256": "1a062fcc67235a8494fd9bc2a1d91ad4f2f159a62a90fd2ed726fa79e3fec832"
     },
     {
       "path": "pagefind/pagefind-highlight.js",
@@ -205,6 +210,11 @@
       "sha256": "4144f540ae76fc78ab61cd50428f023b61d575777bcc6081c6c8e9e294579267"
     },
     {
+      "path": "pagefind/pagefind.ar_e5b338e201.pf_meta",
+      "byteLength": 126,
+      "sha256": "c28d1815655a35d1a9b757983e1d8915bdf8e8b870122f7b1b068f40c6ff60ed"
+    },
+    {
       "path": "pagefind/pagefind.en_9dc56afc3e.pf_meta",
       "byteLength": 135,
       "sha256": "6c415742ca801907fac87384ec3f8c6e5c5de0f19706d3fbcb5e2ac1306897d0"
@@ -237,12 +247,12 @@
     {
       "path": "publish/guide/index.html",
       "byteLength": 24395,
-      "sha256": "275b241afd530527ce7b62429368973381520e9f2609050360a42d1e986e0770"
+      "sha256": "f41e36b3183b44732b34a7ce5c749c01a70dddb52b6aa765fefd2d839864601f"
     },
     {
       "path": "publish/topics/guide/index.html",
       "byteLength": 22567,
-      "sha256": "46a8ceeb326d22c11ddb830465d6f4d325756bd7a01c0b7d14c771a1c1f279a9"
+      "sha256": "16a08d91286d656aa3ed9f66bbc29d2ab371ece2a3282a2c04d9e31ee9690050"
     },
     {
       "path": "robots.txt",

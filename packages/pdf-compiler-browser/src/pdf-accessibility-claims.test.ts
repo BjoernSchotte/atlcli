@@ -243,6 +243,10 @@ describe("PDF accessibility claims (spec 011 — pins the reference page)", () =
       { type: "heading", level: 1, content: [{ type: "text", text: "Chapter" }] },
       { type: "image", source: { kind: "attachment", filename: "chart-final-v2.png" } },
     ]);
-    expect(inspectable(withoutAlt)).toContain("/Alt (chart-final-v2.png");
+    const figures = objectsOf(inspectable(withoutAlt)).filter((object) =>
+      /\/S\s*\/Figure\b/.test(object)
+    );
+    expect(figures).toHaveLength(1);
+    expect(figures[0]).toMatch(/\/Alt\s*\(chart-final-v2\.png\)/);
   }, 120_000);
 });

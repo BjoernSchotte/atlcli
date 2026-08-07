@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { WIKI_PDF_V1_DOCUMENT_LABELS } from "./localization.js";
 import { ManifestValidationError } from "./manifest.js";
 import {
+  migratePdfTemplateRecipeToTypst0151V1,
+  TYPST_0151_RECIPE_COMPILER_RANGE,
   validatePdfTemplateRecipeV1,
   WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1,
 } from "./recipe.js";
@@ -210,6 +212,20 @@ describe("validatePdfTemplateRecipeV1", () => {
     const recipe = validRecipe();
     delete ((recipe.assets as Record<string, Record<string, unknown>>)["asset.logo"]!).alt;
     expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(/asset\.logo\.alt/);
+  });
+
+  it("migrates only the compiler range to a distinct 0.15.1 recipe", () => {
+    const source = validRecipe();
+    const sourceSnapshot = structuredClone(source);
+    const migrated = migratePdfTemplateRecipeToTypst0151V1(source);
+    expect(source).toEqual(sourceSnapshot);
+    expect(migrated).not.toBe(source);
+    expect(migrated.template.compilerRange).toBe(TYPST_0151_RECIPE_COMPILER_RANGE);
+    expect({ ...migrated, template: { ...migrated.template, compilerRange: ">=0.14 <0.15" } })
+      .toEqual(validatePdfTemplateRecipeV1(source));
+    expect(() => migratePdfTemplateRecipeToTypst0151V1(migrated)).toThrow(
+      /already accepts Typst 0\.15\.1/u
+    );
   });
 
   it("bounds asset collections, dynamic maps, paths, and placement values", () => {

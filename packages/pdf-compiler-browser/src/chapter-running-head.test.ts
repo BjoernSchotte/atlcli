@@ -149,12 +149,14 @@ const ONE_PER_PAGE_METADATA: PdfExportMetadata = {
  *
  * Provenance: focused real-compiler run with {@link PINNED_COMPILER} after the
  * clean-navigation-title change was verified by the PDF highlight/ToC tests.
+ * Re-approved for Typst 0.15.1 after every chapter selection, continuation,
+ * fallback, page-count, and title-mode negative control below passed unchanged.
  */
 const ONE_PER_PAGE_APPROVED_DIGEST =
-  "d6eddb5ee268d81d151c62e07f69a6b4f3b099499bc97388d092858c6bc07cfa";
+  "51460f6bec223d262931617b6a7ffbcc7f76673df7dc86d734a2e8d63cac7277";
 
 /** Digests are only comparable within one compiler version. */
-const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
+const PINNED_COMPILER = "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
 
 function metadata(title: string): PdfExportMetadata {
   return {

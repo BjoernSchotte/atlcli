@@ -30,6 +30,7 @@ recipe.yaml
 - [Cover composition](#cover-composition)
 - [Closing-page composition](#closing-page-composition)
 - [Assets](#assets)
+- [Migrate an older recipe](#migrate-an-older-recipe)
 - [Validation and errors](#validation-and-errors)
 - [Security and privacy](#security-and-privacy)
 - [Troubleshooting](#troubleshooting)
@@ -151,7 +152,7 @@ errors at every level.
 | `template.id` | string | — | Yes | Starts with a letter; then letters, numbers, `.`, `_`, or `-`; at most 128 characters. |
 | `template.name` | string | — | Yes | Non-empty, at most 200 Unicode code points; no control or Typst source metacharacters. |
 | `template.version` | semver string | — | Yes | `MAJOR.MINOR.PATCH`, optionally with a prerelease suffix. |
-| `template.compilerRange` | range string | — | Yes | Space-separated numeric Typst comparisons, for example `>=0.14 <0.15`. |
+| `template.compilerRange` | range string | — | Yes | Space-separated numeric Typst comparisons; use `>=0.15.1 <0.16` for the current runtime. |
 | `design` | object | — | Yes | Complete validated revision-4 design; see below and the starter recipe. |
 | `localization` | object | — | Yes | Default and fallback locale must exist; fallback document labels must be complete. |
 | `assets` | map | `{}` | Yes | At most 64 entries; only supported PDF asset slots are materialized. |
@@ -278,6 +279,24 @@ SVG validation rejects scripts, event handlers, external references, DTDs,
 entities, and other active content. The pack embeds approved bytes and performs
 no image fetch during rendering.
 
+## Migrate an older recipe
+
+Typst 0.15.1 does not silently accept packs declared for the old `<0.15`
+runtime. Keep the original recipe and create a distinct migrated YAML file:
+
+```bash
+atlcli pdf-template migrate-runtime ./recipe.yaml \
+  --output ./recipe.typst-0.15.1.yaml
+
+atlcli pdf-template build ./recipe.typst-0.15.1.yaml \
+  --output ./brand.typst-0.15.1.wiki-pdf-template
+```
+
+The migration changes only `template.compilerRange` to `>=0.15.1 <0.16`.
+It refuses to overwrite either the source recipe or an existing destination.
+An archive alone is not enough: use the original declarative recipe so design,
+localization, assets, and canonical source can be regenerated and proven.
+
 ## Validation and errors
 
 The command exits non-zero and leaves the requested output untouched when any
@@ -293,6 +312,7 @@ Common categories are:
 | branding field is required | A visible website or legal block lacks its data | Add the corresponding branding fields or set visibility to `hide`. |
 | asset path error | Absolute path, `..`, symlink escape, missing file, or unsupported extension | Keep real files under the recipe directory and use portable relative paths. |
 | unsafe SVG | Active or externally referenced SVG content | Export a flattened, self-contained SVG or PNG. |
+| compiler range mismatch | The recipe or pack targets the pre-0.15 runtime | Run `pdf-template migrate-runtime` against the original recipe, then build its distinct output. |
 | output already exists | Build never clobbers a pack | Choose a new path or move the reviewed old output first. |
 | compiler proof failed | Missing font, impossible title fit, or invalid generated layout | Use bundled fonts, adjust fitting roles/frame, and rebuild. |
 

@@ -68,7 +68,7 @@ async function compile(meta: PdfExportMetadata): Promise<Uint8Array> {
  */
 function catalogLang(pdf: Uint8Array): string | null {
   const text = new TextDecoder("latin1").decode(pdf);
-  const catalog = text.indexOf("/Type /Catalog");
+  const catalog = /\/Type\s*\/Catalog\b/u.exec(text)?.index ?? -1;
   if (catalog < 0) return null;
   const end = text.indexOf("endobj", catalog);
   const dict = text.slice(catalog, end < 0 ? text.length : end);

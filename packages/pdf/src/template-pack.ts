@@ -1319,11 +1319,15 @@ export async function validatePdfTemplatePack(
  * gate, then byte-integrity gate.
  */
 export async function loadPdfTemplatePack(
-  bytes: Uint8Array
+  bytes: Uint8Array,
+  options: { pinnedTypstVersion?: string } = {}
 ): Promise<ValidatedPdfTemplatePackV1> {
   const unpacked = unpackTemplate(bytes);
   const manifest = validateManifest(unpacked.manifest, {
     availableFonts: PDF_RUNTIME_ASSETS.fonts,
+    ...(options.pinnedTypstVersion === undefined
+      ? {}
+      : { pinnedTypstVersion: options.pinnedTypstVersion }),
   });
   validatePdfTemplateManifest(manifest);
   return validatePdfTemplatePack(manifest, unpacked.files);

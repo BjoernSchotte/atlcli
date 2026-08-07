@@ -1,16 +1,17 @@
 # @atlcli/pdf-compiler-browser
 
 The shipped `PdfCompilePort` implementation: a version-pinned adapter around
-the typst.ts web compiler. Ships a **vendored, CSP-patched** copy of the
-wasm-bindgen glue + wasm (both `new Function` call sites replaced by a
-throwing allowlist — no `unsafe-eval`; sha256-pinned, Apache-2.0 with NOTICE).
+the typst.ts web compiler. Ships a **vendored, provenance-bound** copy of the
+fork's direct wasm-bindgen glue + WASM. Dynamic function construction is
+removed at the binding source, the unused shim is excluded, and all files are
+SHA-256-pinned (Apache-2.0 with NOTICE and PROVENANCE.json).
 
 - **Entry points:**
   - `.` — `BrowserPdfCompiler`, `PDF_BROWSER_COMPILER_VERSION`,
     `BrowserPdfCompilerAssets`, `BrowserPdfCompilerFontSourceV1`.
   - `./wasm` — the vendored compiler wasm (for `?url` imports /
     `import.meta.resolve`).
-  - `./vendor/*` — the vendored typst.ts files (glue, types, LICENSE, NOTICE).
+  - `./vendor/*` — glue, WASM, types, LICENSE, NOTICE, and PROVENANCE.json.
 - **Runtime:** Node ≥ 20, Bun, and browsers — anywhere with `WebAssembly`;
   the host supplies wasm plus local font bytes or lazy font sources explicitly.
 - **Install:** filesystem link or packed tarball — no registry publish today.

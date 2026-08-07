@@ -32,6 +32,7 @@ import {
   PdfTemplateYamlError,
   classifyPdfTemplateInput,
   materializePdfTemplateYamlRecipe,
+  migratePdfTemplateYamlRecipeToTypst0151,
   parsePdfTemplateRecipeYaml,
   writePdfTemplateRecipeArchive,
 } from "./pdf-template-yaml.js";
@@ -116,7 +117,7 @@ function recipe(): WikiPdfTemplateRecipeV1 {
       id: "fixture.cli-v4",
       name: "CLI V4",
       version: "1.0.0",
-      compilerRange: ">=0.14 <0.15",
+      compilerRange: ">=0.15.1 <0.16",
     },
     design,
     localization: structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST.localization!),
@@ -347,9 +348,53 @@ describe("PDF template recipe filesystem adapter", () => {
     ).rejects.toThrow(/Refusing to overwrite/iu);
     expect(await readFile(output, "utf8")).toBe("first");
   });
+
+  it("writes a distinct 0.15.1 recipe without mutating or overwriting the original", async () => {
+    const root = await workspace();
+    const oldRecipe = recipe();
+    oldRecipe.template.compilerRange = ">=0.14 <0.15";
+    const input = await writeRecipe(root, ".yaml", oldRecipe);
+    const original = await readFile(input, "utf8");
+    const output = join(root, "template.typst-0.15.1.yaml");
+    const migrated = await migratePdfTemplateYamlRecipeToTypst0151(input, output);
+    expect(migrated.template.compilerRange).toBe(">=0.15.1 <0.16");
+    expect(await readFile(input, "utf8")).toBe(original);
+    expect(parsePdfTemplateRecipeYaml(await readFile(output, "utf8"))).toEqual(migrated);
+    await expect(
+      migratePdfTemplateYamlRecipeToTypst0151(input, output)
+    ).rejects.toThrow(/Refusing to overwrite/iu);
+  });
 });
 
 describe("pdf-template recipe CLI dispatch", () => {
+  it("migrates an old recipe and builds the distinct result through public commands", async () => {
+    const root = await workspace();
+    const oldRecipe = recipe();
+    oldRecipe.template.compilerRange = ">=0.14 <0.15";
+    await writeRecipe(root, ".yaml", oldRecipe);
+    const deps = dependencies(root);
+    const migrated = await executePdfTemplateCommand(
+      ["migrate-runtime", "template.yaml"],
+      { output: "template.typst-0.15.1.yaml", json: true },
+      deps
+    );
+    expect(migrated).toMatchObject({
+      ok: true,
+      outputs: { recipe: "template.typst-0.15.1.yaml" },
+      details: { compilerRange: ">=0.15.1 <0.16" },
+    });
+    const built = await executePdfTemplateCommand(
+      ["build", "template.typst-0.15.1.yaml"],
+      { output: "migrated.wiki-pdf-template", json: true },
+      deps
+    );
+    expect(built.ok).toBe(true);
+    expect(
+      (await loadPdfTemplatePack(new Uint8Array(await readFile(join(root, "migrated.wiki-pdf-template")))))
+        .manifest.engine.compilerRange
+    ).toBe(">=0.15.1 <0.16");
+  });
+
   it("builds and validates a recipe with redacted deterministic JSON fields", async () => {
     const root = await workspace();
     await writeRecipe(root);

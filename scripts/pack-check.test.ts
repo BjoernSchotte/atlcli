@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDF_RUNTIME_ASSETS } from "../packages/pdf/src/runtime-assets.js";
-import { PATCH_MARKER } from "../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+import {
+  TYPST_CORE_COMMIT,
+  TYPST_TS_SOURCE_COMMIT,
+} from "../packages/pdf-compiler-browser/scripts/vendor-typst.js";
 import { runStripDevCondition } from "./strip-dev-condition.js";
 
 /**
@@ -20,7 +23,7 @@ import { runStripDevCondition } from "./strip-dev-condition.js";
  * workspace-only `development` export condition, every exports target
  * resolvable inside the tarball, the exact sha-pinned PDF font set present
  * even though `.fonts/` is gitignored (`files` wins over .gitignore —
- * verified, not trusted), and the vendored PATCHED typst glue + wasm inside
+ * verified, not trusted), and the provenance-bound typst glue + WASM inside
  * `@atlcli/pdf-compiler-browser`.
  */
 
@@ -388,7 +391,7 @@ describe("pack-check (spec 009)", () => {
     });
   });
 
-  it("@atlcli/pdf-compiler-browser ships the vendored PATCHED glue + wasm + LICENSE/NOTICE", () => {
+  it("@atlcli/pdf-compiler-browser ships CSP-safe glue, WASM, types, and fork provenance", () => {
     const { entries, tarball } = packageOf(
       packages.find((p) => p.name === "@atlcli/pdf-compiler-browser") ?? (undefined as never),
     );
@@ -397,14 +400,25 @@ describe("pack-check (spec 009)", () => {
     for (const required of [
       glueEntry,
       wasmEntry,
+      "package/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler.d.ts",
+      "package/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm.d.ts",
       "package/vendor/typst-ts-web-compiler/LICENSE",
       "package/vendor/typst-ts-web-compiler/NOTICE",
+      "package/vendor/typst-ts-web-compiler/PROVENANCE.json",
     ]) {
       expect(entries.includes(required), `missing ${required}`).toBe(true);
     }
 
     const glue = tarExtract(tarball, glueEntry);
-    expect(glue.split(PATCH_MARKER).length - 1).toBeGreaterThanOrEqual(2);
-    expect(glue).not.toContain("new Function(");
+    expect(glue).not.toMatch(/\bnew\s+Function\s*\(/);
+    expect(glue).not.toMatch(/(?:^|[=(:,;]\s*)Function\s*\(/m);
+    expect(glue).not.toMatch(/(?:^|[^\w$.])eval\s*\(/m);
+    expect(entries.some((entry) => entry.includes("wasm-pack-shim"))).toBe(false);
+
+    const provenance = JSON.parse(
+      tarExtract(tarball, "package/vendor/typst-ts-web-compiler/PROVENANCE.json"),
+    ) as { source?: { commit?: string }; typstCore?: { forkCommit?: string } };
+    expect(provenance.source?.commit).toBe(TYPST_TS_SOURCE_COMMIT);
+    expect(provenance.typstCore?.forkCommit).toBe(TYPST_CORE_COMMIT);
   }, 60000);
 });

@@ -21,7 +21,7 @@ declare module "*.ttf" {
  * ambient declaration shadows that so the file import types correctly (spec 008
  * T3.1). Revisit when folder 009 vendors the wasm behind a stable subpath.
  */
-declare module "@myriaddreamin/typst-ts-web-compiler/wasm" {
+declare module "@atlcli/pdf-compiler-browser/wasm" {
   const path: string;
   export default path;
 }

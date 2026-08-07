@@ -10,7 +10,7 @@
 // export: BrowserPdfCompiler
 export declare class BrowserPdfCompiler {
     private readonly assets;
-    readonly version = "typst.ts 0.7.0 / Typst 0.14.2";
+    readonly version = "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
     private compiler;
     private compilerKey;
     private registeredAssetIds;
@@ -44,5 +44,5 @@ export interface BrowserPdfCompilerFontSourceV1 {
 }
 
 // export: PDF_BROWSER_COMPILER_VERSION
-export declare const PDF_BROWSER_COMPILER_VERSION = "typst.ts 0.7.0 / Typst 0.14.2";
+export declare const PDF_BROWSER_COMPILER_VERSION = "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
 ```

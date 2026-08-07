@@ -26,7 +26,7 @@ its embedded copy. This page is the contract those subpaths follow.
 
 | Subpath | Contents |
 |---|---|
-| `@atlcli/pdf-compiler-browser/wasm` | The vendored, CSP-patched typst.ts compiler wasm (`typst_ts_web_compiler_bg.wasm`) |
+| `@atlcli/pdf-compiler-browser/wasm` | The vendored, CSP-safe and provenance-bound typst.ts compiler WASM (`typst_ts_web_compiler_bg.wasm`) |
 | `@atlcli/pdf/fonts/<file>.ttf` | The twelve sha256-pinned Source Sans 3 / Source Serif 4 / Source Code Pro / Noto Symbols / Noto Emoji TTFs |
 | `@atlcli/pdf/licenses/<file>` | The SIL OFL 1.1 license texts accompanying those fonts |
 | `@atlcli/docx/fonts/<file>` | The committed Inter TTFs used by SVG rasterization and the JetBrains Mono face embedded for inline/block code |
@@ -161,7 +161,7 @@ const wasm = bytesOf("@atlcli/pdf-compiler-browser/wasm");
   subpath is a **breaking change** (see [Package Versioning](/reference/versioning/)).
 - Every subpath resolves to a real file inside the packed tarball — enforced by
   `scripts/pack-check.test.ts`.
-- The wasm is always the CSP-patched build (no `new Function`): its sha256 is pinned and the
+- The glue is source-level CSP-safe (no `new Function`); its WASM SHA-256 and fork provenance are pinned and the
   patch behavior is regression-tested (`packages/pdf-compiler-browser/src/vendor.test.ts`).
 
 ## Related topics

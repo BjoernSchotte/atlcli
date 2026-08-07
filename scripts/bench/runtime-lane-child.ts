@@ -2,7 +2,7 @@
  * Runtime candidate-lane child (issue #118 Phase 2): run ONE candidate Typst
  * runtime over the materialized image-heavy corpus in an isolated process.
  *
- *   bun --conditions=development scripts/bench/runtime-lane-child.ts <baseline|rc8> <corpusDir>
+ *   bun --conditions=development scripts/bench/runtime-lane-child.ts forward-port <corpusDir>
  *
  * The pipeline is IDENTICAL for every candidate (prepare original →
  * serialize → compile); only the runtime differs, so differences are
@@ -18,8 +18,14 @@ import type { ExportBlock } from "@atlcli/confluence/browser";
 import {
   findLargeExportAsset,
   generateLargeExportCorpus,
+  generateMixedExportCorpus,
+  resolveMixedExportAsset,
 } from "@atlcli/export-fixtures";
-import { PDF_RUNTIME_ASSETS, preparePdfDocument, type PdfAssetResolver } from "@atlcli/pdf/browser";
+import {
+  PDF_RUNTIME_ASSETS,
+  preparePdfDocument,
+  type PdfAssetResolver,
+} from "@atlcli/pdf/browser";
 import { serializePdfDocument } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 
@@ -27,8 +33,10 @@ const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const candidate = process.argv[2];
 const corpusArg = process.argv[3];
-if ((candidate !== "baseline" && candidate !== "rc8") || !corpusArg) {
-  throw new Error("Usage: runtime-lane-child.ts <baseline|rc8> <corpusDir|text-heavy>");
+if (candidate !== "forward-port" || !corpusArg) {
+  throw new Error(
+    "Usage: runtime-lane-child.ts forward-port <corpusDir|text-heavy|mixed>",
+  );
 }
 
 // Benchmark-only budget seam (the ≥100 MiB corpus exceeds product caps by
@@ -54,7 +62,28 @@ let blocks: ExportBlock[];
 let resolver: PdfAssetResolver;
 let corpusLabel: string;
 let corpusIdentity: string;
-if (corpusArg === "text-heavy") {
+if (corpusArg === "mixed") {
+  const corpus = generateMixedExportCorpus();
+  blocks = corpus.blocks;
+  resolver = {
+    async resolve(ref) {
+      if (ref.kind !== "attachment" || !ref.filename) {
+        throw new Error("mixed corpus resolves named attachments only");
+      }
+      const asset = resolveMixedExportAsset(corpus, {
+        filename: ref.filename,
+        ...(ref.pageId ? { pageId: ref.pageId } : {}),
+      });
+      return {
+        bytes: asset.bytes,
+        mediaType: asset.mediaType,
+        filename: asset.filename,
+      };
+    },
+  };
+  corpusLabel = "mixed-default";
+  corpusIdentity = corpus.identity;
+} else if (corpusArg === "text-heavy") {
   // Text-heavy recipe (plan corpus table): the deterministic 500-page tree —
   // headings, tables, code, links, outlines, only occasional tiny images —
   // isolating layout/Typst high-water from raster decode pressure.
@@ -71,7 +100,11 @@ if (corpusArg === "text-heavy") {
         ...(ref.pageId ? { pageId: ref.pageId } : {}),
       });
       if (!asset) throw new Error(`Missing text-heavy asset ${ref.filename}`);
-      return { bytes: asset.bytes, mediaType: asset.mediaType, filename: asset.filename };
+      return {
+        bytes: asset.bytes,
+        mediaType: asset.mediaType,
+        filename: asset.filename,
+      };
     },
   };
   corpusLabel = "text-heavy-500";
@@ -80,18 +113,27 @@ if (corpusArg === "text-heavy") {
   const manifest = JSON.parse(
     readFileSync(join(corpusArg, "manifest.json"), "utf8"),
   ) as CorpusManifest;
-  blocks = JSON.parse(readFileSync(join(corpusArg, "blocks.json"), "utf8")) as ExportBlock[];
+  blocks = JSON.parse(
+    readFileSync(join(corpusArg, "blocks.json"), "utf8"),
+  ) as ExportBlock[];
   const assets = new Map<string, { bytes: Uint8Array; mediaType: string }>(
     manifest.manifest.map((entry) => [
       entry.filename,
-      { bytes: new Uint8Array(readFileSync(join(corpusArg, entry.filename))), mediaType: entry.mediaType },
+      {
+        bytes: new Uint8Array(readFileSync(join(corpusArg, entry.filename))),
+        mediaType: entry.mediaType,
+      },
     ]),
   );
   resolver = {
     async resolve(ref) {
       const asset = assets.get(ref.filename ?? "");
       if (!asset) throw new Error(`Missing corpus asset ${ref.filename}`);
-      return { bytes: asset.bytes, mediaType: asset.mediaType, filename: ref.filename };
+      return {
+        bytes: asset.bytes,
+        mediaType: asset.mediaType,
+        filename: ref.filename,
+      };
     },
   };
   corpusLabel = `image-heavy@${manifest.scale}`;
@@ -99,7 +141,10 @@ if (corpusArg === "text-heavy") {
 }
 
 const fonts = PDF_RUNTIME_ASSETS.fonts.map(
-  (font) => new Uint8Array(readFileSync(join(ROOT, "packages/pdf/.fonts", font.fileName))),
+  (font) =>
+    new Uint8Array(
+      readFileSync(join(ROOT, "packages/pdf/.fonts", font.fileName)),
+    ),
 );
 
 const prepareStarted = performance.now();
@@ -119,53 +164,43 @@ const prepareMs = performance.now() - prepareStarted;
 let pdfBytes = 0;
 let compileMs = 0;
 let compilerVersion = "";
-if (candidate === "baseline") {
+{
   const wasm = readFileSync(
-    join(ROOT, "packages/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm"),
+    join(
+      ROOT,
+      "packages/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm",
+    ),
   );
-  const compiler = new BrowserPdfCompiler({ wasm: wasm.buffer as ArrayBuffer, fonts });
+  const compiler = new BrowserPdfCompiler({
+    wasm: wasm.buffer as ArrayBuffer,
+    fonts,
+  });
   const started = performance.now();
   const result = await compiler.compile(bundle);
   compileMs = performance.now() - started;
-  if (!result.pdf) throw new Error(`baseline compile failed: ${JSON.stringify(result.diagnostics)}`);
+  if (!result.pdf)
+    throw new Error(
+      `baseline compile failed: ${JSON.stringify(result.diagnostics)}`,
+    );
   pdfBytes = result.pdf.byteLength;
   compilerVersion = result.compilerVersion;
-} else {
-  // Published prerelease, upstream feature set unchanged (PLAN candidate 2).
-  const glue = await import(
-    join(ROOT, "node_modules/typst-ts-web-compiler-rc8/pkg/typst_ts_web_compiler.mjs")
-  );
-  const wasm = readFileSync(
-    join(ROOT, "node_modules/typst-ts-web-compiler-rc8/pkg/typst_ts_web_compiler_bg.wasm"),
-  );
-  const out = await glue.default({ module_or_path: wasm.buffer });
-  wasmMemory = out.memory as WebAssembly.Memory;
-  const builder = new glue.TypstCompilerBuilder();
-  for (const font of fonts) await builder.add_raw_font(font);
-  const compiler = await builder.build();
-  compiler.reset_shadow();
-  compiler.add_source("/main.typ", bundle.main);
-  compiler.add_source("/atlcli.typ", bundle.template);
-  for (const asset of bundle.assets) compiler.map_shadow(`/${asset.path}`, asset.bytes);
-  const started = performance.now();
-  const result = compiler.compile("/main.typ", [], "pdf", 3) as { result?: Uint8Array };
-  compileMs = performance.now() - started;
-  compiler.reset_shadow();
-  if (!result.result) throw new Error("rc8 compile produced no PDF");
-  pdfBytes = result.result.byteLength;
-  compilerVersion = "typst.ts 0.8.0-rc3 / Typst 0.15.0-rc.1";
 }
 
-console.log(`ATLCLI_RUNTIME_LANE_CHILD ${JSON.stringify({
-  candidate,
-  compilerVersion,
-  corpus: corpusLabel,
-  corpusIdentity,
-  bundleAssetBytes: bundle.assets.reduce((total, asset) => total + asset.bytes.byteLength, 0),
-  pdfBytes,
-  prepareMs: Math.round(prepareMs),
-  compileMs: Math.round(compileMs),
-  wasmHighWaterMiB: wasmMemory
-    ? Number((wasmMemory.buffer.byteLength / 1048576).toFixed(2))
-    : null,
-})}`);
+console.log(
+  `ATLCLI_RUNTIME_LANE_CHILD ${JSON.stringify({
+    candidate,
+    compilerVersion,
+    corpus: corpusLabel,
+    corpusIdentity,
+    bundleAssetBytes: bundle.assets.reduce(
+      (total, asset) => total + asset.bytes.byteLength,
+      0,
+    ),
+    pdfBytes,
+    prepareMs: Math.round(prepareMs),
+    compileMs: Math.round(compileMs),
+    wasmHighWaterMiB: wasmMemory
+      ? Number((wasmMemory.buffer.byteLength / 1048576).toFixed(2))
+      : null,
+  })}`,
+);

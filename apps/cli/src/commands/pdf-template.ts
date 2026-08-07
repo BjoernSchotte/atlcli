@@ -89,13 +89,14 @@ import {
   PdfTemplateYamlError,
   classifyPdfTemplateInput,
   materializePdfTemplateYamlRecipe,
+  migratePdfTemplateYamlRecipeToTypst0151,
   writePdfTemplateRecipeArchive,
 } from "./pdf-template-yaml.js";
 
 const RESULT_SCHEMA = "atlcli.pdf-template-result/1" as const;
 const PRIVATE_INTAKE_SCHEMA = "atlcli.pdf-template-private-intake/1" as const;
 const IMPORTER_VERSION = "atlcli.pdf-template-import/1";
-const COMPILER_VERSION = "typst-wasm-pinned-0.14";
+const COMPILER_VERSION = "typst-wasm-pinned-0.15.1";
 
 const MESSAGE_REGISTRIES: readonly TemplateMessageRegistryV1[] = [
   AUTHORING_MESSAGE_REGISTRY_V1,
@@ -460,6 +461,7 @@ function validateFlags(
     ],
     preview: ["dir", "output-dir"],
     build: ["dir", "output"],
+    "migrate-runtime": ["output"],
     undo: ["dir"],
     diff: ["dir"],
     decide: [
@@ -2166,6 +2168,37 @@ async function runRecipe(
   };
 }
 
+async function runMigrateRuntime(
+  args: readonly string[],
+  flags: Record<string, string | boolean | string[]>,
+  dependencies: PdfTemplateCliDependencies
+): Promise<PdfTemplateCliResultV1> {
+  const path = templateProjectPath("migrate-runtime", args, flags, dependencies.cwd);
+  const outputPath = flagString(flags, "output");
+  if (!outputPath) throw usage("migrate-runtime requires --output");
+  if ((await classifyPdfTemplateInput(path.absolute)) !== "recipe") {
+    throw usage("migrate-runtime requires an original .yaml/.yml recipe");
+  }
+  const migrated = await migratePdfTemplateYamlRecipeToTypst0151(
+    path.absolute,
+    resolve(dependencies.cwd, outputPath)
+  );
+  return {
+    schema: RESULT_SCHEMA,
+    command: "migrate-runtime",
+    ok: true,
+    exitCode: 0,
+    projectPath: path.display,
+    diagnostics: [],
+    nextActions: [
+      `atlcli pdf-template build ${outputPath} --output ${basename(outputPath, extname(outputPath))}.wiki-pdf-template`,
+    ],
+    outputs: { recipe: outputPath },
+    changedCount: 1,
+    details: { compilerRange: migrated.template.compilerRange },
+  };
+}
+
 async function runBuild(
   command: "build" | "pack",
   args: readonly string[],
@@ -2386,6 +2419,8 @@ export async function executePdfTemplateCommand(
       return runPreview(args, flags, dependencies);
     case "validate":
       return runValidate(args, flags, dependencies);
+    case "migrate-runtime":
+      return runMigrateRuntime(args, flags, dependencies);
     case "build":
     case "pack":
       return runBuild(command, args, flags, dependencies);
@@ -2740,6 +2775,7 @@ Example:
   atlcli pdf-template preview ./brand-pdf-template
   atlcli pdf-template build ./brand-pdf-template --output ./brand.wiki-pdf-template
   atlcli pdf-template build ./template.yaml --output ./brand.wiki-pdf-template
+  atlcli pdf-template migrate-runtime ./template.yaml --output ./template.typst-0.15.1.yaml
 
 Primary commands:
   import <docx>          Create a no-clobber project using Editorial Indigo
@@ -2751,7 +2787,7 @@ Primary commands:
 
 Expert and automation commands:
   analyze, reanalyze, diff, decide, set, clear-override, clear-optional,
-  validate, pack
+  validate, pack, migrate-runtime
 
 Import defaults:
   --baseline builtin.editorial-indigo

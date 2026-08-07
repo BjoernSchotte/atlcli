@@ -6,7 +6,7 @@
  * the repository-pinned Typst-WASM and font bundle. T7/T8 must separately
  * prove the public YAML-build and `wiki export --format pdf --template` paths.
  *
- * Typst 0.14.2 renders gradient.linear(...).sharp(2) as a stable hard cut, so
+ * Typst 0.15.1 renders gradient.linear(...).sharp(2) as a stable hard cut, so
  * the production renderer may use that smaller formulation. The title is one
  * content value and is emitted once; measuring it at three sizes does not add
  * duplicate PDF text objects.
@@ -26,7 +26,7 @@ import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 import { registerTemplateCompositionV4PipelineTests } from "./template-composition-v4-pipeline.test.js";
 
-const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
+const PINNED_COMPILER = "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
 const decoder = new TextDecoder();
 const TITLE_INK = [224, 0, 32] as const;
 const TITLE_INVERSE = [0, 82, 204] as const;
@@ -140,7 +140,7 @@ function sourceFor(
     message: "TYPE_CUT_TIER_MISMATCH: expected ${expectedTier}",
   )
 
-  // .sharp(2) is the T0-selected Typst 0.14.2 formulation. Keeping the
+  // .sharp(2) is the T0-selected Typst 0.15.1 formulation. Keeping the
   // gradient relative to this fixed parent frame makes its cut independent of
   // line wrapping while the one title content value is rendered exactly once.
   let title-fill = gradient.linear(

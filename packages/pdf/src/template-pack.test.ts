@@ -81,6 +81,7 @@ async function manifestWith(
     decorations?: readonly Record<string, unknown>[];
     requiredFonts?: TemplateManifest["requiredFonts"];
     design?: TemplateManifest["design"];
+    compilerRange?: string;
   } = {}
 ): Promise<{
   manifest: TemplateManifest;
@@ -144,7 +145,8 @@ async function manifestWith(
         decorative: true,
       };
     });
-  const manifest = validateManifest({
+  const manifest = validateManifest(
+    {
       schemaVersion: 1,
       id: "fixture.assets",
       name: "Asset fixture",
@@ -153,7 +155,7 @@ async function manifestWith(
         kind: "typst",
         api: "wiki.pdf-template/v1",
         entry: "atlcli.typ",
-        compilerRange: ">=0.14 <0.15",
+        compilerRange: options.compilerRange ?? ">=0.15.1 <0.16",
       },
       design: options.design ?? BUILTIN_PDF_DESIGN,
       requiredFonts: options.requiredFonts ?? PDF_RUNTIME_ASSETS.fonts,
@@ -168,7 +170,11 @@ async function manifestWith(
             },
           }
         : {}),
-    });
+    },
+    options.compilerRange === ">=0.14 <0.15"
+      ? { pinnedTypstVersion: "0.14.2" }
+      : undefined
+  );
   if (options.canonical) {
     files["atlcli.typ"] = encoder.encode(
       createAtlcliTypstTemplate(
@@ -382,7 +388,7 @@ describe("PDF template manifest phase", () => {
           alt: "Example Systems",
         },
       },
-      { design: revision4Design() }
+      { design: revision4Design(), compilerRange: ">=0.14 <0.15" }
     );
     fixture.manifest.canonicalSource = {
       api: "wiki.pdf-canonical-typst",
@@ -393,6 +399,13 @@ describe("PDF template manifest phase", () => {
     const source = generateCanonicalPdfTemplateSourceV1(
       fixture.manifest,
       visualsForManifest(fixture.manifest)
+    );
+    expect(await digest(encoder.encode(source))).toBe(
+      "52cf2cf897b0d5ae97e69037979f1cf161192a08979261055030a16fe1ee91a0"
+    );
+    fixture.files["atlcli.typ"] = encoder.encode(source);
+    expect(await digest(await packTemplate(fixture))).toBe(
+      "80772dcc9ec53677829e9259dfe0877b1f50e4bc7b69cc43dcb6796dfe52aa45"
     );
     const cover = source.slice(
       source.indexOf('  if cover-config.at("enabled"'),
@@ -566,7 +579,10 @@ describe("PDF template manifest phase", () => {
 
 describe("PDF template pack integrity phase", () => {
   it("pins and loads the characterized canonical source for revisions 1, 2, and 3", async () => {
-    const revision1 = await manifestWith({}, { canonical: true });
+    const revision1 = await manifestWith(
+      {},
+      { canonical: true, compilerRange: ">=0.14 <0.15" }
+    );
     const source1 = generateCanonicalPdfTemplateSourceV1(
       revision1.manifest,
       visualsForManifest(revision1.manifest)
@@ -575,26 +591,39 @@ describe("PDF template pack integrity phase", () => {
       "690fd6bb3d13e102886245ee8fdc0ffd0e84b7090ab45c8a92c2e68586d0cc3f"
     );
     revision1.files["atlcli.typ"] = encoder.encode(source1);
+    const revision1Pack = await packTemplate(revision1);
+    expect(await digest(revision1Pack)).toBe(
+      "952984b9c9910438bf0fec465282c41236ece2f36af22c2612c5b993afb4a8aa"
+    );
     expect(
-      (await loadPdfTemplatePack(await packTemplate(revision1))).canonicalSource.revision
+      (await loadPdfTemplatePack(revision1Pack, { pinnedTypstVersion: "0.14.2" }))
+        .canonicalSource.revision
     ).toBe("1");
+    await expect(loadPdfTemplatePack(revision1Pack)).rejects.toThrow(
+      /migrate-runtime <recipe\.yaml>/u
+    );
 
-    for (const [revision, expected] of [
+    for (const [revision, expectedSource, expectedPack] of [
       [
         PDF_CANONICAL_SOURCE_REVISION_2,
         "e5fbf3cbc79557ecd62a69eb70f8bd013b45b81b25d1d08b92e199969b6fe333",
+        "cf7451a49dc53af5f939303477b2eba02c1ee5ea1a014466b775337cf75d689c",
       ],
       [
         PDF_CANONICAL_SOURCE_REVISION_3,
         "01a978f09f902705664eaadb309f1560adce791ac747b17c8885cd565696ecb8",
+        "56dab50285fa6cb43084a0e6398b969429c56ce280a1fbe5f151e25f96dfd729",
       ],
     ] as const) {
-      const fixture = await manifestWith({
-        "asset.coverBackground": {
-          descriptorId: "cover",
-          bytes: svg(),
+      const fixture = await manifestWith(
+        {
+          "asset.coverBackground": {
+            descriptorId: "cover",
+            bytes: svg(),
+          },
         },
-      });
+        { compilerRange: ">=0.14 <0.15" }
+      );
       fixture.manifest.canonicalSource = {
         api: "wiki.pdf-canonical-typst",
         revision,
@@ -604,10 +633,13 @@ describe("PDF template pack integrity phase", () => {
         fixture.manifest,
         visualsForManifest(fixture.manifest)
       );
-      expect(await digest(encoder.encode(source))).toBe(expected);
+      expect(await digest(encoder.encode(source))).toBe(expectedSource);
       fixture.files["atlcli.typ"] = encoder.encode(source);
+      const pack = await packTemplate(fixture);
+      expect(await digest(pack)).toBe(expectedPack);
       expect(
-        (await loadPdfTemplatePack(await packTemplate(fixture))).canonicalSource.revision
+        (await loadPdfTemplatePack(pack, { pinnedTypstVersion: "0.14.2" }))
+          .canonicalSource.revision
       ).toBe(revision);
     }
   });
