@@ -1006,7 +1006,7 @@ const LIMIT_BOUNDS: {
   maxPtcOutputBytes: [1_000, 1_000_000],
   maxTotalResponseBytes: [100_000, 50_000_000],
   maxInterpreterMemoryBytes: [8_000_000, 256_000_000],
-  maxInterpreterMs: [500, 60_000],
+  maxInterpreterMs: [500, 180_000],
   maxModelCalls: [1, 64],
   maxTotalModelInputTokens: [1_000, 1_000_000],
   maxTotalModelOutputTokens: [1_000, 128_000],

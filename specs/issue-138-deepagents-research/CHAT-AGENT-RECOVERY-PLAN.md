@@ -724,9 +724,9 @@ Automated proof:
 
 Live acceptance:
 
-- [ ] A private read-only case demonstrates a relevant source found only by a
+- [x] A private read-only case demonstrates a relevant source found only by a
       later page or bounded query variant.
-- [ ] The resulting answer and diagnostics account for every admitted candidate
+- [x] The resulting answer and diagnostics account for every admitted candidate
       without exposing private source bodies in committed output.
 
 Acceptance criteria:
@@ -759,8 +759,16 @@ The real CLI SQLite/filesystem and MV3 IndexedDB conversation workspaces pass th
 same conformance scenario with byte-identical retrieval plan, candidate ledger,
 and assessment artifacts. The focused suites and packed production MV3 proof
 also cover the same dynamic replan, agentic workflow, summarized-reasoning
-stream, and provisional-Markdown stream. Only the private read-only live
-acceptance remains unchecked rather than being inferred from synthetic data.
+stream, and provisional-Markdown stream.
+
+Private live proof (2026-08-07): a read-only cross-product Deep Chat used a
+host-added bounded query variant to recover the relevant document set, admitted
+16 of 30 discovered candidates, detail-read all 16, excluded the remaining 14
+with explicit reasons, and left none deferred. The final diagnostics recorded
+1.0 detail-read coverage and 1.0 canonical-URL correctness over 28 HTTP attempts
+in 287.4 seconds. The committed proof records only these aggregate metrics; the
+tenant, source identities, queries, bodies, and generated report remain outside
+the repository and pull request.
 
 ### C7 — Add sufficient-evidence assessment, critic, repair, and synthesis
 
@@ -838,6 +846,12 @@ the sole synthesizer produces the corrected partial answer with its material
 gap. A denied repair still preserves the synthesis reserve and converts the
 unrepaired defect into a required gap. The focused 54-test C7 suite passes. Only
 the private CLI/MV3 live acceptance and human comparison remain open.
+
+Private CLI evidence (2026-08-07): the same bounded complex run reached the
+independent critic, admitted exactly one targeted repair, and completed the sole
+final synthesizer under the measured root budgets. Human review and the matching
+production-MV3 live path remain intentionally unchecked; no private defect text,
+answer content, source identity, or tenant reference is recorded here.
 
 ### C8 — Add durable multi-turn Chat and evidence memory
 

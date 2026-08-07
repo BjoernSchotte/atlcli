@@ -996,8 +996,9 @@ describe("research CLI one-shot contract", () => {
       maxItemsPerProduct: 20,
       maxDetailItemsPerProduct: 6,
       maxBodyCharsPerItem: 8_000,
-      maxPtcCalls: 24,
+      maxPtcCalls: 64,
       maxHttpCalls: 20,
+      maxTotalResponseBytes: 12_000_000,
       maxModelOutputTokens: 8_000,
       maxModelCostMicros: 2_000_000,
     });
@@ -1008,8 +1009,26 @@ describe("research CLI one-shot contract", () => {
       }),
       profile,
     );
-    expect(quickRequest.limits.maxPtcCalls).toBe(16);
+    expect(quickRequest.limits.maxPtcCalls).toBe(32);
     expect(quickRequest.limits.maxModelOutputTokens).toBe(4_096);
+    const deepRequest = buildChatRequest(
+      parseChatCliInput(["Compare DOCSY and ATLCLI"], {
+        space: "DOCSY",
+        project: "ATLCLI",
+        thinking: "deep",
+      }),
+      profile,
+    );
+    expect(deepRequest.limits).toMatchObject({
+      maxItemsPerProduct: 20,
+      maxDetailItemsPerProduct: 8,
+      maxBodyCharsPerItem: 6_000,
+      maxPtcCalls: 72,
+      maxHttpCalls: 40,
+      maxTotalResponseBytes: 24_000_000,
+      maxInterpreterMs: 180_000,
+      maxTotalModelInputTokens: 450_000,
+    });
   });
 
   test("presents and validates every shared Chat HITL question shape", async () => {

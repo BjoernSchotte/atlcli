@@ -14,6 +14,7 @@ import {
   CHAT_AGENT_DRAFT_SCHEMA_V1,
   ChatContractError,
   type ChatAgentDraftV1,
+  type ChatAnswerGapV1,
   type ChatAnswerV1,
   type ChatRunSummaryV1,
 } from "./contracts.js";
@@ -21,6 +22,29 @@ import type {
   ChatStrategyDecisionV1,
   ChatStrategyReviewV1,
 } from "./strategy.js";
+
+function mergeEquivalentGapsV1(gaps: readonly ChatAnswerGapV1[]): ChatAnswerGapV1[] {
+  const merged = new Map<string, ChatAnswerGapV1>();
+  for (const gap of gaps) {
+    const message = gap.message.trim();
+    if (!message) continue;
+    const key = `${gap.code}:${message}`;
+    const current = merged.get(key);
+    if (current) {
+      current.sourceIds = [...new Set([...current.sourceIds, ...gap.sourceIds])]
+        .sort((left, right) => left.localeCompare(right, "en-US"));
+      continue;
+    }
+    merged.set(key, {
+      code: gap.code,
+      message,
+      sourceIds: [...new Set(gap.sourceIds)].sort((left, right) =>
+        left.localeCompare(right, "en-US")
+      ),
+    });
+  }
+  return [...merged.values()];
+}
 
 function escapeMarkdownLabel(value: string): string {
   return value.replace(/[\\\[\]]/gu, "\\$&");
@@ -639,7 +663,7 @@ export function finalizeChatAnswerV1(input: {
     hostCoverageNotices.push(notice);
   }
   if (hostCoverageNotices.length > 0) {
-    messageMarkdown += `\n\n> **${german ? "Abdeckungsgrenze" : "Coverage limit"}:** ${hostCoverageNotices.join(" ")}`;
+    messageMarkdown += `\n\n> **${german ? "Abdeckungsgrenze" : "Coverage limit"}:** ${[...new Set(hostCoverageNotices)].join(" ")}`;
   }
   const fallbackReason = input.qualityPolicy.mode === "quick"
     ? "quick-direct" as const
@@ -723,6 +747,8 @@ export function finalizeChatAnswerV1(input: {
       "A direct Chat answer cannot attach an agentic quality disposition.",
     );
   }
+  const mergedGaps = mergeEquivalentGapsV1(gaps);
+  gaps.splice(0, gaps.length, ...mergedGaps);
   const visibleGapMessages = gaps
     .map((gap) => gap.message.trim())
     .filter((message, index, all) =>

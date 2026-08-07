@@ -1,4 +1,5 @@
 import {
+  type ChatThinkingModeV1,
   type ResearchProduct,
   type ResearchRequestV1,
   type ResearchScopeEntityKindV1,
@@ -6,6 +7,37 @@ import {
 } from "./contracts.js";
 
 const DIRECT_EXACT_CONTEXT_CHARS_V1 = 50_000;
+
+/** Shared resource corridor for one conversational turn in every host shape. */
+export function applyChatQualityResourcePolicyV1(
+  input: ResearchRequestV1,
+  mode: ChatThinkingModeV1,
+): ResearchRequestV1 {
+  const deep = mode === "deep";
+  const quick = mode === "quick";
+  return {
+    ...input,
+    limits: {
+      ...input.limits,
+      maxSearchPagesPerProduct: Math.min(input.limits.maxSearchPagesPerProduct, 2),
+      maxItemsPerProduct: Math.min(input.limits.maxItemsPerProduct, 20),
+      maxDetailItemsPerProduct: Math.min(
+        input.limits.maxDetailItemsPerProduct,
+        deep ? 8 : 6,
+      ),
+      maxBodyCharsPerItem: Math.min(
+        input.limits.maxBodyCharsPerItem,
+        deep ? 6_000 : 8_000,
+      ),
+      maxPtcCalls: deep ? 72 : mode === "auto" ? 64 : 32,
+      maxHttpCalls: deep ? 40 : Math.min(input.limits.maxHttpCalls, 20),
+      maxTotalResponseBytes: deep ? 24_000_000 : mode === "auto" ? 12_000_000 : 8_000_000,
+      maxInterpreterMs: deep ? 180_000 : input.limits.maxInterpreterMs,
+      maxModelOutputTokens: Math.min(input.limits.maxModelOutputTokens, quick ? 4_096 : 8_000),
+      maxTotalModelInputTokens: deep ? 450_000 : input.limits.maxTotalModelInputTokens,
+    },
+  };
+}
 
 function isWholeScopeSeed(
   seed: ResearchScopeSeedV1,

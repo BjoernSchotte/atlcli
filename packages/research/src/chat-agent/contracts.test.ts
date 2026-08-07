@@ -363,6 +363,32 @@ describe("Chat answer contract", () => {
     expect(answer.messageMarkdown).toContain("- Die verlinkte Folgeseite wurde nicht gelesen.");
   });
 
+  test("merges equivalent coverage gaps before rendering them", () => {
+    const repeated = "1 weiterer Seitenabschnitt wurde nicht im Detail gelesen.";
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: "Belegte Zusammenfassung. [[source:wiki:1001]]",
+        citationSourceIds: ["wiki:1001"],
+        gaps: [
+          { code: "incomplete-coverage", message: repeated, sourceIds: ["wiki:1001"] },
+          { code: "incomplete-coverage", message: repeated, sourceIds: ["wiki:1001"] },
+        ],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+      locale: "de",
+    });
+
+    expect(answer.gaps).toEqual([{
+      code: "incomplete-coverage",
+      message: repeated,
+      sourceIds: ["wiki:1001"],
+    }]);
+    expect(answer.messageMarkdown.split(repeated)).toHaveLength(2);
+  });
+
   test("omits unsupported citation claims and still rejects unknown gap evidence", () => {
     const base = {
       sources: [],

@@ -218,7 +218,7 @@ describe("issue-138 research request contract", () => {
       maxPtcOutputBytes: 1_000_000,
       maxTotalResponseBytes: 100_000,
       maxInterpreterMemoryBytes: 8_000_000,
-      maxInterpreterMs: 60_000,
+      maxInterpreterMs: 180_000,
       maxModelCalls: 1,
       maxTotalModelInputTokens: 1_000,
       maxTotalModelOutputTokens: 128_000,

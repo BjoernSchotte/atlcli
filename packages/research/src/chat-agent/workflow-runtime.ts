@@ -365,9 +365,10 @@ function profilePromptV1(input: {
   limits: ResearchLimitsV1;
   locale?: string;
   queryVariantMode?: boolean;
+  detailLimit?: number;
 }): string {
   const searchBudget = Math.max(1, input.limits.maxSearchPagesPerProduct);
-  const detailBudget = Math.max(1, input.limits.maxDetailItemsPerProduct);
+  const detailBudget = Math.max(1, input.detailLimit ?? input.limits.maxDetailItemsPerProduct);
   return [
     input.profile.systemPrompt,
     input.locale?.toLowerCase().startsWith("de")
@@ -479,6 +480,7 @@ export function createPlannedSearchAcquisitionToolV1(input: {
         }, nestedConfig), "Chat candidate ranking");
         const rankedItems = Array.isArray(ranked.items) ? ranked.items : [];
         const admittedRefs: string[] = [];
+        const retainedSourceIds: string[] = [];
         const admittedSourceIds = new Set<string>();
         for (const candidate of rankedItems) {
           if (!candidate || typeof candidate !== "object") continue;
@@ -488,8 +490,14 @@ export function createPlannedSearchAcquisitionToolV1(input: {
               admittedSourceIds.has(sourceId)) continue;
           admittedSourceIds.add(sourceId);
           admittedRefs.push(entityRef);
+          retainedSourceIds.push(sourceId);
           if (admittedRefs.length >= Math.max(1, input.maxDetails)) break;
         }
+        await input.retrievalLedger.retainAdmittedCandidates(
+          input.product,
+          retainedSourceIds,
+          "outside-bounded-detail-selection",
+        );
         phase = "detail-read";
         const details: Record<string, unknown>[] = [];
         // A candidate can be returned by several admitted query variants. Read
@@ -582,6 +590,10 @@ function compileChatSubagentsV1(input: {
     const plannedSearchAvailable = searchProduct !== undefined &&
       input.retrievalLedger !== undefined &&
       input.searchProducts.includes(searchProduct);
+    const plannedDetailLimit = searchProduct === undefined || input.retrievalLedger === undefined
+      ? input.limits.maxDetailItemsPerProduct
+      : input.retrievalLedger.plan().budgetReservations?.detailCallsByProduct?.[searchProduct] ??
+        input.limits.maxDetailItemsPerProduct;
     const boundedAcquisitionResultAvailable = plannedSearchAvailable ||
       profile.id === "exact-context-reader";
     const ptc = plannedSearchAvailable
@@ -590,7 +602,7 @@ function compileChatSubagentsV1(input: {
           tools: rawPtc,
           retrievalLedger: input.retrievalLedger!,
           maxSearchPages: input.limits.maxSearchPagesPerProduct,
-          maxDetails: input.limits.maxDetailItemsPerProduct,
+          maxDetails: plannedDetailLimit,
         })]
       : rawPtc;
     if (profile.id === "confluence-search-reader" || profile.id === "jira-search-reader") {
@@ -763,9 +775,17 @@ function compileChatSubagentsV1(input: {
         }
       },
     });
+    const answerOutputTokens = profile.id === "answer-critic"
+      ? 2_048
+      : profile.id === "answer-drafter" || profile.id === "answer-repairer" ||
+          profile.id === "chat-synthesizer"
+        ? 3_072
+        : undefined;
     const maxModelOutputTokens = Math.min(
       input.limits.maxModelOutputTokens,
-      profile.modelPreference === "fast" ? 2_048 : profile.modelPreference === "balanced" ? 4_096 : 8_000,
+      answerOutputTokens ?? (profile.modelPreference === "fast"
+        ? 2_048
+        : profile.modelPreference === "balanced" ? 4_096 : 8_000),
     );
     const modelBudgetMiddleware: AgentMiddleware = createResearchModelBudgetMiddlewareV1(
       input.modelBudget,
@@ -790,6 +810,7 @@ function compileChatSubagentsV1(input: {
         // fail before the host capability is reached.
         allowedToolNames: ptc.map((candidate) => toCamelCase(candidate.name)),
         limits: input.limits,
+        detailLimit: plannedDetailLimit,
         ...(input.locale ? { locale: input.locale } : {}),
         queryVariantMode: input.retrievalLedger !== undefined,
       }),

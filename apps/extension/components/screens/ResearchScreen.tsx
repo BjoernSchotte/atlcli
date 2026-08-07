@@ -50,6 +50,7 @@ import {
 } from "@atlcli/research/scope-discovery";
 import {
   CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  applyChatQualityResourcePolicyV1,
   ChatUserQuestionRequiredError,
   prepareDirectChatRequestV1,
   prepareResearchBriefPreflightV1,
@@ -1937,7 +1938,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         return true;
       }
       const request = activeInteractionMode === "chat"
-        ? prepareDirectChatRequestV1(scopeOutcome.request)
+        ? prepareDirectChatRequestV1(applyChatQualityResourcePolicyV1(
+            scopeOutcome.request,
+            chatThinkingMode,
+          ))
         : scopeOutcome.request;
       setSubmittedRequest(structuredClone(request));
       if (activeInteractionMode === "chat") {

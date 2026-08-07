@@ -3,6 +3,7 @@ import type {
   BoundEntityReadOutputV1,
   BoundEntitySectionReadOutputV1,
   ResearchCandidateRankOutputV1,
+  ResearchBudgetSnapshotV1,
   ResearchGetOutputV1,
   ResearchSearchOutputV1,
 } from "../capability-contracts.js";
@@ -124,8 +125,10 @@ export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
 }
 
 export interface ChatRetrievalBudgetReservationsV1 {
+  supervisorCalls: number;
   directReadCalls: number;
   discoveryCalls: number;
+  detailCallsByProduct: Record<ResearchProduct, number>;
   relationshipTraversalCalls: number;
   repairCalls: number;
   criticCalls: number;
@@ -217,6 +220,7 @@ export interface ChatCandidateLedgerV1 {
   /** Body-free review candidates only; these grant no read capability. */
   relatedScopeProposals?: ChatRelatedScopeProposalV1[];
   atlassianHttpCalls: number;
+  lastBudgetSnapshot?: ResearchBudgetSnapshotV1;
 }
 
 export interface ChatRetrievalMetricsV1 {
@@ -374,14 +378,19 @@ function ensureConciseCoreTermVariant(
   const textVariants = variants
     .map((variant) => variant.query.text?.toLocaleLowerCase("en-US"))
     .filter((text): text is string => Boolean(text));
-  const questionTokens = cleanText(question, "Chat question", 2_000)
-    .toLocaleLowerCase("en-US")
-    .match(/[\p{L}][\p{L}\p{N}._-]{3,79}/gu)
-    ?.map((token) => token.replace(/^[._-]+|[._-]+$/gu, ""))
-    .filter(Boolean) ?? [];
-  const candidates = [...new Set(questionTokens)]
-    .filter((token) => !QUERY_STOP_WORDS.has(token))
-    .map((token, order) => ({
+  const rawQuestionTokens = cleanText(question, "Chat question", 2_000)
+    .match(/[\p{L}][\p{L}\p{N}._-]{3,79}/gu) ?? [];
+  const questionTokens = [...new Map(rawQuestionTokens
+    .map((original) => ({
+      original: original.replace(/^[._-]+|[._-]+$/gu, ""),
+      token: original.replace(/^[._-]+|[._-]+$/gu, "")
+        .toLocaleLowerCase("en-US"),
+    }))
+    .filter(({ token }) => token && !QUERY_STOP_WORDS.has(token))
+    .map((entry) => [entry.token, entry] as const)).values()];
+  const candidates = questionTokens
+    .map(({ original, token }, order) => ({
+      original,
       token,
       order,
       occurrences: textVariants.filter((text) =>
@@ -396,7 +405,12 @@ function ensureConciseCoreTermVariant(
   // natural-language question and the source index. Prefer them even when a
   // model proposed just one verbose variant; otherwise require repetition
   // across independently proposed variants before injecting a generic term.
-  const technical = candidates.find((candidate) =>
+  const mixedCase = candidates.find((candidate) =>
+    !/[._-]/u.test(candidate.original) &&
+    /\p{Ll}/u.test(candidate.original) &&
+    /\p{Lu}/u.test(candidate.original.slice(1))
+  );
+  const technical = mixedCase ?? candidates.find((candidate) =>
     /(?:cli|api|sdk|mcp|js)$/iu.test(candidate.token) ||
     /[\p{L}\p{N}][._-][\p{L}\p{N}]/u.test(candidate.token) ||
     /\d/u.test(candidate.token)
@@ -638,19 +652,47 @@ export function createChatRetrievalPlanV1(input: {
     cleanText(term, "Chat unresolved term", 160)
   ))].slice(0, 12).sort((left, right) => left.localeCompare(right, "en-US"));
   const directReadCalls = anchors.length;
+  // Strategy acknowledgement, workflow proposal/review, durable frontier
+  // control and the quality boundary use the same root PTC budget as source
+  // acquisition. Reserve their measured bounded envelope explicitly instead
+  // of pretending the budget belongs only to Atlassian tools.
+  const supervisorCalls = input.agentic
+    ? Math.min(32, Math.max(10, Math.floor(input.limits.maxPtcCalls * 0.4)))
+    : 2;
   const discoveryCalls = searches.reduce((total, search) =>
-    total + (search.maxPages * search.variants.length) + 1 +
-      Math.min(4, input.limits.maxDetailItemsPerProduct), 0
+    total + (search.maxPages * search.variants.length) + 1, 0
   );
   const relationshipTraversalCalls = relationshipTraversals.length;
   const repairCalls = input.agentic ? 1 : 0;
   const criticCalls = input.agentic ? 1 : 0;
   const synthesisCalls = 1 as const;
-  const totalCalls = directReadCalls + discoveryCalls + relationshipTraversalCalls +
+  const fixedCalls = supervisorCalls + directReadCalls + discoveryCalls + relationshipTraversalCalls +
     repairCalls + criticCalls + synthesisCalls;
-  if (totalCalls > input.limits.maxPtcCalls) {
+  const searchProducts = [...new Set(searches.map((search) => search.product))];
+  if (fixedCalls + searchProducts.length > input.limits.maxPtcCalls) {
     invalid("Chat retrieval plan exceeds the root capability-call budget.");
   }
+  const detailCallsByProduct: Record<ResearchProduct, number> = {
+    jira: 0,
+    confluence: 0,
+  };
+  let remainingDetailCalls = input.limits.maxPtcCalls - fixedCalls;
+  // Give every searched product one detail-read opportunity first, then split
+  // the remaining root corridor fairly. The persisted reservation is also the
+  // runtime ceiling, so a small Chat budget can never silently admit more
+  // candidates than its supervisor, critic, and synthesizer can finish.
+  while (remainingDetailCalls > 0 && searchProducts.some((product) =>
+    detailCallsByProduct[product] < input.limits.maxDetailItemsPerProduct
+  )) {
+    for (const product of searchProducts) {
+      if (remainingDetailCalls <= 0) break;
+      if (detailCallsByProduct[product] >= input.limits.maxDetailItemsPerProduct) continue;
+      detailCallsByProduct[product] += 1;
+      remainingDetailCalls -= 1;
+    }
+  }
+  const totalCalls = fixedCalls + Object.values(detailCallsByProduct)
+    .reduce((total, calls) => total + calls, 0);
   const completionSignals: ChatRetrievalCompletionSignalV1[] = [
     ...(anchors.length > 0 ? ["all-anchors-read" as const] : []),
     ...(searches.length > 0
@@ -678,8 +720,10 @@ export function createChatRetrievalPlanV1(input: {
     unresolvedTerms,
     completionSignals,
     budgetReservations: {
+      supervisorCalls,
       directReadCalls,
       discoveryCalls,
+      detailCallsByProduct,
       relationshipTraversalCalls,
       repairCalls,
       criticCalls,
@@ -833,6 +877,35 @@ export class ChatCandidateLedgerControllerV1 {
     await this.#persist();
   }
 
+  async retainAdmittedCandidates(
+    product: ResearchProduct,
+    sourceIds: readonly string[],
+    reason = "outside-bounded-detail-selection",
+  ): Promise<void> {
+    const retained = new Set(sourceIds.map((sourceId) =>
+      cleanText(sourceId, "Retained Chat candidate source ID", 256)
+    ));
+    for (const sourceId of retained) {
+      const candidate = this.#candidateBySource.get(sourceId);
+      if (!candidate || candidate.product !== product || candidate.state !== "admitted") {
+        invalid("Chat detail selection contains a candidate that was not admitted by ranking.");
+      }
+    }
+    for (const candidate of this.#candidateBySource.values()) {
+      if (candidate.product === product && candidate.state === "admitted" &&
+          !retained.has(candidate.sourceId)) {
+        candidate.state = "excluded";
+        candidate.exclusionReason = cleanText(
+          reason,
+          "Chat candidate exclusion reason",
+          240,
+        );
+      }
+    }
+    this.#ledger.updatedAt = new Date(this.#now()).toISOString();
+    await this.#persist();
+  }
+
   plan(): ChatRetrievalPlanV1 {
     return structuredClone(this.#plan);
   }
@@ -983,6 +1056,20 @@ export class ChatCandidateLedgerControllerV1 {
     callId: string,
     input?: unknown,
   ): Promise<void> {
+    if (result && typeof result === "object" && !Array.isArray(result) &&
+        "budget" in result && result.budget && typeof result.budget === "object" &&
+        !Array.isArray(result.budget)) {
+      const budget = result.budget as Partial<ResearchBudgetSnapshotV1>;
+      if (Number.isSafeInteger(budget.ptcRemaining) &&
+          Number.isSafeInteger(budget.httpAttemptsRemaining) &&
+          Number.isSafeInteger(budget.responseBytesRemaining)) {
+        this.#ledger.lastBudgetSnapshot = {
+          ptcRemaining: budget.ptcRemaining!,
+          httpAttemptsRemaining: budget.httpAttemptsRemaining!,
+          responseBytesRemaining: budget.responseBytesRemaining!,
+        };
+      }
+    }
     if (tool === "jira.issue.search" || tool === "wiki.search") {
       this.#observeSearch(tool, result as ResearchSearchOutputV1, callId, input);
     } else if (tool === "research.candidate.rank") {

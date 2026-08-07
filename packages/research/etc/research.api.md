@@ -201,6 +201,9 @@ export declare function appendResearchSessionTurnV1(input: AppendResearchSession
 // export: applyChatInteractionControlV1
 export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
 
+// export: applyChatQualityResourcePolicyV1
+export declare function applyChatQualityResourcePolicyV1(input: ResearchRequestV1, mode: ChatThinkingModeV1): ResearchRequestV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -968,6 +971,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     });
     initialize(): Promise<void>;
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
@@ -1011,6 +1015,7 @@ export interface ChatCandidateLedgerV1 {
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
     relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
+    lastBudgetSnapshot?: ResearchBudgetSnapshotV1;
 }
 
 // export: ChatCandidateStateV1
@@ -1351,8 +1356,10 @@ export interface ChatRetrievalAssessmentV1 {
 
 // export: ChatRetrievalBudgetReservationsV1
 export interface ChatRetrievalBudgetReservationsV1 {
+    supervisorCalls: number;
     directReadCalls: number;
     discoveryCalls: number;
+    detailCallsByProduct: Record<ResearchProduct, number>;
     relationshipTraversalCalls: number;
     repairCalls: number;
     criticCalls: number;
@@ -7798,6 +7805,9 @@ export declare function appendResearchSessionTurnV1(input: AppendResearchSession
 // export: applyChatInteractionControlV1
 export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
 
+// export: applyChatQualityResourcePolicyV1
+export declare function applyChatQualityResourcePolicyV1(input: ResearchRequestV1, mode: ChatThinkingModeV1): ResearchRequestV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -8565,6 +8575,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     });
     initialize(): Promise<void>;
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
@@ -8608,6 +8619,7 @@ export interface ChatCandidateLedgerV1 {
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
     relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
+    lastBudgetSnapshot?: ResearchBudgetSnapshotV1;
 }
 
 // export: ChatCandidateStateV1
@@ -8948,8 +8960,10 @@ export interface ChatRetrievalAssessmentV1 {
 
 // export: ChatRetrievalBudgetReservationsV1
 export interface ChatRetrievalBudgetReservationsV1 {
+    supervisorCalls: number;
     directReadCalls: number;
     discoveryCalls: number;
+    detailCallsByProduct: Record<ResearchProduct, number>;
     relationshipTraversalCalls: number;
     repairCalls: number;
     criticCalls: number;
@@ -15375,6 +15389,9 @@ export declare function appendResearchSessionTurnV1(input: AppendResearchSession
 // export: applyChatInteractionControlV1
 export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
 
+// export: applyChatQualityResourcePolicyV1
+export declare function applyChatQualityResourcePolicyV1(input: ResearchRequestV1, mode: ChatThinkingModeV1): ResearchRequestV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -16142,6 +16159,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     });
     initialize(): Promise<void>;
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
@@ -16185,6 +16203,7 @@ export interface ChatCandidateLedgerV1 {
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
     relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
+    lastBudgetSnapshot?: ResearchBudgetSnapshotV1;
 }
 
 // export: ChatCandidateStateV1
@@ -16525,8 +16544,10 @@ export interface ChatRetrievalAssessmentV1 {
 
 // export: ChatRetrievalBudgetReservationsV1
 export interface ChatRetrievalBudgetReservationsV1 {
+    supervisorCalls: number;
     directReadCalls: number;
     discoveryCalls: number;
+    detailCallsByProduct: Record<ResearchProduct, number>;
     relationshipTraversalCalls: number;
     repairCalls: number;
     criticCalls: number;
@@ -22972,6 +22993,9 @@ export declare function appendResearchSessionTurnV1(input: AppendResearchSession
 // export: applyChatInteractionControlV1
 export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
 
+// export: applyChatQualityResourcePolicyV1
+export declare function applyChatQualityResourcePolicyV1(input: ResearchRequestV1, mode: ChatThinkingModeV1): ResearchRequestV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -23757,6 +23781,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     });
     initialize(): Promise<void>;
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
@@ -23800,6 +23825,7 @@ export interface ChatCandidateLedgerV1 {
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
     relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
+    lastBudgetSnapshot?: ResearchBudgetSnapshotV1;
 }
 
 // export: ChatCandidateStateV1
@@ -24140,8 +24166,10 @@ export interface ChatRetrievalAssessmentV1 {
 
 // export: ChatRetrievalBudgetReservationsV1
 export interface ChatRetrievalBudgetReservationsV1 {
+    supervisorCalls: number;
     directReadCalls: number;
     discoveryCalls: number;
+    detailCallsByProduct: Record<ResearchProduct, number>;
     relationshipTraversalCalls: number;
     repairCalls: number;
     criticCalls: number;
@@ -31035,6 +31063,9 @@ export declare function appendResearchSessionTurnV1(input: AppendResearchSession
 // export: applyChatInteractionControlV1
 export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
 
+// export: applyChatQualityResourcePolicyV1
+export declare function applyChatQualityResourcePolicyV1(input: ResearchRequestV1, mode: ChatThinkingModeV1): ResearchRequestV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -31820,6 +31851,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     });
     initialize(): Promise<void>;
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
@@ -31863,6 +31895,7 @@ export interface ChatCandidateLedgerV1 {
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
     relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
+    lastBudgetSnapshot?: ResearchBudgetSnapshotV1;
 }
 
 // export: ChatCandidateStateV1
@@ -32203,8 +32236,10 @@ export interface ChatRetrievalAssessmentV1 {
 
 // export: ChatRetrievalBudgetReservationsV1
 export interface ChatRetrievalBudgetReservationsV1 {
+    supervisorCalls: number;
     directReadCalls: number;
     discoveryCalls: number;
+    detailCallsByProduct: Record<ResearchProduct, number>;
     relationshipTraversalCalls: number;
     repairCalls: number;
     criticCalls: number;
@@ -40910,6 +40945,9 @@ export declare function appendResearchSessionTurnV1(input: AppendResearchSession
 // export: applyChatInteractionControlV1
 export declare function applyChatInteractionControlV1(state: ChatInteractionStateV1, control: ChatInteractionControlV1): ChatInteractionStateV1;
 
+// export: applyChatQualityResourcePolicyV1
+export declare function applyChatQualityResourcePolicyV1(input: ResearchRequestV1, mode: ChatThinkingModeV1): ResearchRequestV1;
+
 // export: approveResearchBriefWholeScopeExpansionV1
 export declare function approveResearchBriefWholeScopeExpansionV1(input: {
     brief: ResearchBriefV1;
@@ -41695,6 +41733,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     });
     initialize(): Promise<void>;
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
+    retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
@@ -41738,6 +41777,7 @@ export interface ChatCandidateLedgerV1 {
     relationshipTraversalsChecked: ChatRelationshipTraversalKindV1[];
     relatedScopeProposals?: ChatRelatedScopeProposalV1[];
     atlassianHttpCalls: number;
+    lastBudgetSnapshot?: ResearchBudgetSnapshotV1;
 }
 
 // export: ChatCandidateStateV1
@@ -42078,8 +42118,10 @@ export interface ChatRetrievalAssessmentV1 {
 
 // export: ChatRetrievalBudgetReservationsV1
 export interface ChatRetrievalBudgetReservationsV1 {
+    supervisorCalls: number;
     directReadCalls: number;
     discoveryCalls: number;
+    detailCallsByProduct: Record<ResearchProduct, number>;
     relationshipTraversalCalls: number;
     repairCalls: number;
     criticCalls: number;

@@ -97,7 +97,7 @@ const CHAT_EVIDENCE_PACKET_SCHEMA_V1 = Object.freeze({
     sourceIds: STRING_ARRAY,
     claims: {
       type: "array",
-      maxItems: 80,
+      maxItems: 24,
       items: {
         type: "object",
         additionalProperties: false,
@@ -110,7 +110,7 @@ const CHAT_EVIDENCE_PACKET_SCHEMA_V1 = Object.freeze({
     },
     relationships: {
       type: "array",
-      maxItems: 80,
+      maxItems: 24,
       items: {
         type: "object",
         additionalProperties: false,
@@ -125,7 +125,7 @@ const CHAT_EVIDENCE_PACKET_SCHEMA_V1 = Object.freeze({
     },
     gaps: {
       type: "array",
-      maxItems: 40,
+      maxItems: 16,
       items: { type: "string", minLength: 1, maxLength: 600 },
     },
   },
@@ -358,14 +358,14 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "confluence-search-reader",
     phase: "acquisition",
     description: "Discover, rank, and detail-read only admitted Confluence candidates.",
-    systemPrompt: "Use only Confluence discovery, ranking, and detail capabilities. Return bounded references and claims, never bodies, credentials, queries, or delegation.",
+    systemPrompt: "Use only Confluence discovery, ranking, and detail capabilities. Return at most two central, question-relevant claims per detailed source, deduplicate equivalent claims, and keep relationships and gaps concise. Never return bodies, credentials, queries, or delegation.",
     grantedCapabilityIds: ["wiki.search", "research.candidate.rank", "wiki.page.get"],
     responseSchemaId: "atlcli.chat-evidence-packet/v1",
     responseSchema: CHAT_EVIDENCE_PACKET_SCHEMA_V1,
     modelPreference: "fast",
     maxInputChars: 10_000,
     maxResultBytes: 40_000,
-    maxDurationMs: 120_000,
+    maxDurationMs: 180_000,
   }),
   profile({
     id: "jira-search-reader",
@@ -373,14 +373,14 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "jira-search-reader",
     phase: "acquisition",
     description: "Discover, rank, and detail-read only admitted Jira candidates.",
-    systemPrompt: "Use only Jira discovery, ranking, and detail capabilities. Return bounded references and claims, never bodies, credentials, queries, or delegation.",
+    systemPrompt: "Use only Jira discovery, ranking, and detail capabilities. Return at most two central, question-relevant claims per detailed source, deduplicate equivalent claims, and keep relationships and gaps concise. Never return bodies, credentials, queries, or delegation.",
     grantedCapabilityIds: ["jira.issue.search", "research.candidate.rank", "jira.issue.get"],
     responseSchemaId: "atlcli.chat-evidence-packet/v1",
     responseSchema: CHAT_EVIDENCE_PACKET_SCHEMA_V1,
     modelPreference: "fast",
     maxInputChars: 10_000,
     maxResultBytes: 40_000,
-    maxDurationMs: 120_000,
+    maxDurationMs: 180_000,
   }),
   profile({
     id: "relationship-tracer",
@@ -433,7 +433,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-drafter",
     phase: "drafting",
     description: "Create one provisional conversational answer for independent critique.",
-    systemPrompt: "Draft one provisional answer from accepted evidence and analysis packets. Use exact [[source:SOURCE_ID]] placeholders on every factual paragraph and preserve explicit gaps. Never turn incomplete candidate coverage into a claim that content does not exist in a whole space, project, or tenant; scope negative findings to the sources read in detail. This draft is not user-visible and is not the final answer. Do not retrieve, delegate, or produce a Deep Research report.",
+    systemPrompt: "Draft one provisional answer below 600 words from accepted evidence and analysis packets. Use exact [[source:SOURCE_ID]] placeholders on every factual paragraph and preserve explicit gaps. Never turn incomplete candidate coverage into a claim that content does not exist in a whole space, project, or tenant; scope negative findings to the sources read in detail. This draft is not user-visible and is not the final answer. Do not retrieve, delegate, or produce a Deep Research report.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -443,7 +443,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 28_000,
     maxResultBytes: 28_000,
-    maxDurationMs: 75_000,
+    maxDurationMs: 120_000,
   }),
   profile({
     id: "answer-critic",
@@ -458,7 +458,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 24_000,
     maxResultBytes: 20_000,
-    maxDurationMs: 75_000,
+    maxDurationMs: 120_000,
   }),
   profile({
     id: "answer-repairer",
@@ -476,7 +476,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 28_000,
     maxResultBytes: 28_000,
-    maxDurationMs: 60_000,
+    maxDurationMs: 120_000,
   }),
   profile({
     id: "chat-synthesizer",
@@ -494,7 +494,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 32_000,
     maxResultBytes: 32_000,
-    maxDurationMs: 90_000,
+    maxDurationMs: 120_000,
   }),
 ] as const);
 

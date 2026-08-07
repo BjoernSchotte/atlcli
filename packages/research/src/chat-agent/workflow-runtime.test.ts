@@ -576,6 +576,7 @@ describe("Chat agentic workflow runtime", () => {
           { text: "second" },
           { text: "third" },
         ],
+        retainAdmittedCandidates: async () => {},
       } as unknown as ChatCandidateLedgerControllerV1,
       maxSearchPages: 2,
       maxDetails: 2,
@@ -651,6 +652,7 @@ describe("Chat agentic workflow runtime", () => {
       retrievalLedger: {
         plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
         allowedInitialQueries: () => [{ text: "first" }, { text: "alternate" }],
+        retainAdmittedCandidates: async () => {},
       } as unknown as ChatCandidateLedgerControllerV1,
       maxSearchPages: 2,
       maxDetails: 2,

@@ -9,6 +9,7 @@ import {
   createResearchKeyScopeSeedV1,
 } from "./scope-discovery.js";
 import {
+  applyChatQualityResourcePolicyV1,
   directChatProductsV1,
   prepareDirectChatRequestV1,
 } from "./direct-chat.js";
@@ -48,6 +49,24 @@ function request(question = "What is this wiki page about?"): ResearchRequestV1 
 }
 
 describe("direct chat scope projection", () => {
+  test("uses one bounded quality resource policy across host shapes", () => {
+    const deep = applyChatQualityResourcePolicyV1(request(), "deep");
+    expect(deep.limits).toMatchObject({
+      maxItemsPerProduct: 20,
+      maxDetailItemsPerProduct: 8,
+      maxBodyCharsPerItem: 6_000,
+      maxPtcCalls: 72,
+      maxHttpCalls: 40,
+      maxTotalResponseBytes: 24_000_000,
+      maxInterpreterMs: 180_000,
+      maxTotalModelInputTokens: 450_000,
+    });
+    expect(applyChatQualityResourcePolicyV1(request(), "auto").limits)
+      .toMatchObject({ maxDetailItemsPerProduct: 6, maxPtcCalls: 64, maxTotalResponseBytes: 12_000_000 });
+    expect(applyChatQualityResourcePolicyV1(request(), "quick").limits)
+      .toMatchObject({ maxDetailItemsPerProduct: 6, maxPtcCalls: 32, maxModelOutputTokens: 4_096 });
+  });
+
   test("uses a bound page as the only Confluence candidate instead of searching its whole space", () => {
     const projected = prepareDirectChatRequestV1(request());
 

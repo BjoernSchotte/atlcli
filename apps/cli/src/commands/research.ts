@@ -48,6 +48,7 @@ import {
   normalizeResearchRequestV1,
   prepareResearchBriefPreflightV1,
   prepareResearchScopePreflightV1,
+  applyChatQualityResourcePolicyV1,
   prepareDirectChatRequestV1,
   openDurableChatConversationWorkspaceV1,
   chatPolicyForThinkingModeV1,
@@ -2462,36 +2463,14 @@ export function buildChatRequest(
   const request = buildResearchRequest(input, profile, {
     includeProfileDefaults: false,
   });
+  const bounded = applyChatQualityResourcePolicyV1(
+    request,
+    input.qualityPolicy?.mode ?? "auto",
+  );
   return normalizeResearchRequestV1({
-    ...request,
+    ...bounded,
     limits: {
-      ...request.limits,
-      maxSearchPagesPerProduct: Math.min(
-        request.limits.maxSearchPagesPerProduct,
-        2,
-      ),
-      maxItemsPerProduct: Math.min(request.limits.maxItemsPerProduct, 20),
-      maxDetailItemsPerProduct: Math.min(
-        request.limits.maxDetailItemsPerProduct,
-        6,
-      ),
-      // Whole-scope Chat keeps each discovered item compact. The shared exact
-      // context projection later promotes one attached page to its bounded
-      // single-page corridor, avoiding a wasteful section-by-section summary.
-      maxBodyCharsPerItem: Math.min(request.limits.maxBodyCharsPerItem, 8_000),
-      // Agentic Auto/Deep Chat may read several exact sections plus a small
-      // related candidate set. Keep it well below the Research envelope while
-      // leaving enough room for the host-reserved evidence review. Quick stays
-      // on the smaller direct-only budget.
-      maxPtcCalls: Math.min(
-        request.limits.maxPtcCalls,
-        input.qualityPolicy?.mode === "quick" ? 16 : 24,
-      ),
-      maxHttpCalls: Math.min(request.limits.maxHttpCalls, 20),
-      maxModelOutputTokens: Math.min(
-        request.limits.maxModelOutputTokens,
-        input.policy.requestedEffort === "lookup" ? 4_096 : 8_000,
-      ),
+      ...bounded.limits,
       maxModelCostMicros:
         input.maxCostUsd === undefined
           ? DEFAULT_RESEARCH_LIMITS_V1.maxModelCostMicros

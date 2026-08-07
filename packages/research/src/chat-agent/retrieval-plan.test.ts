@@ -133,6 +133,11 @@ describe("Chat retrieval plan", () => {
     expect(result.searches.map((entry) => entry.product)).toEqual(["jira"]);
     expect(result.searches[0]?.scopeBindingIds).toEqual(["binding:project"]);
     expect(result.completionSignals).toContain("all-anchors-read");
+    expect(result.budgetReservations.supervisorCalls).toBe(12);
+    expect(result.budgetReservations.detailCallsByProduct).toEqual({
+      jira: 12,
+      confluence: 0,
+    });
     expect(result.budgetReservations.totalCalls).toBeLessThanOrEqual(
       DEFAULT_RESEARCH_LIMITS_V1.maxPtcCalls,
     );
@@ -323,6 +328,43 @@ describe("Chat retrieval plan", () => {
     expect(result.searches[0]?.maxPages).toBe(1);
   });
 
+  test("prefers an explicit mixed-case product term over a hyphenated scope phrase", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:synthetic",
+      turnId: "turn:synthetic",
+      question:
+        "Welche Prinzipien aus den Plattform-Inhalten zu Adaptive Teams und OrbitStack sind belegt?",
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:space",
+        product: "confluence",
+        entityKind: "space",
+        key: "KB",
+        name: "Knowledge base",
+      })],
+      searchProducts: ["confluence"],
+      exactContextProducts: [],
+      limits: { ...DEFAULT_RESEARCH_LIMITS_V1, maxSearchPagesPerProduct: 2 },
+      agentic: true,
+      proposal: {
+        searches: [{
+          searchId: "search:confluence",
+          product: "confluence",
+          variants: [{
+            variantId: "verbose",
+            query: { text: "rollen dynamische workflows verifikation sandbox observability" },
+          }],
+          maxPages: 1,
+        }],
+      },
+    });
+
+    expect(result.searches[0]?.variants.map((variant) => variant.query.text)).toEqual([
+      "orbitstack",
+      "rollen dynamische workflows verifikation sandbox observability",
+    ]);
+  });
+
   test("drops low-value variants that cannot receive one page inside a compact Chat budget", () => {
     const result = createChatRetrievalPlanV1({
       conversationId: "conversation:compact",
@@ -399,7 +441,7 @@ describe("Chat candidate ledger", () => {
           name: "DEMO-42",
         }],
         exactProducts: ["jira"],
-        maxPtcCalls: 12,
+        maxPtcCalls: 50,
       }),
       workspace,
       siteOrigin: ORIGIN,
@@ -633,6 +675,11 @@ describe("Chat candidate ledger", () => {
       }),
       expect.objectContaining({ sourceId: "wiki:late", state: "detail-read" }),
     ]);
+    expect(ledger.snapshot().lastBudgetSnapshot).toEqual({
+      ptcRemaining: 7,
+      httpAttemptsRemaining: 7,
+      responseBytesRemaining: 7_000,
+    });
     expect(assessment).toMatchObject({
       sufficient: true,
       metrics: {
@@ -650,6 +697,70 @@ describe("Chat candidate ledger", () => {
     expect(await workspace.readFile(CHAT_CANDIDATE_LEDGER_PATH_V1)).toContain(
       "wiki:late",
     );
+  });
+
+  test("excludes ranked candidates outside the bounded detail selection instead of deferring them", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const retrievalPlan = plan({
+      searchProducts: ["confluence"],
+      proposal: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [{ variantId: "primary", query: { text: "design" } }],
+          maxPages: 1,
+        }],
+        relationshipTraversals: [],
+      },
+    });
+    const ledger = new ChatCandidateLedgerControllerV1({
+      plan: retrievalPlan,
+      workspace,
+      siteOrigin: ORIGIN,
+    });
+    await ledger.initialize();
+    const query = { query: { text: "design" } };
+    await ledger.observe("wiki.search", searchResult({
+      items: [
+        {
+          sourceId: "wiki:one",
+          entityRef: "entity:one",
+          title: "Primary design",
+          url: `${ORIGIN}/wiki/spaces/KB/pages/1001`,
+        },
+        {
+          sourceId: "wiki:two",
+          entityRef: "entity:two",
+          title: "Secondary design",
+          url: `${ORIGIN}/wiki/spaces/KB/pages/1002`,
+        },
+      ],
+      complete: true,
+      termination: "index-exhausted",
+    }), "wiki.search:selection", query);
+    await ledger.observe("research.candidate.rank", {
+      schema: "atlcli.ptc/research.candidate.rank.output/v1",
+      items: [
+        { entityRef: "entity:one", sourceId: "wiki:one", rank: 1 },
+        { entityRef: "entity:two", sourceId: "wiki:two", rank: 2 },
+      ],
+      budget: {
+        ptcRemaining: 8,
+        httpAttemptsRemaining: 8,
+        responseBytesRemaining: 8_000,
+      },
+    }, "rank:selection");
+
+    await ledger.retainAdmittedCandidates("confluence", ["wiki:one"]);
+
+    expect(ledger.snapshot().candidates).toEqual([
+      expect.objectContaining({ sourceId: "wiki:one", state: "admitted" }),
+      expect.objectContaining({
+        sourceId: "wiki:two",
+        state: "excluded",
+        exclusionReason: "outside-bounded-detail-selection",
+      }),
+    ]);
   });
 
   test("reconciles equivalent scoped and unscoped Confluence URLs for one canonical source", async () => {
