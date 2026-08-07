@@ -1,6 +1,6 @@
 # PDF Template Capabilities V3
 
-Status: **In progress — P0 merged; T1 implemented and verified**, 2026-08-07
+Status: **In progress — P0 merged; T1–T2 implemented and verified**, 2026-08-07
 
 Planning baseline: commit `2bf00066`
 
@@ -649,26 +649,26 @@ old digest.
 
 **Implementation**
 
-- [ ] Add `WikiPdfTemplateRecipeV2`, sparse override types, and pure validation
+- [x] Add `WikiPdfTemplateRecipeV2`, sparse override types, and pure validation
       to `packages/template-pack/src/recipe.ts`; retain recipe V1 decoding and
       validation unchanged for the explicit migration path.
-- [ ] Define a browser-safe `PdfTemplateBaselineRegistryV1` port in the PDF
+- [x] Define a browser-safe `PdfTemplateBaselineRegistryV1` port in the PDF
       authoring boundary. A resolved baseline contains immutable complete
       design/localization, exact baseline id/version, catalog identity, and
       digest, but no network/file capability.
-- [ ] Ship at least one neutral built-in catalog-V3 baseline and pin its digest.
+- [x] Ship at least one neutral built-in catalog-V3 baseline and pin its digest.
       Do not silently reinterpret the existing recipe-V1 example as V2.
-- [ ] Resolve baseline, verify identity/digest, apply exact-key sparse
+- [x] Resolve baseline, verify identity/digest, apply exact-key sparse
       overrides, and validate the resulting complete design against catalog
       V3 in a pure `resolvePdfTemplateRecipeV2Design`-style function. This task
       stops at a complete immutable design/localization result; pack
       materialization and CLI filesystem dispatch belong to T9 after revision
       5 exists.
-- [ ] Derive `engine.compilerRange` from the closed catalog/revision registry.
+- [x] Derive `engine.compilerRange` from the closed catalog/revision registry.
       Recipe V2 must reject a stray author-provided range rather than ignore it;
       T2 can return the registry-owned range as resolution metadata without
       building a manifest.
-- [ ] Keep migrated recipe V1 dispatch on its catalog-V2/revision-4 materializer
+- [x] Keep migrated recipe V1 dispatch on its catalog-V2/revision-4 materializer
       and add recipe V2 dispatch only in T9. Do not allow an unmigrated `<0.15`
       V1 range or add a pre-revision-5 V2 stub that fails later in canonical
       generation.

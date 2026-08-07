@@ -32,7 +32,11 @@ export type {
 } from "./run-export.js";
 
 // --- Compiled-byte handle (bytes-handle.ts, spec 010 T5.6) ---
-export { pdfBytesFromUint8Array, pdfBytesFromBlob, isPdfBytesHandle } from "./bytes-handle.js";
+export {
+  pdfBytesFromUint8Array,
+  pdfBytesFromBlob,
+  isPdfBytesHandle,
+} from "./bytes-handle.js";
 export type { PdfBytesHandle } from "./bytes-handle.js";
 
 // --- Compile port contract (compiler.ts) ---
@@ -121,13 +125,40 @@ export {
 export {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
   PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1,
   PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2,
+  PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3,
+  PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3,
   PDF_TEMPLATE_PRESENTATION_REVISION_V1,
   PDF_TEMPLATE_PRESENTATION_REVISION_V2,
+  PDF_TEMPLATE_PRESENTATION_REVISION_V3,
 } from "./design-catalog.js";
+
+// --- Recipe-V2 installed baseline resolution (authoring only; no IO) ---
+export {
+  PDF_TEMPLATE_BASELINE_SCHEMA_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1,
+  PdfTemplateRecipeV2ResolutionError,
+  canonicalPdfTemplateBaselineV1,
+  computePdfTemplateBaselineDigestV1,
+  resolvePdfTemplateRecipeV2Design,
+} from "./recipe-baselines.js";
+export type {
+  PdfTemplateBaselineContentV1,
+  ResolvedPdfTemplateBaselineV1,
+  PdfTemplateBaselineRegistryV1,
+  ResolvedPdfTemplateRecipeV2,
+  PdfTemplateRecipeV2ResolutionReason,
+} from "./recipe-baselines.js";
 
 // --- Host-neutral authoring runtime materializer ---
 export {
@@ -159,14 +190,20 @@ export type {
 } from "./template-pack.js";
 
 // --- Curated built-in templates + manifest contract (spec 012) ---
-export { BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+export {
+  BUILTIN_PDF_TEMPLATE_ID,
+  BUILTIN_PDF_TEMPLATE_MANIFEST,
+} from "./builtin-template.js";
 export {
   MANUSCRIPT_PDF_TEMPLATE_ID,
   MANUSCRIPT_PDF_TEMPLATE_MANIFEST,
   BUILTIN_PDF_TEMPLATES,
   getBuiltinPdfTemplate,
 } from "./curated-templates.js";
-export type { TemplateManifest, WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+export type {
+  TemplateManifest,
+  WikiPdfTemplateDesignV1,
+} from "@atlcli/template-pack";
 
 // --- Shared document/PDF model (types.ts) ---
 export type {
@@ -199,4 +236,9 @@ export type {
 
 // --- Shared document model (owned by @atlcli/confluence, surfaced here so PDF
 // consumers get it from one barrel — the same set types.ts re-exports). ---
-export type { ExportBlock, ExportNote, InlineNode, LinkTarget } from "./types.js";
+export type {
+  ExportBlock,
+  ExportNote,
+  InlineNode,
+  LinkTarget,
+} from "./types.js";

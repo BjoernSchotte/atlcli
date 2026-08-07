@@ -5,7 +5,9 @@ import {
   migratePdfTemplateRecipeToTypst0151V1,
   TYPST_0151_RECIPE_COMPILER_RANGE,
   validatePdfTemplateRecipeV1,
+  validatePdfTemplateRecipeV2,
   WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1,
+  WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2,
 } from "./recipe.js";
 
 function validRecipe(): Record<string, unknown> {
@@ -113,7 +115,11 @@ function validRecipe(): Record<string, unknown> {
   };
 }
 
-function setPath(recipe: Record<string, unknown>, path: string[], value: unknown): void {
+function setPath(
+  recipe: Record<string, unknown>,
+  path: string[],
+  value: unknown,
+): void {
   let current = recipe;
   for (const segment of path.slice(0, -1)) {
     current = current[segment] as Record<string, unknown>;
@@ -125,14 +131,21 @@ describe("validatePdfTemplateRecipeV1", () => {
   it("accepts and preserves the complete portable declarative recipe", () => {
     const recipe = validatePdfTemplateRecipeV1(validRecipe());
     expect(recipe.schema).toBe(WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1);
-    expect(recipe.design.compositions?.cover.typeCut).toEqual({ angle: 43, stop: 58 });
+    expect(recipe.design.compositions?.cover.typeCut).toEqual({
+      angle: 43,
+      stop: 58,
+    });
     expect(recipe.design.compositions?.cover.metadataPosition).toBe("bottom");
     expect(recipe.design.tokens.layout.coverMetaBottomInset).toBe("24mm");
-    expect(recipe.design.branding.legalNotice).toBe("© Example Systems GmbH · Zürich");
-    expect(recipe.localization.locales.en?.document?.coverEyebrow).toBe(
-      "EXECUTIVE BRIEFING"
+    expect(recipe.design.branding.legalNotice).toBe(
+      "© Example Systems GmbH · Zürich",
     );
-    expect(recipe.assets["asset.coverBackground"]?.source).toBe("assets/cover.svg");
+    expect(recipe.localization.locales.en?.document?.coverEyebrow).toBe(
+      "EXECUTIVE BRIEFING",
+    );
+    expect(recipe.assets["asset.coverBackground"]?.source).toBe(
+      "assets/cover.svg",
+    );
   });
 
   it("keeps an old design without compositions valid", () => {
@@ -143,7 +156,9 @@ describe("validatePdfTemplateRecipeV1", () => {
     delete branding.websiteLabel;
     delete branding.websiteUrl;
     delete branding.legalNotice;
-    expect(validatePdfTemplateRecipeV1(recipe).design.compositions).toBeUndefined();
+    expect(
+      validatePdfTemplateRecipeV1(recipe).design.compositions,
+    ).toBeUndefined();
   });
 
   it("rejects renderer-generated and raw-code fields at stable paths", () => {
@@ -156,14 +171,16 @@ describe("validatePdfTemplateRecipeV1", () => {
       "rawTypst",
     ]) {
       const recipe = validRecipe();
-      recipe[field] = field === "rawTypst" ? "#panic(\"boom\")" : {};
+      recipe[field] = field === "rawTypst" ? '#panic("boom")' : {};
       expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(
-        new RegExp(`recipe\\.${field}.*not recognized`)
+        new RegExp(`recipe\\.${field}.*not recognized`),
       );
     }
     const nested = validRecipe();
     (nested.template as Record<string, unknown>).entry = "atlcli.typ";
-    expect(() => validatePdfTemplateRecipeV1(nested)).toThrow(/template\.entry.*not recognized/);
+    expect(() => validatePdfTemplateRecipeV1(nested)).toThrow(
+      /template\.entry.*not recognized/,
+    );
   });
 
   it("rejects unknown keys in every fixed recipe structure", () => {
@@ -180,14 +197,15 @@ describe("validatePdfTemplateRecipeV1", () => {
       const recipe = validRecipe();
       setPath(recipe, path, true);
       expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(
-        new RegExp(expected.replaceAll(".", "\\."))
+        new RegExp(expected.replaceAll(".", "\\.")),
       );
     }
   });
 
   it("rejects Typst-shaped strings as data at the portable import gate", () => {
     const recipe = validRecipe();
-    (recipe.template as Record<string, unknown>).name = '#let x = panic("executed")';
+    (recipe.template as Record<string, unknown>).name =
+      '#let x = panic("executed")';
     expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(/metacharacters/);
   });
 
@@ -204,14 +222,20 @@ describe("validatePdfTemplateRecipeV1", () => {
     ]) {
       const recipe = validRecipe();
       setPath(recipe, ["assets", "asset.logo", "source"], source);
-      expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(/safe relative portable path/);
+      expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(
+        /safe relative portable path/,
+      );
     }
   });
 
   it("requires accessible copy for meaning-bearing assets", () => {
     const recipe = validRecipe();
-    delete ((recipe.assets as Record<string, Record<string, unknown>>)["asset.logo"]!).alt;
-    expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(/asset\.logo\.alt/);
+    delete (recipe.assets as Record<string, Record<string, unknown>>)[
+      "asset.logo"
+    ]!.alt;
+    expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(
+      /asset\.logo\.alt/,
+    );
   });
 
   it("migrates only the compiler range to a distinct 0.15.1 recipe", () => {
@@ -220,11 +244,15 @@ describe("validatePdfTemplateRecipeV1", () => {
     const migrated = migratePdfTemplateRecipeToTypst0151V1(source);
     expect(source).toEqual(sourceSnapshot);
     expect(migrated).not.toBe(source);
-    expect(migrated.template.compilerRange).toBe(TYPST_0151_RECIPE_COMPILER_RANGE);
-    expect({ ...migrated, template: { ...migrated.template, compilerRange: ">=0.14 <0.15" } })
-      .toEqual(validatePdfTemplateRecipeV1(source));
+    expect(migrated.template.compilerRange).toBe(
+      TYPST_0151_RECIPE_COMPILER_RANGE,
+    );
+    expect({
+      ...migrated,
+      template: { ...migrated.template, compilerRange: ">=0.14 <0.15" },
+    }).toEqual(validatePdfTemplateRecipeV1(source));
     expect(() => migratePdfTemplateRecipeToTypst0151V1(migrated)).toThrow(
-      /already accepts Typst 0\.15\.1/u
+      /already accepts Typst 0\.15\.1/u,
     );
   });
 
@@ -237,32 +265,43 @@ describe("validatePdfTemplateRecipeV1", () => {
         decorative: true,
       };
     }
-    expect(() => validatePdfTemplateRecipeV1(tooManyAssets)).toThrow(/at most 64 entries/);
+    expect(() => validatePdfTemplateRecipeV1(tooManyAssets)).toThrow(
+      /at most 64 entries/,
+    );
 
     const tooManyRoles = validRecipe();
     const roles = (
-      (tooManyRoles.design as Record<string, unknown>).typography as Record<string, unknown>
+      (tooManyRoles.design as Record<string, unknown>).typography as Record<
+        string,
+        unknown
+      >
     ).roles as Record<string, unknown>;
     for (let index = 0; index < 257; index += 1) {
       roles[`role${index}`] = { size: "10pt" };
     }
-    expect(() => validatePdfTemplateRecipeV1(tooManyRoles)).toThrow(/at most 256 entries/);
+    expect(() => validatePdfTemplateRecipeV1(tooManyRoles)).toThrow(
+      /at most 256 entries/,
+    );
 
     const longPath = validRecipe();
     setPath(
       longPath,
       ["assets", "asset.logo", "source"],
-      `assets/${"a".repeat(505)}.svg`
+      `assets/${"a".repeat(505)}.svg`,
     );
-    expect(() => validatePdfTemplateRecipeV1(longPath)).toThrow(/safe relative portable path/);
+    expect(() => validatePdfTemplateRecipeV1(longPath)).toThrow(
+      /safe relative portable path/,
+    );
 
     const invalidPlacement = validRecipe();
     setPath(
       invalidPlacement,
       ["assets", "asset.coverBackground", "placement", "width"],
-      "-1mm"
+      "-1mm",
     );
-    expect(() => validatePdfTemplateRecipeV1(invalidPlacement)).toThrow(/non-negative/);
+    expect(() => validatePdfTemplateRecipeV1(invalidPlacement)).toThrow(
+      /non-negative/,
+    );
   });
 
   it("rejects invalid schema, template identity, version, and compiler range", () => {
@@ -274,7 +313,109 @@ describe("validatePdfTemplateRecipeV1", () => {
     ] as Array<[string[], unknown]>) {
       const recipe = validRecipe();
       setPath(recipe, path, value);
-      expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(ManifestValidationError);
+      expect(() => validatePdfTemplateRecipeV1(recipe)).toThrow(
+        ManifestValidationError,
+      );
     }
+  });
+});
+
+describe("validatePdfTemplateRecipeV2", () => {
+  function recipeV2(): Record<string, unknown> {
+    return {
+      schema: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2,
+      template: {
+        id: "example.handbook",
+        name: "Example Handbook",
+        version: "1.0.0",
+      },
+      baseline: {
+        id: "atlcli.editorial",
+        version: 1,
+        catalogVersion: 3,
+        digest: "a".repeat(64),
+      },
+      design: {
+        page: { orientation: "landscape" },
+        decorations: [{ kind: "rect", fill: "hero", box: { width: "210mm" } }],
+      },
+    };
+  }
+
+  it("accepts sparse portable overrides and supplies empty optional maps", () => {
+    const validated = validatePdfTemplateRecipeV2(recipeV2());
+    expect(validated.schema).toBe(WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2);
+    expect(validated.template).toEqual({
+      id: "example.handbook",
+      name: "Example Handbook",
+      version: "1.0.0",
+    });
+    expect(validated.design).toEqual({
+      page: { orientation: "landscape" },
+      decorations: [{ kind: "rect", fill: "hero", box: { width: "210mm" } }],
+    });
+    expect(validated.assets).toEqual({});
+    expect(validated.localization).toBeUndefined();
+  });
+
+  it("accepts a recipe with no design overrides", () => {
+    const source = recipeV2();
+    delete source.design;
+    expect(validatePdfTemplateRecipeV2(source).design).toEqual({});
+  });
+
+  it("rejects author-owned compiler ranges and generated fields", () => {
+    const source = recipeV2();
+    (source.template as Record<string, unknown>).compilerRange =
+      ">=0.15.1 <0.16";
+    expect(() => validatePdfTemplateRecipeV2(source)).toThrow(
+      /recipe\.template\.compilerRange.*not recognized/u,
+    );
+
+    const generated = recipeV2();
+    generated.engine = { compilerRange: ">=0.15.1 <0.16" };
+    expect(() => validatePdfTemplateRecipeV2(generated)).toThrow(
+      /recipe\.engine.*not recognized/u,
+    );
+  });
+
+  it("rejects null deletion, non-finite values, unsafe keys, and bad pins", () => {
+    const deletion = recipeV2();
+    (deletion.design as Record<string, unknown>).page = { bleed: null };
+    expect(() => validatePdfTemplateRecipeV2(deletion)).toThrow(
+      /null is not a delete operator/u,
+    );
+
+    const nonFinite = recipeV2();
+    (nonFinite.design as Record<string, unknown>).ratio = Number.NaN;
+    expect(() => validatePdfTemplateRecipeV2(nonFinite)).toThrow(
+      /finite number/u,
+    );
+
+    const unsafeKey = recipeV2();
+    (unsafeKey.design as Record<string, unknown>)["raw.typst"] = "#panic";
+    expect(() => validatePdfTemplateRecipeV2(unsafeKey)).toThrow(
+      /bounded portable identifier/u,
+    );
+
+    const badDigest = recipeV2();
+    (badDigest.baseline as Record<string, unknown>).digest = "ABC";
+    expect(() => validatePdfTemplateRecipeV2(badDigest)).toThrow(
+      /lowercase SHA-256/u,
+    );
+  });
+
+  it("returns distinct data and preserves array order as author intent", () => {
+    const source = recipeV2();
+    const snapshot = structuredClone(source);
+    const validated = validatePdfTemplateRecipeV2(source);
+    expect(source).toEqual(snapshot);
+    expect(validated).not.toBe(source);
+    expect(validated.design.decorations).toEqual(
+      (snapshot.design as Record<string, unknown>).decorations as never,
+    );
+    expect(validated.design.decorations).not.toBe(
+      (source.design as Record<string, unknown>).decorations,
+    );
   });
 });

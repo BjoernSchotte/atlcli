@@ -18,6 +18,7 @@ export * from "./template.js";
 export * from "./template-v4.js";
 export * from "./template-pack.js";
 export * from "./template-recipe.js";
+export * from "./recipe-baselines.js";
 export * from "./template-preview.js";
 export * from "./theme.js";
 export * from "./validate.js";

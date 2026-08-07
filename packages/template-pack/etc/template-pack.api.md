@@ -438,6 +438,25 @@ export interface PdfTemplateRecipeAssetV1 {
     placement?: PdfTemplateRecipePlacementV1;
 }
 
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
+
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
 
@@ -447,6 +466,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -778,6 +804,9 @@ export interface ValidatePackResult {
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
 
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -807,6 +836,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -904,6 +936,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
@@ -1349,6 +1391,25 @@ export interface PdfTemplateRecipeAssetV1 {
     placement?: PdfTemplateRecipePlacementV1;
 }
 
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
+
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
 
@@ -1358,6 +1419,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -1689,6 +1757,9 @@ export interface ValidatePackResult {
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
 
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -1718,6 +1789,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -1815,6 +1889,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
@@ -2260,6 +2344,25 @@ export interface PdfTemplateRecipeAssetV1 {
     placement?: PdfTemplateRecipePlacementV1;
 }
 
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
+
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
 
@@ -2269,6 +2372,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -2600,6 +2710,9 @@ export interface ValidatePackResult {
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
 
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -2629,6 +2742,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -2726,6 +2842,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
@@ -3171,6 +3297,25 @@ export interface PdfTemplateRecipeAssetV1 {
     placement?: PdfTemplateRecipePlacementV1;
 }
 
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
+
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
 
@@ -3180,6 +3325,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -3511,6 +3663,9 @@ export interface ValidatePackResult {
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
 
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -3540,6 +3695,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -3637,6 +3795,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
