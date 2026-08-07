@@ -125,7 +125,7 @@ function runningV5Requirements(
       digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
     },
     design,
-  });
+  }, { availableFonts: PDF_RUNTIME_ASSETS.fonts });
   const settings = resolvePdfSettings(
     { cover: false, outline: false },
     { manifest },
@@ -135,6 +135,42 @@ function runningV5Requirements(
 }
 
 describe("resolved PDF font requirements v1", () => {
+  it("reports stable style/stretch fallbacks and uncovered glyphs without source text", () => {
+    const styled = runningV5Requirements(undefined, (design) => {
+      design.typography.roles.body = {
+        ...design.typography.roles.body!,
+        style: "oblique",
+        stretch: "expanded",
+      };
+    });
+    expect(styled.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "PDF_FONT_STYLE_FALLBACK",
+        role: "body",
+        requested: "oblique",
+      }),
+      expect.objectContaining({
+        code: "PDF_FONT_STRETCH_FALLBACK",
+        role: "body",
+        requested: "expanded",
+      }),
+    ]));
+
+    const missing = resolve([
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: String.fromCodePoint(0x10ffff) }],
+      },
+    ]);
+    expect(missing.diagnostics).toContainEqual(expect.objectContaining({
+      code: "PDF_FONT_MISSING_GLYPH",
+      requested: "U+10FFFF",
+    }));
+    expect(JSON.stringify(missing.diagnostics)).not.toContain(
+      String.fromCodePoint(0x10ffff),
+    );
+  });
+
   it("adds revision-5 running-slot demand only for visible variants", () => {
     const visible = runningV5Requirements("VISIBLE 🧪");
     expect(visible.assets.map(({ fileName }) => fileName)).toContain(
@@ -222,7 +258,7 @@ describe("resolved PDF font requirements v1", () => {
     expect(details).not.toContain("closingEyebrow");
   });
 
-  it("keeps an ordinary prose export below the canonical 12-font bundle", () => {
+  it("keeps an ordinary prose export below the canonical 13-font bundle", () => {
     const requirements = resolve([
       {
         type: "heading",

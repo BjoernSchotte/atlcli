@@ -38,6 +38,7 @@ import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from ".
 import { createAtlcliTypstTemplate } from "./template.js";
 import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
 import { resolvePdfFontRequirementsV1 } from "./font-requirements.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import {
   pdfColorContrast,
   pdfTableCellForeground,
@@ -2225,7 +2226,7 @@ export function serializePdfDocument(
   exporter: ${typstString(meta.exporter ?? author)},
   language: ${typstString(meta.language ?? "en")},
   region: ${meta.region ? typstString(meta.region) : "none"},
-  exported-at: ${typstDate(meta.exportedAt)},
+${meta.direction === undefined ? "" : `  direction: ${meta.direction},\n`}  exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
 ), settings: ${typstSettingsDict(settings, { logoPath: logoAsset?.path })})
 
@@ -2244,6 +2245,8 @@ ${body}${commentAppendix}
         ? createAtlcliTypstTemplateV5(
             validatePdfTemplateDesignV3(
               options.templateManifest.design as WikiPdfTemplateDesignV3,
+              "design",
+              { availableFonts: PDF_RUNTIME_ASSETS.fonts },
             ),
             settings.labels,
             settings.templateVisuals,

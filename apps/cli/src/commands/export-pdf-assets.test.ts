@@ -34,11 +34,11 @@ describe("export-pdf-assets (T3.1 compile port under Bun)", () => {
     expect(() => assertPdfAssetParity()).not.toThrow();
   });
 
-  it("loads the wasm as a standalone ArrayBuffer and all 12 fonts", async () => {
+  it("loads the wasm as a standalone ArrayBuffer and all 13 fonts", async () => {
     const { wasm, fonts } = await loadPdfCompilerAssets();
     expect(wasm).toBeInstanceOf(ArrayBuffer);
     expect(wasm.byteLength).toBeGreaterThan(1_000_000); // multi-MB typst wasm
-    expect(fonts).toHaveLength(12);
+    expect(fonts).toHaveLength(13);
     for (const font of fonts) expect(font.byteLength).toBeGreaterThan(0);
   });
 

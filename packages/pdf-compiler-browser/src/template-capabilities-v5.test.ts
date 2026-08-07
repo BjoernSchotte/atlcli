@@ -141,6 +141,47 @@ function inspectablePdf(pdf: Uint8Array): string {
   return text;
 }
 
+async function pdfTextItems(
+  pdf: Uint8Array,
+  pageNumber: number,
+): Promise<{ items: Array<{ text: string; x: number; width: number }>; pageWidth: number }> {
+  const loading = getDocument({ data: Uint8Array.from(pdf) });
+  const document = await loading.promise;
+  try {
+    const page = await document.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    return {
+      pageWidth: viewport.width,
+      items: content.items.flatMap((item) => {
+        if (!("str" in item) || !("transform" in item)) return [];
+        return [{
+          text: item.str,
+          x: item.transform[4] ?? 0,
+          width: "width" in item ? item.width : 0,
+        }];
+      }),
+    };
+  } finally {
+    await loading.destroy();
+  }
+}
+
+function rasterDifference(
+  left: { data: Uint8Array; width: number; height: number },
+  right: { data: Uint8Array; width: number; height: number },
+): number {
+  expect({ width: left.width, height: left.height }).toEqual({
+    width: right.width,
+    height: right.height,
+  });
+  let difference = 0;
+  for (let index = 0; index < left.data.length; index++) {
+    difference += Math.abs(left.data[index]! - right.data[index]!);
+  }
+  return difference;
+}
+
 function manifest(
   mutate?: (value: WikiPdfTemplateDesignV3) => void,
 ): PdfTemplateManifestV5 {
@@ -165,12 +206,18 @@ function manifest(
     },
     design: value,
     requiredFonts: PDF_RUNTIME_ASSETS.fonts,
-  });
+  }, { availableFonts: PDF_RUNTIME_ASSETS.fonts });
 }
 
 async function serializedBundle(
   blocks: ExportBlock[],
   templateManifest: PdfTemplateManifestV5,
+  metadata: {
+    title?: string;
+    language?: string;
+    region?: string;
+    direction?: "ltr" | "rtl";
+  } = {},
 ): Promise<PdfSourceBundle> {
   const prepared = await preparePdfDocument(blocks, {
     resolve: async () => {
@@ -179,16 +226,31 @@ async function serializedBundle(
   });
   return serializePdfDocument(prepared, {
     metadata: {
-      title: "Revision 5 component proof",
+      title: metadata.title ?? "Revision 5 component proof",
       space: "DOCSY",
       author: "atlcli",
       exporter: "atlcli",
-      language: "en",
-      region: "GB",
+      language: metadata.language ?? "en",
+      region: metadata.region ?? "GB",
+      ...(metadata.direction === undefined
+        ? {}
+        : { direction: metadata.direction }),
       exportedAt: new Date("2026-08-07T00:00:00Z"),
     },
     templateManifest,
   });
+}
+
+async function pdfMetadataLanguage(pdf: Uint8Array): Promise<string | null> {
+  const loading = getDocument({ data: Uint8Array.from(pdf) });
+  const document = await loading.promise;
+  try {
+    const metadata = await document.getMetadata();
+    const info = metadata.info as unknown as Record<string, unknown>;
+    return typeof info.Language === "string" ? info.Language : null;
+  } finally {
+    await loading.destroy();
+  }
 }
 
 async function pdfOutline(pdf: Uint8Array): Promise<unknown[]> {
@@ -598,6 +660,170 @@ describe("canonical revision-5 page and running-region source", () => {
     const negativeCorner = pixelAtMm(negativeRaster, 21, 21);
     expect(Math.min(...clippedCorner)).toBeGreaterThan(220);
     expect(negativeCorner[0]).toBeGreaterThan(negativeCorner[2] + 80);
+  }, 120_000);
+
+  it("renders bounded variable-font axes and a no-axis negative control", async () => {
+    const weighted = async (weight: 300 | 700) => {
+      const value = design();
+      value.navigation.contents.enabled = false;
+      value.typography.fonts.mono = "Noto Emoji";
+      value.typography.fontAxes = { mono: { wght: weight } };
+      value.typography.roles.code = {
+        ...value.typography.roles.code!,
+        font: "mono",
+      };
+      const template = createAtlcliTypstTemplateV5(value);
+      expect(template).toContain(`variations: (wght: ${weight})`);
+      const result = await compiler.compile(bundle(template, "`😀😀😀😀`"));
+      expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+      return rasterPage(result.pdf!, 2);
+    };
+    const light = await weighted(300);
+    const bold = await weighted(700);
+    expect(rasterDifference(light, bold)).toBeGreaterThan(10_000);
+    expect(rasterDifference(bold, await weighted(700))).toBe(0);
+  }, 120_000);
+
+  it("makes tabular numeral widths observable against the proportional negative control", async () => {
+    const compileWidth = async (numberWidth: "tabular" | "proportional") => {
+      const source = await serializedBundle(
+        [
+          { type: "paragraph", content: [{ type: "text", text: "1111" }] },
+          { type: "paragraph", content: [{ type: "text", text: "8888" }] },
+        ],
+        manifest((value) => {
+          value.navigation.contents.enabled = false;
+          value.typography.roles.body = {
+            ...value.typography.roles.body!,
+            numberWidth,
+          };
+        }),
+      );
+      const result = await compiler.compile(source);
+      expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+      const items = (await pdfTextItems(result.pdf!, 2)).items;
+      return [items.find(({ text }) => text === "1111")?.width, items.find(({ text }) => text === "8888")?.width] as const;
+    };
+    const tabular = await compileWidth("tabular");
+    expect(tabular[0]).toBeDefined();
+    expect(tabular[1]).toBeDefined();
+    expect(Math.abs(tabular[0]! - tabular[1]!)).toBeLessThan(0.01);
+    const proportional = await compileWidth("proportional");
+    expect(Math.abs(proportional[0]! - proportional[1]!)).toBeGreaterThan(0.1);
+  }, 120_000);
+
+  it("uses document-owned German and English metadata for real hyphenation", async () => {
+    const compileLanguage = async (
+      language: "de" | "en",
+      word: string,
+      hyphenation: "auto" | "off",
+    ) => {
+      const source = await serializedBundle(
+        [{ type: "paragraph", content: [{ type: "text", text: `${word} ${word}` }] }],
+        manifest((value) => {
+          value.navigation.contents.enabled = false;
+          value.page = {
+            format: { kind: "custom", width: "55mm", height: "100mm" },
+            orientation: "portrait",
+            binding: "left",
+            margin: {
+              mode: "physical",
+              top: "8mm",
+              bottom: "8mm",
+              left: "8mm",
+              right: "8mm",
+            },
+          };
+          value.components.paragraph = { align: "justify", hyphenation };
+        }),
+        { title: "T", language, region: language === "de" ? "DE" : "GB" },
+      );
+      const result = await compiler.compile(source);
+      expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+      return poppler(result.pdf!, "pdftotext", ["-f", "3", "-l", "3", "-layout"]);
+    };
+    const german = await compileLanguage("de", "Donaudampfschifffahrtsgesellschaft", "auto");
+    const germanOff = await compileLanguage("de", "Donaudampfschifffahrtsgesellschaft", "off");
+    expect(german).toContain("\u00ad");
+    expect(germanOff).not.toContain("\u00ad");
+    const english = await compileLanguage("en", "characteristically", "auto");
+    const englishOff = await compileLanguage("en", "characteristically", "off");
+    expect(english).toContain("\u00ad");
+    expect(englishOff).not.toContain("\u00ad");
+  }, 120_000);
+
+  it("preserves explicit RTL direction, Arabic fallback, logical text, and right alignment", async () => {
+    const phrase = "مرحبا بالعالم";
+    const fixture = manifest((value) => {
+      value.navigation.contents.enabled = false;
+      value.components.paragraph = { align: "left", hyphenation: "off" };
+    });
+    const source = await serializedBundle(
+      [{ type: "paragraph", content: [{ type: "text", text: phrase }] }],
+      fixture,
+      { title: "T", language: "ar", region: "SA", direction: "rtl" },
+    );
+    expect(source.main).toContain("direction: rtl");
+    expect(source.fontRequirements?.assets.map(({ family }) => family)).toContain(
+      "Noto Sans Arabic",
+    );
+    const result = await compiler.compile(source);
+    expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    expect(await pdfMetadataLanguage(result.pdf!)).toBe("ar-SA");
+    const page = await pdfTextItems(result.pdf!, 2);
+    const extracted = page.items.map(({ text }) => text);
+    expect(extracted).toContain("مرحبا");
+    expect(extracted).toContain("بالعالم");
+    const arabic = page.items.find(({ text }) => text.includes("مرحبا"));
+    expect(arabic).toBeDefined();
+    expect(arabic!.x).toBeGreaterThan(page.pageWidth / 2);
+
+    const ltrSource = await serializedBundle(
+      [{ type: "paragraph", content: [{ type: "text", text: phrase }] }],
+      fixture,
+      { title: "T", language: "ar", region: "SA", direction: "ltr" },
+    );
+    const ltrResult = await compiler.compile(ltrSource);
+    expect(ltrResult.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    const ltrPage = await pdfTextItems(ltrResult.pdf!, 2);
+    const ltrArabic = ltrPage.items.find(({ text }) => text.includes("مرحبا"));
+    expect(ltrArabic).toBeDefined();
+    expect(arabic!.x).toBeGreaterThan(ltrArabic!.x + page.pageWidth / 3);
+    expect(rasterDifference(
+      await rasterPage(result.pdf!, 2),
+      await rasterPage(ltrResult.pdf!, 2),
+    )).toBeGreaterThan(10_000);
+  }, 120_000);
+
+  it("surfaces a stable missing-glyph diagnostic and observable tofu negative control", async () => {
+    const missing = String.fromCodePoint(0x10ffff);
+    const fixture = manifest((value) => {
+      value.navigation.contents.enabled = false;
+    });
+    const source = await serializedBundle(
+      [{ type: "paragraph", content: [{ type: "text", text: missing }] }],
+      fixture,
+    );
+    expect(source.fontRequirements?.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "PDF_FONT_MISSING_GLYPH",
+        requested: "U+10FFFF",
+      }),
+    );
+    const result = await compiler.compile(source);
+    expect(result.diagnostics.map(({ message }) => message).join("\n")).toContain(
+      "PDF_FONT_MISSING_GLYPH",
+    );
+    expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    const empty = await compiler.compile(await serializedBundle(
+      [{ type: "paragraph", content: [] }],
+      fixture,
+    ));
+    expect(empty.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    expect(rasterDifference(
+      await rasterPage(result.pdf!, 2),
+      await rasterPage(empty.pdf!, 2),
+    )).toBeGreaterThan(1_000);
   }, 120_000);
 
   it("compiles semantic component policies with repeated table headers and tagged reading order", async () => {

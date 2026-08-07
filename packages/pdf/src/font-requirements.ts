@@ -11,6 +11,7 @@ import {
 import type {
   DesignRunningSlotV3,
   TemplateManifest,
+  TypographyRoleV3,
 } from "@atlcli/template-pack";
 import type {
   AnyPdfTemplateManifest,
@@ -62,6 +63,22 @@ export interface ResolvedPdfFontRequirementsV1 {
   /** Deterministic active-compiler cache key. */
   key: string;
   assets: readonly ResolvedPdfFontAssetRequirementV1[];
+  /** Stable, text-free diagnostics derived from font metadata and coverage. */
+  diagnostics?: readonly PdfFontDiagnosticV1[];
+}
+
+export type PdfFontDiagnosticCodeV1 =
+  | "PDF_FONT_STYLE_FALLBACK"
+  | "PDF_FONT_STRETCH_FALLBACK"
+  | "PDF_FONT_WEIGHT_FALLBACK"
+  | "PDF_FONT_MISSING_GLYPH";
+
+export interface PdfFontDiagnosticV1 {
+  code: PdfFontDiagnosticCodeV1;
+  severity: "warning";
+  family: string;
+  role: string;
+  requested: string;
 }
 
 export interface ResolvePdfFontRequirementsInputV1 {
@@ -244,6 +261,13 @@ export function resolvePdfFontRequirementsV1(
     Map<string, PdfFontRequirementReasonV1>
   >();
   const textDemands: TextDemand[] = [];
+  const diagnostics = new Map<string, PdfFontDiagnosticV1>();
+  const addDiagnostic = (diagnostic: PdfFontDiagnosticV1): void => {
+    diagnostics.set(
+      `${diagnostic.code}:${diagnostic.family}:${diagnostic.role}:${diagnostic.requested}`,
+      diagnostic,
+    );
+  };
 
   const addAsset = (
     asset: PdfRuntimeFontAsset,
@@ -283,12 +307,60 @@ export function resolvePdfFontRequirementsV1(
     inheritedFamily: string,
     reasonKind: PdfFontRequirementReasonKindV1 = "template-role",
   ): string => {
-    const role = design.typography.roles[roleName];
+    const role: TypographyRoleV3 | undefined =
+      designV5?.typography.roles[roleName] ?? design.typography.roles[roleName];
     if (!role) {
       throw new Error(`Resolved PDF template is missing typography role "${roleName}".`);
     }
     const family = role.font ? familyFor(role.font) : inheritedFamily;
-    addFace(family, "normal", weightNumber(role.weight), {
+    const requestedStyle = role.style === "italic" || role.style === "oblique"
+      ? "italic"
+      : "normal";
+    const requestedWeight = weightNumber(role.weight);
+    const familyFaces = PDF_RUNTIME_ASSETS.fonts.filter(
+      (asset) => asset.family === family,
+    );
+    if (
+      role.style === "oblique" ||
+      !familyFaces.some((asset) => asset.style === requestedStyle)
+    ) {
+      addDiagnostic({
+        code: "PDF_FONT_STYLE_FALLBACK",
+        severity: "warning",
+        family,
+        role: roleName,
+        requested: role.style ?? "normal",
+      });
+    }
+    if (!familyFaces.some(
+      (asset) => asset.style === requestedStyle && (
+        asset.weight === requestedWeight ||
+        asset.axes?.some(
+          (axis) =>
+            axis.tag === "wght" &&
+            requestedWeight >= axis.min &&
+            requestedWeight <= axis.max,
+        ) === true
+      )
+    )) {
+      addDiagnostic({
+        code: "PDF_FONT_WEIGHT_FALLBACK",
+        severity: "warning",
+        family,
+        role: roleName,
+        requested: String(requestedWeight),
+      });
+    }
+    if (role.stretch !== undefined && role.stretch !== "normal") {
+      addDiagnostic({
+        code: "PDF_FONT_STRETCH_FALLBACK",
+        severity: "warning",
+        family,
+        role: roleName,
+        requested: role.stretch,
+      });
+    }
+    addFace(family, requestedStyle, requestedWeight, {
       kind: reasonKind,
       detail: roleName,
     });
@@ -297,6 +369,7 @@ export function resolvePdfFontRequirementsV1(
 
   // Renderer-owned page furniture. These facts are reachable even when the
   // document body is empty, and therefore cannot come from a block-kind scan.
+  addRole("body", bodyFamily);
   addText(input.metadata.title, bodyFamily, "normal", 400, {
     kind: "template-role",
     detail: "body",
@@ -792,10 +865,15 @@ export function resolvePdfFontRequirementsV1(
     PDF_RUNTIME_ASSETS.fonts.filter(
       (asset) =>
         reasonsByAsset.has(asset.assetId) &&
+        asset.family !== "Noto Sans Arabic" &&
         asset.family !== "Noto Sans Symbols2" &&
         asset.family !== "Noto Emoji",
     );
-  const fallbackOrder = ["Noto Sans Symbols2", "Noto Emoji"] as const;
+  const fallbackOrder = [
+    "Noto Sans Arabic",
+    "Noto Sans Symbols2",
+    "Noto Emoji",
+  ] as const;
   for (const demand of textDemands) {
     const primary = selectedPrimary().filter(
       (asset) => asset.family === demand.family,
@@ -811,12 +889,26 @@ export function resolvePdfFontRequirementsV1(
         if (!fallback) continue;
         addAsset(fallback, {
           kind: "fallback",
-          detail:
-            fallbackFamily === "Noto Emoji"
-              ? "unicode-emoji"
+          detail: fallbackFamily === "Noto Emoji"
+            ? "unicode-emoji"
+            : fallbackFamily === "Noto Sans Arabic"
+              ? "unicode-arabic"
               : "unicode-symbol",
         });
         break;
+      }
+      if (!fallbackOrder.some((fallbackFamily) =>
+        PDF_RUNTIME_ASSETS.fonts.some(
+          (asset) => asset.family === fallbackFamily && covers(asset, codePoint),
+        )
+      )) {
+        addDiagnostic({
+          code: "PDF_FONT_MISSING_GLYPH",
+          severity: "warning",
+          family: demand.family,
+          role: demand.reason.detail,
+          requested: `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`,
+        });
       }
     }
   }
@@ -842,6 +934,11 @@ export function resolvePdfFontRequirementsV1(
       .map((asset) => `${asset.assetId}@${asset.sha256}`)
       .join("|"),
     assets,
+    diagnostics: [...diagnostics.values()].sort((left, right) =>
+      `${left.code}:${left.family}:${left.role}:${left.requested}`.localeCompare(
+        `${right.code}:${right.family}:${right.role}:${right.requested}`,
+      )
+    ),
   };
 }
 
@@ -871,6 +968,7 @@ export function resolveFullPdfFontRequirementsV1(
       .map((asset) => `${asset.assetId}@${asset.sha256}`)
       .join("|"),
     assets,
+    diagnostics: [],
   };
 }
 
@@ -891,7 +989,22 @@ export function assertResolvedPdfFontRequirementsV1(
     typeof value.template.version !== "string" ||
     value.template.version === "" ||
     typeof value.key !== "string" ||
-    !Array.isArray(value.assets)
+    !Array.isArray(value.assets) ||
+    (value.diagnostics !== undefined && (!Array.isArray(value.diagnostics) ||
+    value.diagnostics.some(
+      (diagnostic) =>
+        !isRecord(diagnostic) ||
+        ![
+          "PDF_FONT_STYLE_FALLBACK",
+          "PDF_FONT_STRETCH_FALLBACK",
+          "PDF_FONT_WEIGHT_FALLBACK",
+          "PDF_FONT_MISSING_GLYPH",
+        ].includes(String(diagnostic.code)) ||
+        diagnostic.severity !== "warning" ||
+        typeof diagnostic.family !== "string" ||
+        typeof diagnostic.role !== "string" ||
+        typeof diagnostic.requested !== "string",
+    )))
   ) {
     throw new Error("Malformed PDF font-requirement contract.");
   }

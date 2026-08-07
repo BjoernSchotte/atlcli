@@ -17,6 +17,7 @@ import type { FontAsset } from "./types.js";
 // are downloaded and sha256-verified by `ensurePdfFonts` into `packages/pdf/.fonts`.
 let sourceSansTtf: Uint8Array;
 let sourceSerifTtf: Uint8Array;
+let notoEmojiTtf: Uint8Array;
 
 beforeAll(async () => {
   const { cacheDir } = await ensurePdfFonts({ logger: () => {} });
@@ -24,6 +25,7 @@ beforeAll(async () => {
     new Uint8Array(await Bun.file(fileURLToPath(new URL(`file://${cacheDir}/${fileName}`))).arrayBuffer());
   sourceSansTtf = await read("SourceSans3-Regular.ttf");
   sourceSerifTtf = await read("SourceSerif4-Regular.ttf");
+  notoEmojiTtf = await read("NotoEmoji-wght.ttf");
 });
 
 // --- sfnt fixture builders (real name-table bytes extracted from real fonts) ---
@@ -140,6 +142,12 @@ describe("parseFontMeta", () => {
     expect(faces[0]!.family).toBe("Source Sans 3");
     expect(faces[0]!.style).toBe("normal");
     expect(faces[0]!.weight).toBe(400);
+  });
+
+  it("inspects bounded fvar axes from the exact variable-font bytes", () => {
+    expect(parseFontMeta(notoEmojiTtf)[0]?.axes).toEqual([
+      { tag: "wght", min: 300, default: 400, max: 700 },
+    ]);
   });
 
   it("accepts a real CFF/OpenType (OTF) sfnt built from a real name table", () => {

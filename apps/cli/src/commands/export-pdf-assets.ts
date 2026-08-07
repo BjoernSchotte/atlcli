@@ -35,6 +35,7 @@ import sourceCodeRegular from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf" with
 import sourceCodeBold from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf" with { type: "file" };
 import notoSymbolsRegular from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf" with { type: "file" };
 import notoEmojiRegular from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf" with { type: "file" };
+import notoArabicRegular from "@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf" with { type: "file" };
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
@@ -71,6 +72,7 @@ const FONT_FILES: ReadonlyArray<{ fileName: string; path: string }> = [
   { fileName: "SourceSerif4-Bold.ttf", path: sourceSerifBold },
   { fileName: "SourceCodePro-Regular.ttf", path: sourceCodeRegular },
   { fileName: "SourceCodePro-Bold.ttf", path: sourceCodeBold },
+  { fileName: "NotoSansArabic-Regular.ttf", path: notoArabicRegular },
   { fileName: "NotoSansSymbols2-Regular.ttf", path: notoSymbolsRegular },
   { fileName: "NotoEmoji-wght.ttf", path: notoEmojiRegular },
 ];

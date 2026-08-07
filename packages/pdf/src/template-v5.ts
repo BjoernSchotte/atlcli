@@ -13,6 +13,7 @@ import {
   type WikiPdfTemplateDesignV3,
 } from "@atlcli/template-pack";
 import type { PdfTemplateVisualsV1 } from "./template-pack.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 
 function coverPhysicalMargins(
@@ -39,6 +40,14 @@ export function projectPdfDesignV5RuntimeSettings(
   design: WikiPdfTemplateDesignV3,
 ): WikiPdfTemplateDesignV1 {
   const contents = design.navigation.contents;
+  const legacyRoles = Object.fromEntries(
+    Object.entries(design.typography.roles).map(([name, role]) => [name, {
+      size: role.size,
+      ...(role.font === undefined ? {} : { font: role.font }),
+      ...(role.weight === undefined ? {} : { weight: role.weight }),
+      ...(role.tracking === undefined ? {} : { tracking: role.tracking }),
+    }]),
+  );
   return {
     page: {
       size:
@@ -59,7 +68,10 @@ export function projectPdfDesignV5RuntimeSettings(
       closingPage: { enabled: true },
     },
     branding: design.branding,
-    typography: design.typography,
+    typography: {
+      fonts: { ...design.typography.fonts },
+      roles: legacyRoles,
+    },
     tokens: design.tokens,
     semanticPalettes: design.semanticPalettes,
   };
@@ -70,7 +82,9 @@ export function createAtlcliTypstTemplateV5(
   labels: Record<string, string> = {},
   visuals?: PdfTemplateVisualsV1,
 ): string {
-  const validated = validatePdfTemplateDesignV3(design);
+  const validated = validatePdfTemplateDesignV3(design, "design", {
+    availableFonts: PDF_RUNTIME_ASSETS.fonts,
+  });
   return createAtlcliTypstTemplate(
     projectPdfDesignV5RuntimeSettings(validated),
     labels,
@@ -90,6 +104,7 @@ export function createAtlcliTypstTemplateV5(
         decorations: validated.decorations ?? [],
       },
       imageGeometryV5: true,
+      typographyModelV5: validated.typography,
     },
   );
 }

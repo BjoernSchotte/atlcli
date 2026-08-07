@@ -297,6 +297,39 @@ describe("atlcli Typst template settings rendering", () => {
     expect(source).toContain("#if false and icon != none");
   });
 
+  it("binds revision-5 typography roles and inspected variable axes to Typst text parameters", () => {
+    const design = revision5Design();
+    design.typography.roles.body = {
+      ...design.typography.roles.body!,
+      style: "italic",
+      stretch: "expanded",
+      kerning: false,
+      ligatures: "none",
+      numberType: "old-style",
+      numberWidth: "tabular",
+    };
+    design.typography.fonts.mono = "Noto Emoji";
+    design.typography.fontAxes = { mono: { wght: 650 } };
+    design.typography.roles.code = {
+      ...design.typography.roles.code!,
+      font: "mono",
+    };
+    const source = createAtlcliTypstTemplateV5(design);
+    expect(source).toContain('style: "italic"');
+    expect(source).toContain("stretch: 125%");
+    expect(source).toContain("kerning: false");
+    expect(source).toContain("ligatures: false");
+    expect(source).toContain('number-type: "old-style"');
+    expect(source).toContain('number-width: "tabular"');
+    expect(source).toContain("variations: (wght: 650)");
+    expect(source).toContain('dir: meta.at("direction", default: ltr)');
+
+    const automatic = revision5Design();
+    expect(createAtlcliTypstTemplateV5(automatic)).toContain(
+      "show par: set text(hyphenate: auto)",
+    );
+  });
+
   it("generates named paints and artifact-only flat shapes from validated revision-5 data", () => {
     const design = revision5Design();
     design.paints = {

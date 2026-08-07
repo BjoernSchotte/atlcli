@@ -276,7 +276,7 @@ export class BrowserPdfCompiler {
         result?: Uint8Array;
         diagnostics?: RawPdfDiagnostic[];
       };
-      const diagnostics = mapPdfDiagnostics(
+      const compilerDiagnostics = mapPdfDiagnostics(
         (result.diagnostics ?? []).map((diagnostic) => {
           const range = diagnostic.range?.match(/^(\d+):(\d+)-(\d+):(\d+)$/);
           return {
@@ -291,6 +291,13 @@ export class BrowserPdfCompiler {
         }),
         bundle.sourceMap
       );
+      const diagnostics = [
+        ...(bundle.fontRequirements?.diagnostics ?? []).map((diagnostic) => ({
+          severity: diagnostic.severity,
+          message: `${diagnostic.code}: ${diagnostic.family} role ${diagnostic.role} requested ${diagnostic.requested}`,
+        })),
+        ...compilerDiagnostics,
+      ];
       const fontEvidence: PdfFontLoadEvidenceV1 = {
         schema: "atlcli.pdf-font-load-evidence/1",
         requirementKey: selection.key,

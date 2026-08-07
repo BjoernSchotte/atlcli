@@ -46,6 +46,7 @@ import type {
   DesignRunningRegionV3,
   DesignRunningSlotV3,
   DesignRunningVariantV3,
+  DesignTypography,
   WikiPdfTemplateDesignV1,
   WikiPdfTemplateImageDecorationV1,
   WikiPdfTemplatePageBorderV1,
@@ -63,6 +64,11 @@ const EDITORIAL_NESTED_BULLET = String.fromCodePoint(0x25e6);
 const TASK_CHECKED = String.fromCodePoint(0x2713);
 const TASK_UNCHECKED = String.fromCodePoint(0x25a1);
 const SYMBOL_FALLBACK_FONTS = ["Noto Sans Symbols2", "Noto Emoji"] as const;
+const SYMBOL_FALLBACK_FONTS_V5 = [
+  "Noto Sans Arabic",
+  "Noto Sans Symbols2",
+  "Noto Emoji",
+] as const;
 
 export interface AtlcliTypstPageModelV5 {
   page: DesignPageV3;
@@ -89,6 +95,8 @@ export interface AtlcliTypstTemplateOptions {
   decorationModelV5?: AtlcliTypstDecorationModelV5;
   /** Enables crop/clip execution for positioned images only in revision 5. */
   imageGeometryV5?: boolean;
+  /** Exact Catalog-V3 text policy; absent keeps revisions 1-4 byte-identical. */
+  typographyModelV5?: DesignTypography;
 }
 
 function headingNumberingPatternV5(
@@ -247,8 +255,9 @@ export function createAtlcliTypstTemplate(
   options: AtlcliTypstTemplateOptions = {}
 ): string {
   const catalogDesign = projectPdfDesignThroughCatalog(design);
-  const fonts = catalogDesign.typography.fonts;
-  const roles = catalogDesign.typography.roles;
+  const typography = options.typographyModelV5 ?? catalogDesign.typography;
+  const fonts = typography.fonts;
+  const roles = typography.roles;
   const colors = catalogDesign.tokens.colors;
   const layout = catalogDesign.tokens.layout;
   const ratios = catalogDesign.tokens.ratios;
@@ -268,8 +277,11 @@ export function createAtlcliTypstTemplate(
   const C = (key: string): string => need(colors, key, "color token");
   const RN = (key: string): number => need(ratios, key, "ratio");
   const F = (role: "body" | "heading" | "mono"): string => fonts[role];
+  const fallbackFonts = options.typographyModelV5
+    ? SYMBOL_FALLBACK_FONTS_V5
+    : SYMBOL_FALLBACK_FONTS;
   const fontStack = (font: string): string =>
-    `(${[font, ...SYMBOL_FALLBACK_FONTS].map(typstString).join(", ")})`;
+    `(${[font, ...fallbackFonts].map(typstString).join(", ")})`;
   const roleOf = (key: string) => need(roles, key, "typography role");
   const rsize = (key: string): string => roleOf(key).size;
   const rweight = (key: string): string => {
@@ -286,6 +298,43 @@ export function createAtlcliTypstTemplate(
     const font = roleOf(key).font;
     if (font === undefined) throw new Error(`PDF template role "${key}" is missing a font`);
     return F(font);
+  };
+  const roleTextExtrasV5 = (key: string): string => {
+    if (!options.typographyModelV5) return "";
+    const role = roleOf(key);
+    const stretch = role.stretch === "condensed"
+      ? "75%"
+      : role.stretch === "expanded"
+        ? "125%"
+        : role.stretch === "normal"
+          ? "100%"
+          : undefined;
+    const familyRole = role.font;
+    const variations = familyRole === undefined
+      ? undefined
+      : typography.fontAxes?.[familyRole];
+    return [
+      role.style === undefined ? undefined : `style: ${typstString(role.style)}`,
+      stretch === undefined ? undefined : `stretch: ${stretch}`,
+      role.kerning === undefined ? undefined : `kerning: ${role.kerning}`,
+      role.ligatures === undefined
+        ? undefined
+        : `ligatures: ${role.ligatures === "common"}`,
+      role.numberType === undefined
+        ? undefined
+        : `number-type: ${typstString(role.numberType)}`,
+      role.numberWidth === undefined
+        ? undefined
+        : `number-width: ${typstString(role.numberWidth)}`,
+      variations === undefined
+        ? undefined
+        : `variations: (${Object.entries(variations)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([tag, value]) => `${tag}: ${value}`)
+            .join(", ")})`,
+    ].filter((value): value is string => value !== undefined)
+      .map((value) => `, ${value}`)
+      .join("");
   };
   const callout = (kind: keyof typeof callouts): { bg: string; fg: string } => {
     const palette = need(callouts, kind as string, "callout palette");
@@ -485,7 +534,7 @@ export function createAtlcliTypstTemplate(
     fill: cover-paper,
     background: ${pageBackgroundSource},
     header: context {${headerDecorationSource}
-      set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+      set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}")${roleTextExtrasV5("runningHead")})
 ${runningRegionSourceV5(
   options.pageModelV5.running.header,
   "header",
@@ -494,7 +543,7 @@ ${runningRegionSourceV5(
 )}
     },
     footer: context {${footerDecorationSource}
-      set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+      set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}")${roleTextExtrasV5("runningHead")})
 ${runningRegionSourceV5(
   options.pageModelV5.running.footer,
   "footer",
@@ -513,7 +562,7 @@ ${runningRegionSourceV5(
       let current-page = counter(page).get().first()
       let final-page = counter(page).final().first()
       if current-page > 1 and current-page < final-page {
-        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}")${roleTextExtrasV5("runningHead")})
         let header-text = settings.at("header-text", default: none)
         if header-text == none {
 ${headerResolution}
@@ -525,7 +574,7 @@ ${headerResolution}
     },
     footer: context {${footerDecorationSource}
       if counter(page).get().first() > 1 {
-        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}")${roleTextExtrasV5("runningHead")})
         let footer-text = settings.at("footer-text", default: none)
         if footer-text == none and org-name == none {
           align(center)[#counter(page).display("1")]
@@ -547,7 +596,7 @@ ${headerResolution}
     spacing: ${L("paragraphSpacing")},
     justify: ${componentsV5.paragraph.align === "justify" ? "true" : "false"},
   )
-  show par: set text(hyphenate: ${componentsV5.paragraph.hyphenation === "auto" ? "true" : "false"})${
+  show par: set text(hyphenate: ${componentsV5.paragraph.hyphenation === "auto" ? "auto" : "false"})${
     componentsV5.paragraph.align === "justify"
       ? ""
       : `\n  show par: set align(${componentsV5.paragraph.align === "left" ? "start" : componentsV5.paragraph.align === "right" ? "end" : "center"})`
@@ -710,7 +759,7 @@ ${headerResolution}
     font: ${fontStack(F("heading"))},
     size: ${rsize("numbering")},
     weight: "${rweight("numbering")}",
-    fill: rgb("${enumerationMarkerColorV5}"),
+    fill: rgb("${enumerationMarkerColorV5}")${roleTextExtrasV5("numbering")},
     numbering(pattern, current),
   )
 }
@@ -782,42 +831,42 @@ ${semanticV5 ? `#let atlcli-page-numbering = state("atlcli-page-numbering", ${ty
   set text(
     font: ${fontStack(F("body"))},
     size: ${rsize("body")},
-    fill: rgb("${C("ink")}"),
+    fill: rgb("${C("ink")}")${roleTextExtrasV5("body")},
     lang: meta.at("language", default: "en"),
     region: meta.at("region", default: none),
-  )
+${options.typographyModelV5 ? '    dir: meta.at("direction", default: ltr),\n' : ""}  )
 ${paragraphPolicySourceV5}
 ${listPolicySourceV5}
 ${enumerationPolicySourceV5}
 ${pageSetupSource}${initialPageCounterSourceV5}${bookmarkPolicySourceV5 ? `\n${bookmarkPolicySourceV5}` : ""}
 
   show heading.where(level: 1): it => {
-    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}")${roleTextExtrasV5("h1")})
     block(above: ${L("h1Above")}, below: ${L("h1Below")}, sticky: true, ${headingBodyV5("it")})
   }
   show heading.where(level: 2): it => {
-    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}"))
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}")${roleTextExtrasV5("h2")})
     block(above: ${L("h2Above")}, below: ${L("h2Below")}, sticky: true, ${headingBodyV5("it")})
   }
   show heading.where(level: 3): it => {
-    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}")${roleTextExtrasV5("h3")})
     block(above: ${L("h3Above")}, below: ${L("h3Below")}, sticky: true, ${headingBodyV5("it")})
   }
   show raw.where(block: false): it => box(
     fill: rgb("${codeBackgroundColorV5}"),
     inset: (x: ${L("inlineCodeInsetX")}, y: ${L("inlineCodeInsetY")}),
     radius: ${L("inlineCodeRadius")},
-    text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}, it),
+    text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}${roleTextExtrasV5("code")}, it),
   )
   show raw.where(block: true): it => block(
     fill: rgb("${codeBackgroundColorV5}"),
     inset: ${L("codeInset")},
     radius: ${L("codeRadius")},
     width: 100%,
-    text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}, it),
+    text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}${roleTextExtrasV5("code")}, it),
   )
   show table.cell: it => {
-    set text(font: ${fontStack(F("heading"))}, size: ${rsize("tableCell")}, hyphenate: true)
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("tableCell")}, hyphenate: ${componentsV5?.paragraph.hyphenation === "off" ? "false" : "auto"}${roleTextExtrasV5("tableCell")})
     set par(linebreaks: "optimized")
     it
   }
@@ -830,11 +879,11 @@ ${positionedLogoSource}
       #if ${flowLogoCondition} [
         #block(below: ${L("coverLogoBelow")})[#image(logo-path, height: ${L("coverLogoHeight")}, width: ${L("coverLogoWidth")}, fit: "contain", alt: logo-alt)]
       ]
-      #text(size: ${rsize("coverEyebrow")}, weight: "${rweight("coverEyebrow")}", tracking: ${rtrack("coverEyebrow")}, fill: indigo, space-label)
+      #text(size: ${rsize("coverEyebrow")}, weight: "${rweight("coverEyebrow")}", tracking: ${rtrack("coverEyebrow")}, fill: indigo${roleTextExtrasV5("coverEyebrow")}, space-label)
       #v(${L("coverEyebrowGap")})
       #block(width: 100%)[
         #set par(leading: ${L("coverTitleLeading")})
-        #text(font: ${fontStack(roleFont("coverTitle"))}, size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink)[#meta.title]
+        #text(font: ${fontStack(roleFont("coverTitle"))}, size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink${roleTextExtrasV5("coverTitle")})[#meta.title]
       ]
       #v(${L("coverTitleGap")})
       #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
@@ -843,12 +892,12 @@ ${positionedLogoSource}
         columns: (${L("coverMetaColLabel")}, 1fr),
         column-gutter: ${L("coverMetaColGutter")},
         row-gutter: ${L("coverMetaRowGutter")},
-        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate, upper(version-label)),
-        text(size: ${rsize("coverMetaValue")}, fill: ink, meta.version),
-        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate, upper(exported-label)),
-        text(size: ${rsize("coverMetaValue")}, fill: ink, meta.exported-label),
-        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate, upper(exporter-label)),
-        text(size: ${rsize("coverMetaValue")}, fill: ink, meta.exporter),
+        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate${roleTextExtrasV5("coverMetaLabel")}, upper(version-label)),
+        text(size: ${rsize("coverMetaValue")}, fill: ink${roleTextExtrasV5("coverMetaValue")}, meta.version),
+        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate${roleTextExtrasV5("coverMetaLabel")}, upper(exported-label)),
+        text(size: ${rsize("coverMetaValue")}, fill: ink${roleTextExtrasV5("coverMetaValue")}, meta.exported-label),
+        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate${roleTextExtrasV5("coverMetaLabel")}, upper(exporter-label)),
+        text(size: ${rsize("coverMetaValue")}, fill: ink${roleTextExtrasV5("coverMetaValue")}, meta.exporter),
       )
     ]
     pagebreak()
@@ -865,11 +914,11 @@ ${bodyPageNumberSourceV5}${bodyHeadingCounterSourceV5}  body
   v(${L("closingTopPad")})
   block(width: ${RN("closingBlockWidth")}%)[
     #set text(font: ${fontStack(F("heading"))})
-    #text(size: ${rsize("closingEyebrow")}, weight: "${rweight("closingEyebrow")}", tracking: ${rtrack("closingEyebrow")}, fill: indigo)[#end-label]
+    #text(size: ${rsize("closingEyebrow")}, weight: "${rweight("closingEyebrow")}", tracking: ${rtrack("closingEyebrow")}, fill: indigo${roleTextExtrasV5("closingEyebrow")})[#end-label]
     #v(${L("closingEyebrowGap")})
     #block(width: 100%)[
       #set par(leading: ${L("closingTitleLeading")})
-      #text(font: ${fontStack(roleFont("closingTitle"))}, size: ${rsize("closingTitle")}, weight: "${rweight("closingTitle")}", fill: ink)[#meta.title]
+      #text(font: ${fontStack(roleFont("closingTitle"))}, size: ${rsize("closingTitle")}, weight: "${rweight("closingTitle")}", fill: ink${roleTextExtrasV5("closingTitle")})[#meta.title]
     ]
     #v(${L("closingTitleGap")})
     #line(length: ${L("closingRuleLength")}, stroke: ${L("closingRuleStroke")} + indigo)
@@ -878,15 +927,15 @@ ${bodyPageNumberSourceV5}${bodyHeadingCounterSourceV5}  body
       columns: (${L("coverMetaColLabel")}, 1fr),
       column-gutter: ${L("coverMetaColGutter")},
       row-gutter: ${L("coverMetaRowGutter")},
-      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate, upper(version-label)),
-      text(size: ${rsize("closingMetaValue")}, fill: ink, meta.version),
-      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate, upper(exported-label)),
-      text(size: ${rsize("closingMetaValue")}, fill: ink, meta.exported-label),
-      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate, upper(pages-label)),
-      context text(size: ${rsize("closingMetaValue")}, fill: ink, str(counter(page).final().first())),
+      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate${roleTextExtrasV5("closingMetaLabel")}, upper(version-label)),
+      text(size: ${rsize("closingMetaValue")}, fill: ink${roleTextExtrasV5("closingMetaValue")}, meta.version),
+      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate${roleTextExtrasV5("closingMetaLabel")}, upper(exported-label)),
+      text(size: ${rsize("closingMetaValue")}, fill: ink${roleTextExtrasV5("closingMetaValue")}, meta.exported-label),
+      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate${roleTextExtrasV5("closingMetaLabel")}, upper(pages-label)),
+      context text(size: ${rsize("closingMetaValue")}, fill: ink${roleTextExtrasV5("closingMetaValue")}, str(counter(page).final().first())),
     )
     #v(${L("closingColophonGap")})
-    #text(size: ${rsize("colophon")}, fill: warm-slate)[
+    #text(size: ${rsize("colophon")}, fill: warm-slate${roleTextExtrasV5("colophon")})[
       #generated-with
       #link("https://atlcli.sh/")[#text(weight: "semibold", fill: indigo)[atlcli]]
     ]
@@ -934,7 +983,7 @@ ${bodyPageNumberSourceV5}${bodyHeadingCounterSourceV5}  body
   fill: rgb(color).lighten(${RN("statusBadgeLighten")}%),
   inset: (x: inset-x, y: ${L("statusBadgeInsetY")}),
   radius: ${L("statusBadgeRadius")},
-  text(font: ${fontStack(F("mono"))}, size: ${rsize("statusBadge")}, weight: "${rweight("statusBadge")}", fill: rgb(color), label),
+  text(font: ${fontStack(F("mono"))}, size: ${rsize("statusBadge")}, weight: "${rweight("statusBadge")}", fill: rgb(color)${roleTextExtrasV5("statusBadge")}, label),
 )
 
 // Every table paragraph receives its real content width. Narrow cells switch
@@ -984,7 +1033,7 @@ ${bodyPageNumberSourceV5}${bodyHeadingCounterSourceV5}  body
         font: ${fontStack(F("mono"))},
         size: ${rsize("statusBadge")},
         weight: "${rweight("statusBadge")}",
-        fill: rgb(color),
+        fill: rgb(color)${roleTextExtrasV5("statusBadge")},
         hyphenate: true,
       )
       #set par(linebreaks: "simple", leading: ${L("denseBadgeLeading")})
@@ -1001,7 +1050,7 @@ ${bodyPageNumberSourceV5}${bodyHeadingCounterSourceV5}  body
     font: ${fontStack(F("heading"))},
     size: ${rsize("taskMarker")},
     weight: "${rweight("taskMarker")}",
-    fill: rgb(if checked { "${C("taskChecked")}" } else { "${C("taskUnchecked")}" }),
+    fill: rgb(if checked { "${C("taskChecked")}" } else { "${C("taskUnchecked")}" })${roleTextExtrasV5("taskMarker")},
     if checked { "${TASK_CHECKED}" } else { "${TASK_UNCHECKED}" },
   ),
   body,

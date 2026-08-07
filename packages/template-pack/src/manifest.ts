@@ -25,6 +25,7 @@ import {
 import {
   validateDesign,
   validatePdfTemplateDesignV3,
+  type DesignAvailableFontV3,
   type WikiPdfTemplateDesignV1,
   type WikiPdfTemplateDesignV3,
 } from "./design.js";
@@ -140,7 +141,7 @@ export interface ValidateManifestOptions {
    * family+style+weight) is rejected at import; when omitted, `requiredFonts`
    * is shape-checked only (007's behavior).
    */
-  availableFonts?: ReadonlyArray<{ family: string; style: string; weight: number }>;
+  availableFonts?: readonly DesignAvailableFontV3[];
   /** Sink for non-fatal localization warnings (partial non-fallback locales). */
   collectWarnings?: (warning: string) => void;
 }
@@ -390,7 +391,15 @@ export function validateManifestV3(
   json: unknown,
   options: ValidateManifestOptions = {},
 ): TemplateManifest<WikiPdfTemplateDesignV3> {
-  return validateManifestWithDesign(json, options, validatePdfTemplateDesignV3);
+  return validateManifestWithDesign(
+    json,
+    options,
+    (value) => validatePdfTemplateDesignV3(value, "design", {
+      ...(options.availableFonts === undefined
+        ? {}
+        : { availableFonts: options.availableFonts }),
+    }),
+  );
 }
 
 /** Reject any required font the bundled inventory cannot satisfy (spec 012). */

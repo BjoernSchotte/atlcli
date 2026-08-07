@@ -137,6 +137,42 @@ export interface TypographyRole {
   tracking?: DesignLength;
 }
 
+export const DESIGN_FONT_STYLES_V3 = ["normal", "italic", "oblique"] as const;
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+export const DESIGN_FONT_STRETCHES_V3 = ["normal", "condensed", "expanded"] as const;
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+export const DESIGN_COMMON_LIGATURE_MODES_V3 = ["common", "none"] as const;
+export type DesignCommonLigatureModeV3 =
+  (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
+export const DESIGN_NUMBER_TYPES_V3 = ["lining", "old-style"] as const;
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+export const DESIGN_NUMBER_WIDTHS_V3 = ["proportional", "tabular"] as const;
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
+
+/** Catalog-V3 additions map only to allowlisted Typst `text` parameters. */
+export interface TypographyRoleV3 extends TypographyRole {
+  style?: DesignFontStyleV3;
+  stretch?: DesignFontStretchV3;
+  kerning?: boolean;
+  ligatures?: DesignCommonLigatureModeV3;
+  numberType?: DesignNumberTypeV3;
+  numberWidth?: DesignNumberWidthV3;
+}
+
+export interface DesignFontAxisMetadataV3 {
+  tag: string;
+  min: number;
+  default: number;
+  max: number;
+}
+
+export interface DesignAvailableFontV3 {
+  family: string;
+  style: string;
+  weight: number;
+  axes?: readonly DesignFontAxisMetadataV3[];
+}
+
 export interface CalloutPalette {
   background: DesignColor;
   foreground: DesignColor;
@@ -173,7 +209,9 @@ export interface DesignBranding {
 
 export interface DesignTypography {
   fonts: Record<FontRole, string>;
-  roles: Record<string, TypographyRole>;
+  roles: Record<string, TypographyRoleV3>;
+  /** Requested values keyed by semantic family role, verified against font metadata. */
+  fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 export interface DesignTokens {
@@ -336,6 +374,62 @@ function validateTypographyRole(value: unknown, path: string): TypographyRole {
   if (value.weight !== undefined) role.weight = validateWeight(value.weight, `${path}.weight`);
   if (value.tracking !== undefined) {
     role.tracking = validateDesignLength(value.tracking, `${path}.tracking`);
+  }
+  return role;
+}
+
+function validateTypographyRoleV3(value: unknown, path: string): TypographyRoleV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(
+    value,
+    [
+      "font",
+      "size",
+      "weight",
+      "tracking",
+      "style",
+      "stretch",
+      "kerning",
+      "ligatures",
+      "numberType",
+      "numberWidth",
+    ],
+    path,
+  );
+  const role: TypographyRoleV3 = validateTypographyRole(value, path);
+  if (value.style !== undefined) {
+    role.style = validateEnum(value.style, DESIGN_FONT_STYLES_V3, `${path}.style`);
+  }
+  if (value.stretch !== undefined) {
+    role.stretch = validateEnum(
+      value.stretch,
+      DESIGN_FONT_STRETCHES_V3,
+      `${path}.stretch`,
+    );
+  }
+  if (value.kerning !== undefined) {
+    role.kerning = validateBoolean(value.kerning, `${path}.kerning`);
+  }
+  if (value.ligatures !== undefined) {
+    role.ligatures = validateEnum(
+      value.ligatures,
+      DESIGN_COMMON_LIGATURE_MODES_V3,
+      `${path}.ligatures`,
+    );
+  }
+  if (value.numberType !== undefined) {
+    role.numberType = validateEnum(
+      value.numberType,
+      DESIGN_NUMBER_TYPES_V3,
+      `${path}.numberType`,
+    );
+  }
+  if (value.numberWidth !== undefined) {
+    role.numberWidth = validateEnum(
+      value.numberWidth,
+      DESIGN_NUMBER_WIDTHS_V3,
+      `${path}.numberWidth`,
+    );
   }
   return role;
 }
@@ -562,6 +656,84 @@ function validateTypography(value: unknown, path: string): DesignTypography {
     },
     roles: validateIdentifierMap(value.roles, `${path}.roles`, validateTypographyRole),
   };
+}
+
+export interface ValidatePdfTemplateDesignV3Options {
+  /** Byte-inspected host inventory; mandatory when `fontAxes` is present. */
+  availableFonts?: readonly DesignAvailableFontV3[];
+}
+
+function validateTypographyV3(
+  value: unknown,
+  path: string,
+  options: ValidatePdfTemplateDesignV3Options,
+): DesignTypography {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["fonts", "roles", "fontAxes"], path);
+  if (!isObject(value.fonts)) fail(`${path}.fonts`, "must be an object");
+  exactKeys(value.fonts, FONT_ROLES, `${path}.fonts`);
+  const fonts: Record<FontRole, string> = {
+    body: validateSafeString(value.fonts.body, `${path}.fonts.body`),
+    heading: validateSafeString(value.fonts.heading, `${path}.fonts.heading`),
+    mono: validateSafeString(value.fonts.mono, `${path}.fonts.mono`),
+  };
+  const roles = validateIdentifierMap(
+    value.roles,
+    `${path}.roles`,
+    validateTypographyRoleV3,
+  );
+  if (value.fontAxes === undefined) return { fonts, roles };
+  if (!isObject(value.fontAxes)) fail(`${path}.fontAxes`, "must be an object");
+  exactKeys(value.fontAxes, FONT_ROLES, `${path}.fontAxes`);
+  if (!options.availableFonts) {
+    fail(
+      `${path}.fontAxes`,
+      "requires a byte-inspected available-font inventory",
+    );
+  }
+  const fontAxes: Partial<Record<FontRole, Readonly<Record<string, number>>>> = {};
+  for (const role of FONT_ROLES) {
+    const requested = value.fontAxes[role];
+    if (requested === undefined) continue;
+    if (!isObject(requested)) fail(`${path}.fontAxes.${role}`, "must be an object");
+    const family = fonts[role];
+    const declaredAxes = new Map<string, DesignFontAxisMetadataV3>();
+    for (const face of options.availableFonts.filter((font) => font.family === family)) {
+      for (const axis of face.axes ?? []) declaredAxes.set(axis.tag, axis);
+    }
+    if (declaredAxes.size === 0) {
+      fail(
+        `${path}.fontAxes.${role}`,
+        `selected font family "${family}" declares no variable axes`,
+      );
+    }
+    const validated: Record<string, number> = {};
+    for (const [tag, raw] of Object.entries(requested)) {
+      if (!/^[A-Za-z][A-Za-z0-9]{3}$/u.test(tag)) {
+        fail(`${path}.fontAxes.${role}.${tag}`, "axis tag must be a four-character Typst-safe OpenType tag");
+      }
+      const metadata = declaredAxes.get(tag);
+      if (!metadata) {
+        fail(
+          `${path}.fontAxes.${role}.${tag}`,
+          `axis is not declared by selected font family "${family}"`,
+        );
+      }
+      validated[tag] = validateBoundedNumber(
+        raw,
+        `${path}.fontAxes.${role}.${tag}`,
+        { min: metadata.min, max: metadata.max },
+      );
+    }
+    if (Object.keys(validated).length === 0) {
+      fail(`${path}.fontAxes.${role}`, "must declare at least one axis value");
+    }
+    fontAxes[role] = validated;
+  }
+  if (Object.keys(fontAxes).length === 0) {
+    fail(`${path}.fontAxes`, "must declare at least one font role");
+  }
+  return { fonts, roles, fontAxes };
 }
 
 function validateTokens(value: unknown, path: string): DesignTokens {
@@ -1874,7 +2046,8 @@ function validateDecorationsV3(
 /** Exact Catalog-V3 page/running/navigation/component/paint validation. */
 export function validatePdfTemplateDesignV3(
   value: unknown,
-  path = "design"
+  path = "design",
+  options: ValidatePdfTemplateDesignV3Options = {},
 ): WikiPdfTemplateDesignV3 {
   if (!isObject(value)) fail(path, "must be an object");
   exactKeys(
@@ -1901,7 +2074,7 @@ export function validatePdfTemplateDesignV3(
   const design: WikiPdfTemplateDesignV3 = {
     page: validatePageV3(value.page, `${path}.page`),
     branding: validateBranding(value.branding, `${path}.branding`),
-    typography: validateTypography(value.typography, `${path}.typography`),
+    typography: validateTypographyV3(value.typography, `${path}.typography`, options),
     tokens,
     semanticPalettes: validateSemanticPalettes(value.semanticPalettes, `${path}.semanticPalettes`),
     compositions: validatePageCompositionsV3(value.compositions, `${path}.compositions`),

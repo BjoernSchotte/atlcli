@@ -141,6 +141,69 @@ function validDesignV3(): WikiPdfTemplateDesignV3 {
 }
 
 describe("validatePdfTemplateDesignV3", () => {
+  it("accepts only the bounded Typst 0.15 text-policy values", () => {
+    const design = validDesignV3();
+    design.typography.roles.body = {
+      ...design.typography.roles.body!,
+      style: "oblique",
+      stretch: "condensed",
+      kerning: false,
+      ligatures: "none",
+      numberType: "old-style",
+      numberWidth: "tabular",
+    };
+    expect(validatePdfTemplateDesignV3(design).typography.roles.body).toEqual(
+      design.typography.roles.body,
+    );
+
+    for (const [property, value] of [
+      ["style", "slanted"],
+      ["stretch", "250%"],
+      ["kerning", "yes"],
+      ["ligatures", "all"],
+      ["numberType", "fractions"],
+      ["numberWidth", "fixed"],
+    ] as const) {
+      const invalid = validDesignV3() as unknown as Record<string, unknown>;
+      const typography = invalid.typography as Record<string, unknown>;
+      const roles = typography.roles as Record<string, Record<string, unknown>>;
+      roles.body![property] = value;
+      expect(() => validatePdfTemplateDesignV3(invalid)).toThrow(
+        `design.typography.roles.body.${property}`,
+      );
+    }
+  });
+
+  it("binds variable axes to inspected family metadata and exact bounds", () => {
+    const design = validDesignV3();
+    design.typography.fonts.body = "Noto Emoji";
+    design.typography.fontAxes = { body: { wght: 650 } };
+    const availableFonts = [
+      {
+        family: "Noto Emoji",
+        style: "normal",
+        weight: 400,
+        axes: [{ tag: "wght", min: 300, default: 400, max: 700 }],
+      },
+    ];
+    expect(
+      validatePdfTemplateDesignV3(design, "design", { availableFonts })
+        .typography.fontAxes,
+    ).toEqual({ body: { wght: 650 } });
+    expect(() => validatePdfTemplateDesignV3(design)).toThrow(
+      /byte-inspected available-font inventory/,
+    );
+
+    design.typography.fontAxes.body = { wdth: 100 };
+    expect(() =>
+      validatePdfTemplateDesignV3(design, "design", { availableFonts })
+    ).toThrow(/axis is not declared/);
+    design.typography.fontAxes.body = { wght: 701 };
+    expect(() =>
+      validatePdfTemplateDesignV3(design, "design", { availableFonts })
+    ).toThrow(/within \[300, 700\]/);
+  });
+
   it("accepts preset and custom page formats, both bindings, both margin modes, and bounded bleed", () => {
     const preset = validDesignV3();
     expect(validatePdfTemplateDesignV3(preset)).toEqual(preset);

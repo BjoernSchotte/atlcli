@@ -27,6 +27,7 @@ import {
   writePdfDesignCapability,
   writePdfDesignCapabilityV2,
 } from "./design-catalog.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 
 export interface PdfCatalogAuthoringTargetV1 {
   reference: TemplateCapabilityCatalogReferenceV1;
@@ -115,6 +116,8 @@ function projectCatalogV3Design(
       design,
       PDF_TEMPLATE_CAPABILITIES_V3,
     ),
+    "design",
+    { availableFonts: PDF_RUNTIME_ASSETS.fonts },
   );
 }
 

@@ -840,19 +840,19 @@ controls fail their oracle, and no executable/vector-path input is accepted.
 
 **Implementation**
 
-- [ ] Extend catalog-V3 typography roles with bounded style, stretch, kerning,
+- [x] Extend catalog-V3 typography roles with bounded style, stretch, kerning,
       common-ligature, numeral-type, and numeral-width enums supported by
       Typst 0.15.1.
-- [ ] Add global/component paragraph alignment and hyphenation policies. Keep
+- [x] Add global/component paragraph alignment and hyphenation policies. Keep
       language and region export/document metadata; do not infer them from
       template localization.
-- [ ] Use explicit allowlists for OpenType choices. Add variable-font axes only
+- [x] Use explicit allowlists for OpenType choices. Add variable-font axes only
       when the selected font's inspected metadata declares the axis and min,
       default, and max bounds; reject arbitrary tags, unknown axes, and values
       outside those bounds.
-- [ ] Update font-demand analysis and fallback diagnostics for requested styles
+- [x] Update font-demand analysis and fallback diagnostics for requested styles
       that the selected font cannot satisfy.
-- [ ] Prove German/English hyphenation, RTL preservation, tabular numerals,
+- [x] Prove German/English hyphenation, RTL preservation, tabular numerals,
       bounded variable-axis effects, and missing-glyph fallback with neutral
       fixtures.
 

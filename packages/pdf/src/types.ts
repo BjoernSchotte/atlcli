@@ -27,6 +27,8 @@ export interface PdfExportMetadata {
   exporter?: string;
   language?: string;
   region?: string;
+  /** Resolved document direction from source/export metadata, never template locale. */
+  direction?: "ltr" | "rtl";
   exportedAt: Date;
 }
 
