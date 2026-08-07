@@ -42,6 +42,7 @@ import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V1,
+  CHAT_AGENT_DRAFT_TOOL_NAME_V1,
   CHAT_SESSION_STATE_PATH_V1,
   CHAT_SESSION_STATE_SCHEMA_V1,
   ChatContractError,
@@ -1766,9 +1767,66 @@ export function createKiteweaveChatAgent(
         const streamPresentation = (async (): Promise<void> => {
           let emittedReasoningChars = 0;
           let emittedAnswerChars = 0;
-          let nativeStructuredText = "";
+          let structuredAnswerText = "";
+          let answerGeneration = 0;
+          let answerStarted = false;
           const maximumReasoningChars = 12_000;
           const maximumAnswerChars = turn.limits.maxReportChars;
+          const beginAnswerGeneration = (): void => {
+            if (answerGeneration > 0 && emittedAnswerChars > 0) {
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "reset",
+              });
+            }
+            answerGeneration += 1;
+            structuredAnswerText = "";
+            emittedAnswerChars = 0;
+            answerStarted = false;
+          };
+          const emitProjectedAnswer = (): void => {
+            if (structuredAnswerText.length > maximumAnswerChars * 4) return;
+            const projected = (
+              streamedJsonStringFieldV1(structuredAnswerText, "messageMarkdown") ?? ""
+            ).slice(0, maximumAnswerChars);
+            if (projected.length <= emittedAnswerChars) return;
+            if (!answerStarted) {
+              answerStarted = true;
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "started",
+              });
+            }
+            const delta = projected.slice(emittedAnswerChars);
+            emittedAnswerChars = projected.length;
+            for (let offset = 0; offset < delta.length; offset += 1_024) {
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "delta",
+                delta: delta.slice(offset, offset + 1_024),
+              });
+            }
+          };
+          const completeAnswerGeneration = (): void => {
+            if (!answerStarted) return;
+            input.onChatPresentation?.({
+              kind: "chat-presentation",
+              seq: nextEventSequence(),
+              at: new Date(now()).toISOString(),
+              channel: "answer-markdown",
+              status: "completed",
+            });
+            answerStarted = false;
+          };
           const consumeReasoning = async (source: AsyncIterable<string>): Promise<void> => {
             if (modelBinding.reasoningPresentation !== "summary") {
               for await (const _unused of source) {
@@ -1820,58 +1878,91 @@ export function createKiteweaveChatAgent(
               });
             }
           };
-          const consumeAnswer = async (
+          const consumeNativeAnswer = async (
             source: AsyncIterable<string>,
             allowed: boolean,
           ): Promise<void> => {
             if (!allowed || modelBinding.structuredOutput !== "native") {
               for await (const _unused of source) {
-                // Tool-structured and unstructured text is not a safe
-                // provisional Chat answer.
+                // Unstructured text is not a safe provisional Chat answer.
               }
               return;
             }
-            let started = false;
             for await (const rawDelta of source) {
-              nativeStructuredText += rawDelta;
-              if (nativeStructuredText.length > maximumAnswerChars * 4) continue;
-              const projected = streamedJsonStringFieldV1(
-                nativeStructuredText,
-                "messageMarkdown",
-              ) ?? "";
-              const bounded = projected.slice(0, maximumAnswerChars);
-              if (bounded.length <= emittedAnswerChars) continue;
-              const delta = bounded.slice(emittedAnswerChars);
-              if (!started) {
-                started = true;
-                input.onChatPresentation?.({
-                  kind: "chat-presentation",
-                  seq: nextEventSequence(),
-                  at: new Date(now()).toISOString(),
-                  channel: "answer-markdown",
-                  status: "started",
-                });
-              }
-              emittedAnswerChars = bounded.length;
-              for (let offset = 0; offset < delta.length; offset += 1_024) {
-                input.onChatPresentation?.({
-                  kind: "chat-presentation",
-                  seq: nextEventSequence(),
-                  at: new Date(now()).toISOString(),
-                  channel: "answer-markdown",
-                  status: "delta",
-                  delta: delta.slice(offset, offset + 1_024),
-                });
-              }
+              if (answerGeneration === 0) beginAnswerGeneration();
+              structuredAnswerText += rawDelta;
+              emitProjectedAnswer();
             }
-            if (started) {
-              input.onChatPresentation?.({
-                kind: "chat-presentation",
-                seq: nextEventSequence(),
-                at: new Date(now()).toISOString(),
-                channel: "answer-markdown",
-                status: "completed",
-              });
+            completeAnswerGeneration();
+          };
+          const consumeToolAnswer = async (
+            source: AsyncIterable<unknown>,
+            allowed: boolean,
+          ): Promise<void> => {
+            if (!allowed || modelBinding.structuredOutput !== "tool") {
+              for await (const _unused of source) {
+                // Drain the message event stream independently of reasoning.
+              }
+              return;
+            }
+            const toolNames = new Map<number, string>();
+            const activeAnswerIndexes = new Set<number>();
+            for await (const candidate of source) {
+              if (!candidate || typeof candidate !== "object") continue;
+              const event = candidate as Record<string, unknown>;
+              const index = typeof event.index === "number" ? event.index : -1;
+              if (event.event === "content-block-start") {
+                const content = event.content && typeof event.content === "object"
+                  ? event.content as Record<string, unknown>
+                  : {};
+                const name = typeof content.name === "string" ? content.name : "";
+                if (index >= 0 && name) toolNames.set(index, name);
+                if (name === CHAT_AGENT_DRAFT_TOOL_NAME_V1) {
+                  activeAnswerIndexes.add(index);
+                  beginAnswerGeneration();
+                  if (typeof content.args === "string") {
+                    structuredAnswerText = content.args;
+                    emitProjectedAnswer();
+                  }
+                }
+                continue;
+              }
+              if (event.event === "content-block-delta") {
+                const delta = event.delta && typeof event.delta === "object"
+                  ? event.delta as Record<string, unknown>
+                  : {};
+                const fields = delta.fields && typeof delta.fields === "object"
+                  ? delta.fields as Record<string, unknown>
+                  : {};
+                const name = typeof fields.name === "string"
+                  ? fields.name
+                  : toolNames.get(index);
+                if (name !== CHAT_AGENT_DRAFT_TOOL_NAME_V1 ||
+                  fields.type !== "tool_call_chunk" ||
+                  typeof fields.args !== "string") continue;
+                if (!activeAnswerIndexes.has(index)) {
+                  activeAnswerIndexes.add(index);
+                  beginAnswerGeneration();
+                }
+                // LangGraph publishes the accumulated JSON argument snapshot.
+                structuredAnswerText = fields.args;
+                emitProjectedAnswer();
+                continue;
+              }
+              if (event.event !== "content-block-finish") continue;
+              const content = event.content && typeof event.content === "object"
+                ? event.content as Record<string, unknown>
+                : {};
+              const name = typeof content.name === "string"
+                ? content.name
+                : toolNames.get(index);
+              if (name !== CHAT_AGENT_DRAFT_TOOL_NAME_V1) continue;
+              if (!activeAnswerIndexes.has(index)) beginAnswerGeneration();
+              if (content.args && typeof content.args === "object") {
+                structuredAnswerText = JSON.stringify(content.args);
+                emitProjectedAnswer();
+              }
+              completeAnswerGeneration();
             }
           };
           await Promise.all([
@@ -1879,8 +1970,12 @@ export function createKiteweaveChatAgent(
               for await (const message of run.messages) {
                 await Promise.all([
                   consumeReasoning(message.reasoning),
-                  consumeAnswer(
+                  consumeNativeAnswer(
                     message.text,
+                    strategyDecision.execution !== "agentic",
+                  ),
+                  consumeToolAnswer(
+                    message,
                     strategyDecision.execution !== "agentic",
                   ),
                 ]);

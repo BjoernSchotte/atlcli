@@ -57,6 +57,12 @@ describe("research one-shot events", () => {
     expect(isChatPresentationStreamEventV1({
       ...base,
       channel: "answer-markdown",
+      status: "reset",
+    })).toBe(true);
+    expect(isChatPresentationStreamEventV1({ ...base, status: "reset" })).toBe(false);
+    expect(isChatPresentationStreamEventV1({
+      ...base,
+      channel: "answer-markdown",
       status: "delta",
       delta: "The answer is being written.",
     })).toBe(true);

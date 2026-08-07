@@ -178,6 +178,8 @@ export function normalizeChatTurnRequestV1(value: ChatTurnRequestV1): ChatTurnRe
   return structuredClone({ ...value, conversationId, turnId, question });
 }
 
+export const CHAT_AGENT_DRAFT_TOOL_NAME_V1 = "ChatAnswerDraftV1" as const;
+
 export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
   messageMarkdown: z.string().min(1).max(24_000).describe(
     "Conversational Markdown. Every paragraph that states an evidence-derived fact must end on the same line with one or more exact [[source:SOURCE_ID]] placeholders copied from accepted dependency packets.",
@@ -194,7 +196,7 @@ export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
     kind: z.enum(["follow-up", "deep-research", "clarification"]),
     prompt: z.string().min(1).max(1_000),
   }).strict().optional(),
-}).strict().meta({ title: "ChatAnswerDraftV1" });
+}).strict().meta({ title: CHAT_AGENT_DRAFT_TOOL_NAME_V1 });
 
 export type ChatAgentDraftV1 = z.infer<typeof CHAT_AGENT_DRAFT_SCHEMA_V1>;
 

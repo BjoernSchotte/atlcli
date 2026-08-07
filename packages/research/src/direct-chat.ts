@@ -5,7 +5,7 @@ import {
   type ResearchScopeSeedV1,
 } from "./contracts.js";
 
-const DIRECT_CONTEXT_PREVIEW_CHARS_V1 = 8_000;
+const DIRECT_EXACT_CONTEXT_CHARS_V1 = 50_000;
 
 function isWholeScopeSeed(
   seed: ResearchScopeSeedV1,
@@ -64,10 +64,10 @@ export function prepareDirectChatRequestV1(
     ...(exactContextProducts.length > 0 ? { exactContextProducts } : {}),
     limits: {
       ...input.limits,
-      maxBodyCharsPerItem: Math.min(
-        input.limits.maxBodyCharsPerItem,
-        DIRECT_CONTEXT_PREVIEW_CHARS_V1,
-      ),
+      // A single exact page is cheaper and more accurate when an ordinary
+      // page-sized body is read once. Only genuinely long pages should fall
+      // back to the navigable outline plus targeted section reads.
+      maxBodyCharsPerItem: DIRECT_EXACT_CONTEXT_CHARS_V1,
     },
   } satisfies ResearchRequestV1;
   return projected;

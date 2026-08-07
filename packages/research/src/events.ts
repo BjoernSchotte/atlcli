@@ -38,7 +38,8 @@ export function isChatPresentationStreamEventV1(
     event.at.length > 64 ||
     !Number.isFinite(Date.parse(event.at)) ||
     !["reasoning-summary", "answer-markdown"].includes(String(event.channel)) ||
-    !["started", "delta", "completed"].includes(String(event.status))) return false;
+    !["started", "delta", "reset", "completed"].includes(String(event.status))) return false;
+  if (event.status === "reset" && event.channel !== "answer-markdown") return false;
   if (event.status === "delta") {
     return typeof event.delta === "string" && event.delta.length > 0 && event.delta.length <= 1_024;
   }

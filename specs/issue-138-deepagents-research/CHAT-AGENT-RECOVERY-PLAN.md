@@ -955,11 +955,12 @@ Automated proof:
 
 Proof note (2026-08-06): the production MV3 bundle passes all 38 packed lifecycle
 tests, including the bounded ephemeral summary channel. A real Sonnet 4.6 model
-smoke proved summarized-reasoning delivery through the native model stream. The
-Anthropic root advertises native JSON-schema support, while depth-one specialists
-use LangChain's repairable ToolStrategy; the host incrementally projects only the
-accumulated `messageMarkdown` string and reserves both provider calls required to
-close each structured specialist. Provider-approved summary deltas are projected
+smoke proved summarized-reasoning delivery through the native model stream. All
+Chat answer roles use LangChain's provider-neutral, repairable ToolStrategy; the
+host incrementally projects only the accumulated `messageMarkdown` argument and
+keeps the final Zod contract authoritative. A typed ephemeral reset retracts a
+provisional generation before LangChain's one permitted schema-repair generation,
+without journaling either draft. Provider-approved summary deltas are projected
 incrementally into bounded localized semantic milestones, so provider wording,
 tool names, opaque references, raw chain of thought, signatures, redacted blocks,
 and source bodies never cross the presentation boundary. Synthetic provider and
@@ -969,6 +970,16 @@ content; a private provider-backed Deep CLI run additionally proved localized
 progress, parallel exact reads, critique/repair, and a cited atomic final answer.
 The later durable-interruption proof below closes that gate; remaining live
 interactive-control acceptance stays open.
+
+Root ToolStrategy live proof (2026-08-07): a private read-only exact-page Auto
+Chat used one Atlassian HTTP read, admitted and detail-read the sole bound source,
+reported full detail coverage and canonical-URL correctness, streamed a complete
+quoted German Markdown draft, and accepted the strict final response in 45.0
+seconds. The saved Markdown output matched the canonical retained artifact byte
+for byte. Synthetic provider tests split an escaped quotation across incremental
+tool-argument deltas and prove final schema parsing; presenter tests prove that a
+repair reset removes the obsolete provisional generation. The private question,
+tenant content, source identifiers, and artifacts remain outside Git.
 
 Core and packed-MV3 HITL checkpoint proof (2026-08-06): ordinary Chat now owns a dedicated
 workspace-backed LangGraph checkpoint thread, separate from every Deep Research

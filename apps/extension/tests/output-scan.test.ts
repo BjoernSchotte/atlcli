@@ -12,6 +12,11 @@ import { EXTENSION_ROOT, ensureExtensionBuilt, OUTPUT_DIR } from "./build-helper
 
 const CLI_PATH = join(EXTENSION_ROOT, "scripts", "check-output-build.ts");
 const EXTENSION_BUILD_TIMEOUT_MS = 180_000;
+// The complete production bundle includes the vendored PDF/DOCX runtimes and
+// takes about 6-7 seconds to hash and scan on the CI-class test host. Keep the
+// functional process gate above Bun's implicit 5-second per-test timeout; this
+// does not change or skip any scanner rule.
+const OUTPUT_SCAN_E2E_TIMEOUT_MS = 20_000;
 
 /** Run the REAL check CLI against `root`; return exit code + merged output. */
 function runCheckCli(root: string): { code: number; output: string } {
@@ -337,25 +342,33 @@ describe("check-output-build CLI (end-to-end)", () => {
 
   afterAll(() => rmSync(leakDir, { recursive: true, force: true }));
 
-  it("exits 0 on the real clean .output/chrome-mv3", () => {
-    const { code, output } = runCheckCli(OUTPUT_DIR);
-    expect(code).toBe(0);
-    expect(output).toContain("clean");
-  });
+  it(
+    "exits 0 on the real clean .output/chrome-mv3",
+    () => {
+      const { code, output } = runCheckCli(OUTPUT_DIR);
+      expect(code).toBe(0);
+      expect(output).toContain("clean");
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 
-  it("exits nonzero and names the offending file + specifier on a seeded leak", () => {
-    // Copy the real build into an alternate outDir, then seed a leak file.
-    cpSync(OUTPUT_DIR, leakDir, { recursive: true });
-    writeFileSync(
-      join(leakDir, "leaky.js"),
-      `import { platform } from "node:os";\nexport const p = platform();\n`
-    );
+  it(
+    "exits nonzero and names the offending file + specifier on a seeded leak",
+    () => {
+      // Copy the real build into an alternate outDir, then seed a leak file.
+      cpSync(OUTPUT_DIR, leakDir, { recursive: true });
+      writeFileSync(
+        join(leakDir, "leaky.js"),
+        `import { platform } from "node:os";\nexport const p = platform();\n`
+      );
 
-    const { code, output } = runCheckCli(leakDir);
-    expect(code).not.toBe(0);
-    expect(output).toContain("leaky.js");
-    expect(output).toContain("node:os");
-  });
+      const { code, output } = runCheckCli(leakDir);
+      expect(code).not.toBe(0);
+      expect(output).toContain("leaky.js");
+      expect(output).toContain("node:os");
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 
   /**
    * The PDF.js path is **not** exempt (spec 010 T5.3).
@@ -365,37 +378,48 @@ describe("check-output-build CLI (end-to-end)", () => {
    * dependency, this test goes red and the exemption has to be argued for
    * rather than inherited.
    */
-  it("fails when dynamic code is seeded into the vendored PDF.js file itself", () => {
-    const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-pdfjs-"));
-    try {
-      cpSync(OUTPUT_DIR, seedDir, { recursive: true });
-      const assets = join(seedDir, "assets");
-      const target = readdirSync(assets).find(
-        (name) => name.startsWith("pdf.min-") && name.endsWith(".mjs")
-      );
-      expect(target).toBeDefined();
-      const path = join(assets, target!);
-      writeFileSync(path, `${readFileSync(path, "utf8")}\nconst x = new Function("return 1");\n`);
+  it(
+    "fails when dynamic code is seeded into the vendored PDF.js file itself",
+    () => {
+      const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-pdfjs-"));
+      try {
+        cpSync(OUTPUT_DIR, seedDir, { recursive: true });
+        const assets = join(seedDir, "assets");
+        const target = readdirSync(assets).find(
+          (name) => name.startsWith("pdf.min-") && name.endsWith(".mjs")
+        );
+        expect(target).toBeDefined();
+        const path = join(assets, target!);
+        writeFileSync(
+          path,
+          `${readFileSync(path, "utf8")}\nconst x = new Function("return 1");\n`
+        );
 
-      const { code, output } = runCheckCli(seedDir);
-      expect(code).not.toBe(0);
-      expect(output).toContain(target!);
-      expect(output).toContain("Function(");
-    } finally {
-      rmSync(seedDir, { recursive: true, force: true });
-    }
-  });
+        const { code, output } = runCheckCli(seedDir);
+        expect(code).not.toBe(0);
+        expect(output).toContain(target!);
+        expect(output).toContain("Function(");
+      } finally {
+        rmSync(seedDir, { recursive: true, force: true });
+      }
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 
-  it("scans .mjs assets at all — a new extension is not a way around the gate", () => {
-    const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-mjs-"));
-    try {
-      cpSync(OUTPUT_DIR, seedDir, { recursive: true });
-      writeFileSync(join(seedDir, "sneaky.mjs"), `const value = eval("1 + 1");\n`);
-      const { code, output } = runCheckCli(seedDir);
-      expect(code).not.toBe(0);
-      expect(output).toContain("sneaky.mjs");
-    } finally {
-      rmSync(seedDir, { recursive: true, force: true });
-    }
-  });
+  it(
+    "scans .mjs assets at all — a new extension is not a way around the gate",
+    () => {
+      const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-mjs-"));
+      try {
+        cpSync(OUTPUT_DIR, seedDir, { recursive: true });
+        writeFileSync(join(seedDir, "sneaky.mjs"), `const value = eval("1 + 1");\n`);
+        const { code, output } = runCheckCli(seedDir);
+        expect(code).not.toBe(0);
+        expect(output).toContain("sneaky.mjs");
+      } finally {
+        rmSync(seedDir, { recursive: true, force: true });
+      }
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 });

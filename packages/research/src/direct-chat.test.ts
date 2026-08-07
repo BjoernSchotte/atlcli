@@ -54,7 +54,7 @@ describe("direct chat scope projection", () => {
     expect(projected.scope.confluenceSpaceKeys).toEqual(["KB"]);
     expect(projected.scopeSeeds?.map((seed) => seed.binding.entityKind)).toEqual(["space", "page"]);
     expect(projected.exactContextProducts).toEqual(["confluence"]);
-    expect(projected.limits.maxBodyCharsPerItem).toBe(8_000);
+    expect(projected.limits.maxBodyCharsPerItem).toBe(50_000);
     expect(directChatProductsV1(projected)).toEqual(["confluence"]);
   });
 
@@ -73,9 +73,9 @@ describe("direct chat scope projection", () => {
       }),
     ];
 
-    expect(prepareDirectChatRequestV1(input).exactContextProducts).toEqual([
-      "confluence",
-    ]);
+    const projected = prepareDirectChatRequestV1(input);
+    expect(projected.exactContextProducts).toEqual(["confluence"]);
+    expect(projected.limits.maxBodyCharsPerItem).toBe(50_000);
   });
 
   test("keeps an explicitly added space alongside the bound page", () => {

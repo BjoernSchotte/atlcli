@@ -2475,10 +2475,9 @@ export function buildChatRequest(
         request.limits.maxDetailItemsPerProduct,
         6,
       ),
-      // Ordinary Chat starts with a compact page preview plus the bounded
-      // outline. Relevant late sections are selected through opaque refs;
-      // inheriting Research's 50k body projection wastes context and bypasses
-      // the navigable-document path entirely.
+      // Whole-scope Chat keeps each discovered item compact. The shared exact
+      // context projection later promotes one attached page to its bounded
+      // single-page corridor, avoiding a wasteful section-by-section summary.
       maxBodyCharsPerItem: Math.min(request.limits.maxBodyCharsPerItem, 8_000),
       // Agentic Auto/Deep Chat may read several exact sections plus a small
       // related candidate set. Keep it well below the Research envelope while
@@ -3318,19 +3317,19 @@ async function runDirectChatCliConversation(input: {
     input.dependencies.writeStderr(
       "[chat] Enter text to queue a follow-up; use /help for steering and queue controls.\n",
     );
+    const presentationLocale = input.request.reportLanguage === "de" ? "de" : "en";
     const stream = {
       signal: controller.signal,
       onSessionStart(session: { conversationId: string; turnId: string }) {
         checkpoint = session;
       },
       onEvent(event: ResearchOneShotEventV1) {
-        const locale = input.request.reportLanguage === "de" ? "de" : "en";
         if (event.kind === "activity") {
           input.dependencies.writeStderr(
-            `[chat] ${formatCliChatActivityV1(event, locale)}\n`,
+            `[chat] ${formatCliChatActivityV1(event, presentationLocale)}\n`,
           );
         } else if (event.kind === "capability") {
-          const detail = formatCliChatCapabilityDetailV1(event, locale);
+          const detail = formatCliChatCapabilityDetailV1(event, presentationLocale);
           if (detail) input.dependencies.writeStderr(`[chat]   ${detail}\n`);
         }
       },
@@ -3343,6 +3342,12 @@ async function runDirectChatCliConversation(input: {
           );
         } else if (event.status === "delta") {
           input.dependencies.writeStderr(event.delta ?? "");
+        } else if (event.status === "reset") {
+          input.dependencies.writeStderr(
+            presentationLocale === "de"
+              ? "\n[chat] Der vorläufige Entwurf wird korrigiert.\n[chat] Answer: "
+              : "\n[chat] The provisional draft is being corrected.\n[chat] Answer: ",
+          );
         } else {
           input.dependencies.writeStderr("\n");
         }

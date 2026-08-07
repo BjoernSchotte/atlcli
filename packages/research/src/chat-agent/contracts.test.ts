@@ -1004,21 +1004,63 @@ describe("separate Chat root", () => {
       createDeepAgent: (options: { name?: string }) => {
         chatRoots += 1;
         expect(options.name).toBe("kiteweave-chat-agent");
+        const messageMarkdown = 'No detailed "Atlassian" evidence was needed for this response.';
+        const firstSnapshot = '{"messageMarkdown":"No detailed \\"Atlassian\\" ';
+        const finalSnapshot = JSON.stringify({
+          messageMarkdown,
+          citationSourceIds: [],
+          gaps: [],
+        });
         return {
           streamEvents: async () => ({
             messages: (async function* () {
               yield {
-                text: (async function* () {
-                  yield '{"messageMarkdown":"No detailed Atlassian ';
-                  yield 'evidence was needed for this response.","citationSourceIds":[],"gaps":[]}';
-                })(),
+                text: (async function* () {})(),
                 reasoning: (async function* () { yield "Checking the selected evidence."; })(),
+                [Symbol.asyncIterator]: async function* () {
+                  yield {
+                    event: "content-block-start",
+                    index: 0,
+                    content: {
+                      type: "tool_call_chunk",
+                      id: "answer-1",
+                      name: "ChatAnswerDraftV1",
+                      args: "",
+                    },
+                  };
+                  yield {
+                    event: "content-block-delta",
+                    index: 0,
+                    delta: {
+                      type: "block-delta",
+                      fields: { type: "tool_call_chunk", args: firstSnapshot },
+                    },
+                  };
+                  yield {
+                    event: "content-block-delta",
+                    index: 0,
+                    delta: {
+                      type: "block-delta",
+                      fields: { type: "tool_call_chunk", args: finalSnapshot },
+                    },
+                  };
+                  yield {
+                    event: "content-block-finish",
+                    index: 0,
+                    content: {
+                      type: "tool_call",
+                      id: "answer-1",
+                      name: "ChatAnswerDraftV1",
+                      args: JSON.parse(finalSnapshot),
+                    },
+                  };
+                },
               };
             })(),
             output: Promise.resolve({
               messages: [],
               structuredResponse: {
-                messageMarkdown: "No detailed Atlassian evidence was needed for this response.",
+                messageMarkdown,
                 citationSourceIds: [],
                 gaps: [],
               },
@@ -1058,7 +1100,7 @@ describe("separate Chat root", () => {
         model: {} as BaseChatModel,
         modelId: "synthetic-streaming-model",
         qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
-        structuredOutput: "native",
+        structuredOutput: "tool",
         reasoningPresentation: "summary",
       },
       turn,
@@ -1110,7 +1152,7 @@ describe("separate Chat root", () => {
       expect.objectContaining({
         channel: "answer-markdown",
         status: "delta",
-        delta: "No detailed Atlassian ",
+        delta: 'No detailed "Atlassian" ',
       }),
       expect.objectContaining({
         channel: "answer-markdown",
@@ -1119,7 +1161,9 @@ describe("separate Chat root", () => {
       }),
       expect.objectContaining({ channel: "answer-markdown", status: "completed" }),
     ]);
-    expect(answer.messageMarkdown).not.toMatch(/executive summary|findings|limitations/iu);
+    expect(answer.messageMarkdown).toBe(
+      'No detailed "Atlassian" evidence was needed for this response.',
+    );
     expect(harness.counts()).toEqual({ chatRoots: 1, researchRoots: 0 });
     expect(JSON.parse((await workspace.readFile(CHAT_SESSION_STATE_PATH_V1))!)).toMatchObject({
       schema: "atlcli.chat-session/v1",
@@ -1165,7 +1209,7 @@ describe("separate Chat root", () => {
     });
   });
 
-  test("does not expose reasoning or assistant text without an explicit provider summary grant", async () => {
+  test("withholds reasoning without a provider grant while still streaming the structured answer", async () => {
     const harness = runtimeHarness();
     const chat = createKiteweaveChatAgent(harness.chatRuntime);
     const presentation: ChatPresentationStreamEventV1[] = [];
@@ -1194,7 +1238,21 @@ describe("separate Chat root", () => {
       onChatPresentation: (event) => presentation.push(event),
     });
 
-    expect(presentation).toEqual([]);
+    expect(presentation.filter((event) => event.channel === "reasoning-summary")).toEqual([]);
+    expect(presentation.filter((event) => event.channel === "answer-markdown")).toEqual([
+      expect.objectContaining({ channel: "answer-markdown", status: "started" }),
+      expect.objectContaining({
+        channel: "answer-markdown",
+        status: "delta",
+        delta: 'No detailed "Atlassian" ',
+      }),
+      expect.objectContaining({
+        channel: "answer-markdown",
+        status: "delta",
+        delta: "evidence was needed for this response.",
+      }),
+      expect.objectContaining({ channel: "answer-markdown", status: "completed" }),
+    ]);
   });
 
   test("rejects an incompatible persisted state before root construction", async () => {

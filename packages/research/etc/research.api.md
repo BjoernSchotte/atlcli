@@ -477,6 +477,10 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    admittedSearches?: readonly {
+        product: "jira" | "confluence";
+        queries: readonly ChatSearchQueryV1[];
+    }[];
     durableContext?: string;
 }): string;
 
@@ -609,6 +613,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
         prompt: z.ZodString;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
@@ -1243,7 +1250,7 @@ export interface ChatPresentationStreamEventV1 {
     seq: number;
     at: string;
     channel: "reasoning-summary" | "answer-markdown";
-    status: "started" | "delta" | "completed";
+    status: "started" | "delta" | "reset" | "completed";
     delta?: string;
 }
 
@@ -3933,6 +3940,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    canonicalDetailSourceIdForRef(reference: string): string | undefined;
     exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
@@ -8066,6 +8074,10 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    admittedSearches?: readonly {
+        product: "jira" | "confluence";
+        queries: readonly ChatSearchQueryV1[];
+    }[];
     durableContext?: string;
 }): string;
 
@@ -8198,6 +8210,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
         prompt: z.ZodString;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
@@ -8832,7 +8847,7 @@ export interface ChatPresentationStreamEventV1 {
     seq: number;
     at: string;
     channel: "reasoning-summary" | "answer-markdown";
-    status: "started" | "delta" | "completed";
+    status: "started" | "delta" | "reset" | "completed";
     delta?: string;
 }
 
@@ -11513,6 +11528,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    canonicalDetailSourceIdForRef(reference: string): string | undefined;
     exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
@@ -15635,6 +15651,10 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    admittedSearches?: readonly {
+        product: "jira" | "confluence";
+        queries: readonly ChatSearchQueryV1[];
+    }[];
     durableContext?: string;
 }): string;
 
@@ -15767,6 +15787,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
         prompt: z.ZodString;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
@@ -16401,7 +16424,7 @@ export interface ChatPresentationStreamEventV1 {
     seq: number;
     at: string;
     channel: "reasoning-summary" | "answer-markdown";
-    status: "started" | "delta" | "completed";
+    status: "started" | "delta" | "reset" | "completed";
     delta?: string;
 }
 
@@ -19091,6 +19114,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    canonicalDetailSourceIdForRef(reference: string): string | undefined;
     exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
@@ -23227,6 +23251,10 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    admittedSearches?: readonly {
+        product: "jira" | "confluence";
+        queries: readonly ChatSearchQueryV1[];
+    }[];
     durableContext?: string;
 }): string;
 
@@ -23365,6 +23393,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
         prompt: z.ZodString;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
@@ -24008,7 +24039,7 @@ export interface ChatPresentationStreamEventV1 {
     seq: number;
     at: string;
     channel: "reasoning-summary" | "answer-markdown";
-    status: "started" | "delta" | "completed";
+    status: "started" | "delta" | "reset" | "completed";
     delta?: string;
 }
 
@@ -26955,6 +26986,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    canonicalDetailSourceIdForRef(reference: string): string | undefined;
     exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
@@ -31282,6 +31314,10 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    admittedSearches?: readonly {
+        product: "jira" | "confluence";
+        queries: readonly ChatSearchQueryV1[];
+    }[];
     durableContext?: string;
 }): string;
 
@@ -31420,6 +31456,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
         prompt: z.ZodString;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
@@ -32063,7 +32102,7 @@ export interface ChatPresentationStreamEventV1 {
     seq: number;
     at: string;
     channel: "reasoning-summary" | "answer-markdown";
-    status: "started" | "delta" | "completed";
+    status: "started" | "delta" | "reset" | "completed";
     delta?: string;
 }
 
@@ -35015,6 +35054,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    canonicalDetailSourceIdForRef(reference: string): string | undefined;
     exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;
@@ -39266,6 +39306,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
+
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
 
@@ -39463,7 +39506,7 @@ export interface ChatPresentationStreamEventV1 {
     seq: number;
     at: string;
     channel: "reasoning-summary" | "answer-markdown";
-    status: "started" | "delta" | "completed";
+    status: "started" | "delta" | "reset" | "completed";
     delta?: string;
 }
 
@@ -41146,6 +41189,10 @@ export declare function buildChatTurnPromptV1(input: {
     jiraProjectKeys: readonly string[];
     confluenceSpaceKeys: readonly string[];
     anchors: readonly BoundEntityAnchorV1[];
+    admittedSearches?: readonly {
+        product: "jira" | "confluence";
+        queries: readonly ChatSearchQueryV1[];
+    }[];
     durableContext?: string;
 }): string;
 
@@ -41284,6 +41331,9 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
         prompt: z.ZodString;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+
+// export: CHAT_AGENT_DRAFT_TOOL_NAME_V1
+export declare const CHAT_AGENT_DRAFT_TOOL_NAME_V1: "ChatAnswerDraftV1";
 
 // export: CHAT_ANSWER_SCHEMA_V1
 export declare const CHAT_ANSWER_SCHEMA_V1: "atlcli.chat-answer/v1";
@@ -41927,7 +41977,7 @@ export interface ChatPresentationStreamEventV1 {
     seq: number;
     at: string;
     channel: "reasoning-summary" | "answer-markdown";
-    status: "started" | "delta" | "completed";
+    status: "started" | "delta" | "reset" | "completed";
     delta?: string;
 }
 
@@ -44879,6 +44929,7 @@ export declare class ResearchCapabilityBroker {
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
+    canonicalDetailSourceIdForRef(reference: string): string | undefined;
     exactAnchorResume(): ResearchExactAnchorResumeV1[];
     readExactAnchor(input: unknown): Promise<BoundEntityReadOutputV1>;
     readExactSection(input: unknown): Promise<BoundEntitySectionReadOutputV1>;

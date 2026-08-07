@@ -354,7 +354,12 @@ function chatReasoningSummary(events: readonly ResearchTimelineEventV1[]): strin
 }
 
 function streamedChatAnswer(events: readonly ResearchTimelineEventV1[]): string {
+  const latestReset = events.findLastIndex((event) =>
+    event.kind === "chat-presentation" &&
+    event.channel === "answer-markdown" &&
+    event.status === "reset");
   return events
+    .slice(latestReset + 1)
     .filter((event): event is ChatPresentationStreamEventV1 =>
       event.kind === "chat-presentation" &&
       event.channel === "answer-markdown" &&

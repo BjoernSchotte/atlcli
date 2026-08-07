@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createDeepAgent } from "deepagents/node";
-import { providerStrategy } from "langchain";
+import { toolStrategy } from "langchain";
 import { z } from "zod/v4";
 import { chatQualityPolicyV1 } from "../../quality-policy.js";
 import {
@@ -84,7 +84,7 @@ describe("Anthropic Chat model binding", () => {
     expect(anthropicOutputTokensForPreferenceV1("thorough", 1_024)).toBe(1_024);
   });
 
-  it("uses native streaming and grants only documented summarized reasoning", () => {
+  it("uses streaming models, portable structured output, and documented summarized reasoning", () => {
     const quick = createAnthropicChatModelBindingV1({
       credential: "synthetic-key",
       maxOutputTokens: 1_024,
@@ -101,13 +101,13 @@ describe("Anthropic Chat model binding", () => {
       thinking: { type: "disabled" },
     });
     expect(quick.reasoningPresentation).toBeUndefined();
-    expect(quick.structuredOutput).toBe("native");
+    expect(quick.structuredOutput).toBe("tool");
     expect(deep.model).toMatchObject({
       streaming: true,
       thinking: { type: "adaptive", display: "summarized" },
     });
     expect(deep.reasoningPresentation).toBe("summary");
-    expect(deep.structuredOutput).toBe("native");
+    expect(deep.structuredOutput).toBe("tool");
     expect(deep.modelForPreference?.("fast")).toMatchObject({
       streaming: true,
       thinking: { type: "disabled" },
@@ -172,8 +172,14 @@ describe("Anthropic Chat model binding", () => {
     expect(reasoning).not.toContain(answerText);
   });
 
-  it("streams a summarized model step while native structured output remains host-parseable", async () => {
+  it("streams quoted Markdown through ToolStrategy while the final output remains host-parseable", async () => {
     let requestBody: Record<string, unknown> | undefined;
+    const structuredAnswer = {
+      messageMarkdown: 'The page calls this "Top 3" and remains grounded.',
+      citationSourceIds: [] as string[],
+      gaps: [] as Array<{ code: string; message: string; sourceIds: string[] }>,
+    };
+    const structuredJson = JSON.stringify(structuredAnswer);
     const model = new ChatAnthropic({
       model: "claude-sonnet-4-6",
       apiKey: "synthetic-key",
@@ -184,16 +190,12 @@ describe("Anthropic Chat model binding", () => {
       clientOptions: {
         fetch: async (_url, init) => {
           requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-          const structured = JSON.stringify({
-            messageMarkdown: "The bounded answer is grounded.",
-            citationSourceIds: [],
-            gaps: [],
-          });
+          const splitAt = structuredJson.indexOf("Top 3");
           const frames: unknown[] = [
             {
               type: "message_start",
               message: {
-                id: "msg_native_structured_summary",
+                id: "msg_tool_structured_summary",
                 type: "message",
                 role: "assistant",
                 model: "claude-sonnet-4-6",
@@ -217,17 +219,27 @@ describe("Anthropic Chat model binding", () => {
             {
               type: "content_block_start",
               index: 1,
-              content_block: { type: "text", text: "" },
+              content_block: {
+                type: "tool_use",
+                id: "tool_answer_1",
+                name: "SyntheticChatAnswerV1",
+                input: {},
+              },
             },
             {
               type: "content_block_delta",
               index: 1,
-              delta: { type: "text_delta", text: structured },
+              delta: { type: "input_json_delta", partial_json: structuredJson.slice(0, splitAt) },
+            },
+            {
+              type: "content_block_delta",
+              index: 1,
+              delta: { type: "input_json_delta", partial_json: structuredJson.slice(splitAt) },
             },
             { type: "content_block_stop", index: 1 },
             {
               type: "message_delta",
-              delta: { stop_reason: "end_turn", stop_sequence: null },
+              delta: { stop_reason: "tool_use", stop_sequence: null },
               usage: { output_tokens: 24 },
             },
             { type: "message_stop" },
@@ -247,36 +259,44 @@ describe("Anthropic Chat model binding", () => {
         message: z.string(),
         sourceIds: z.array(z.string()),
       })),
-    }).strict();
+    }).strict().meta({ title: "SyntheticChatAnswerV1" });
     const agent = createDeepAgent({
-      name: "synthetic-native-structured-stream-proof",
+      name: "synthetic-tool-structured-stream-proof",
       model,
       tools: [],
       subagents: [],
       systemPrompt: "Return one concise synthetic structured answer without tools.",
-      responseFormat: providerStrategy(answerSchema),
+      responseFormat: toolStrategy(answerSchema),
     });
     const run = await agent.streamEvents(
       { messages: [{ role: "user", content: "Use only synthetic evidence." }] },
       { version: "v3" },
     );
     let reasoning = "";
+    const argumentSnapshots: string[] = [];
     const consume = (async () => {
       for await (const message of run.messages) {
-        reasoning += await message.reasoning;
+        const [messageReasoning] = await Promise.all([
+          message.reasoning,
+          (async () => {
+            for await (const event of message) {
+              if (event.event !== "content-block-delta" ||
+                event.delta.type !== "block-delta" ||
+                event.delta.fields.type !== "tool_call_chunk" ||
+                typeof event.delta.fields.args !== "string") continue;
+              argumentSnapshots.push(event.delta.fields.args);
+            }
+          })(),
+        ]);
+        reasoning += messageReasoning;
       }
     })();
     const [result] = await Promise.all([run.output, consume]);
 
-    expect(requestBody?.tool_choice).toBeUndefined();
-    expect(requestBody?.output_config).toMatchObject({
-      format: expect.objectContaining({ type: "json_schema" }),
-    });
+    expect(requestBody?.tool_choice).toEqual({ type: "any" });
+    expect(requestBody?.output_config).toBeUndefined();
     expect(reasoning).toBe("Matching the answer to the evidence.");
-    expect(result.structuredResponse).toEqual({
-      messageMarkdown: "The bounded answer is grounded.",
-      citationSourceIds: [],
-      gaps: [],
-    });
+    expect(argumentSnapshots.at(-1)).toBe(structuredJson);
+    expect(result.structuredResponse).toEqual(structuredAnswer);
   });
 });

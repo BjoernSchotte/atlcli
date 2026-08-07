@@ -833,6 +833,21 @@ describe("portable Research screen", () => {
           at: "2026-08-03T12:00:04.000Z",
           channel: "answer-markdown",
           status: "delta",
+          delta: "This provisional draft must disappear.",
+        });
+        options?.onChatPresentation?.({
+          kind: "chat-presentation",
+          seq: 6,
+          at: "2026-08-03T12:00:05.000Z",
+          channel: "answer-markdown",
+          status: "reset",
+        });
+        options?.onChatPresentation?.({
+          kind: "chat-presentation",
+          seq: 7,
+          at: "2026-08-03T12:00:06.000Z",
+          channel: "answer-markdown",
+          status: "delta",
           delta: "## Draft answer\n\nThe selected evidence supports the answer.",
         });
         if (runCalls > 1) return report;
@@ -889,6 +904,8 @@ describe("portable Research screen", () => {
       .toContain("I am checking whether the selected evidence is sufficient.");
     expect(dom.find("research-streaming-answer").textContent)
       .toContain("The selected evidence supports the answer.");
+    expect(dom.find("research-streaming-answer").textContent)
+      .not.toContain("This provisional draft must disappear.");
 
     await dom.setValue("copilot-chat-textarea", "Queue a source check after this report.");
     await pressComposerKey("Enter");

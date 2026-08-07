@@ -69,11 +69,11 @@ export function createAnthropicChatModelBindingV1(
     model: modelForPreference(rootPreference),
     modelId: ANTHROPIC_CHAT_MODEL_ID,
     qualityAdapter: ANTHROPIC_QUALITY_ADAPTER_V1,
-    // The binding advertises native schema support to the root. Depth-one
-    // specialists deliberately use LangChain ToolStrategy instead: its
-    // accumulated tool-argument stream is projected to answer Markdown while
-    // the strict host Zod finalizer remains authoritative.
-    structuredOutput: "native",
+    // ToolStrategy keeps the structured answer portable across providers and
+    // gives LangChain a bounded schema-repair turn. LangGraph exposes the
+    // accumulated tool arguments while they stream, so this does not sacrifice
+    // progressive Markdown rendering.
+    structuredOutput: "tool",
     modelForPreference,
     projectResponseSchema: providerCompatibleChatJsonSchemaV1,
     ...(resolved.controls?.adaptiveThinking

@@ -771,7 +771,11 @@ export interface ChatPresentationStreamEventV1 {
    * ChatAnswerV1 remains the only durable/final answer.
    */
   channel: "reasoning-summary" | "answer-markdown";
-  status: "started" | "delta" | "completed";
+  /**
+   * `reset` retracts an earlier provisional answer generation before a
+   * schema-repair generation starts. It is valid only for answer Markdown.
+   */
+  status: "started" | "delta" | "reset" | "completed";
   delta?: string;
 }
 
