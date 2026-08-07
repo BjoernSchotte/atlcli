@@ -101,17 +101,12 @@ function runningV5Requirements(
   configure?: (design: WikiPdfTemplateDesignV3) => void,
 ) {
   const design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design);
-  const header = (
-    (design.compositions as Record<string, unknown>).running as Record<
-      string,
-      unknown
-    >
-  ).header as Record<string, unknown>;
+  const header = design.compositions.running.header;
   header.first = "hide";
   header.odd = literal === undefined
     ? { center: { field: "documentTitle" } }
     : { center: { field: "literal", value: literal } };
-  configure?.(design as unknown as WikiPdfTemplateDesignV3);
+  configure?.(design);
   const manifest = validateManifestV3({
     schemaVersion: 1,
     id: "fixture.fonts-v5",

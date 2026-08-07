@@ -5,18 +5,23 @@ import {
   validateDesignOverlayAgainstCatalogV2,
   validateLocalization,
   validatePdfTemplateRecipeV2,
+  validatePdfTemplateDesignV3,
   WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type PdfTemplateRecipeBaselineV2,
   type TemplateCapabilityCatalogReferenceV1,
   type WikiPdfTemplateLocalizationV1,
   type WikiPdfTemplateRecipeV2,
+  type WikiPdfTemplateDesignV3,
 } from "@atlcli/template-pack";
 import {
   BUILTIN_PDF_DESIGN,
   BUILTIN_PDF_TEMPLATE_MANIFEST,
 } from "./builtin-template.js";
-import { resolvePdfCatalogAuthoringTarget } from "./catalog-runtime.js";
+import {
+  resolvePdfCatalogAuthoringTarget,
+  resolvePdfCatalogRuntimeV3,
+} from "./catalog-runtime.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
@@ -33,7 +38,7 @@ export interface PdfTemplateBaselineContentV1 {
   id: string;
   version: number;
   catalog: TemplateCapabilityCatalogReferenceV1;
-  design: Readonly<Record<string, unknown>>;
+  design: WikiPdfTemplateDesignV3;
   localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -61,7 +66,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     revision: "5";
   };
   compilerRange: string;
-  design: Readonly<Record<string, unknown>>;
+  design: WikiPdfTemplateDesignV3;
   localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -173,9 +178,11 @@ const BUILTIN_BASELINE_CONTENT: PdfTemplateBaselineContentV1 = deepFreeze({
     version: PDF_TEMPLATE_CAPABILITIES_V3.version,
     digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
   },
-  design: projectPdfDesignThroughCatalogSchemaV2(
-    neutralCatalogV3Design(),
-    PDF_TEMPLATE_CAPABILITIES_V3,
+  design: validatePdfTemplateDesignV3(
+    projectPdfDesignThroughCatalogSchemaV2(
+      neutralCatalogV3Design(),
+      PDF_TEMPLATE_CAPABILITIES_V3,
+    ),
   ),
   localization: structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST.localization!),
 });
@@ -358,12 +365,15 @@ export async function resolvePdfTemplateRecipeV2Design(
     design,
     target.catalog,
   );
+  const validatedCompleteDesign = resolvePdfCatalogRuntimeV3(
+    baseline.catalog,
+  ).project(completeDesign as unknown as WikiPdfTemplateDesignV3);
   const localization = validateBaselineLocalization(
     recipe.localization ?? baseline.localization,
   );
   const fallback = localization.locales[localization.fallbackLocale];
   const violations = evaluateCapabilityConstraintsV2(
-    completeDesign,
+    validatedCompleteDesign,
     target.catalog,
     {
       assets: Object.keys(recipe.assets).sort(),
@@ -389,7 +399,7 @@ export async function resolvePdfTemplateRecipeV2Design(
     catalog: { ...baseline.catalog },
     canonicalSource: { ...target.canonicalSource },
     compilerRange: target.compilerRange,
-    design: structuredClone(completeDesign),
+    design: structuredClone(validatedCompleteDesign),
     localization: structuredClone(localization),
   });
 }

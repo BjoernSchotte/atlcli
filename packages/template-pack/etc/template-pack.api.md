@@ -202,6 +202,21 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
 // export: DESIGN_ENUMERATION_PRESETS_V3
 export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal-alpha-roman",
@@ -265,6 +280,12 @@ export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
     "arabic",
     "roman-lower",
     "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
 ];
 
 // export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
@@ -414,6 +435,52 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
 
 // export: DesignEnumerationComponentV3
 export interface DesignEnumerationComponentV3 {
@@ -586,6 +653,44 @@ export interface DesignPageV3 {
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
 }
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
 
 // export: DesignParagraphAlignmentV3
 export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
@@ -1227,9 +1332,19 @@ export interface WikiPdfTemplateDesignV3 {
     compositions: DesignPageCompositionsV3;
     navigation: DesignNavigationV3;
     components: DesignComponentsV3;
-    paints?: Readonly<Record<string, unknown>>;
-    decorations?: readonly unknown[];
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
 }
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
 
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
@@ -1254,6 +1369,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;
@@ -1514,6 +1630,21 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
 // export: DESIGN_ENUMERATION_PRESETS_V3
 export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal-alpha-roman",
@@ -1577,6 +1708,12 @@ export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
     "arabic",
     "roman-lower",
     "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
 ];
 
 // export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
@@ -1726,6 +1863,52 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
 
 // export: DesignEnumerationComponentV3
 export interface DesignEnumerationComponentV3 {
@@ -1898,6 +2081,44 @@ export interface DesignPageV3 {
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
 }
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
 
 // export: DesignParagraphAlignmentV3
 export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
@@ -2539,9 +2760,19 @@ export interface WikiPdfTemplateDesignV3 {
     compositions: DesignPageCompositionsV3;
     navigation: DesignNavigationV3;
     components: DesignComponentsV3;
-    paints?: Readonly<Record<string, unknown>>;
-    decorations?: readonly unknown[];
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
 }
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
 
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
@@ -2566,6 +2797,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;
@@ -2826,6 +3058,21 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
 // export: DESIGN_ENUMERATION_PRESETS_V3
 export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal-alpha-roman",
@@ -2889,6 +3136,12 @@ export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
     "arabic",
     "roman-lower",
     "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
 ];
 
 // export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
@@ -3038,6 +3291,52 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
 
 // export: DesignEnumerationComponentV3
 export interface DesignEnumerationComponentV3 {
@@ -3210,6 +3509,44 @@ export interface DesignPageV3 {
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
 }
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
 
 // export: DesignParagraphAlignmentV3
 export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
@@ -3851,9 +4188,19 @@ export interface WikiPdfTemplateDesignV3 {
     compositions: DesignPageCompositionsV3;
     navigation: DesignNavigationV3;
     components: DesignComponentsV3;
-    paints?: Readonly<Record<string, unknown>>;
-    decorations?: readonly unknown[];
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
 }
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
 
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
@@ -3878,6 +4225,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;
@@ -4138,6 +4486,21 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
 // export: DESIGN_ENUMERATION_PRESETS_V3
 export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
     "decimal-alpha-roman",
@@ -4201,6 +4564,12 @@ export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
     "arabic",
     "roman-lower",
     "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
 ];
 
 // export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
@@ -4350,6 +4719,52 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
 
 // export: DesignEnumerationComponentV3
 export interface DesignEnumerationComponentV3 {
@@ -4522,6 +4937,44 @@ export interface DesignPageV3 {
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
 }
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
 
 // export: DesignParagraphAlignmentV3
 export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
@@ -5163,9 +5616,19 @@ export interface WikiPdfTemplateDesignV3 {
     compositions: DesignPageCompositionsV3;
     navigation: DesignNavigationV3;
     components: DesignComponentsV3;
-    paints?: Readonly<Record<string, unknown>>;
-    decorations?: readonly unknown[];
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
 }
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
 
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
@@ -5190,6 +5653,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;

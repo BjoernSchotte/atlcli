@@ -969,9 +969,34 @@ export function typstSettingsDict(
           placement.height,
           "templatePack.assets.asset.logo.placement.height"
         )},`,
-        `    rotation: ${numberLiteral(placement.rotation ?? 0)},`,
-        "  ),"
+        `    rotation: ${numberLiteral(placement.rotation ?? 0)},`
       );
+      if (placement.crop) {
+        lines.push(
+          "    crop: (",
+          `      left: ${numberLiteral(placement.crop.left)},`,
+          `      top: ${numberLiteral(placement.crop.top)},`,
+          `      right: ${numberLiteral(placement.crop.right)},`,
+          `      bottom: ${numberLiteral(placement.crop.bottom)},`,
+          "    ),",
+        );
+      }
+      if (placement.clip) {
+        lines.push(
+          "    clip: (",
+          `      kind: ${typstString(placement.clip.kind)},`,
+          ...(placement.clip.kind === "rounded-rect"
+            ? [
+                `      radius: ${emittableLength(
+                  placement.clip.radius,
+                  "templatePack.assets.asset.logo.placement.clip.radius",
+                )},`,
+              ]
+            : []),
+          "    ),",
+        );
+      }
+      lines.push("  ),");
     }
   }
   if (resolved.watermark) {

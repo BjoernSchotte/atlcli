@@ -380,6 +380,74 @@ describe("PDF template manifest phase", () => {
     );
   });
 
+  it("allows crop and bounded clip only on revision 5 while keeping alpha closed", async () => {
+    const fixture = await manifestWith({
+      "asset.coverBackground": {
+        descriptorId: "crop-proof",
+        bytes: svg(),
+      },
+    });
+    const legacy = structuredClone(fixture.manifest);
+    const revision5 = fixture.manifest as unknown as PdfTemplateManifestV5;
+    revision5.engine.compilerRange = ">=0.15.1 <0.16";
+    revision5.canonicalSource = {
+      api: "wiki.pdf-canonical-typst",
+      revision: PDF_CANONICAL_SOURCE_REVISION_5,
+    };
+    revision5.capabilityCatalog = {
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    };
+    revision5.design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design) as never;
+    const decoration = revision5.decorations![0]!;
+    if (decoration.kind !== "image") throw new Error("fixture drift");
+    decoration.placement = {
+      relativeTo: "page",
+      fit: "stretch",
+      x: "20mm",
+      y: "20mm",
+      width: "40mm",
+      height: "40mm",
+      crop: { left: 0.5, top: 0, right: 0, bottom: 0 },
+      clip: { kind: "circle" },
+    };
+    expect(validatePdfTemplateManifest(revision5)).toBe(revision5);
+
+    const rounded = structuredClone(revision5);
+    const roundedDecoration = rounded.decorations![0]!;
+    if (roundedDecoration.kind !== "image") throw new Error("fixture drift");
+    roundedDecoration.placement.clip = { kind: "rounded-rect", radius: "4mm" };
+    expect(validatePdfTemplateManifest(rounded)).toBe(rounded);
+
+    const nonSquare = structuredClone(revision5);
+    const nonSquareDecoration = nonSquare.decorations![0]!;
+    if (nonSquareDecoration.kind !== "image") throw new Error("fixture drift");
+    nonSquareDecoration.placement.width = "41mm";
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(nonSquare),
+      "invalid-geometry",
+    );
+
+    const translucent = structuredClone(revision5);
+    const translucentDecoration = translucent.decorations![0]!;
+    if (translucentDecoration.kind !== "image") throw new Error("fixture drift");
+    translucentDecoration.placement.opacity = 0.5;
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(translucent),
+      "unsupported-decoration",
+    );
+
+    const revision4 = legacy;
+    const revision4Decoration = revision4.decorations![0]!;
+    if (revision4Decoration.kind !== "image") throw new Error("fixture drift");
+    revision4Decoration.placement.clip = { kind: "rect" };
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(revision4),
+      "unsupported-decoration",
+    );
+  });
+
   it("keeps revisions 1-4 pinned and registers revision 5 only with Catalog V3", async () => {
     expect(PDF_CANONICAL_SOURCE_REVISION).toBe("3");
     expect(PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION).toBe("3");

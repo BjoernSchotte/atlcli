@@ -368,6 +368,138 @@ describe("validatePdfTemplateDesignV3", () => {
       /disc-circle-square/,
     );
   });
+
+  it("validates every named paint and flat decorative shape", () => {
+    const design = validDesignV3();
+    design.paints = {
+      ink: { kind: "solid", color: "ink" },
+      linear: {
+        kind: "linear",
+        angle: 43,
+        relativeTo: "parent",
+        stops: [
+          { at: 0, color: "ink" },
+          { at: 58, color: "accent" },
+          { at: 58, color: "ink" },
+          { at: 100, color: "accent" },
+        ],
+      },
+      radial: {
+        kind: "radial",
+        center: { x: 40, y: 60 },
+        radius: 75,
+        relativeTo: "self",
+        stops: [
+          { at: 0, color: "accent" },
+          { at: 100, color: "ink" },
+        ],
+      },
+      conic: {
+        kind: "conic",
+        angle: -90,
+        center: { x: 50, y: 50 },
+        relativeTo: "parent",
+        stops: [
+          { at: 0, color: "accent" },
+          { at: 100, color: "ink" },
+        ],
+      },
+    };
+    design.decorations = [
+      {
+        kind: "rect",
+        scope: "first",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "210mm", height: "80mm" },
+        fill: "linear",
+        radius: "2mm",
+      },
+      {
+        kind: "line",
+        scope: "odd",
+        layer: "header",
+        from: { x: "0mm", y: "2mm" },
+        to: { x: "120mm", y: "2mm" },
+        stroke: { paint: "ink", width: "0.5pt" },
+      },
+      {
+        kind: "circle",
+        scope: "even",
+        layer: "footer",
+        center: { x: "10mm", y: "10mm" },
+        radius: "4mm",
+        fill: "radial",
+        stroke: { paint: "conic", width: "0.25pt" },
+        rotation: 15,
+      },
+    ];
+    const validated = validatePdfTemplateDesignV3(design);
+    expect(validated.paints).toEqual(design.paints);
+    expect(validated.decorations).toEqual(design.decorations);
+  });
+
+  it("rejects unsafe paint stops, missing paint references, and unbounded shapes", () => {
+    const descending = validDesignV3();
+    descending.paints = {
+      hero: {
+        kind: "linear",
+        angle: 0,
+        relativeTo: "parent",
+        stops: [
+          { at: 70, color: "ink" },
+          { at: 20, color: "accent" },
+        ],
+      },
+    };
+    expect(() => validatePdfTemplateDesignV3(descending)).toThrow(/sorted/);
+
+    const missingToken = validDesignV3();
+    missingToken.paints = { ink: { kind: "solid", color: "missing" } };
+    expect(() => validatePdfTemplateDesignV3(missingToken)).toThrow(
+      /existing design\.tokens\.colors entry/,
+    );
+
+    const missingPaint = validDesignV3();
+    missingPaint.decorations = [
+      {
+        kind: "rect",
+        scope: "all",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "10mm", height: "10mm" },
+        fill: "missing",
+      },
+    ];
+    expect(() => validatePdfTemplateDesignV3(missingPaint)).toThrow(
+      /missing paint/,
+    );
+
+    const oversized = validDesignV3();
+    oversized.paints = { ink: { kind: "solid", color: "ink" } };
+    oversized.decorations = [
+      {
+        kind: "circle",
+        scope: "all",
+        layer: "page-background",
+        center: { x: "0mm", y: "0mm" },
+        radius: "1001mm",
+        fill: "ink",
+      },
+    ];
+    expect(() => validatePdfTemplateDesignV3(oversized)).toThrow(/1000mm/);
+
+    const noAppearance = validDesignV3() as unknown as Record<string, unknown>;
+    noAppearance.decorations = [
+      {
+        kind: "rect",
+        scope: "all",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "10mm", height: "10mm" },
+      },
+    ];
+    expect(() => validatePdfTemplateDesignV3(noAppearance)).toThrow(
+      /fill or stroke/,
+    );
+  });
 });
 
 describe("validateDesign", () => {

@@ -384,6 +384,7 @@ function validatePlacement(
       "opacity",
       "rotation",
       "crop",
+      "clip",
     ],
     path,
   );
@@ -412,6 +413,22 @@ function validatePlacement(
       fail(`${path}.crop`, "must leave a positive visible area");
     }
   }
+  let clip: PdfTemplateRecipePlacementV1["clip"];
+  if (placement.clip !== undefined) {
+    const source = object(placement.clip, `${path}.clip`);
+    if (source.kind === "rounded-rect") {
+      exactKeys(source, ["kind", "radius"], `${path}.clip`);
+      clip = {
+        kind: "rounded-rect",
+        radius: length(source.radius, `${path}.clip.radius`, false),
+      };
+    } else if (source.kind === "rect" || source.kind === "circle") {
+      exactKeys(source, ["kind"], `${path}.clip`);
+      clip = { kind: source.kind };
+    } else {
+      fail(`${path}.clip.kind`, 'must be "rect", "rounded-rect", or "circle"');
+    }
+  }
   return {
     relativeTo: placement.relativeTo,
     ...(placement.fit === undefined
@@ -430,6 +447,7 @@ function validatePlacement(
           rotation: finite(placement.rotation, `${path}.rotation`, -180, 180),
         }),
     ...(crop === undefined ? {} : { crop }),
+    ...(clip === undefined ? {} : { clip }),
   };
 }
 

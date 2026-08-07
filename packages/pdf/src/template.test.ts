@@ -297,6 +297,47 @@ describe("atlcli Typst template settings rendering", () => {
     expect(source).toContain("#if false and icon != none");
   });
 
+  it("generates named paints and artifact-only flat shapes from validated revision-5 data", () => {
+    const design = revision5Design();
+    design.paints = {
+      ink: { kind: "solid", color: "ink" },
+      hero: {
+        kind: "linear",
+        angle: 43,
+        relativeTo: "parent",
+        stops: [
+          { at: 0, color: "coverTitleInk" },
+          { at: 58, color: "coverTitleInk" },
+          { at: 58, color: "paper" },
+          { at: 100, color: "paper" },
+        ],
+      },
+    };
+    design.decorations = [
+      {
+        kind: "rect",
+        scope: "first",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "210mm", height: "80mm" },
+        fill: "hero",
+      },
+      {
+        kind: "line",
+        scope: "all",
+        layer: "footer",
+        from: { x: "0mm", y: "0mm" },
+        to: { x: "120mm", y: "0mm" },
+        stroke: { paint: "ink", width: "0.5pt" },
+      },
+    ];
+    const source = createAtlcliTypstTemplateV5(design);
+    expect(source).toContain("gradient.linear");
+    expect(source).toContain('(rgb("#202A44"), 58%)');
+    expect(source).toContain('relative: "parent"');
+    expect(source.match(/pdf\.artifact\(kind: "other"/gu)).toHaveLength(2);
+    expect(source).not.toContain("authorText");
+  });
+
   it("maps the Letter preset to Typst's paper catalog and preserves orientation", () => {
     const design = revision5Design();
     design.page.format = { kind: "preset", name: "letter" };

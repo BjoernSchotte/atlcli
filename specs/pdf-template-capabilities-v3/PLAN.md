@@ -800,19 +800,19 @@ and the feature-zoo PDF remains tagged with the expected reading order.
 
 **Implementation**
 
-- [ ] Add `PaintV1` with `solid | linear | radial | conic`, two to eight sorted
+- [x] Add `PaintV1` with `solid | linear | radial | conic`, two to eight sorted
       stops, bounded percentages/angles, token color references, and explicit
       `relativeTo` values supported by the renderer.
-- [ ] Add decorative `rect | line | circle` descriptors with existing scopes
+- [x] Add decorative `rect | line | circle` descriptors with existing scopes
       and page layers. Bound item count, coordinates, dimensions, stroke width,
       rotation, and referenced paint IDs.
-- [ ] Implement current normalized image crop by calculating the visible source
+- [x] Implement current normalized image crop by calculating the visible source
       region and applying a bounded clip container in Typst.
-- [ ] Add clip presets `rect | rounded-rect | circle`. Reject radius on other
+- [x] Add clip presets `rect | rounded-rect | circle`. Reject radius on other
       kinds and reject any path/mask payload.
-- [ ] Keep non-trivial opacity disabled until a separate alpha-compositing
+- [x] Keep non-trivial opacity disabled until a separate alpha-compositing
       positive/negative proof demonstrates PDF, raster, and browser parity.
-- [ ] Ensure all shapes are decorative artifacts and can never receive author
+- [x] Ensure all shapes are decorative artifacts and can never receive author
       text or alt text.
 
 **Tests**

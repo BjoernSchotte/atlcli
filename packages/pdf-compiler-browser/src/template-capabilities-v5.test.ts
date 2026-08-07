@@ -4,7 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inflateSync } from "node:zlib";
 import type { ExportBlock } from "@atlcli/confluence";
+import sharp from "sharp";
 import {
   validateManifestV3,
   validatePdfTemplateDesignV3,
@@ -20,6 +22,7 @@ import {
   preparePdfDocument,
   serializePdfDocument,
   type PdfTemplateManifestV5,
+  type PdfTemplateVisualsV1,
 } from "@atlcli/pdf/internal";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
@@ -39,7 +42,11 @@ function design() {
   );
 }
 
-function bundle(template: string, body = "= Body\n\nRevision 5 proof."): PdfSourceBundle {
+function bundle(
+  template: string,
+  body = "= Body\n\nRevision 5 proof.",
+  assets: PdfSourceBundle["assets"] = [],
+): PdfSourceBundle {
   return {
     main: `#import "atlcli.typ": atlcli-doc
 
@@ -58,10 +65,80 @@ function bundle(template: string, body = "= Body\n\nRevision 5 proof."): PdfSour
 ${body}
 `,
     template,
-    assets: [],
+    assets,
     sourceMap: [],
     notes: [],
   };
+}
+
+async function rasterPage(
+  pdf: Uint8Array,
+  page = 1,
+): Promise<{ data: Uint8Array; width: number; height: number }> {
+  const directory = await mkdtemp(join(tmpdir(), "atlcli-v5-raster-"));
+  try {
+    const path = join(directory, "proof.pdf");
+    const prefix = join(directory, "page");
+    await Bun.write(path, pdf);
+    const process = Bun.spawn([
+      "pdftoppm",
+      "-f",
+      String(page),
+      "-singlefile",
+      "-r",
+      "72",
+      "-png",
+      path,
+      prefix,
+    ], { stdout: "pipe", stderr: "pipe" });
+    if (await process.exited !== 0) {
+      throw new Error(`pdftoppm failed: ${await new Response(process.stderr).text()}`);
+    }
+    const raster = await sharp(join(directory, "page.png"))
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    return {
+      data: new Uint8Array(raster.data),
+      width: raster.info.width,
+      height: raster.info.height,
+    };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function pixelAtMm(
+  raster: { data: Uint8Array; width: number; height: number },
+  xMm: number,
+  yMm: number,
+): readonly [number, number, number] {
+  const x = Math.min(raster.width - 1, Math.max(0, Math.round(xMm * 72 / 25.4)));
+  const y = Math.min(raster.height - 1, Math.max(0, Math.round(yMm * 72 / 25.4)));
+  const offset = (y * raster.width + x) * 3;
+  return [raster.data[offset]!, raster.data[offset + 1]!, raster.data[offset + 2]!];
+}
+
+function inspectablePdf(pdf: Uint8Array): string {
+  const latin1 = new TextDecoder("latin1").decode(pdf);
+  let text = latin1;
+  const streams = /stream\r?\n/gu;
+  let match: RegExpExecArray | null;
+  while ((match = streams.exec(latin1))) {
+    const start = match.index + match[0].length;
+    const end = latin1.indexOf("endstream", start);
+    if (end < 0) continue;
+    let stop = end;
+    while (stop > start && (pdf[stop - 1] === 0x0a || pdf[stop - 1] === 0x0d)) {
+      stop -= 1;
+    }
+    try {
+      text += `\n${inflateSync(pdf.subarray(start, stop)).toString("latin1")}`;
+    } catch {
+      // Font and image streams are not FlateDecode text streams.
+    }
+  }
+  return text;
 }
 
 function manifest(
@@ -364,6 +441,163 @@ describe("canonical revision-5 page and running-region source", () => {
         "Deep",
       );
     }
+  }, 120_000);
+
+  it("compiles solid and gradient paints into artifact-only flat shapes", async () => {
+    const decorated = design();
+    decorated.navigation.contents.enabled = false;
+    decorated.paints = {
+      solid: { kind: "solid", color: "accent" },
+      linear: {
+        kind: "linear",
+        angle: 43,
+        relativeTo: "parent",
+        stops: [
+          { at: 0, color: "coverTitleInk" },
+          { at: 58, color: "coverTitleInk" },
+          { at: 58, color: "paper" },
+          { at: 100, color: "paper" },
+        ],
+      },
+      radial: {
+        kind: "radial",
+        center: { x: 50, y: 50 },
+        radius: 100,
+        relativeTo: "self",
+        stops: [
+          { at: 0, color: "accent" },
+          { at: 100, color: "paper" },
+        ],
+      },
+      conic: {
+        kind: "conic",
+        angle: 0,
+        center: { x: 50, y: 50 },
+        relativeTo: "parent",
+        stops: [
+          { at: 0, color: "accent" },
+          { at: 100, color: "coverTitleInk" },
+        ],
+      },
+    };
+    decorated.decorations = [
+      {
+        kind: "rect",
+        scope: "first",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "210mm", height: "70mm" },
+        fill: "linear",
+      },
+      {
+        kind: "circle",
+        scope: "all",
+        layer: "page-background",
+        center: { x: "180mm", y: "250mm" },
+        radius: "12mm",
+        fill: "radial",
+        stroke: { paint: "conic", width: "1pt" },
+      },
+      {
+        kind: "line",
+        scope: "all",
+        layer: "footer",
+        from: { x: "0mm", y: "0mm" },
+        to: { x: "120mm", y: "0mm" },
+        stroke: { paint: "solid", width: "0.5pt" },
+      },
+    ];
+    const template = createAtlcliTypstTemplateV5(decorated);
+    expect(template).toContain("gradient.linear");
+    expect(template).toContain("gradient.radial");
+    expect(template).toContain("gradient.conic");
+    expect(template.match(/pdf\.artifact\(kind: "other"/gu)).toHaveLength(3);
+    const result = await compiler.compile(bundle(template));
+    expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    expect(result.pdf?.byteLength).toBeGreaterThan(1_000);
+    const structure = inspectablePdf(result.pdf!);
+    expect(structure).toContain("/Artifact");
+    expect(structure).not.toMatch(/\/S\s*\/Figure\b/u);
+  }, 120_000);
+
+  it("executes normalized image crop and every bounded clip with shifted negative controls", async () => {
+    const value = design();
+    value.navigation.contents.enabled = false;
+    const path = "template-assets/crop-proof.svg";
+    const bytes = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><path fill="#E00000" d="M0 0h50v100H0z"/><path fill="#0040E0" d="M50 0h50v100H50z"/></svg>',
+    );
+    const visuals = (
+      clip: { kind: "rect" } | { kind: "rounded-rect"; radius: string } | { kind: "circle" } | undefined,
+      cropped: boolean,
+    ): PdfTemplateVisualsV1 => ({
+      assets: {
+        "asset.coverBackground": {
+          vfsPath: path,
+          reference: {
+            descriptor: "descriptor.cropProof",
+            writer: "typst.image-decoration",
+            decorative: true,
+          },
+        },
+      },
+      decorations: [
+        {
+          kind: "image",
+          id: "asset.coverBackground",
+          writer: "typst.image-decoration",
+          scope: "first",
+          layer: "page-background",
+          asset: "asset.coverBackground",
+          placement: {
+            relativeTo: "page",
+            fit: "stretch",
+            x: "20mm",
+            y: "20mm",
+            width: "40mm",
+            height: "40mm",
+            ...(cropped
+              ? { crop: { left: 0.5, top: 0, right: 0, bottom: 0 } }
+              : {}),
+            ...(clip === undefined ? {} : { clip }),
+          },
+          decorative: true,
+        },
+      ],
+    });
+    const mounted = [{ path, bytes, mediaType: "image/svg+xml" as const }];
+    for (const clip of [
+      { kind: "rect" as const },
+      { kind: "rounded-rect" as const, radius: "5mm" },
+      { kind: "circle" as const },
+    ]) {
+      const result = await compiler.compile(
+        bundle(createAtlcliTypstTemplateV5(value, {}, visuals(clip, true)), undefined, mounted),
+      );
+      expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    }
+
+    const cropped = await compiler.compile(
+      bundle(
+        createAtlcliTypstTemplateV5(value, {}, visuals({ kind: "circle" }, true)),
+        undefined,
+        mounted,
+      ),
+    );
+    const negative = await compiler.compile(
+      bundle(createAtlcliTypstTemplateV5(value, {}, visuals(undefined, false)), undefined, mounted),
+    );
+    expect(cropped.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    expect(negative.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    const croppedRaster = await rasterPage(cropped.pdf!);
+    const negativeRaster = await rasterPage(negative.pdf!);
+    const croppedInterior = pixelAtMm(croppedRaster, 30, 40);
+    const negativeInterior = pixelAtMm(negativeRaster, 30, 40);
+    expect(croppedInterior[2]).toBeGreaterThan(croppedInterior[0] + 80);
+    expect(negativeInterior[0]).toBeGreaterThan(negativeInterior[2] + 80);
+    const clippedCorner = pixelAtMm(croppedRaster, 21, 21);
+    const negativeCorner = pixelAtMm(negativeRaster, 21, 21);
+    expect(Math.min(...clippedCorner)).toBeGreaterThan(220);
+    expect(negativeCorner[0]).toBeGreaterThan(negativeCorner[2] + 80);
   }, 120_000);
 
   it("compiles semantic component policies with repeated table headers and tagged reading order", async () => {

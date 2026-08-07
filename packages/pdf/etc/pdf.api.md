@@ -734,7 +734,7 @@ export interface PdfTemplateBaselineContentV1 {
     id: string;
     version: number;
     catalog: TemplateCapabilityCatalogReferenceV1;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -1198,7 +1198,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
         revision: "5";
     };
     compilerRange: string;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -1336,8 +1336,8 @@ export interface WikiPdfTemplateDesignV3 {
     compositions: DesignPageCompositionsV3;
     navigation: DesignNavigationV3;
     components: DesignComponentsV3;
-    paints?: Readonly<Record<string, unknown>>;
-    decorations?: readonly unknown[];
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
 }
 ```
 
@@ -2071,7 +2071,7 @@ export interface PdfTemplateBaselineContentV1 {
     id: string;
     version: number;
     catalog: TemplateCapabilityCatalogReferenceV1;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -2535,7 +2535,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
         revision: "5";
     };
     compilerRange: string;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -2673,8 +2673,8 @@ export interface WikiPdfTemplateDesignV3 {
     compositions: DesignPageCompositionsV3;
     navigation: DesignNavigationV3;
     components: DesignComponentsV3;
-    paints?: Readonly<Record<string, unknown>>;
-    decorations?: readonly unknown[];
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
 }
 ```
 
@@ -3408,7 +3408,7 @@ export interface PdfTemplateBaselineContentV1 {
     id: string;
     version: number;
     catalog: TemplateCapabilityCatalogReferenceV1;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -3872,7 +3872,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
         revision: "5";
     };
     compilerRange: string;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -4010,8 +4010,8 @@ export interface WikiPdfTemplateDesignV3 {
     compositions: DesignPageCompositionsV3;
     navigation: DesignNavigationV3;
     components: DesignComponentsV3;
-    paints?: Readonly<Record<string, unknown>>;
-    decorations?: readonly unknown[];
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
 }
 ```
 
@@ -4023,6 +4023,12 @@ export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
 
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
+
+// export: AtlcliTypstDecorationModelV5
+export interface AtlcliTypstDecorationModelV5 {
+    paints: Readonly<Record<string, DesignPaintV3>>;
+    decorations: readonly DesignDecorationV3[];
+}
 
 // export: AtlcliTypstPageModelV5
 export interface AtlcliTypstPageModelV5 {
@@ -4041,6 +4047,8 @@ export interface AtlcliTypstTemplateOptions {
     positionedLogo?: boolean;
     pageModelV5?: AtlcliTypstPageModelV5;
     semanticModelV5?: AtlcliTypstSemanticModelV5;
+    decorationModelV5?: AtlcliTypstDecorationModelV5;
+    imageGeometryV5?: boolean;
 }
 
 // export: buildUniformPdfPageBorderV1
@@ -4343,7 +4351,7 @@ export interface PdfTemplateBaselineContentV1 {
     id: string;
     version: number;
     catalog: TemplateCapabilityCatalogReferenceV1;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -4540,7 +4548,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
         revision: "5";
     };
     compilerRange: string;
-    design: Readonly<Record<string, unknown>>;
+    design: WikiPdfTemplateDesignV3;
     localization: WikiPdfTemplateLocalizationV1;
 }
 
@@ -4590,6 +4598,12 @@ export declare function writePdfDesignCapabilityV2(design: WikiPdfTemplateDesign
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
 
+// export: AtlcliTypstDecorationModelV5
+export interface AtlcliTypstDecorationModelV5 {
+    paints: Readonly<Record<string, DesignPaintV3>>;
+    decorations: readonly DesignDecorationV3[];
+}
+
 // export: AtlcliTypstPageModelV5
 export interface AtlcliTypstPageModelV5 {
     page: DesignPageV3;
@@ -4607,6 +4621,8 @@ export interface AtlcliTypstTemplateOptions {
     positionedLogo?: boolean;
     pageModelV5?: AtlcliTypstPageModelV5;
     semanticModelV5?: AtlcliTypstSemanticModelV5;
+    decorationModelV5?: AtlcliTypstDecorationModelV5;
+    imageGeometryV5?: boolean;
 }
 
 // export: createAtlcliTypstTemplate

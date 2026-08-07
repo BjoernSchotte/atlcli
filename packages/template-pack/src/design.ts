@@ -852,6 +852,89 @@ export interface DesignComponentsV3 {
   codeBlock: DesignCodeBlockComponentV3;
 }
 
+export const DESIGN_PAINT_RELATIVE_TARGETS_V3 = ["self", "parent"] as const;
+export type DesignPaintRelativeTargetV3 =
+  (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+export interface DesignPaintStopV3 {
+  /** Percentage along the gradient axis. Duplicate values create hard stops. */
+  at: number;
+  /** Key into `tokens.colors`. */
+  color: string;
+}
+
+export type DesignPaintV3 =
+  | { kind: "solid"; color: string }
+  | {
+      kind: "linear";
+      angle: number;
+      relativeTo: DesignPaintRelativeTargetV3;
+      stops: readonly DesignPaintStopV3[];
+    }
+  | {
+      kind: "radial";
+      center: { x: number; y: number };
+      radius: number;
+      relativeTo: DesignPaintRelativeTargetV3;
+      stops: readonly DesignPaintStopV3[];
+    }
+  | {
+      kind: "conic";
+      angle: number;
+      center: { x: number; y: number };
+      relativeTo: DesignPaintRelativeTargetV3;
+      stops: readonly DesignPaintStopV3[];
+    };
+
+export const DESIGN_DECORATION_SCOPES_V3 = ["all", "first", "odd", "even"] as const;
+export type DesignDecorationScopeV3 =
+  (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+export const DESIGN_DECORATION_LAYERS_V3 = [
+  "page-background",
+  "header",
+  "footer",
+] as const;
+export type DesignDecorationLayerV3 =
+  (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+export interface DesignDecorationStrokeV3 {
+  paint: string;
+  width: DesignLength;
+}
+
+interface DesignDecorationBaseV3 {
+  scope: DesignDecorationScopeV3;
+  layer: DesignDecorationLayerV3;
+  rotation?: number;
+}
+
+export type DesignDecorationV3 =
+  | (DesignDecorationBaseV3 & {
+      kind: "rect";
+      box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+      };
+      fill?: string;
+      stroke?: DesignDecorationStrokeV3;
+      radius?: DesignLength;
+    })
+  | (DesignDecorationBaseV3 & {
+      kind: "line";
+      from: { x: DesignLength; y: DesignLength };
+      to: { x: DesignLength; y: DesignLength };
+      stroke: DesignDecorationStrokeV3;
+    })
+  | (DesignDecorationBaseV3 & {
+      kind: "circle";
+      center: { x: DesignLength; y: DesignLength };
+      radius: DesignLength;
+      fill?: string;
+      stroke?: DesignDecorationStrokeV3;
+    });
+
 export interface WikiPdfTemplateDesignV3 {
   page: DesignPageV3;
   branding: DesignBranding;
@@ -861,9 +944,8 @@ export interface WikiPdfTemplateDesignV3 {
   compositions: DesignPageCompositionsV3;
   navigation: DesignNavigationV3;
   components: DesignComponentsV3;
-  /** T5 replaces these bounded opaque values with exact paint/shape types. */
-  paints?: Readonly<Record<string, unknown>>;
-  decorations?: readonly unknown[];
+  paints?: Readonly<Record<string, DesignPaintV3>>;
+  decorations?: readonly DesignDecorationV3[];
 }
 
 const PAGE_LENGTH_RE_V3 = /^(?:0|[1-9]\d*)(?:\.\d+)?(pt|mm)$/u;
@@ -875,9 +957,10 @@ const PAGE_MIN_MM_V3 = 25;
 const PAGE_MAX_MM_V3 = 2_000;
 const PAGE_MARGIN_MAX_MM_V3 = 500;
 const PAGE_BLEED_MAX_MM_V3 = 50;
-const V3_JSON_MAX_DEPTH = 24;
-const V3_JSON_MAX_NODES = 8_192;
-const V3_JSON_MAX_ARRAY = 1_024;
+const V3_PAINT_MAX_ITEMS = 64;
+const V3_PAINT_STOP_MIN = 2;
+const V3_PAINT_STOP_MAX = 8;
+const V3_DECORATION_MAX_ITEMS = 64;
 
 function pageLengthV3(
   value: unknown,
@@ -1442,40 +1525,353 @@ function validateComponentsV3(
   return { paragraph, list, enumeration, table, outline, callout, codeBlock };
 }
 
-function validateOpaqueJsonV3(
+const DESIGN_SHAPE_LENGTH_RE_V3 = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(pt|mm)$/u;
+
+function shapeLengthV3(
   value: unknown,
   path: string,
-  state: { nodes: number },
-  depth = 0
-): unknown {
-  state.nodes += 1;
-  if (state.nodes > V3_JSON_MAX_NODES) fail(path, `must contain at most ${V3_JSON_MAX_NODES} nodes`);
-  if (depth > V3_JSON_MAX_DEPTH) fail(path, `must be at most ${V3_JSON_MAX_DEPTH} levels deep`);
-  if (value === null) fail(path, "must not be null");
-  if (typeof value === "boolean" || typeof value === "string") return value;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) fail(path, "must be finite");
-    return value;
+  bounds: { minMm: number; maxMm: number },
+): DesignLength {
+  if (typeof value !== "string") fail(path, "must be a bounded pt/mm length");
+  const match = DESIGN_SHAPE_LENGTH_RE_V3.exec(value);
+  if (!match) fail(path, "must be a bounded pt/mm length");
+  const mm = Number.parseFloat(value) * PAGE_UNITS_IN_MM_V3[match[1]!]!;
+  if (!Number.isFinite(mm) || mm < bounds.minMm || mm > bounds.maxMm) {
+    fail(path, `must be within [${bounds.minMm}mm, ${bounds.maxMm}mm]`);
   }
-  if (Array.isArray(value)) {
-    if (value.length > V3_JSON_MAX_ARRAY) fail(path, `must contain at most ${V3_JSON_MAX_ARRAY} items`);
-    return value.map((entry, index) => validateOpaqueJsonV3(entry, `${path}[${index}]`, state, depth + 1));
-  }
-  if (!isObject(value)) fail(path, "must be portable JSON data");
-  const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    assertSafeIdentifier(key, `${path}.${key}`);
-    result[key] = validateOpaqueJsonV3(entry, `${path}.${key}`, state, depth + 1);
-  }
-  return result;
+  return value;
 }
 
-function validateOpaqueRecordV3(value: unknown, path: string): Readonly<Record<string, unknown>> {
+function validatePaintStopV3(
+  value: unknown,
+  path: string,
+  colors: Readonly<Record<string, DesignColor>>,
+): DesignPaintStopV3 {
   if (!isObject(value)) fail(path, "must be an object");
-  return validateOpaqueJsonV3(value, path, { nodes: 0 }) as Record<string, unknown>;
+  exactKeys(value, ["at", "color"], path);
+  return {
+    at: validateBoundedNumber(value.at, `${path}.at`, { min: 0, max: 100 }),
+    color: validateColorTokenReferenceV3(value.color, `${path}.color`, colors),
+  };
 }
 
-/** Exact Catalog-V3 page/running validation; T4-T6 tighten the remaining objects. */
+function validateGradientStopsV3(
+  value: unknown,
+  path: string,
+  colors: Readonly<Record<string, DesignColor>>,
+): readonly DesignPaintStopV3[] {
+  if (
+    !Array.isArray(value) ||
+    value.length < V3_PAINT_STOP_MIN ||
+    value.length > V3_PAINT_STOP_MAX
+  ) {
+    fail(
+      path,
+      `must contain between ${V3_PAINT_STOP_MIN} and ${V3_PAINT_STOP_MAX} stops`,
+    );
+  }
+  const stops = value.map((entry, index) =>
+    validatePaintStopV3(entry, `${path}[${index}]`, colors),
+  );
+  for (let index = 1; index < stops.length; index += 1) {
+    if (stops[index]!.at < stops[index - 1]!.at) {
+      fail(`${path}[${index}].at`, "must be sorted in non-decreasing order");
+    }
+  }
+  return stops;
+}
+
+function validatePaintCenterV3(
+  value: unknown,
+  path: string,
+): { x: number; y: number } {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["x", "y"], path);
+  return {
+    x: validateBoundedNumber(value.x, `${path}.x`, { min: 0, max: 100 }),
+    y: validateBoundedNumber(value.y, `${path}.y`, { min: 0, max: 100 }),
+  };
+}
+
+function validatePaintsV3(
+  value: unknown,
+  path: string,
+  colors: Readonly<Record<string, DesignColor>>,
+): Readonly<Record<string, DesignPaintV3>> {
+  if (!isObject(value)) fail(path, "must be an object");
+  if (Object.keys(value).length > V3_PAINT_MAX_ITEMS) {
+    fail(path, `must contain at most ${V3_PAINT_MAX_ITEMS} paints`);
+  }
+  const paints: Record<string, DesignPaintV3> = {};
+  for (const [id, unknownPaint] of Object.entries(value)) {
+    assertSafeIdentifier(id, `${path}.${id}`);
+    const paintPath = `${path}.${id}`;
+    if (!isObject(unknownPaint)) fail(paintPath, "must be an object");
+    const kind = validateEnum(
+      unknownPaint.kind,
+      ["solid", "linear", "radial", "conic"] as const,
+      `${paintPath}.kind`,
+    );
+    if (kind === "solid") {
+      exactKeys(unknownPaint, ["kind", "color"], paintPath);
+      paints[id] = {
+        kind,
+        color: validateColorTokenReferenceV3(
+          unknownPaint.color,
+          `${paintPath}.color`,
+          colors,
+        ),
+      };
+      continue;
+    }
+    const relativeTo = validateEnum(
+      unknownPaint.relativeTo,
+      DESIGN_PAINT_RELATIVE_TARGETS_V3,
+      `${paintPath}.relativeTo`,
+    );
+    const stops = validateGradientStopsV3(
+      unknownPaint.stops,
+      `${paintPath}.stops`,
+      colors,
+    );
+    if (kind === "linear") {
+      exactKeys(unknownPaint, ["kind", "angle", "relativeTo", "stops"], paintPath);
+      paints[id] = {
+        kind,
+        angle: validateBoundedNumber(unknownPaint.angle, `${paintPath}.angle`, {
+          min: -360,
+          max: 360,
+        }),
+        relativeTo,
+        stops,
+      };
+      continue;
+    }
+    if (kind === "radial") {
+      exactKeys(
+        unknownPaint,
+        ["kind", "center", "radius", "relativeTo", "stops"],
+        paintPath,
+      );
+      paints[id] = {
+        kind,
+        center: validatePaintCenterV3(unknownPaint.center, `${paintPath}.center`),
+        radius: validateBoundedNumber(unknownPaint.radius, `${paintPath}.radius`, {
+          min: 0.01,
+          max: 100,
+        }),
+        relativeTo,
+        stops,
+      };
+      continue;
+    }
+    exactKeys(
+      unknownPaint,
+      ["kind", "angle", "center", "relativeTo", "stops"],
+      paintPath,
+    );
+    paints[id] = {
+      kind,
+      angle: validateBoundedNumber(unknownPaint.angle, `${paintPath}.angle`, {
+        min: -360,
+        max: 360,
+      }),
+      center: validatePaintCenterV3(unknownPaint.center, `${paintPath}.center`),
+      relativeTo,
+      stops,
+    };
+  }
+  return paints;
+}
+
+function paintReferenceV3(
+  value: unknown,
+  path: string,
+  paints: Readonly<Record<string, DesignPaintV3>>,
+): string {
+  if (typeof value !== "string") fail(path, "must name a paint");
+  const id = assertSafeIdentifier(value, path);
+  if (!Object.prototype.hasOwnProperty.call(paints, id)) {
+    fail(path, `references missing paint "${id}"`);
+  }
+  return id;
+}
+
+function validateDecorationStrokeV3(
+  value: unknown,
+  path: string,
+  paints: Readonly<Record<string, DesignPaintV3>>,
+): DesignDecorationStrokeV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["paint", "width"], path);
+  return {
+    paint: paintReferenceV3(value.paint, `${path}.paint`, paints),
+    width: shapeLengthV3(value.width, `${path}.width`, {
+      minMm: 0.01,
+      maxMm: 50,
+    }),
+  };
+}
+
+function validateShapePointV3(
+  value: unknown,
+  path: string,
+): { x: DesignLength; y: DesignLength } {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["x", "y"], path);
+  return {
+    x: shapeLengthV3(value.x, `${path}.x`, { minMm: -2_000, maxMm: 2_000 }),
+    y: shapeLengthV3(value.y, `${path}.y`, { minMm: -2_000, maxMm: 2_000 }),
+  };
+}
+
+function validateDecorationsV3(
+  value: unknown,
+  path: string,
+  paints: Readonly<Record<string, DesignPaintV3>>,
+): readonly DesignDecorationV3[] {
+  if (!Array.isArray(value) || value.length > V3_DECORATION_MAX_ITEMS) {
+    fail(path, `must be an array of at most ${V3_DECORATION_MAX_ITEMS} entries`);
+  }
+  return value.map((unknownDecoration, index) => {
+    const decorationPath = `${path}[${index}]`;
+    if (!isObject(unknownDecoration)) fail(decorationPath, "must be an object");
+    const kind = validateEnum(
+      unknownDecoration.kind,
+      ["rect", "line", "circle"] as const,
+      `${decorationPath}.kind`,
+    );
+    const scope = validateEnum(
+      unknownDecoration.scope,
+      DESIGN_DECORATION_SCOPES_V3,
+      `${decorationPath}.scope`,
+    );
+    const layer = validateEnum(
+      unknownDecoration.layer,
+      DESIGN_DECORATION_LAYERS_V3,
+      `${decorationPath}.layer`,
+    );
+    const rotation =
+      unknownDecoration.rotation === undefined
+        ? undefined
+        : validateBoundedNumber(
+            unknownDecoration.rotation,
+            `${decorationPath}.rotation`,
+            { min: -180, max: 180 },
+          );
+    if (kind === "line") {
+      exactKeys(
+        unknownDecoration,
+        ["kind", "scope", "layer", "from", "to", "stroke", "rotation"],
+        decorationPath,
+      );
+      return {
+        kind,
+        scope,
+        layer,
+        from: validateShapePointV3(unknownDecoration.from, `${decorationPath}.from`),
+        to: validateShapePointV3(unknownDecoration.to, `${decorationPath}.to`),
+        stroke: validateDecorationStrokeV3(
+          unknownDecoration.stroke,
+          `${decorationPath}.stroke`,
+          paints,
+        ),
+        ...(rotation === undefined ? {} : { rotation }),
+      };
+    }
+    const fill =
+      unknownDecoration.fill === undefined
+        ? undefined
+        : paintReferenceV3(unknownDecoration.fill, `${decorationPath}.fill`, paints);
+    const stroke =
+      unknownDecoration.stroke === undefined
+        ? undefined
+        : validateDecorationStrokeV3(
+            unknownDecoration.stroke,
+            `${decorationPath}.stroke`,
+            paints,
+          );
+    if (fill === undefined && stroke === undefined) {
+      fail(decorationPath, "must declare fill or stroke");
+    }
+    if (kind === "rect") {
+      exactKeys(
+        unknownDecoration,
+        ["kind", "scope", "layer", "box", "fill", "stroke", "radius", "rotation"],
+        decorationPath,
+      );
+      if (!isObject(unknownDecoration.box)) {
+        fail(`${decorationPath}.box`, "must be an object");
+      }
+      exactKeys(
+        unknownDecoration.box,
+        ["x", "y", "width", "height"],
+        `${decorationPath}.box`,
+      );
+      return {
+        kind,
+        scope,
+        layer,
+        box: {
+          x: shapeLengthV3(unknownDecoration.box.x, `${decorationPath}.box.x`, {
+            minMm: -2_000,
+            maxMm: 2_000,
+          }),
+          y: shapeLengthV3(unknownDecoration.box.y, `${decorationPath}.box.y`, {
+            minMm: -2_000,
+            maxMm: 2_000,
+          }),
+          width: shapeLengthV3(
+            unknownDecoration.box.width,
+            `${decorationPath}.box.width`,
+            { minMm: 0.01, maxMm: 2_000 },
+          ),
+          height: shapeLengthV3(
+            unknownDecoration.box.height,
+            `${decorationPath}.box.height`,
+            { minMm: 0.01, maxMm: 2_000 },
+          ),
+        },
+        ...(fill === undefined ? {} : { fill }),
+        ...(stroke === undefined ? {} : { stroke }),
+        ...(unknownDecoration.radius === undefined
+          ? {}
+          : {
+              radius: shapeLengthV3(
+                unknownDecoration.radius,
+                `${decorationPath}.radius`,
+                { minMm: 0, maxMm: 1_000 },
+              ),
+            }),
+        ...(rotation === undefined ? {} : { rotation }),
+      };
+    }
+    exactKeys(
+      unknownDecoration,
+      ["kind", "scope", "layer", "center", "radius", "fill", "stroke", "rotation"],
+      decorationPath,
+    );
+    return {
+      kind,
+      scope,
+      layer,
+      center: validateShapePointV3(
+        unknownDecoration.center,
+        `${decorationPath}.center`,
+      ),
+      radius: shapeLengthV3(
+        unknownDecoration.radius,
+        `${decorationPath}.radius`,
+        { minMm: 0.01, maxMm: 1_000 },
+      ),
+      ...(fill === undefined ? {} : { fill }),
+      ...(stroke === undefined ? {} : { stroke }),
+      ...(rotation === undefined ? {} : { rotation }),
+    };
+  });
+}
+
+/** Exact Catalog-V3 page/running/navigation/component/paint validation. */
 export function validatePdfTemplateDesignV3(
   value: unknown,
   path = "design"
@@ -1498,6 +1894,10 @@ export function validatePdfTemplateDesignV3(
     path
   );
   const tokens = validateTokens(value.tokens, `${path}.tokens`);
+  const paints =
+    value.paints === undefined
+      ? undefined
+      : validatePaintsV3(value.paints, `${path}.paints`, tokens.colors);
   const design: WikiPdfTemplateDesignV3 = {
     page: validatePageV3(value.page, `${path}.page`),
     branding: validateBranding(value.branding, `${path}.branding`),
@@ -1511,17 +1911,15 @@ export function validatePdfTemplateDesignV3(
       `${path}.components`,
       tokens.colors,
     ),
-    ...(value.paints === undefined
-      ? {}
-      : { paints: validateOpaqueRecordV3(value.paints, `${path}.paints`) }),
+    ...(paints === undefined ? {} : { paints }),
     ...(value.decorations === undefined
       ? {}
       : {
-          decorations: validateOpaqueJsonV3(
+          decorations: validateDecorationsV3(
             value.decorations,
             `${path}.decorations`,
-            { nodes: 0 }
-          ) as readonly unknown[],
+            paints ?? {},
+          ),
         }),
   };
   validateCompositionBranding(

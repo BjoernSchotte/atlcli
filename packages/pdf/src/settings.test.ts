@@ -511,6 +511,8 @@ describe("typstSettingsDict", () => {
               y: "-0.423mm",
               width: "49.989mm",
               height: "11.342mm",
+              crop: { left: 0.1, top: 0, right: 0.1, bottom: 0 },
+              clip: { kind: "rounded-rect", radius: "2mm" },
             },
           },
         },
@@ -528,6 +530,12 @@ describe("typstSettingsDict", () => {
     expect(dict).toContain("width: 49.989mm");
     expect(dict).toContain("height: 11.342mm");
     expect(dict).toContain("rotation: 0");
+    expect(dict).toContain("crop: (");
+    expect(dict).toContain("left: 0.1");
+    expect(dict).toContain("right: 0.1");
+    expect(dict).toContain("clip: (");
+    expect(dict).toContain('kind: "rounded-rect"');
+    expect(dict).toContain("radius: 2mm");
   });
 
   it("keeps quote/backslash/#{ injection attempts literal in free-text fields", () => {

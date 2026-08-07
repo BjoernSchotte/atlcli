@@ -104,6 +104,8 @@ function validRecipe(): Record<string, unknown> {
           y: "0mm",
           width: "210mm",
           height: "297mm",
+          crop: { left: 0.1, top: 0, right: 0, bottom: 0 },
+          clip: { kind: "rounded-rect", radius: "4mm" },
         },
       },
       "asset.logo": {
@@ -301,6 +303,16 @@ describe("validatePdfTemplateRecipeV1", () => {
     );
     expect(() => validatePdfTemplateRecipeV1(invalidPlacement)).toThrow(
       /non-negative/,
+    );
+
+    const emptyCrop = validRecipe();
+    setPath(
+      emptyCrop,
+      ["assets", "asset.coverBackground", "placement", "crop"],
+      { left: 0.5, top: 0, right: 0.5, bottom: 0 },
+    );
+    expect(() => validatePdfTemplateRecipeV1(emptyCrop)).toThrow(
+      /positive visible area/,
     );
   });
 

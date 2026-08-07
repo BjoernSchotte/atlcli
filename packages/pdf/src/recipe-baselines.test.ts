@@ -107,7 +107,7 @@ describe("Recipe V2 installed baseline resolution", () => {
     expect(Object.isFrozen(resolved)).toBe(true);
     expect(Object.isFrozen(resolved.design)).toBe(true);
     expect(
-      Object.isFrozen((resolved.design.page as Record<string, unknown>).format),
+      Object.isFrozen(resolved.design.page.format),
     ).toBe(true);
   });
 
@@ -125,6 +125,7 @@ describe("Recipe V2 installed baseline resolution", () => {
             outside: "18mm",
           },
         },
+        paints: { accent: { kind: "solid", color: "accent" } },
         decorations: [
           {
             kind: "rect",
@@ -150,13 +151,9 @@ describe("Recipe V2 installed baseline resolution", () => {
       },
       decorations: [expect.objectContaining({ kind: "rect" })],
     });
-    const page = resolved.design.page as Record<
-      string,
-      Record<string, unknown>
-    >;
-    expect(page.format.name).toBeUndefined();
-    expect(page.margin.left).toBeUndefined();
-    expect(page.margin.right).toBeUndefined();
+    expect("name" in resolved.design.page.format).toBe(false);
+    expect("left" in resolved.design.page.margin).toBe(false);
+    expect("right" in resolved.design.page.margin).toBe(false);
   });
 
   it("resolves a full catalog-V3 authoring recipe with conditional assets", async () => {
@@ -212,7 +209,7 @@ describe("Recipe V2 installed baseline resolution", () => {
         paragraph: { align: "justify", hyphenation: "auto" },
         list: {
           bulletPreset: "disc-circle-square",
-          markerAlign: "baseline",
+          markerAlign: "horizon",
         },
         table: { repeatHeader: true, banding: "rows", borders: "horizontal" },
       },
@@ -344,6 +341,24 @@ describe("Recipe V2 installed baseline resolution", () => {
         }),
       ),
     ).rejects.toThrow(PdfTemplateRecipeV2ResolutionError);
+
+    await expect(
+      resolvePdfTemplateRecipeV2Design(
+        recipe({
+          paints: {
+            hero: {
+              kind: "linear",
+              angle: 0,
+              relativeTo: "parent",
+              stops: [
+                { at: 100, color: "ink" },
+                { at: 0, color: "accent" },
+              ],
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow(/sorted in non-decreasing order/u);
   });
 
   it("rejects missing, mismatched, tampered, and wrong-catalog baselines", async () => {
@@ -361,7 +376,7 @@ describe("Recipe V2 installed baseline resolution", () => {
     ).rejects.toMatchObject({ reason: "baseline-identity-mismatch" });
 
     const tampered = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1);
-    (tampered.design.page as Record<string, unknown>).orientation = "landscape";
+    tampered.design.page.orientation = "landscape";
     await expect(
       resolvePdfTemplateRecipeV2Design(recipe(), {
         resolve: () => tampered,

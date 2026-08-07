@@ -36,8 +36,10 @@ import {
 } from "./builtin-template.js";
 import type {
   DesignComponentsV3,
+  DesignDecorationV3,
   DesignHeadingNumberingPresetV3,
   DesignNavigationV3,
+  DesignPaintV3,
   DesignPageCompositionsV3,
   DesignPageNumberingPresetV3,
   DesignPageV3,
@@ -72,12 +74,21 @@ export interface AtlcliTypstSemanticModelV5 {
   components: DesignComponentsV3;
 }
 
+export interface AtlcliTypstDecorationModelV5 {
+  paints: Readonly<Record<string, DesignPaintV3>>;
+  decorations: readonly DesignDecorationV3[];
+}
+
 export interface AtlcliTypstTemplateOptions {
   positionedLogo?: boolean;
   /** Data-only revision-5 page model; historical callers leave this absent. */
   pageModelV5?: AtlcliTypstPageModelV5;
   /** Data-only revision-5 navigation/component policy. */
   semanticModelV5?: AtlcliTypstSemanticModelV5;
+  /** Data-only revision-5 named paints and decorative shapes. */
+  decorationModelV5?: AtlcliTypstDecorationModelV5;
+  /** Enables crop/clip execution for positioned images only in revision 5. */
+  imageGeometryV5?: boolean;
 }
 
 function headingNumberingPatternV5(
@@ -354,9 +365,15 @@ export function createAtlcliTypstTemplate(
   const success = callouts.success ? callout("success") : tip;
   const error = callouts.error ? callout("error") : warning;
   const panel = callout("panel");
-  const hasDecorations = (visuals?.decorations.length ?? 0) > 0;
+  const hasDecorations =
+    (visuals?.decorations.length ?? 0) > 0 ||
+    (options.decorationModelV5?.decorations.length ?? 0) > 0;
   const visualSource = hasDecorations
-    ? `\n\n${typstVisualSource(visuals)}\n\n`
+    ? `\n\n${typstVisualSource(
+        visuals,
+        options.decorationModelV5,
+        catalogDesign.tokens.colors,
+      )}\n\n`
     : "\n\n";
   const pageBackgroundSource = hasDecorations
     ? `context {
@@ -373,8 +390,62 @@ export function createAtlcliTypstTemplate(
   const logoPlacementSettingSource = positionedLogo
     ? '\n  let logo-placement = settings.at("logo-placement", default: none)'
     : "";
-  const positionedLogoSource = positionedLogo
+  const positionedLogoSource = positionedLogo && options.imageGeometryV5
     ? String.raw`
+    if logo-path != none and logo-placement != none {
+      let logo-x = if logo-placement.relativeTo == "page" {
+        logo-placement.x - ${margin.left}
+      } else {
+        logo-placement.x
+      }
+      let logo-y = if logo-placement.relativeTo == "page" {
+        logo-placement.y - ${margin.top}
+      } else {
+        logo-placement.y
+      }
+      let logo-crop = logo-placement.at("crop", default: none)
+      let logo-clip = logo-placement.at("clip", default: none)
+      let logo-visible-width = if logo-crop == none { 1 } else { 1 - logo-crop.left - logo-crop.right }
+      let logo-visible-height = if logo-crop == none { 1 } else { 1 - logo-crop.top - logo-crop.bottom }
+      let logo-render-width = logo-placement.width / logo-visible-width
+      let logo-render-height = logo-placement.height / logo-visible-height
+      let logo-image = image(
+        logo-path,
+        width: logo-render-width,
+        height: logo-render-height,
+        fit: logo-placement.fit,
+        alt: logo-alt,
+      )
+      let logo-content = if logo-crop == none and logo-clip == none {
+        logo-image
+      } else {
+        let logo-dx = if logo-crop == none { 0 * 1pt } else { -logo-render-width * logo-crop.left }
+        let logo-dy = if logo-crop == none { 0 * 1pt } else { -logo-render-height * logo-crop.top }
+        let logo-radius = if logo-clip == none or logo-clip.kind == "rect" {
+          0 * 1pt
+        } else if logo-clip.kind == "rounded-rect" {
+          logo-clip.radius
+        } else {
+          1 / 2 * 100%
+        }
+        box(
+          width: logo-placement.width,
+          height: logo-placement.height,
+          clip: true,
+          radius: logo-radius,
+        )[
+          #place(top + left, dx: logo-dx, dy: logo-dy, logo-image)
+        ]
+      }
+      let placed-logo = if logo-placement.rotation == 0 {
+        logo-content
+      } else {
+        rotate(logo-placement.rotation * 1deg, origin: center, logo-content)
+      }
+      place(top + left, dx: logo-x, dy: logo-y, placed-logo)
+    }`
+    : positionedLogo
+      ? String.raw`
     if logo-path != none and logo-placement != none {
       let logo-x = if logo-placement.relativeTo == "page" {
         logo-placement.x - ${margin.left}
@@ -400,7 +471,7 @@ export function createAtlcliTypstTemplate(
       }
       place(top + left, dx: logo-x, dy: logo-y, placed-logo)
     }`
-    : "";
+      : "";
   const flowLogoCondition = positionedLogo
     ? "logo-path != none and logo-placement == none"
     : "logo-path != none";
@@ -949,12 +1020,52 @@ function visualLength(value: string, path: string): string {
 }
 
 function scopeCondition(
-  scope: WikiPdfTemplateImageDecorationV1["scope"]
+  scope: "all" | "first" | "odd" | "even"
 ): string {
   if (scope === "all") return "true";
   if (scope === "first") return "current-page == 1";
   if (scope === "odd") return "calc.rem(current-page, 2) == 1";
   return "calc.rem(current-page, 2) == 0";
+}
+
+function clippedImageSource(
+  placement: WikiPdfTemplateImageDecorationV1["placement"],
+  assetPath: string,
+  index: number,
+): string {
+  const width = visualLength(
+    placement.width,
+    `decorations[${index}].placement.width`,
+  );
+  const height = visualLength(
+    placement.height,
+    `decorations[${index}].placement.height`,
+  );
+  const crop = placement.crop;
+  const visibleWidth = crop === undefined ? 1 : 1 - crop.left - crop.right;
+  const visibleHeight = crop === undefined ? 1 : 1 - crop.top - crop.bottom;
+  const renderedWidth = crop === undefined ? width : `(${width}) / ${visibleWidth}`;
+  const renderedHeight = crop === undefined ? height : `(${height}) / ${visibleHeight}`;
+  const image = `image(${typstString(assetPath)}, width: ${renderedWidth}, height: ${renderedHeight}, fit: ${typstString(placement.fit ?? "contain")})`;
+  if (crop === undefined && placement.clip === undefined) return image;
+  const dx = crop === undefined || crop.left === 0
+    ? "0 * 1pt"
+    : `-(${renderedWidth}) * ${crop.left}`;
+  const dy = crop === undefined || crop.top === 0
+    ? "0 * 1pt"
+    : `-(${renderedHeight}) * ${crop.top}`;
+  const radius =
+    placement.clip?.kind === "rounded-rect"
+      ? `, radius: ${visualLength(
+          placement.clip.radius,
+          `decorations[${index}].placement.clip.radius`,
+        )}`
+      : placement.clip?.kind === "circle"
+        ? ", radius: 1 / 2 * 100%"
+        : "";
+  return `box(width: ${width}, height: ${height}, clip: true${radius})[
+      #place(top + left, dx: ${dx}, dy: ${dy}, ${image})
+    ]`;
 }
 
 function imageDecorationSource(
@@ -963,14 +1074,7 @@ function imageDecorationSource(
   index: number
 ): string {
   const placement = decoration.placement;
-  const fit = placement.fit ?? "contain";
-  const image = `image(${typstString(assetPath)}, width: ${visualLength(
-    placement.width,
-    `decorations[${index}].placement.width`
-  )}, height: ${visualLength(
-    placement.height,
-    `decorations[${index}].placement.height`
-  )}, fit: ${typstString(fit)})`;
+  const image = clippedImageSource(placement, assetPath, index);
   const content =
     placement.rotation === undefined || placement.rotation === 0
       ? image
@@ -981,6 +1085,70 @@ function imageDecorationSource(
       dx: ${visualLength(placement.x, `decorations[${index}].placement.x`)},
       dy: ${visualLength(placement.y, `decorations[${index}].placement.y`)},
       ${content},
+    ))
+  }`;
+}
+
+function designPaintSourceV5(
+  paint: DesignPaintV3,
+  colors: Readonly<Record<string, string>>,
+): string {
+  const color = (token: string): string => `rgb(${typstString(colors[token]!)})`;
+  if (paint.kind === "solid") return color(paint.color);
+  const stops = paint.stops
+    .map((stop) => `(${color(stop.color)}, ${stop.at}%)`)
+    .join(", ");
+  if (paint.kind === "linear") {
+    return `gradient.linear(${stops}, angle: ${paint.angle}deg, relative: ${typstString(paint.relativeTo)})`;
+  }
+  const center = `(${paint.center.x}%, ${paint.center.y}%)`;
+  if (paint.kind === "radial") {
+    return `gradient.radial(${stops}, center: ${center}, radius: ${paint.radius}%, relative: ${typstString(paint.relativeTo)})`;
+  }
+  return `gradient.conic(${stops}, angle: ${paint.angle}deg, center: ${center}, relative: ${typstString(paint.relativeTo)})`;
+}
+
+function designDecorationSourceV5(
+  decoration: DesignDecorationV3,
+  paints: Readonly<Record<string, DesignPaintV3>>,
+  colors: Readonly<Record<string, string>>,
+): string {
+  const paint = (id: string): string => {
+    const value = paints[id];
+    if (!value) throw new Error(`PDF template decoration references missing paint "${id}"`);
+    return designPaintSourceV5(value, colors);
+  };
+  const stroke = (value: { paint: string; width: string }): string =>
+    `${visualLength(value.width, "design.decorations.stroke.width")} + ${paint(value.paint)}`;
+  let x: string;
+  let y: string;
+  let content: string;
+  if (decoration.kind === "rect") {
+    x = visualLength(decoration.box.x, "design.decorations.box.x");
+    y = visualLength(decoration.box.y, "design.decorations.box.y");
+    content = `rect(width: ${visualLength(decoration.box.width, "design.decorations.box.width")}, height: ${visualLength(decoration.box.height, "design.decorations.box.height")}, fill: ${decoration.fill === undefined ? "none" : paint(decoration.fill)}, stroke: ${decoration.stroke === undefined ? "none" : stroke(decoration.stroke)}${decoration.radius === undefined ? "" : `, radius: ${visualLength(decoration.radius, "design.decorations.radius")}`})`;
+  } else if (decoration.kind === "circle") {
+    const radius = visualLength(decoration.radius, "design.decorations.radius");
+    x = `${visualLength(decoration.center.x, "design.decorations.center.x")} - ${radius}`;
+    y = `${visualLength(decoration.center.y, "design.decorations.center.y")} - ${radius}`;
+    content = `circle(radius: ${radius}, fill: ${decoration.fill === undefined ? "none" : paint(decoration.fill)}, stroke: ${decoration.stroke === undefined ? "none" : stroke(decoration.stroke)})`;
+  } else {
+    x = visualLength(decoration.from.x, "design.decorations.from.x");
+    y = visualLength(decoration.from.y, "design.decorations.from.y");
+    const dx = `${visualLength(decoration.to.x, "design.decorations.to.x")} - ${x}`;
+    const dy = `${visualLength(decoration.to.y, "design.decorations.to.y")} - ${y}`;
+    content = `line(start: (0 * 1pt, 0 * 1pt), end: (${dx}, ${dy}), stroke: ${stroke(decoration.stroke)})`;
+  }
+  const rotated =
+    decoration.rotation === undefined || decoration.rotation === 0
+      ? content
+      : `rotate(${decoration.rotation}deg, origin: center, ${content})`;
+  return `if ${scopeCondition(decoration.scope)} {
+    pdf.artifact(kind: "other", place(
+      top + left,
+      dx: ${x},
+      dy: ${y},
+      ${rotated},
     ))
   }`;
 }
@@ -1004,7 +1172,9 @@ function borderDecorationSource(
 }
 
 function typstVisualSource(
-  visuals: PdfTemplateVisualsV1 | undefined
+  visuals: PdfTemplateVisualsV1 | undefined,
+  decorationModelV5: AtlcliTypstDecorationModelV5 | undefined,
+  colors: Readonly<Record<string, string>>,
 ): string {
   const byLayer: Record<
     WikiPdfTemplateImageDecorationV1["layer"],
@@ -1029,6 +1199,11 @@ function typstVisualSource(
     }
     byLayer[decoration.layer].push(
       imageDecorationSource(decoration, asset.vfsPath, index)
+    );
+  }
+  for (const decoration of decorationModelV5?.decorations ?? []) {
+    byLayer[decoration.layer].push(
+      designDecorationSourceV5(decoration, decorationModelV5!.paints, colors),
     );
   }
   const definition = (

@@ -85,6 +85,11 @@ export function createAtlcliTypstTemplateV5(
         navigation: validated.navigation,
         components: validated.components,
       },
+      decorationModelV5: {
+        paints: validated.paints ?? {},
+        decorations: validated.decorations ?? [],
+      },
+      imageGeometryV5: true,
     },
   );
 }

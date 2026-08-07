@@ -287,7 +287,8 @@ function lengthMm(value: string, path: string): number {
 
 function validatePlacementGeometry(
   placement: WikiPdfTemplateImageDecorationV1["placement"],
-  path: string
+  path: string,
+  allowRevision5CropAndClip = false,
 ): void {
   const values = [
     ["x", lengthMm(placement.x, `${path}.x`)],
@@ -308,8 +309,7 @@ function validatePlacementGeometry(
       );
     }
   }
-  // Typst 0.14.2 has no general alpha compositor/crop primitive for image
-  // content. Keep the portable fields but reject unproven execution in PDF V1.
+  // Non-trivial alpha stays closed until a dedicated compositor proof exists.
   if (placement.opacity !== undefined && placement.opacity !== 1) {
     reject(
       "pdf-manifest",
@@ -318,21 +318,57 @@ function validatePlacementGeometry(
       "PDF V1 supports only opaque image decorations"
     );
   }
-  if (placement.crop !== undefined) {
+  if (placement.crop !== undefined && !allowRevision5CropAndClip) {
     reject(
       "pdf-manifest",
       "unsupported-decoration",
       `${path}.crop`,
-      "PDF V1 does not execute image crop geometry"
+      "canonical revisions 1-4 do not execute image crop geometry"
     );
+  }
+  if (placement.clip !== undefined && !allowRevision5CropAndClip) {
+    reject(
+      "pdf-manifest",
+      "unsupported-decoration",
+      `${path}.clip`,
+      "canonical revisions 1-4 do not execute image clip geometry",
+    );
+  }
+  if (placement.clip?.kind === "rounded-rect") {
+    const radius = lengthMm(placement.clip.radius, `${path}.clip.radius`);
+    if (radius < 0 || radius > MAX_PLACEMENT_MM) {
+      reject(
+        "pdf-manifest",
+        "invalid-geometry",
+        `${path}.clip.radius`,
+        `must fit the bounded ${MAX_PLACEMENT_MM}mm renderer canvas`,
+      );
+    }
+  }
+  if (placement.clip?.kind === "circle") {
+    const width = lengthMm(placement.width, `${path}.width`);
+    const height = lengthMm(placement.height, `${path}.height`);
+    if (Math.abs(width - height) > 0.001) {
+      reject(
+        "pdf-manifest",
+        "invalid-geometry",
+        `${path}.clip`,
+        "circle clips require equal placement width and height",
+      );
+    }
   }
 }
 
 function validateGeometry(
   decoration: WikiPdfTemplateImageDecorationV1,
-  path: string
+  path: string,
+  allowRevision5CropAndClip = false,
 ): void {
-  validatePlacementGeometry(decoration.placement, `${path}.placement`);
+  validatePlacementGeometry(
+    decoration.placement,
+    `${path}.placement`,
+    allowRevision5CropAndClip,
+  );
 }
 
 function expectedImageDecoration(
@@ -674,7 +710,8 @@ export function validatePdfTemplateManifest(
       if (reference.placement) {
         validatePlacementGeometry(
           reference.placement,
-          `assets.${slot}.placement`
+          `assets.${slot}.placement`,
+          revision === PDF_CANONICAL_SOURCE_REVISION_5,
         );
       }
     } else if (reference.placement) {
@@ -766,7 +803,11 @@ export function validatePdfTemplateManifest(
         "page decorations must be artifacts without alt text"
       );
     }
-    validateGeometry(decoration, path);
+    validateGeometry(
+      decoration,
+      path,
+      revision === PDF_CANONICAL_SOURCE_REVISION_5,
+    );
   }
 
   for (const slot of Object.keys(assets)) {
