@@ -21,6 +21,7 @@ import {
   ManifestValidationError,
   unflattenDesign,
   validateDesignAgainstCatalog,
+  WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type TemplateManifest,
   type WikiPdfTemplateDesignV1,
@@ -30,11 +31,14 @@ import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import { getBuiltinPdfTemplate } from "./curated-templates.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1,
   materializeLegacyPdfDesign,
   projectPdfDesignThroughCatalog,
+  projectPdfDesignThroughCatalogV2,
   writePdfDesignCapability,
+  writePdfDesignCapabilityV2,
 } from "./design-catalog.js";
 import { typstString } from "./escape.js";
 import { findSvgSafetyViolation } from "./svg-safety.js";
@@ -382,6 +386,7 @@ export function resolvePdfSettings(
   resolved.design = designResolution.design;
   resolved.designTrace = designResolution.trace;
   resolved.ignoredDesignCapabilities = designResolution.ignoredCapabilities;
+  resolved.capabilityCatalogDigest = designResolution.capabilityCatalogDigest;
   resolved.labels = resolveTemplateLabels(manifest, context.locale, context.region);
   if (context.templatePack) {
     resolved.templateVisuals = {
@@ -416,6 +421,7 @@ export interface ResolvedTemplateDesignWithTrace {
   design: ResolvedPdfDesign;
   trace: readonly PdfDesignResolutionTraceEntry[];
   ignoredCapabilities: readonly string[];
+  capabilityCatalogDigest: string;
 }
 
 /**
@@ -435,6 +441,41 @@ export function resolveTemplateDesignWithTrace(
       value: undefined,
       constraint: "template manifest has no design block",
     });
+  }
+
+  const catalogV2 = manifest.capabilityCatalog?.digest === PDF_TEMPLATE_CAPABILITY_DIGEST_V2;
+
+  if (catalogV2) {
+    const baseline = projectPdfDesignThroughCatalogV2(manifest.design);
+    const trace: PdfDesignResolutionTraceEntry[] = Object.entries(
+      flattenDesign(baseline)
+    ).map(([target, value], sequence) => ({
+      target,
+      source: "baseline",
+      sourceId: manifest.id,
+      sequence,
+      value,
+    }));
+    const bound = applyBindingsWithTraceForCatalog(
+      baseline,
+      manifest.bindings ?? [],
+      values,
+      trace,
+      projectPdfDesignThroughCatalogV2,
+      writePdfDesignCapabilityV2
+    );
+    const themed = applyThemePolicy(
+      bound.design,
+      bound.trace,
+      themeOptions,
+      writePdfDesignCapabilityV2
+    );
+    return {
+      design: projectPdfDesignThroughCatalogV2(themed.design),
+      trace: themed.trace,
+      ignoredCapabilities: [],
+      capabilityCatalogDigest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+    };
   }
 
   const characterizedBaseline = getBuiltinPdfTemplate(manifest.id)?.design;
@@ -485,8 +526,31 @@ export function resolveTemplateDesignWithTrace(
     trace
   );
 
-  let design = bound.design;
-  const nextTrace = [...bound.trace];
+  const themed = applyThemePolicy(
+    bound.design,
+    bound.trace,
+    themeOptions,
+    writePdfDesignCapability
+  );
+  return {
+    design: projectPdfDesignThroughCatalog(themed.design),
+    trace: themed.trace,
+    ignoredCapabilities,
+    capabilityCatalogDigest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  };
+}
+
+function applyThemePolicy(
+  initialDesign: WikiPdfTemplateDesignV1,
+  initialTrace: readonly PdfDesignResolutionTraceEntry[],
+  themeOptions: PdfThemeOptions | undefined,
+  writeCapability: typeof writePdfDesignCapability
+): {
+  design: WikiPdfTemplateDesignV1;
+  trace: readonly PdfDesignResolutionTraceEntry[];
+} {
+  let design = initialDesign;
+  const nextTrace = [...initialTrace];
   // Resolve the complete theme to validate every supplied theme field, but
   // project only explicitly present fields into the design.
   const theme = resolvePdfTheme(themeOptions);
@@ -520,7 +584,7 @@ export function resolveTemplateDesignWithTrace(
   ];
   for (const write of policyWrites) {
     if (!write.present) continue;
-    design = writePdfDesignCapability(
+    design = writeCapability(
       design,
       write.target,
       write.value,
@@ -534,11 +598,7 @@ export function resolveTemplateDesignWithTrace(
       value: write.value,
     });
   }
-  return {
-    design: projectPdfDesignThroughCatalog(design),
-    trace: nextTrace,
-    ignoredCapabilities,
-  };
+  return { design, trace: nextTrace };
 }
 
 /** The Level-A resolved value a binding's `setting` reads. */
@@ -584,7 +644,28 @@ export function applyBindingsWithTrace(
   design: WikiPdfTemplateDesignV1;
   trace: readonly PdfDesignResolutionTraceEntry[];
 } {
-  let copy = projectPdfDesignThroughCatalog(design);
+  return applyBindingsWithTraceForCatalog(
+    design,
+    bindings,
+    values,
+    initialTrace,
+    projectPdfDesignThroughCatalog,
+    writePdfDesignCapability
+  );
+}
+
+function applyBindingsWithTraceForCatalog(
+  design: WikiPdfTemplateDesignV1,
+  bindings: WikiPdfTemplateSettingBindingV1[],
+  values: ResolvedPdfSettings,
+  initialTrace: readonly PdfDesignResolutionTraceEntry[],
+  projectDesign: (design: WikiPdfTemplateDesignV1) => WikiPdfTemplateDesignV1,
+  writeCapability: typeof writePdfDesignCapability
+): {
+  design: WikiPdfTemplateDesignV1;
+  trace: readonly PdfDesignResolutionTraceEntry[];
+} {
+  let copy = projectDesign(design);
   const trace = [...initialTrace];
   const written = new Set<string>();
   for (const binding of bindings) {
@@ -604,7 +685,7 @@ export function applyBindingsWithTrace(
       }
       written.add(target);
       const writerId = `setting.${binding.setting}`;
-      copy = writePdfDesignCapability(copy, target, value, writerId);
+      copy = writeCapability(copy, target, value, writerId);
       trace.push({
         target,
         source: "runtime-binding",
@@ -648,14 +729,14 @@ export function resolveTemplateLabels(
   const requested = [locale, region].filter(Boolean).join("-") || locale;
   // Walk lowest → highest priority so higher-priority copy wins on merge.
   const chain = localeChain(localization, requested).reverse();
-  // Only the DECLARED v1 document-label vocabulary is resolved. A manifest key
+  // Only the declared document-label vocabulary is resolved. A manifest key
   // outside it never reaches Typst emission — defence in depth behind the
   // manifest import gate, so an unexpected key can never become a dictionary
   // key in generated source.
   // Dropped rather than rejected for forward compatibility (a manifest written
   // for a newer engine must still import); `validateLocalization` warns by name
   // at import time so the drop is diagnosable, never silent.
-  const vocabulary = new Set<string>(WIKI_PDF_V1_DOCUMENT_LABELS);
+  const vocabulary = new Set<string>(WIKI_PDF_SUPPORTED_DOCUMENT_LABELS);
   for (const bundle of chain) {
     for (const [key, value] of Object.entries(bundle.document ?? {})) {
       if (!vocabulary.has(key)) continue;
@@ -725,7 +806,10 @@ export function typstSettingsDict(
   resolved: ResolvedPdfSettings,
   options: { logoPath?: string } = {}
 ): string {
-  const catalogDesign = projectPdfDesignThroughCatalog(resolved.design);
+  const catalogV2 = resolved.capabilityCatalogDigest === PDF_TEMPLATE_CAPABILITY_DIGEST_V2;
+  const catalogDesign = catalogV2
+    ? projectPdfDesignThroughCatalogV2(resolved.design)
+    : projectPdfDesignThroughCatalog(resolved.design);
   const designLines: string[] = [
     "  design: (",
     "    branding: (",
@@ -747,6 +831,9 @@ export function typstSettingsDict(
     `      outline: (enabled: ${catalogDesign.features.outline.enabled ? "true" : "false"}, depth: ${numberLiteral(
       catalogDesign.features.outline.depth
     )}),`,
+    ...(catalogV2
+      ? [`      closingPage: (enabled: ${catalogDesign.features.closingPage.enabled ? "true" : "false"}),`]
+      : []),
     "    ),",
     "  ),"
   );

@@ -22,12 +22,20 @@ import {
 } from "./curated-templates.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
   PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1,
+  PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2,
   PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1,
+  PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2,
   PDF_TEMPLATE_PRESENTATION_REVISION_V1,
+  PDF_TEMPLATE_PRESENTATION_REVISION_V2,
   materializeLegacyPdfDesign,
   projectPdfDesignThroughCatalog,
+  projectPdfDesignThroughCatalogV2,
+  readPdfDesignCapability,
+  readPdfDesignCapabilityV2,
 } from "./design-catalog.js";
 import {
   PDF_BINDABLE_LEVEL_A_SETTINGS,
@@ -479,5 +487,93 @@ describe("PDF template capability catalog V1", () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe("PDF template capability catalog V2", () => {
+  it("pins V2 digests while preserving the complete V1 descriptor prefix", async () => {
+    expect(await computeCapabilityCatalogDigest(PDF_TEMPLATE_CAPABILITIES_V1)).toBe(
+      "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c"
+    );
+    expect(PDF_TEMPLATE_CAPABILITY_DIGEST_V1).toBe(
+      "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c"
+    );
+    expect(PDF_TEMPLATE_PRESENTATION_REVISION_V1).toBe(
+      "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d"
+    );
+    expect(await computeCapabilityCatalogDigest(PDF_TEMPLATE_CAPABILITIES_V2)).toBe(
+      PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+    );
+    expect(
+      await computeCapabilityPresentationRevision(
+        PDF_TEMPLATE_CAPABILITIES_V2,
+        PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2,
+        PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2
+      )
+    ).toBe(PDF_TEMPLATE_PRESENTATION_REVISION_V2);
+    expect(
+      [...PDF_TEMPLATE_CAPABILITIES_V2.descriptors.slice(
+        0,
+        PDF_TEMPLATE_CAPABILITIES_V1.descriptors.length
+      )]
+    ).toEqual([...PDF_TEMPLATE_CAPABILITIES_V1.descriptors]);
+  });
+
+  it("makes every V2-only descriptor optional, singly consumed, and classified once", () => {
+    const v1Paths = new Set(
+      PDF_TEMPLATE_CAPABILITIES_V1.descriptors.map(({ path }) => path)
+    );
+    const v2Only = PDF_TEMPLATE_CAPABILITIES_V2.descriptors.filter(
+      ({ path }) => !v1Paths.has(path)
+    );
+    const primary = new Set(
+      PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2.descriptors.map(({ target }) => target)
+    );
+    const details = new Set(PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2);
+    expect(v2Only.length).toBeGreaterThan(0);
+    for (const descriptor of v2Only) {
+      expect(descriptor.required, descriptor.path).toBe(false);
+      expect(descriptor.consumers, descriptor.path).toEqual(["pdf.renderer"]);
+      expect(
+        Number(primary.has(descriptor.path)) + Number(details.has(descriptor.path)),
+        descriptor.path
+      ).toBe(1);
+    }
+  });
+
+  it("keeps optional V2 leaves absent without weakening required V1 completeness", () => {
+    const validation = validateDesignAgainstCatalog(
+      BUILTIN_PDF_DESIGN,
+      PDF_TEMPLATE_CAPABILITIES_V2,
+      "authoring"
+    );
+    expect(validation.status).toBe("canonical-executable");
+    expect(validation.missingCapabilities).toEqual([]);
+  });
+
+  it("isolates V1 reads from V2 leaves and validates the explicit V2 projection", () => {
+    const design = structuredClone(BUILTIN_PDF_DESIGN);
+    design.compositions = {
+      cover: { kind: "standard", logo: "show" },
+      closingPage: {
+        kind: "document-summary",
+        logo: "hide",
+        website: "hide",
+        legalNotice: "hide",
+        align: "left",
+      },
+    };
+    expect(() =>
+      readPdfDesignCapability(design, "compositions.cover.kind")
+    ).toThrow(/Unknown PDF design capability/);
+    expect(
+      readPdfDesignCapabilityV2<string>(design, "compositions.cover.kind")
+    ).toBe("standard");
+    expect(projectPdfDesignThroughCatalogV2(design).compositions).toEqual(
+      design.compositions
+    );
+    expect(() => projectPdfDesignThroughCatalog(design)).toThrow(
+      /compositions\./
+    );
   });
 });

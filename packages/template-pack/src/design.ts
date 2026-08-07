@@ -61,6 +61,66 @@ export const DESIGN_HEADER_MODES: readonly DesignHeaderMode[] = ["title", "chapt
 /** The mode an absent `features.header.mode` resolves to. */
 export const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode = "title";
 
+/** The bounded cover-composition kinds understood by the portable design model. */
+export const DESIGN_COVER_COMPOSITION_KINDS = ["standard", "type-cut"] as const;
+export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
+
+/** The bounded closing-page kinds understood by the portable design model. */
+export const DESIGN_CLOSING_COMPOSITION_KINDS = [
+  "document-summary",
+  "brand-lockup",
+] as const;
+export type DesignClosingCompositionKind =
+  (typeof DESIGN_CLOSING_COMPOSITION_KINDS)[number];
+
+export const DESIGN_VISIBILITIES = ["show", "hide"] as const;
+export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
+
+export const DESIGN_HORIZONTAL_ALIGNMENTS = ["left", "center", "right"] as const;
+export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
+
+export interface DesignCoverCompositionV1 {
+  kind: DesignCoverCompositionKind;
+  logo: DesignVisibility;
+  typeCut?: {
+    angle: number;
+    stop: number;
+  };
+}
+
+export interface DesignClosingPageCompositionV1 {
+  kind: DesignClosingCompositionKind;
+  logo: DesignVisibility;
+  website: DesignVisibility;
+  legalNotice: DesignVisibility;
+  align: DesignHorizontalAlignment;
+}
+
+export interface DesignPageCompositionsV1 {
+  cover: DesignCoverCompositionV1;
+  closingPage: DesignClosingPageCompositionV1;
+}
+
+/** Back-compatible composition defaults; absence remains distinguishable. */
+export const DEFAULT_DESIGN_COVER_COMPOSITION: Readonly<DesignCoverCompositionV1> =
+  Object.freeze({ kind: "standard", logo: "show" });
+
+/** The historical summary page contains none of the new brand-lockup fields. */
+export const DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION: Readonly<DesignClosingPageCompositionV1> =
+  Object.freeze({
+    kind: "document-summary",
+    logo: "hide",
+    website: "hide",
+    legalNotice: "hide",
+    align: "left",
+  });
+
+export const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1> =
+  Object.freeze({
+    cover: DEFAULT_DESIGN_COVER_COMPOSITION,
+    closingPage: DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION,
+  });
+
 export interface TypographyRole {
   /** Which of the three font families this role renders in. */
   font?: FontRole;
@@ -99,6 +159,9 @@ export interface DesignFeatures {
 export interface DesignBranding {
   accent: DesignColor;
   organizationName?: string;
+  websiteLabel?: string;
+  websiteUrl?: string;
+  legalNotice?: string;
 }
 
 export interface DesignTypography {
@@ -125,6 +188,7 @@ export interface WikiPdfTemplateDesignV1 {
   typography: DesignTypography;
   tokens: DesignTokens;
   semanticPalettes: DesignSemanticPalettes;
+  compositions?: DesignPageCompositionsV1;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +202,7 @@ const WEIGHTS: readonly DesignWeight[] = ["regular", "medium", "semibold", "bold
 const FONT_ROLES: readonly FontRole[] = ["body", "heading", "mono"];
 /** Typst source metacharacters forbidden in every non-color design string. */
 // eslint-disable-next-line no-control-regex
-const UNSAFE_STRING_RE = /[\u0000-\u001f#{}\\"`$]/;
+const UNSAFE_STRING_RE = /[\u0000-\u001f\u007f#{}\\"`$]/;
 const LENGTH_MAGNITUDE_MAX = 1000;
 const SAFE_STRING_MAX = 200;
 
@@ -170,9 +234,30 @@ export function validateDesignColor(value: unknown, path: string): DesignColor {
 
 export function validateSafeString(value: unknown, path: string): string {
   if (typeof value !== "string" || value.length === 0) fail(path, "must be a non-empty string");
-  if (value.length > SAFE_STRING_MAX) fail(path, `must be at most ${SAFE_STRING_MAX} characters`);
+  if ([...value].length > SAFE_STRING_MAX) {
+    fail(path, `must be at most ${SAFE_STRING_MAX} Unicode code points`);
+  }
   if (UNSAFE_STRING_RE.test(value)) fail(path, "must not contain Typst source metacharacters");
   return value;
+}
+
+function validateHttpsUrl(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    fail(path, "must be an absolute HTTPS URL");
+  }
+  const url = value;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    fail(path, "must be an absolute HTTPS URL");
+  }
+  if (parsed.protocol !== "https:") fail(path, "must use the HTTPS scheme");
+  if (parsed.username !== "" || parsed.password !== "") {
+    fail(path, "must not contain credentials");
+  }
+  if (parsed.hash !== "") fail(path, "must not contain a fragment");
+  return validateSafeString(url, path);
 }
 
 function validateWeight(value: unknown, path: string): DesignWeight {
@@ -289,7 +374,11 @@ export function validateDesign(value: unknown, path = "design"): WikiPdfTemplate
     typography: validateTypography(value.typography, `${path}.typography`),
     tokens: validateTokens(value.tokens, `${path}.tokens`),
     semanticPalettes: validateSemanticPalettes(value.semanticPalettes, `${path}.semanticPalettes`),
+    ...(value.compositions === undefined
+      ? {}
+      : { compositions: validatePageCompositions(value.compositions, `${path}.compositions`) }),
   };
+  validateCompositionBranding(design, path);
   return design;
 }
 
@@ -345,7 +434,98 @@ function validateBranding(value: unknown, path: string): DesignBranding {
   if (value.organizationName !== undefined) {
     branding.organizationName = validateSafeString(value.organizationName, `${path}.organizationName`);
   }
+  if (value.websiteLabel !== undefined) {
+    branding.websiteLabel = validateSafeString(value.websiteLabel, `${path}.websiteLabel`);
+  }
+  if (value.websiteUrl !== undefined) {
+    branding.websiteUrl = validateHttpsUrl(value.websiteUrl, `${path}.websiteUrl`);
+  }
+  if (value.legalNotice !== undefined) {
+    branding.legalNotice = validateSafeString(value.legalNotice, `${path}.legalNotice`);
+  }
   return branding;
+}
+
+function exactKeys(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
+  const known = new Set(allowed);
+  const unknown = Object.keys(value).find((key) => !known.has(key));
+  if (unknown) fail(`${path}.${unknown}`, "is not recognized");
+}
+
+function validatePageCompositions(value: unknown, path: string): DesignPageCompositionsV1 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["cover", "closingPage"], path);
+  return {
+    cover: validateCoverComposition(value.cover, `${path}.cover`),
+    closingPage: validateClosingPageComposition(value.closingPage, `${path}.closingPage`),
+  };
+}
+
+function validateCoverComposition(value: unknown, path: string): DesignCoverCompositionV1 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["kind", "logo", "typeCut"], path);
+  const kind = validateEnum(value.kind, DESIGN_COVER_COMPOSITION_KINDS, `${path}.kind`);
+  const logo = validateEnum(value.logo, DESIGN_VISIBILITIES, `${path}.logo`);
+  if (kind === "standard") {
+    if (value.typeCut !== undefined) {
+      fail(`${path}.typeCut`, 'is not valid when kind is "standard"');
+    }
+    return { kind, logo };
+  }
+  if (!isObject(value.typeCut)) fail(`${path}.typeCut`, 'is required when kind is "type-cut"');
+  exactKeys(value.typeCut, ["angle", "stop"], `${path}.typeCut`);
+  return {
+    kind,
+    logo,
+    typeCut: {
+      angle: validateBoundedNumber(value.typeCut.angle, `${path}.typeCut.angle`, {
+        min: -180,
+        max: 180,
+      }),
+      stop: validateBoundedNumber(value.typeCut.stop, `${path}.typeCut.stop`, {
+        min: 0,
+        max: 100,
+      }),
+    },
+  };
+}
+
+function validateClosingPageComposition(
+  value: unknown,
+  path: string
+): DesignClosingPageCompositionV1 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["kind", "logo", "website", "legalNotice", "align"], path);
+  const closing: DesignClosingPageCompositionV1 = {
+    kind: validateEnum(value.kind, DESIGN_CLOSING_COMPOSITION_KINDS, `${path}.kind`),
+    logo: validateEnum(value.logo, DESIGN_VISIBILITIES, `${path}.logo`),
+    website: validateEnum(value.website, DESIGN_VISIBILITIES, `${path}.website`),
+    legalNotice: validateEnum(value.legalNotice, DESIGN_VISIBILITIES, `${path}.legalNotice`),
+    align: validateEnum(value.align, DESIGN_HORIZONTAL_ALIGNMENTS, `${path}.align`),
+  };
+  if (
+    closing.kind === "document-summary" &&
+    (closing.logo === "show" || closing.website === "show" || closing.legalNotice === "show")
+  ) {
+    fail(path, 'document-summary must hide logo, website, and legalNotice');
+  }
+  return closing;
+}
+
+function validateCompositionBranding(design: WikiPdfTemplateDesignV1, path: string): void {
+  const closing = design.compositions?.closingPage;
+  if (!closing || closing.kind !== "brand-lockup") return;
+  if (closing.website === "show") {
+    if (!design.branding.websiteLabel) {
+      fail(`${path}.branding.websiteLabel`, 'is required when brand-lockup website is "show"');
+    }
+    if (!design.branding.websiteUrl) {
+      fail(`${path}.branding.websiteUrl`, 'is required when brand-lockup website is "show"');
+    }
+  }
+  if (closing.legalNotice === "show" && !design.branding.legalNotice) {
+    fail(`${path}.branding.legalNotice`, 'is required when brand-lockup legalNotice is "show"');
+  }
 }
 
 function validateTypography(value: unknown, path: string): DesignTypography {

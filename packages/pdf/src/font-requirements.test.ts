@@ -5,7 +5,14 @@ import { serializePdfDocument } from "./serialize.js";
 import {
   assertResolvedPdfFontRequirementsV1,
   resolveFullPdfFontRequirementsV1,
+  resolvePdfFontRequirementsV1,
 } from "./font-requirements.js";
+import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+} from "./design-catalog.js";
+import { resolvePdfSettings } from "./settings.js";
 
 const metadata = {
   title: "Font requirement proof",
@@ -24,7 +31,102 @@ function fileNames(blocks: PreparedPdfBlock[]): string[] {
   return resolve(blocks).assets.map((asset) => asset.fileName!);
 }
 
+function brandLockupRequirements(options: {
+  enabled: boolean;
+  website?: "show" | "hide";
+  legalNotice?: "show" | "hide";
+}) {
+  const manifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+  manifest.id = "fixture.fonts-v4";
+  manifest.design!.features.closingPage.enabled = options.enabled;
+  manifest.design!.compositions = {
+    cover: { kind: "standard", logo: "hide" },
+    closingPage: {
+      kind: "brand-lockup",
+      logo: "hide",
+      website: options.website ?? "show",
+      legalNotice: options.legalNotice ?? "show",
+      align: "left",
+    },
+  };
+  Object.assign(manifest.design!.branding, {
+    websiteLabel: "systems.example",
+    websiteUrl: "https://systems.example",
+    legalNotice: "© Example GmbH · Zürich · Qualität 🧪",
+  });
+  Object.assign(manifest.design!.tokens.colors, {
+    closingPageBackground: "#E75204",
+    closingBrandText: "#FFFFFF",
+  });
+  Object.assign(manifest.design!.tokens.layout, {
+    closingBrandBottomInset: "24mm",
+    closingBrandBlockWidth: "90mm",
+    closingBrandTextGap: "4mm",
+  });
+  Object.assign(manifest.design!.typography.roles, {
+    closingWebsite: { font: "heading", size: "14pt", weight: "semibold" },
+    closingLegal: { font: "heading", size: "9pt", weight: "regular" },
+  });
+  manifest.canonicalSource = {
+    api: "wiki.pdf-canonical-typst",
+    revision: "4",
+  };
+  manifest.capabilityCatalog = {
+    id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+    version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  };
+  const settings = resolvePdfSettings(
+    { cover: false, outline: false },
+    { manifest }
+  );
+  const document: PreparedPdfDocument = { blocks: [], assets: [], notes: [] };
+  return resolvePdfFontRequirementsV1({
+    document,
+    metadata,
+    settings,
+    manifest,
+  });
+}
+
 describe("resolved PDF font requirements v1", () => {
+  it("includes only visible brand-lockup roles and Unicode demand", () => {
+    const requirements = brandLockupRequirements({ enabled: true });
+    const reasons = requirements.assets.flatMap((asset) => asset.reasons);
+    expect(reasons).toContainEqual({
+      kind: "template-role",
+      detail: "closingWebsite",
+    });
+    expect(reasons).toContainEqual({
+      kind: "template-role",
+      detail: "closingLegal",
+    });
+    expect(reasons.some(({ detail }) => detail === "closingTitle")).toBe(false);
+    expect(requirements.assets.map(({ fileName }) => fileName)).toContain(
+      "NotoEmoji-wght.ttf"
+    );
+
+    const websiteOnly = brandLockupRequirements({
+      enabled: true,
+      legalNotice: "hide",
+    });
+    expect(
+      websiteOnly.assets.flatMap((asset) => asset.reasons)
+        .some(({ detail }) => detail === "closingLegal")
+    ).toBe(false);
+  });
+
+  it("requires no closing-only role when the revision-4 closing page is disabled", () => {
+    const requirements = brandLockupRequirements({ enabled: false });
+    const details = requirements.assets
+      .flatMap((asset) => asset.reasons)
+      .map(({ detail }) => detail);
+    expect(details).not.toContain("closingWebsite");
+    expect(details).not.toContain("closingLegal");
+    expect(details).not.toContain("closingTitle");
+    expect(details).not.toContain("closingEyebrow");
+  });
+
   it("keeps an ordinary prose export below the canonical 12-font bundle", () => {
     const requirements = resolve([
       {

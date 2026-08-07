@@ -83,6 +83,7 @@
         "@atlcli/web-publish-starlight": "workspace:*",
         "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
         "@resvg/resvg-wasm": "2.6.2",
+        "yaml": "^2.9.0",
       },
       "devDependencies": {
         "@atlcli/export-fixtures": "workspace:*",

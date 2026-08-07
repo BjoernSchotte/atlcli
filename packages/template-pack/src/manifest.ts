@@ -25,6 +25,7 @@ import {
 import { validateDesign, type WikiPdfTemplateDesignV1 } from "./design.js";
 import {
   validateLocalization,
+  WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type DeclaredSettingsShape,
   type WikiPdfTemplateLocalizationV1,
@@ -337,6 +338,8 @@ export function validateManifest(
     json.localization !== undefined
       ? validateLocalization(json.localization, {
           requiredDocumentLabels: kind === "typst" ? WIKI_PDF_V1_DOCUMENT_LABELS : [],
+          supportedDocumentLabels:
+            kind === "typst" ? WIKI_PDF_SUPPORTED_DOCUMENT_LABELS : [],
           declared: declaredSettingsShape(settings),
           ...(options.collectWarnings ? { onWarning: options.collectWarnings } : {}),
         })

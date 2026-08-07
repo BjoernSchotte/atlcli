@@ -12,13 +12,6 @@
  * the conformance case the UMSETZUNGSPLAN references for spec 012's gate.
  */
 import {
-  BUILTIN_PDF_TEMPLATE_MANIFEST,
-  PDF_CANONICAL_SOURCE_API_V1,
-  PDF_CANONICAL_SOURCE_REVISION,
-  PDF_TEMPLATE_CAPABILITIES_V1,
-  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
-  generateCanonicalPdfTemplateSourceV1,
-  loadPdfTemplatePack,
   runPdfExport,
   validatePdfOutput,
   type PdfAssetResolver,
@@ -29,7 +22,6 @@ import {
 import {
   packTemplate,
   unpackTemplate,
-  validateManifest,
 } from "@atlcli/template-pack";
 import {
   PDF_SETTINGS_A,
@@ -42,6 +34,7 @@ import {
 } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
+import { buildPdfV4RuntimeFixture } from "./pdf-v4-runtime-fixture.js";
 
 const compiler = new HarnessPdfWorkerClient();
 
@@ -99,6 +92,7 @@ export interface PdfSettingsCaseResult {
   templateRuntimeRenders: boolean;
   reportNotes: Array<{ code: string; severity: string }>;
   digests: Record<string, string>;
+  parity: Readonly<Record<string, unknown>>;
 }
 
 export async function runPdfSettingsCase(): Promise<PdfSettingsCaseResult> {
@@ -137,34 +131,8 @@ export async function runPdfSettingsCase(): Promise<PdfSettingsCaseResult> {
     Object.keys(unpacked.files).sort().join(",") === Object.keys(PDF_TEMPLATE_PACK_FILES).sort().join(",");
   if (!templatePackRoundTrips) throw new Error("The .wiki-pdf-template container did not round-trip.");
 
-  const runtimeManifest = validateManifest({
-    ...BUILTIN_PDF_TEMPLATE_MANIFEST,
-    id: "com.atlcli.browser-runtime",
-    name: "Browser runtime conformance",
-    version: "1.0.0",
-    capabilityCatalog: {
-      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
-      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
-      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
-    },
-    canonicalSource: {
-      api: PDF_CANONICAL_SOURCE_API_V1,
-      revision: PDF_CANONICAL_SOURCE_REVISION,
-    },
-    provenance: undefined,
-  });
-  const canonicalSource = generateCanonicalPdfTemplateSourceV1(
-    runtimeManifest,
-    { assets: {}, decorations: [] }
-  );
-  const runtime = await loadPdfTemplatePack(
-    await packTemplate({
-      manifest: runtimeManifest,
-      files: {
-        "atlcli.typ": new TextEncoder().encode(canonicalSource),
-      },
-    })
-  );
+  const v4 = await buildPdfV4RuntimeFixture();
+  const runtime = v4.runtime;
   const templateRuntimeStructuredClone =
     structuredClone(runtime).canonicalSource.sha256 ===
     runtime.canonicalSource.sha256;
@@ -184,6 +152,16 @@ export async function runPdfSettingsCase(): Promise<PdfSettingsCaseResult> {
   const digests: Record<string, string> = {
     "variant-a.pdf": await sha256Hex(a1.bytes),
     "variant-b.pdf": await sha256Hex(b.bytes),
+    "runtime-v4.wiki-pdf-template": await sha256Hex(v4.packBytes),
+    "runtime-v4.pdf": await sha256Hex(runtimeRender.bytes),
+  };
+  const parity = {
+    runtimeSnapshot: structuredClone(runtime.runtimeSnapshot),
+    runtimeInspection: validatePdfOutput(runtimeRender.bytes),
+    runtimeReportNotes: runtimeRender.report.notes.map(({ code, level }) => ({
+      code,
+      level,
+    })),
   };
 
   return {
@@ -204,5 +182,6 @@ export async function runPdfSettingsCase(): Promise<PdfSettingsCaseResult> {
     templateRuntimeRenders,
     reportNotes,
     digests,
+    parity,
   };
 }

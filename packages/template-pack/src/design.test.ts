@@ -4,13 +4,22 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  DEFAULT_DESIGN_PAGE_COMPOSITIONS,
+  DESIGN_CLOSING_COMPOSITION_KINDS,
+  DESIGN_COVER_COMPOSITION_KINDS,
+  DESIGN_HORIZONTAL_ALIGNMENTS,
+  DESIGN_VISIBILITIES,
   DEFAULT_DESIGN_HEADER_MODE,
   DESIGN_HEADER_MODES,
   validateDesign,
   type WikiPdfTemplateDesignV1,
 } from "./design.js";
 import { validateBindings } from "./bindings.js";
-import { validateLocalization, WIKI_PDF_V1_DOCUMENT_LABELS } from "./localization.js";
+import {
+  validateLocalization,
+  WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
+  WIKI_PDF_V1_DOCUMENT_LABELS,
+} from "./localization.js";
 import { validateManifest, ManifestValidationError } from "./manifest.js";
 import { localizeTemplateUi } from "./localize.js";
 
@@ -135,6 +144,140 @@ describe("validateDesign", () => {
     (design.tokens.colors as Record<string, string>).ink = "#000000";
     expect(() => validateDesign(design)).not.toThrow();
   });
+
+  it("exposes immutable back-compatible composition defaults", () => {
+    expect(DEFAULT_DESIGN_PAGE_COMPOSITIONS.cover).toEqual({
+      kind: "standard",
+      logo: "show",
+    });
+    expect(DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage).toEqual({
+      kind: "document-summary",
+      logo: "hide",
+      website: "hide",
+      legalNotice: "hide",
+      align: "left",
+    });
+    expect(DESIGN_COVER_COMPOSITION_KINDS).toEqual(["standard", "type-cut"]);
+    expect(DESIGN_CLOSING_COMPOSITION_KINDS).toEqual([
+      "document-summary",
+      "brand-lockup",
+    ]);
+    expect(DESIGN_VISIBILITIES).toEqual(["show", "hide"]);
+    expect(DESIGN_HORIZONTAL_ALIGNMENTS).toEqual(["left", "center", "right"]);
+  });
+
+  it("accepts Type Cut and declarative brand-lockup copy including Unicode", () => {
+    const design = validDesign();
+    design.compositions = {
+      cover: { kind: "type-cut", logo: "hide", typeCut: { angle: -180, stop: 100 } },
+      closingPage: {
+        kind: "brand-lockup",
+        logo: "show",
+        website: "show",
+        legalNotice: "show",
+        align: "right",
+      },
+    };
+    design.branding.websiteLabel = "example.invalid";
+    design.branding.websiteUrl = "https://example.invalid/path?from=pdf";
+    design.branding.legalNotice = "© Example Systems GmbH · Zürich";
+    const validated = validateDesign(design);
+    expect(validated.compositions?.cover.typeCut).toEqual({ angle: -180, stop: 100 });
+    expect(validated.branding.legalNotice).toBe("© Example Systems GmbH · Zürich");
+  });
+
+  it("rejects invalid Type Cut bounds, non-finite values, dead data, and unknown keys", () => {
+    for (const typeCut of [
+      { angle: -181, stop: 50 },
+      { angle: 181, stop: 50 },
+      { angle: 43, stop: -1 },
+      { angle: 43, stop: 101 },
+      { angle: Number.NaN, stop: 50 },
+      { angle: 43, stop: Number.POSITIVE_INFINITY },
+    ]) {
+      const design = validDesign();
+      design.compositions = {
+        cover: { kind: "type-cut", logo: "hide", typeCut },
+        closingPage: DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage,
+      };
+      expect(() => validateDesign(design)).toThrow(ManifestValidationError);
+    }
+    const standard = validDesign() as unknown as Record<string, unknown>;
+    standard.compositions = {
+      cover: { kind: "standard", logo: "show", typeCut: { angle: 43, stop: 58 } },
+      closingPage: DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage,
+    };
+    expect(() => validateDesign(standard)).toThrow(/typeCut/);
+
+    const unknown = validDesign() as unknown as Record<string, unknown>;
+    unknown.compositions = {
+      cover: { kind: "standard", logo: "show", opacity: 0.5 },
+      closingPage: DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage,
+    };
+    expect(() => validateDesign(unknown)).toThrow(/opacity.*not recognized/);
+  });
+
+  it("rejects brand-lockup visibility without declarative website or legal copy", () => {
+    const design = validDesign();
+    design.compositions = {
+      cover: { kind: "standard", logo: "show" },
+      closingPage: {
+        kind: "brand-lockup",
+        logo: "hide",
+        website: "show",
+        legalNotice: "hide",
+        align: "left",
+      },
+    };
+    expect(() => validateDesign(design)).toThrow(/branding\.websiteLabel/);
+    design.branding.websiteLabel = "example.invalid";
+    expect(() => validateDesign(design)).toThrow(/branding\.websiteUrl/);
+    design.branding.websiteUrl = "https://example.invalid";
+    design.compositions.closingPage.website = "hide";
+    design.compositions.closingPage.legalNotice = "show";
+    expect(() => validateDesign(design)).toThrow(/branding\.legalNotice/);
+  });
+
+  it("rejects brand-lockup-only visibility on document-summary", () => {
+    for (const field of ["logo", "website", "legalNotice"] as const) {
+      const design = validDesign();
+      design.compositions = {
+        cover: { kind: "standard", logo: "show" },
+        closingPage: {
+          ...DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage,
+          [field]: "show",
+        },
+      };
+      expect(() => validateDesign(design)).toThrow(/document-summary must hide/);
+    }
+  });
+
+  it("accepts only absolute HTTPS website URLs without credentials or fragments", () => {
+    for (const bad of [
+      "http://example.invalid",
+      "//example.invalid",
+      "/relative",
+      "https://user:secret@example.invalid",
+      "https://example.invalid/#fragment",
+      "not a url",
+    ]) {
+      const design = validDesign();
+      design.branding.websiteUrl = bad;
+      expect(() => validateDesign(design)).toThrow(/HTTPS|credentials|fragment/);
+    }
+  });
+
+  it("bounds safe literal strings by Unicode code points and rejects DEL", () => {
+    const exact = validDesign();
+    exact.branding.legalNotice = "🚀".repeat(200);
+    expect(validateDesign(exact).branding.legalNotice).toBe("🚀".repeat(200));
+    const over = validDesign();
+    over.branding.legalNotice = "🚀".repeat(201);
+    expect(() => validateDesign(over)).toThrow(/200 Unicode code points/);
+    const control = validDesign();
+    control.branding.legalNotice = "Example\u007fSystems";
+    expect(() => validateDesign(control)).toThrow(/metacharacters/);
+  });
 });
 
 describe("validateBindings", () => {
@@ -199,6 +342,30 @@ describe("validateLocalization", () => {
     });
     expect(result.locales.de).toBeDefined();
     expect(warnings.some((w) => w.includes("de") && w.includes("document"))).toBe(true);
+  });
+
+  it("supports coverEyebrow without requiring it or warning that it is ignored", () => {
+    const warnings: string[] = [];
+    const value = localization();
+    const document = (
+      value.locales as Record<string, { document: Record<string, string> }>
+    ).en.document;
+    document.coverEyebrow = "EXECUTIVE BRIEFING";
+    const result = validateLocalization(value, {
+      requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS,
+      supportedDocumentLabels: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
+      onWarning: (warning) => warnings.push(warning),
+    });
+    expect(result.locales.en?.document?.coverEyebrow).toBe("EXECUTIVE BRIEFING");
+    expect(warnings.some((warning) => warning.includes("coverEyebrow"))).toBe(false);
+
+    delete document.coverEyebrow;
+    expect(() =>
+      validateLocalization(value, {
+        requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS,
+        supportedDocumentLabels: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
+      })
+    ).not.toThrow();
   });
 });
 
@@ -343,6 +510,38 @@ describe("validateManifest with design/bindings/localization", () => {
     delete (value.localization as { locales: { en: { document: Record<string, string> } } }).locales.en
       .document.pages;
     expect(() => validateManifest(value)).toThrow(ManifestValidationError);
+  });
+
+  it("preserves composition, branding, and optional eyebrow data at manifest import", () => {
+    const value = base();
+    const design = value.design as WikiPdfTemplateDesignV1;
+    design.branding.websiteLabel = "example.invalid";
+    design.branding.websiteUrl = "https://example.invalid";
+    design.branding.legalNotice = "© Example Systems GmbH";
+    design.compositions = {
+      cover: { kind: "type-cut", logo: "hide", typeCut: { angle: 43, stop: 58 } },
+      closingPage: {
+        kind: "brand-lockup",
+        logo: "show",
+        website: "show",
+        legalNotice: "show",
+        align: "center",
+      },
+    };
+    const document = (
+      value.localization as { locales: { en: { document: Record<string, string> } } }
+    ).locales.en.document;
+    document.coverEyebrow = "EXECUTIVE BRIEFING";
+    const warnings: string[] = [];
+    const manifest = validateManifest(value, {
+      collectWarnings: (warning) => warnings.push(warning),
+    });
+    expect(manifest.design?.compositions?.cover.kind).toBe("type-cut");
+    expect(manifest.design?.branding.legalNotice).toBe("© Example Systems GmbH");
+    expect(manifest.localization?.locales.en?.document?.coverEyebrow).toBe(
+      "EXECUTIVE BRIEFING"
+    );
+    expect(warnings.some((warning) => warning.includes("coverEyebrow"))).toBe(false);
   });
 });
 

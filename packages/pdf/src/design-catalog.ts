@@ -208,7 +208,7 @@ const STATUS_NAMES = [
   "default",
 ] as const;
 
-const OWNED_DESCRIPTORS: readonly OwnedDescriptor[] = [
+const OWNED_DESCRIPTORS_V1: readonly OwnedDescriptor[] = [
   descriptor("page.size", "enum", "primary", {
     enumValues: ["a4", "letter"],
     runtimeWriters: binding("page"),
@@ -293,16 +293,113 @@ const OWNED_DESCRIPTORS: readonly OwnedDescriptor[] = [
   ),
 ];
 
+const V2_ROLE_PROPERTIES: Readonly<Record<string, readonly string[]>> = {
+  closingWebsite: ["font", "size", "weight"],
+  closingLegal: ["font", "size", "weight"],
+  coverTitleCompact: ["font", "size", "weight"],
+  coverTitleMinimum: ["font", "size", "weight"],
+};
+
+const optionalV2 = (
+  path: string,
+  valueKind: CapabilityValueKindV1,
+  journey: OwnedDescriptor["journey"],
+  options: Omit<
+    TemplateCapabilityDescriptorV1,
+    "consumers" | "path" | "required" | "valueKind"
+  > = {}
+): OwnedDescriptor => descriptor(path, valueKind, journey, { ...options, required: false });
+
+const OWNED_DESCRIPTORS_V2_ONLY: readonly OwnedDescriptor[] = [
+  optionalV2("compositions.cover.kind", "enum", "primary", {
+    enumValues: ["standard", "type-cut"],
+  }),
+  optionalV2("compositions.cover.logo", "enum", "primary", {
+    enumValues: ["show", "hide"],
+  }),
+  optionalV2("compositions.cover.typeCut.angle", "number", "primary", {
+    minimum: -180,
+    maximum: 180,
+  }),
+  optionalV2("compositions.cover.typeCut.stop", "number", "primary", {
+    minimum: 0,
+    maximum: 100,
+  }),
+  optionalV2("compositions.closingPage.kind", "enum", "primary", {
+    enumValues: ["document-summary", "brand-lockup"],
+  }),
+  ...(["logo", "website", "legalNotice"] as const).map((name) =>
+    optionalV2(`compositions.closingPage.${name}`, "enum", "primary", {
+      enumValues: ["show", "hide"],
+    })
+  ),
+  optionalV2("compositions.closingPage.align", "enum", "primary", {
+    enumValues: ["left", "center", "right"],
+  }),
+  ...(["websiteLabel", "websiteUrl", "legalNotice"] as const).map((name) =>
+    optionalV2(`branding.${name}`, "string", "primary")
+  ),
+  ...(["coverTitleInverse", "closingPageBackground", "closingBrandText"] as const).map(
+    (name) => optionalV2(`tokens.colors.${name}`, "color", "primary")
+  ),
+  ...([
+    "coverTitleFrameHeight",
+    "closingBrandBottomInset",
+    "closingBrandBlockWidth",
+    "closingBrandLogoWidth",
+    "closingBrandLogoHeight",
+    "closingBrandLogoGap",
+    "closingBrandTextGap",
+  ] as const).map((name) => optionalV2(`tokens.layout.${name}`, "length", "details")),
+  ...Object.entries(V2_ROLE_PROPERTIES).flatMap(([role, properties]) =>
+    properties.map((property) =>
+      optionalV2(
+        `typography.roles.${role}.${property}`,
+        property === "size"
+          ? "length"
+          : property === "font"
+            ? "font-role"
+            : "weight",
+        "details",
+        property === "font"
+          ? { enumValues: FONT_ROLES }
+          : property === "weight"
+            ? { enumValues: WEIGHTS }
+            : {}
+      )
+    )
+  ),
+];
+
+const OWNED_DESCRIPTORS_V2: readonly OwnedDescriptor[] = [
+  ...OWNED_DESCRIPTORS_V1,
+  ...OWNED_DESCRIPTORS_V2_ONLY,
+];
+
 export const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1 =
   validateCapabilityCatalogV1({
     schema: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1,
     id: "atlcli.pdf-template",
     version: 1,
-    descriptors: OWNED_DESCRIPTORS.map(({ journey: _journey, ...capability }) => capability),
+    descriptors: OWNED_DESCRIPTORS_V1.map(({ journey: _journey, ...capability }) => capability),
+  });
+
+export const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1 =
+  validateCapabilityCatalogV1({
+    schema: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1,
+    id: "atlcli.pdf-template",
+    version: 2,
+    descriptors: OWNED_DESCRIPTORS_V2.map(({ journey: _journey, ...capability }) => capability),
   });
 
 export const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1: readonly string[] = Object.freeze(
-  OWNED_DESCRIPTORS.filter(({ journey }) => journey === "details")
+  OWNED_DESCRIPTORS_V1.filter(({ journey }) => journey === "details")
+    .map(({ path }) => path)
+    .sort()
+);
+
+export const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2: readonly string[] = Object.freeze(
+  OWNED_DESCRIPTORS_V2.filter(({ journey }) => journey === "details")
     .map(({ path }) => path)
     .sort()
 );
@@ -334,6 +431,7 @@ function presentationShape(valueKind: CapabilityValueKindV1): {
 function presentationSection(path: string): string {
   if (path.startsWith("page.")) return "page";
   if (path.startsWith("features.")) return "document";
+  if (path.startsWith("compositions.")) return "document";
   if (path.startsWith("branding.")) return "brand";
   if (path.startsWith("typography.")) return "typography";
   if (path.startsWith("semanticPalettes.")) return "semantic-colors";
@@ -347,7 +445,7 @@ export const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresenta
       schema: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1,
       id: "atlcli.pdf-template.primary",
       version: 1,
-      descriptors: OWNED_DESCRIPTORS.filter(({ journey }) => journey === "primary").map(
+      descriptors: OWNED_DESCRIPTORS_V1.filter(({ journey }) => journey === "primary").map(
         ({ path, valueKind }, order) => ({
           target: path,
           section: presentationSection(path),
@@ -362,6 +460,28 @@ export const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresenta
     PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1
   );
 
+export const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1 =
+  validateCapabilityPresentationRegistryV1(
+    PDF_TEMPLATE_CAPABILITIES_V2,
+    {
+      schema: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1,
+      id: "atlcli.pdf-template.primary",
+      version: 2,
+      descriptors: OWNED_DESCRIPTORS_V2.filter(({ journey }) => journey === "primary").map(
+        ({ path, valueKind }, order) => ({
+          target: path,
+          section: presentationSection(path),
+          order,
+          messageCode: `ATLCLI_PDF_CAPABILITY_${presentationSection(path)
+            .replaceAll("-", "_")
+            .toUpperCase()}_VALUE`,
+          ...presentationShape(valueKind),
+        })
+      ),
+    },
+    PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2
+  );
+
 /**
  * Pinned SHA-256 values are filled from the canonical functions and asserted in
  * `design-catalog.test.ts`. They are copied into authoring snapshots/projects
@@ -371,6 +491,10 @@ export const PDF_TEMPLATE_CAPABILITY_DIGEST_V1 =
   "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c" as const;
 export const PDF_TEMPLATE_PRESENTATION_REVISION_V1 =
   "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d" as const;
+export const PDF_TEMPLATE_CAPABILITY_DIGEST_V2 =
+  "e6c5098ecb4e19857abd6f95c096b3daf6ed748c814a97088fc8af062600e9ca" as const;
+export const PDF_TEMPLATE_PRESENTATION_REVISION_V2 =
+  "16055eda491a674b713f77124cd2d5201fc2aff037b97d28662d21778b37e124" as const;
 
 /** Exact aliases used by the pre-catalog renderer for sparse V1 manifests. */
 export const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<
@@ -386,8 +510,11 @@ export const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<
     "semanticPalettes.callouts.tip.foreground",
 });
 
-const CAPABILITIES_BY_PATH = new Map(
+const CAPABILITIES_BY_PATH_V1 = new Map(
   PDF_TEMPLATE_CAPABILITIES_V1.descriptors.map((entry) => [entry.path, entry])
+);
+const CAPABILITIES_BY_PATH_V2 = new Map(
+  PDF_TEMPLATE_CAPABILITIES_V2.descriptors.map((entry) => [entry.path, entry])
 );
 
 function readPath(design: WikiPdfTemplateDesignV1, path: string): unknown {
@@ -399,17 +526,33 @@ function readPath(design: WikiPdfTemplateDesignV1, path: string): unknown {
   return cursor;
 }
 
-/** Catalog-gated leaf read used by renderer-specific helpers. */
-export function readPdfDesignCapability<T = unknown>(
+function readPdfDesignCapabilityForCatalog<T>(
   design: WikiPdfTemplateDesignV1,
-  path: string
+  path: string,
+  capabilities: ReadonlyMap<string, TemplateCapabilityDescriptorV1>
 ): T {
-  if (!CAPABILITIES_BY_PATH.has(path)) {
+  if (!capabilities.has(path)) {
     throw new Error(`Unknown PDF design capability "${path}"`);
   }
   const value = readPath(design, path);
   if (value === undefined) throw new Error(`PDF design capability "${path}" is missing`);
   return value as T;
+}
+
+/** Catalog-V1-gated leaf read used by revisions 1–3. */
+export function readPdfDesignCapability<T = unknown>(
+  design: WikiPdfTemplateDesignV1,
+  path: string
+): T {
+  return readPdfDesignCapabilityForCatalog<T>(design, path, CAPABILITIES_BY_PATH_V1);
+}
+
+/** Catalog-V2-gated leaf read used only by canonical revision 4. */
+export function readPdfDesignCapabilityV2<T = unknown>(
+  design: WikiPdfTemplateDesignV1,
+  path: string
+): T {
+  return readPdfDesignCapabilityForCatalog<T>(design, path, CAPABILITIES_BY_PATH_V2);
 }
 
 /**
@@ -421,6 +564,40 @@ export function projectPdfDesignThroughCatalog(
 ): WikiPdfTemplateDesignV1 {
   return validateCompleteBaseline(
     design,
+    PDF_TEMPLATE_CAPABILITIES_V1
+  ) as unknown as WikiPdfTemplateDesignV1;
+}
+
+/** Strict catalog-V2 projection for canonical revision 4 authoring. */
+export function projectPdfDesignThroughCatalogV2(
+  design: WikiPdfTemplateDesignV1
+): WikiPdfTemplateDesignV1 {
+  const validation = validateDesignAgainstCatalog(
+    design,
+    PDF_TEMPLATE_CAPABILITIES_V2,
+    "authoring"
+  );
+  return unflattenDesign(validation.flat) as unknown as WikiPdfTemplateDesignV1;
+}
+
+/**
+ * Project the V1-compatible renderer baseline out of a catalog-V2 design.
+ *
+ * Canonical revision 4 deliberately reuses the characterized revision-3
+ * document renderer and replaces only its composition pages. This adapter is
+ * the one explicit boundary where V2-only leaves are dropped; all required V1
+ * leaves must still be present and valid.
+ */
+export function projectPdfDesignV1SubsetFromCatalogV2(
+  design: WikiPdfTemplateDesignV1
+): WikiPdfTemplateDesignV1 {
+  const validation = validateDesignAgainstCatalog(
+    design,
+    PDF_TEMPLATE_CAPABILITIES_V1,
+    "legacy"
+  );
+  return validateCompleteBaseline(
+    unflattenDesign(validation.flat),
     PDF_TEMPLATE_CAPABILITIES_V1
   ) as unknown as WikiPdfTemplateDesignV1;
 }
@@ -466,13 +643,15 @@ export function materializeLegacyPdfDesign(
 }
 
 /** Catalog-gated immutable write for bindings and engine policy. */
-export function writePdfDesignCapability(
+function writePdfDesignCapabilityForCatalog(
   design: WikiPdfTemplateDesignV1,
   path: string,
   value: unknown,
-  writerId: string
+  writerId: string,
+  capabilities: ReadonlyMap<string, TemplateCapabilityDescriptorV1>,
+  catalog: TemplateCapabilityCatalogV1
 ): WikiPdfTemplateDesignV1 {
-  const capability = CAPABILITIES_BY_PATH.get(path);
+  const capability = capabilities.get(path);
   if (!capability) throw new Error(`Unknown PDF design capability "${path}"`);
   if (!capability.runtimeWriters?.some((writer) => writer.id === writerId)) {
     throw new Error(`PDF design capability "${path}" is not writable by "${writerId}"`);
@@ -480,7 +659,7 @@ export function writePdfDesignCapability(
   const validation = validateDesignAgainstCatalog(
     unflattenDesign({ [path]: value }),
     {
-      ...PDF_TEMPLATE_CAPABILITIES_V1,
+      ...catalog,
       descriptors: [capability],
     },
     "legacy"
@@ -496,4 +675,38 @@ export function writePdfDesignCapability(
   }
   cursor[segments.at(-1)!] = value;
   return copy as unknown as WikiPdfTemplateDesignV1;
+}
+
+/** Catalog-V1-gated immutable write for revisions 1-3. */
+export function writePdfDesignCapability(
+  design: WikiPdfTemplateDesignV1,
+  path: string,
+  value: unknown,
+  writerId: string
+): WikiPdfTemplateDesignV1 {
+  return writePdfDesignCapabilityForCatalog(
+    design,
+    path,
+    value,
+    writerId,
+    CAPABILITIES_BY_PATH_V1,
+    PDF_TEMPLATE_CAPABILITIES_V1
+  );
+}
+
+/** Catalog-V2-gated immutable write for canonical revision 4. */
+export function writePdfDesignCapabilityV2(
+  design: WikiPdfTemplateDesignV1,
+  path: string,
+  value: unknown,
+  writerId: string
+): WikiPdfTemplateDesignV1 {
+  return writePdfDesignCapabilityForCatalog(
+    design,
+    path,
+    value,
+    writerId,
+    CAPABILITIES_BY_PATH_V2,
+    PDF_TEMPLATE_CAPABILITIES_V2
+  );
 }

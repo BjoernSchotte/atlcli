@@ -62,6 +62,7 @@ import {
   type TemplateImportProgressEventV1,
   type TemplateImportViewV1,
   type TemplateMessageRegistryV1,
+  type TemplateGeneratedPackCompilerV1,
   type TemplatePreviewCompiler,
   type TemplateProjectAnalysisV1,
   type TemplateProjectGenerationV1,
@@ -84,6 +85,12 @@ import {
 import {
   CliGeneratedPdfTemplateCompiler,
 } from "./pdf-template-runtime.js";
+import {
+  PdfTemplateYamlError,
+  classifyPdfTemplateInput,
+  materializePdfTemplateYamlRecipe,
+  writePdfTemplateRecipeArchive,
+} from "./pdf-template-yaml.js";
 
 const RESULT_SCHEMA = "atlcli.pdf-template-result/1" as const;
 const PRIVATE_INTAKE_SCHEMA = "atlcli.pdf-template-private-intake/1" as const;
@@ -295,6 +302,7 @@ export interface PdfTemplateCliDependencies {
     privateIntake: PrivateIntakeV1,
     assetStore: DirectoryTemplateAssetStore
   ): Promise<TemplatePreviewCompiler>;
+  createGeneratedPackCompiler(): TemplateGeneratedPackCompilerV1;
 }
 
 function defaultDependencies(
@@ -389,6 +397,7 @@ function defaultDependencies(
         }),
       });
     },
+    createGeneratedPackCompiler: () => new CliGeneratedPdfTemplateCompiler(),
   };
 }
 
@@ -2079,6 +2088,13 @@ async function runValidate(
   dependencies: PdfTemplateCliDependencies
 ): Promise<PdfTemplateCliResultV1> {
   const path = templateProjectPath("validate", args, flags, dependencies.cwd);
+  const inputKind = await classifyPdfTemplateInput(path.absolute);
+  if (inputKind === "recipe") {
+    return runRecipe("validate", path, undefined, dependencies);
+  }
+  if (inputKind !== "project") {
+    throw usage("validate requires a template project directory or a .yaml/.yml recipe");
+  }
   const loaded = await loadProject(path.absolute);
   const build = await buildCurrent(loaded);
   return successResult("validate", path.display, loaded.view, {
@@ -2088,6 +2104,66 @@ async function runValidate(
     ),
     openCount: loaded.view.summary.unanswered,
   });
+}
+
+async function runRecipe(
+  command: "build" | "validate",
+  path: { absolute: string; display: string },
+  outputPath: string | undefined,
+  dependencies: PdfTemplateCliDependencies
+): Promise<PdfTemplateCliResultV1> {
+  dependencies.onProgress({
+    schema: "wiki.pdf-template-import-progress/v1",
+    operationId: `pdf-template.${command}.recipe`,
+    phase: "validating",
+    completed: 0,
+    total: 2,
+  });
+  const built = await materializePdfTemplateYamlRecipe({
+    recipePath: path.absolute,
+    compiler: dependencies.createGeneratedPackCompiler(),
+  });
+  dependencies.onProgress({
+    schema: "wiki.pdf-template-import-progress/v1",
+    operationId: `pdf-template.${command}.recipe`,
+    phase: "packing",
+    completed: 1,
+    total: 2,
+  });
+  if (command === "build") {
+    await writePdfTemplateRecipeArchive(
+      resolve(dependencies.cwd, outputPath!),
+      built.bytes
+    );
+  }
+  dependencies.onProgress({
+    schema: "wiki.pdf-template-import-progress/v1",
+    operationId: `pdf-template.${command}.recipe`,
+    phase: "packing",
+    completed: 2,
+    total: 2,
+  });
+  return {
+    schema: RESULT_SCHEMA,
+    command,
+    ok: true,
+    exitCode: 0,
+    projectPath: path.display,
+    outputDigest: built.packDigest,
+    diagnostics: [],
+    nextActions: [],
+    ...(command === "build"
+      ? { outputs: { archive: outputPath! }, changedCount: 1 }
+      : {}),
+    details: {
+      recipePath: path.display,
+      catalogVersion: built.manifest.capabilityCatalog?.version,
+      canonicalRevision: built.manifest.canonicalSource?.revision,
+      packDigest: built.packDigest,
+      compileDigest: built.compile.digest,
+      pageCount: built.compile.pageCount,
+    },
+  };
 }
 
 async function runBuild(
@@ -2101,9 +2177,22 @@ async function runBuild(
   if (command === "pack" && !configuredOutput) {
     throw usage("pack requires --output");
   }
+  const inputKind = await classifyPdfTemplateInput(path.absolute);
   const outputPath =
     configuredOutput ??
-    `./${basename(path.absolute)}.wiki-pdf-template`;
+    (inputKind === "recipe"
+      ? `./${basename(path.absolute, extname(path.absolute))}.wiki-pdf-template`
+      : `./${basename(path.absolute)}.wiki-pdf-template`);
+  if (command === "build" && inputKind === "recipe") {
+    return runRecipe("build", path, outputPath, dependencies);
+  }
+  if (inputKind !== "project") {
+    throw usage(
+      `${command} requires a template project directory${
+        command === "build" ? " or a .yaml/.yml recipe" : ""
+      }`
+    );
+  }
   const loaded = await loadProject(path.absolute);
   dependencies.onProgress({
     schema: "wiki.pdf-template-import-progress/v1",
@@ -2122,7 +2211,7 @@ async function runBuild(
   });
   const packed = await buildGeneratedPdfTemplatePack(
     build,
-    new CliGeneratedPdfTemplateCompiler()
+    dependencies.createGeneratedPackCompiler()
   );
   const written = await writeTemplateProjectBuild(
     path.absolute,
@@ -2241,6 +2330,41 @@ export async function executePdfTemplateCommand(
   ) {
     throw usage(`${command} accepts only one project path`);
   }
+  if (
+    ["analyze", "import"].includes(command) &&
+    args[1] &&
+    (await classifyPdfTemplateInput(resolve(dependencies.cwd, args[1]))) === "recipe"
+  ) {
+    throw usage(
+      `YAML recipes are direct declarative builds and have no DOCX decision history; use atlcli pdf-template build ${args[1]} or validate ${args[1]}`
+    );
+  }
+  if (
+    [
+      "status",
+      "diff",
+      "review",
+      "preview",
+      "undo",
+      "decide",
+      "set",
+      "clear-override",
+      "clear-optional",
+      "pack",
+    ].includes(command)
+  ) {
+    const candidate = templateProjectPath(
+      command,
+      args,
+      flags,
+      dependencies.cwd
+    );
+    if ((await classifyPdfTemplateInput(candidate.absolute)) === "recipe") {
+      throw usage(
+        `YAML recipes are direct declarative builds and have no DOCX decision history; use atlcli pdf-template build ${candidate.display} or validate ${candidate.display}`
+      );
+    }
+  }
   switch (command) {
     case "import":
     case "analyze":
@@ -2333,7 +2457,14 @@ export function presentPdfTemplateResult(
     return `\u001b[31m${heading}\u001b[0m${remainder}`;
   }
   const view = result.view;
-  if (!view) return `${result.command} completed.`;
+  if (!view) {
+    const lines = [`${result.command} completed.`];
+    for (const [name, path] of Object.entries(result.outputs ?? {})) {
+      lines.push(`${name}: ${path}`);
+    }
+    if (result.projectPath) lines.push(`Recipe: ${result.projectPath}`);
+    return lines.join("\n");
+  }
   const marker = options.unicode ? "✓" : "OK";
   const lines: string[] = [];
   if (result.command === "import" || result.command === "analyze") {
@@ -2494,6 +2625,34 @@ function errorResult(
       nextActions: [],
     };
   }
+  if (error instanceof PdfTemplateYamlError) {
+    const location = [
+      error.details.path,
+      error.details.line === undefined
+        ? undefined
+        : `line ${error.details.line}, column ${error.details.column ?? 1}`,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    return {
+      schema: RESULT_SCHEMA,
+      command,
+      ok: false,
+      exitCode: error.kind === "validation" ? 5 : 1,
+      diagnostics: [
+        cliDiagnostic(
+          error.kind === "validation"
+            ? "ATLCLI_ERR_VALIDATION"
+            : "ATLCLI_ERR_IO",
+          error.message,
+          [],
+          "error",
+          location || error.name
+        ),
+      ],
+      nextActions: [],
+    };
+  }
   const message = error instanceof Error ? error.message : String(error);
   return {
     schema: RESULT_SCHEMA,
@@ -2580,6 +2739,7 @@ Example:
   atlcli pdf-template review ./brand-pdf-template
   atlcli pdf-template preview ./brand-pdf-template
   atlcli pdf-template build ./brand-pdf-template --output ./brand.wiki-pdf-template
+  atlcli pdf-template build ./template.yaml --output ./brand.wiki-pdf-template
 
 Primary commands:
   import <docx>          Create a no-clobber project using Editorial Indigo
@@ -2604,6 +2764,11 @@ Important boundaries:
   area. A graphic enters the pack only after role, rights, accessibility, and
   placement are explicitly confirmed. The final pack contains the resolved
   design and accepted assets, not the Word document or authoring history.
+
+  YAML recipes are direct declarative builds with no DOCX review or undo
+  history. Asset paths are relative to the recipe directory; aliases, merge
+  keys, custom tags, traversal, and escaping symlinks are rejected. Recipe YAML
+  is limited to 1 MiB, 10,000 nodes, 64 levels, and bounded local assets.
 
   "pdf-template" manages PDF design packs. "wiki template" manages Confluence
   page templates; the two command domains are intentionally separate.
