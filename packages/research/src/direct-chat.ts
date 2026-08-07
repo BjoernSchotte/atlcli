@@ -19,7 +19,9 @@ export function applyChatQualityResourcePolicyV1(
     ...input,
     limits: {
       ...input.limits,
-      maxSearchPagesPerProduct: Math.min(input.limits.maxSearchPagesPerProduct, 2),
+      // One page per focused variant lets Chat verify several explicitly named
+      // pages or issues without turning the run into open-ended pagination.
+      maxSearchPagesPerProduct: Math.min(input.limits.maxSearchPagesPerProduct, 5),
       maxItemsPerProduct: Math.min(input.limits.maxItemsPerProduct, 20),
       maxDetailItemsPerProduct: Math.min(
         input.limits.maxDetailItemsPerProduct,
@@ -27,14 +29,18 @@ export function applyChatQualityResourcePolicyV1(
       ),
       maxBodyCharsPerItem: Math.min(
         input.limits.maxBodyCharsPerItem,
-        deep ? 6_000 : 8_000,
+        deep ? 20_000 : quick ? 8_000 : 12_000,
       ),
       maxPtcCalls: deep ? 72 : mode === "auto" ? 64 : 32,
-      maxHttpCalls: deep ? 40 : Math.min(input.limits.maxHttpCalls, 20),
+      maxHttpCalls: deep ? 40 : Math.min(input.limits.maxHttpCalls, 24),
       maxTotalResponseBytes: deep ? 24_000_000 : mode === "auto" ? 12_000_000 : 8_000_000,
       maxInterpreterMs: deep ? 180_000 : input.limits.maxInterpreterMs,
       maxModelOutputTokens: Math.min(input.limits.maxModelOutputTokens, quick ? 4_096 : 8_000),
-      maxTotalModelInputTokens: deep ? 450_000 : input.limits.maxTotalModelInputTokens,
+      maxTotalModelInputTokens: deep
+        ? 500_000
+        : mode === "auto"
+          ? Math.max(input.limits.maxTotalModelInputTokens, 450_000)
+          : input.limits.maxTotalModelInputTokens,
     },
   };
 }

@@ -191,7 +191,9 @@ export const CHAT_AGENT_DRAFT_SCHEMA_V1 = z.object({
     code: CHAT_GAP_CODE_SCHEMA_V1,
     message: z.string().min(1).max(1_000),
     sourceIds: z.array(z.string().min(1).max(256)).max(100),
-  }).strict()).max(50),
+  }).strict()).max(50).describe(
+    "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.",
+  ),
   continuation: z.object({
     kind: z.enum(["follow-up", "deep-research", "clarification"]),
     prompt: z.string().min(1).max(1_000),
@@ -219,6 +221,7 @@ export const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1 = {
     },
     gaps: {
       type: "array",
+      description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.",
       maxItems: 50,
       items: {
         type: "object",

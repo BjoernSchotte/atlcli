@@ -484,6 +484,7 @@ export declare function buildChatTurnPromptV1(input: {
         product: "jira" | "confluence";
         queries: readonly ChatSearchQueryV1[];
     }[];
+    directPlannedAcquisition?: boolean;
     durableContext?: string;
 }): string;
 
@@ -541,6 +542,7 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
         };
         readonly gaps: {
             readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
             readonly maxItems: 50;
             readonly items: {
                 readonly type: "object";
@@ -1277,6 +1279,7 @@ export interface ChatModelBindingV1 {
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
@@ -8230,6 +8233,7 @@ export declare function buildChatTurnPromptV1(input: {
         product: "jira" | "confluence";
         queries: readonly ChatSearchQueryV1[];
     }[];
+    directPlannedAcquisition?: boolean;
     durableContext?: string;
 }): string;
 
@@ -8287,6 +8291,7 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
         };
         readonly gaps: {
             readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
             readonly maxItems: 50;
             readonly items: {
                 readonly type: "object";
@@ -9023,6 +9028,7 @@ export interface ChatModelBindingV1 {
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
@@ -15956,6 +15962,7 @@ export declare function buildChatTurnPromptV1(input: {
         product: "jira" | "confluence";
         queries: readonly ChatSearchQueryV1[];
     }[];
+    directPlannedAcquisition?: boolean;
     durableContext?: string;
 }): string;
 
@@ -16013,6 +16020,7 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
         };
         readonly gaps: {
             readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
             readonly maxItems: 50;
             readonly items: {
                 readonly type: "object";
@@ -16749,6 +16757,7 @@ export interface ChatModelBindingV1 {
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
@@ -23705,6 +23714,7 @@ export declare function buildChatTurnPromptV1(input: {
         product: "jira" | "confluence";
         queries: readonly ChatSearchQueryV1[];
     }[];
+    directPlannedAcquisition?: boolean;
     durableContext?: string;
 }): string;
 
@@ -23768,6 +23778,7 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
         };
         readonly gaps: {
             readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
             readonly maxItems: 50;
             readonly items: {
                 readonly type: "object";
@@ -24513,6 +24524,7 @@ export interface ChatModelBindingV1 {
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
@@ -31917,6 +31929,7 @@ export declare function buildChatTurnPromptV1(input: {
         product: "jira" | "confluence";
         queries: readonly ChatSearchQueryV1[];
     }[];
+    directPlannedAcquisition?: boolean;
     durableContext?: string;
 }): string;
 
@@ -31980,6 +31993,7 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
         };
         readonly gaps: {
             readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
             readonly maxItems: 50;
             readonly items: {
                 readonly type: "object";
@@ -32725,6 +32739,7 @@ export interface ChatModelBindingV1 {
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 
@@ -39975,6 +39990,7 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
         };
         readonly gaps: {
             readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
             readonly maxItems: 50;
             readonly items: {
                 readonly type: "object";
@@ -41941,6 +41957,7 @@ export declare function buildChatTurnPromptV1(input: {
         product: "jira" | "confluence";
         queries: readonly ChatSearchQueryV1[];
     }[];
+    directPlannedAcquisition?: boolean;
     durableContext?: string;
 }): string;
 
@@ -42004,6 +42021,7 @@ export declare const CHAT_AGENT_DRAFT_JSON_SCHEMA_V1: {
         };
         readonly gaps: {
             readonly type: "array";
+            readonly description: "An actual JSON array, never a JSON-encoded string. Each gap is an object with code, message, and a sourceIds array.";
             readonly maxItems: 50;
             readonly items: {
                 readonly type: "object";
@@ -42749,6 +42767,7 @@ export interface ChatModelBindingV1 {
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+    modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 }
 

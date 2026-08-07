@@ -16,6 +16,7 @@ import {
 } from "../contracts.js";
 import { isResearchOneShotEventV1 } from "../events.js";
 import { ResearchRunBudget } from "../budget.js";
+import { createResearchKeyScopeSeedV1 } from "../scope-discovery.js";
 import {
   CAPABILITY_FREE_QUALITY_ADAPTER_V1,
   chatQualityPolicyV1,
@@ -26,7 +27,9 @@ import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import {
   assertChatFinalReviewReserveV1,
   chatModelCallLimitV1,
+  chatRootOutputTokenLimitV1,
   createKiteweaveChatAgent,
+  isChatAnswerStructuredOutputErrorV1,
 } from "./runtime.js";
 import {
   CHAT_INTERACTION_STATE_PATH_V1,
@@ -270,6 +273,87 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(record.decision).toMatchObject({ execution: "direct" });
   });
 
+  test("Quick delegates scoped discovery to one host-owned acquisition controller", async () => {
+    const input = request("Summarize the bounded design page in the approved space.");
+    input.turn = {
+      ...input.turn,
+      scope: { ...input.turn.scope, confluenceSpaceKeys: ["KB"] },
+    };
+    input.brokerRequest = {
+      ...input.brokerRequest,
+      scope: { ...input.brokerRequest.scope, confluenceSpaceKeys: ["KB"] },
+      scopeSeeds: [createResearchKeyScopeSeedV1({
+        tenantOrigin: input.brokerRequest.scope.siteOrigin,
+        product: "confluence",
+        key: "KB",
+        source: "cli_flag",
+        authority: "approved",
+      })],
+    };
+    const calls: string[] = [];
+    const scopedProviders = {
+      jira: providers.jira,
+      wiki: {
+        async searchPage(search: { cql: string }) {
+          calls.push(`search:${search.cql}`);
+          return {
+            items: [{ contentId: "1001", spaceKey: "KB", title: "Bounded design" }],
+          };
+        },
+        async getPage(page: { contentId: string }) {
+          calls.push(`detail:${page.contentId}`);
+          return {
+            contentId: page.contentId,
+            spaceKey: "KB",
+            title: "Bounded design",
+            content: {
+              text: "The bounded design establishes the accepted architecture.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 59,
+            },
+          };
+        },
+      },
+    };
+    const directModel = fakeModel()
+      .respondWithTools([{
+        name: "eval",
+        args: {
+          code: "JSON.parse(await tools.chatConfluenceRetrievalAcquire({}))",
+        },
+      }])
+      .respondWithTools([{
+        name: "ChatAnswerDraftV1",
+        args: {
+          messageMarkdown:
+            "The bounded design establishes the accepted architecture. [[source:wiki:1001]]",
+          citationSourceIds: ["wiki:1001"],
+          gaps: [],
+        },
+      }]);
+
+    const answer = await runtime.runChatAgent({
+      ...input,
+      model: directModel,
+      providers: scopedProviders,
+      workspace: createMemoryResearchWorkspace(),
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    });
+
+    expect(answer.strategy).toMatchObject({ path: "direct", delegated: false });
+    expect(answer.citations).toEqual([
+      expect.objectContaining({ sourceId: "wiki:1001", product: "confluence" }),
+    ]);
+    expect(calls.filter((entry) => entry.startsWith("search:"))).toHaveLength(1);
+    expect(calls).toContain("detail:1001");
+    expect(answer.run.retrieval).toMatchObject({
+      discoveredCandidates: 1,
+      detailReadCandidates: 1,
+      detailReadCoverage: 1,
+    });
+  });
+
   test("pauses and resumes the production Chat root through one durable askUserQuestion checkpoint", async () => {
     const input = request("Use the approved reporting window.");
     const workspace = createMemoryResearchWorkspace();
@@ -471,6 +555,77 @@ describe("real QuickJS Chat strategy trajectory", () => {
       (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
     ) as ChatInteractionStateV1;
     expect(completedInteraction.streamInterruption).toBeUndefined();
+  });
+
+  test("does not misclassify an invalid structured answer as a resumable provider stream", async () => {
+    const input = request("Answer this simple conversational question.");
+    const workspace = createMemoryResearchWorkspace();
+    const invalidModel = fakeModel()
+      .respondWithTools([{ name: "ChatAnswerDraftV1", args: {} }])
+      .respondWithTools([{ name: "ChatAnswerDraftV1", args: {} }]);
+
+    await expect(runtime.runChatAgent({
+      ...input,
+      model: invalidModel,
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    })).rejects.toMatchObject({ code: "invalid-report" });
+
+    const interaction = JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ) as ChatInteractionStateV1;
+    expect(interaction.streamInterruption).toBeUndefined();
+    expect(invalidModel.callCount).toBe(2);
+  });
+
+  test("repairs one invalid provider-native terminal answer without repeating retrieval", async () => {
+    const input = request("Answer this simple conversational question.");
+    const workspace = createMemoryResearchWorkspace();
+    const nativeModel = fakeModel()
+      .respond(new AIMessage("not valid structured JSON"))
+      .respond(new AIMessage(JSON.stringify({
+        messageMarkdown: "A repaired native Chat answer.",
+        citationSourceIds: [],
+        gaps: [],
+      })));
+
+    const answer = await runtime.runChatAgent({
+      ...input,
+      modelBinding: {
+        model: nativeModel,
+        modelId: "synthetic-native-model",
+        qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
+        structuredOutput: "native",
+      },
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    });
+
+    expect(answer.messageMarkdown).toBe("A repaired native Chat answer.");
+    expect(nativeModel.callCount).toBe(2);
+    const interaction = JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ) as ChatInteractionStateV1;
+    expect(interaction.streamInterruption).toBeUndefined();
+  });
+
+  test("keeps enough root output budget for a complete Quick structured answer", () => {
+    expect(chatRootOutputTokenLimitV1({
+      configuredMaxOutputTokens: 8_000,
+      qualityMode: "quick",
+    })).toBe(4_096);
+    expect(chatRootOutputTokenLimitV1({
+      configuredMaxOutputTokens: 3_000,
+      qualityMode: "quick",
+    })).toBe(3_000);
+    expect(isChatAnswerStructuredOutputErrorV1(new Error(
+      "Failed to parse structured output for tool 'ChatAnswerDraftV1'",
+    ))).toBe(true);
+    expect(isChatAnswerStructuredOutputErrorV1(new Error(
+      "Failed to parse structured output for tool 'providerStrategy'",
+    ))).toBe(true);
   });
 
   test("emits durable user-facing milestones around analysis and answer validation", async () => {

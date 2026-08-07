@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
 
 describe("Chat supervisor prompt", () => {
-  test("makes the host-enforced search-rank-detail sequence executable", () => {
+  test("keeps direct discovery behind host-owned acquisition controllers", () => {
     const prompt = buildChatSystemPromptV1({
       qualityMode: "deep",
       maxDetailItemsPerProduct: 8,
       strategyDecisionRequired: true,
     });
-    expect(prompt).toContain("page.items[].entityRef");
-    expect(prompt).toContain("tools.researchCandidateRank");
-    expect(prompt).toContain("Only entityRef values from that ranking result");
-    expect(prompt).toContain("Never pass an entityRef directly from a search result");
+    expect(prompt).toContain("tools.chatJiraRetrievalAcquire({})");
+    expect(prompt).toContain("tools.chatConfluenceRetrievalAcquire({})");
+    expect(prompt).toContain("raw search, rank, and detail tools are intentionally unavailable");
+    expect(prompt).toContain("gaps field MUST be an actual JSON array");
+    expect(prompt).toContain("below 700 words");
+    expect(prompt).toContain("A citation on a heading does not cite the paragraphs beneath it");
+    expect(prompt).toContain("list item, or table row");
+    expect(prompt).not.toContain("tools.researchCandidateRank");
   });
 
   test("allows persistent checkpointed agentic eval steps with an exact profile catalog", () => {
@@ -59,7 +63,7 @@ describe("Chat supervisor prompt", () => {
     expect(prompt).toContain("source titles, Jira keys, and URLs unchanged");
   });
 
-  test("pins direct Chat searches to the host-admitted query variants", () => {
+  test("projects only body-free planned-acquisition controls to direct Chat", () => {
     const prompt = buildChatTurnPromptV1({
       question: "Compare the bounded products.",
       jiraProjectKeys: ["DEMO"],
@@ -69,10 +73,12 @@ describe("Chat supervisor prompt", () => {
         product: "confluence",
         queries: [{ text: "design" }, { text: "architecture" }],
       }],
+      directPlannedAcquisition: true,
     });
 
-    expect(prompt).toContain('"queries":[{"text":"design"},{"text":"architecture"}]');
-    expect(prompt).toContain("copy one of these query objects exactly");
-    expect(prompt).toContain("Do not paraphrase, broaden, or invent");
+    expect(prompt).toContain('"product":"confluence","variantCount":2');
+    expect(prompt).toContain("call the matching host acquisition controller exactly once");
+    expect(prompt).not.toContain("design");
+    expect(prompt).not.toContain("architecture");
   });
 });

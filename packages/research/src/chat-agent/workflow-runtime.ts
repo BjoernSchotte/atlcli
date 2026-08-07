@@ -5,7 +5,11 @@ import type { ChatModelStreamEvent } from "@langchain/core/language_models/event
 import { ToolMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
-import { createMiddleware, toolStrategy, type AgentMiddleware } from "langchain";
+import {
+  createMiddleware,
+  toolStrategy,
+  type AgentMiddleware,
+} from "langchain";
 import { z } from "zod/v4";
 import type { SubAgent } from "deepagents/browser";
 import type { ResearchPtcDiagnosticV1 } from "../agent-tools.js";
@@ -359,6 +363,50 @@ export function normalizeKnownSourceReferencesV1(
   return normalized;
 }
 
+/**
+ * Keep a useful reader packet when the model also names a linked or otherwise
+ * unresolved entity that the host did not detail-read. Unknown references are
+ * never promoted to evidence: affected claims and relationships are removed
+ * and the loss is disclosed as a bounded coverage gap for critique/synthesis.
+ */
+export function quarantineUnreadEvidenceReferencesV1(
+  broker: ResearchCapabilityBroker,
+  value: ChatSubagentResultV1,
+): ChatSubagentResultV1 {
+  if (!("sourceIds" in value)) return value;
+  const known = new Set(
+    broker.detailEvidenceLedger().map((entry) => entry.source.id),
+  );
+  const unknown = new Set(
+    sourceIdsFromResult(value).filter((sourceId) => !known.has(sourceId)),
+  );
+  if (unknown.size === 0) return value;
+  const claims = value.claims.filter((claim) =>
+    claim.sourceIds.length > 0 && claim.sourceIds.every((sourceId) => known.has(sourceId))
+  );
+  const relationships = value.relationships.filter((relationship) =>
+    known.has(relationship.fromSourceId) && known.has(relationship.toSourceId)
+  );
+  const retained = {
+    ...value,
+    claims,
+    relationships,
+    sourceIds: [...new Set([
+      ...value.sourceIds.filter((sourceId) => known.has(sourceId)),
+      ...claims.flatMap((claim) => claim.sourceIds),
+      ...relationships.flatMap((relationship) => [
+        relationship.fromSourceId,
+        relationship.toSourceId,
+      ]),
+    ])],
+    gaps: [
+      ...value.gaps,
+      `${unknown.size} source reference${unknown.size === 1 ? " was" : "s were"} excluded because the referenced source was not read in detail.`,
+    ],
+  };
+  return retained;
+}
+
 function profilePromptV1(input: {
   profile: (typeof CHAT_SUBAGENT_PROFILES_V1)[number];
   allowedToolNames: readonly string[];
@@ -412,6 +460,8 @@ export function createPlannedSearchAcquisitionToolV1(input: {
   retrievalLedger: ChatCandidateLedgerControllerV1;
   maxSearchPages: number;
   maxDetails: number;
+  /** Snake-case LangChain name; QuickJS exposes the camel-cased equivalent. */
+  toolName?: string;
 }): DynamicStructuredTool {
   const searchName = input.product === "confluence" ? "wiki_search" : "jira_issue_search";
   const detailName = input.product === "confluence" ? "wiki_page_get" : "jira_issue_get";
@@ -500,14 +550,40 @@ export function createPlannedSearchAcquisitionToolV1(input: {
         );
         phase = "detail-read";
         const details: Record<string, unknown>[] = [];
+        let detailLimitReached = false;
         // A candidate can be returned by several admitted query variants. Read
         // each canonical source once, sequentially, so evidence publication and
         // candidate-state transitions remain deterministic across every host.
         for (const entityRef of admittedRefs) {
-          details.push(parsedToolJsonV1(
-            await detail.invoke({ entityRef }, nestedConfig),
-            "Chat detail read",
-          ));
+          try {
+            details.push(parsedToolJsonV1(
+              await detail.invoke({ entityRef }, nestedConfig),
+              "Chat detail read",
+            ));
+          } catch (error) {
+            const code = error && typeof error === "object" && "code" in error &&
+                typeof error.code === "string"
+              ? error.code
+              : undefined;
+            if (code !== "limit-exceeded") throw error;
+            // A product-wide acquisition may discover more admissible sources
+            // than the remaining shared response/call budget can project. Keep
+            // every already accepted detail and leave the unread admitted
+            // candidates for the ledger finalizer to mark as deferred. Losing
+            // the successful prefix would turn a supported partial answer into
+            // an unnecessary terminal failure.
+            detailLimitReached = true;
+            break;
+          }
+        }
+        const gaps: string[] = [];
+        if (details.length === 0) {
+          gaps.push("Candidates were discovered but none could be read in detail.");
+        }
+        if (detailLimitReached) {
+          gaps.push(
+            `The bounded ${input.product} detail-read limit was reached after ${details.length} of ${admittedRefs.length} admitted candidates; the remaining candidates are deferred and cannot support this answer.`,
+          );
         }
         return JSON.stringify({
           schema: "atlcli.chat-planned-acquisition/v1",
@@ -515,9 +591,7 @@ export function createPlannedSearchAcquisitionToolV1(input: {
           pagesRead,
           discoveredCandidates: entityRefs.size,
           details,
-          gaps: details.length === 0
-            ? ["Candidates were discovered but none could be read in detail."]
-            : [],
+          gaps,
         });
       } catch (error) {
         const errorCode = error && typeof error === "object" && "code" in error &&
@@ -534,9 +608,9 @@ export function createPlannedSearchAcquisitionToolV1(input: {
     })();
     return acquisition;
   }, {
-    name: "chat_retrieval_acquire",
+    name: input.toolName ?? "chat_retrieval_acquire",
     description:
-      "Execute the complete host-admitted search, pagination, deduplication, ranking, and bounded detail-read plan exactly once. Return its detailed evidence for analysis.",
+      `Execute the complete host-admitted ${input.product} search, pagination, deduplication, ranking, and bounded detail-read plan exactly once. Return its detailed evidence for analysis.`,
     schema: z.object({}).strict(),
   });
 }
@@ -544,6 +618,7 @@ export function createPlannedSearchAcquisitionToolV1(input: {
 function compileChatSubagentsV1(input: {
   model: BaseChatModel;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+  modelForFinalization?: () => BaseChatModel;
   broker: ResearchCapabilityBroker;
   limits: ResearchLimitsV1;
   locale?: string;
@@ -777,10 +852,11 @@ function compileChatSubagentsV1(input: {
     });
     const answerOutputTokens = profile.id === "answer-critic"
       ? 2_048
-      : profile.id === "answer-drafter" || profile.id === "answer-repairer" ||
-          profile.id === "chat-synthesizer"
-        ? 3_072
-        : undefined;
+      : profile.id === "chat-synthesizer"
+        ? 5_000
+        : profile.id === "answer-drafter" || profile.id === "answer-repairer"
+          ? 3_072
+          : undefined;
     const maxModelOutputTokens = Math.min(
       input.limits.maxModelOutputTokens,
       answerOutputTokens ?? (profile.modelPreference === "fast"
@@ -801,7 +877,12 @@ function compileChatSubagentsV1(input: {
     return {
       name: profile.subagentType,
       description: profile.description,
-      model: input.modelForPreference?.(profile.modelPreference) ?? input.model,
+      model: profile.id === "answer-drafter" ||
+          profile.id === "answer-repairer" ||
+          profile.id === "chat-synthesizer"
+        ? input.modelForFinalization?.() ??
+          input.modelForPreference?.(profile.modelPreference) ?? input.model
+        : input.modelForPreference?.(profile.modelPreference) ?? input.model,
       systemPrompt: profilePromptV1({
         profile,
         // @langchain/quickjs exposes registered LangChain tools through the
@@ -852,6 +933,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   runtime: ChatWorkflowRuntimeBindingsV1;
   model: BaseChatModel;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
+  modelForFinalization?: () => BaseChatModel;
   structuredOutput: "native" | "tool";
   projectResponseSchema?: (
     schema: Readonly<Record<string, unknown>>,
@@ -972,6 +1054,9 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   const subagents = compileChatSubagentsV1({
     model: input.model,
     modelForPreference: input.modelForPreference,
+    ...(input.modelForFinalization
+      ? { modelForFinalization: input.modelForFinalization }
+      : {}),
     broker: input.broker,
     limits: input.limits,
     ...(input.locale ? { locale: input.locale } : {}),
@@ -1102,9 +1187,12 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       }
       let result: ChatSubagentResultV1;
       try {
-        result = normalizeKnownSourceReferencesV1(
+        result = quarantineUnreadEvidenceReferencesV1(
           input.broker,
-          parseChatSubagentResultV1(profileId, raw),
+          normalizeKnownSourceReferencesV1(
+            input.broker,
+            parseChatSubagentResultV1(profileId, raw),
+          ),
         );
       } catch (error) {
         input.onResultDiagnostic?.({
@@ -1138,13 +1226,21 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     },
     projectDependencyResult: (_taskId, result) => structuredClone(result),
     projectResponseFormat: input.structuredOutput === "native"
-      ? (schema) => toolStrategy(schema as {
-          type: "object";
-          properties?: Record<string, unknown>;
-          required?: string[];
-          additionalProperties?: boolean;
-          [key: string]: unknown;
-        })
+      ? (schema) => {
+          const typed = schema as {
+            type: "object";
+            properties?: Record<string, unknown>;
+            required?: string[];
+            additionalProperties?: boolean;
+            [key: string]: unknown;
+          };
+          // Keep every DeepAgents child on the same portable ToolStrategy.
+          // Anthropic provider-native structured streaming can emit a terminal
+          // overload after partial JSON has already reached the UI; that stream
+          // cannot be retried safely. Tool-call argument chunks remain genuinely
+          // streamable and work across providers without a second child path.
+          return toolStrategy(typed);
+        }
       : undefined,
     beforeInvoke: async ({ taskId }) => {
       const profileId = profileByTaskId.get(taskId);
@@ -1320,9 +1416,36 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       disposition: qualityDisposition,
     });
 
-    const allInitialDependencyIds = preSynthesisTasks.map((task) => task.taskId);
     const appendedTasks: ChatWorkflowTaskProposalV1[] = [];
     if (qualityDisposition.repairAdmitted) {
+      const repairSourceIds = new Set([
+        ...qualityDisposition.rejectedSourceIds,
+        ...criticPacket.defects
+          .filter((defect) => qualityDisposition!.repairDefectIds.includes(defect.defectId))
+          .flatMap((defect) => defect.sourceIds),
+      ]);
+      const repairDependencyIds = new Set(
+        preSynthesisTasks
+          .filter((task) =>
+            task.profileId === "answer-drafter" || task.profileId === "answer-critic"
+          )
+          .map((task) => task.taskId),
+      );
+      // The repairer is deliberately not hydrated with the whole completed
+      // graph. It receives the provisional draft, the independent critique,
+      // and only those evidence/analysis packets named by the admitted
+      // defects. This keeps the repair context bounded and prevents an
+      // unrelated acquisition frontier from consuming the synthesis reserve.
+      if (repairSourceIds.size > 0) {
+        for (const task of preSynthesisTasks) {
+          const result = state.acceptedResults[task.taskId];
+          if (result && sourceIdsFromResult(result).some((sourceId) =>
+            repairSourceIds.has(sourceId)
+          )) {
+            repairDependencyIds.add(task.taskId);
+          }
+        }
+      }
       const repairTask: ChatWorkflowTaskProposalV1 = {
         taskId: `task:answer-repair:${input.turnId.replace(/[^A-Za-z0-9._-]/gu, "-").slice(-80)}`,
         profileId: "answer-repairer",
@@ -1334,7 +1457,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
             rejectedSourceIds: qualityDisposition.rejectedSourceIds,
           }),
         ].join("\n"),
-        dependencyTaskIds: allInitialDependencyIds,
+        dependencyTaskIds: [...repairDependencyIds],
       };
       appendedTasks.push(repairTask);
     }
@@ -1483,15 +1606,19 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         ) {
           return JSON.stringify(advanceResponse("strategy-review-required", completedTaskIds));
         }
-        await Promise.all(wave.map(async (task) => {
-          const selected = chatSubagentProfileByIdV1(task.profileId);
-          const dispatchInput = createChatWorkflowDispatchV1({ task, profile: selected });
-          await dispatch.invoke({
-            description: dispatchInput.description,
-            subagent_type: dispatchInput.subagentType,
-          }, { ...config, signal: input.signal });
-          completedTaskIds.push(task.taskId);
-        }));
+        const maxConcurrency = workflow.compiled.maxConcurrency;
+        for (let offset = 0; offset < wave.length; offset += maxConcurrency) {
+          const batch = wave.slice(offset, offset + maxConcurrency);
+          await Promise.all(batch.map(async (task) => {
+            const selected = chatSubagentProfileByIdV1(task.profileId);
+            const dispatchInput = createChatWorkflowDispatchV1({ task, profile: selected });
+            await dispatch.invoke({
+              description: dispatchInput.description,
+              subagent_type: dispatchInput.subagentType,
+            }, { ...config, signal: input.signal });
+            completedTaskIds.push(task.taskId);
+          }));
+        }
       }
     } finally {
       advancing = false;

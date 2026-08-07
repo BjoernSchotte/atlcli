@@ -143,6 +143,44 @@ describe("Chat retrieval plan", () => {
     );
   });
 
+  test("turns German-quoted titles into exact bounded variants instead of searching instructions", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:quoted-titles",
+      turnId: "turn:quoted-titles",
+      question: [
+        "Wie hängen die Seiten ‚Alpha Modernisierung‘, ‚Content-Pipeline‘,",
+        "‚Lead Pipeline‘ und ‚Account Data‘ zusammen? Lies jeden Kandidaten",
+        "im Detail und liefere kanonische URLs.",
+      ].join(" "),
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:space",
+        product: "confluence",
+        entityKind: "space",
+        key: "KB",
+        name: "Knowledge base",
+      })],
+      searchProducts: ["confluence"],
+      exactContextProducts: [],
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      agentic: false,
+      now: () => Date.parse("2026-08-06T10:00:00.000Z"),
+    });
+
+    expect(result.searches[0]?.variants.map((variant) => variant.query.text)).toEqual([
+      "Alpha Modernisierung",
+      "Content-Pipeline",
+      "Lead Pipeline",
+      "Account Data",
+      expect.not.stringContaining("kanonische URLs"),
+    ]);
+    expect(result.searches[0]?.variants.map((variant) => variant.query.text))
+      .not.toContain("urls");
+    expect(result.searches[0]?.variants.every((variant) =>
+      (variant.query.text?.length ?? 0) < 240
+    )).toBe(true);
+  });
+
   test("admits bounded alternate-title and synonym variants without raw JQL or CQL", () => {
     const result = plan({
       searchProducts: ["confluence"],

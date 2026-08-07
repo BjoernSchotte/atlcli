@@ -49,21 +49,31 @@ function bundledContractError(value: unknown): {
   code: ResearchErrorCode;
   message: string;
 } | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const candidate = value as { name?: unknown; code?: unknown; message?: unknown };
-  if (
-    candidate.name !== "ResearchContractError" &&
-    candidate.name !== "ChatContractError"
-  ) return undefined;
-  if (
-    typeof candidate.code !== "string" ||
-    !RESEARCH_ERROR_CODES.has(candidate.code as ResearchErrorCode) ||
-    typeof candidate.message !== "string"
-  ) return undefined;
-  return {
-    code: candidate.code as ResearchErrorCode,
-    message: redactResearchSecrets(candidate.message),
-  };
+  const visited = new Set<unknown>();
+  let current: unknown = value;
+  for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
+    if (visited.has(current)) return undefined;
+    visited.add(current);
+    const candidate = current as {
+      name?: unknown;
+      code?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (
+      (candidate.name === "ResearchContractError" || candidate.name === "ChatContractError") &&
+      typeof candidate.code === "string" &&
+      RESEARCH_ERROR_CODES.has(candidate.code as ResearchErrorCode) &&
+      typeof candidate.message === "string"
+    ) {
+      return {
+        code: candidate.code as ResearchErrorCode,
+        message: redactResearchSecrets(candidate.message),
+      };
+    }
+    current = candidate.cause;
+  }
+  return undefined;
 }
 
 export function classifyResearchError(value: unknown): {

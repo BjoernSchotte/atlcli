@@ -285,12 +285,39 @@ function removeUncitedJiraKeyLinesV1(
     if (issueKeys.length === 0) return [line];
     const issueSources = issueKeys.map((issueKey) =>
       [...sources.values()].find((source) =>
-        source.product === "jira" && source.issueKey === issueKey
+        source.product === "jira" &&
+        (source.issueKey === issueKey || source.id === `jira:${issueKey}`)
       )
     );
     if (issueSources.some((source) => source === undefined)) {
+      const unsupportedKeys = issueKeys.filter((_issueKey, issueIndex) =>
+        issueSources[issueIndex] === undefined
+      );
+      const retainedSegments = line
+        .split(/(?<=[.!?])\s+/u)
+        .filter((segment) => !unsupportedKeys.some((issueKey) =>
+          segment.includes(issueKey)
+        ));
+      const retained = retainedSegments.join(" ").trimEnd();
+      const retainedKeys = [...retained.matchAll(JIRA_ISSUE_KEY_V1)]
+        .map((match) => match[0]!);
+      const retainedSources = retainedKeys.map((issueKey) =>
+        [...sources.values()].find((source) =>
+          source.product === "jira" &&
+          (source.issueKey === issueKey || source.id === `jira:${issueKey}`)
+        )
+      );
       removedLines += 1;
-      return [];
+      if (retained.length === 0 || retainedSources.some((source) => source === undefined)) {
+        return [];
+      }
+      const missingPlaceholders = [...new Set(retainedSources.flatMap((source) =>
+        source && !lineHasSourcePlaceholderV1(retained, source.id) ? [source.id] : []
+      ))];
+      const placeholders = missingPlaceholders
+        .map((sourceId) => `[[source:${sourceId}]]`)
+        .join(" ");
+      return [placeholders ? `${retained} ${placeholders}` : retained];
     }
     const missingSourceIds = [...new Set(issueSources.flatMap((source) =>
       source && !lineHasSourcePlaceholderV1(line, source.id) ? [source.id] : []

@@ -24,6 +24,14 @@ export function anthropicOutputTokensForPreferenceV1(
   return Math.max(1, Math.min(rootLimit, profileLimit));
 }
 
+export function anthropicRootOutputTokensV1(
+  mode: ChatModelFactoryInputV1["qualityPolicy"]["mode"],
+  rootLimit: number,
+): number {
+  const modeLimit = mode === "deep" ? 5_000 : 4_096;
+  return Math.max(1, Math.min(rootLimit, modeLimit));
+}
+
 export function createAnthropicChatModelBindingV1(
   input: ChatModelFactoryInputV1,
 ): ChatModelBindingV1 {
@@ -32,11 +40,11 @@ export function createAnthropicChatModelBindingV1(
     throw new ChatContractError("missing-key", "An LLM provider credential is required.");
   }
   const models = new Map<ProviderReasoningPreferenceV1, ChatAnthropic>();
-  const modelForPreference = (
+  let finalizationModel: ChatAnthropic | undefined;
+  const createModel = (
     preference: ProviderReasoningPreferenceV1,
+    maxTokens: number,
   ): ChatAnthropic => {
-    const cached = models.get(preference);
-    if (cached) return cached;
     const resolved = resolveProviderQualityV1(
       {
         ...input.qualityPolicy,
@@ -44,14 +52,15 @@ export function createAnthropicChatModelBindingV1(
       },
       ANTHROPIC_QUALITY_ADAPTER_V1,
     );
-    const model = new ChatAnthropic({
+    return new ChatAnthropic({
       model: ANTHROPIC_CHAT_MODEL_ID,
       apiKey: credential,
-      maxTokens: anthropicOutputTokensForPreferenceV1(
-        preference,
-        input.maxOutputTokens,
-      ),
-      maxRetries: 0,
+      maxTokens,
+      // LangChain keeps the Anthropic SDK client itself at zero retries and
+      // routes this value through its retry-aware caller. One retry therefore
+      // covers provider-classified 429/5xx overloads without replaying the
+      // host workflow or any Atlassian read capability.
+      maxRetries: 1,
       streaming: true,
       ...(resolved.controls?.adaptiveThinking
         ? { thinking: { type: "adaptive" as const, display: "summarized" as const } }
@@ -60,21 +69,53 @@ export function createAnthropicChatModelBindingV1(
         ? { outputConfig: { effort: resolved.controls.effort } }
         : {}),
     });
+  };
+  const modelForPreference = (
+    preference: ProviderReasoningPreferenceV1,
+  ): ChatAnthropic => {
+    const cached = models.get(preference);
+    if (cached) return cached;
+    const model = createModel(
+      preference,
+      anthropicOutputTokensForPreferenceV1(
+        preference,
+        input.maxOutputTokens,
+      ),
+    );
     models.set(preference, model);
     return model;
   };
   const rootPreference = input.qualityPolicy.providerReasoningPreference;
+  const rootMaxTokens = anthropicRootOutputTokensV1(
+    input.qualityPolicy.mode,
+    input.maxOutputTokens,
+  );
+  const preferenceMaxTokens = anthropicOutputTokensForPreferenceV1(
+    rootPreference,
+    input.maxOutputTokens,
+  );
+  const rootModel = rootMaxTokens === preferenceMaxTokens
+    ? modelForPreference(rootPreference)
+    : createModel(rootPreference, rootMaxTokens);
   const resolved = resolveProviderQualityV1(input.qualityPolicy, ANTHROPIC_QUALITY_ADAPTER_V1);
   return {
-    model: modelForPreference(rootPreference),
+    model: rootModel,
     modelId: ANTHROPIC_CHAT_MODEL_ID,
     qualityAdapter: ANTHROPIC_QUALITY_ADAPTER_V1,
-    // ToolStrategy keeps the structured answer portable across providers and
-    // gives LangChain a bounded schema-repair turn. LangGraph exposes the
-    // accumulated tool arguments while they stream, so this does not sacrifice
-    // progressive Markdown rendering.
-    structuredOutput: "tool",
+    // Anthropic supports LangChain's native JSON-schema response format while
+    // ordinary tools remain available. This makes the terminal answer an
+    // enforced provider response instead of one optional tool among eval/HITL.
+    // Other providers remain free to select the portable ToolStrategy through
+    // the model-binding contract.
+    structuredOutput: "native",
     modelForPreference,
+    modelForFinalization: () => {
+      finalizationModel ??= createModel(
+        "fast",
+        Math.min(input.maxOutputTokens, 5_000),
+      );
+      return finalizationModel;
+    },
     projectResponseSchema: providerCompatibleChatJsonSchemaV1,
     ...(resolved.controls?.adaptiveThinking
       ? { reasoningPresentation: "summary" as const }

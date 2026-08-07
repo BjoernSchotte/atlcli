@@ -110,6 +110,7 @@ import {
 } from "./strategy.js";
 import {
   createChatAgenticWorkflowRuntimeV1,
+  createPlannedSearchAcquisitionToolV1,
   type ChatSubagentModelStreamEventV1,
   type ChatSubagentResultDiagnosticV1,
 } from "./workflow-runtime.js";
@@ -120,6 +121,35 @@ export function chatRecursionLimitV1(maxPtcCalls: number): number {
   // node. Keep room for the initial decision and terminal structured answer,
   // while retaining a hard graph ceiling independent of provider behavior.
   return Math.min(64, Math.max(24, boundedCalls * 2 + 8));
+}
+
+export function chatRootOutputTokenLimitV1(input: {
+  configuredMaxOutputTokens: number;
+  qualityMode: ChatQualityPolicyV1["mode"];
+}): number {
+  const modeLimit = input.qualityMode === "deep" ? 5_000 : 4_096;
+  return Math.min(input.configuredMaxOutputTokens, modeLimit);
+}
+
+export function isChatAnswerStructuredOutputErrorV1(value: unknown): boolean {
+  const visited = new Set<unknown>();
+  let current: unknown = value;
+  for (let depth = 0; depth < 8 && current !== undefined && current !== null; depth += 1) {
+    if (visited.has(current)) return false;
+    visited.add(current);
+    if (current instanceof Error) {
+      if (/Failed to parse structured output for tool ['"](?:ChatAnswerDraftV1|providerStrategy)['"]/u
+        .test(current.message)) return true;
+      current = current.cause;
+      continue;
+    }
+    if (typeof current === "object" && "cause" in current) {
+      current = (current as { cause?: unknown }).cause;
+      continue;
+    }
+    return false;
+  }
+  return false;
 }
 
 /**
@@ -340,10 +370,14 @@ function evalResultDiagnostic(value: unknown): {
 
 export function createChatDirectToolSurfaceMiddlewareV1(
   onDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void,
-  options: { agenticWorkflowComplete?: () => boolean } = {},
+  options: {
+    agenticWorkflowComplete?: () => boolean;
+    nativeStructuredOutput?: boolean;
+  } = {},
 ) {
   let completedEvidenceStep = false;
   let completedFinalReview = false;
+  let nativeStructuredRepairAttempts = 0;
   const modelPurpose = (): Extract<ChatAgentDiagnosticV1, { kind: "model-step" }>['purpose'] =>
     completedFinalReview || completedEvidenceStep
       ? "answer-drafting"
@@ -367,7 +401,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         return response;
       }
       try {
-        const response = await handler({
+        const filteredRequest = {
           ...request,
           // createDeepAgent always assembles filesystem and task scaffolding.
           // Direct Chat deliberately exposes only the host-audited QuickJS bridge
@@ -377,7 +411,25 @@ export function createChatDirectToolSurfaceMiddlewareV1(
           tools: request.tools.filter((candidate) =>
             candidate.name === "eval" || candidate.name === "ask_user_question"
           ),
-        });
+        };
+        let response;
+        try {
+          response = await handler(filteredRequest);
+        } catch (error) {
+          if (
+            !options.nativeStructuredOutput ||
+            nativeStructuredRepairAttempts >= 1 ||
+            !isChatAnswerStructuredOutputErrorV1(error)
+          ) throw error;
+          nativeStructuredRepairAttempts += 1;
+          response = await handler({
+            ...filteredRequest,
+            systemPrompt: [
+              filteredRequest.systemPrompt,
+              "The previous terminal answer did not satisfy the required JSON schema. Retry the terminal answer exactly once from the already accepted evidence; do not call eval, ask a question, retrieve, or widen scope. Keep messageMarkdown below 700 words. Use actual JSON arrays for citationSourceIds and gaps. End every evidence-derived factual paragraph, list item, or table row on the same line with its exact [[source:SOURCE_ID]] placeholder; a heading citation does not cover later paragraphs.",
+            ].filter(Boolean).join("\n\n"),
+          });
+        }
         onDiagnostic?.({
           kind: "model-step",
           status: "completed",
@@ -386,7 +438,10 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         });
         return response;
       } catch (error) {
-        const classified = classifyResearchError(error);
+        const structuredOutputFailure = isChatAnswerStructuredOutputErrorV1(error);
+        const classified = structuredOutputFailure
+          ? { code: "invalid-report" as const }
+          : classifyResearchError(error);
         onDiagnostic?.({
           kind: "model-step",
           status: "failed",
@@ -394,6 +449,12 @@ export function createChatDirectToolSurfaceMiddlewareV1(
           errorCode: classified.code,
           errorMessage: redactResearchSecrets(error),
         });
+        if (structuredOutputFailure) {
+          throw new ChatContractError(
+            "invalid-report",
+            "The Chat model did not return a complete structured answer.",
+          );
+        }
         throw error;
       }
     },
@@ -407,6 +468,8 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         "chatStrategyDecide",
         "chatWorkflowPropose",
         "chatStrategyReview",
+        "chatConfluenceRetrievalAcquire",
+        "chatJiraRetrievalAcquire",
         "jiraIssueSearch",
         "jiraIssueGet",
         "wikiSearch",
@@ -441,6 +504,8 @@ export function createChatDirectToolSurfaceMiddlewareV1(
       try {
         const response = await handler(request);
         completedEvidenceStep ||= capabilityNames.some((name) => [
+          "chatConfluenceRetrievalAcquire",
+          "chatJiraRetrievalAcquire",
           "jiraIssueSearch",
           "jiraIssueGet",
           "wikiSearch",
@@ -1403,6 +1468,9 @@ export function createKiteweaveChatAgent(
               ...(modelBinding.modelForPreference
                 ? { modelForPreference: modelBinding.modelForPreference }
                 : {}),
+              ...(modelBinding.modelForFinalization
+                ? { modelForFinalization: modelBinding.modelForFinalization }
+                : {}),
               structuredOutput: modelBinding.structuredOutput,
               ...(modelBinding.projectResponseSchema
                 ? { projectResponseSchema: modelBinding.projectResponseSchema }
@@ -1578,9 +1646,8 @@ export function createKiteweaveChatAgent(
               ...(strategyReviewController ? [strategyReviewController.tool] : []),
               agenticWorkflow!.qualityReviewTool,
             ]
-          : [
-              ...(strategyController ? [strategyController.tool] : []),
-              ...createChatPtcToolsV1(broker, {
+          : (() => {
+              const raw = createChatPtcToolsV1(broker, {
                 now,
                 exactContextProducts,
                 searchProducts,
@@ -1591,20 +1658,59 @@ export function createKiteweaveChatAgent(
                   retrievalLedger!.assertToolInput(tool, value),
                 onResult: (tool, result, callId, value) =>
                   retrievalLedger!.observe(tool, result, callId, value),
-              }),
-            ];
+              });
+              const plannedSearches = retrievalPlan.searches;
+              if (plannedSearches.length === 0) {
+                return [
+                  ...(strategyController ? [strategyController.tool] : []),
+                  ...raw,
+                ];
+              }
+              const controlledNames = new Set([
+                "jira_issue_search",
+                "jira_issue_get",
+                "wiki_search",
+                "wiki_page_get",
+                "research_candidate_rank",
+              ]);
+              const acquisition = plannedSearches.map((search) =>
+                createPlannedSearchAcquisitionToolV1({
+                  product: search.product,
+                  tools: raw,
+                  retrievalLedger: retrievalLedger!,
+                  maxSearchPages: turn.limits.maxSearchPagesPerProduct,
+                  maxDetails:
+                    retrievalPlan.budgetReservations.detailCallsByProduct[search.product],
+                  toolName: `chat_${search.product}_retrieval_acquire`,
+                })
+              );
+              return [
+                ...(strategyController ? [strategyController.tool] : []),
+                ...raw.filter((candidate) => !controlledNames.has(candidate.name)),
+                ...acquisition,
+              ];
+            })();
         let structuredRepairAttempts = 0;
-        const rootModelOutputTokens = Math.min(
-          turn.limits.maxModelOutputTokens,
-          qualityPolicy.mode === "quick" ? 2_048 : qualityPolicy.mode === "auto" ? 4_096 : 5_000,
-        );
+        const rootModelOutputTokens = chatRootOutputTokenLimitV1({
+          configuredMaxOutputTokens: turn.limits.maxModelOutputTokens,
+          qualityMode: qualityPolicy.mode,
+        });
         const rootModelBudgetMiddleware = createResearchModelBudgetMiddlewareV1(
           modelBudget,
           {
             name: "ChatRootModelBudgetMiddleware",
             maxOutputTokens: rootModelOutputTokens,
             ...(strategyDecision.execution === "agentic"
-              ? { retain: CHAT_SYNTHESIS_MODEL_RESERVE_V1 }
+              ? {
+                  retain: () => {
+                    try {
+                      agenticWorkflow?.assertComplete();
+                      return undefined;
+                    } catch {
+                      return CHAT_SYNTHESIS_MODEL_RESERVE_V1;
+                    }
+                  },
+                }
               : {}),
             onSnapshot: async (_snapshot, state) => persistModelBudget(state),
           },
@@ -1652,6 +1758,9 @@ export function createKiteweaveChatAgent(
           }),
           middleware: [
             createChatDirectToolSurfaceMiddlewareV1(emitAgentDiagnostic, {
+              nativeStructuredOutput:
+                strategyDecision.execution !== "agentic" &&
+                modelBinding.structuredOutput === "native",
               ...(agenticWorkflow
                 ? {
                     agenticWorkflowComplete: () => {
@@ -1698,7 +1807,7 @@ export function createKiteweaveChatAgent(
                       handleError: (error) => {
                         structuredRepairAttempts += 1;
                         if (structuredRepairAttempts > 1) throw error;
-                        return "The Chat answer did not match the required schema. Repair it exactly once without another tool call.";
+                        return "The Chat answer did not match the required schema. Call ChatAnswerDraftV1 exactly once more with non-empty messageMarkdown, citationSourceIds as an actual JSON array of strings, and gaps as an actual JSON array of { code, message, sourceIds } objects. Never JSON-encode either array into a string. Do not call eval or any content capability again.";
                       },
                       toolMessageContent: "Chat answer accepted.",
                     })
@@ -1747,6 +1856,7 @@ export function createKiteweaveChatAgent(
                   product: search.product,
                   queries: search.variants.map((variant) => variant.query),
                 })),
+                directPlannedAcquisition: strategyDecision.execution !== "agentic",
                 durableContext,
               }),
             }],
@@ -2123,6 +2233,10 @@ export function createKiteweaveChatAgent(
           throw error;
         }
         const classified = classifyResearchError(error);
+        const terminalError = classified.code === "invalid-report" &&
+            !(error instanceof ChatContractError)
+          ? new ChatContractError("invalid-report", classified.message)
+          : error;
         const resumableStreamFailure = Boolean(
           modelCheckpointEntered &&
           resumableRootModelFailure &&
@@ -2232,13 +2346,13 @@ export function createKiteweaveChatAgent(
             // best-effort state-publication failure.
           }
         }
-        if (!controller.signal.aborted) controller.abort(error);
+        if (!controller.signal.aborted) controller.abort(terminalError);
         if (controller.signal.aborted) {
           throw controller.signal.reason instanceof Error
             ? controller.signal.reason
             : new ChatContractError("cancelled", "The Chat turn was cancelled.");
         }
-        throw error;
+        throw terminalError;
       } finally {
         try {
           await activityJournal?.flush();

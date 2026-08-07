@@ -849,9 +849,13 @@ the private CLI/MV3 live acceptance and human comparison remain open.
 
 Private CLI evidence (2026-08-07): the same bounded complex run reached the
 independent critic, admitted exactly one targeted repair, and completed the sole
-final synthesizer under the measured root budgets. Human review and the matching
-production-MV3 live path remain intentionally unchecked; no private defect text,
-answer content, source identity, or tenant reference is recorded here.
+final synthesizer under the measured root budgets. A later acceptance run through
+the unified portable DeepAgents ToolStrategy produced a complete, question-directed
+answer whose supported cross-product mappings survived canonical citation
+finalization. Implementation review found the result complete and question-directed;
+independent human review and the matching production-MV3 live path remain
+intentionally unchecked. No private defect text, answer content, source identity,
+question, project/space identifier, or tenant reference is recorded here.
 
 ### C8 — Add durable multi-turn Chat and evidence memory
 

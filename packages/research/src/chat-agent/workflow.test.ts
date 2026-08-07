@@ -120,6 +120,9 @@ describe("Chat dynamic workflow admission", () => {
         "research.candidate.rank",
         "wiki.page.get",
       ]);
+    expect(CHAT_SUBAGENT_PROFILES_V1.filter((entry) =>
+      entry.id === "confluence-search-reader" || entry.id === "jira-search-reader"
+    ).map((entry) => entry.maxDurationMs)).toEqual([240_000, 240_000]);
     for (const id of [
       "relationship-tracer",
       "comparison-analyst",
@@ -136,9 +139,13 @@ describe("Chat dynamic workflow admission", () => {
       entry.id === "chat-synthesizer"
     );
     expect(synthesizer).toMatchObject({
-      modelPreference: "balanced",
+      modelPreference: "thorough",
       maxResultBytes: 32_000,
+      maxDurationMs: 180_000,
     });
+    expect(CHAT_SUBAGENT_PROFILES_V1.find((entry) =>
+      entry.id === "answer-repairer"
+    )).toMatchObject({ maxDurationMs: 180_000 });
     expect(synthesizer?.systemPrompt).toContain("below 700 words");
     expect(synthesizer?.systemPrompt).toContain("do not re-run the analysis");
     expect(JSON.stringify(CHAT_SUBAGENT_PROFILES_V1.map((entry) => entry.responseSchema))).not.toMatch(
@@ -515,6 +522,42 @@ describe("Chat dynamic workflow admission", () => {
     }));
     expect(admittedSearches?.searches?.[0]?.variants.map((variant) => variant.variantId))
       .toEqual(["primary", "alternate"]);
+  });
+
+  test("retains five explicit title variants for one product", async () => {
+    let admittedSearches: ChatWorkflowProposalV1["retrievalPlan"];
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: agentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      beforeAdmission: (workflowProposal) => {
+        admittedSearches = workflowProposal.retrievalPlan;
+      },
+    });
+
+    await controller.tool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:wiki",
+        profileId: "confluence-search-reader",
+        objective: "Read every explicitly named page.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+      retrievalPlan: {
+        searches: [{
+          searchId: "search:wiki:titles",
+          product: "confluence",
+          variants: Array.from({ length: 5 }, (_, index) => ({
+            variantId: `title-${index + 1}`,
+            query: { text: `Explicit page ${index + 1}` },
+            expectedInformationGain: "high",
+          })),
+          maxPages: 1,
+        }],
+      },
+    });
+
+    expect(admittedSearches?.searches?.[0]?.variants.map((variant) => variant.variantId))
+      .toEqual(["title-1", "title-2", "title-3", "title-4", "title-5"]);
   });
 
   test("rejects unavailable acquisition profiles and malformed child packets", async () => {

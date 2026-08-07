@@ -365,7 +365,12 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "fast",
     maxInputChars: 10_000,
     maxResultBytes: 40_000,
-    maxDurationMs: 180_000,
+    // The bound covers the complete admitted acquisition: several indexed
+    // queries, ranking, sequential detail reads, and one evidence packet. A
+    // real four-page traversal exceeded three minutes even though every HTTP
+    // read succeeded, so keep this below the ten-minute turn deadline without
+    // failing a healthy reader during its final packet generation.
+    maxDurationMs: 240_000,
   }),
   profile({
     id: "jira-search-reader",
@@ -380,7 +385,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "fast",
     maxInputChars: 10_000,
     maxResultBytes: 40_000,
-    maxDurationMs: 180_000,
+    maxDurationMs: 240_000,
   }),
   profile({
     id: "relationship-tracer",
@@ -476,7 +481,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     modelPreference: "balanced",
     maxInputChars: 28_000,
     maxResultBytes: 28_000,
-    maxDurationMs: 120_000,
+    maxDurationMs: 180_000,
   }),
   profile({
     id: "chat-synthesizer",
@@ -491,10 +496,13 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
       ...CHAT_AGENT_DRAFT_JSON_SCHEMA_V1,
       title: "ChatAnswerDraftV1",
     }),
-    modelPreference: "balanced",
+    // Final synthesis needs enough output room for adaptive-thinking tokens
+    // plus the bounded conversational Markdown. Other balanced specialists
+    // remain smaller; only this terminal packet uses the thorough binding.
+    modelPreference: "thorough",
     maxInputChars: 32_000,
     maxResultBytes: 32_000,
-    maxDurationMs: 120_000,
+    maxDurationMs: 180_000,
   }),
 ] as const);
 
@@ -840,7 +848,10 @@ function normalizeModelRetrievalPlanV1(
         queryFingerprints.add(fingerprint);
         return true;
       })
-      .slice(0, 3)
+      // Explicitly named pages/issues are mandatory retrieval anchors. Keep
+      // the full five-variant corridor so a fourth or fifth title cannot be
+      // silently displaced by a generic product-wide cap.
+      .slice(0, 5)
       .map((variant, index) => {
         let variantId = variant.variantId;
         if (variantIds.has(variantId)) {

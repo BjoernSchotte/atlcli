@@ -151,7 +151,11 @@ export async function runChatAgentLiveV1(): Promise<void> {
       maxSearchPagesPerProduct: argumentsV1.exactPage ? 3 : 9,
       maxItemsPerProduct: argumentsV1.exactPage ? 4 : 12,
       maxDetailItemsPerProduct: 4,
-      maxPtcCalls: argumentsV1.mode === "quick" ? 16 : 24,
+      // Agentic Chat may admit several bounded query variants per product
+      // before its analysis wave. Keep this synthetic harness below the
+      // production ceiling while still allowing the accepted retrieval plan
+      // to execute instead of failing during admission.
+      maxPtcCalls: argumentsV1.mode === "quick" ? 16 : 40,
       maxHttpCalls: 20,
       maxModelOutputTokens: 8_000,
       maxRunMs: 5 * 60_000,

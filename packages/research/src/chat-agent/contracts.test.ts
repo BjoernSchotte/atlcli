@@ -499,6 +499,79 @@ describe("Chat answer contract", () => {
     })]);
   });
 
+  test("retains a detailed canonical Jira source when optional issueKey metadata is absent", () => {
+    const jiraSource = {
+      id: "jira:DEMO-7",
+      product: "jira" as const,
+      title: "Detailed issue without projected issue metadata",
+      url: "https://tenant-a.atlassian.net/browse/DEMO-7",
+    };
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown:
+          "- **DEMO-7** documents the implementation. [[source:jira:DEMO-7]]",
+        citationSourceIds: ["jira:DEMO-7"],
+        gaps: [],
+      },
+      sources: [jiraSource],
+      detailEvidence: [{
+        source: jiraSource,
+        content: {
+          text: "Detailed Jira evidence.",
+          inputBytes: 23,
+          truncated: false,
+          linkTargets: [],
+        },
+      }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+      locale: "de",
+    });
+
+    expect(answer.messageMarkdown).toContain("DEMO-7");
+    expect(answer.messageMarkdown).toContain("[Detailed issue without projected issue metadata]");
+    expect(answer.gaps).toEqual([]);
+  });
+
+  test("keeps a supported Jira mapping while removing a separate unread-key sentence", () => {
+    const jiraSource = {
+      id: "jira:DEMO-7",
+      product: "jira" as const,
+      title: "Detailed issue",
+      url: "https://tenant-a.atlassian.net/browse/DEMO-7",
+      issueKey: "DEMO-7",
+    };
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "**DEMO-7** directly documents the implementation. It belongs to DEMO-99, which was not read. [[source:jira:DEMO-7]]",
+        ].join("\n"),
+        citationSourceIds: ["jira:DEMO-7"],
+        gaps: [],
+      },
+      sources: [jiraSource],
+      detailEvidence: [{
+        source: jiraSource,
+        content: {
+          text: "Detailed Jira evidence.",
+          inputBytes: 23,
+          truncated: false,
+          linkTargets: [],
+        },
+      }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+      locale: "en",
+    });
+
+    expect(answer.messageMarkdown).toContain("DEMO-7");
+    expect(answer.messageMarkdown).not.toContain("DEMO-99");
+    expect(answer.messageMarkdown).toContain("[Detailed issue]");
+    expect(answer.gaps).toEqual([expect.objectContaining({
+      code: "no-detail-evidence",
+    })]);
+  });
+
   test("removes an empty answer heading before the next peer section", () => {
     const answer = finalizeChatAnswerV1({
       draft: {

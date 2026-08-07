@@ -43,7 +43,7 @@ function request(question = "What is this wiki page about?"): ResearchRequestV1 
         authority: "approved",
       }),
     ],
-    limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
+    limits: { ...DEFAULT_RESEARCH_LIMITS_V1, maxBodyCharsPerItem: 50_000 },
     wikiProvider: "rest",
   };
 }
@@ -54,17 +54,31 @@ describe("direct chat scope projection", () => {
     expect(deep.limits).toMatchObject({
       maxItemsPerProduct: 20,
       maxDetailItemsPerProduct: 8,
-      maxBodyCharsPerItem: 6_000,
+      maxBodyCharsPerItem: 20_000,
       maxPtcCalls: 72,
       maxHttpCalls: 40,
       maxTotalResponseBytes: 24_000_000,
       maxInterpreterMs: 180_000,
-      maxTotalModelInputTokens: 450_000,
+      maxTotalModelInputTokens: 500_000,
     });
     expect(applyChatQualityResourcePolicyV1(request(), "auto").limits)
-      .toMatchObject({ maxDetailItemsPerProduct: 6, maxPtcCalls: 64, maxTotalResponseBytes: 12_000_000 });
+      .toMatchObject({
+        maxSearchPagesPerProduct: 5,
+        maxDetailItemsPerProduct: 6,
+        maxBodyCharsPerItem: 12_000,
+        maxPtcCalls: 64,
+        maxHttpCalls: 24,
+        maxTotalResponseBytes: 12_000_000,
+      });
     expect(applyChatQualityResourcePolicyV1(request(), "quick").limits)
-      .toMatchObject({ maxDetailItemsPerProduct: 6, maxPtcCalls: 32, maxModelOutputTokens: 4_096 });
+      .toMatchObject({
+        maxSearchPagesPerProduct: 5,
+        maxDetailItemsPerProduct: 6,
+        maxBodyCharsPerItem: 8_000,
+        maxPtcCalls: 32,
+        maxHttpCalls: 24,
+        maxModelOutputTokens: 4_096,
+      });
   });
 
   test("uses a bound page as the only Confluence candidate instead of searching its whole space", () => {

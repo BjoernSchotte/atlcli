@@ -20,6 +20,12 @@ export interface ChatModelBindingV1 {
   modelForPreference?: (
     preference: ProviderReasoningPreferenceV1,
   ) => BaseChatModel;
+  /**
+   * Optional provider-specific finalize-only binding. The final synthesizer
+   * must preserve the already checked draft, not spend its output allowance
+   * on another long reasoning pass.
+   */
+  modelForFinalization?: () => BaseChatModel;
   /** Reduce only provider-unsupported JSON Schema keywords; host validation remains strict. */
   projectResponseSchema?: (
     schema: Readonly<Record<string, unknown>>,

@@ -90,7 +90,7 @@ export const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1 = z.object({
       variantId: z.string().min(1).max(120),
       query: chatSearchQueryProposalSchemaV1,
       expectedInformationGain: z.enum(["high", "medium", "low"]).optional(),
-    }).strict()).min(1).max(3),
+    }).strict()).min(1).max(5),
     maxPages: z.number().int().min(1).max(100),
   }).strict()).max(2).optional(),
   relationshipTraversals: z.array(z.object({
@@ -265,6 +265,8 @@ const QUERY_STOP_WORDS = new Set([
   "link", "links", "nenne", "nutzung", "quelle", "quellen", "schritte", "seite",
   "space", "summarize", "summary", "unterschiede", "use", "using", "vergleiche",
   "welche", "what", "widersprueche", "widersprüche", "with", "zentrale",
+  "direkt", "entdeckten", "kennzeichne", "kanonischen", "kandidaten", "lies",
+  "synthetisierst", "urls", "verbindungen",
 ]);
 
 function invalid(message: string): never {
@@ -340,41 +342,78 @@ function canonicalQuery(query: ChatSearchQueryV1): ChatSearchQueryV1 {
   };
 }
 
+function quotedQuestionTerms(question: string): string[] {
+  const patterns = [
+    /"([^"]{2,160})"/gu,
+    /“([^”]{2,160})”/gu,
+    /„([^“”]{2,160})[“”]/gu,
+    /«([^»]{2,160})»/gu,
+    /‚([^‘’]{2,160})[‘’]/gu,
+    /‘([^’]{2,160})’/gu,
+    /'([^']{2,160})'/gu,
+  ];
+  return [...new Set(patterns.flatMap((pattern) =>
+    [...question.matchAll(pattern)].map((match) => match[1]!.trim())
+  ).filter(Boolean))];
+}
+
+function focusedQuestionTerms(question: string): string {
+  const withoutUrls = question.replace(/https?:\/\/\S+/giu, " ");
+  const tokens = withoutUrls.match(/[\p{L}\p{N}][\p{L}\p{N}._:-]{2,79}/gu) ?? [];
+  const unique = new Map<string, string>();
+  for (const original of tokens) {
+    const normalized = original.replace(/^[._:-]+|[._:-]+$/gu, "");
+    const key = normalized.toLocaleLowerCase("en-US");
+    if (!normalized || QUERY_STOP_WORDS.has(key) || unique.has(key)) continue;
+    unique.set(key, normalized);
+    if (unique.size >= 10) break;
+  }
+  return [...unique.values()].join(" ").slice(0, 240);
+}
+
 function defaultQueryVariants(question: string): ChatSearchVariantProposalV1[] {
   const normalized = cleanText(question, "Chat question", 2_000);
   const variants: ChatSearchVariantProposalV1[] = [];
-  const quoted = [...normalized.matchAll(/["“]([^"”]{2,160})["”]/gu)]
-    .map((match) => match[1]!.trim())
-    .filter(Boolean);
-  if (quoted.length > 0) {
-    variants.push({
-      variantId: "quoted-terms",
-      query: { text: quoted.slice(0, 3).join(" ").slice(0, 500) },
-    });
-  }
+  const quoted = quotedQuestionTerms(normalized);
+  variants.push(...quoted.slice(0, 5).map((term, index) => ({
+    variantId: `quoted-term-${index + 1}`,
+    query: { text: term },
+    expectedInformationGain: "high" as const,
+  })));
   const jiraKeys = [...new Set(normalized.match(/\b[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}\b/gu) ?? [])];
-  if (jiraKeys.length > 0) {
+  if (jiraKeys.length > 0 && variants.length < 5) {
     variants.push({
       variantId: "explicit-keys",
       query: { text: jiraKeys.slice(0, 8).join(" ") },
+      expectedInformationGain: "high",
     });
   }
-  variants.push({
-    variantId: "question-terms",
-    query: { text: normalized.slice(0, 500) },
-    expectedInformationGain: "high",
-  });
+  const focused = focusedQuestionTerms(normalized);
+  if (focused && variants.length < 5) {
+    variants.push({
+      variantId: "question-terms",
+      query: { text: focused },
+      expectedInformationGain: quoted.length > 0 || jiraKeys.length > 0 ? "medium" : "high",
+    });
+  }
   return variants.filter((variant, index, all) =>
     all.findIndex((candidate) =>
       JSON.stringify(candidate.query) === JSON.stringify(variant.query)
     ) === index
-  ).slice(0, 3);
+  ).slice(0, 5);
 }
 
 function ensureConciseCoreTermVariant(
   question: string,
   variants: ChatSearchVariantProposalV1[],
 ): ChatSearchVariantProposalV1[] {
+  // Explicit quoted titles are already the highest-precision default strategy.
+  // Injecting a guessed token can only displace one of them from the bounded
+  // product-wide query budget. Model-proposed synonyms still benefit from the
+  // pre-existing shared-core safety net below.
+  if (variants.some((variant) => variant.variantId.startsWith("quoted-term-"))) {
+    return variants;
+  }
   const textVariants = variants
     .map((variant) => variant.query.text?.toLocaleLowerCase("en-US"))
     .filter((text): text is string => Boolean(text));
@@ -483,7 +522,7 @@ function canonicalSearches(input: {
         search.maxPages > input.limits.maxSearchPagesPerProduct) {
       invalid("Chat search page budget is invalid.");
     }
-    if (!Array.isArray(search.variants) || search.variants.length < 1 || search.variants.length > 3) {
+    if (!Array.isArray(search.variants) || search.variants.length < 1 || search.variants.length > 5) {
       invalid("Chat search variants are invalid.");
     }
     const variantIds = new Set<string>();

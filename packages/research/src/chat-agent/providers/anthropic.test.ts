@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createDeepAgent } from "deepagents/node";
-import { toolStrategy } from "langchain";
+import { providerStrategy, toolStrategy } from "langchain";
 import { z } from "zod/v4";
 import { chatQualityPolicyV1 } from "../../quality-policy.js";
 import {
   anthropicOutputTokensForPreferenceV1,
+  anthropicRootOutputTokensV1,
   createAnthropicChatModelBindingV1,
 } from "./anthropic.js";
 
@@ -82,9 +83,22 @@ describe("Anthropic Chat model binding", () => {
     expect(anthropicOutputTokensForPreferenceV1("balanced", 8_000)).toBe(4_096);
     expect(anthropicOutputTokensForPreferenceV1("thorough", 8_000)).toBe(8_000);
     expect(anthropicOutputTokensForPreferenceV1("thorough", 1_024)).toBe(1_024);
+    expect(anthropicRootOutputTokensV1("quick", 8_000)).toBe(4_096);
+    expect(anthropicRootOutputTokensV1("auto", 8_000)).toBe(4_096);
+    expect(anthropicRootOutputTokensV1("deep", 8_000)).toBe(5_000);
   });
 
-  it("uses streaming models, portable structured output, and documented summarized reasoning", () => {
+  it("keeps Quick root synthesis larger than fast child packets", () => {
+    const quick = createAnthropicChatModelBindingV1({
+      credential: "synthetic-key",
+      maxOutputTokens: 8_000,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    });
+    expect(quick.model).toMatchObject({ maxTokens: 4_096 });
+    expect(quick.modelForPreference?.("fast")).toMatchObject({ maxTokens: 2_048 });
+  });
+
+  it("uses streaming models, provider-enforced structured output, and documented summarized reasoning", () => {
     const quick = createAnthropicChatModelBindingV1({
       credential: "synthetic-key",
       maxOutputTokens: 1_024,
@@ -98,18 +112,20 @@ describe("Anthropic Chat model binding", () => {
 
     expect(quick.model).toMatchObject({
       streaming: true,
+      caller: { maxRetries: 1 },
       thinking: { type: "disabled" },
     });
     expect(quick.reasoningPresentation).toBeUndefined();
-    expect(quick.structuredOutput).toBe("tool");
+    expect(quick.structuredOutput).toBe("native");
     expect(deep.model).toMatchObject({
       streaming: true,
       thinking: { type: "adaptive", display: "summarized" },
     });
     expect(deep.reasoningPresentation).toBe("summary");
-    expect(deep.structuredOutput).toBe("tool");
+    expect(deep.structuredOutput).toBe("native");
     expect(deep.modelForPreference?.("fast")).toMatchObject({
       streaming: true,
+      caller: { maxRetries: 1 },
       thinking: { type: "disabled" },
       outputConfig: { effort: "low" },
     });
@@ -119,6 +135,12 @@ describe("Anthropic Chat model binding", () => {
       outputConfig: { effort: "medium" },
     });
     expect(deep.modelForPreference?.("thorough")).toBe(deep.model);
+    expect(deep.modelForFinalization?.()).toMatchObject({
+      maxTokens: 1_024,
+      streaming: true,
+      thinking: { type: "disabled" },
+      outputConfig: { effort: "low" },
+    });
     expect(deep.projectResponseSchema?.({
       type: "object",
       properties: {
@@ -130,6 +152,21 @@ describe("Anthropic Chat model binding", () => {
         values: { type: "array", items: { type: "string" } },
       },
     });
+  });
+
+  it("gives finalize-only synthesis a bounded non-thinking output corridor", () => {
+    const binding = createAnthropicChatModelBindingV1({
+      credential: "synthetic-key",
+      maxOutputTokens: 8_000,
+      qualityPolicy: chatQualityPolicyV1("auto"),
+    });
+
+    expect(binding.modelForFinalization?.()).toMatchObject({
+      maxTokens: 5_000,
+      thinking: { type: "disabled" },
+      outputConfig: { effort: "low" },
+    });
+    expect(binding.modelForFinalization?.()).toBe(binding.modelForFinalization?.());
   });
 
   it("projects provider summaries through DeepAgents v3 reasoning without mixing answer or opaque blocks", async () => {
@@ -297,6 +334,94 @@ describe("Anthropic Chat model binding", () => {
     expect(requestBody?.output_config).toBeUndefined();
     expect(reasoning).toBe("Matching the answer to the evidence.");
     expect(argumentSnapshots.at(-1)).toBe(structuredJson);
+    expect(result.structuredResponse).toEqual(structuredAnswer);
+  });
+
+  it("combines ordinary tools with Anthropic native structured output", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const structuredAnswer = {
+      messageMarkdown: "The native answer remains grounded.",
+      citationSourceIds: [] as string[],
+      gaps: [] as Array<{ code: string; message: string; sourceIds: string[] }>,
+    };
+    const structuredJson = JSON.stringify(structuredAnswer);
+    const model = new ChatAnthropic({
+      model: "claude-sonnet-4-6",
+      apiKey: "synthetic-key",
+      maxTokens: 1_024,
+      maxRetries: 0,
+      streaming: true,
+      clientOptions: {
+        fetch: async (_url, init) => {
+          requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          const frames: unknown[] = [
+            {
+              type: "message_start",
+              message: {
+                id: "msg_native_structured",
+                type: "message",
+                role: "assistant",
+                model: "claude-sonnet-4-6",
+                content: [],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 12, output_tokens: 0 },
+              },
+            },
+            {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "text", text: "" },
+            },
+            {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "text_delta", text: structuredJson },
+            },
+            { type: "content_block_stop", index: 0 },
+            {
+              type: "message_delta",
+              delta: { stop_reason: "end_turn", stop_sequence: null },
+              usage: { output_tokens: 24 },
+            },
+            { type: "message_stop" },
+          ];
+          return new Response(frames.map((frame) => {
+            const type = (frame as { type: string }).type;
+            return `event: ${type}\ndata: ${JSON.stringify(frame)}\n\n`;
+          }).join(""), { headers: { "content-type": "text/event-stream" } });
+        },
+      },
+    });
+    const answerSchema = z.object({
+      messageMarkdown: z.string(),
+      citationSourceIds: z.array(z.string()),
+      gaps: z.array(z.object({
+        code: z.string(),
+        message: z.string(),
+        sourceIds: z.array(z.string()),
+      })),
+    }).strict().meta({ title: "SyntheticNativeChatAnswerV1" });
+    const agent = createDeepAgent({
+      name: "synthetic-native-structured-proof",
+      model,
+      tools: [],
+      subagents: [],
+      systemPrompt: "Return the synthetic structured answer.",
+      responseFormat: providerStrategy(answerSchema),
+    });
+
+    const result = await agent.invoke({
+      messages: [{ role: "user", content: "Use only synthetic evidence." }],
+    });
+
+    expect(requestBody?.tool_choice).toBeUndefined();
+    expect(requestBody?.output_config).toEqual({
+      format: expect.objectContaining({
+        type: "json_schema",
+        schema: expect.objectContaining({ title: "SyntheticNativeChatAnswerV1" }),
+      }),
+    });
     expect(result.structuredResponse).toEqual(structuredAnswer);
   });
 });

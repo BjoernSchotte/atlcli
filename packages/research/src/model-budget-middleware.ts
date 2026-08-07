@@ -16,7 +16,7 @@ export function createResearchModelBudgetMiddlewareV1(
   options: {
     name: string;
     maxOutputTokens: number;
-    retain?: ResearchModelBudgetCapacityV1;
+    retain?: ResearchModelBudgetCapacityV1 | (() => ResearchModelBudgetCapacityV1 | undefined);
     onSnapshot: (
       snapshot: ReturnType<ResearchModelRunBudget["snapshot"]>,
       state: ResearchModelBudgetStateV1,
@@ -26,7 +26,10 @@ export function createResearchModelBudgetMiddlewareV1(
   return createMiddleware({
     name: options.name,
     wrapModelCall: async (request, handler) => {
-      const reservation = budget.reserve(request, options.maxOutputTokens, options.retain);
+      const retained = typeof options.retain === "function"
+        ? options.retain()
+        : options.retain;
+      const reservation = budget.reserve(request, options.maxOutputTokens, retained);
       await options.onSnapshot(budget.snapshot(), budget.state());
       let settled = false;
       try {
