@@ -445,6 +445,26 @@ const chatAnswer: ChatAnswerV1 = {
 };
 
 describe("research scope inference", () => {
+  it("binds a personal Confluence space with a validator-safe internal ID", () => {
+    const result = inferResearchScope({
+      siteOrigin: "https://example.atlassian.net",
+      question: "Summarize the current page.",
+      jiraProjects: "",
+      confluenceSpaces: "",
+      activeSpaceKey: "~account-123",
+    });
+
+    expect(result.confluenceSpaceKeys).toEqual(["~account-123"]);
+    expect(result.scopeSeeds).toEqual([
+      expect.objectContaining({
+        binding: expect.objectContaining({
+          id: "scope-binding:current_context:confluence:~account-123",
+          key: "~account-123",
+        }),
+      }),
+    ]);
+  });
+
   it("binds the exact current page as well as its containing space", () => {
     expect(inferResearchScope({
       siteOrigin: "https://example.atlassian.net",

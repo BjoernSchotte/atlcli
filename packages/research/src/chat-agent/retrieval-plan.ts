@@ -255,7 +255,7 @@ type ChatObservedCapabilityV1 =
 
 const RAW_QUERY_LANGUAGE_PATTERN =
   /(?:\b(?:ORDER\s+BY|AND|OR)\b\s+(?:project|space|type|status|updated|created)\s*(?:=|~|\bIN\s*\()|\b(?:project|space|type|status|updated|created)\s*(?:=|~|\bIN\s*\())/iu;
-const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$/u;
+const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._%~-]{0,119}$/u;
 const CONFLUENCE_ID_PATTERN = /^[1-9][0-9]{0,127}$/u;
 const LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/u;
 const QUERY_STOP_WORDS = new Set([

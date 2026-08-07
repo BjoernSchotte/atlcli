@@ -48,13 +48,14 @@ function plan(input: {
   exactProducts?: Array<"jira" | "confluence">;
   maxPtcCalls?: number;
   relationshipTracing?: boolean;
+  scopeBindings?: ResearchScopeBindingV1[];
 } = {}) {
   return createChatRetrievalPlanV1({
     conversationId: "conversation:synthetic",
     turnId: "turn:synthetic",
     question: "Compare the quoted decision with its implementation.",
     anchors: input.anchors ?? [],
-    scopeBindings: [
+    scopeBindings: input.scopeBindings ?? [
       binding({
         id: "binding:project",
         product: "jira",
@@ -114,6 +115,26 @@ function searchResult(input: {
 }
 
 describe("Chat retrieval plan", () => {
+  test("accepts the binding ID of a personal Confluence space", () => {
+    const result = plan({
+      searchProducts: ["confluence"],
+      scopeBindings: [binding({
+        id: "scope-binding:current_context:confluence:~account-123",
+        product: "confluence",
+        entityKind: "space",
+        key: "~account-123",
+        name: "Personal space",
+      })],
+    });
+
+    expect(result.resolvedEntities).toEqual([
+      expect.objectContaining({
+        bindingId: "scope-binding:current_context:confluence:~account-123",
+        key: "~account-123",
+      }),
+    ]);
+  });
+
   test("binds anchors and resolved scope before safe focused searches", () => {
     const result = plan({
       anchors: [{

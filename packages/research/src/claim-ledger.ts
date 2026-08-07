@@ -136,7 +136,7 @@ function validateClaim(value: ResearchClaimV1): ResearchClaimV1 {
   if (JSON.stringify(evidenceIds) !== JSON.stringify(spanEvidenceIds)) invalid("Claim evidence IDs do not match its spans.");
   const scopeBindingIds = distinctStrings(value.scopeBindingIds, "Claim scope binding IDs", 64, (entry) => {
     const id = boundedText(entry, "Claim scope binding ID", 240);
-    if (!/^scope-binding:[A-Za-z0-9._:%-]{1,240}$/.test(id)) invalid("Claim scope binding ID is invalid.");
+    if (!/^scope-binding:[A-Za-z0-9._:%~-]{1,240}$/.test(id)) invalid("Claim scope binding ID is invalid.");
     return id;
   }).sort();
   if (value.freshness === "invalidated") {

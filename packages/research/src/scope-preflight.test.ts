@@ -80,6 +80,22 @@ function catalog(
 }
 
 describe("research scope preflight", () => {
+  test("creates a safe binding ID for a personal Confluence space", () => {
+    const seed = createResearchKeyScopeSeedV1({
+      tenantOrigin: origin,
+      product: "confluence",
+      key: "~account-123",
+      source: "current_context",
+      authority: "approved",
+    });
+
+    expect(seed.binding).toMatchObject({
+      id: "scope-binding:current_context:confluence:~account-123",
+      key: "~account-123",
+      entityRef: "scope-key:confluence:~account-123",
+    });
+  });
+
   test("extracts exact question ranges for natural whole-scope names", () => {
     const question = "Research the Account Management space and the Delivery Jira project.";
     const mentions = proposeResearchScopeMentionsV1({

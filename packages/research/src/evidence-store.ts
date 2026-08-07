@@ -327,7 +327,7 @@ function validateRecord(value: ResearchEvidenceRecordV1): ResearchEvidenceRecord
   validateSource(value.source, { tenantOrigin, product: identity.product, entityKind: identity.entityKind, entityId, canonicalId });
   if (!value.authority || typeof value.authority !== "object" ||
       (value.authority.authorityClass !== "whole_scope" && value.authority.authorityClass !== "exact_entity") ||
-      !/^scope-binding:[A-Za-z0-9._:%-]{1,240}$/.test(value.authority.bindingId)) invalid("Evidence authority is invalid.");
+      !/^scope-binding:[A-Za-z0-9._:%~-]{1,240}$/.test(value.authority.bindingId)) invalid("Evidence authority is invalid.");
   const retrieval = validateRetrieval(value.retrieval, value.source.id);
   if (!value.version || typeof value.version !== "object" || typeof value.version.truncated !== "boolean") invalid("Evidence version is invalid.");
   const version: ResearchEvidenceVersionV1 = {

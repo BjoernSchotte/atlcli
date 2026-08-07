@@ -1876,7 +1876,7 @@ export function reduceResearchSessionV1(
     const candidate = current.scopeCandidates.find((entry) => entry.id === proposal.candidateId);
     const binding = update.kind === "approve_scope_expansion" ? update.binding : undefined;
     const bindingMatchesCandidate = Boolean(binding && candidate &&
-      /^scope-binding:[A-Za-z0-9:._%-]{1,180}$/.test(binding.id) &&
+      /^scope-binding:[A-Za-z0-9:._%~-]{1,180}$/.test(binding.id) &&
       binding.tenantOrigin === candidate.tenantOrigin &&
       binding.product === candidate.product && binding.entityKind === candidate.entityKind &&
       binding.entityRef === candidate.entityRef && binding.candidateId === candidate.id &&

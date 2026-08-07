@@ -301,7 +301,7 @@ export function createResearchScopeExpansionProposalV1(
   }
   if (
     (input.status === "approved") !== Boolean(input.approvedBindingId) ||
-    (input.approvedBindingId !== undefined && !/^scope-binding:[A-Za-z0-9:._%-]{1,180}$/.test(input.approvedBindingId))
+    (input.approvedBindingId !== undefined && !/^scope-binding:[A-Za-z0-9:._%~-]{1,180}$/.test(input.approvedBindingId))
   ) {
     invalidMention("Research scope expansion approved binding is invalid.");
   }
