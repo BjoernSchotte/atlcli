@@ -701,27 +701,27 @@ is not traded for this visual feature.
 
 **Implementation**
 
-- [ ] Add a revision-4 renderer path in `packages/pdf/src/template.ts` selected
+- [x] Add a revision-4 renderer path in `packages/pdf/src/template-v4.ts` selected
       only by the canonical generator. Do not alter the source returned for
       revisions 1–3.
-- [ ] Read the validated cover composition through catalog V2. `standard`
+- [x] Read the validated cover composition through catalog V2. `standard`
       emits the characterized cover; `type-cut` emits the new fixed-frame title
       composition.
-- [ ] Apply the T0-proven hard gradient to one `meta.title` text object using
+- [x] Apply the T0-proven hard gradient to one `meta.title` text object using
       the declared foreground/inverse colors, angle, and stop.
-- [ ] Implement the three-tier title fitting guard. Keep title wrapping natural
+- [x] Implement the three-tier title fitting guard. Keep title wrapping natural
       and ensure the gradient coordinate space remains the fixed title frame,
       not each individual line.
-- [ ] Respect `compositions.cover.logo`; Type Cut must not infer visibility from
+- [x] Respect `compositions.cover.logo`; Type Cut must not infer visibility from
       whether `asset.logo` exists.
-- [ ] Keep the cover-background asset in the existing validated decoration path
+- [x] Keep the cover-background asset in the existing validated decoration path
       (`asset.coverBackground`, scope `first`, page-background layer). Do not
       add a private image loader or inline data URL.
-- [ ] Use the optional localized `coverEyebrow` when present; fall back to the
+- [x] Use the optional localized `coverEyebrow` when present; fall back to the
       existing space label when absent.
-- [ ] Emit all numbers as validated finite literals and all text via
+- [x] Emit all numbers as validated finite literals and all text via
       `typstString`; no YAML string may enter generated source unescaped.
-- [ ] Add source-level tests for the single title emission, mode branches,
+- [x] Add source-level tests for the single title emission, mode branches,
       exact config values, optional eyebrow fallback, logo visibility, and
       injection resistance.
 
@@ -733,6 +733,16 @@ rtk bun run test packages/pdf/src/template.test.ts packages/pdf/src/settings.tes
 
 Expected: exit 0; revision 4 contains the declared Type Cut geometry and one
 title object, while revisions 1–3 remain byte-identical.
+
+Supplemental component proof (not final PDF acceptance):
+
+```bash
+rtk bun run test packages/pdf-compiler-browser/src/template-composition-v4-renderer.test.ts
+```
+
+Expected: the production revision-4 source compiles with the pinned
+Typst-WASM, including the declared repeated hard stops and fitting guard. T7
+still owns acceptance through the public atlcli build/export chain.
 
 ### T4 — Implement the fully declarative closing-page renderer
 

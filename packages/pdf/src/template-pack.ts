@@ -12,7 +12,7 @@ import {
   unpackTemplate,
   validateDesignAgainstCatalog,
   validateManifest,
-  WIKI_PDF_V1_DOCUMENT_LABELS,
+  WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   type TemplateAssetDescriptorV1,
   type TemplateAssetMediaTypeV1,
   type TemplateAssetReferenceV1,
@@ -33,6 +33,7 @@ import {
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
 import { createAtlcliTypstTemplate } from "./template.js";
+import { createAtlcliTypstTemplateV4 } from "./template-v4.js";
 
 export const PDF_TEMPLATE_ASSET_SLOTS_V1 = [
   "asset.logo",
@@ -920,7 +921,7 @@ function fallbackLabels(manifest: TemplateManifest): {
     locale,
     labels: Object.freeze(
       Object.fromEntries(
-        WIKI_PDF_V1_DOCUMENT_LABELS.map((key) => [key, declared[key] ?? ""])
+        WIKI_PDF_SUPPORTED_DOCUMENT_LABELS.map((key) => [key, declared[key] ?? ""])
       )
     ),
   };
@@ -973,11 +974,10 @@ function canonicalSourceFor(
         { positionedLogo: true }
       );
     case "4":
-      reject(
-        "pack-integrity",
-        "non-canonical-template-source",
-        "canonicalSource.revision",
-        "canonical revision 4 is valid but its composition renderer is installed by T3/T4"
+      return createAtlcliTypstTemplateV4(
+        manifest.design,
+        { ...labels },
+        visuals
       );
     default:
       reject(

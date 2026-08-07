@@ -3,10 +3,127 @@ import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import {
   PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1,
   materializeLegacyPdfDesign,
+  projectPdfDesignV1SubsetFromCatalogV2,
 } from "./design-catalog.js";
 import { ATLCLI_TYPST_TEMPLATE, createAtlcliTypstTemplate } from "./template.js";
+import { createAtlcliTypstTemplateV4 } from "./template-v4.js";
+
+function revision4Design(
+  options: { kind?: "standard" | "type-cut"; logo?: "show" | "hide" } = {}
+) {
+  const design = structuredClone(BUILTIN_PDF_DESIGN);
+  const kind = options.kind ?? "type-cut";
+  design.compositions = {
+    cover: kind === "type-cut"
+      ? {
+          kind,
+          logo: options.logo ?? "hide",
+          typeCut: { angle: 43, stop: 58 },
+        }
+      : { kind, logo: options.logo ?? "show" },
+    closingPage: {
+      kind: "document-summary",
+      logo: "hide",
+      website: "hide",
+      legalNotice: "hide",
+      align: "left",
+    },
+  };
+  if (kind === "type-cut") {
+    design.tokens.colors.coverTitleInverse = "#FFFFFF";
+    design.tokens.layout.coverTitleFrameHeight = "35mm";
+    design.typography.roles.coverTitle = {
+      font: "heading",
+      size: "44pt",
+      weight: "bold",
+    };
+    design.typography.roles.coverTitleCompact = {
+      font: "heading",
+      size: "34pt",
+      weight: "bold",
+    };
+    design.typography.roles.coverTitleMinimum = {
+      font: "heading",
+      size: "24pt",
+      weight: "bold",
+    };
+  }
+  return design;
+}
+
+function coverSource(source: string): string {
+  return source.slice(
+    source.indexOf('  if cover-config.at("enabled"'),
+    source.indexOf("  set page(fill: white)")
+  );
+}
 
 describe("atlcli Typst template settings rendering", () => {
+  it("keeps the revision-4 standard cover characterized and supports explicit logo hiding", () => {
+    const design = revision4Design({ kind: "standard", logo: "show" });
+    const characterized = createAtlcliTypstTemplate(
+      projectPdfDesignV1SubsetFromCatalogV2(design),
+      {},
+      undefined,
+      { positionedLogo: true }
+    );
+    expect(createAtlcliTypstTemplateV4(design)).toBe(characterized);
+
+    const hidden = coverSource(
+      createAtlcliTypstTemplateV4(
+        revision4Design({ kind: "standard", logo: "hide" })
+      )
+    );
+    expect(hidden).not.toContain("logo-path");
+    expect(hidden).toContain("#meta.title");
+  });
+
+  it("emits one fixed-frame Type Cut title with declared geometry and three fitting tiers", () => {
+    const source = coverSource(createAtlcliTypstTemplateV4(revision4Design()));
+    expect(source.match(/#meta\.title/gu)).toHaveLength(1);
+    expect(source).toContain("height: if fixed { 35mm } else { auto }");
+    expect(source).toContain('(name: "display"');
+    expect(source).toContain('(name: "compact"');
+    expect(source).toContain('(name: "minimum"');
+    expect(source).toContain('size: 34pt, weight: "bold"');
+    expect(source).toContain('size: 24pt, weight: "bold"');
+    expect(source).toContain('(rgb("#202A44"), 58%)');
+    expect(source).toContain('(rgb("#FFFFFF"), 58%)');
+    expect(source).toContain("angle: 43deg");
+    expect(source).toContain('relative: "parent"');
+    expect(source).toContain("TYPE_CUT_TITLE_OVERFLOW");
+    expect(source).not.toContain("logo-path");
+  });
+
+  it("uses optional escaped cover eyebrow copy and preserves its space-label fallback", () => {
+    const fallback = coverSource(createAtlcliTypstTemplateV4(revision4Design()));
+    expect(fallback).toContain(
+      'labels.at("coverEyebrow", default: "")'
+    );
+    expect(fallback).toContain(
+      'if cover-eyebrow-label == "" { space-label } else { cover-eyebrow-label }'
+    );
+
+    const hostile = 'Executive "Focus" #panic("no")';
+    const escaped = coverSource(
+      createAtlcliTypstTemplateV4(revision4Design(), { coverEyebrow: hostile })
+    );
+    expect(escaped).toContain(JSON.stringify(hostile));
+    expect(escaped).not.toContain(`default: ${hostile}`);
+  });
+
+  it("emits Type Cut logo code only when the composition declares show", () => {
+    const shown = coverSource(
+      createAtlcliTypstTemplateV4(revision4Design({ logo: "show" }))
+    );
+    const hidden = coverSource(
+      createAtlcliTypstTemplateV4(revision4Design({ logo: "hide" }))
+    );
+    expect(shown).toContain("logo-path != none and logo-placement != none");
+    expect(shown).toContain("logo-path != none and logo-placement == none");
+    expect(hidden).not.toContain("logo-path");
+  });
+
   it("keeps positioned-logo execution behind canonical revision 3", () => {
     const prior = createAtlcliTypstTemplate();
     const current = createAtlcliTypstTemplate(

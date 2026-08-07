@@ -581,6 +581,28 @@ export function projectPdfDesignThroughCatalogV2(
 }
 
 /**
+ * Project the V1-compatible renderer baseline out of a catalog-V2 design.
+ *
+ * Canonical revision 4 deliberately reuses the characterized revision-3
+ * document renderer and replaces only its composition pages. This adapter is
+ * the one explicit boundary where V2-only leaves are dropped; all required V1
+ * leaves must still be present and valid.
+ */
+export function projectPdfDesignV1SubsetFromCatalogV2(
+  design: WikiPdfTemplateDesignV1
+): WikiPdfTemplateDesignV1 {
+  const validation = validateDesignAgainstCatalog(
+    design,
+    PDF_TEMPLATE_CAPABILITIES_V1,
+    "legacy"
+  );
+  return validateCompleteBaseline(
+    unflattenDesign(validation.flat),
+    PDF_TEMPLATE_CAPABILITIES_V1
+  ) as unknown as WikiPdfTemplateDesignV1;
+}
+
+/**
  * Explicit compatibility adapter for a known historical baseline.
  *
  * Only catalog-declared leaves from the sparse design are overlaid onto the

@@ -322,11 +322,23 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
     expect(resolvePdfSettings({}, { locale: "en" }).labels.contents).toBe("Contents");
   });
 
+  it("resolves the optional cover eyebrow without making it a V1 requirement", () => {
+    const manifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+    manifest.localization!.locales.en!.document!.coverEyebrow = "Executive Brief";
+    expect(resolveTemplateLabels(manifest, "en", undefined).coverEyebrow).toBe(
+      "Executive Brief"
+    );
+    expect(
+      resolveTemplateLabels(BUILTIN_PDF_TEMPLATE_MANIFEST, "en", undefined)
+        .coverEyebrow
+    ).toBeUndefined();
+  });
+
   // Layer 2 of the label-injection defence: even a manifest object that never
   // went through validateManifest (constructed directly, or from a future
-  // schema) can only contribute the DECLARED v1 label vocabulary. An unknown
+  // schema) can only contribute the supported label vocabulary. An unknown
   // key — hostile or merely unexpected — never reaches emission.
-  it("resolves only the declared document-label vocabulary, dropping unknown keys", () => {
+  it("resolves only the supported document-label vocabulary, dropping unknown keys", () => {
     const hostile = 'x: panic("pwned"), y';
     const forged = {
       ...BUILTIN_PDF_TEMPLATE_MANIFEST,

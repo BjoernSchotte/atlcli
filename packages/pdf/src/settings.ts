@@ -21,6 +21,7 @@ import {
   ManifestValidationError,
   unflattenDesign,
   validateDesignAgainstCatalog,
+  WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type TemplateManifest,
   type WikiPdfTemplateDesignV1,
@@ -648,14 +649,14 @@ export function resolveTemplateLabels(
   const requested = [locale, region].filter(Boolean).join("-") || locale;
   // Walk lowest → highest priority so higher-priority copy wins on merge.
   const chain = localeChain(localization, requested).reverse();
-  // Only the DECLARED v1 document-label vocabulary is resolved. A manifest key
+  // Only the declared document-label vocabulary is resolved. A manifest key
   // outside it never reaches Typst emission — defence in depth behind the
   // manifest import gate, so an unexpected key can never become a dictionary
   // key in generated source.
   // Dropped rather than rejected for forward compatibility (a manifest written
   // for a newer engine must still import); `validateLocalization` warns by name
   // at import time so the drop is diagnosable, never silent.
-  const vocabulary = new Set<string>(WIKI_PDF_V1_DOCUMENT_LABELS);
+  const vocabulary = new Set<string>(WIKI_PDF_SUPPORTED_DOCUMENT_LABELS);
   for (const bundle of chain) {
     for (const [key, value] of Object.entries(bundle.document ?? {})) {
       if (!vocabulary.has(key)) continue;

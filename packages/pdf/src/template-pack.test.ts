@@ -214,6 +214,7 @@ function revision4Design(): NonNullable<TemplateManifest["design"]> {
     closingBrandTextGap: "4mm",
   });
   Object.assign(design.typography.roles, {
+    coverTitle: { font: "heading", size: "44pt", weight: "bold" },
     coverTitleCompact: { font: "heading", size: "34pt", weight: "bold" },
     coverTitleMinimum: { font: "heading", size: "24pt", weight: "bold" },
     closingWebsite: { font: "heading", size: "14pt", weight: "semibold" },
@@ -387,12 +388,21 @@ describe("PDF template manifest phase", () => {
     };
     fixture.manifest.capabilityCatalog = catalogReference(2);
     expect(validatePdfTemplateManifest(fixture.manifest)).toBe(fixture.manifest);
-    expect(() =>
-      generateCanonicalPdfTemplateSourceV1(
-        fixture.manifest,
-        visualsForManifest(fixture.manifest)
-      )
-    ).toThrow(/composition renderer is installed by T3\/T4/);
+    const source = generateCanonicalPdfTemplateSourceV1(
+      fixture.manifest,
+      visualsForManifest(fixture.manifest)
+    );
+    const cover = source.slice(
+      source.indexOf('  if cover-config.at("enabled"'),
+      source.indexOf("  set page(fill: white)")
+    );
+    expect(cover.match(/#meta\.title/gu)).toHaveLength(1);
+    expect(cover).toContain("angle: 43deg");
+    expect(cover).toContain('(rgb("#202A44"), 58%)');
+    expect(cover).toContain('(rgb("#FFFFFF"), 58%)');
+    expect(cover).not.toContain("logo-path");
+    expect(source).toContain("template-page-decorations()");
+    expect(source).toContain('image("template-assets/cover.svg"');
 
     const v1Digest = structuredClone(fixture.manifest);
     v1Digest.capabilityCatalog = catalogReference(1);

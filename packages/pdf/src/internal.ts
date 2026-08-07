@@ -15,6 +15,7 @@ export * from "./escape.js";
 export * from "./prepare.js";
 export * from "./serialize.js";
 export * from "./template.js";
+export * from "./template-v4.js";
 export * from "./template-pack.js";
 export * from "./template-preview.js";
 export * from "./theme.js";
