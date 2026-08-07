@@ -11,6 +11,8 @@ import type { PdfTemplateVisualsV1 } from "./template-pack.js";
 const SYMBOL_FALLBACK_FONTS = ["Noto Sans Symbols2", "Noto Emoji"] as const;
 const COVER_START_MARKER = '  if cover-config.at("enabled"';
 const COVER_END_MARKER = "  set page(fill: white)";
+const CLOSING_BODY_MARKER = "  body\n";
+const CLOSING_END_MARKER = "\n}\n\n#let callout";
 
 function finiteTypstNumber(value: number): string {
   if (!Number.isFinite(value)) {
@@ -49,6 +51,113 @@ function hideCharacterizedCoverLogo(base: string): string {
   return replaceCover(base, withoutFlow);
 }
 
+function withClosingConfig(base: string): string {
+  const marker = '  let outline-config = features.at("outline", default: (:))\n';
+  if (!base.includes(marker)) {
+    throw new Error("PDF template revision 4 cannot locate the feature settings");
+  }
+  return base.replace(
+    marker,
+    `${marker}  let closing-config = features.at("closingPage", default: (:))\n`
+  );
+}
+
+function closingRange(base: string): { start: number; end: number } {
+  const body = base.indexOf(CLOSING_BODY_MARKER);
+  const start = body < 0 ? -1 : body + CLOSING_BODY_MARKER.length;
+  const end = base.indexOf(CLOSING_END_MARKER, start);
+  if (start < 0 || end < 0) {
+    throw new Error("PDF template revision 4 cannot locate the characterized closing page");
+  }
+  return { start, end };
+}
+
+function replaceClosing(base: string, source: string): string {
+  const { start, end } = closingRange(base);
+  return `${base.slice(0, start)}${source}${base.slice(end)}`;
+}
+
+function renderClosingPage(
+  source: string,
+  design: WikiPdfTemplateDesignV1
+): string {
+  const base = withClosingConfig(source);
+  const composition = design.compositions?.closingPage;
+  if (!composition) {
+    throw new Error("PDF template revision 4 is missing compositions.closingPage");
+  }
+  const enabled = design.features.closingPage.enabled ? "true" : "false";
+  const { start, end } = closingRange(base);
+  if (composition.kind === "document-summary") {
+    const characterized = base.slice(start, end).trimEnd();
+    const guarded = characterized
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n");
+    return replaceClosing(
+      base,
+      `  if closing-config.at("enabled", default: ${enabled}) {\n${guarded}\n  }`
+    );
+  }
+
+  const roles = design.typography.roles;
+  const fonts = design.typography.fonts;
+  const colors = design.tokens.colors;
+  const layout = design.tokens.layout;
+  const need = <T>(map: Record<string, T>, key: string, kind: string): T => {
+    const value = map[key];
+    if (value === undefined) throw new Error(`PDF template design is missing ${kind} "${key}"`);
+    return value;
+  };
+  const L = (key: string): string => need(layout, key, "layout length");
+  const C = (key: string): string => need(colors, key, "color token");
+  const role = (key: string) => need(roles, key, "typography role");
+  const roleFont = (key: string): string => {
+    const font = role(key).font;
+    if (font === undefined) throw new Error(`PDF template role "${key}" is missing a font`);
+    return fonts[font];
+  };
+  const roleWeight = (key: string): string => {
+    const weight = role(key).weight;
+    if (weight === undefined) throw new Error(`PDF template role "${key}" is missing a weight`);
+    return weight;
+  };
+  const fontStack = (font: string): string =>
+    `(${[font, ...SYMBOL_FALLBACK_FONTS].map(typstString).join(", ")})`;
+  const textVisible = composition.website === "show" || composition.legalNotice === "show";
+  const logo = composition.logo === "show"
+    ? String.raw`        #assert(logo-path != none, message: "BRAND_LOCKUP_LOGO_MISSING: asset.logo is required")
+        #block[
+          #image(logo-path, width: ${L("closingBrandLogoWidth")}, height: ${L("closingBrandLogoHeight")}, fit: "contain", alt: logo-alt)
+        ]
+${textVisible ? `        #v(${L("closingBrandLogoGap")})\n` : ""}`
+    : "";
+  const website = composition.website === "show"
+    ? String.raw`        #block[
+          #link(${typstString(design.branding.websiteUrl!)})[#text(font: ${fontStack(roleFont("closingWebsite"))}, size: ${role("closingWebsite").size}, weight: ${typstString(roleWeight("closingWebsite"))}, fill: rgb("${C("closingBrandText")}"), ${typstString(design.branding.websiteLabel!)})]
+        ]
+${composition.legalNotice === "show" ? `        #v(${L("closingBrandTextGap")})\n` : ""}`
+    : "";
+  const legal = composition.legalNotice === "show"
+    ? String.raw`        #block[
+          #text(font: ${fontStack(roleFont("closingLegal"))}, size: ${role("closingLegal").size}, weight: ${typstString(roleWeight("closingLegal"))}, fill: rgb("${C("closingBrandText")}"), ${typstString(design.branding.legalNotice!)})
+        ]
+`
+    : "";
+  const align = composition.align;
+  const closing = String.raw`  if closing-config.at("enabled", default: ${enabled}) {
+    pagebreak()
+    set page(fill: rgb("${C("closingPageBackground")}"))
+    place(
+      ${align} + bottom,
+      dy: -${L("closingBrandBottomInset")},
+      align(${align}, block(width: ${L("closingBrandBlockWidth")})[
+${logo}${website}${legal}      ]),
+    )
+  }`;
+  return replaceClosing(base, closing);
+}
+
 /**
  * Generate canonical revision 4 without changing the revision-1/2/3 source
  * function. The characterized revision-3 renderer remains the document base;
@@ -72,7 +181,8 @@ export function createAtlcliTypstTemplateV4(
     { positionedLogo: true }
   );
   if (composition.kind === "standard") {
-    return composition.logo === "show" ? base : hideCharacterizedCoverLogo(base);
+    const cover = composition.logo === "show" ? base : hideCharacterizedCoverLogo(base);
+    return renderClosingPage(cover, catalogDesign);
   }
 
   const typeCut = composition.typeCut;
@@ -214,5 +324,5 @@ ${flowLogo}      #text(size: ${role("coverEyebrow").size}, weight: ${typstString
     pagebreak()
   }
 `;
-  return replaceCover(base, cover);
+  return renderClosingPage(replaceCover(base, cover), catalogDesign);
 }

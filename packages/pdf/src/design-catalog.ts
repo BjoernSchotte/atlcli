@@ -643,13 +643,15 @@ export function materializeLegacyPdfDesign(
 }
 
 /** Catalog-gated immutable write for bindings and engine policy. */
-export function writePdfDesignCapability(
+function writePdfDesignCapabilityForCatalog(
   design: WikiPdfTemplateDesignV1,
   path: string,
   value: unknown,
-  writerId: string
+  writerId: string,
+  capabilities: ReadonlyMap<string, TemplateCapabilityDescriptorV1>,
+  catalog: TemplateCapabilityCatalogV1
 ): WikiPdfTemplateDesignV1 {
-  const capability = CAPABILITIES_BY_PATH_V1.get(path);
+  const capability = capabilities.get(path);
   if (!capability) throw new Error(`Unknown PDF design capability "${path}"`);
   if (!capability.runtimeWriters?.some((writer) => writer.id === writerId)) {
     throw new Error(`PDF design capability "${path}" is not writable by "${writerId}"`);
@@ -657,7 +659,7 @@ export function writePdfDesignCapability(
   const validation = validateDesignAgainstCatalog(
     unflattenDesign({ [path]: value }),
     {
-      ...PDF_TEMPLATE_CAPABILITIES_V1,
+      ...catalog,
       descriptors: [capability],
     },
     "legacy"
@@ -673,4 +675,38 @@ export function writePdfDesignCapability(
   }
   cursor[segments.at(-1)!] = value;
   return copy as unknown as WikiPdfTemplateDesignV1;
+}
+
+/** Catalog-V1-gated immutable write for revisions 1-3. */
+export function writePdfDesignCapability(
+  design: WikiPdfTemplateDesignV1,
+  path: string,
+  value: unknown,
+  writerId: string
+): WikiPdfTemplateDesignV1 {
+  return writePdfDesignCapabilityForCatalog(
+    design,
+    path,
+    value,
+    writerId,
+    CAPABILITIES_BY_PATH_V1,
+    PDF_TEMPLATE_CAPABILITIES_V1
+  );
+}
+
+/** Catalog-V2-gated immutable write for canonical revision 4. */
+export function writePdfDesignCapabilityV2(
+  design: WikiPdfTemplateDesignV1,
+  path: string,
+  value: unknown,
+  writerId: string
+): WikiPdfTemplateDesignV1 {
+  return writePdfDesignCapabilityForCatalog(
+    design,
+    path,
+    value,
+    writerId,
+    CAPABILITIES_BY_PATH_V2,
+    PDF_TEMPLATE_CAPABILITIES_V2
+  );
 }

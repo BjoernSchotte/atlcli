@@ -7,6 +7,10 @@ import {
   typstSettingsDict,
 } from "./settings.js";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+} from "./design-catalog.js";
 import type { PdfLogoAsset } from "./types.js";
 
 function pngBytes(): Uint8Array {
@@ -19,6 +23,32 @@ function pngBytes(): Uint8Array {
 
 function svgBytes(inner = ""): Uint8Array {
   return new TextEncoder().encode(`<svg xmlns="http://www.w3.org/2000/svg">${inner}</svg>`);
+}
+
+function revision4Manifest(closingEnabled: boolean) {
+  const manifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+  manifest.id = "fixture.settings-v4";
+  manifest.design!.features.closingPage.enabled = closingEnabled;
+  manifest.design!.compositions = {
+    cover: { kind: "standard", logo: "hide" },
+    closingPage: {
+      kind: "document-summary",
+      logo: "hide",
+      website: "hide",
+      legalNotice: "hide",
+      align: "left",
+    },
+  };
+  manifest.canonicalSource = {
+    api: "wiki.pdf-canonical-typst",
+    revision: "4",
+  };
+  manifest.capabilityCatalog = {
+    id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+    version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  };
+  return manifest;
 }
 
 function expectSettingsError(run: () => unknown, path: string): PdfSettingsError {
@@ -363,6 +393,23 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
 });
 
 describe("typstSettingsDict", () => {
+  it("preserves Catalog V2 and emits the revision-4 closing-page feature", () => {
+    for (const enabled of [true, false]) {
+      const resolved = resolvePdfSettings({}, {
+        manifest: revision4Manifest(enabled),
+      });
+      expect(resolved.capabilityCatalogDigest).toBe(
+        PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+      );
+      expect(resolved.design.compositions?.closingPage.kind).toBe(
+        "document-summary"
+      );
+      expect(typstSettingsDict(resolved)).toContain(
+        `closingPage: (enabled: ${enabled ? "true" : "false"})`
+      );
+    }
+  });
+
   it("emits the design subset and labels when nothing is supplied", () => {
     const dict = typstSettingsDict(resolvePdfSettings());
     expect(dict).toContain('accent: "#4B57A3"');

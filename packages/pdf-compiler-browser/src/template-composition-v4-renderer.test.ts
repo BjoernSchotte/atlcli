@@ -6,6 +6,9 @@
  * chain before the feature is accepted.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDF_RUNTIME_ASSETS, type PdfSourceBundle } from "@atlcli/pdf/browser";
 import {
@@ -62,6 +65,40 @@ function productionTemplate(): string {
   });
 }
 
+function brandLockupTemplate(enabled: boolean): string {
+  const design = structuredClone(BUILTIN_PDF_DESIGN);
+  design.features.closingPage.enabled = enabled;
+  design.compositions = {
+    cover: { kind: "standard", logo: "hide" },
+    closingPage: {
+      kind: "brand-lockup",
+      logo: "hide",
+      website: "show",
+      legalNotice: "show",
+      align: "left",
+    },
+  };
+  Object.assign(design.branding, {
+    websiteLabel: "systems.example",
+    websiteUrl: "https://systems.example/brief",
+    legalNotice: "Registereintrag Zürich · Qualität 🧪",
+  });
+  Object.assign(design.tokens.colors, {
+    closingPageBackground: "#E75204",
+    closingBrandText: "#FFFFFF",
+  });
+  Object.assign(design.tokens.layout, {
+    closingBrandBottomInset: "24mm",
+    closingBrandBlockWidth: "90mm",
+    closingBrandTextGap: "4mm",
+  });
+  Object.assign(design.typography.roles, {
+    closingWebsite: { font: "heading", size: "14pt", weight: "semibold" },
+    closingLegal: { font: "heading", size: "9pt", weight: "regular" },
+  });
+  return createAtlcliTypstTemplateV4(design);
+}
+
 function bundle(template: string): PdfSourceBundle {
   return {
     main: `#import "atlcli.typ": atlcli-doc
@@ -89,6 +126,50 @@ Komponentenbeleg für den Produktionsrenderer.
   };
 }
 
+async function poppler(
+  pdf: Uint8Array,
+  command: "pdfinfo" | "pdftotext",
+  args: string[]
+): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "atlcli-v4-renderer-"));
+  try {
+    const path = join(directory, "proof.pdf");
+    await Bun.write(path, pdf);
+    const process = Bun.spawn([command, ...args, path, "-"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(process.stdout).text();
+    const exit = await process.exited;
+    if (exit !== 0) {
+      throw new Error(`${command} failed: ${await new Response(process.stderr).text()}`);
+    }
+    return output;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function pdfInfo(pdf: Uint8Array, args: string[] = []): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "atlcli-v4-pdfinfo-"));
+  try {
+    const path = join(directory, "proof.pdf");
+    await Bun.write(path, pdf);
+    const process = Bun.spawn(["pdfinfo", ...args, path], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(process.stdout).text();
+    const exit = await process.exited;
+    if (exit !== 0) {
+      throw new Error(`pdfinfo failed: ${await new Response(process.stderr).text()}`);
+    }
+    return output;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
   await ensureVendoredTypst();
@@ -113,5 +194,25 @@ describe("canonical revision-4 production cover source", () => {
     const result = await compiler.compile(bundle(template));
     expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
     expect(result.pdf?.byteLength).toBeGreaterThan(1_000);
+  }, 120_000);
+
+  it("emits an exact brand lockup link and removes one page when closing is disabled", async () => {
+    const enabled = await compiler.compile(bundle(brandLockupTemplate(true)));
+    const disabled = await compiler.compile(bundle(brandLockupTemplate(false)));
+    expect(enabled.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    expect(disabled.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+
+    const enabledInfo = await pdfInfo(enabled.pdf!);
+    const disabledInfo = await pdfInfo(disabled.pdf!);
+    const pages = (value: string): number =>
+      Number(/^Pages:\s+(\d+)$/mu.exec(value)?.[1]);
+    expect(pages(enabledInfo) - pages(disabledInfo)).toBe(1);
+
+    const links = await pdfInfo(enabled.pdf!, ["-url"]);
+    expect(links).toContain("https://systems.example/brief");
+    const text = await poppler(enabled.pdf!, "pdftotext", ["-layout"]);
+    expect(text).toContain("systems.example");
+    expect(text).toContain("Registereintrag Zürich · Qualität");
+    expect(text).not.toContain("© Registereintrag");
   }, 120_000);
 });

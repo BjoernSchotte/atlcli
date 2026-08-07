@@ -459,6 +459,8 @@ function validateRevision4Composition(
   }
   if (closing.website === "show") {
     requireRevision4DesignPaths(design, [
+      "branding.websiteLabel",
+      "branding.websiteUrl",
       "tokens.layout.closingBrandTextGap",
       "typography.roles.closingWebsite.font",
       "typography.roles.closingWebsite.size",
@@ -467,6 +469,7 @@ function validateRevision4Composition(
   }
   if (closing.legalNotice === "show") {
     requireRevision4DesignPaths(design, [
+      "branding.legalNotice",
       "tokens.layout.closingBrandTextGap",
       "typography.roles.closingLegal.font",
       "typography.roles.closingLegal.size",

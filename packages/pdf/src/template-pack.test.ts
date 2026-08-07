@@ -434,6 +434,18 @@ describe("PDF template manifest phase", () => {
       () => validatePdfTemplateManifest(missingLogo),
       "invalid-composition"
     );
+
+    for (const key of ["websiteLabel", "websiteUrl", "legalNotice"] as const) {
+      const missingCopy = structuredClone(fixture.manifest);
+      delete missingCopy.design!.branding[key];
+      await expectPdfReason(
+        () => validatePdfTemplateManifest(missingCopy),
+        "invalid-composition"
+      );
+      expect(() => validatePdfTemplateManifest(missingCopy)).toThrow(
+        new RegExp(`branding\\.${key}`)
+      );
+    }
   });
 
   it("rejects a revision-3 manifest pinned to Catalog V2", async () => {

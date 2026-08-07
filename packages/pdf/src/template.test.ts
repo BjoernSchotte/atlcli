@@ -9,10 +9,15 @@ import { ATLCLI_TYPST_TEMPLATE, createAtlcliTypstTemplate } from "./template.js"
 import { createAtlcliTypstTemplateV4 } from "./template-v4.js";
 
 function revision4Design(
-  options: { kind?: "standard" | "type-cut"; logo?: "show" | "hide" } = {}
+  options: {
+    kind?: "standard" | "type-cut";
+    logo?: "show" | "hide";
+    closingEnabled?: boolean;
+  } = {}
 ) {
   const design = structuredClone(BUILTIN_PDF_DESIGN);
   const kind = options.kind ?? "type-cut";
+  design.features.closingPage.enabled = options.closingEnabled ?? true;
   design.compositions = {
     cover: kind === "type-cut"
       ? {
@@ -51,10 +56,55 @@ function revision4Design(
   return design;
 }
 
+function brandLockupDesign(options: {
+  logo?: "show" | "hide";
+  website?: "show" | "hide";
+  legalNotice?: "show" | "hide";
+  align?: "left" | "center" | "right";
+  legalCopy?: string;
+  enabled?: boolean;
+} = {}) {
+  const design = revision4Design({ closingEnabled: options.enabled ?? true });
+  design.compositions!.closingPage = {
+    kind: "brand-lockup",
+    logo: options.logo ?? "show",
+    website: options.website ?? "show",
+    legalNotice: options.legalNotice ?? "show",
+    align: options.align ?? "left",
+  };
+  design.branding.websiteLabel = "systems.example";
+  design.branding.websiteUrl = "https://systems.example/brief";
+  design.branding.legalNotice = options.legalCopy ?? "Example Systems GmbH · Zürich";
+  Object.assign(design.tokens.colors, {
+    closingPageBackground: "#E75204",
+    closingBrandText: "#FFFFFF",
+  });
+  Object.assign(design.tokens.layout, {
+    closingBrandBottomInset: "24mm",
+    closingBrandBlockWidth: "90mm",
+    closingBrandLogoWidth: "42mm",
+    closingBrandLogoHeight: "12mm",
+    closingBrandLogoGap: "8mm",
+    closingBrandTextGap: "4mm",
+  });
+  Object.assign(design.typography.roles, {
+    closingWebsite: { font: "heading", size: "14pt", weight: "semibold" },
+    closingLegal: { font: "heading", size: "9pt", weight: "regular" },
+  });
+  return design;
+}
+
 function coverSource(source: string): string {
   return source.slice(
     source.indexOf('  if cover-config.at("enabled"'),
     source.indexOf("  set page(fill: white)")
+  );
+}
+
+function closingSource(source: string): string {
+  return source.slice(
+    source.indexOf("  body\n") + "  body\n".length,
+    source.indexOf("\n}\n\n#let callout")
   );
 }
 
@@ -67,7 +117,9 @@ describe("atlcli Typst template settings rendering", () => {
       undefined,
       { positionedLogo: true }
     );
-    expect(createAtlcliTypstTemplateV4(design)).toBe(characterized);
+    expect(coverSource(createAtlcliTypstTemplateV4(design))).toBe(
+      coverSource(characterized)
+    );
 
     const hidden = coverSource(
       createAtlcliTypstTemplateV4(
@@ -122,6 +174,69 @@ describe("atlcli Typst template settings rendering", () => {
     expect(shown).toContain("logo-path != none and logo-placement != none");
     expect(shown).toContain("logo-path != none and logo-placement == none");
     expect(hidden).not.toContain("logo-path");
+  });
+
+  it("guards the characterized document summary and emits no unguarded page break", () => {
+    const enabled = closingSource(createAtlcliTypstTemplateV4(revision4Design()));
+    expect(enabled).toContain(
+      'if closing-config.at("enabled", default: true) {'
+    );
+    expect(enabled).toContain("set page(fill: cover-paper)");
+    expect(enabled).toContain("#end-label");
+    expect(enabled.trimStart().startsWith("if closing-config")).toBe(true);
+
+    const disabled = closingSource(
+      createAtlcliTypstTemplateV4(revision4Design({ closingEnabled: false }))
+    );
+    expect(disabled).toContain(
+      'if closing-config.at("enabled", default: false) {'
+    );
+    expect(disabled.trimStart().startsWith("if closing-config")).toBe(true);
+  });
+
+  it("controls all brand-lockup items independently without hidden gaps", () => {
+    for (let mask = 0; mask < 8; mask += 1) {
+      const logo = (mask & 1) === 0 ? "hide" : "show";
+      const website = (mask & 2) === 0 ? "hide" : "show";
+      const legalNotice = (mask & 4) === 0 ? "hide" : "show";
+      const source = closingSource(
+        createAtlcliTypstTemplateV4(
+          brandLockupDesign({ logo, website, legalNotice })
+        )
+      );
+      expect(source.includes("BRAND_LOCKUP_LOGO_MISSING")).toBe(logo === "show");
+      expect(source.includes("https://systems.example/brief")).toBe(
+        website === "show"
+      );
+      expect(source.includes("Example Systems GmbH")).toBe(
+        legalNotice === "show"
+      );
+      expect(source.includes("#v(8mm)")).toBe(
+        logo === "show" && (website === "show" || legalNotice === "show")
+      );
+      expect(source.includes("#v(4mm)")).toBe(
+        website === "show" && legalNotice === "show"
+      );
+    }
+  });
+
+  it("emits exact legal copy, escaped data, dedicated colors, and all alignments", () => {
+    const legalCopy = 'Handelsregister Zürich "A" #not-code';
+    for (const align of ["left", "center", "right"] as const) {
+      const source = closingSource(
+        createAtlcliTypstTemplateV4(
+          brandLockupDesign({ align, legalCopy })
+        )
+      );
+      expect(source).toContain(`      ${align} + bottom,`);
+      expect(source).toContain(`align(${align}, block(width: 90mm)`);
+      expect(source).toContain('set page(fill: rgb("#E75204"))');
+      expect(source).toContain('fill: rgb("#FFFFFF")');
+      expect(source).toContain(JSON.stringify(legalCopy));
+      expect(source).not.toContain(`© ${legalCopy}`);
+      expect(source).not.toContain("meta.title");
+      expect(source).not.toContain("cover-paper");
+    }
   });
 
   it("keeps positioned-logo execution behind canonical revision 3", () => {

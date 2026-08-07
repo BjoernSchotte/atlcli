@@ -311,11 +311,28 @@ export function resolvePdfFontRequirementsV1(
   if (input.settings.cover) {
     addRole("coverEyebrow", headingFamily);
     const coverTitleFamily = addRole("coverTitle", bodyFamily);
+    const typeCut = design.compositions?.cover.kind === "type-cut";
+    const compactFamily = typeCut
+      ? addRole("coverTitleCompact", bodyFamily)
+      : undefined;
+    const minimumFamily = typeCut
+      ? addRole("coverTitleMinimum", bodyFamily)
+      : undefined;
     addRole("coverMetaLabel", headingFamily);
     addRole("coverMetaValue", headingFamily);
     addText(input.metadata.title, coverTitleFamily, "normal", weightNumber(
       design.typography.roles.coverTitle?.weight,
     ), { kind: "renderer-synthetic", detail: "cover-title" });
+    if (compactFamily) {
+      addText(input.metadata.title, compactFamily, "normal", weightNumber(
+        design.typography.roles.coverTitleCompact?.weight,
+      ), { kind: "renderer-synthetic", detail: "cover-title-compact" });
+    }
+    if (minimumFamily) {
+      addText(input.metadata.title, minimumFamily, "normal", weightNumber(
+        design.typography.roles.coverTitleMinimum?.weight,
+      ), { kind: "renderer-synthetic", detail: "cover-title-minimum" });
+    }
     addText(
       [
         input.settings.organizationName,
@@ -331,18 +348,43 @@ export function resolvePdfFontRequirementsV1(
     );
   }
 
-  addRole("closingEyebrow", headingFamily);
-  const closingTitleFamily = addRole("closingTitle", bodyFamily);
-  addRole("closingMetaLabel", headingFamily);
-  addRole("closingMetaValue", headingFamily);
-  addRole("colophon", headingFamily);
-  addFace(headingFamily, "normal", 600, {
-    kind: "renderer-synthetic",
-    detail: "closing-colophon-link",
-  });
-  addText(input.metadata.title, closingTitleFamily, "normal", weightNumber(
-    design.typography.roles.closingTitle?.weight,
-  ), { kind: "renderer-synthetic", detail: "closing-title" });
+  const closing = design.compositions?.closingPage;
+  const closingEnabled = closing === undefined || design.features.closingPage.enabled;
+  if (closingEnabled && closing?.kind === "brand-lockup") {
+    if (closing.website === "show") {
+      const family = addRole("closingWebsite", headingFamily);
+      addText(
+        design.branding.websiteLabel!,
+        family,
+        "normal",
+        weightNumber(design.typography.roles.closingWebsite?.weight),
+        { kind: "renderer-synthetic", detail: "closing-website" },
+      );
+    }
+    if (closing.legalNotice === "show") {
+      const family = addRole("closingLegal", headingFamily);
+      addText(
+        design.branding.legalNotice!,
+        family,
+        "normal",
+        weightNumber(design.typography.roles.closingLegal?.weight),
+        { kind: "renderer-synthetic", detail: "closing-legal" },
+      );
+    }
+  } else if (closingEnabled) {
+    addRole("closingEyebrow", headingFamily);
+    const closingTitleFamily = addRole("closingTitle", bodyFamily);
+    addRole("closingMetaLabel", headingFamily);
+    addRole("closingMetaValue", headingFamily);
+    addRole("colophon", headingFamily);
+    addFace(headingFamily, "normal", 600, {
+      kind: "renderer-synthetic",
+      detail: "closing-colophon-link",
+    });
+    addText(input.metadata.title, closingTitleFamily, "normal", weightNumber(
+      design.typography.roles.closingTitle?.weight,
+    ), { kind: "renderer-synthetic", detail: "closing-title" });
+  }
   addText(
     Object.values(input.settings.labels).join(" "),
     headingFamily,

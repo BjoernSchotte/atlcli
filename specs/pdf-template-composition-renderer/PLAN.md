@@ -748,33 +748,33 @@ still owns acceptance through the public atlcli build/export chain.
 
 **Implementation**
 
-- [ ] Parse and emit `features.closingPage.enabled` in revision-4 settings.
+- [x] Parse and emit `features.closingPage.enabled` in revision-4 settings.
       When false, do not append a page break or closing page.
-- [ ] Keep `document-summary` as the revision-4 equivalent of the existing
+- [x] Keep `document-summary` as the revision-4 equivalent of the existing
       closing page, driven by its current roles/tokens/labels.
-- [ ] Add `brand-lockup` using only catalog-V2 values and validated runtime
+- [x] Add `brand-lockup` using only catalog-V2 values and validated runtime
       assets. The renderer must not synthesize organization copy, website copy,
       URL, copyright glyph, year, or legal wording.
-- [ ] Emit logo, website, and legal notice independently according to their
+- [x] Emit logo, website, and legal notice independently according to their
       YAML visibility values. A hidden item consumes no layout gap.
-- [ ] Use `asset.logo` only when `logo: show`; require alt text at the existing
+- [x] Use `asset.logo` only when `logo: show`; require alt text at the existing
       manifest validation boundary. Place it using closing-page design tokens,
       not the existing cover-logo placement.
-- [ ] Render `websiteLabel` as visible text linked to the validated
+- [x] Render `websiteLabel` as visible text linked to the validated
       `websiteUrl`. Add a PDF link annotation assertion in the real-compiler
       test; text extraction alone does not prove the link target exists.
-- [ ] Render `legalNotice` exactly as supplied. Add a test where it does not
+- [x] Render `legalNotice` exactly as supplied. Add a test where it does not
       begin with `©` to prove the renderer does not prepend anything.
-- [ ] Support left/center/right block alignment as a bounded enum and test all
+- [x] Support left/center/right block alignment as a bounded enum and test all
       three at source level; raster proof may focus on left alignment.
-- [ ] Set the page background from `closingPageBackground` and text from
+- [x] Set the page background from `closingPageBackground` and text from
       `closingBrandText`; never reuse the cover paper or ink implicitly.
-- [ ] Update `packages/pdf/src/font-requirements.ts` so enabled brand-lockup
+- [x] Update `packages/pdf/src/font-requirements.ts` so enabled brand-lockup
       website/legal copy participates in demand-aware font selection, disabled
       closing pages do not require closing-only roles, and brand-lockup does not
       request the document title through `closingTitle`. Add regression tests
       including the `©` glyph and a Unicode legal string.
-- [ ] Add tests for every visibility combination, absent required content,
+- [x] Add tests for every visibility combination, absent required content,
       Unicode copy, escaped adversarial strings, disabled closing page, and
       stable standard summary mode.
 
@@ -787,6 +787,11 @@ rtk bun run test packages/template-pack/src/design.test.ts packages/pdf/src/temp
 Expected: exit 0; no brand literal appears in renderer source, disabled means
 zero closing page, and each visible item is controlled independently by YAML
 data.
+
+The supplemental production-source compiler test from T3 also proves that
+disabling the closing page removes exactly one PDF page and that `pdfinfo
+-url` observes the declared HTTPS target as a real link annotation. It remains
+component evidence; T7/T8 own public atlcli-pipeline acceptance.
 
 **Machine guard**
 
