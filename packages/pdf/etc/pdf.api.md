@@ -7,6 +7,9 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
 // export: assertResolvedPdfFontRequirementsV1
 export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
 
@@ -237,7 +240,7 @@ export declare class FontVerificationError extends Error {
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
 // export: generateCanonicalPdfTemplateSourceV1
-export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
 
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
@@ -372,6 +375,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
 // export: PDF_CANONICAL_SOURCE_REVISION_4
 export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -391,7 +397,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
     "3",
-    "4"
+    "4",
+    "5"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -739,6 +746,9 @@ export interface PdfTemplateBaselineRegistryV1 {
 // export: PdfTemplateDecorationIdV1
 export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
 
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: PdfTemplatePreviewCompiler
 export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
     private readonly options;
@@ -795,7 +805,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
         version: number;
         digest: string;
     };
-    design: WikiPdfTemplateDesignV1;
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
     fallbackLocale: string;
     fallbackLabels: Readonly<Record<string, string>>;
     visuals: PdfTemplateVisualsV1;
@@ -804,7 +814,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
 // export: PdfTemplateRuntimeV1
 export interface PdfTemplateRuntimeV1 {
     schema: "atlcli.pdf-template-runtime/1";
-    manifest: TemplateManifest;
+    manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
     assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
@@ -1209,7 +1219,7 @@ export interface ResolvePdfFontRequirementsInputV1 {
     document: PreparedPdfDocument;
     metadata: PdfExportMetadata;
     settings: ResolvedPdfSettings;
-    manifest?: TemplateManifest;
+    manifest?: AnyPdfTemplateManifest;
 }
 
 // export: resolvePdfFontRequirementsV1
@@ -1223,7 +1233,7 @@ export interface ResolvePdfSettingsContext {
     locale?: string;
     region?: string;
     theme?: PdfThemeOptions;
-    manifest?: TemplateManifest;
+    manifest?: AnyPdfTemplateManifest;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
 
@@ -1275,7 +1285,7 @@ export interface TemplateAssetCapabilitiesV1 {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -1284,7 +1294,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
@@ -1297,10 +1307,10 @@ export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: validatePdfTemplateManifest
-export declare function validatePdfTemplateManifest(manifest: TemplateManifest, catalog?: TemplateCapabilityCatalogV1): TemplateManifest;
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
 
 // export: validatePdfTemplatePack
-export declare function validatePdfTemplatePack(manifest: TemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
@@ -1314,12 +1324,29 @@ export interface WikiPdfTemplateDesignV1 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: Readonly<Record<string, unknown>>;
+    components: Readonly<Record<string, unknown>>;
+    paints?: Readonly<Record<string, unknown>>;
+    decorations?: readonly unknown[];
 }
 ```
 
 ### Entry point `. (default)`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
 // export: assertResolvedPdfFontRequirementsV1
 export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
 
@@ -1550,7 +1577,7 @@ export declare class FontVerificationError extends Error {
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
 // export: generateCanonicalPdfTemplateSourceV1
-export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
 
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
@@ -1685,6 +1712,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
 // export: PDF_CANONICAL_SOURCE_REVISION_4
 export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -1704,7 +1734,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
     "3",
-    "4"
+    "4",
+    "5"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -2052,6 +2083,9 @@ export interface PdfTemplateBaselineRegistryV1 {
 // export: PdfTemplateDecorationIdV1
 export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
 
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: PdfTemplatePreviewCompiler
 export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
     private readonly options;
@@ -2108,7 +2142,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
         version: number;
         digest: string;
     };
-    design: WikiPdfTemplateDesignV1;
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
     fallbackLocale: string;
     fallbackLabels: Readonly<Record<string, string>>;
     visuals: PdfTemplateVisualsV1;
@@ -2117,7 +2151,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
 // export: PdfTemplateRuntimeV1
 export interface PdfTemplateRuntimeV1 {
     schema: "atlcli.pdf-template-runtime/1";
-    manifest: TemplateManifest;
+    manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
     assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
@@ -2522,7 +2556,7 @@ export interface ResolvePdfFontRequirementsInputV1 {
     document: PreparedPdfDocument;
     metadata: PdfExportMetadata;
     settings: ResolvedPdfSettings;
-    manifest?: TemplateManifest;
+    manifest?: AnyPdfTemplateManifest;
 }
 
 // export: resolvePdfFontRequirementsV1
@@ -2536,7 +2570,7 @@ export interface ResolvePdfSettingsContext {
     locale?: string;
     region?: string;
     theme?: PdfThemeOptions;
-    manifest?: TemplateManifest;
+    manifest?: AnyPdfTemplateManifest;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
 
@@ -2588,7 +2622,7 @@ export interface TemplateAssetCapabilitiesV1 {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -2597,7 +2631,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
@@ -2610,10 +2644,10 @@ export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: validatePdfTemplateManifest
-export declare function validatePdfTemplateManifest(manifest: TemplateManifest, catalog?: TemplateCapabilityCatalogV1): TemplateManifest;
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
 
 // export: validatePdfTemplatePack
-export declare function validatePdfTemplatePack(manifest: TemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
@@ -2627,12 +2661,29 @@ export interface WikiPdfTemplateDesignV1 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: Readonly<Record<string, unknown>>;
+    components: Readonly<Record<string, unknown>>;
+    paints?: Readonly<Record<string, unknown>>;
+    decorations?: readonly unknown[];
 }
 ```
 
 ### Entry point `./browser`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
 // export: assertResolvedPdfFontRequirementsV1
 export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
 
@@ -2863,7 +2914,7 @@ export declare class FontVerificationError extends Error {
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
 // export: generateCanonicalPdfTemplateSourceV1
-export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
 
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
@@ -2998,6 +3049,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
 // export: PDF_CANONICAL_SOURCE_REVISION_4
 export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -3017,7 +3071,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
     "3",
-    "4"
+    "4",
+    "5"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -3365,6 +3420,9 @@ export interface PdfTemplateBaselineRegistryV1 {
 // export: PdfTemplateDecorationIdV1
 export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
 
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: PdfTemplatePreviewCompiler
 export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
     private readonly options;
@@ -3421,7 +3479,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
         version: number;
         digest: string;
     };
-    design: WikiPdfTemplateDesignV1;
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
     fallbackLocale: string;
     fallbackLabels: Readonly<Record<string, string>>;
     visuals: PdfTemplateVisualsV1;
@@ -3430,7 +3488,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
 // export: PdfTemplateRuntimeV1
 export interface PdfTemplateRuntimeV1 {
     schema: "atlcli.pdf-template-runtime/1";
-    manifest: TemplateManifest;
+    manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
     assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
@@ -3835,7 +3893,7 @@ export interface ResolvePdfFontRequirementsInputV1 {
     document: PreparedPdfDocument;
     metadata: PdfExportMetadata;
     settings: ResolvedPdfSettings;
-    manifest?: TemplateManifest;
+    manifest?: AnyPdfTemplateManifest;
 }
 
 // export: resolvePdfFontRequirementsV1
@@ -3849,7 +3907,7 @@ export interface ResolvePdfSettingsContext {
     locale?: string;
     region?: string;
     theme?: PdfThemeOptions;
-    manifest?: TemplateManifest;
+    manifest?: AnyPdfTemplateManifest;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
 
@@ -3901,7 +3959,7 @@ export interface TemplateAssetCapabilitiesV1 {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -3910,7 +3968,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
@@ -3923,10 +3981,10 @@ export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: validatePdfTemplateManifest
-export declare function validatePdfTemplateManifest(manifest: TemplateManifest, catalog?: TemplateCapabilityCatalogV1): TemplateManifest;
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
 
 // export: validatePdfTemplatePack
-export declare function validatePdfTemplatePack(manifest: TemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
@@ -3941,13 +3999,42 @@ export interface WikiPdfTemplateDesignV1 {
     semanticPalettes: DesignSemanticPalettes;
     compositions?: DesignPageCompositionsV1;
 }
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: Readonly<Record<string, unknown>>;
+    components: Readonly<Record<string, unknown>>;
+    paints?: Readonly<Record<string, unknown>>;
+    decorations?: readonly unknown[];
+}
 ```
 
 ### Entry point `./internal`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
+
+// export: AtlcliTypstPageModelV5
+export interface AtlcliTypstPageModelV5 {
+    page: DesignPageV3;
+    running: DesignPageCompositionsV3["running"];
+}
+
+// export: AtlcliTypstTemplateOptions
+export interface AtlcliTypstTemplateOptions {
+    positionedLogo?: boolean;
+    pageModelV5?: AtlcliTypstPageModelV5;
+}
 
 // export: buildUniformPdfPageBorderV1
 export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
@@ -4000,12 +4087,13 @@ export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): 
 export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
 
 // export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: {
-    positionedLogo?: boolean;
-}): string;
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: AtlcliTypstTemplateOptions): string;
 
 // export: createAtlcliTypstTemplateV4
 export declare function createAtlcliTypstTemplateV4(design: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
+
+// export: createAtlcliTypstTemplateV5
+export declare function createAtlcliTypstTemplateV5(design: WikiPdfTemplateDesignV3, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
 
 // export: DEFAULT_PDF_THEME
 export declare const DEFAULT_PDF_THEME: Readonly<PdfTheme>;
@@ -4029,7 +4117,7 @@ export declare function escapeTypstContent(value: string): string;
 export declare function escapeTypstString(value: string): string;
 
 // export: generateCanonicalPdfTemplateSourceV1
-export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
 
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
@@ -4121,6 +4209,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
 // export: PDF_CANONICAL_SOURCE_REVISION_4
 export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -4138,7 +4229,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
     "2",
     "3",
-    "4"
+    "4",
+    "5"
 ];
 
 // export: PDF_TEMPLATE_ASSET_SLOTS_V1
@@ -4256,6 +4348,9 @@ export interface PdfTemplateBaselineRegistryV1 {
 // export: PdfTemplateDecorationIdV1
 export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
 
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: PdfTemplatePreviewCompiler
 export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
     private readonly options;
@@ -4307,7 +4402,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
         version: number;
         digest: string;
     };
-    design: WikiPdfTemplateDesignV1;
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
     fallbackLocale: string;
     fallbackLabels: Readonly<Record<string, string>>;
     visuals: PdfTemplateVisualsV1;
@@ -4316,7 +4411,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
 // export: PdfTemplateRuntimeV1
 export interface PdfTemplateRuntimeV1 {
     schema: "atlcli.pdf-template-runtime/1";
-    manifest: TemplateManifest;
+    manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
     assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
@@ -4387,6 +4482,9 @@ export declare function projectPdfDesignThroughCatalogV2(design: WikiPdfTemplate
 
 // export: projectPdfDesignV1SubsetFromCatalogV2
 export declare function projectPdfDesignV1SubsetFromCatalogV2(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
+
+// export: projectPdfDesignV5RuntimeSettings
+export declare function projectPdfDesignV5RuntimeSettings(design: WikiPdfTemplateDesignV3): WikiPdfTemplateDesignV1;
 
 // export: readPdfDesignCapability
 export declare function readPdfDesignCapability<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
@@ -4467,10 +4565,10 @@ export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: validatePdfTemplateManifest
-export declare function validatePdfTemplateManifest(manifest: TemplateManifest, catalog?: TemplateCapabilityCatalogV1): TemplateManifest;
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
 
 // export: validatePdfTemplatePack
-export declare function validatePdfTemplatePack(manifest: TemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
 
 // export: writePdfDesignCapability
 export declare function writePdfDesignCapability(design: WikiPdfTemplateDesignV1, path: string, value: unknown, writerId: string): WikiPdfTemplateDesignV1;
@@ -4485,8 +4583,18 @@ export declare function writePdfDesignCapabilityV2(design: WikiPdfTemplateDesign
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
 
-// export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: {
+// export: AtlcliTypstPageModelV5
+export interface AtlcliTypstPageModelV5 {
+    page: DesignPageV3;
+    running: DesignPageCompositionsV3["running"];
+}
+
+// export: AtlcliTypstTemplateOptions
+export interface AtlcliTypstTemplateOptions {
     positionedLogo?: boolean;
-}): string;
+    pageModelV5?: AtlcliTypstPageModelV5;
+}
+
+// export: createAtlcliTypstTemplate
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: AtlcliTypstTemplateOptions): string;
 ```

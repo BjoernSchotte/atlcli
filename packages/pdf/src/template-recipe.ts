@@ -262,7 +262,7 @@ export async function materializePdfTemplateRecipeV1(
   const loaded = await loadPdfTemplatePack(bytes);
   const compile = await input.compiler.compile({
     packBytes: new Uint8Array(bytes),
-    manifest: structuredClone(loaded.manifest),
+    manifest: structuredClone(loaded.manifest) as TemplateManifest,
     runtimeSnapshot: structuredClone(
       loaded.runtimeSnapshot
     ) as unknown as Readonly<Record<string, unknown>>,
@@ -278,7 +278,7 @@ export async function materializePdfTemplateRecipeV1(
   return {
     bytes: new Uint8Array(bytes),
     packDigest: await sha256PdfTemplateBytes(bytes),
-    manifest: structuredClone(loaded.manifest),
+    manifest: structuredClone(loaded.manifest) as TemplateManifest,
     canonicalTypst,
     runtimeSnapshot: structuredClone(loaded.runtimeSnapshot),
     compile: { digest: compile.digest, pageCount: compile.pageCount },

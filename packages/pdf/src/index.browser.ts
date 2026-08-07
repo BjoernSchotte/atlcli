@@ -109,6 +109,7 @@ export {
   PDF_CANONICAL_SOURCE_REVISION_2,
   PDF_CANONICAL_SOURCE_REVISION_3,
   PDF_CANONICAL_SOURCE_REVISION_4,
+  PDF_CANONICAL_SOURCE_REVISION_5,
   PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
   PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS,
   PDF_TEMPLATE_DECORATION_IDS_V1,
@@ -184,6 +185,8 @@ export type {
   PdfTemplateRuntimeSnapshotV1,
   PdfVerifiedCanonicalSourceV1,
   PdfTemplateRuntimeV1,
+  AnyPdfTemplateManifest,
+  PdfTemplateManifestV5,
   ResolvedPdfTemplateAssetV1,
   ValidatedPdfTemplatePackV1,
   DocxUniformPageBorderInputV1,
@@ -203,6 +206,7 @@ export {
 export type {
   TemplateManifest,
   WikiPdfTemplateDesignV1,
+  WikiPdfTemplateDesignV3,
 } from "@atlcli/template-pack";
 
 // --- Shared document/PDF model (types.ts) ---

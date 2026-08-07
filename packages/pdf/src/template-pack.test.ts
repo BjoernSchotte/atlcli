@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   packTemplate,
   validateManifest,
+  validateManifestV3,
   type TemplateManifest,
 } from "@atlcli/template-pack";
 import {
@@ -11,6 +12,7 @@ import {
   PDF_CANONICAL_SOURCE_REVISION_2,
   PDF_CANONICAL_SOURCE_REVISION_3,
   PDF_CANONICAL_SOURCE_REVISION_4,
+  PDF_CANONICAL_SOURCE_REVISION_5,
   PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
   PdfTemplateValidationError,
   buildUniformPdfPageBorderV1,
@@ -19,16 +21,21 @@ import {
   validatePdfTemplateManifest,
   validatePdfTemplatePack,
   type PdfTemplateVisualsV1,
+  type AnyPdfTemplateManifest,
+  type PdfTemplateManifestV5,
 } from "./template-pack.js";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
 } from "./design-catalog.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
+import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
 
 const encoder = new TextEncoder();
 
@@ -247,7 +254,33 @@ function catalogReference(
       };
 }
 
-function visualsForManifest(manifest: TemplateManifest): PdfTemplateVisualsV1 {
+function revision5Manifest(): PdfTemplateManifestV5 {
+  return validateManifestV3({
+    schemaVersion: 1,
+    id: "fixture.catalog-v3",
+    name: "Catalog V3 fixture",
+    version: "1.0.0",
+    engine: {
+      kind: "typst",
+      api: "wiki.pdf-template/v1",
+      entry: "atlcli.typ",
+      compilerRange: ">=0.15.1 <0.16",
+    },
+    canonicalSource: {
+      api: "wiki.pdf-canonical-typst",
+      revision: PDF_CANONICAL_SOURCE_REVISION_5,
+    },
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    },
+    design: structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design),
+    requiredFonts: PDF_RUNTIME_ASSETS.fonts,
+  });
+}
+
+function visualsForManifest(manifest: AnyPdfTemplateManifest): PdfTemplateVisualsV1 {
   return {
     assets: Object.fromEntries(
       Object.entries(manifest.assets ?? {}).map(([slot, reference]) => {
@@ -347,7 +380,7 @@ describe("PDF template manifest phase", () => {
     );
   });
 
-  it("keeps revisions 1-3 pinned and gives revision 5 a migration diagnostic", async () => {
+  it("keeps revisions 1-4 pinned and registers revision 5 only with Catalog V3", async () => {
     expect(PDF_CANONICAL_SOURCE_REVISION).toBe("3");
     expect(PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION).toBe("3");
     expect([
@@ -355,7 +388,8 @@ describe("PDF template manifest phase", () => {
       PDF_CANONICAL_SOURCE_REVISION_2,
       PDF_CANONICAL_SOURCE_REVISION_3,
       PDF_CANONICAL_SOURCE_REVISION_4,
-    ]).toEqual(["1", "2", "3", "4"]);
+      PDF_CANONICAL_SOURCE_REVISION_5,
+    ]).toEqual(["1", "2", "3", "4", "5"]);
     const prior = await manifestWith({}, { canonical: true });
     expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
 
@@ -363,8 +397,24 @@ describe("PDF template manifest phase", () => {
     prior.manifest.capabilityCatalog = catalogReference(1);
     expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
 
+    const revision5 = revision5Manifest();
+    expect(validatePdfTemplateManifest(revision5)).toBe(revision5);
+    const source = generateCanonicalPdfTemplateSourceV1(revision5, {
+      assets: {},
+      decorations: [],
+    });
+    expect(source).toContain("binding: left");
+    expect(source).toContain('pdf.artifact(kind: "header"');
+
+    const wrongCatalog = structuredClone(revision5);
+    wrongCatalog.capabilityCatalog!.digest = "0".repeat(64);
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(wrongCatalog),
+      "canonical-source-mismatch",
+    );
+
     const future = structuredClone(prior.manifest);
-    future.canonicalSource!.revision = "5";
+    future.canonicalSource!.revision = "6";
     await expectPdfReason(
       () => validatePdfTemplateManifest(future),
       "unsupported-canonical-revision"
@@ -578,6 +628,23 @@ describe("PDF template manifest phase", () => {
 });
 
 describe("PDF template pack integrity phase", () => {
+  it("generates, packs, and reloads canonical revision 5 through the V3 import gate", async () => {
+    const manifest = revision5Manifest();
+    const source = generateCanonicalPdfTemplateSourceV1(manifest, {
+      assets: {},
+      decorations: [],
+    });
+    const files = { "atlcli.typ": encoder.encode(source) };
+    const runtime = await validatePdfTemplatePack(manifest, files);
+    expect(runtime.canonicalSource.revision).toBe("5");
+    expect("format" in runtime.runtimeSnapshot.design.page).toBe(true);
+
+    const bytes = await packTemplate({ manifest, files });
+    const loaded = await loadPdfTemplatePack(bytes);
+    expect(loaded.canonicalSource.source).toBe(source);
+    expect(loaded.runtimeSnapshot.capabilityCatalog.version).toBe(3);
+  });
+
   it("pins and loads the characterized canonical source for revisions 1, 2, and 3", async () => {
     const revision1 = await manifestWith(
       {},

@@ -41,6 +41,7 @@ import {
 import {
   pdfCatalogRuntimeReference,
   resolvePdfCatalogRuntime,
+  resolvePdfCatalogRuntimeV3,
   type PdfCatalogRuntime,
 } from "./catalog-runtime.js";
 import { typstString } from "./escape.js";
@@ -53,9 +54,12 @@ import type {
   PdfWatermarkSettings,
 } from "./types.js";
 import type {
+  AnyPdfTemplateManifest,
   PdfTemplateVisualsV1,
+  PdfTemplateManifestV5,
   ValidatedPdfTemplatePackV1,
 } from "./template-pack.js";
+import { projectPdfDesignV5RuntimeSettings } from "./template-v5.js";
 
 /** Structured validation failure naming the exact offending settings field. */
 export class PdfSettingsError extends Error {
@@ -156,7 +160,7 @@ export interface ResolvePdfSettingsContext {
   /** Theme whose ink/paper are injected into the resolved design tokens. */
   theme?: PdfThemeOptions;
   /** Template manifest driving resolution; defaults to the built-in. */
-  manifest?: TemplateManifest;
+  manifest?: AnyPdfTemplateManifest;
   /** Validated pack supplying the manifest plus resolved visual payloads. */
   templatePack?: ValidatedPdfTemplatePackV1;
 }
@@ -417,7 +421,7 @@ export function resolvePdfSettings(
  * manifest's design.
  */
 export function resolveTemplateDesign(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   values: ResolvedPdfSettings,
   themeOptions?: PdfThemeOptions
 ): ResolvedPdfDesign {
@@ -439,7 +443,7 @@ export interface ResolvedTemplateDesignWithTrace {
  * execute.
  */
 export function resolveTemplateDesignWithTrace(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   values: ResolvedPdfSettings,
   themeOptions?: PdfThemeOptions
 ): ResolvedTemplateDesignWithTrace {
@@ -451,31 +455,75 @@ export function resolveTemplateDesignWithTrace(
     });
   }
 
+  if (manifest.canonicalSource?.revision === "5") {
+    const manifestV5 = manifest as PdfTemplateManifestV5;
+    let runtime;
+    try {
+      runtime = resolvePdfCatalogRuntimeV3(manifestV5.capabilityCatalog!);
+    } catch (error) {
+      throw new PdfSettingsError({
+        path: "manifest.capabilityCatalog",
+        value: manifestV5.capabilityCatalog,
+        constraint:
+          error instanceof Error
+            ? error.message
+            : "unsupported PDF capability catalog",
+      });
+    }
+    if ((manifestV5.bindings?.length ?? 0) > 0 || themeOptions !== undefined) {
+      throw new PdfSettingsError({
+        path: "manifest.bindings",
+        value: manifestV5.bindings,
+        constraint:
+          "revision-5 runtime bindings and theme overlays require the Recipe-V2 CLI task",
+      });
+    }
+    const designV5 = runtime.project(manifestV5.design!);
+    const trace: PdfDesignResolutionTraceEntry[] = Object.entries(
+      flattenDesign(designV5),
+    ).map(([target, value], sequence) => ({
+      target,
+      source: "baseline",
+      sourceId: manifestV5.id,
+      sequence,
+      value,
+    }));
+    return {
+      design: projectPdfDesignV5RuntimeSettings(designV5),
+      trace,
+      ignoredCapabilities: [],
+      capabilityCatalogDigest: runtime.reference.digest,
+      capabilityCatalog: { ...runtime.reference },
+    };
+  }
+
+  const legacyManifest = manifest as TemplateManifest;
+
   let runtime: PdfCatalogRuntime;
   try {
-    runtime = resolvePdfCatalogRuntime(manifest.capabilityCatalog);
+    runtime = resolvePdfCatalogRuntime(legacyManifest.capabilityCatalog);
   } catch (error) {
     throw new PdfSettingsError({
       path: "manifest.capabilityCatalog",
-      value: manifest.capabilityCatalog,
+      value: legacyManifest.capabilityCatalog,
       constraint: error instanceof Error ? error.message : "unsupported PDF capability catalog",
     });
   }
 
   if (!runtime.allowsSparseLegacy) {
-    const baseline = runtime.project(manifest.design);
+    const baseline = runtime.project(legacyManifest.design!);
     const trace: PdfDesignResolutionTraceEntry[] = Object.entries(
       flattenDesign(baseline)
     ).map(([target, value], sequence) => ({
       target,
       source: "baseline",
-      sourceId: manifest.id,
+      sourceId: legacyManifest.id,
       sequence,
       value,
     }));
     const bound = applyBindingsWithTraceForCatalog(
       baseline,
-      manifest.bindings ?? [],
+      legacyManifest.bindings ?? [],
       values,
       trace,
       runtime.project,
@@ -496,12 +544,12 @@ export function resolveTemplateDesignWithTrace(
     };
   }
 
-  const characterizedBaseline = getBuiltinPdfTemplate(manifest.id)?.design;
+  const characterizedBaseline = getBuiltinPdfTemplate(legacyManifest.id)?.design;
   let baseline: ResolvedPdfDesign;
   let ignoredCapabilities: readonly string[];
   if (characterizedBaseline) {
     const materialized = materializeLegacyPdfDesign(
-      manifest.design,
+      legacyManifest.design!,
       characterizedBaseline,
       PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
     );
@@ -509,7 +557,7 @@ export function resolveTemplateDesignWithTrace(
     ignoredCapabilities = materialized.ignoredCapabilities;
   } else {
     const validation = validateDesignAgainstCatalog(
-      manifest.design,
+      legacyManifest.design!,
       PDF_TEMPLATE_CAPABILITIES_V1,
       "legacy"
     );
@@ -533,13 +581,13 @@ export function resolveTemplateDesignWithTrace(
   ).map(([target, value], sequence) => ({
     target,
     source: "baseline",
-    sourceId: manifest.id,
+    sourceId: legacyManifest.id,
     sequence,
     value,
   }));
   const bound = applyBindingsWithTrace(
     baseline,
-    manifest.bindings ?? [],
+    legacyManifest.bindings ?? [],
     values,
     trace
   );
@@ -738,7 +786,7 @@ function applyTransform(binding: WikiPdfTemplateSettingBindingV1, source: unknow
  * label resolves to a non-empty string.
  */
 export function resolveTemplateLabels(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   locale: string | undefined,
   region: string | undefined
 ): ResolvedPdfLabels {

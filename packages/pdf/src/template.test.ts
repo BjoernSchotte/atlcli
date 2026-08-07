@@ -1,4 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import {
+  validatePdfTemplateDesignV3,
+  type WikiPdfTemplateDesignV3,
+} from "@atlcli/template-pack";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import {
   PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1,
@@ -7,6 +11,14 @@ import {
 } from "./design-catalog.js";
 import { ATLCLI_TYPST_TEMPLATE, createAtlcliTypstTemplate } from "./template.js";
 import { createAtlcliTypstTemplateV4 } from "./template-v4.js";
+import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
+import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
+
+function revision5Design(): WikiPdfTemplateDesignV3 {
+  return validatePdfTemplateDesignV3(
+    structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design),
+  );
+}
 
 function revision4Design(
   options: {
@@ -114,6 +126,97 @@ function closingSource(source: string): string {
 }
 
 describe("atlcli Typst template settings rendering", () => {
+  it("renders revision-5 preset geometry and running regions without changing the legacy source", () => {
+    const source = createAtlcliTypstTemplateV5(revision5Design());
+    expect(source).toContain('paper: "a4"');
+    expect(source).toContain("binding: left");
+    expect(source).toContain(
+      "margin: (top: 23mm, bottom: 20mm, left: 22mm, right: 22mm)",
+    );
+    expect(source).toContain('numbering: "1"');
+    expect(source).toContain('pdf.artifact(kind: "header"');
+    expect(source).toContain('pdf.artifact(kind: "footer"');
+    expect(createAtlcliTypstTemplate()).toBe(ATLCLI_TYPST_TEMPLATE);
+  });
+
+  it("renders custom landscape geometry, logical margins, right binding, bleed, variants, and escaped literals", () => {
+    const design = revision5Design();
+    design.page = {
+      format: { kind: "custom", width: "180mm", height: "240mm" },
+      orientation: "landscape",
+      binding: "right",
+      margin: {
+        mode: "logical",
+        top: "18mm",
+        bottom: "20mm",
+        inside: "25mm",
+        outside: "15mm",
+      },
+      bleed: {
+        top: "3mm",
+        bottom: "3mm",
+        inside: "4mm",
+        outside: "5mm",
+      },
+    };
+    design.compositions.running.header = {
+      enabled: true,
+      layout: "split",
+      first: { start: { field: "literal", value: "First [page]" }, end: { field: "version" } },
+      odd: { start: { field: "chapterTitle" }, end: { field: "spaceKey" } },
+      even: { start: { field: "spaceName" }, end: { field: "documentTitle" } },
+    };
+    design.compositions.running.footer.odd.center = {
+      field: "pageNumber",
+      numbering: "current-of-total",
+    };
+    const source = createAtlcliTypstTemplateV5(design);
+    expect(source).toContain("width: 240mm");
+    expect(source).toContain("height: 180mm");
+    expect(source).toContain("binding: right");
+    expect(source).toContain(
+      "margin: (top: 18mm, bottom: 20mm, inside: 25mm, outside: 15mm)",
+    );
+    expect(source).toContain(
+      "bleed: (top: 3mm, bottom: 3mm, inside: 4mm, outside: 5mm)",
+    );
+    expect(source).toContain('text("First [page]")');
+    expect(source).toContain(
+      'numbering("1 / 1", counter(page).get().first(), counter(page).final().first())',
+    );
+    expect(source).toContain("calc.odd(current-page)");
+    expect(source).toContain("let chapters = query(heading.where(level: 1))");
+  });
+
+  it("maps the Letter preset to Typst's paper catalog and preserves orientation", () => {
+    const design = revision5Design();
+    design.page.format = { kind: "preset", name: "letter" };
+    design.page.orientation = "landscape";
+    const source = createAtlcliTypstTemplateV5(design);
+    expect(source).toContain('paper: "us-letter"');
+    expect(source).toContain("flipped: true");
+  });
+
+  it("preserves neutral revision-4 geometry while making revision-5 binding and numbering explicit", () => {
+    const revision4 = createAtlcliTypstTemplateV4(
+      revision4Design({ kind: "standard", logo: "hide" }),
+    );
+    const revision5 = createAtlcliTypstTemplateV5(revision5Design());
+    expect(revision4).toContain('page-config.at("size", default: "a4")');
+    expect(revision4).toContain(
+      'page-config.at("orientation", default: "portrait") == "landscape"',
+    );
+    for (const source of [revision4, revision5]) {
+      expect(source).toContain(
+        "margin: (top: 23mm, bottom: 20mm, left: 22mm, right: 22mm)",
+      );
+    }
+    expect(revision4).not.toContain("binding: left");
+    expect(revision5).toContain("binding: left");
+    expect(revision5).toContain('numbering: "1"');
+    expect(revision5).toContain("calc.odd(current-page)");
+  });
+
   it("keeps the revision-4 standard cover characterized and supports explicit logo hiding", () => {
     const design = revision4Design({ kind: "standard", logo: "show" });
     const characterized = createAtlcliTypstTemplate(

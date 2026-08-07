@@ -192,6 +192,27 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
@@ -295,10 +316,89 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
+}
+
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
 }
 
 // export: DesignSemanticPalettes
@@ -428,7 +528,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -648,7 +748,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -657,15 +757,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -787,6 +887,9 @@ export interface ValidateManifestOptions {
     collectWarnings?: (warning: string) => void;
 }
 
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
 
@@ -800,6 +903,9 @@ export interface ValidatePackResult {
     scanReport?: ScanResult;
     issues: PackIssue[];
 }
+
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
@@ -870,6 +976,20 @@ export interface WikiPdfTemplateDesignV1 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: Readonly<Record<string, unknown>>;
+    components: Readonly<Record<string, unknown>>;
+    paints?: Readonly<Record<string, unknown>>;
+    decorations?: readonly unknown[];
 }
 
 // export: WikiPdfTemplateImageDecorationV1
@@ -1145,6 +1265,27 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
@@ -1248,10 +1389,89 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
+}
+
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
 }
 
 // export: DesignSemanticPalettes
@@ -1381,7 +1601,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -1601,7 +1821,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -1610,15 +1830,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -1740,6 +1960,9 @@ export interface ValidateManifestOptions {
     collectWarnings?: (warning: string) => void;
 }
 
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
 
@@ -1753,6 +1976,9 @@ export interface ValidatePackResult {
     scanReport?: ScanResult;
     issues: PackIssue[];
 }
+
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
@@ -1823,6 +2049,20 @@ export interface WikiPdfTemplateDesignV1 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: Readonly<Record<string, unknown>>;
+    components: Readonly<Record<string, unknown>>;
+    paints?: Readonly<Record<string, unknown>>;
+    decorations?: readonly unknown[];
 }
 
 // export: WikiPdfTemplateImageDecorationV1
@@ -2098,6 +2338,27 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
@@ -2201,10 +2462,89 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
+}
+
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
 }
 
 // export: DesignSemanticPalettes
@@ -2334,7 +2674,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -2554,7 +2894,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -2563,15 +2903,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -2693,6 +3033,9 @@ export interface ValidateManifestOptions {
     collectWarnings?: (warning: string) => void;
 }
 
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
 
@@ -2706,6 +3049,9 @@ export interface ValidatePackResult {
     scanReport?: ScanResult;
     issues: PackIssue[];
 }
+
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
@@ -2776,6 +3122,20 @@ export interface WikiPdfTemplateDesignV1 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: Readonly<Record<string, unknown>>;
+    components: Readonly<Record<string, unknown>>;
+    paints?: Readonly<Record<string, unknown>>;
+    decorations?: readonly unknown[];
 }
 
 // export: WikiPdfTemplateImageDecorationV1
@@ -3051,6 +3411,27 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
@@ -3154,10 +3535,89 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
+}
+
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
 }
 
 // export: DesignSemanticPalettes
@@ -3287,7 +3747,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -3507,7 +3967,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -3516,15 +3976,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -3646,6 +4106,9 @@ export interface ValidateManifestOptions {
     collectWarnings?: (warning: string) => void;
 }
 
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
+
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
 
@@ -3659,6 +4122,9 @@ export interface ValidatePackResult {
     scanReport?: ScanResult;
     issues: PackIssue[];
 }
+
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string): WikiPdfTemplateDesignV3;
 
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
@@ -3729,6 +4195,20 @@ export interface WikiPdfTemplateDesignV1 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: Readonly<Record<string, unknown>>;
+    components: Readonly<Record<string, unknown>>;
+    paints?: Readonly<Record<string, unknown>>;
+    decorations?: readonly unknown[];
 }
 
 // export: WikiPdfTemplateImageDecorationV1

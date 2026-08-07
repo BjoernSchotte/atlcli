@@ -22,7 +22,12 @@ import {
   validateTemplateVisualManifestFieldsV1,
   type TemplateVisualManifestFieldsV1,
 } from "./assets.js";
-import { validateDesign, type WikiPdfTemplateDesignV1 } from "./design.js";
+import {
+  validateDesign,
+  validatePdfTemplateDesignV3,
+  type WikiPdfTemplateDesignV1,
+  type WikiPdfTemplateDesignV3,
+} from "./design.js";
 import {
   validateLocalization,
   WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
@@ -100,7 +105,9 @@ export interface TemplateCapabilityCatalogReferenceV1 {
   digest: string;
 }
 
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<
+  TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1,
+> extends TemplateVisualManifestFieldsV1 {
   schemaVersion: number;
   id: string;
   name: string;
@@ -110,7 +117,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
   settings?: Record<string, ManifestSetting>;
   provenance?: TemplateProvenance;
   /** Presentation model (spec 012): typography, tokens, palettes, components. */
-  design?: WikiPdfTemplateDesignV1;
+  design?: TDesign;
   /** Exact catalog identity required by canonical generated packs. */
   capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
   /** Setting → design-field bindings (spec 012). */
@@ -251,10 +258,13 @@ export function satisfiesRange(version: string, range: string): boolean {
  *
  * @throws {ManifestValidationError} with a typed {@link ManifestErrorReason}.
  */
-export function validateManifest(
+function validateManifestWithDesign<
+  TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3,
+>(
   json: unknown,
-  options: ValidateManifestOptions = {}
-): TemplateManifest {
+  options: ValidateManifestOptions,
+  validateManifestDesign: (value: unknown) => TDesign,
+): TemplateManifest<TDesign> {
   if (!isObject(json)) {
     throw new ManifestValidationError("shape-error", "Manifest must be a JSON object");
   }
@@ -331,7 +341,8 @@ export function validateManifest(
   const provenance = validateProvenance(json.provenance);
 
   // 7. Presentation model (spec 012): design / bindings / localization.
-  const design = json.design !== undefined ? validateDesign(json.design) : undefined;
+  const design =
+    json.design !== undefined ? validateManifestDesign(json.design) : undefined;
   const capabilityCatalog = validateCapabilityCatalogReference(
     json.capabilityCatalog
   );
@@ -348,7 +359,7 @@ export function validateManifest(
       : undefined;
   const visual = validateTemplateVisualManifestFieldsV1(json);
 
-  const manifest: TemplateManifest = {
+  const manifest: TemplateManifest<TDesign> = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
     id,
     name,
@@ -364,6 +375,22 @@ export function validateManifest(
     ...visual,
   };
   return manifest;
+}
+
+/** Validate a historical Catalog-V1/V2 manifest without widening its design type. */
+export function validateManifest(
+  json: unknown,
+  options: ValidateManifestOptions = {},
+): TemplateManifest {
+  return validateManifestWithDesign(json, options, validateDesign);
+}
+
+/** Validate a Catalog-V3/revision-5 manifest through the exact V3 design gate. */
+export function validateManifestV3(
+  json: unknown,
+  options: ValidateManifestOptions = {},
+): TemplateManifest<WikiPdfTemplateDesignV3> {
+  return validateManifestWithDesign(json, options, validatePdfTemplateDesignV3);
 }
 
 /** Reject any required font the bundled inventory cannot satisfy (spec 012). */

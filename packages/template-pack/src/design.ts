@@ -589,3 +589,437 @@ function validateSemanticPalettes(value: unknown, path: string): DesignSemanticP
     statuses: validateIdentifierMap(value.statuses, `${path}.statuses`, validateDesignColor),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Catalog-V3 page and running-region model (canonical revision 5).
+// Kept parallel to V1 so historical manifests and their normalized values do
+// not change when the new authoring generation is added.
+// ---------------------------------------------------------------------------
+
+export type DesignPageFormatV3 =
+  | { kind: "preset"; name: "a4" | "letter" }
+  | { kind: "custom"; width: DesignLength; height: DesignLength };
+
+export type DesignPageMarginV3 =
+  | {
+      mode: "physical";
+      top: DesignLength;
+      bottom: DesignLength;
+      left: DesignLength;
+      right: DesignLength;
+    }
+  | {
+      mode: "logical";
+      top: DesignLength;
+      bottom: DesignLength;
+      inside: DesignLength;
+      outside: DesignLength;
+    };
+
+export interface DesignPageBleedV3 {
+  top: DesignLength;
+  bottom: DesignLength;
+  inside: DesignLength;
+  outside: DesignLength;
+}
+
+export interface DesignPageV3 {
+  format: DesignPageFormatV3;
+  orientation: "portrait" | "landscape";
+  binding: "left" | "right";
+  margin: DesignPageMarginV3;
+  bleed?: DesignPageBleedV3;
+}
+
+export const DESIGN_RUNNING_LAYOUTS_V3 = [
+  "single",
+  "split",
+  "three-column",
+] as const;
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+export const DESIGN_RUNNING_FIELDS_V3 = [
+  "documentTitle",
+  "chapterTitle",
+  "spaceName",
+  "spaceKey",
+  "organizationName",
+  "version",
+  "exportDate",
+  "classification",
+  "literal",
+  "pageNumber",
+] as const;
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+export interface DesignRunningSlotV3 {
+  field: DesignRunningFieldV3;
+  value?: string;
+  numbering?: "current" | "current-of-total";
+}
+
+export interface DesignRunningVariantV3 {
+  start?: DesignRunningSlotV3;
+  center?: DesignRunningSlotV3;
+  end?: DesignRunningSlotV3;
+}
+
+export interface DesignRunningRegionV3 {
+  enabled: boolean;
+  layout: DesignRunningLayoutV3;
+  first: "hide" | DesignRunningVariantV3;
+  odd: DesignRunningVariantV3;
+  even: DesignRunningVariantV3;
+}
+
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+  running: {
+    header: DesignRunningRegionV3;
+    footer: DesignRunningRegionV3;
+  };
+}
+
+export interface WikiPdfTemplateDesignV3 {
+  page: DesignPageV3;
+  branding: DesignBranding;
+  typography: DesignTypography;
+  tokens: DesignTokens;
+  semanticPalettes: DesignSemanticPalettes;
+  compositions: DesignPageCompositionsV3;
+  /** T4 replaces these bounded opaque records with exact semantic types. */
+  navigation: Readonly<Record<string, unknown>>;
+  components: Readonly<Record<string, unknown>>;
+  /** T5 replaces these bounded opaque values with exact paint/shape types. */
+  paints?: Readonly<Record<string, unknown>>;
+  decorations?: readonly unknown[];
+}
+
+const PAGE_LENGTH_RE_V3 = /^(?:0|[1-9]\d*)(?:\.\d+)?(pt|mm)$/u;
+const PAGE_UNITS_IN_MM_V3: Readonly<Record<string, number>> = {
+  pt: 25.4 / 72,
+  mm: 1,
+};
+const PAGE_MIN_MM_V3 = 25;
+const PAGE_MAX_MM_V3 = 2_000;
+const PAGE_MARGIN_MAX_MM_V3 = 500;
+const PAGE_BLEED_MAX_MM_V3 = 50;
+const V3_JSON_MAX_DEPTH = 24;
+const V3_JSON_MAX_NODES = 8_192;
+const V3_JSON_MAX_ARRAY = 1_024;
+
+function pageLengthV3(
+  value: unknown,
+  path: string,
+  bounds: { min: number; max: number }
+): { source: DesignLength; mm: number } {
+  if (typeof value !== "string") fail(path, "must be a bounded pt/mm length");
+  const match = PAGE_LENGTH_RE_V3.exec(value);
+  if (!match) fail(path, "must be a non-negative bounded pt/mm length");
+  const mm = Number.parseFloat(value) * PAGE_UNITS_IN_MM_V3[match[1]!]!;
+  if (!Number.isFinite(mm) || mm < bounds.min || mm > bounds.max) {
+    fail(path, `must be within [${bounds.min}mm, ${bounds.max}mm]`);
+  }
+  return { source: value, mm };
+}
+
+function validatePageFormatV3(value: unknown, path: string): {
+  format: DesignPageFormatV3;
+  widthMm: number;
+  heightMm: number;
+} {
+  if (!isObject(value)) fail(path, "must be an object");
+  const kind = validateEnum(value.kind, ["preset", "custom"] as const, `${path}.kind`);
+  if (kind === "preset") {
+    exactKeys(value, ["kind", "name"], path);
+    const name = validateEnum(value.name, ["a4", "letter"] as const, `${path}.name`);
+    return {
+      format: { kind, name },
+      widthMm: name === "a4" ? 210 : 215.9,
+      heightMm: name === "a4" ? 297 : 279.4,
+    };
+  }
+  exactKeys(value, ["kind", "width", "height"], path);
+  const width = pageLengthV3(value.width, `${path}.width`, {
+    min: PAGE_MIN_MM_V3,
+    max: PAGE_MAX_MM_V3,
+  });
+  const height = pageLengthV3(value.height, `${path}.height`, {
+    min: PAGE_MIN_MM_V3,
+    max: PAGE_MAX_MM_V3,
+  });
+  return {
+    format: { kind, width: width.source, height: height.source },
+    widthMm: width.mm,
+    heightMm: height.mm,
+  };
+}
+
+function validatePageMarginV3(
+  value: unknown,
+  path: string
+): { margin: DesignPageMarginV3; horizontalMm: number; verticalMm: number } {
+  if (!isObject(value)) fail(path, "must be an object");
+  const mode = validateEnum(value.mode, ["physical", "logical"] as const, `${path}.mode`);
+  const top = pageLengthV3(value.top, `${path}.top`, {
+    min: 0,
+    max: PAGE_MARGIN_MAX_MM_V3,
+  });
+  const bottom = pageLengthV3(value.bottom, `${path}.bottom`, {
+    min: 0,
+    max: PAGE_MARGIN_MAX_MM_V3,
+  });
+  if (mode === "physical") {
+    exactKeys(value, ["mode", "top", "bottom", "left", "right"], path);
+    const left = pageLengthV3(value.left, `${path}.left`, {
+      min: 0,
+      max: PAGE_MARGIN_MAX_MM_V3,
+    });
+    const right = pageLengthV3(value.right, `${path}.right`, {
+      min: 0,
+      max: PAGE_MARGIN_MAX_MM_V3,
+    });
+    return {
+      margin: {
+        mode,
+        top: top.source,
+        bottom: bottom.source,
+        left: left.source,
+        right: right.source,
+      },
+      horizontalMm: left.mm + right.mm,
+      verticalMm: top.mm + bottom.mm,
+    };
+  }
+  exactKeys(value, ["mode", "top", "bottom", "inside", "outside"], path);
+  const inside = pageLengthV3(value.inside, `${path}.inside`, {
+    min: 0,
+    max: PAGE_MARGIN_MAX_MM_V3,
+  });
+  const outside = pageLengthV3(value.outside, `${path}.outside`, {
+    min: 0,
+    max: PAGE_MARGIN_MAX_MM_V3,
+  });
+  return {
+    margin: {
+      mode,
+      top: top.source,
+      bottom: bottom.source,
+      inside: inside.source,
+      outside: outside.source,
+    },
+    horizontalMm: inside.mm + outside.mm,
+    verticalMm: top.mm + bottom.mm,
+  };
+}
+
+function validatePageBleedV3(value: unknown, path: string): DesignPageBleedV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["top", "bottom", "inside", "outside"], path);
+  const side = (name: keyof DesignPageBleedV3): DesignLength =>
+    pageLengthV3(value[name], `${path}.${name}`, {
+      min: 0,
+      max: PAGE_BLEED_MAX_MM_V3,
+    }).source;
+  return {
+    top: side("top"),
+    bottom: side("bottom"),
+    inside: side("inside"),
+    outside: side("outside"),
+  };
+}
+
+function validatePageV3(value: unknown, path: string): DesignPageV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["format", "orientation", "binding", "margin", "bleed"], path);
+  const { format, widthMm, heightMm } = validatePageFormatV3(value.format, `${path}.format`);
+  const orientation = validateEnum(
+    value.orientation,
+    ["portrait", "landscape"] as const,
+    `${path}.orientation`
+  );
+  const binding = validateEnum(value.binding, ["left", "right"] as const, `${path}.binding`);
+  const validatedMargin = validatePageMarginV3(value.margin, `${path}.margin`);
+  const bodyWidth = (orientation === "landscape" ? heightMm : widthMm) - validatedMargin.horizontalMm;
+  const bodyHeight = (orientation === "landscape" ? widthMm : heightMm) - validatedMargin.verticalMm;
+  if (bodyWidth <= 0 || bodyHeight <= 0) {
+    fail(`${path}.margin`, "must leave a positive page body area");
+  }
+  return {
+    format,
+    orientation,
+    binding,
+    margin: validatedMargin.margin,
+    ...(value.bleed === undefined
+      ? {}
+      : { bleed: validatePageBleedV3(value.bleed, `${path}.bleed`) }),
+  };
+}
+
+function validateRunningSlotV3(value: unknown, path: string): DesignRunningSlotV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["field", "value", "numbering"], path);
+  const field = validateEnum(value.field, DESIGN_RUNNING_FIELDS_V3, `${path}.field`);
+  if (field === "literal") {
+    if (value.value === undefined) fail(`${path}.value`, 'is required for field "literal"');
+    if (value.numbering !== undefined) fail(`${path}.numbering`, 'is not valid for field "literal"');
+    return { field, value: validateSafeString(value.value, `${path}.value`) };
+  }
+  if (value.value !== undefined) fail(`${path}.value`, `is not valid for field "${field}"`);
+  if (field === "pageNumber") {
+    return {
+      field,
+      numbering:
+        value.numbering === undefined
+          ? "current"
+          : validateEnum(
+              value.numbering,
+              ["current", "current-of-total"] as const,
+              `${path}.numbering`
+            ),
+    };
+  }
+  if (value.numbering !== undefined) fail(`${path}.numbering`, `is not valid for field "${field}"`);
+  return { field };
+}
+
+function validateRunningVariantV3(
+  value: unknown,
+  layout: DesignRunningLayoutV3,
+  path: string
+): DesignRunningVariantV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  const allowed =
+    layout === "single"
+      ? ["center"]
+      : layout === "split"
+        ? ["start", "end"]
+        : ["start", "center", "end"];
+  exactKeys(value, allowed, path);
+  if (Object.keys(value).length === 0) fail(path, "must contain at least one running slot");
+  if (layout === "single" && value.center === undefined) fail(`${path}.center`, "is required");
+  if (layout === "split" && (value.start === undefined || value.end === undefined)) {
+    fail(path, "split layout requires start and end slots");
+  }
+  const result: DesignRunningVariantV3 = {};
+  for (const key of allowed as Array<"start" | "center" | "end">) {
+    if (value[key] !== undefined) {
+      result[key] = validateRunningSlotV3(value[key], `${path}.${key}`);
+    }
+  }
+  return result;
+}
+
+function validateRunningRegionV3(value: unknown, path: string): DesignRunningRegionV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["enabled", "layout", "first", "odd", "even"], path);
+  const layout = validateEnum(value.layout, DESIGN_RUNNING_LAYOUTS_V3, `${path}.layout`);
+  return {
+    enabled: validateBoolean(value.enabled, `${path}.enabled`),
+    layout,
+    first:
+      value.first === "hide"
+        ? "hide"
+        : validateRunningVariantV3(value.first, layout, `${path}.first`),
+    odd: validateRunningVariantV3(value.odd, layout, `${path}.odd`),
+    even: validateRunningVariantV3(value.even, layout, `${path}.even`),
+  };
+}
+
+function validatePageCompositionsV3(value: unknown, path: string): DesignPageCompositionsV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["cover", "closingPage", "running"], path);
+  if (!isObject(value.running)) fail(`${path}.running`, "must be an object");
+  exactKeys(value.running, ["header", "footer"], `${path}.running`);
+  return {
+    cover: validateCoverComposition(value.cover, `${path}.cover`),
+    closingPage: validateClosingPageComposition(value.closingPage, `${path}.closingPage`),
+    running: {
+      header: validateRunningRegionV3(value.running.header, `${path}.running.header`),
+      footer: validateRunningRegionV3(value.running.footer, `${path}.running.footer`),
+    },
+  };
+}
+
+function validateOpaqueJsonV3(
+  value: unknown,
+  path: string,
+  state: { nodes: number },
+  depth = 0
+): unknown {
+  state.nodes += 1;
+  if (state.nodes > V3_JSON_MAX_NODES) fail(path, `must contain at most ${V3_JSON_MAX_NODES} nodes`);
+  if (depth > V3_JSON_MAX_DEPTH) fail(path, `must be at most ${V3_JSON_MAX_DEPTH} levels deep`);
+  if (value === null) fail(path, "must not be null");
+  if (typeof value === "boolean" || typeof value === "string") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) fail(path, "must be finite");
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > V3_JSON_MAX_ARRAY) fail(path, `must contain at most ${V3_JSON_MAX_ARRAY} items`);
+    return value.map((entry, index) => validateOpaqueJsonV3(entry, `${path}[${index}]`, state, depth + 1));
+  }
+  if (!isObject(value)) fail(path, "must be portable JSON data");
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    assertSafeIdentifier(key, `${path}.${key}`);
+    result[key] = validateOpaqueJsonV3(entry, `${path}.${key}`, state, depth + 1);
+  }
+  return result;
+}
+
+function validateOpaqueRecordV3(value: unknown, path: string): Readonly<Record<string, unknown>> {
+  if (!isObject(value)) fail(path, "must be an object");
+  return validateOpaqueJsonV3(value, path, { nodes: 0 }) as Record<string, unknown>;
+}
+
+/** Exact Catalog-V3 page/running validation; T4-T6 tighten the remaining objects. */
+export function validatePdfTemplateDesignV3(
+  value: unknown,
+  path = "design"
+): WikiPdfTemplateDesignV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(
+    value,
+    [
+      "page",
+      "branding",
+      "typography",
+      "tokens",
+      "semanticPalettes",
+      "compositions",
+      "navigation",
+      "components",
+      "paints",
+      "decorations",
+    ],
+    path
+  );
+  const design: WikiPdfTemplateDesignV3 = {
+    page: validatePageV3(value.page, `${path}.page`),
+    branding: validateBranding(value.branding, `${path}.branding`),
+    typography: validateTypography(value.typography, `${path}.typography`),
+    tokens: validateTokens(value.tokens, `${path}.tokens`),
+    semanticPalettes: validateSemanticPalettes(value.semanticPalettes, `${path}.semanticPalettes`),
+    compositions: validatePageCompositionsV3(value.compositions, `${path}.compositions`),
+    navigation: validateOpaqueRecordV3(value.navigation, `${path}.navigation`),
+    components: validateOpaqueRecordV3(value.components, `${path}.components`),
+    ...(value.paints === undefined
+      ? {}
+      : { paints: validateOpaqueRecordV3(value.paints, `${path}.paints`) }),
+    ...(value.decorations === undefined
+      ? {}
+      : {
+          decorations: validateOpaqueJsonV3(
+            value.decorations,
+            `${path}.decorations`,
+            { nodes: 0 }
+          ) as readonly unknown[],
+        }),
+  };
+  validateCompositionBranding(
+    design as unknown as WikiPdfTemplateDesignV1,
+    path
+  );
+  return design;
+}

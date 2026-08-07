@@ -12,13 +12,16 @@ import {
   unpackTemplate,
   validateDesignAgainstCatalog,
   validateManifest,
+  validateManifestV3,
   WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   type TemplateAssetDescriptorV1,
   type TemplateAssetMediaTypeV1,
   type TemplateAssetReferenceV1,
   type TemplateCapabilityCatalogV1,
+  type TemplateCapabilityCatalogV2,
   type TemplateManifest,
   type WikiPdfTemplateDesignV1,
+  type WikiPdfTemplateDesignV3,
   type WikiPdfTemplateImageDecorationV1,
   type WikiPdfTemplatePageBorderV1,
   type WikiPdfTemplatePageDecorationV1,
@@ -27,17 +30,22 @@ import { decodeSvgSource, findSvgSafetyViolation } from "@atlcli/confluence";
 import {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
 } from "./design-catalog.js";
 import {
+  type AnyPdfCatalogRuntime,
   resolvePdfCatalogRuntime,
+  resolvePdfCatalogRuntimeV3,
   type PdfCatalogRuntime,
 } from "./catalog-runtime.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { createAtlcliTypstTemplateV4 } from "./template-v4.js";
+import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
 
 export const PDF_TEMPLATE_ASSET_SLOTS_V1 = [
   "asset.logo",
@@ -70,6 +78,7 @@ export const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
 export const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
 export const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
 export const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+export const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 /** Durable DOCX-derived authoring remains pinned to its characterized renderer. */
 export const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION =
   PDF_CANONICAL_SOURCE_REVISION_3;
@@ -81,7 +90,11 @@ export const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS = [
   PDF_CANONICAL_SOURCE_REVISION_2,
   PDF_CANONICAL_SOURCE_REVISION_3,
   PDF_CANONICAL_SOURCE_REVISION_4,
+  PDF_CANONICAL_SOURCE_REVISION_5,
 ] as const;
+
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
 
 export type PdfTemplateValidationPhase =
   | "pdf-manifest"
@@ -139,7 +152,7 @@ export interface PdfTemplateRuntimeSnapshotV1 {
     version: number;
     digest: string;
   };
-  design: WikiPdfTemplateDesignV1;
+  design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
   fallbackLocale: string;
   fallbackLabels: Readonly<Record<string, string>>;
   visuals: PdfTemplateVisualsV1;
@@ -160,7 +173,7 @@ export interface PdfVerifiedCanonicalSourceV1 {
  */
 export interface PdfTemplateRuntimeV1 {
   schema: "atlcli.pdf-template-runtime/1";
-  manifest: TemplateManifest;
+  manifest: AnyPdfTemplateManifest;
   runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
   canonicalSource: PdfVerifiedCanonicalSourceV1;
   assetBytes: Readonly<
@@ -205,7 +218,7 @@ const SUPPORTED_CANONICAL_REVISIONS = new Set<string>(
 );
 
 interface PdfCanonicalRevisionContract {
-  runtime: PdfCatalogRuntime;
+  runtime: AnyPdfCatalogRuntime;
   catalogRequired: boolean;
 }
 
@@ -218,6 +231,11 @@ const PDF_CATALOG_RUNTIME_V2 = resolvePdfCatalogRuntime({
   id: PDF_TEMPLATE_CAPABILITIES_V2.id,
   version: PDF_TEMPLATE_CAPABILITIES_V2.version,
   digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+});
+const PDF_CATALOG_RUNTIME_V3 = resolvePdfCatalogRuntimeV3({
+  id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+  version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+  digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
 });
 
 const CANONICAL_REVISION_CONTRACTS: Readonly<
@@ -237,6 +255,10 @@ const CANONICAL_REVISION_CONTRACTS: Readonly<
   },
   [PDF_CANONICAL_SOURCE_REVISION_4]: {
     runtime: PDF_CATALOG_RUNTIME_V2,
+    catalogRequired: true,
+  },
+  [PDF_CANONICAL_SOURCE_REVISION_5]: {
+    runtime: PDF_CATALOG_RUNTIME_V3,
     catalogRequired: true,
   },
 });
@@ -496,9 +518,9 @@ function validateRevision4Composition(
  * This function does not inspect payload bytes.
  */
 export function validatePdfTemplateManifest(
-  manifest: TemplateManifest,
-  catalog?: TemplateCapabilityCatalogV1
-): TemplateManifest {
+  manifest: AnyPdfTemplateManifest,
+  catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2
+): AnyPdfTemplateManifest {
   if (manifest.engine.kind !== "typst" || manifest.engine.api !== "wiki.pdf-template/v1") {
     reject(
       "pdf-manifest",
@@ -568,7 +590,8 @@ export function validatePdfTemplateManifest(
   }
 
   if (revision === PDF_CANONICAL_SOURCE_REVISION_4) {
-    if (!manifest.design) {
+    const legacyManifest = manifest as TemplateManifest;
+    if (!legacyManifest.design) {
       reject(
         "pdf-manifest",
         "invalid-composition",
@@ -577,7 +600,7 @@ export function validatePdfTemplateManifest(
       );
     }
     try {
-      validateDesignAgainstCatalog(manifest.design, contract.runtime.catalog, "authoring");
+      validateDesignAgainstCatalog(legacyManifest.design, contract.runtime.catalog as TemplateCapabilityCatalogV1, "authoring");
     } catch (error) {
       if (error instanceof CapabilityValidationError) {
         reject(
@@ -588,6 +611,28 @@ export function validatePdfTemplateManifest(
         );
       }
       throw error;
+    }
+  }
+
+  if (revision === PDF_CANONICAL_SOURCE_REVISION_5) {
+    const manifestV5 = manifest as PdfTemplateManifestV5;
+    if (!manifestV5.design) {
+      reject(
+        "pdf-manifest",
+        "invalid-composition",
+        "design",
+        "canonical revision 5 requires a complete Catalog-V3 design",
+      );
+    }
+    try {
+      PDF_CATALOG_RUNTIME_V3.project(manifestV5.design);
+    } catch (error) {
+      reject(
+        "pdf-manifest",
+        "invalid-composition",
+        "design",
+        error instanceof Error ? error.message : "invalid Catalog-V3 design",
+      );
     }
   }
 
@@ -735,7 +780,7 @@ export function validatePdfTemplateManifest(
     }
   }
   if (revision === PDF_CANONICAL_SOURCE_REVISION_4) {
-    validateRevision4Composition(manifest, seen);
+    validateRevision4Composition(manifest as TemplateManifest, seen);
   }
   return manifest;
 }
@@ -916,7 +961,7 @@ function vfsPath(descriptorId: string, mediaType: TemplateAssetMediaTypeV1): str
   return `template-assets/${safe}.${extension(mediaType)}`;
 }
 
-function fallbackLabels(manifest: TemplateManifest): {
+function fallbackLabels(manifest: AnyPdfTemplateManifest): {
   locale: string;
   labels: Readonly<Record<string, string>>;
 } {
@@ -955,7 +1000,7 @@ function runtimeVisuals(
 }
 
 function canonicalSourceFor(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   revision: string,
   labels: Readonly<Record<string, string>>,
   visuals: PdfTemplateVisualsV1
@@ -970,21 +1015,34 @@ function canonicalSourceFor(
   }
   switch (revision) {
     case "1":
-      return createAtlcliTypstTemplate(manifest.design, { ...labels });
+      return createAtlcliTypstTemplate(
+        manifest.design as WikiPdfTemplateDesignV1,
+        { ...labels },
+      );
     case "2":
-      return createAtlcliTypstTemplate(manifest.design, { ...labels }, visuals);
+      return createAtlcliTypstTemplate(
+        manifest.design as WikiPdfTemplateDesignV1,
+        { ...labels },
+        visuals,
+      );
     case "3":
       return createAtlcliTypstTemplate(
-        manifest.design,
+        manifest.design as WikiPdfTemplateDesignV1,
         { ...labels },
         visuals,
         { positionedLogo: true }
       );
     case "4":
       return createAtlcliTypstTemplateV4(
-        manifest.design,
+        manifest.design as WikiPdfTemplateDesignV1,
         { ...labels },
         visuals
+      );
+    case "5":
+      return createAtlcliTypstTemplateV5(
+        manifest.design as WikiPdfTemplateDesignV3,
+        { ...labels },
+        visuals,
       );
     default:
       reject(
@@ -1002,7 +1060,7 @@ function canonicalSourceFor(
  * defaults; document-locale labels remain runtime settings.
  */
 export function generateCanonicalPdfTemplateSourceV1(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   visuals: PdfTemplateVisualsV1
 ): string {
   validatePdfTemplateManifest(manifest);
@@ -1071,7 +1129,7 @@ export function clonePdfTemplateRuntime(
  * Phase 3: validate bytes, payload inventory, budgets, and fixed VFS mapping.
  */
 export async function validatePdfTemplatePack(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   files: Readonly<Record<string, Uint8Array>>
 ): Promise<ValidatedPdfTemplatePackV1> {
   const descriptors = manifest.assetDescriptors ?? {};
@@ -1324,7 +1382,20 @@ export async function loadPdfTemplatePack(
   options: { pinnedTypstVersion?: string } = {}
 ): Promise<ValidatedPdfTemplatePackV1> {
   const unpacked = unpackTemplate(bytes);
-  const manifest = validateManifest(unpacked.manifest, {
+  const manifestObject =
+    typeof unpacked.manifest === "object" && unpacked.manifest !== null
+      ? unpacked.manifest as unknown as Record<string, unknown>
+      : undefined;
+  const canonicalSource = manifestObject?.canonicalSource;
+  const declaresRevision5 =
+    typeof canonicalSource === "object" &&
+    canonicalSource !== null &&
+    (canonicalSource as Record<string, unknown>).revision ===
+      PDF_CANONICAL_SOURCE_REVISION_5;
+  const validatePortableManifest = declaresRevision5
+    ? validateManifestV3
+    : validateManifest;
+  const manifest = validatePortableManifest(unpacked.manifest, {
     availableFonts: PDF_RUNTIME_ASSETS.fonts,
     ...(options.pinnedTypstVersion === undefined
       ? {}

@@ -561,21 +561,21 @@ delivery fallback with upstream PRs/issues and an explicit exit condition.
 
 **Capability-plan acceptance contract**
 
-- [ ] One exact Typst 0.15.1 production runtime is pinned from reproducible
+- [x] One exact Typst 0.15.1 production runtime is pinned from reproducible
       source, with glue/WASM/declaration hashes and complete licence provenance.
-- [ ] Generic compiler, binding, and CSP changes are upstreamed or prepared as
+- [x] Generic compiler, binding, and CSP changes are upstreamed or prepared as
       reviewable upstream `typst.ts` contributions; no alternative wrapper or
       dual runtime was added.
-- [ ] Strict browser/MV3 CSP, direct glue import, explicit WASM injection, and
+- [x] Strict browser/MV3 CSP, direct glue import, explicit WASM injection, and
       exclusion of `wasm-pack-shim.mjs` are proven in packed, browser, and
       extension artifacts.
-- [ ] Historical archives and revision 1-4 source hashes remain immutable; old
+- [x] Historical archives and revision 1-4 source hashes remain immutable; old
       ranges fail clearly and non-destructive recipe-V1 range migration builds
       deterministic 0.15.1-compatible catalog-V2/revision-4 packs.
-- [ ] PDF semantic/visual parity, pathological convergence, compiler lifecycle,
+- [x] PDF semantic/visual parity, pathological convergence, compiler lifecycle,
       Node/browser/extension parity, memory/performance ratchets, package
       consumption, full offline tests, and public CLI/LIVE DOCSY export pass.
-- [ ] The runtime migration is committed and merged separately, and its
+- [x] The runtime migration is committed and merged separately, and its
       evidence identifies any temporary fork's upstream-linked exit condition.
 
 **STOP:** Any STOP condition in the dedicated runtime plan blocks T1. Do not
@@ -697,32 +697,32 @@ and registry metadata.
 
 **Implementation**
 
-- [ ] Add catalog-V3 complete-design types for preset/custom format, binding,
+- [x] Add catalog-V3 complete-design types for preset/custom format, binding,
       physical/logical margins, and bounded running-region compositions.
-- [ ] Reject custom format without both dimensions, preset plus dimensions,
+- [x] Reject custom format without both dimensions, preset plus dimensions,
       mixed physical/logical margins, non-positive body area, unsupported
       lengths, and running slots irrelevant to the selected layout.
-- [ ] Add `packages/pdf/src/template-v5.ts`; do not edit the source emitted by
+- [x] Add `packages/pdf/src/template-v5.ts`; do not edit the source emitted by
       revisions 1-4. Register revision 5 only with catalog V3.
-- [ ] Compose revision 5 from typed renderer helpers. Do not implement it as a
+- [x] Compose revision 5 from typed renderer helpers. Do not implement it as a
       further regex/string-rewrite layer over `template-v4.ts`, whose current
       marker surgery remains frozen for revision 4.
-- [ ] Generate Typst page size, binding, logical margins, numbering, and
+- [x] Generate Typst page size, binding, logical margins, numbering, and
       first/odd/even running regions from validated data.
-- [ ] Add bounded page bleed values using Typst 0.15.1's page model. Derive
+- [x] Add bounded page bleed values using Typst 0.15.1's page model. Derive
       TrimBox/BleedBox consistently, reject impossible geometry, and keep bleed
       independent from export-standard claims.
-- [ ] Keep running slots renderer-owned. Escape `literal` values and cap their
+- [x] Keep running slots renderer-owned. Escape `literal` values and cap their
       length. Essential document content must not exist only in headers or
       footers because those regions are artifacts to assistive technology.
-- [ ] Add font-demand reasons for every enabled synthetic running-slot value;
+- [x] Add font-demand reasons for every enabled synthetic running-slot value;
       hidden variants must not load fonts solely for hidden text.
-- [ ] Preserve current page geometry for the neutral baseline and characterize
+- [x] Preserve current page geometry for the neutral baseline and characterize
       the revision-4/revision-5 difference explicitly.
-- [ ] Add the catalog-V3 entry to `PdfCatalogRuntime` only after the revision-5
+- [x] Add the catalog-V3 entry to `PdfCatalogRuntime` only after the revision-5
       generator and manifest validation exist; before that point a V3 manifest
       remains rejected.
-- [ ] Create `packages/pdf-compiler-browser/src/template-capabilities-v5.test.ts`
+- [x] Create `packages/pdf-compiler-browser/src/template-capabilities-v5.test.ts`
       here with the minimal/page/running-region real-WASM cases. T4-T6 extend
       this same harness incrementally; T10 completes cross-host and feature-zoo
       coverage rather than creating the file late.

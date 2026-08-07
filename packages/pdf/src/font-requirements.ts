@@ -8,7 +8,14 @@ import {
   statusDisplayText,
   type AdfAnnotationIdentity,
 } from "@atlcli/confluence";
-import type { TemplateManifest } from "@atlcli/template-pack";
+import type {
+  DesignRunningSlotV3,
+  TemplateManifest,
+} from "@atlcli/template-pack";
+import type {
+  AnyPdfTemplateManifest,
+  PdfTemplateManifestV5,
+} from "./template-pack.js";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import { PDF_FONT_COVERAGE_V1 } from "./font-coverage.generated.js";
 import { PDF_RUNTIME_ASSETS, type PdfRuntimeFontAsset } from "./runtime-assets.js";
@@ -61,7 +68,7 @@ export interface ResolvePdfFontRequirementsInputV1 {
   document: PreparedPdfDocument;
   metadata: PdfExportMetadata;
   settings: ResolvedPdfSettings;
-  manifest?: TemplateManifest;
+  manifest?: AnyPdfTemplateManifest;
 }
 
 interface TextDemand {
@@ -223,6 +230,9 @@ export function resolvePdfFontRequirementsV1(
   input: ResolvePdfFontRequirementsInputV1,
 ): ResolvedPdfFontRequirementsV1 {
   const manifest = input.manifest ?? BUILTIN_PDF_TEMPLATE_MANIFEST;
+  const designV5 = manifest.canonicalSource?.revision === "5"
+    ? (manifest as PdfTemplateManifestV5).design
+    : undefined;
   const design = input.settings.design;
   const familyFor = (role: "body" | "heading" | "mono"): string =>
     design.typography.fonts[role];
@@ -291,27 +301,84 @@ export function resolvePdfFontRequirementsV1(
     kind: "template-role",
     detail: "body",
   });
-  addFace(headingFamily, "normal", 400, {
-    kind: "renderer-synthetic",
-    detail: "page-furniture",
-  });
-  addRole("runningHead", headingFamily);
-  addText(input.settings.headerText ?? input.metadata.title, headingFamily, "normal", 400, {
-    kind: "renderer-synthetic",
-    detail: "running-header",
-  });
-  addText(
-    input.settings.footerText ?? input.settings.organizationName ?? "1",
-    headingFamily,
-    "normal",
-    400,
-    { kind: "renderer-synthetic", detail: "running-footer" },
-  );
+  if (designV5) {
+    const regions = designV5.compositions.running;
+    if (regions.header.enabled || regions.footer.enabled) {
+      addFace(headingFamily, "normal", 400, {
+        kind: "renderer-synthetic",
+        detail: "page-furniture",
+      });
+      addRole("runningHead", headingFamily);
+    }
+    const slotValue = (slot: DesignRunningSlotV3): string | undefined => {
+      switch (slot.field) {
+        case "documentTitle":
+        case "chapterTitle":
+          return input.metadata.title;
+        case "spaceName":
+        case "spaceKey":
+          return input.metadata.space ?? "Confluence";
+        case "organizationName":
+          return input.settings.organizationName;
+        case "version":
+          return input.metadata.version === undefined
+            ? "—"
+            : `v${input.metadata.version}`;
+        case "exportDate":
+          return exportedDateLabel(input.metadata);
+        case "classification":
+          return undefined;
+        case "literal":
+          return slot.value;
+        case "pageNumber":
+          return slot.numbering === "current-of-total" ? "1 / 1" : "1";
+      }
+    };
+    for (const [regionName, region] of Object.entries(regions)) {
+      if (!region.enabled) continue;
+      const variants = [
+        ["first", region.first],
+        ["odd", region.odd],
+        ["even", region.even],
+      ] as const;
+      for (const [variantName, variant] of variants) {
+        if (variant === "hide") continue;
+        for (const [position, slot] of Object.entries(variant)) {
+          if (!slot) continue;
+          const value = slotValue(slot);
+          if (value === undefined) continue;
+          addText(value, headingFamily, "normal", 400, {
+            kind: "renderer-synthetic",
+            detail: `running-${regionName}-${variantName}-${position}-${slot.field}`,
+          });
+        }
+      }
+    }
+  } else {
+    addFace(headingFamily, "normal", 400, {
+      kind: "renderer-synthetic",
+      detail: "page-furniture",
+    });
+    addRole("runningHead", headingFamily);
+    addText(input.settings.headerText ?? input.metadata.title, headingFamily, "normal", 400, {
+      kind: "renderer-synthetic",
+      detail: "running-header",
+    });
+    addText(
+      input.settings.footerText ?? input.settings.organizationName ?? "1",
+      headingFamily,
+      "normal",
+      400,
+      { kind: "renderer-synthetic", detail: "running-footer" },
+    );
+  }
 
   if (input.settings.cover) {
     addRole("coverEyebrow", headingFamily);
     const coverTitleFamily = addRole("coverTitle", bodyFamily);
-    const typeCut = design.compositions?.cover.kind === "type-cut";
+    const typeCut =
+      (designV5?.compositions.cover ?? design.compositions?.cover)?.kind ===
+      "type-cut";
     const compactFamily = typeCut
       ? addRole("coverTitleCompact", bodyFamily)
       : undefined;
@@ -348,8 +415,8 @@ export function resolvePdfFontRequirementsV1(
     );
   }
 
-  const closing = design.compositions?.closingPage;
-  const closingEnabled = closing === undefined || design.features.closingPage.enabled;
+  const closing = designV5?.compositions.closingPage ?? design.compositions?.closingPage;
+  const closingEnabled = designV5 !== undefined || closing === undefined || design.features.closingPage.enabled;
   if (closingEnabled && closing?.kind === "brand-lockup") {
     if (closing.website === "show") {
       const family = addRole("closingWebsite", headingFamily);

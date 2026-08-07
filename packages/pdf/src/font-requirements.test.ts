@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { validateManifestV3 } from "@atlcli/template-pack";
 import type { PreparedPdfBlock, PreparedPdfDocument } from "./types.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { serializePdfDocument } from "./serialize.js";
@@ -10,9 +11,12 @@ import {
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
 } from "./design-catalog.js";
 import { resolvePdfSettings } from "./settings.js";
+import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
 
 const metadata = {
   title: "Font requirement proof",
@@ -89,7 +93,64 @@ function brandLockupRequirements(options: {
   });
 }
 
+function runningV5Requirements(literal?: string) {
+  const design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design);
+  const header = (
+    (design.compositions as Record<string, unknown>).running as Record<
+      string,
+      unknown
+    >
+  ).header as Record<string, unknown>;
+  header.first = "hide";
+  header.odd = literal === undefined
+    ? { center: { field: "documentTitle" } }
+    : { center: { field: "literal", value: literal } };
+  const manifest = validateManifestV3({
+    schemaVersion: 1,
+    id: "fixture.fonts-v5",
+    name: "Font V5 fixture",
+    version: "1.0.0",
+    engine: {
+      kind: "typst",
+      api: "wiki.pdf-template/v1",
+      entry: "atlcli.typ",
+      compilerRange: ">=0.15.1 <0.16",
+    },
+    canonicalSource: { api: "wiki.pdf-canonical-typst", revision: "5" },
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    },
+    design,
+  });
+  const settings = resolvePdfSettings(
+    { cover: false, outline: false },
+    { manifest },
+  );
+  const document: PreparedPdfDocument = { blocks: [], assets: [], notes: [] };
+  return resolvePdfFontRequirementsV1({ document, metadata, settings, manifest });
+}
+
 describe("resolved PDF font requirements v1", () => {
+  it("adds revision-5 running-slot demand only for visible variants", () => {
+    const visible = runningV5Requirements("VISIBLE 🧪");
+    expect(visible.assets.map(({ fileName }) => fileName)).toContain(
+      "NotoEmoji-wght.ttf",
+    );
+    expect(
+      visible.assets
+        .flatMap(({ reasons }) => reasons)
+        .some(({ detail }) =>
+          detail === "running-header-odd-center-literal"),
+    ).toBe(true);
+
+    const hidden = runningV5Requirements();
+    expect(hidden.assets.map(({ fileName }) => fileName)).not.toContain(
+      "NotoEmoji-wght.ttf",
+    );
+  });
+
   it("includes only visible brand-lockup roles and Unicode demand", () => {
     const requirements = brandLockupRequirements({ enabled: true });
     const reasons = requirements.assets.flatMap((asset) => asset.reasons);

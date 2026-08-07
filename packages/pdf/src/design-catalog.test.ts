@@ -50,6 +50,7 @@ import {
   listExecutablePdfCatalogRuntimes,
   PdfCatalogRuntimeError,
   resolvePdfCatalogRuntime,
+  resolvePdfCatalogRuntimeV3,
 } from "./catalog-runtime.js";
 import {
   PDF_BINDABLE_LEVEL_A_SETTINGS,
@@ -690,7 +691,7 @@ describe("PDF template capability catalog V3 declaration", () => {
     );
   });
 
-  it("uses catalog-explicit reads and keeps V3 out of the executable registry", () => {
+  it("uses catalog-explicit reads and registers V3 only through its typed runtime", () => {
     expect(
       readPdfDesignCapabilityFromCatalogV2<string>(
         { page: { format: { kind: "preset" } } },
@@ -698,7 +699,7 @@ describe("PDF template capability catalog V3 declaration", () => {
         "page.format.kind"
       )
     ).toBe("preset");
-    expect(listExecutablePdfCatalogRuntimes().map(({ reference }) => reference.version)).toEqual([1, 2]);
+    expect(listExecutablePdfCatalogRuntimes().map(({ reference }) => reference.version)).toEqual([1, 2, 3]);
     expect(() =>
       resolvePdfCatalogRuntime({
         id: PDF_TEMPLATE_CAPABILITIES_V3.id,
@@ -706,5 +707,12 @@ describe("PDF template capability catalog V3 declaration", () => {
         digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
       })
     ).toThrow(PdfCatalogRuntimeError);
+    expect(
+      resolvePdfCatalogRuntimeV3({
+        id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+      }).reference.version,
+    ).toBe(3);
   });
 });

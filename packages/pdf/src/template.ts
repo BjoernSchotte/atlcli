@@ -35,6 +35,11 @@ import {
   BUILTIN_PDF_FALLBACK_LABELS,
 } from "./builtin-template.js";
 import type {
+  DesignPageCompositionsV3,
+  DesignPageV3,
+  DesignRunningRegionV3,
+  DesignRunningSlotV3,
+  DesignRunningVariantV3,
   WikiPdfTemplateDesignV1,
   WikiPdfTemplateImageDecorationV1,
   WikiPdfTemplatePageBorderV1,
@@ -53,6 +58,114 @@ const TASK_CHECKED = String.fromCodePoint(0x2713);
 const TASK_UNCHECKED = String.fromCodePoint(0x25a1);
 const SYMBOL_FALLBACK_FONTS = ["Noto Sans Symbols2", "Noto Emoji"] as const;
 
+export interface AtlcliTypstPageModelV5 {
+  page: DesignPageV3;
+  running: DesignPageCompositionsV3["running"];
+}
+
+export interface AtlcliTypstTemplateOptions {
+  positionedLogo?: boolean;
+  /** Data-only revision-5 page model; historical callers leave this absent. */
+  pageModelV5?: AtlcliTypstPageModelV5;
+}
+
+function runningSlotSourceV5(slot: DesignRunningSlotV3 | undefined): string {
+  if (!slot) return "[]";
+  switch (slot.field) {
+    case "documentTitle":
+      return "meta.title";
+    case "chapterTitle":
+      return String.raw`context {
+        let chapters = query(heading.where(level: 1)).filter(h => h.outlined)
+        let opening = chapters.filter(h => h.location().page() == here().page())
+        let running = chapters.filter(h => h.location().page() < here().page())
+        if opening.len() > 0 {
+          atlcli-outline-title.at(opening.first().location())
+        } else if running.len() > 0 {
+          atlcli-outline-title.at(running.last().location())
+        } else {
+          meta.title
+        }
+      }`;
+    case "spaceName":
+    case "spaceKey":
+      return "meta.space";
+    case "organizationName":
+      return 'if org-name == none { [] } else { org-name }';
+    case "version":
+      return "meta.version";
+    case "exportDate":
+      return "meta.exported-label";
+    case "classification":
+      return 'settings.at("classification", default: none)';
+    case "literal":
+      return `text(${typstString(slot.value ?? "")})`;
+    case "pageNumber":
+      return slot.numbering === "current-of-total"
+        ? 'pdf.artifact(kind: "page-number", context numbering("1 / 1", counter(page).get().first(), counter(page).final().first()))'
+        : 'pdf.artifact(kind: "page-number", context counter(page).display("1"))';
+  }
+}
+
+function runningVariantSourceV5(
+  variant: "hide" | DesignRunningVariantV3,
+  layout: DesignRunningRegionV3["layout"],
+): string {
+  if (variant === "hide") return "[]";
+  if (layout === "single") {
+    return `align(center, ${runningSlotSourceV5(variant.center)})`;
+  }
+  if (layout === "split") {
+    return `grid(
+        columns: (1fr, 1fr),
+        align(start, ${runningSlotSourceV5(variant.start)}),
+        align(end, ${runningSlotSourceV5(variant.end)}),
+      )`;
+  }
+  return `grid(
+        columns: (1fr, auto, 1fr),
+        align(start, ${runningSlotSourceV5(variant.start)}),
+        align(center, ${runningSlotSourceV5(variant.center)}),
+        align(end, ${runningSlotSourceV5(variant.end)}),
+      )`;
+}
+
+function runningRegionSourceV5(
+  region: DesignRunningRegionV3,
+  kind: "header" | "footer",
+  headerRule: string,
+): string {
+  if (!region.enabled) return "      []";
+  const first = runningVariantSourceV5(region.first, region.layout);
+  const odd = runningVariantSourceV5(region.odd, region.layout);
+  const even = runningVariantSourceV5(region.even, region.layout);
+  const body = kind === "header"
+    ? `block(width: 100%)[#running-content #line(length: 100%, stroke: ${headerRule})]`
+    : "running-content";
+  return String.raw`      let current-page = counter(page).get().first()
+      let running-content = if current-page == 1 {
+        ${first}
+      } else if calc.odd(current-page) {
+        ${odd}
+      } else {
+        ${even}
+      }
+      pdf.artifact(kind: ${typstString(kind)}, ${body})`;
+}
+
+function pageGeometrySourceV5(page: DesignPageV3): string {
+  const size = page.format.kind === "preset"
+    ? `paper: ${typstString(page.format.name === "letter" ? "us-letter" : page.format.name)},\n    flipped: ${page.orientation === "landscape" ? "true" : "false"}`
+    : `width: ${page.orientation === "landscape" ? page.format.height : page.format.width},\n    height: ${page.orientation === "landscape" ? page.format.width : page.format.height}`;
+  const margin = page.margin.mode === "physical"
+    ? `(top: ${page.margin.top}, bottom: ${page.margin.bottom}, left: ${page.margin.left}, right: ${page.margin.right})`
+    : `(top: ${page.margin.top}, bottom: ${page.margin.bottom}, inside: ${page.margin.inside}, outside: ${page.margin.outside})`;
+  const bleed = page.bleed
+    ? `,\n    bleed: (top: ${page.bleed.top}, bottom: ${page.bleed.bottom}, inside: ${page.bleed.inside}, outside: ${page.bleed.outside})`
+    : "";
+  return `${size},\n    binding: ${page.binding},\n    margin: ${margin}${bleed},\n    numbering: "1"`;
+}
+
 /**
  * Generate the pinned Typst template for a design. All presentation values come
  * from `design`; a missing key throws a clear error here rather than producing
@@ -62,7 +175,7 @@ export function createAtlcliTypstTemplate(
   design: WikiPdfTemplateDesignV1 = BUILTIN_PDF_DESIGN,
   labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS,
   visuals?: PdfTemplateVisualsV1,
-  options: { positionedLogo?: boolean } = {}
+  options: AtlcliTypstTemplateOptions = {}
 ): string {
   const catalogDesign = projectPdfDesignThroughCatalog(design);
   const fonts = catalogDesign.typography.fonts;
@@ -228,6 +341,65 @@ export function createAtlcliTypstTemplate(
   const flowLogoCondition = positionedLogo
     ? "logo-path != none and logo-placement == none"
     : "logo-path != none";
+  const pageSetupSource = options.pageModelV5
+    ? String.raw`  set page(
+    ${pageGeometrySourceV5(options.pageModelV5.page)},
+    fill: cover-paper,
+    background: ${pageBackgroundSource},
+    header: context {${headerDecorationSource}
+      set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+${runningRegionSourceV5(
+  options.pageModelV5.running.header,
+  "header",
+  `rgb("${C("hairline")}")`,
+)}
+    },
+    footer: context {${footerDecorationSource}
+      set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+${runningRegionSourceV5(
+  options.pageModelV5.running.footer,
+  "footer",
+  `rgb("${C("hairline")}")`,
+)}
+    },
+  )`
+    : String.raw`  set page(
+    paper: paper-name,
+    flipped: page-config.at("orientation", default: "${orientDefault}") == "landscape",
+    fill: cover-paper,
+    margin: (top: ${margin.top}, bottom: ${margin.bottom}, left: ${margin.left}, right: ${margin.right}),
+    background: ${pageBackgroundSource},
+    header: context {${headerDecorationSource}
+      let current-page = counter(page).get().first()
+      let final-page = counter(page).final().first()
+      if current-page > 1 and current-page < final-page {
+        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        let header-text = settings.at("header-text", default: none)
+        if header-text == none {
+${headerResolution}
+        } else {
+          header-text
+        }
+        line(length: 100%, stroke: rgb("${C("hairline")}"))
+      }
+    },
+    footer: context {${footerDecorationSource}
+      if counter(page).get().first() > 1 {
+        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        let footer-text = settings.at("footer-text", default: none)
+        if footer-text == none and org-name == none {
+          align(center)[#counter(page).display("1")]
+        } else {
+          grid(
+            columns: (1fr, auto, 1fr),
+            align(left, if footer-text == none [] else { footer-text }),
+            align(center)[#counter(page).display("1")],
+            align(right, if org-name == none [] else { org-name }),
+          )
+        }
+      }
+    },
+  )`;
 
   return String.raw`
 #let editorial-numbering(..nums) = {
@@ -329,43 +501,7 @@ export function createAtlcliTypstTemplate(
     body-indent: ${L("enumBodyIndent")},
     spacing: ${L("enumSpacing")},
   )
-  set page(
-    paper: paper-name,
-    flipped: page-config.at("orientation", default: "${orientDefault}") == "landscape",
-    fill: cover-paper,
-    margin: (top: ${margin.top}, bottom: ${margin.bottom}, left: ${margin.left}, right: ${margin.right}),
-    background: ${pageBackgroundSource},
-    header: context {${headerDecorationSource}
-      let current-page = counter(page).get().first()
-      let final-page = counter(page).final().first()
-      if current-page > 1 and current-page < final-page {
-        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
-        let header-text = settings.at("header-text", default: none)
-        if header-text == none {
-${headerResolution}
-        } else {
-          header-text
-        }
-        line(length: 100%, stroke: rgb("${C("hairline")}"))
-      }
-    },
-    footer: context {${footerDecorationSource}
-      if counter(page).get().first() > 1 {
-        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
-        let footer-text = settings.at("footer-text", default: none)
-        if footer-text == none and org-name == none {
-          align(center)[#counter(page).display("1")]
-        } else {
-          grid(
-            columns: (1fr, auto, 1fr),
-            align(left, if footer-text == none [] else { footer-text }),
-            align(center)[#counter(page).display("1")],
-            align(right, if org-name == none [] else { org-name }),
-          )
-        }
-      }
-    },
-  )
+${pageSetupSource}
 
   show heading.where(level: 1): it => {
     set text(font: ${fontStack(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))

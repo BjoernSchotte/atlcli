@@ -26,6 +26,10 @@ import {
   TEMPLATE_PACK_MANIFEST_NAME,
   type TemplateManifest,
 } from "./manifest.js";
+import type {
+  WikiPdfTemplateDesignV1,
+  WikiPdfTemplateDesignV3,
+} from "./design.js";
 import { assertSafePath } from "./unpack.js";
 
 /**
@@ -53,13 +57,15 @@ const DOS_EPOCH = new Date(1980, 0, 1, 0, 0, 0);
 const DEFAULT_CREATED_WITH = "@atlcli/template-pack";
 
 /** Contents to pack: the manifest plus payload members keyed by archive path. */
-export interface TemplatePackContents {
+export interface TemplatePackContents<
+  TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1,
+> {
   /**
    * The manifest to embed. `provenance.payloadSha256` is (re)computed and
    * overwritten by {@link packTemplate}; `provenance.createdWith` is preserved
    * if present, else defaulted.
    */
-  manifest: TemplateManifest;
+  manifest: TemplateManifest<TDesign>;
   /** Payload members by archive path. MUST NOT include the manifest file. */
   files: Record<string, Uint8Array>;
 }
@@ -131,7 +137,9 @@ export async function computePayloadSha256(files: Record<string, Uint8Array>): P
  * @throws {Error} if `files` includes the reserved manifest path.
  * @throws {import("./unpack.js").TemplatePackError} on an unsafe payload path.
  */
-export async function packTemplate(contents: TemplatePackContents): Promise<Uint8Array> {
+export async function packTemplate<
+  TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3,
+>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array> {
   const { manifest, files } = contents;
   if (Object.prototype.hasOwnProperty.call(files, TEMPLATE_PACK_MANIFEST_NAME)) {
     throw new Error(
@@ -141,7 +149,7 @@ export async function packTemplate(contents: TemplatePackContents): Promise<Uint
   for (const path of Object.keys(files)) assertSafePath(path);
 
   const payloadSha256 = await computePayloadSha256(files);
-  const finalManifest: TemplateManifest = {
+  const finalManifest: TemplateManifest<TDesign> = {
     ...manifest,
     provenance: {
       payloadSha256,
