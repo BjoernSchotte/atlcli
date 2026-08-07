@@ -807,30 +807,30 @@ live recipe so the command returns no matches.
 
 **Implementation**
 
-- [ ] Add `packages/pdf/src/template-recipe.ts` with a host-neutral function
+- [x] Add `packages/pdf/src/template-recipe.ts` with a host-neutral function
       that accepts a validated recipe plus already-resolved asset bytes. Reuse
       existing descriptor, hash, dimension, SVG-safety, budget, VFS, canonical
       source, pack, and compile-proof code instead of duplicating it.
-- [ ] Refactor private helpers from `template-authoring-runtime.ts` only when
+- [x] Refactor private helpers from `template-authoring-runtime.ts` only when
       necessary into a shared PDF-internal module. Preserve current DOCX
       materializer behavior with characterization tests before moving logic.
-- [ ] Generate the exact catalog V2 and revision-4 references; YAML cannot
+- [x] Generate the exact catalog V2 and revision-4 references; YAML cannot
       override them.
-- [ ] Generate deterministic asset descriptor IDs and archive paths from slots
+- [x] Generate deterministic asset descriptor IDs and archive paths from slots
       and content digests. Recipe filenames must not become executable VFS paths.
-- [ ] Validate cross-object requirements after asset resolution: Type Cut
+- [x] Validate cross-object requirements after asset resolution: Type Cut
       background present and first-page-scoped; brand logo present when shown;
       no unreferenced assets; media type matches bytes; SVG passes the existing
       safety gate.
-- [ ] Generate canonical Typst only after the complete design and visuals have
+- [x] Generate canonical Typst only after the complete design and visuals have
       passed validation. Re-run `validatePdfTemplatePack` against the resulting
       files before packing.
-- [ ] Add a composition-aware executable proof profile. Unlike the current
+- [x] Add a composition-aware executable proof profile. Unlike the current
       neutral proof compiler, it must leave cover and closing page enabled and
       use titles at all three fitting tiers.
-- [ ] Guarantee no output bytes are returned when validation or compilation
+- [x] Guarantee no output bytes are returned when validation or compilation
       fails.
-- [ ] Test deterministic warm repeats, key-order independence, CRLF/LF YAML
+- [x] Test deterministic warm repeats, key-order independence, CRLF/LF YAML
       equivalence after parsing, asset-order independence, tampered hashes,
       unsafe SVG, missing logo/background, and compile failure.
 
@@ -843,6 +843,12 @@ rtk bun run test packages/pdf/src/template-recipe.test.ts packages/pdf/src/templ
 Expected: exit 0; two semantically identical recipes produce byte-identical
 packs, old DOCX materialization stays unchanged, and every invalid recipe fails
 before an archive is returned.
+
+The proof compiler now exercises revision 4 with cover and closing page enabled
+across three deterministic title tiers. Unit tests characterize profile
+selection and failure atomicity; the existing real BrowserPdfCompiler component
+test remains green. This is still component evidence. T7/T8 retain ownership of
+the public `atlcli pdf-template build` → `atlcli wiki export` acceptance chain.
 
 ### T6 — Add the CLI YAML build path with safe local asset resolution
 

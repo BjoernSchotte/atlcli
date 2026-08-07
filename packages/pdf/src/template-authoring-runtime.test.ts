@@ -52,4 +52,40 @@ describe("PdfTemplateRuntimeMaterializer compatibility", () => {
       revision: "3",
     });
   });
+
+  it("preserves the characterized DOCX descriptor ids and archive paths", async () => {
+    const bytes = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"></svg>'
+    );
+    const digest = Array.from(
+      new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+      (byte) => byte.toString(16).padStart(2, "0")
+    ).join("");
+    const materialized = await new PdfTemplateRuntimeMaterializer().materialize(
+      snapshot(),
+      [
+        {
+          slot: "asset.logo",
+          sha256: digest,
+          mediaType: "image/svg+xml",
+          bytes,
+          accessibility: { decorative: false, alt: "Neutral logo" },
+          rendering: { kind: "slot-default" },
+        },
+      ]
+    );
+    expect(materialized.manifest.assetDescriptors).toEqual({
+      "asset-logo": {
+        path: `assets/asset.logo/${digest}.svg`,
+        sha256: digest,
+        mediaType: "image/svg+xml",
+        byteLength: bytes.byteLength,
+        dimensions: { width: 20, height: 10, unit: "pixel" },
+      },
+    });
+    expect(Object.keys(materialized.files).sort()).toEqual([
+      `assets/asset.logo/${digest}.svg`,
+      "atlcli.typ",
+    ]);
+  });
 });

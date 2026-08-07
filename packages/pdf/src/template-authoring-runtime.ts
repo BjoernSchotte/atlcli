@@ -15,11 +15,6 @@ import type {
 import {
   validateDesign,
   validateManifest,
-  type TemplateAssetDescriptorV1,
-  type TemplateAssetReferenceV1,
-  type WikiPdfTemplateDesignV1,
-  type WikiPdfTemplateImageDecorationV1,
-  type WikiPdfTemplatePageDecorationV1,
 } from "@atlcli/template-pack";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import type { PdfCompilePort } from "./compiler.js";
@@ -30,11 +25,10 @@ import {
 import {
   PDF_CANONICAL_SOURCE_API_V1,
   PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
-  PDF_TEMPLATE_WRITERS_V1,
   generateCanonicalPdfTemplateSourceV1,
+  clonePdfTemplateRuntime,
   validatePdfTemplateManifest,
   validatePdfTemplatePack,
-  type PdfTemplateAssetSlotV1,
   type PdfTemplateVisualsV1,
 } from "./template-pack.js";
 import { loadPdfTemplatePack } from "./template-pack.js";
@@ -42,8 +36,20 @@ import { preparePdfDocument } from "./prepare.js";
 import { serializePdfDocument } from "./serialize.js";
 import type { ExportBlock } from "./types.js";
 import { validatePdfOutput } from "./validate.js";
+import {
+  PDF_DOCX_TEMPLATE_ASSET_IDENTITY_V1,
+  materializePdfTemplateAssetFields,
+  pdfTemplateAssetExtension,
+  sha256PdfTemplateBytes,
+} from "./template-assets.js";
 
 const encoder = new TextEncoder();
+
+export const PDF_COMPOSITION_PROOF_TITLES_V1 = [
+  "Template proof",
+  "A declarative template compatibility proof for complex documents",
+  "A deliberately extensive declarative template compatibility proof for complex cross-functional documents and long page titles",
+] as const;
 
 const NEUTRAL_FEATURE_ZOO: readonly ExportBlock[] = [
   {
@@ -114,237 +120,6 @@ const NEUTRAL_FEATURE_ZOO: readonly ExportBlock[] = [
   },
 ];
 
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    Uint8Array.from(bytes)
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-}
-
-function extension(mediaType: string): "jpg" | "png" | "svg" {
-  if (mediaType === "image/png") return "png";
-  if (mediaType === "image/jpeg") return "jpg";
-  if (mediaType === "image/svg+xml") return "svg";
-  throw new Error(`Unsupported PDF template asset media type: ${mediaType}`);
-}
-
-function dimensions(
-  mediaType: string,
-  bytes: Uint8Array
-): { width: number; height: number; unit: "pixel" } {
-  if (
-    mediaType === "image/png" &&
-    bytes.byteLength >= 24 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    return {
-      width: view.getUint32(16),
-      height: view.getUint32(20),
-      unit: "pixel",
-    };
-  }
-  if (mediaType === "image/svg+xml") {
-    const source = new TextDecoder().decode(bytes);
-    const width = Number(/\bwidth=["'](\d+(?:\.\d+)?)["']/u.exec(source)?.[1]);
-    const height = Number(/\bheight=["'](\d+(?:\.\d+)?)["']/u.exec(source)?.[1]);
-    if (
-      Number.isFinite(width) &&
-      width > 0 &&
-      Number.isFinite(height) &&
-      height > 0
-    ) {
-      return { width, height, unit: "pixel" };
-    }
-  }
-  if (mediaType === "image/jpeg") {
-    let offset = 2;
-    while (offset + 8 < bytes.byteLength) {
-      if (bytes[offset] !== 0xff) break;
-      const marker = bytes[offset + 1]!;
-      const length = (bytes[offset + 2]! << 8) | bytes[offset + 3]!;
-      if (
-        [
-          0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb,
-          0xcd, 0xce, 0xcf,
-        ].includes(marker)
-      ) {
-        return {
-          width: (bytes[offset + 7]! << 8) | bytes[offset + 8]!,
-          height: (bytes[offset + 5]! << 8) | bytes[offset + 6]!,
-          unit: "pixel",
-        };
-      }
-      if (length < 2) break;
-      offset += length + 2;
-    }
-  }
-  throw new Error("Template asset has no trustworthy intrinsic dimensions");
-}
-
-function pageDimensions(
-  design: WikiPdfTemplateDesignV1
-): { width: string; height: string } {
-  const page = design.page;
-  const base =
-    page?.size === "letter"
-      ? ([215.9, 279.4] as const)
-      : ([210, 297] as const);
-  const [width, height] =
-    page?.orientation === "landscape" ? [base[1], base[0]] : base;
-  return { width: `${width}mm`, height: `${height}mm` };
-}
-
-function defaultDecoration(
-  asset: TemplateRuntimeAssetV1,
-  design: WikiPdfTemplateDesignV1
-): WikiPdfTemplateImageDecorationV1 | undefined {
-  const page = pageDimensions(design);
-  const common = {
-    kind: "image" as const,
-    id: asset.slot,
-    writer: PDF_TEMPLATE_WRITERS_V1.imageDecoration,
-    asset: asset.slot,
-    decorative: asset.accessibility.decorative,
-    ...(asset.accessibility.alt ? { alt: asset.accessibility.alt } : {}),
-  };
-  switch (asset.slot) {
-    case "asset.pageBackground":
-      return {
-        ...common,
-        scope: "all",
-        layer: "page-background",
-        placement: {
-          relativeTo: "page",
-          fit: "stretch",
-          x: "0mm",
-          y: "0mm",
-          ...page,
-        },
-      };
-    case "asset.coverBackground":
-      return {
-        ...common,
-        scope: "first",
-        layer: "page-background",
-        placement: {
-          relativeTo: "page",
-          fit: "stretch",
-          x: "0mm",
-          y: "0mm",
-          ...page,
-        },
-      };
-    case "asset.headerDecoration":
-      return {
-        ...common,
-        scope: "all",
-        layer: "header",
-        placement: {
-          relativeTo: "margin",
-          fit: "contain",
-          x: "0mm",
-          y: "0mm",
-          width: "35mm",
-          height: "8mm",
-        },
-      };
-    case "asset.footerDecoration":
-      return {
-        ...common,
-        scope: "all",
-        layer: "footer",
-        placement: {
-          relativeTo: "margin",
-          fit: "contain",
-          x: "0mm",
-          y: "0mm",
-          width: "35mm",
-          height: "8mm",
-        },
-      };
-    default:
-      return undefined;
-  }
-}
-
-function decorationFor(
-  asset: TemplateRuntimeAssetV1,
-  design: WikiPdfTemplateDesignV1
-): WikiPdfTemplateImageDecorationV1 | undefined {
-  if (asset.slot === "asset.logo") return undefined;
-  const fallback = defaultDecoration(asset, design);
-  if (asset.rendering.kind === "slot-default") return fallback;
-  const placement = asset.rendering.placement;
-  if (!fallback || !placement) {
-    throw new Error(`Asset ${asset.slot} has no supported PDF placement`);
-  }
-  return {
-    ...fallback,
-    placement:
-      placement as unknown as WikiPdfTemplateImageDecorationV1["placement"],
-  };
-}
-
-function manifestAssetFields(
-  assets: readonly TemplateRuntimeAssetV1[],
-  design: WikiPdfTemplateDesignV1
-): {
-  descriptors: Record<string, TemplateAssetDescriptorV1>;
-  references: Record<string, TemplateAssetReferenceV1>;
-  decorations: WikiPdfTemplatePageDecorationV1[];
-  files: Record<string, Uint8Array>;
-} {
-  const descriptors: Record<string, TemplateAssetDescriptorV1> = {};
-  const references: Record<string, TemplateAssetReferenceV1> = {};
-  const decorations: WikiPdfTemplatePageDecorationV1[] = [];
-  const files: Record<string, Uint8Array> = {};
-  for (const asset of [...assets].sort((left, right) =>
-    left.slot.localeCompare(right.slot)
-  )) {
-    const slot = asset.slot as PdfTemplateAssetSlotV1;
-    const descriptorId = slot.replace(/^asset\./u, "asset-");
-    const path = `assets/${slot}/${asset.sha256}.${extension(asset.mediaType)}`;
-    descriptors[descriptorId] = {
-      path,
-      sha256: asset.sha256,
-      mediaType: asset.mediaType as TemplateAssetDescriptorV1["mediaType"],
-      byteLength: asset.bytes.byteLength,
-      dimensions: dimensions(asset.mediaType, asset.bytes),
-    };
-    references[slot] = {
-      descriptor: descriptorId,
-      writer:
-        slot === "asset.logo"
-          ? PDF_TEMPLATE_WRITERS_V1.logo
-          : PDF_TEMPLATE_WRITERS_V1.imageDecoration,
-      decorative: asset.accessibility.decorative,
-      ...(asset.accessibility.alt
-        ? { alt: asset.accessibility.alt }
-        : {}),
-      ...(slot === "asset.logo" &&
-      asset.rendering.kind !== "slot-default" &&
-      asset.rendering.placement
-        ? {
-            placement:
-              asset.rendering
-                .placement as unknown as TemplateAssetReferenceV1["placement"],
-          }
-        : {}),
-    };
-    const decoration = decorationFor(asset, design);
-    if (decoration) decorations.push(decoration);
-    files[path] = new Uint8Array(asset.bytes);
-  }
-  return { descriptors, references, decorations, files };
-}
-
 export class PdfTemplateRuntimeMaterializer
   implements TemplateRuntimeMaterializer
 {
@@ -356,7 +131,11 @@ export class PdfTemplateRuntimeMaterializer
       snapshot.design,
       "authoringSnapshot.design"
     );
-    const visual = manifestAssetFields(assets, design);
+    const visual = materializePdfTemplateAssetFields(
+      assets,
+      design,
+      PDF_DOCX_TEMPLATE_ASSET_IDENTITY_V1
+    );
     const manifest = validateManifest({
       ...BUILTIN_PDF_TEMPLATE_MANIFEST,
       id: `imported-${snapshot.snapshotDigest.slice(0, 16)}`,
@@ -395,7 +174,7 @@ export class PdfTemplateRuntimeMaterializer
             {
               vfsPath: `template-assets/${reference.descriptor
                 .toLowerCase()
-                .replace(/[._]+/g, "-")}.${extension(
+                .replace(/[._]+/g, "-")}.${pdfTemplateAssetExtension(
                 descriptor.mediaType
               )}`,
               reference,
@@ -463,48 +242,73 @@ export class PdfGeneratedTemplateProofCompiler
   async compile(
     input: TemplateGeneratedPackCompileInputV1
   ): Promise<TemplateGeneratedPackCompileResultV1> {
-    const pack = await loadPdfTemplatePack(input.packBytes);
+    const loadedPack = await loadPdfTemplatePack(input.packBytes);
+    const compositionProof = loadedPack.canonicalSource.revision === "4";
+    const pack = compositionProof
+      ? clonePdfTemplateRuntime(loadedPack)
+      : loadedPack;
+    if (compositionProof) {
+      // Exercise dormant composition code even when the recipe selects a
+      // disabled-by-default cover or closing page. The canonical source is
+      // unchanged: both feature flags are runtime settings.
+      pack.manifest.design!.features.cover.enabled = true;
+      pack.manifest.design!.features.closingPage.enabled = true;
+      pack.runtimeSnapshot.design.features.cover.enabled = true;
+      pack.runtimeSnapshot.design.features.closingPage.enabled = true;
+    }
     const prepared = await preparePdfDocument([...NEUTRAL_FEATURE_ZOO], {
       resolve: async () => {
         throw new Error("Neutral template feature zoo has no document assets");
       },
     });
-    const bundle = serializePdfDocument(prepared, {
-      metadata: {
-        title: "Template compatibility proof",
-        space: "NEUTRAL",
-        version: 1,
-        author: "atlcli",
-        language: "en",
-        exportedAt: new Date("2026-07-27T00:00:00.000Z"),
-      },
-      settings: { cover: false, outline: true },
-      templatePack: pack,
-    });
-    const result = await this.compiler.compile(bundle);
-    const errors = result.diagnostics.filter(
-      ({ severity }) => severity === "error"
-    );
-    if (!result.pdf || errors.length > 0) {
-      throw new Error(
-        `Generated PDF template failed its executable gate: ${JSON.stringify(
-          errors
-        )}`
+    const titles = compositionProof
+      ? PDF_COMPOSITION_PROOF_TITLES_V1
+      : (["Template compatibility proof"] as const);
+    let primary:
+      | TemplateGeneratedPackCompileResultV1
+      | undefined;
+    for (const title of titles) {
+      const bundle = serializePdfDocument(prepared, {
+        metadata: {
+          title,
+          space: "NEUTRAL",
+          version: 1,
+          author: "atlcli",
+          language: "en",
+          exportedAt: new Date("2026-07-27T00:00:00.000Z"),
+        },
+        settings: {
+          cover: compositionProof,
+          outline: true,
+        },
+        templatePack: pack,
+      });
+      const result = await this.compiler.compile(bundle);
+      const errors = result.diagnostics.filter(
+        ({ severity }) => severity === "error"
       );
+      if (!result.pdf || errors.length > 0) {
+        throw new Error(
+          `Generated PDF template failed its executable gate: ${JSON.stringify(
+            errors
+          )}`
+        );
+      }
+      const inspection = validatePdfOutput(result.pdf);
+      if (
+        !inspection.tagged ||
+        !inspection.hasOutline ||
+        inspection.embeddedFontFiles < 1
+      ) {
+        throw new Error(
+          "Generated PDF template lost tagged output, outline, or embedded fonts"
+        );
+      }
+      primary ??= {
+        digest: await sha256PdfTemplateBytes(result.pdf),
+        pageCount: inspection.pageCount,
+      };
     }
-    const inspection = validatePdfOutput(result.pdf);
-    if (
-      !inspection.tagged ||
-      !inspection.hasOutline ||
-      inspection.embeddedFontFiles < 1
-    ) {
-      throw new Error(
-        "Generated PDF template lost tagged output, outline, or embedded fonts"
-      );
-    }
-    return {
-      digest: await sha256(result.pdf),
-      pageCount: inspection.pageCount,
-    };
+    return primary!;
   }
 }

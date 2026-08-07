@@ -3698,6 +3698,9 @@ export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesign
     positionedLogo?: boolean;
 }): string;
 
+// export: createAtlcliTypstTemplateV4
+export declare function createAtlcliTypstTemplateV4(design: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
+
 // export: DEFAULT_PDF_THEME
 export declare const DEFAULT_PDF_THEME: Readonly<PdfTheme>;
 
@@ -3760,11 +3763,34 @@ export declare function mapPdfDiagnostics(diagnostics: Array<{
     blockPath?: string;
 }>;
 
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
 // export: materializeLegacyPdfDesign
 export declare function materializeLegacyPdfDesign(sparseDesign: WikiPdfTemplateDesignV1, characterizedBaseline: WikiPdfTemplateDesignV1, fallbackAliases?: Readonly<Record<string, string>>): {
     design: WikiPdfTemplateDesignV1;
     ignoredCapabilities: readonly string[];
 };
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
 
 // export: PDF_ASSET_CONCURRENCY
 export declare const PDF_ASSET_CONCURRENCY = 4;
@@ -4003,6 +4029,9 @@ export declare function projectPdfDesignThroughCatalog(design: WikiPdfTemplateDe
 // export: projectPdfDesignThroughCatalogV2
 export declare function projectPdfDesignThroughCatalogV2(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
 
+// export: projectPdfDesignV1SubsetFromCatalogV2
+export declare function projectPdfDesignV1SubsetFromCatalogV2(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
+
 // export: readPdfDesignCapability
 export declare function readPdfDesignCapability<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
 
@@ -4017,6 +4046,15 @@ export interface ResolvedPdfTemplateAssetV1 {
     reference: TemplateAssetReferenceV1;
     bytes: Uint8Array;
     vfsPath: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
 }
 
 // export: resolvePdfTheme
@@ -4051,6 +4089,9 @@ export declare function validatePdfTemplatePack(manifest: TemplateManifest, file
 
 // export: writePdfDesignCapability
 export declare function writePdfDesignCapability(design: WikiPdfTemplateDesignV1, path: string, value: unknown, writerId: string): WikiPdfTemplateDesignV1;
+
+// export: writePdfDesignCapabilityV2
+export declare function writePdfDesignCapabilityV2(design: WikiPdfTemplateDesignV1, path: string, value: unknown, writerId: string): WikiPdfTemplateDesignV1;
 ```
 
 ### Entry point `./template`
