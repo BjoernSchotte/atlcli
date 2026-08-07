@@ -24,6 +24,7 @@ import {
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
+import { registerTemplateCompositionV4PipelineTests } from "./template-composition-v4-pipeline.test.js";
 
 const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
 const decoder = new TextDecoder();
@@ -409,3 +410,5 @@ describe("canonical composition revision 4 Typst primitives", () => {
     expect(() => assertHardDiagonalBoundary(shiftedPage)).toThrow();
   }, 120_000);
 });
+
+registerTemplateCompositionV4PipelineTests();

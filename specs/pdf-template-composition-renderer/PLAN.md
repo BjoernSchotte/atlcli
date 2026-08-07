@@ -903,31 +903,31 @@ required public `atlcli wiki export --format pdf --template ...` evidence.
 
 **Implementation**
 
-- [ ] Complete `template-composition-v4.test.ts` as a full pack test: YAML
+- [x] Complete `template-composition-v4.test.ts` as a full pack test: YAML
       recipe data → recipe validator → V2/revision-4 materializer → pack loader
       → serializer → real `BrowserPdfCompiler`.
-- [ ] Use a synthetic A4 SVG with a mathematically known straight orange edge
+- [x] Use a synthetic A4 SVG with a mathematically known straight orange edge
       and a neutral SVG logo. Do not commit Mayflower or customer material.
-- [ ] Assert the final PDF is tagged, has embedded fonts and expected outline,
+- [x] Assert the final PDF is tagged, has embedded fonts and expected outline,
       and has exactly `body pages + cover + closing` pages when both are on.
-- [ ] Assert disabling the closing page removes exactly one page and disabling
+- [x] Assert disabling the closing page removes exactly one page and disabling
       the cover removes exactly one page.
-- [ ] Use `pdftotext -layout` to assert the title appears exactly once on the
+- [x] Use `pdftotext -layout` to assert the title appears exactly once on the
       cover and not on `brand-lockup`; website and legal notice appear exactly
       once on the closing page.
-- [ ] Inspect PDF annotations to prove the website target equals the declared
+- [x] Inspect PDF annotations to prove the website target equals the declared
       HTTPS URL and no undeclared URL is present.
-- [ ] Rasterize cover and closing pages. Assert the title foreground/inverse
+- [x] Rasterize cover and closing pages. Assert the title foreground/inverse
       pixels track the synthetic diagonal within a documented tolerance, the
       closing background and alignment match tokens, and hidden elements leave
       no pixels/text.
-- [ ] Add a deliberate shifted-diagonal and shifted-closing-block negative to
+- [x] Add a deliberate shifted-diagonal and shifted-closing-block negative to
       guard the visual oracle itself.
-- [ ] Add a browser-harness conformance case if the CLI recipe materializer
+- [x] Add a browser-harness conformance case if the CLI recipe materializer
       exposes a new public DTO; otherwise prove the resulting pack through the
       existing browser pack-loader/export case. Node and browser pack bytes,
       runtime snapshot, PDF bytes, and reports must agree.
-- [ ] Run API closure, browser dependency, typecheck, build, and the full suite.
+- [x] Run API closure, browser dependency, typecheck, build, and the full suite.
 
 **Verify**
 
@@ -947,6 +947,15 @@ rtk git diff --check
 
 Expected: every command exits 0; no unexpected skip hides the composition test,
 and Node/browser hosts agree on the validated pack and PDF output.
+
+The neutral acceptance fixture now executes the public
+`atlcli pdf-template build recipe.yaml --output pack` command and feeds that
+pack into the public `atlcli wiki export ... --format pdf --template pack`
+command against a local Confluence fixture. All page, text, link, raster, and
+negative-control assertions inspect the exported PDF. Browser/Bun parity also
+covers pack bytes, the loaded runtime snapshot, PDF bytes, and report notes.
+The full suite completed with 6,326 passes, 15 pre-existing environment-gated
+skips, and no failures; the revision-4 pipeline test itself was not skipped.
 
 ### T8 — Document and live-test the Mayflower recipe without persisting private data
 

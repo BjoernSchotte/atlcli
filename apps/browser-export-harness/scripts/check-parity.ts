@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import {
   PDF_RUNTIME_ASSETS,
   runPdfExport,
+  validatePdfOutput,
   type ExportBlock,
   type ExportNote,
   type PdfAssetResolver,
@@ -58,6 +59,7 @@ import {
 import { ensurePdfFonts } from "../../../packages/pdf/scripts/ensure-fonts.js";
 import { MemoryOutputSink } from "../src/memory-output.js";
 import { runDocxTemplateIntakeFlow } from "../src/docx-template-intake-flow.js";
+import { buildPdfV4RuntimeFixture } from "../src/pdf-v4-runtime-fixture.js";
 import {
   compareReportProjection,
   compareStructuredParity,
@@ -153,23 +155,45 @@ async function cliCompile(
 async function runPdfSettingsCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
   // Two settings variants (A/B) — the same pair the browser case emits digests
   // for. Each threads its own `settings` through the shared request shape.
-  const compileVariant = async (settings: typeof PDF_SETTINGS_A) => {
+  const compileVariant = async (
+    settings: typeof PDF_SETTINGS_A,
+    templatePack?: Awaited<ReturnType<typeof buildPdfV4RuntimeFixture>>["runtime"]
+  ) => {
     const output = new MemoryOutputSink();
     const report = await runPdfExport(
-      { blocks: PDF_SETTINGS_BLOCKS, metadata: PDF_SETTINGS_METADATA, settings, profile: "tagged", filename: "PDF Settings Conformance.pdf" },
+      {
+        blocks: PDF_SETTINGS_BLOCKS,
+        metadata: PDF_SETTINGS_METADATA,
+        settings,
+        profile: "tagged",
+        filename: "PDF Settings Conformance.pdf",
+        ...(templatePack ? { templatePack } : {}),
+      },
       { assets: noAssets, compiler, output, now: deterministicClock() },
     );
     return { bytes: output.single.bytes, report };
   };
   const a = await compileVariant(PDF_SETTINGS_A);
   const b = await compileVariant(PDF_SETTINGS_B);
+  const v4 = await buildPdfV4RuntimeFixture();
+  const runtimeRender = await compileVariant(PDF_SETTINGS_A, v4.runtime);
   return {
     compilerVersion: a.report.compilerVersion,
     digests: {
       "variant-a.pdf": sha256Hex(a.bytes),
       "variant-b.pdf": sha256Hex(b.bytes),
+      "runtime-v4.wiki-pdf-template": sha256Hex(v4.packBytes),
+      "runtime-v4.pdf": sha256Hex(runtimeRender.bytes),
     },
     notes: a.report.notes.map((n) => ({ code: n.code, level: n.level })),
+    parity: {
+      runtimeSnapshot: structuredClone(v4.runtime.runtimeSnapshot),
+      runtimeInspection: validatePdfOutput(runtimeRender.bytes),
+      runtimeReportNotes: runtimeRender.report.notes.map(({ code, level }) => ({
+        code,
+        level,
+      })),
+    },
   };
 }
 
