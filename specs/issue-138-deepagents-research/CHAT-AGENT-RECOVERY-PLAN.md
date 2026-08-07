@@ -592,6 +592,15 @@ browser shape; no private tenant material is embedded in browser fixtures. The
 real provider-backed MV3 comparison remains open and the acceptance criteria stay
 unchecked until that browser run is observed successfully.
 
+Private comparison update (2026-08-07): after making explicit title and issue-key
+queries host-required rather than model-replaceable, the same complex case took
+297.5 seconds in Auto and 319.6 seconds in Deep. Auto retained 10 detail-evidence
+references; Deep retained 12 while preserving all four explicitly requested
+documents. The additional Deep work therefore increased grounded coverage for a
+22.1-second latency increase instead of merely increasing provider reasoning.
+Only aggregate metrics are recorded here; all tenant-specific inputs and outputs
+remain local and untracked.
+
 ### C5 — Add dynamic Chat subagent composition
 
 Goal: let one central Chat supervisor dynamically isolate complex work while
@@ -737,8 +746,10 @@ Acceptance criteria:
 Proof record (2026-08-06): the separate Chat root now persists a typed retrieval
 plan, candidate ledger, and sufficient-evidence assessment before and during
 content access. An agentic supervisor may attach a bounded retrieval proposal to
-its dynamic workflow: at most three typed variants per already-bound product,
-ordered by expected information gain. The host rejects raw CQL/JQL, invented or
+its dynamic workflow: at most five typed variants per already-bound product,
+ordered by expected information gain. Explicitly quoted titles and exact Jira
+keys are host-required variants and cannot be displaced by a model proposal. The
+host rejects raw CQL/JQL, invented or
 foreign cursors, unavailable products, scope changes, traversal depth greater
 than one, late replanning, and budget overflow before HTTP. Every discovered
 candidate retains query/page/rank provenance, canonical identity, observed
@@ -769,6 +780,13 @@ with explicit reasons, and left none deferred. The final diagnostics recorded
 in 287.4 seconds. The committed proof records only these aggregate metrics; the
 tenant, source identities, queries, bodies, and generated report remain outside
 the repository and pull request.
+
+Follow-up proof (2026-08-07): two regression cases demonstrate that a broad model
+proposal cannot replace four explicitly quoted Confluence titles or two exact Jira
+keys. Repeating the private Deep case then detail-read all four named documents and
+retained 12 accepted cross-product evidence references, compared with 9 references
+and one missed named document before the fix. No private identity, query, or body is
+recorded in Git.
 
 ### C7 — Add sufficient-evidence assessment, critic, repair, and synthesis
 

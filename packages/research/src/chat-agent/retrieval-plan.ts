@@ -403,6 +403,47 @@ function defaultQueryVariants(question: string): ChatSearchVariantProposalV1[] {
   ).slice(0, 5);
 }
 
+function hostRequiredQueryVariants(
+  question: string,
+  product: ResearchProduct,
+): ChatSearchVariantProposalV1[] {
+  const normalized = cleanText(question, "Chat question", 2_000);
+  if (product === "confluence") {
+    return quotedQuestionTerms(normalized).slice(0, 5).map((term, index) => ({
+      variantId: `host:quoted-term-${index + 1}`,
+      query: { text: term },
+      expectedInformationGain: "high" as const,
+    }));
+  }
+  return [...new Set(
+    normalized.match(/\b[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,18}\b/gu) ?? [],
+  )].slice(0, 5).map((key, index) => ({
+    variantId: `host:explicit-key-${index + 1}`,
+    query: { text: key },
+    expectedInformationGain: "high" as const,
+  }));
+}
+
+function retainHostRequiredQueryVariants(
+  question: string,
+  product: ResearchProduct,
+  proposed: ChatSearchVariantProposalV1[],
+): ChatSearchVariantProposalV1[] {
+  const required = hostRequiredQueryVariants(question, product);
+  const requiredIds = new Set(required.map((variant) => variant.variantId));
+  const queryFingerprints = new Set(required.map((variant) =>
+    stableFingerprint(canonicalQuery(variant.query))
+  ));
+  const optional = proposed.filter((variant) => {
+    if (requiredIds.has(variant.variantId)) return false;
+    const fingerprint = stableFingerprint(canonicalQuery(variant.query));
+    if (queryFingerprints.has(fingerprint)) return false;
+    queryFingerprints.add(fingerprint);
+    return true;
+  });
+  return [...required, ...optional].slice(0, 5);
+}
+
 function ensureConciseCoreTermVariant(
   question: string,
   variants: ChatSearchVariantProposalV1[],
@@ -411,7 +452,10 @@ function ensureConciseCoreTermVariant(
   // Injecting a guessed token can only displace one of them from the bounded
   // product-wide query budget. Model-proposed synonyms still benefit from the
   // pre-existing shared-core safety net below.
-  if (variants.some((variant) => variant.variantId.startsWith("quoted-term-"))) {
+  if (variants.some((variant) =>
+    variant.variantId.startsWith("quoted-term-") ||
+    variant.variantId.startsWith("host:quoted-term-")
+  )) {
     return variants;
   }
   const textVariants = variants
@@ -528,7 +572,10 @@ function canonicalSearches(input: {
     const variantIds = new Set<string>();
     const queryFingerprints = new Set<string>();
     const gainRank = { high: 0, medium: 1, low: 2 } as const;
-    const variants = ensureConciseCoreTermVariant(input.question, search.variants)
+    const variants = ensureConciseCoreTermVariant(
+      input.question,
+      retainHostRequiredQueryVariants(input.question, search.product, search.variants),
+    )
       // At least one page is required to execute a variant. Keep only the
       // highest-value variants that fit the product-wide page ceiling.
       .slice(0, input.limits.maxSearchPagesPerProduct)

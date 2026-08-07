@@ -218,6 +218,88 @@ describe("Chat retrieval plan", () => {
     })).toThrow("Raw CQL or JQL");
   });
 
+  test("does not let a model proposal displace explicit Confluence titles", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:required-titles",
+      turnId: "turn:required-titles",
+      question: "Compare ‘Page Alpha’, ‘Page Beta’, ‘Page Gamma’, and ‘Page Delta’.",
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:space",
+        product: "confluence",
+        entityKind: "space",
+        key: "KB",
+        name: "Knowledge base",
+      })],
+      searchProducts: ["confluence"],
+      exactContextProducts: [],
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      agentic: true,
+      proposal: {
+        searches: [{
+          searchId: "search:wiki",
+          product: "confluence",
+          variants: [{
+            variantId: "model-summary",
+            query: { text: "broad comparison" },
+            expectedInformationGain: "high",
+          }],
+          maxPages: 1,
+        }],
+        relationshipTraversals: [],
+      },
+      now: () => Date.parse("2026-08-07T09:00:00.000Z"),
+    });
+
+    expect(result.searches[0]?.variants.map((variant) => variant.query.text)).toEqual([
+      "Page Alpha",
+      "Page Beta",
+      "Page Gamma",
+      "Page Delta",
+      "broad comparison",
+    ]);
+  });
+
+  test("does not let a model proposal displace explicit Jira keys", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:required-keys",
+      turnId: "turn:required-keys",
+      question: "Compare DEMO-7 and DEMO-9 with the release plan.",
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:project",
+        product: "jira",
+        entityKind: "project",
+        key: "DEMO",
+        name: "Demo project",
+      })],
+      searchProducts: ["jira"],
+      exactContextProducts: [],
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      agentic: true,
+      proposal: {
+        searches: [{
+          searchId: "search:jira",
+          product: "jira",
+          variants: [{
+            variantId: "model-release",
+            query: { text: "release plan" },
+            expectedInformationGain: "high",
+          }],
+          maxPages: 1,
+        }],
+        relationshipTraversals: [],
+      },
+      now: () => Date.parse("2026-08-07T09:00:00.000Z"),
+    });
+
+    expect(result.searches[0]?.variants.map((variant) => variant.query.text)).toEqual([
+      "DEMO-7",
+      "DEMO-9",
+      "release plan",
+    ]);
+  });
+
   test("derives relationship traversal direction from the available source product", () => {
     const confluenceOnly = plan({ searchProducts: ["confluence"] });
     expect(confluenceOnly.relationshipTraversals).toEqual([{
