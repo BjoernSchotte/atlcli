@@ -398,6 +398,14 @@ export declare function normalizePdfLocale(locale: string | undefined): {
     region?: string;
 };
 
+// export: ParsedFontAxis
+export interface ParsedFontAxis {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
 // export: ParsedFontFace
 export interface ParsedFontFace {
     family: string;
@@ -690,6 +698,18 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontDiagnosticCodeV1
+export type PdfFontDiagnosticCodeV1 = "PDF_FONT_STYLE_FALLBACK" | "PDF_FONT_STRETCH_FALLBACK" | "PDF_FONT_WEIGHT_FALLBACK" | "PDF_FONT_MISSING_GLYPH";
+
+// export: PdfFontDiagnosticV1
+export interface PdfFontDiagnosticV1 {
+    code: PdfFontDiagnosticCodeV1;
+    severity: "warning";
+    family: string;
+    role: string;
+    requested: string;
 }
 
 // export: PdfFontLoadEvidenceV1
@@ -1911,6 +1931,14 @@ export declare function normalizePdfLocale(locale: string | undefined): {
     region?: string;
 };
 
+// export: ParsedFontAxis
+export interface ParsedFontAxis {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
 // export: ParsedFontFace
 export interface ParsedFontFace {
     family: string;
@@ -2203,6 +2231,18 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontDiagnosticCodeV1
+export type PdfFontDiagnosticCodeV1 = "PDF_FONT_STYLE_FALLBACK" | "PDF_FONT_STRETCH_FALLBACK" | "PDF_FONT_WEIGHT_FALLBACK" | "PDF_FONT_MISSING_GLYPH";
+
+// export: PdfFontDiagnosticV1
+export interface PdfFontDiagnosticV1 {
+    code: PdfFontDiagnosticCodeV1;
+    severity: "warning";
+    family: string;
+    role: string;
+    requested: string;
 }
 
 // export: PdfFontLoadEvidenceV1
@@ -3424,6 +3464,14 @@ export declare function normalizePdfLocale(locale: string | undefined): {
     region?: string;
 };
 
+// export: ParsedFontAxis
+export interface ParsedFontAxis {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
 // export: ParsedFontFace
 export interface ParsedFontFace {
     family: string;
@@ -3716,6 +3764,18 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontDiagnosticCodeV1
+export type PdfFontDiagnosticCodeV1 = "PDF_FONT_STYLE_FALLBACK" | "PDF_FONT_STRETCH_FALLBACK" | "PDF_FONT_WEIGHT_FALLBACK" | "PDF_FONT_MISSING_GLYPH";
+
+// export: PdfFontDiagnosticV1
+export interface PdfFontDiagnosticV1 {
+    code: PdfFontDiagnosticCodeV1;
+    severity: "warning";
+    family: string;
+    role: string;
+    requested: string;
 }
 
 // export: PdfFontLoadEvidenceV1
@@ -4634,7 +4694,7 @@ export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplate
 export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: AtlcliTypstTemplateOptions): string;
 
 // export: createAtlcliTypstTemplateV4
-export declare function createAtlcliTypstTemplateV4(design: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
+export declare function createAtlcliTypstTemplateV4(design: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, baseSource?: string): string;
 
 // export: createAtlcliTypstTemplateV5
 export declare function createAtlcliTypstTemplateV5(design: WikiPdfTemplateDesignV3, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;

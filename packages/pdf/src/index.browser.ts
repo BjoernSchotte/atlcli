@@ -107,6 +107,7 @@ export {
   assertResolvedPdfFontRequirementsV1,
 } from "./font-requirements.js";
 export type {
+  PdfFontDiagnosticCodeV1,
   PdfFontDiagnosticV1,
   PdfFontRequirementReasonKindV1,
   PdfFontRequirementReasonV1,
