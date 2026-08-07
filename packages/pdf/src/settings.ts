@@ -873,15 +873,23 @@ export function typstSettingsDict(
   resolved: ResolvedPdfSettings,
   options: { logoPath?: string } = {}
 ): string {
-  const runtime = resolvePdfCatalogRuntime(resolved.capabilityCatalog);
-  if (resolved.capabilityCatalogDigest !== runtime.reference.digest) {
+  const runtimeReference = resolved.capabilityCatalog.version === 3
+    ? resolvePdfCatalogRuntimeV3(resolved.capabilityCatalog).reference
+    : resolvePdfCatalogRuntime(resolved.capabilityCatalog).reference;
+  if (resolved.capabilityCatalogDigest !== runtimeReference.digest) {
     reject(
       "capabilityCatalogDigest",
       resolved.capabilityCatalogDigest,
       "must match the exact resolved capability catalog identity"
     );
   }
-  const catalogDesign = runtime.project(resolved.design);
+  // Revision 5 retains its complete design in the pack snapshot and exposes a
+  // deliberately narrow V1-shaped runtime-settings projection. Re-projecting
+  // that adapter through the V3 complete-design validator would be a category
+  // error; its exact V3 identity was checked above and at manifest import.
+  const catalogDesign = resolved.capabilityCatalog.version === 3
+    ? resolved.design
+    : resolvePdfCatalogRuntime(resolved.capabilityCatalog).project(resolved.design);
   const designLines: string[] = [
     "  design: (",
     "    branding: (",
@@ -903,15 +911,19 @@ export function typstSettingsDict(
     `      outline: (enabled: ${catalogDesign.features.outline.enabled ? "true" : "false"}, depth: ${numberLiteral(
       catalogDesign.features.outline.depth
     )}),`,
-    ...(runtime.supportsClosingPage
+    ...(resolved.capabilityCatalog.version !== 3 &&
+      resolvePdfCatalogRuntime(resolved.capabilityCatalog).supportsClosingPage
       ? [`      closingPage: (enabled: ${catalogDesign.features.closingPage.enabled ? "true" : "false"}),`]
       : []),
     "    ),",
     "  ),"
   );
 
-  const labelLines: string[] = ["  labels: ("];
-  for (const [key, value] of Object.entries(resolved.labels)) {
+  const labelEntries = Object.entries(resolved.labels);
+  const labelLines: string[] = labelEntries.length === 0
+    ? ["  labels: (:),"]
+    : ["  labels: ("];
+  for (const [key, value] of labelEntries) {
     // Emission guard (defence in depth): a dictionary KEY is interpolated into
     // Typst source unquoted, so only a safe identifier may pass. An unsafe key
     // that somehow slipped past the manifest import gate and the vocabulary
@@ -919,7 +931,7 @@ export function typstSettingsDict(
     assertEmittableKey(key, "labels");
     labelLines.push(`    ${key}: ${typstString(value)},`);
   }
-  labelLines.push("  ),");
+  if (labelEntries.length > 0) labelLines.push("  ),");
 
   const lines: string[] = [...designLines, ...labelLines];
 

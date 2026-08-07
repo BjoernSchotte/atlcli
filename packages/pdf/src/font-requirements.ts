@@ -331,6 +331,7 @@ export function resolvePdfFontRequirementsV1(
         case "literal":
           return slot.value;
         case "pageNumber":
+          if (!designV5.navigation.pageNumbers.enabled) return undefined;
           return slot.numbering === "current-of-total" ? "1 / 1" : "1";
       }
     };
@@ -353,6 +354,31 @@ export function resolvePdfFontRequirementsV1(
           });
         }
       }
+    }
+    if (designV5.navigation.contents.enabled) {
+      const outlineLeader = designV5.navigation.contents.leader ??
+        designV5.components.outline.leader;
+      if (outlineLeader === "dots") {
+        addText("…", headingFamily, "normal", 400, {
+          kind: "renderer-synthetic",
+          detail: "outline-leader",
+        });
+      }
+      const outlinePages = designV5.navigation.contents.pageNumbers ??
+        designV5.components.outline.pageNumbers;
+      if (outlinePages === "show" && designV5.navigation.pageNumbers.enabled) {
+        addText("1", headingFamily, "normal", 400, {
+          kind: "renderer-synthetic",
+          detail: "outline-page-number",
+        });
+      }
+    }
+    if (designV5.navigation.headingNumbers.enabled) {
+      addRole("numbering", headingFamily);
+      addText("1.a.i.", headingFamily, "normal", 600, {
+        kind: "renderer-synthetic",
+        detail: "heading-numbering",
+      });
     }
   } else {
     addFace(headingFamily, "normal", 400, {
@@ -593,6 +619,17 @@ export function resolvePdfFontRequirementsV1(
             });
           }
           walkCaption(block.caption);
+          if (
+            designV5 &&
+            (block.hideLineNumbers === undefined
+              ? designV5.components.codeBlock.lineNumbers === "show"
+              : block.hideLineNumbers === false)
+          ) {
+            addText("0123456789", monoFamily, "normal", 400, {
+              kind: "renderer-synthetic",
+              detail: `${path}:code-line-numbers`,
+            });
+          }
           break;
         case "diagram":
           if (block.title) {
@@ -605,7 +642,7 @@ export function resolvePdfFontRequirementsV1(
           break;
         case "callout": {
           const icon = resolveCalloutIcon(block);
-          if (icon) {
+          if (icon && designV5?.components.callout.icon !== "hide") {
             addText(
               icon.source === "explicit" ? icon.text : icon.icon.symbol,
               headingFamily,
@@ -633,9 +670,22 @@ export function resolvePdfFontRequirementsV1(
           walkBlocks(block.content, inheritedFamily, path);
           break;
         case "list":
-          if (block.ordered) addRole("numbering", headingFamily);
+          if (block.ordered) {
+            addRole("numbering", headingFamily);
+            if (designV5) {
+              addText("1.a.i.", headingFamily, "normal", 600, {
+                kind: "renderer-synthetic",
+                detail: `${path}:enumeration-markers`,
+              });
+            }
+          }
           else {
-            addText("—•◦", headingFamily, "normal", 400, {
+            const markers = designV5?.components.list.bulletPreset === "compact"
+              ? "•"
+              : designV5?.components.list.bulletPreset === "dash"
+                ? "—"
+                : "—•◦";
+            addText(markers, headingFamily, "normal", 400, {
               kind: "renderer-synthetic",
               detail: `${path}:list-markers`,
             });

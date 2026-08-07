@@ -11,8 +11,10 @@ import type {
   TableCell,
   TableRow,
 } from "@atlcli/confluence";
-import type { TemplateManifest } from "@atlcli/template-pack";
-import type { ValidatedPdfTemplatePackV1 } from "./template-pack.js";
+import type {
+  AnyPdfTemplateManifest,
+  ValidatedPdfTemplatePackV1,
+} from "./template-pack.js";
 import type { ResolvedPdfFontRequirementsV1 } from "./font-requirements.js";
 import type { HighlightedCode } from "@atlcli/code-highlight/contract";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
@@ -306,7 +308,7 @@ export interface PdfSerializeOptions {
    * — only this manifest differs. Host UI for selecting a template is folder
    * 010's job; this field is the data seam it drives.
    */
-  templateManifest?: TemplateManifest;
+  templateManifest?: AnyPdfTemplateManifest;
   /**
    * Explicit image-quality request (issue #118 Phase 1), applied here ONLY
    * to the template logo — the fourth asset source, which bypasses

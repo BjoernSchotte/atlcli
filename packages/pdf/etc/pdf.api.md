@@ -693,7 +693,7 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
-    templateManifest?: TemplateManifest;
+    templateManifest?: AnyPdfTemplateManifest;
     imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
@@ -1334,8 +1334,8 @@ export interface WikiPdfTemplateDesignV3 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions: DesignPageCompositionsV3;
-    navigation: Readonly<Record<string, unknown>>;
-    components: Readonly<Record<string, unknown>>;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
     paints?: Readonly<Record<string, unknown>>;
     decorations?: readonly unknown[];
 }
@@ -2030,7 +2030,7 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
-    templateManifest?: TemplateManifest;
+    templateManifest?: AnyPdfTemplateManifest;
     imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
@@ -2671,8 +2671,8 @@ export interface WikiPdfTemplateDesignV3 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions: DesignPageCompositionsV3;
-    navigation: Readonly<Record<string, unknown>>;
-    components: Readonly<Record<string, unknown>>;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
     paints?: Readonly<Record<string, unknown>>;
     decorations?: readonly unknown[];
 }
@@ -3367,7 +3367,7 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
-    templateManifest?: TemplateManifest;
+    templateManifest?: AnyPdfTemplateManifest;
     imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
@@ -4008,8 +4008,8 @@ export interface WikiPdfTemplateDesignV3 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions: DesignPageCompositionsV3;
-    navigation: Readonly<Record<string, unknown>>;
-    components: Readonly<Record<string, unknown>>;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
     paints?: Readonly<Record<string, unknown>>;
     decorations?: readonly unknown[];
 }
@@ -4030,10 +4030,17 @@ export interface AtlcliTypstPageModelV5 {
     running: DesignPageCompositionsV3["running"];
 }
 
+// export: AtlcliTypstSemanticModelV5
+export interface AtlcliTypstSemanticModelV5 {
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+}
+
 // export: AtlcliTypstTemplateOptions
 export interface AtlcliTypstTemplateOptions {
     positionedLogo?: boolean;
     pageModelV5?: AtlcliTypstPageModelV5;
+    semanticModelV5?: AtlcliTypstSemanticModelV5;
 }
 
 // export: buildUniformPdfPageBorderV1
@@ -4589,10 +4596,17 @@ export interface AtlcliTypstPageModelV5 {
     running: DesignPageCompositionsV3["running"];
 }
 
+// export: AtlcliTypstSemanticModelV5
+export interface AtlcliTypstSemanticModelV5 {
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+}
+
 // export: AtlcliTypstTemplateOptions
 export interface AtlcliTypstTemplateOptions {
     positionedLogo?: boolean;
     pageModelV5?: AtlcliTypstPageModelV5;
+    semanticModelV5?: AtlcliTypstSemanticModelV5;
 }
 
 // export: createAtlcliTypstTemplate

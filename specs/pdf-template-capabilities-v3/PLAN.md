@@ -752,21 +752,28 @@ and revisions 1-4 remain exact.
 
 **Implementation**
 
-- [ ] Model visible contents, viewer bookmarks, heading numbering, and page
+- [x] Model visible contents, viewer bookmarks, heading numbering, and page
       numbering as independent bounded policies.
-- [ ] Add semantic style objects for paragraph, bullet list, enumeration,
+- [x] Add semantic style objects for paragraph, bullet list, enumeration,
       table, outline, callout, and code block. Use allowlisted presets and token
       references; do not accept Typst numbering functions, content values,
       selectors, or show rules.
-- [ ] Expose Typst 0.15.1 list-marker alignment as a bounded enum on semantic
+- [x] Expose Typst 0.15.1 list-marker alignment as a bounded enum on semantic
       list styles; do not expose arbitrary marker content or layout functions.
-- [ ] Move current hard-coded renderer choices behind baseline defaults so the
+- [x] Move current hard-coded renderer choices behind baseline defaults so the
       neutral catalog-V3 baseline reproduces the existing visual behavior.
-- [ ] Generate renderer-owned Typst set/show rules from validated policies.
-- [ ] Ensure repeated table headers retain correct semantics and reading order;
+- [x] Generate renderer-owned Typst set/show rules from validated policies.
+- [x] Ensure repeated table headers retain correct semantics and reading order;
       banding and borders are visual only.
-- [ ] Update font requirements for generated markers, numbering, outline
+- [x] Update font requirements for generated markers, numbering, outline
       leaders, callout labels, and code line numbers.
+
+Typst 0.15.1 exposes a separate `heading.bookmarked` boolean but no separate
+bookmark-title value. Catalog V3 therefore rejects the unsafe combination
+"native heading numbers visible + bookmarks enabled + heading numbers omitted
+from bookmark titles". The four navigation enablement policies remain
+independent; removing numbers from bookmark titles while keeping native visible
+numbers is deferred until the compiler has a semantic primitive for it.
 
 **Tests**
 

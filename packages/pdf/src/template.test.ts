@@ -182,10 +182,119 @@ describe("atlcli Typst template settings rendering", () => {
     );
     expect(source).toContain('text("First [page]")');
     expect(source).toContain(
-      'numbering("1 / 1", counter(page).get().first(), counter(page).final().first())',
+      'let pattern = atlcli-page-numbering.at(here())',
     );
     expect(source).toContain("calc.odd(current-page)");
     expect(source).toContain("let chapters = query(heading.where(level: 1))");
+  });
+
+  it("keeps contents, bookmarks, heading numbers, and page-number phases independent", () => {
+    const design = revision5Design();
+    design.navigation = {
+      contents: { enabled: false, depth: 5 },
+      bookmarks: { enabled: true, depth: 2, includeHeadingNumbers: true },
+      headingNumbers: { enabled: true, preset: "decimal-alpha" },
+      pageNumbers: {
+        enabled: true,
+        preset: "roman-lower",
+        start: 3,
+        body: { preset: "arabic", start: 1 },
+      },
+    };
+    const source = createAtlcliTypstTemplateV5(design);
+    expect(source).toContain('numbering: "i"');
+    expect(source).toContain("counter(page).update(3)");
+    expect(source).toContain('atlcli-page-numbering.update("1")');
+    expect(source).toContain("counter(page).update(1)");
+    expect(source).toContain('set heading(numbering: "1.a)", bookmarked: false)');
+    expect(source).toContain(
+      "show heading.where(level: 2): set heading(bookmarked: true)",
+    );
+    expect(source).not.toContain(
+      "show heading.where(level: 3): set heading(bookmarked: true)",
+    );
+    expect(source).toContain("if outline-config.at(\"enabled\", default: false)");
+  });
+
+  it("maps every bounded heading/page numbering preset and can suppress page labels", () => {
+    const headingCases = [
+      ["decimal", "1."],
+      ["decimal-dot", "1.1."],
+      ["decimal-alpha", "1.a)"],
+      ["decimal-alpha-roman", "1.a.i."],
+    ] as const;
+    for (const [preset, pattern] of headingCases) {
+      const design = revision5Design();
+      design.navigation.headingNumbers = { enabled: true, preset };
+      expect(createAtlcliTypstTemplateV5(design)).toContain(
+        `set heading(numbering: ${JSON.stringify(pattern)}, bookmarked: false)`,
+      );
+    }
+
+    for (const [preset, pattern] of [
+      ["arabic", "1"],
+      ["roman-lower", "i"],
+      ["roman-upper", "I"],
+    ] as const) {
+      const design = revision5Design();
+      design.navigation.pageNumbers.preset = preset;
+      expect(createAtlcliTypstTemplateV5(design)).toContain(
+        `numbering: ${JSON.stringify(pattern)}`,
+      );
+    }
+
+    const hidden = revision5Design();
+    hidden.navigation.pageNumbers.enabled = false;
+    const hiddenSource = createAtlcliTypstTemplateV5(hidden);
+    expect(hiddenSource).toContain("numbering: none");
+    expect(hiddenSource).not.toContain('pdf.artifact(kind: "page-number"');
+  });
+
+  it("generates only bounded component set/show rules and token references", () => {
+    const design = revision5Design();
+    design.components = {
+      paragraph: { align: "justify", hyphenation: "off" },
+      list: {
+        bulletPreset: "compact",
+        markerAlign: "horizon",
+        markerColor: "accent",
+      },
+      enumeration: {
+        numberingPreset: "roman-lower",
+        markerAlign: "start",
+        markerColor: "ink",
+      },
+      table: {
+        repeatHeader: false,
+        banding: "rows",
+        borders: "outer",
+        bandColor: "codeBackground",
+        borderColor: "tableStroke",
+      },
+      outline: {
+        leader: "line",
+        pageNumbers: "hide",
+        leaderColor: "accent",
+      },
+      callout: { preset: "outline", icon: "hide", accentColor: "accent" },
+      codeBlock: {
+        wrap: "none",
+        lineNumbers: "show",
+        backgroundColor: "codeBackground",
+      },
+    };
+    design.navigation.contents = { enabled: true, depth: 2 };
+    const source = createAtlcliTypstTemplateV5(design);
+    expect(source).toContain("justify: true");
+    expect(source).toContain("show par: set text(hyphenate: false)");
+    expect(source).toContain("marker-align: horizon");
+    expect(source).toContain("number-align: start");
+    expect(source).toContain('let pattern = "i."');
+    expect(source).toContain("#box(width: 1fr, line(length: 100%");
+    expect(source).not.toContain("#it.page()");
+    expect(source).toContain("fill: none");
+    expect(source).toContain("stroke: 3pt + foreground");
+    expect(source).toContain("#if false and icon != none");
   });
 
   it("maps the Letter preset to Typst's paper catalog and preserves orientation", () => {

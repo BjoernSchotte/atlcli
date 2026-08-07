@@ -451,6 +451,12 @@ describe("typstSettingsDict", () => {
     expect(dict).not.toContain("watermark:");
   });
 
+  it("emits an empty label map as a Typst dictionary, never an array", () => {
+    const dict = typstSettingsDict({ ...resolvePdfSettings(), labels: {} });
+    expect(dict).toContain("labels: (:)");
+    expect(dict).not.toContain("labels: (\n  )");
+  });
+
   it("emits the settings-driven design subset and filled watermark defaults", () => {
     const dict = typstSettingsDict(
       resolvePdfSettings({

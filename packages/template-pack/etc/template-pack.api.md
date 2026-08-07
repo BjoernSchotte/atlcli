@@ -164,10 +164,30 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -182,14 +202,77 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "left",
     "center",
     "right"
+];
+
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
 ];
 
 // export: DESIGN_RUNNING_FIELDS_V3
@@ -213,11 +296,33 @@ export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
     "three-column"
 ];
 
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -227,6 +332,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -248,8 +366,37 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -267,6 +414,16 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -292,11 +449,54 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
+
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
 
 // export: DesignOverlayValidationV2
 export interface DesignOverlayValidationV2 {
@@ -363,6 +563,21 @@ export type DesignPageMarginV3 = {
     outside: DesignLength;
 };
 
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
 // export: DesignPageV3
 export interface DesignPageV3 {
     format: DesignPageFormatV3;
@@ -370,6 +585,15 @@ export interface DesignPageV3 {
     binding: "left" | "right";
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
+}
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
 }
 
 // export: DesignRunningFieldV3
@@ -405,6 +629,21 @@ export interface DesignRunningVariantV3 {
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -986,8 +1225,8 @@ export interface WikiPdfTemplateDesignV3 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions: DesignPageCompositionsV3;
-    navigation: Readonly<Record<string, unknown>>;
-    components: Readonly<Record<string, unknown>>;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
     paints?: Readonly<Record<string, unknown>>;
     decorations?: readonly unknown[];
 }
@@ -1237,10 +1476,30 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -1255,14 +1514,77 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "left",
     "center",
     "right"
+];
+
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
 ];
 
 // export: DESIGN_RUNNING_FIELDS_V3
@@ -1286,11 +1608,33 @@ export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
     "three-column"
 ];
 
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -1300,6 +1644,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -1321,8 +1678,37 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -1340,6 +1726,16 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -1365,11 +1761,54 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
+
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
 
 // export: DesignOverlayValidationV2
 export interface DesignOverlayValidationV2 {
@@ -1436,6 +1875,21 @@ export type DesignPageMarginV3 = {
     outside: DesignLength;
 };
 
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
 // export: DesignPageV3
 export interface DesignPageV3 {
     format: DesignPageFormatV3;
@@ -1443,6 +1897,15 @@ export interface DesignPageV3 {
     binding: "left" | "right";
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
+}
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
 }
 
 // export: DesignRunningFieldV3
@@ -1478,6 +1941,21 @@ export interface DesignRunningVariantV3 {
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -2059,8 +2537,8 @@ export interface WikiPdfTemplateDesignV3 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions: DesignPageCompositionsV3;
-    navigation: Readonly<Record<string, unknown>>;
-    components: Readonly<Record<string, unknown>>;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
     paints?: Readonly<Record<string, unknown>>;
     decorations?: readonly unknown[];
 }
@@ -2310,10 +2788,30 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -2328,14 +2826,77 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "left",
     "center",
     "right"
+];
+
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
 ];
 
 // export: DESIGN_RUNNING_FIELDS_V3
@@ -2359,11 +2920,33 @@ export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
     "three-column"
 ];
 
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -2373,6 +2956,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -2394,8 +2990,37 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -2413,6 +3038,16 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -2438,11 +3073,54 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
+
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
 
 // export: DesignOverlayValidationV2
 export interface DesignOverlayValidationV2 {
@@ -2509,6 +3187,21 @@ export type DesignPageMarginV3 = {
     outside: DesignLength;
 };
 
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
 // export: DesignPageV3
 export interface DesignPageV3 {
     format: DesignPageFormatV3;
@@ -2516,6 +3209,15 @@ export interface DesignPageV3 {
     binding: "left" | "right";
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
+}
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
 }
 
 // export: DesignRunningFieldV3
@@ -2551,6 +3253,21 @@ export interface DesignRunningVariantV3 {
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -3132,8 +3849,8 @@ export interface WikiPdfTemplateDesignV3 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions: DesignPageCompositionsV3;
-    navigation: Readonly<Record<string, unknown>>;
-    components: Readonly<Record<string, unknown>>;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
     paints?: Readonly<Record<string, unknown>>;
     decorations?: readonly unknown[];
 }
@@ -3383,10 +4100,30 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -3401,14 +4138,77 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "left",
     "center",
     "right"
+];
+
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
 ];
 
 // export: DESIGN_RUNNING_FIELDS_V3
@@ -3432,11 +4232,33 @@ export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
     "three-column"
 ];
 
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -3446,6 +4268,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -3467,8 +4302,37 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -3486,6 +4350,16 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -3511,11 +4385,54 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
+
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
 
 // export: DesignOverlayValidationV2
 export interface DesignOverlayValidationV2 {
@@ -3582,6 +4499,21 @@ export type DesignPageMarginV3 = {
     outside: DesignLength;
 };
 
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
 // export: DesignPageV3
 export interface DesignPageV3 {
     format: DesignPageFormatV3;
@@ -3589,6 +4521,15 @@ export interface DesignPageV3 {
     binding: "left" | "right";
     margin: DesignPageMarginV3;
     bleed?: DesignPageBleedV3;
+}
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
 }
 
 // export: DesignRunningFieldV3
@@ -3624,6 +4565,21 @@ export interface DesignRunningVariantV3 {
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -4205,8 +5161,8 @@ export interface WikiPdfTemplateDesignV3 {
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
     compositions: DesignPageCompositionsV3;
-    navigation: Readonly<Record<string, unknown>>;
-    components: Readonly<Record<string, unknown>>;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
     paints?: Readonly<Record<string, unknown>>;
     decorations?: readonly unknown[];
 }

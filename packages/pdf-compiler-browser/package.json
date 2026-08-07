@@ -39,6 +39,7 @@
     "@atlcli/docx-template-intake": "workspace:*",
     "@atlcli/pdf-template-authoring": "workspace:*",
     "@atlcli/template-pack": "workspace:*",
-    "@myriaddreamin/typst-ts-web-compiler": "https://github.com/BjoernSchotte/typst.ts/releases/download/web-compiler-v0.8.0-rc3.typst0151.1/myriaddreamin-typst-ts-web-compiler-0.8.0-rc3.typst0151.1.tgz"
+    "@myriaddreamin/typst-ts-web-compiler": "https://github.com/BjoernSchotte/typst.ts/releases/download/web-compiler-v0.8.0-rc3.typst0151.1/myriaddreamin-typst-ts-web-compiler-0.8.0-rc3.typst0151.1.tgz",
+    "pdfjs-dist": "^6.1.200"
   }
 }

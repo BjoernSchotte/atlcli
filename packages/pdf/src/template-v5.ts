@@ -39,18 +39,6 @@ export function projectPdfDesignV5RuntimeSettings(
   design: WikiPdfTemplateDesignV3,
 ): WikiPdfTemplateDesignV1 {
   const contents = design.navigation.contents;
-  const outlineEnabled =
-    typeof contents === "object" &&
-    contents !== null &&
-    !Array.isArray(contents) &&
-    (contents as Record<string, unknown>).enabled === true;
-  const depth =
-    typeof contents === "object" &&
-    contents !== null &&
-    !Array.isArray(contents) &&
-    Number.isSafeInteger((contents as Record<string, unknown>).depth)
-      ? ((contents as Record<string, unknown>).depth as number)
-      : 3;
   return {
     page: {
       size:
@@ -62,7 +50,7 @@ export function projectPdfDesignV5RuntimeSettings(
     },
     features: {
       cover: { enabled: true },
-      outline: { enabled: outlineEnabled, depth },
+      outline: { enabled: contents.enabled, depth: contents.depth },
       header: {
         enabled: design.compositions.running.header.enabled,
         mode: "title",
@@ -92,6 +80,10 @@ export function createAtlcliTypstTemplateV5(
       pageModelV5: {
         page: validated.page,
         running: validated.compositions.running,
+      },
+      semanticModelV5: {
+        navigation: validated.navigation,
+        components: validated.components,
       },
     },
   );

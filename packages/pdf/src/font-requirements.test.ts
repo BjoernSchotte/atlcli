@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { validateManifestV3 } from "@atlcli/template-pack";
+import {
+  validateManifestV3,
+  type WikiPdfTemplateDesignV3,
+} from "@atlcli/template-pack";
 import type { PreparedPdfBlock, PreparedPdfDocument } from "./types.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { serializePdfDocument } from "./serialize.js";
@@ -93,7 +96,10 @@ function brandLockupRequirements(options: {
   });
 }
 
-function runningV5Requirements(literal?: string) {
+function runningV5Requirements(
+  literal?: string,
+  configure?: (design: WikiPdfTemplateDesignV3) => void,
+) {
   const design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design);
   const header = (
     (design.compositions as Record<string, unknown>).running as Record<
@@ -105,6 +111,7 @@ function runningV5Requirements(literal?: string) {
   header.odd = literal === undefined
     ? { center: { field: "documentTitle" } }
     : { center: { field: "literal", value: literal } };
+  configure?.(design as unknown as WikiPdfTemplateDesignV3);
   const manifest = validateManifestV3({
     schemaVersion: 1,
     id: "fixture.fonts-v5",
@@ -149,6 +156,38 @@ describe("resolved PDF font requirements v1", () => {
     expect(hidden.assets.map(({ fileName }) => fileName)).not.toContain(
       "NotoEmoji-wght.ttf",
     );
+  });
+
+  it("accounts for revision-5 outline leaders, page numbers, and heading numbering", () => {
+    const visible = runningV5Requirements(undefined, (design) => {
+      design.navigation.contents = {
+        enabled: true,
+        depth: 3,
+        leader: "dots",
+        pageNumbers: "show",
+      };
+      design.navigation.headingNumbers = {
+        enabled: true,
+        preset: "decimal-alpha-roman",
+      };
+    });
+    const visibleDetails = visible.assets
+      .flatMap(({ reasons }) => reasons)
+      .map(({ detail }) => detail);
+    expect(visibleDetails).toContain("outline-leader");
+    expect(visibleDetails).toContain("outline-page-number");
+    expect(visibleDetails).toContain("heading-numbering");
+
+    const hidden = runningV5Requirements(undefined, (design) => {
+      design.navigation.contents.enabled = false;
+      design.navigation.headingNumbers.enabled = false;
+    });
+    const hiddenDetails = hidden.assets
+      .flatMap(({ reasons }) => reasons)
+      .map(({ detail }) => detail);
+    expect(hiddenDetails).not.toContain("outline-leader");
+    expect(hiddenDetails).not.toContain("outline-page-number");
+    expect(hiddenDetails).not.toContain("heading-numbering");
   });
 
   it("includes only visible brand-lockup roles and Unicode demand", () => {

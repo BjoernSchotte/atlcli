@@ -35,7 +35,11 @@ import {
   BUILTIN_PDF_FALLBACK_LABELS,
 } from "./builtin-template.js";
 import type {
+  DesignComponentsV3,
+  DesignHeadingNumberingPresetV3,
+  DesignNavigationV3,
   DesignPageCompositionsV3,
+  DesignPageNumberingPresetV3,
   DesignPageV3,
   DesignRunningRegionV3,
   DesignRunningSlotV3,
@@ -63,13 +67,49 @@ export interface AtlcliTypstPageModelV5 {
   running: DesignPageCompositionsV3["running"];
 }
 
+export interface AtlcliTypstSemanticModelV5 {
+  navigation: DesignNavigationV3;
+  components: DesignComponentsV3;
+}
+
 export interface AtlcliTypstTemplateOptions {
   positionedLogo?: boolean;
   /** Data-only revision-5 page model; historical callers leave this absent. */
   pageModelV5?: AtlcliTypstPageModelV5;
+  /** Data-only revision-5 navigation/component policy. */
+  semanticModelV5?: AtlcliTypstSemanticModelV5;
 }
 
-function runningSlotSourceV5(slot: DesignRunningSlotV3 | undefined): string {
+function headingNumberingPatternV5(
+  preset: DesignHeadingNumberingPresetV3,
+): string {
+  switch (preset) {
+    case "decimal":
+      return "1.";
+    case "decimal-dot":
+      return "1.1.";
+    case "decimal-alpha":
+      return "1.a)";
+    case "decimal-alpha-roman":
+      return "1.a.i.";
+  }
+}
+
+function pageNumberingPatternV5(preset: DesignPageNumberingPresetV3): string {
+  switch (preset) {
+    case "arabic":
+      return "1";
+    case "roman-lower":
+      return "i";
+    case "roman-upper":
+      return "I";
+  }
+}
+
+function runningSlotSourceV5(
+  slot: DesignRunningSlotV3 | undefined,
+  pageNumbersEnabled: boolean,
+): string {
   if (!slot) return "[]";
   switch (slot.field) {
     case "documentTitle":
@@ -101,32 +141,34 @@ function runningSlotSourceV5(slot: DesignRunningSlotV3 | undefined): string {
     case "literal":
       return `text(${typstString(slot.value ?? "")})`;
     case "pageNumber":
+      if (!pageNumbersEnabled) return "[]";
       return slot.numbering === "current-of-total"
-        ? 'pdf.artifact(kind: "page-number", context numbering("1 / 1", counter(page).get().first(), counter(page).final().first()))'
-        : 'pdf.artifact(kind: "page-number", context counter(page).display("1"))';
+        ? 'pdf.artifact(kind: "page-number", context {\n          let pattern = atlcli-page-numbering.at(here())\n          numbering(pattern, counter(page).get().first()) + text(" / ") + numbering(pattern, counter(page).final().first())\n        })'
+        : 'pdf.artifact(kind: "page-number", context numbering(atlcli-page-numbering.at(here()), counter(page).get().first()))';
   }
 }
 
 function runningVariantSourceV5(
   variant: "hide" | DesignRunningVariantV3,
   layout: DesignRunningRegionV3["layout"],
+  pageNumbersEnabled: boolean,
 ): string {
   if (variant === "hide") return "[]";
   if (layout === "single") {
-    return `align(center, ${runningSlotSourceV5(variant.center)})`;
+    return `align(center, ${runningSlotSourceV5(variant.center, pageNumbersEnabled)})`;
   }
   if (layout === "split") {
     return `grid(
         columns: (1fr, 1fr),
-        align(start, ${runningSlotSourceV5(variant.start)}),
-        align(end, ${runningSlotSourceV5(variant.end)}),
+        align(start, ${runningSlotSourceV5(variant.start, pageNumbersEnabled)}),
+        align(end, ${runningSlotSourceV5(variant.end, pageNumbersEnabled)}),
       )`;
   }
   return `grid(
         columns: (1fr, auto, 1fr),
-        align(start, ${runningSlotSourceV5(variant.start)}),
-        align(center, ${runningSlotSourceV5(variant.center)}),
-        align(end, ${runningSlotSourceV5(variant.end)}),
+        align(start, ${runningSlotSourceV5(variant.start, pageNumbersEnabled)}),
+        align(center, ${runningSlotSourceV5(variant.center, pageNumbersEnabled)}),
+        align(end, ${runningSlotSourceV5(variant.end, pageNumbersEnabled)}),
       )`;
 }
 
@@ -134,15 +176,28 @@ function runningRegionSourceV5(
   region: DesignRunningRegionV3,
   kind: "header" | "footer",
   headerRule: string,
+  pageNumbersEnabled: boolean,
 ): string {
   if (!region.enabled) return "      []";
-  const first = runningVariantSourceV5(region.first, region.layout);
-  const odd = runningVariantSourceV5(region.odd, region.layout);
-  const even = runningVariantSourceV5(region.even, region.layout);
+  const first = runningVariantSourceV5(
+    region.first,
+    region.layout,
+    pageNumbersEnabled,
+  );
+  const odd = runningVariantSourceV5(
+    region.odd,
+    region.layout,
+    pageNumbersEnabled,
+  );
+  const even = runningVariantSourceV5(
+    region.even,
+    region.layout,
+    pageNumbersEnabled,
+  );
   const body = kind === "header"
     ? `block(width: 100%)[#running-content #line(length: 100%, stroke: ${headerRule})]`
     : "running-content";
-  return String.raw`      let current-page = counter(page).get().first()
+  return String.raw`      let current-page = here().page()
       let running-content = if current-page == 1 {
         ${first}
       } else if calc.odd(current-page) {
@@ -153,7 +208,10 @@ function runningRegionSourceV5(
       pdf.artifact(kind: ${typstString(kind)}, ${body})`;
 }
 
-function pageGeometrySourceV5(page: DesignPageV3): string {
+function pageGeometrySourceV5(
+  page: DesignPageV3,
+  numbering: string | undefined,
+): string {
   const size = page.format.kind === "preset"
     ? `paper: ${typstString(page.format.name === "letter" ? "us-letter" : page.format.name)},\n    flipped: ${page.orientation === "landscape" ? "true" : "false"}`
     : `width: ${page.orientation === "landscape" ? page.format.height : page.format.width},\n    height: ${page.orientation === "landscape" ? page.format.width : page.format.height}`;
@@ -163,7 +221,7 @@ function pageGeometrySourceV5(page: DesignPageV3): string {
   const bleed = page.bleed
     ? `,\n    bleed: (top: ${page.bleed.top}, bottom: ${page.bleed.bottom}, inside: ${page.bleed.inside}, outside: ${page.bleed.outside})`
     : "";
-  return `${size},\n    binding: ${page.binding},\n    margin: ${margin}${bleed},\n    numbering: "1"`;
+  return `${size},\n    binding: ${page.binding},\n    margin: ${margin}${bleed},\n    numbering: ${numbering === undefined ? "none" : typstString(numbering)}`;
 }
 
 /**
@@ -186,6 +244,9 @@ export function createAtlcliTypstTemplate(
   const callouts = catalogDesign.semanticPalettes.callouts;
   const margin = catalogDesign.page.margin;
   const positionedLogo = options.positionedLogo === true;
+  const semanticV5 = options.semanticModelV5;
+  const navigationV5 = semanticV5?.navigation;
+  const componentsV5 = semanticV5?.components;
 
   const need = <T>(map: Record<string, T>, key: string, kind: string): T => {
     const value = map[key];
@@ -220,6 +281,8 @@ export function createAtlcliTypstTemplate(
     return { bg: palette.background, fg: palette.foreground };
   };
   const label = (key: string): string => labels[key] ?? "";
+  const colorTokenV5 = (name: string | undefined, fallback: string): string =>
+    C(name ?? fallback);
 
   // Gen-time defaults for the settings-driven subset (backward-compat with
   // `settings: (:)`); overridden at runtime by the emitted `settings.design`.
@@ -341,9 +404,13 @@ export function createAtlcliTypstTemplate(
   const flowLogoCondition = positionedLogo
     ? "logo-path != none and logo-placement == none"
     : "logo-path != none";
+  const initialPageNumberingV5 = navigationV5?.pageNumbers.enabled
+    ? pageNumberingPatternV5(navigationV5.pageNumbers.preset)
+    : undefined;
+  const pageNumbersEnabledV5 = navigationV5?.pageNumbers.enabled ?? true;
   const pageSetupSource = options.pageModelV5
     ? String.raw`  set page(
-    ${pageGeometrySourceV5(options.pageModelV5.page)},
+    ${pageGeometrySourceV5(options.pageModelV5.page, initialPageNumberingV5)},
     fill: cover-paper,
     background: ${pageBackgroundSource},
     header: context {${headerDecorationSource}
@@ -352,6 +419,7 @@ ${runningRegionSourceV5(
   options.pageModelV5.running.header,
   "header",
   `rgb("${C("hairline")}")`,
+  pageNumbersEnabledV5,
 )}
     },
     footer: context {${footerDecorationSource}
@@ -360,6 +428,7 @@ ${runningRegionSourceV5(
   options.pageModelV5.running.footer,
   "footer",
   `rgb("${C("hairline")}")`,
+  pageNumbersEnabledV5,
 )}
     },
   )`
@@ -401,16 +470,176 @@ ${headerResolution}
     },
   )`;
 
+  const paragraphPolicySourceV5 = componentsV5
+    ? String.raw`  set par(
+    leading: ${L("paragraphLeading")},
+    spacing: ${L("paragraphSpacing")},
+    justify: ${componentsV5.paragraph.align === "justify" ? "true" : "false"},
+  )
+  show par: set text(hyphenate: ${componentsV5.paragraph.hyphenation === "auto" ? "true" : "false"})${
+    componentsV5.paragraph.align === "justify"
+      ? ""
+      : `\n  show par: set align(${componentsV5.paragraph.align === "left" ? "start" : componentsV5.paragraph.align === "right" ? "end" : "center"})`
+  }`
+    : `  set par(leading: ${L("paragraphLeading")}, spacing: ${L("paragraphSpacing")}, justify: false)`;
+
+  const listMarkersV5 = componentsV5
+    ? componentsV5.list.bulletPreset === "compact"
+      ? [EDITORIAL_BULLET, EDITORIAL_BULLET, EDITORIAL_BULLET]
+      : componentsV5.list.bulletPreset === "dash"
+        ? [EDITORIAL_DASH, EDITORIAL_DASH, EDITORIAL_DASH]
+        : [EDITORIAL_DASH, EDITORIAL_BULLET, EDITORIAL_NESTED_BULLET]
+    : [EDITORIAL_DASH, EDITORIAL_BULLET, EDITORIAL_NESTED_BULLET];
+  const listMarkerColorV5 = colorTokenV5(
+    componentsV5?.list.markerColor,
+    "muted",
+  );
+  const listPolicySourceV5 = String.raw`  set list(
+    marker: (
+      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${listMarkerColorV5}"))[${listMarkersV5[0]}]],
+      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${listMarkerColorV5}"))[${listMarkersV5[1]}]],
+      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${listMarkerColorV5}"))[${listMarkersV5[2]}]],
+    ),
+    body-indent: ${L("listBodyIndent")},
+    spacing: ${L("listSpacing")},${
+      componentsV5
+        ? `\n    marker-align: ${componentsV5.list.markerAlign},`
+        : ""
+    }
+  )`;
+  const enumerationPolicySourceV5 = String.raw`  set enum(
+    numbering: editorial-numbering,
+    body-indent: ${L("enumBodyIndent")},
+    spacing: ${L("enumSpacing")},${
+      componentsV5
+        ? `\n    number-align: ${componentsV5.enumeration.markerAlign},`
+        : ""
+    }
+  )`;
+
+  const headingPatternV5 = navigationV5
+    ? headingNumberingPatternV5(navigationV5.headingNumbers.preset)
+    : undefined;
+  const nativeHeadingNumbersV5 =
+    navigationV5?.headingNumbers.enabled === true;
+  const bookmarkPolicySourceV5 = navigationV5
+    ? [
+        `  set heading(numbering: ${nativeHeadingNumbersV5 ? typstString(headingPatternV5!) : "none"}, bookmarked: false)`,
+        ...(navigationV5.bookmarks.enabled
+          ? Array.from(
+              { length: navigationV5.bookmarks.depth },
+              (_, index) =>
+                `  show heading.where(level: ${index + 1}): set heading(bookmarked: true)`,
+            )
+          : []),
+      ].join("\n")
+    : "";
+  const headingBodyV5 = (it: string): string => it;
+
+  const effectiveOutlineLeaderV5 =
+    navigationV5?.contents.leader ?? componentsV5?.outline.leader;
+  const effectiveOutlinePageNumbersV5 =
+    navigationV5?.contents.pageNumbers ?? componentsV5?.outline.pageNumbers;
+  const outlineLeaderColorV5 = colorTokenV5(
+    componentsV5?.outline.leaderColor,
+    "muted",
+  );
+  const outlineLeaderSourceV5 = effectiveOutlineLeaderV5 === "none"
+    ? "[]"
+    : effectiveOutlineLeaderV5 === "line"
+      ? `line(length: 100%, stroke: rgb(${typstString(outlineLeaderColorV5)}))`
+      : `text(fill: rgb(${typstString(outlineLeaderColorV5)}), it.fill)`;
+  const outlinePrefixSourceV5 = "it.prefix()";
+  const outlineEntrySourceV5 = semanticV5
+    ? String.raw`    show outline.entry: it => context {
+      let title = atlcli-outline-title.at(it.element.location())
+      let prefix = ${outlinePrefixSourceV5}
+      link(
+        it.element.location(),
+        it.indented(prefix, [
+          #title
+          #box(width: 1fr, ${outlineLeaderSourceV5})${
+            effectiveOutlinePageNumbersV5 === "show" ? "\n          #it.page()" : ""
+          }
+        ]),
+      )
+    }`
+    : String.raw`    show outline.entry: it => context {
+      let title = atlcli-outline-title.at(it.element.location())
+      link(
+        it.element.location(),
+        it.indented(it.prefix(), [
+          #title
+          #box(width: 1fr, it.fill)
+          #it.page()
+        ]),
+      )
+    }`;
+  const outlineInvocationSourceV5 = navigationV5
+    ? String.raw`    heading(numbering: none, outlined: false, bookmarked: false, contents-label)
+    outline(title: none, depth: ${navigationV5.contents.depth})`
+    : `    outline(title: contents-label, depth: outline-config.at("depth", default: ${outlineDepthDefault}))`;
+  const initialPageCounterSourceV5 = navigationV5?.pageNumbers.enabled
+    ? `\n  counter(page).update(${navigationV5.pageNumbers.start})`
+    : "";
+  const bodyPageNumberSourceV5 = navigationV5?.pageNumbers.body &&
+    navigationV5.pageNumbers.enabled
+    ? String.raw`  atlcli-page-numbering.update(${typstString(
+        pageNumberingPatternV5(navigationV5.pageNumbers.body.preset),
+      )})
+  counter(page).update(${navigationV5.pageNumbers.body.start})
+  set page(numbering: ${typstString(
+    pageNumberingPatternV5(navigationV5.pageNumbers.body.preset),
+  )})
+`
+    : "";
+  const bodyHeadingCounterSourceV5 = navigationV5?.headingNumbers.enabled
+    ? "  counter(heading).update(0)\n"
+    : "";
+  const enumerationPatternSourceV5 = !componentsV5 ||
+    componentsV5.enumeration.numberingPreset === "decimal-alpha-roman"
+    ? 'if values.len() == 1 { "1." } else if values.len() == 2 { "a)" } else { "i." }'
+    : typstString(
+        componentsV5.enumeration.numberingPreset === "decimal"
+          ? "1."
+          : componentsV5.enumeration.numberingPreset === "alpha-lower"
+            ? "a)"
+            : "i.",
+      );
+  const enumerationMarkerColorV5 = colorTokenV5(
+    componentsV5?.enumeration.markerColor,
+    "muted",
+  );
+  const codeBackgroundColorV5 = colorTokenV5(
+    componentsV5?.codeBlock.backgroundColor,
+    "codeBackground",
+  );
+  const calloutAccentColorV5 = componentsV5?.callout.accentColor
+    ? colorTokenV5(componentsV5.callout.accentColor, "accent")
+    : undefined;
+  const calloutFillSourceV5 = componentsV5?.callout.preset === "outline"
+    ? "none"
+    : "background";
+  const calloutStrokeSourceV5 = componentsV5?.callout.preset === "filled"
+    ? "none"
+    : componentsV5?.callout.preset === "outline"
+      ? `${L("calloutStroke")} + foreground`
+      : `(left: ${L("calloutStroke")} + foreground)`;
+  const calloutRadiusSourceV5 = !componentsV5 ||
+    componentsV5.callout.preset === "accent-bar"
+    ? `(right: ${L("calloutRadius")})`
+    : L("calloutRadius");
+
   return String.raw`
 #let editorial-numbering(..nums) = {
   let values = nums.pos()
   let current = values.last()
-  let pattern = if values.len() == 1 { "1." } else if values.len() == 2 { "a)" } else { "i." }
+  let pattern = ${enumerationPatternSourceV5}
   text(
     font: ${fontStack(F("heading"))},
     size: ${rsize("numbering")},
     weight: "${rweight("numbering")}",
-    fill: rgb("${C("muted")}"),
+    fill: rgb("${enumerationMarkerColorV5}"),
     numbering(pattern, current),
   )
 }
@@ -420,7 +649,7 @@ ${headerResolution}
 // outline entry reuses the heading body verbatim, which would otherwise copy
 // Confluence highlights and foreground colors into the table of contents.
 #let atlcli-outline-title = state("atlcli-outline-title", none)
-
+${semanticV5 ? `#let atlcli-page-numbering = state("atlcli-page-numbering", ${typstString(initialPageNumberingV5 ?? "1")})\n` : ""}
 // Rotated text layer drawn under the content via set page(background: ...),
 // which makes it a page Artifact in the tagged PDF by Typst's own
 // page-background semantics. The watermark dictionary is always fully
@@ -486,43 +715,31 @@ ${headerResolution}
     lang: meta.at("language", default: "en"),
     region: meta.at("region", default: none),
   )
-  set par(leading: ${L("paragraphLeading")}, spacing: ${L("paragraphSpacing")}, justify: false)
-  set list(
-    marker: (
-      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_DASH}]],
-      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_BULLET}]],
-      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_NESTED_BULLET}]],
-    ),
-    body-indent: ${L("listBodyIndent")},
-    spacing: ${L("listSpacing")},
-  )
-  set enum(
-    numbering: editorial-numbering,
-    body-indent: ${L("enumBodyIndent")},
-    spacing: ${L("enumSpacing")},
-  )
-${pageSetupSource}
+${paragraphPolicySourceV5}
+${listPolicySourceV5}
+${enumerationPolicySourceV5}
+${pageSetupSource}${initialPageCounterSourceV5}${bookmarkPolicySourceV5 ? `\n${bookmarkPolicySourceV5}` : ""}
 
   show heading.where(level: 1): it => {
     set text(font: ${fontStack(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))
-    block(above: ${L("h1Above")}, below: ${L("h1Below")}, sticky: true, it)
+    block(above: ${L("h1Above")}, below: ${L("h1Below")}, sticky: true, ${headingBodyV5("it")})
   }
   show heading.where(level: 2): it => {
     set text(font: ${fontStack(F("heading"))}, size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}"))
-    block(above: ${L("h2Above")}, below: ${L("h2Below")}, sticky: true, it)
+    block(above: ${L("h2Above")}, below: ${L("h2Below")}, sticky: true, ${headingBodyV5("it")})
   }
   show heading.where(level: 3): it => {
     set text(font: ${fontStack(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
-    block(above: ${L("h3Above")}, below: ${L("h3Below")}, sticky: true, it)
+    block(above: ${L("h3Above")}, below: ${L("h3Below")}, sticky: true, ${headingBodyV5("it")})
   }
   show raw.where(block: false): it => box(
-    fill: rgb("${C("codeBackground")}"),
+    fill: rgb("${codeBackgroundColorV5}"),
     inset: (x: ${L("inlineCodeInsetX")}, y: ${L("inlineCodeInsetY")}),
     radius: ${L("inlineCodeRadius")},
     text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}, it),
   )
   show raw.where(block: true): it => block(
-    fill: rgb("${C("codeBackground")}"),
+    fill: rgb("${codeBackgroundColorV5}"),
     inset: ${L("codeInset")},
     radius: ${L("codeRadius")},
     width: 100%,
@@ -567,21 +784,11 @@ ${positionedLogoSource}
   }
   set page(fill: white)
   if outline-config.at("enabled", default: ${outlineDefault}) {
-    show outline.entry: it => context {
-      let title = atlcli-outline-title.at(it.element.location())
-      link(
-        it.element.location(),
-        it.indented(it.prefix(), [
-          #title
-          #box(width: 1fr, it.fill)
-          #it.page()
-        ]),
-      )
-    }
-    outline(title: contents-label, depth: outline-config.at("depth", default: ${outlineDepthDefault}))
+${outlineEntrySourceV5}
+${outlineInvocationSourceV5}
     pagebreak()
   }
-  body
+${bodyPageNumberSourceV5}${bodyHeadingCounterSourceV5}  body
   pagebreak()
   set page(fill: cover-paper)
   v(${L("closingTopPad")})
@@ -627,18 +834,18 @@ ${positionedLogoSource}
   )
   let colors = palette.at(kind, default: palette.panel)
   let background = if custom_color == none { colors.first() } else { custom_color.lighten(85%) }
-  let foreground = if custom_color == none { colors.last() } else { custom_color }
+  let foreground = if custom_color == none { ${calloutAccentColorV5 ? `rgb(${typstString(calloutAccentColorV5)})` : "colors.last()"} } else { custom_color }
   block(
     width: 100%,
-    fill: background,
-    stroke: (left: ${L("calloutStroke")} + foreground),
+    fill: ${calloutFillSourceV5},
+    stroke: ${calloutStrokeSourceV5},
     inset: (x: ${L("calloutInsetX")}, y: ${L("calloutInsetY")}),
-    radius: (right: ${L("calloutRadius")}),
+    radius: ${calloutRadiusSourceV5},
     above: ${L("calloutAbove")},
     below: ${L("calloutBelow")},
   )[
     #set text(font: ${fontStack(F("heading"))})
-    #if icon != none {
+    #if ${componentsV5?.callout.icon === "hide" ? "false and " : ""}icon != none {
       let styled-icon = text(weight: "semibold", fill: foreground, icon)
       if icon_alt == none {
         styled-icon

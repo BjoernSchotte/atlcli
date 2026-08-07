@@ -119,8 +119,24 @@ function validDesignV3(): WikiPdfTemplateDesignV3 {
         },
       },
     },
-    navigation: {},
-    components: {},
+    navigation: {
+      contents: { enabled: true, depth: 3, pageNumbers: "show", leader: "dots" },
+      bookmarks: { enabled: true, depth: 4, includeHeadingNumbers: true },
+      headingNumbers: { enabled: false, preset: "decimal" },
+      pageNumbers: { enabled: true, preset: "arabic", start: 1 },
+    },
+    components: {
+      paragraph: { align: "left", hyphenation: "auto" },
+      list: { bulletPreset: "disc-circle-square", markerAlign: "start" },
+      enumeration: {
+        numberingPreset: "decimal-alpha-roman",
+        markerAlign: "end",
+      },
+      table: { repeatHeader: true, banding: "none", borders: "all" },
+      outline: { leader: "dots", pageNumbers: "show" },
+      callout: { preset: "accent-bar", icon: "show" },
+      codeBlock: { wrap: "soft", lineNumbers: "hide" },
+    },
   };
 }
 
@@ -255,6 +271,102 @@ describe("validatePdfTemplateDesignV3", () => {
       footerRegion.odd.start.value = "#panic";
     }
     expect(() => validatePdfTemplateDesignV3(hostile)).toThrow(/metacharacters/);
+  });
+
+  it("validates independent navigation policies and a bounded body page-number reset", () => {
+    const design = validDesignV3();
+    design.navigation = {
+      contents: { enabled: false, depth: 1 },
+      bookmarks: { enabled: true, depth: 6, includeHeadingNumbers: true },
+      headingNumbers: {
+        enabled: true,
+        preset: "decimal-alpha-roman",
+      },
+      pageNumbers: {
+        enabled: true,
+        preset: "roman-lower",
+        start: 3,
+        body: { preset: "arabic", start: 1 },
+      },
+    };
+    expect(validatePdfTemplateDesignV3(design).navigation).toEqual(
+      design.navigation,
+    );
+
+    for (const depth of [0, 7, 1.5]) {
+      const invalid = validDesignV3();
+      invalid.navigation.contents.depth = depth;
+      expect(() => validatePdfTemplateDesignV3(invalid)).toThrow(
+        /within \[1, 6\]|integer/,
+      );
+    }
+
+    const invalidStart = validDesignV3();
+    invalidStart.navigation.pageNumbers.start = 0;
+    expect(() => validatePdfTemplateDesignV3(invalidStart)).toThrow(
+      /within \[1, 99999\]/,
+    );
+
+    const unsupportedBookmarkTitle = validDesignV3();
+    unsupportedBookmarkTitle.navigation.headingNumbers.enabled = true;
+    unsupportedBookmarkTitle.navigation.bookmarks.includeHeadingNumbers = false;
+    expect(() => validatePdfTemplateDesignV3(unsupportedBookmarkTitle)).toThrow(
+      /must be true while viewer bookmarks and native heading numbering/,
+    );
+  });
+
+  it("accepts every bounded component preset and resolves only existing color tokens", () => {
+    const design = validDesignV3();
+    design.components = {
+      paragraph: { align: "justify", hyphenation: "off" },
+      list: {
+        bulletPreset: "compact",
+        markerAlign: "horizon",
+        markerColor: "accent",
+      },
+      enumeration: {
+        numberingPreset: "roman-lower",
+        markerAlign: "start",
+        markerColor: "ink",
+      },
+      table: {
+        repeatHeader: false,
+        banding: "columns",
+        borders: "horizontal",
+        bandColor: "ink",
+        borderColor: "accent",
+      },
+      outline: {
+        leader: "line",
+        pageNumbers: "hide",
+        leaderColor: "accent",
+      },
+      callout: { preset: "outline", icon: "hide", accentColor: "accent" },
+      codeBlock: {
+        wrap: "none",
+        lineNumbers: "show",
+        backgroundColor: "ink",
+      },
+    };
+    expect(validatePdfTemplateDesignV3(design).components).toEqual(
+      design.components,
+    );
+
+    const unknownToken = validDesignV3();
+    unknownToken.components.table.bandColor = "missing";
+    expect(() => validatePdfTemplateDesignV3(unknownToken)).toThrow(
+      /existing design\.tokens\.colors entry/,
+    );
+
+    const arbitraryMarker = validDesignV3() as unknown as Record<string, unknown>;
+    const components = arbitraryMarker.components as Record<string, unknown>;
+    components.list = {
+      bulletPreset: "#panic()",
+      markerAlign: "end",
+    };
+    expect(() => validatePdfTemplateDesignV3(arbitraryMarker)).toThrow(
+      /disc-circle-square/,
+    );
   });
 });
 

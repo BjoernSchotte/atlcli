@@ -679,6 +679,179 @@ export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
   };
 }
 
+export const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+export const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+export const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3 = ["show", "hide"] as const;
+export type DesignOutlinePageNumberModeV3 =
+  (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
+
+export const DESIGN_OUTLINE_LEADERS_V3 = ["dots", "line", "none"] as const;
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+export const DESIGN_HEADING_NUMBERING_PRESETS_V3 = [
+  "decimal",
+  "decimal-dot",
+  "decimal-alpha",
+  "decimal-alpha-roman",
+] as const;
+export type DesignHeadingNumberingPresetV3 =
+  (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+export const DESIGN_PAGE_NUMBERING_PRESETS_V3 = [
+  "arabic",
+  "roman-lower",
+  "roman-upper",
+] as const;
+export type DesignPageNumberingPresetV3 =
+  (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+export interface DesignContentsNavigationV3 {
+  enabled: boolean;
+  depth: number;
+  /** Optional presentation overrides; component defaults remain independently reusable. */
+  pageNumbers?: DesignOutlinePageNumberModeV3;
+  leader?: DesignOutlineLeaderV3;
+}
+
+export interface DesignBookmarkNavigationV3 {
+  enabled: boolean;
+  depth: number;
+  includeHeadingNumbers: boolean;
+}
+
+export interface DesignHeadingNumberNavigationV3 {
+  enabled: boolean;
+  preset: DesignHeadingNumberingPresetV3;
+}
+
+export interface DesignPageNumberPhaseV3 {
+  preset: DesignPageNumberingPresetV3;
+  start: number;
+}
+
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+  enabled: boolean;
+  /** When present, switch numbering and reset the counter immediately before body content. */
+  body?: DesignPageNumberPhaseV3;
+}
+
+export interface DesignNavigationV3 {
+  contents: DesignContentsNavigationV3;
+  bookmarks: DesignBookmarkNavigationV3;
+  headingNumbers: DesignHeadingNumberNavigationV3;
+  pageNumbers: DesignPageNumberNavigationV3;
+}
+
+export const DESIGN_PARAGRAPH_ALIGNMENTS_V3 = [
+  "left",
+  "center",
+  "right",
+  "justify",
+] as const;
+export type DesignParagraphAlignmentV3 =
+  (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+export const DESIGN_HYPHENATION_MODES_V3 = ["auto", "off"] as const;
+export type DesignHyphenationModeV3 =
+  (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
+export const DESIGN_LIST_MARKER_ALIGNMENTS_V3 = [
+  "start",
+  "end",
+  "horizon",
+] as const;
+export type DesignListMarkerAlignmentV3 =
+  (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+export const DESIGN_BULLET_PRESETS_V3 = [
+  "disc-circle-square",
+  "compact",
+  "dash",
+] as const;
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+export const DESIGN_ENUMERATION_PRESETS_V3 = [
+  "decimal-alpha-roman",
+  "decimal",
+  "alpha-lower",
+  "roman-lower",
+] as const;
+export type DesignEnumerationPresetV3 =
+  (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
+
+export const DESIGN_TABLE_BANDING_MODES_V3 = ["none", "rows", "columns"] as const;
+export type DesignTableBandingModeV3 =
+  (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+export const DESIGN_TABLE_BORDER_MODES_V3 = [
+  "all",
+  "horizontal",
+  "outer",
+  "none",
+] as const;
+export type DesignTableBorderModeV3 =
+  (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+export const DESIGN_CALLOUT_PRESETS_V3 = ["accent-bar", "filled", "outline"] as const;
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
+
+export const DESIGN_CODE_WRAP_MODES_V3 = ["soft", "none"] as const;
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
+export interface DesignParagraphComponentV3 {
+  align: DesignParagraphAlignmentV3;
+  hyphenation: DesignHyphenationModeV3;
+}
+
+export interface DesignListComponentV3 {
+  bulletPreset: DesignBulletPresetV3;
+  markerAlign: DesignListMarkerAlignmentV3;
+  markerColor?: string;
+}
+
+export interface DesignEnumerationComponentV3 {
+  numberingPreset: DesignEnumerationPresetV3;
+  markerAlign: DesignListMarkerAlignmentV3;
+  markerColor?: string;
+}
+
+export interface DesignTableComponentV3 {
+  repeatHeader: boolean;
+  banding: DesignTableBandingModeV3;
+  borders: DesignTableBorderModeV3;
+  bandColor?: string;
+  borderColor?: string;
+}
+
+export interface DesignOutlineComponentV3 {
+  leader: DesignOutlineLeaderV3;
+  pageNumbers: DesignOutlinePageNumberModeV3;
+  leaderColor?: string;
+}
+
+export interface DesignCalloutComponentV3 {
+  preset: DesignCalloutPresetV3;
+  icon: DesignVisibility;
+  accentColor?: string;
+}
+
+export interface DesignCodeBlockComponentV3 {
+  wrap: DesignCodeWrapModeV3;
+  lineNumbers: DesignVisibility;
+  backgroundColor?: string;
+}
+
+export interface DesignComponentsV3 {
+  paragraph: DesignParagraphComponentV3;
+  list: DesignListComponentV3;
+  enumeration: DesignEnumerationComponentV3;
+  table: DesignTableComponentV3;
+  outline: DesignOutlineComponentV3;
+  callout: DesignCalloutComponentV3;
+  codeBlock: DesignCodeBlockComponentV3;
+}
+
 export interface WikiPdfTemplateDesignV3 {
   page: DesignPageV3;
   branding: DesignBranding;
@@ -686,9 +859,8 @@ export interface WikiPdfTemplateDesignV3 {
   tokens: DesignTokens;
   semanticPalettes: DesignSemanticPalettes;
   compositions: DesignPageCompositionsV3;
-  /** T4 replaces these bounded opaque records with exact semantic types. */
-  navigation: Readonly<Record<string, unknown>>;
-  components: Readonly<Record<string, unknown>>;
+  navigation: DesignNavigationV3;
+  components: DesignComponentsV3;
   /** T5 replaces these bounded opaque values with exact paint/shape types. */
   paints?: Readonly<Record<string, unknown>>;
   decorations?: readonly unknown[];
@@ -940,6 +1112,336 @@ function validatePageCompositionsV3(value: unknown, path: string): DesignPageCom
   };
 }
 
+function validateNavigationDepthV3(value: unknown, path: string): number {
+  return validateBoundedNumber(value, path, {
+    min: DESIGN_NAVIGATION_DEPTH_MIN_V3,
+    max: DESIGN_NAVIGATION_DEPTH_MAX_V3,
+    integer: true,
+  });
+}
+
+function validatePageNumberPhaseV3(
+  value: unknown,
+  path: string,
+): DesignPageNumberPhaseV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["preset", "start"], path);
+  return {
+    preset: validateEnum(
+      value.preset,
+      DESIGN_PAGE_NUMBERING_PRESETS_V3,
+      `${path}.preset`,
+    ),
+    start: validateBoundedNumber(value.start, `${path}.start`, {
+      min: 1,
+      max: 99_999,
+      integer: true,
+    }),
+  };
+}
+
+function validateNavigationV3(value: unknown, path: string): DesignNavigationV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(value, ["contents", "bookmarks", "headingNumbers", "pageNumbers"], path);
+
+  if (!isObject(value.contents)) fail(`${path}.contents`, "must be an object");
+  exactKeys(value.contents, ["enabled", "depth", "pageNumbers", "leader"], `${path}.contents`);
+  const contents: DesignContentsNavigationV3 = {
+    enabled: validateBoolean(value.contents.enabled, `${path}.contents.enabled`),
+    depth: validateNavigationDepthV3(value.contents.depth, `${path}.contents.depth`),
+    ...(value.contents.pageNumbers === undefined
+      ? {}
+      : {
+          pageNumbers: validateEnum(
+            value.contents.pageNumbers,
+            DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3,
+            `${path}.contents.pageNumbers`,
+          ),
+        }),
+    ...(value.contents.leader === undefined
+      ? {}
+      : {
+          leader: validateEnum(
+            value.contents.leader,
+            DESIGN_OUTLINE_LEADERS_V3,
+            `${path}.contents.leader`,
+          ),
+        }),
+  };
+
+  if (!isObject(value.bookmarks)) fail(`${path}.bookmarks`, "must be an object");
+  exactKeys(value.bookmarks, ["enabled", "depth", "includeHeadingNumbers"], `${path}.bookmarks`);
+  const bookmarks: DesignBookmarkNavigationV3 = {
+    enabled: validateBoolean(value.bookmarks.enabled, `${path}.bookmarks.enabled`),
+    depth: validateNavigationDepthV3(value.bookmarks.depth, `${path}.bookmarks.depth`),
+    includeHeadingNumbers: validateBoolean(
+      value.bookmarks.includeHeadingNumbers,
+      `${path}.bookmarks.includeHeadingNumbers`,
+    ),
+  };
+
+  if (!isObject(value.headingNumbers)) {
+    fail(`${path}.headingNumbers`, "must be an object");
+  }
+  exactKeys(value.headingNumbers, ["enabled", "preset"], `${path}.headingNumbers`);
+  const headingNumbers: DesignHeadingNumberNavigationV3 = {
+    enabled: validateBoolean(
+      value.headingNumbers.enabled,
+      `${path}.headingNumbers.enabled`,
+    ),
+    preset: validateEnum(
+      value.headingNumbers.preset,
+      DESIGN_HEADING_NUMBERING_PRESETS_V3,
+      `${path}.headingNumbers.preset`,
+    ),
+  };
+
+  if (!isObject(value.pageNumbers)) fail(`${path}.pageNumbers`, "must be an object");
+  exactKeys(value.pageNumbers, ["enabled", "preset", "start", "body"], `${path}.pageNumbers`);
+  const firstPhase: DesignPageNumberPhaseV3 = {
+    preset: validateEnum(
+      value.pageNumbers.preset,
+      DESIGN_PAGE_NUMBERING_PRESETS_V3,
+      `${path}.pageNumbers.preset`,
+    ),
+    start: validateBoundedNumber(value.pageNumbers.start, `${path}.pageNumbers.start`, {
+      min: 1,
+      max: 99_999,
+      integer: true,
+    }),
+  };
+  const pageNumbers: DesignPageNumberNavigationV3 = {
+    enabled: validateBoolean(value.pageNumbers.enabled, `${path}.pageNumbers.enabled`),
+    ...firstPhase,
+    ...(value.pageNumbers.body === undefined
+      ? {}
+      : {
+          body: validatePageNumberPhaseV3(
+            value.pageNumbers.body,
+            `${path}.pageNumbers.body`,
+          ),
+        }),
+  };
+
+  if (
+    bookmarks.enabled &&
+    headingNumbers.enabled &&
+    !bookmarks.includeHeadingNumbers
+  ) {
+    fail(
+      `${path}.bookmarks.includeHeadingNumbers`,
+      "must be true while viewer bookmarks and native heading numbering are both enabled on Typst 0.15.1",
+    );
+  }
+
+  return { contents, bookmarks, headingNumbers, pageNumbers };
+}
+
+function validateColorTokenReferenceV3(
+  value: unknown,
+  path: string,
+  colors: Readonly<Record<string, DesignColor>>,
+): string {
+  if (typeof value !== "string") fail(path, "must name a color token");
+  const token = assertSafeIdentifier(value, path);
+  if (!Object.prototype.hasOwnProperty.call(colors, token)) {
+    fail(path, `must reference an existing design.tokens.colors entry (received "${token}")`);
+  }
+  return token;
+}
+
+function validateComponentsV3(
+  value: unknown,
+  path: string,
+  colors: Readonly<Record<string, DesignColor>>,
+): DesignComponentsV3 {
+  if (!isObject(value)) fail(path, "must be an object");
+  exactKeys(
+    value,
+    ["paragraph", "list", "enumeration", "table", "outline", "callout", "codeBlock"],
+    path,
+  );
+
+  if (!isObject(value.paragraph)) fail(`${path}.paragraph`, "must be an object");
+  exactKeys(value.paragraph, ["align", "hyphenation"], `${path}.paragraph`);
+  const paragraph: DesignParagraphComponentV3 = {
+    align: validateEnum(
+      value.paragraph.align,
+      DESIGN_PARAGRAPH_ALIGNMENTS_V3,
+      `${path}.paragraph.align`,
+    ),
+    hyphenation: validateEnum(
+      value.paragraph.hyphenation,
+      DESIGN_HYPHENATION_MODES_V3,
+      `${path}.paragraph.hyphenation`,
+    ),
+  };
+
+  if (!isObject(value.list)) fail(`${path}.list`, "must be an object");
+  exactKeys(value.list, ["bulletPreset", "markerAlign", "markerColor"], `${path}.list`);
+  const list: DesignListComponentV3 = {
+    bulletPreset: validateEnum(
+      value.list.bulletPreset,
+      DESIGN_BULLET_PRESETS_V3,
+      `${path}.list.bulletPreset`,
+    ),
+    markerAlign: validateEnum(
+      value.list.markerAlign,
+      DESIGN_LIST_MARKER_ALIGNMENTS_V3,
+      `${path}.list.markerAlign`,
+    ),
+    ...(value.list.markerColor === undefined
+      ? {}
+      : {
+          markerColor: validateColorTokenReferenceV3(
+            value.list.markerColor,
+            `${path}.list.markerColor`,
+            colors,
+          ),
+        }),
+  };
+
+  if (!isObject(value.enumeration)) fail(`${path}.enumeration`, "must be an object");
+  exactKeys(
+    value.enumeration,
+    ["numberingPreset", "markerAlign", "markerColor"],
+    `${path}.enumeration`,
+  );
+  const enumeration: DesignEnumerationComponentV3 = {
+    numberingPreset: validateEnum(
+      value.enumeration.numberingPreset,
+      DESIGN_ENUMERATION_PRESETS_V3,
+      `${path}.enumeration.numberingPreset`,
+    ),
+    markerAlign: validateEnum(
+      value.enumeration.markerAlign,
+      DESIGN_LIST_MARKER_ALIGNMENTS_V3,
+      `${path}.enumeration.markerAlign`,
+    ),
+    ...(value.enumeration.markerColor === undefined
+      ? {}
+      : {
+          markerColor: validateColorTokenReferenceV3(
+            value.enumeration.markerColor,
+            `${path}.enumeration.markerColor`,
+            colors,
+          ),
+        }),
+  };
+
+  if (!isObject(value.table)) fail(`${path}.table`, "must be an object");
+  exactKeys(
+    value.table,
+    ["repeatHeader", "banding", "borders", "bandColor", "borderColor"],
+    `${path}.table`,
+  );
+  const table: DesignTableComponentV3 = {
+    repeatHeader: validateBoolean(value.table.repeatHeader, `${path}.table.repeatHeader`),
+    banding: validateEnum(
+      value.table.banding,
+      DESIGN_TABLE_BANDING_MODES_V3,
+      `${path}.table.banding`,
+    ),
+    borders: validateEnum(
+      value.table.borders,
+      DESIGN_TABLE_BORDER_MODES_V3,
+      `${path}.table.borders`,
+    ),
+    ...(value.table.bandColor === undefined
+      ? {}
+      : {
+          bandColor: validateColorTokenReferenceV3(
+            value.table.bandColor,
+            `${path}.table.bandColor`,
+            colors,
+          ),
+        }),
+    ...(value.table.borderColor === undefined
+      ? {}
+      : {
+          borderColor: validateColorTokenReferenceV3(
+            value.table.borderColor,
+            `${path}.table.borderColor`,
+            colors,
+          ),
+        }),
+  };
+
+  if (!isObject(value.outline)) fail(`${path}.outline`, "must be an object");
+  exactKeys(value.outline, ["leader", "pageNumbers", "leaderColor"], `${path}.outline`);
+  const outline: DesignOutlineComponentV3 = {
+    leader: validateEnum(
+      value.outline.leader,
+      DESIGN_OUTLINE_LEADERS_V3,
+      `${path}.outline.leader`,
+    ),
+    pageNumbers: validateEnum(
+      value.outline.pageNumbers,
+      DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3,
+      `${path}.outline.pageNumbers`,
+    ),
+    ...(value.outline.leaderColor === undefined
+      ? {}
+      : {
+          leaderColor: validateColorTokenReferenceV3(
+            value.outline.leaderColor,
+            `${path}.outline.leaderColor`,
+            colors,
+          ),
+        }),
+  };
+
+  if (!isObject(value.callout)) fail(`${path}.callout`, "must be an object");
+  exactKeys(value.callout, ["preset", "icon", "accentColor"], `${path}.callout`);
+  const callout: DesignCalloutComponentV3 = {
+    preset: validateEnum(
+      value.callout.preset,
+      DESIGN_CALLOUT_PRESETS_V3,
+      `${path}.callout.preset`,
+    ),
+    icon: validateEnum(value.callout.icon, DESIGN_VISIBILITIES, `${path}.callout.icon`),
+    ...(value.callout.accentColor === undefined
+      ? {}
+      : {
+          accentColor: validateColorTokenReferenceV3(
+            value.callout.accentColor,
+            `${path}.callout.accentColor`,
+            colors,
+          ),
+        }),
+  };
+
+  if (!isObject(value.codeBlock)) fail(`${path}.codeBlock`, "must be an object");
+  exactKeys(
+    value.codeBlock,
+    ["wrap", "lineNumbers", "backgroundColor"],
+    `${path}.codeBlock`,
+  );
+  const codeBlock: DesignCodeBlockComponentV3 = {
+    wrap: validateEnum(
+      value.codeBlock.wrap,
+      DESIGN_CODE_WRAP_MODES_V3,
+      `${path}.codeBlock.wrap`,
+    ),
+    lineNumbers: validateEnum(
+      value.codeBlock.lineNumbers,
+      DESIGN_VISIBILITIES,
+      `${path}.codeBlock.lineNumbers`,
+    ),
+    ...(value.codeBlock.backgroundColor === undefined
+      ? {}
+      : {
+          backgroundColor: validateColorTokenReferenceV3(
+            value.codeBlock.backgroundColor,
+            `${path}.codeBlock.backgroundColor`,
+            colors,
+          ),
+        }),
+  };
+
+  return { paragraph, list, enumeration, table, outline, callout, codeBlock };
+}
+
 function validateOpaqueJsonV3(
   value: unknown,
   path: string,
@@ -995,15 +1497,20 @@ export function validatePdfTemplateDesignV3(
     ],
     path
   );
+  const tokens = validateTokens(value.tokens, `${path}.tokens`);
   const design: WikiPdfTemplateDesignV3 = {
     page: validatePageV3(value.page, `${path}.page`),
     branding: validateBranding(value.branding, `${path}.branding`),
     typography: validateTypography(value.typography, `${path}.typography`),
-    tokens: validateTokens(value.tokens, `${path}.tokens`),
+    tokens,
     semanticPalettes: validateSemanticPalettes(value.semanticPalettes, `${path}.semanticPalettes`),
     compositions: validatePageCompositionsV3(value.compositions, `${path}.compositions`),
-    navigation: validateOpaqueRecordV3(value.navigation, `${path}.navigation`),
-    components: validateOpaqueRecordV3(value.components, `${path}.components`),
+    navigation: validateNavigationV3(value.navigation, `${path}.navigation`),
+    components: validateComponentsV3(
+      value.components,
+      `${path}.components`,
+      tokens.colors,
+    ),
     ...(value.paints === undefined
       ? {}
       : { paints: validateOpaqueRecordV3(value.paints, `${path}.paints`) }),
