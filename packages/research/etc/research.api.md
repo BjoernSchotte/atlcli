@@ -5353,7 +5353,11 @@ export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): Resea
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
+    getApiKeyPersistence?(): Promise<"session" | "device">;
+    setApiKey(apiKey: string, options?: {
+        persistence?: "session" | "device";
+    }): Promise<void>;
+    setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
     clearApiKey(): Promise<void>;
     getPendingChatQuestion?(siteOrigin: string): Promise<{
         conversationId: string;
@@ -13093,7 +13097,11 @@ export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): Resea
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
+    getApiKeyPersistence?(): Promise<"session" | "device">;
+    setApiKey(apiKey: string, options?: {
+        persistence?: "session" | "device";
+    }): Promise<void>;
+    setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
     clearApiKey(): Promise<void>;
     getPendingChatQuestion?(siteOrigin: string): Promise<{
         conversationId: string;
@@ -20831,7 +20839,11 @@ export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): Resea
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
+    getApiKeyPersistence?(): Promise<"session" | "device">;
+    setApiKey(apiKey: string, options?: {
+        persistence?: "session" | "device";
+    }): Promise<void>;
+    setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
     clearApiKey(): Promise<void>;
     getPendingChatQuestion?(siteOrigin: string): Promise<{
         conversationId: string;
@@ -28874,7 +28886,11 @@ export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): Resea
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
+    getApiKeyPersistence?(): Promise<"session" | "device">;
+    setApiKey(apiKey: string, options?: {
+        persistence?: "session" | "device";
+    }): Promise<void>;
+    setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
     clearApiKey(): Promise<void>;
     getPendingChatQuestion?(siteOrigin: string): Promise<{
         conversationId: string;
@@ -31170,10 +31186,6 @@ export interface RunResearchAgentInput {
     now?: () => number;
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
-    conversation?: {
-        sessionId: string;
-    };
-    completionObjective?: AgenticCompletionObjectiveV1;
     researchGraph?: ResearchGraphV1;
     durableSession?: {
         store: ResearchSessionStoreV1;
@@ -37094,7 +37106,11 @@ export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): Resea
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
+    getApiKeyPersistence?(): Promise<"session" | "device">;
+    setApiKey(apiKey: string, options?: {
+        persistence?: "session" | "device";
+    }): Promise<void>;
+    setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
     clearApiKey(): Promise<void>;
     getPendingChatQuestion?(siteOrigin: string): Promise<{
         conversationId: string;
@@ -39394,10 +39410,6 @@ export interface RunResearchAgentInput {
     now?: () => number;
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
-    conversation?: {
-        sessionId: string;
-    };
-    completionObjective?: AgenticCompletionObjectiveV1;
     researchGraph?: ResearchGraphV1;
     durableSession?: {
         store: ResearchSessionStoreV1;
@@ -40725,7 +40737,11 @@ export interface ResearchOneShotPolicyV1 {
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
+    getApiKeyPersistence?(): Promise<"session" | "device">;
+    setApiKey(apiKey: string, options?: {
+        persistence?: "session" | "device";
+    }): Promise<void>;
+    setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
     clearApiKey(): Promise<void>;
     getPendingChatQuestion?(siteOrigin: string): Promise<{
         conversationId: string;
@@ -47122,7 +47138,11 @@ export declare function researchPolicyFromBriefV1(brief: ResearchBriefV1): Resea
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
+    getApiKeyPersistence?(): Promise<"session" | "device">;
+    setApiKey(apiKey: string, options?: {
+        persistence?: "session" | "device";
+    }): Promise<void>;
+    setApiKeyPersistence?(persistence: "session" | "device"): Promise<void>;
     clearApiKey(): Promise<void>;
     getPendingChatQuestion?(siteOrigin: string): Promise<{
         conversationId: string;
@@ -49422,10 +49442,6 @@ export interface RunResearchAgentInput {
     now?: () => number;
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
-    conversation?: {
-        sessionId: string;
-    };
-    completionObjective?: AgenticCompletionObjectiveV1;
     researchGraph?: ResearchGraphV1;
     durableSession?: {
         store: ResearchSessionStoreV1;

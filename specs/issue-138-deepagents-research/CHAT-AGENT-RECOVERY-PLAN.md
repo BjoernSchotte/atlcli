@@ -1296,8 +1296,7 @@ serial comparison contract gives `legacy-chat`, Quick, Auto, Deep, and explicit
 Deep Research the identical scenario, corpus, scope, and budget while rejecting
 Chat report finalization or a Deep Research run without exactly one report.
 Focused evaluation and routing suites pass all twenty cases. Runtime scoring,
-judge calibration, legacy deletion, and release acceptance remain separate open
-gates.
+judge calibration, and private operator acceptance remain separate open gates.
 
 Optional-feedback proof (2026-08-07): the shared `ChatAgentPortV1` now accepts
 helpful/not-helpful feedback for a completed, tenant-bound turn. Both CLI and
@@ -1347,18 +1346,30 @@ extension worker continues to route Chat to `runChatAgent` and Research to
 adapter tests pass, including the no-root-construction regression; package and
 extension documentation describe the separate roots and credential policy.
 
+Final automated release-gate proof (2026-08-07): the refreshed public API and
+closure reports match the built declarations after legacy removal. The complete
+workspace suite passes 6,955 tests across 527 files with zero failures; the 15
+skips are the explicitly opt-in registry, external validator, scale, and live
+Confluence suites. TypeScript checks, all 21 production build tasks, the
+29-entrypoint browser-isomorphism gate, the packed-extension CSP/output scan,
+and the tracked-tree research privacy scan pass. The accepted twenty-scenario
+quality envelope also passes exact-context source/citation, routing, quality-
+gain, mode-isolation, restart, steering, HITL, evidence-reuse, and injection
+gates. Private operator comparison remains a separate live acceptance gate and
+is not inferred from this automated proof.
+
 Automated proof:
 
-- [ ] Exact-context gold cases have zero wrong sources and canonical citations.
-- [ ] Auto chooses the cheaper direct path for simple cases and an agentic path
+- [x] Exact-context gold cases have zero wrong sources and canonical citations.
+- [x] Auto chooses the cheaper direct path for simple cases and an agentic path
       for complex cases at the accepted routing threshold.
-- [ ] Deep materially improves the accepted complex-question quality score over
+- [x] Deep materially improves the accepted complex-question quality score over
       Quick without regressing simple exact-context correctness.
-- [ ] No Chat mode inherits the Deep Research brief, report finalizer, systematic
+- [x] No Chat mode inherits the Deep Research brief, report finalizer, systematic
       coverage contract, or ten-minute default.
-- [ ] Restart, steering, HITL, evidence reuse, and prompt-injection gates pass in
+- [x] Restart, steering, HITL, evidence reuse, and prompt-injection gates pass in
       the release-blocking suite.
-- [ ] Full tests, typecheck, production builds, API/closure reports, output/CSP
+- [x] Full tests, typecheck, production builds, API/closure reports, output/CSP
       audit, and tracked-tree privacy scan pass after legacy deletion.
 
 Live acceptance:
@@ -1373,7 +1384,7 @@ Live acceptance:
 
 Acceptance criteria:
 
-- [ ] The legacy Chat-through-Research path is deleted, not retained as a hidden
+- [x] The legacy Chat-through-Research path is deleted, not retained as a hidden
       fallback.
 - [ ] Quick, Auto, Deep, and Deep Research have empirically distinct and truthful
       behavior.
