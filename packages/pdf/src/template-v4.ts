@@ -226,6 +226,7 @@ export function createAtlcliTypstTemplateV4(
   const stop = finiteTypstNumber(typeCut.stop);
   const coverDefault = catalogDesign.features.cover.enabled ? "true" : "false";
   const coverEyebrow = labels.coverEyebrow ?? "";
+  const metadataPosition = composition.metadataPosition ?? "flow";
   const tiers = ["coverTitle", "coverTitleCompact", "coverTitleMinimum"]
     .map((key, index) => String.raw`    (name: ${typstString(["display", "compact", "minimum"][index]!)}, font: ${fontStack(roleFont(key))}, size: ${role(key).size}, weight: ${typstString(roleWeight(key))})`)
     .join(",\n");
@@ -263,6 +264,36 @@ export function createAtlcliTypstTemplateV4(
         #block(below: ${L("coverLogoBelow")})[#image(logo-path, height: ${L("coverLogoHeight")}, width: ${L("coverLogoWidth")}, fit: "contain", alt: logo-alt)]
       ]
 `
+    : "";
+  const metadataGrid = String.raw`#grid(
+        columns: (${L("coverMetaColLabel")}, 1fr),
+        column-gutter: ${L("coverMetaColGutter")},
+        row-gutter: ${L("coverMetaRowGutter")},
+        text(size: ${role("coverMetaLabel").size}, weight: ${typstString(roleWeight("coverMetaLabel"))}, tracking: ${roleTracking("coverMetaLabel")}, fill: warm-slate, upper(version-label)),
+        text(size: ${role("coverMetaValue").size}, fill: ink, meta.version),
+        text(size: ${role("coverMetaLabel").size}, weight: ${typstString(roleWeight("coverMetaLabel"))}, tracking: ${roleTracking("coverMetaLabel")}, fill: warm-slate, upper(exported-label)),
+        text(size: ${role("coverMetaValue").size}, fill: ink, meta.exported-label),
+        text(size: ${role("coverMetaLabel").size}, weight: ${typstString(roleWeight("coverMetaLabel"))}, tracking: ${roleTracking("coverMetaLabel")}, fill: warm-slate, upper(exporter-label)),
+        text(size: ${role("coverMetaValue").size}, fill: ink, meta.exporter),
+      )`;
+  const flowMetadata = metadataPosition === "flow"
+    ? String.raw`      #v(${L("coverTitleGap")})
+      #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
+      #v(${L("coverMetaGap")})
+      ${metadataGrid}`
+    : "";
+  const bottomMetadata = metadataPosition === "bottom"
+    ? String.raw`
+    place(
+      left + bottom,
+      dy: -${L("coverMetaBottomInset")},
+      block(width: ${RN("coverBlockWidth")}%)[
+        #set text(font: ${fontStack(fonts.heading)})
+        #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
+        #v(${L("coverMetaGap")})
+        ${metadataGrid}
+      ],
+    )`
     : "";
 
   const cover = String.raw`  if cover-config.at("enabled", default: ${coverDefault}) {
@@ -306,21 +337,9 @@ ${flowLogo}      #text(size: ${role("coverEyebrow").size}, weight: ${typstString
         )
         type-cut-title-block(selected, size.width, fill: title-fill, fixed: true)
       })
-      #v(${L("coverTitleGap")})
-      #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
-      #v(${L("coverMetaGap")})
-      #grid(
-        columns: (${L("coverMetaColLabel")}, 1fr),
-        column-gutter: ${L("coverMetaColGutter")},
-        row-gutter: ${L("coverMetaRowGutter")},
-        text(size: ${role("coverMetaLabel").size}, weight: ${typstString(roleWeight("coverMetaLabel"))}, tracking: ${roleTracking("coverMetaLabel")}, fill: warm-slate, upper(version-label)),
-        text(size: ${role("coverMetaValue").size}, fill: ink, meta.version),
-        text(size: ${role("coverMetaLabel").size}, weight: ${typstString(roleWeight("coverMetaLabel"))}, tracking: ${roleTracking("coverMetaLabel")}, fill: warm-slate, upper(exported-label)),
-        text(size: ${role("coverMetaValue").size}, fill: ink, meta.exported-label),
-        text(size: ${role("coverMetaLabel").size}, weight: ${typstString(roleWeight("coverMetaLabel"))}, tracking: ${roleTracking("coverMetaLabel")}, fill: warm-slate, upper(exporter-label)),
-        text(size: ${role("coverMetaValue").size}, fill: ink, meta.exporter),
-      )
+${flowMetadata}
     ]
+${bottomMetadata}
     pagebreak()
   }
 `;

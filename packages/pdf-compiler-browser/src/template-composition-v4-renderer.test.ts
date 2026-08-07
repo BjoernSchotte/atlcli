@@ -33,6 +33,7 @@ function productionTemplate(): string {
     cover: {
       kind: "type-cut",
       logo: "hide",
+      metadataPosition: "bottom",
       typeCut: { angle: 43, stop: 58 },
     },
     closingPage: {
@@ -45,6 +46,7 @@ function productionTemplate(): string {
   };
   design.tokens.colors.coverTitleInverse = "#FFFFFF";
   design.tokens.layout.coverTitleFrameHeight = "35mm";
+  design.tokens.layout.coverMetaBottomInset = "24mm";
   design.typography.roles.coverTitle = {
     font: "heading",
     size: "44pt",

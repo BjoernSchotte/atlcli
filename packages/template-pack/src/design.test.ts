@@ -7,6 +7,7 @@ import {
   DEFAULT_DESIGN_PAGE_COMPOSITIONS,
   DESIGN_CLOSING_COMPOSITION_KINDS,
   DESIGN_COVER_COMPOSITION_KINDS,
+  DESIGN_COVER_METADATA_POSITIONS,
   DESIGN_HORIZONTAL_ALIGNMENTS,
   DESIGN_VISIBILITIES,
   DEFAULT_DESIGN_HEADER_MODE,
@@ -158,6 +159,7 @@ describe("validateDesign", () => {
       align: "left",
     });
     expect(DESIGN_COVER_COMPOSITION_KINDS).toEqual(["standard", "type-cut"]);
+    expect(DESIGN_COVER_METADATA_POSITIONS).toEqual(["flow", "bottom"]);
     expect(DESIGN_CLOSING_COMPOSITION_KINDS).toEqual([
       "document-summary",
       "brand-lockup",
@@ -169,7 +171,12 @@ describe("validateDesign", () => {
   it("accepts Type Cut and declarative brand-lockup copy including Unicode", () => {
     const design = validDesign();
     design.compositions = {
-      cover: { kind: "type-cut", logo: "hide", typeCut: { angle: -180, stop: 100 } },
+      cover: {
+        kind: "type-cut",
+        logo: "hide",
+        metadataPosition: "bottom",
+        typeCut: { angle: -180, stop: 100 },
+      },
       closingPage: {
         kind: "brand-lockup",
         logo: "show",
@@ -183,6 +190,7 @@ describe("validateDesign", () => {
     design.branding.legalNotice = "© Example Systems GmbH · Zürich";
     const validated = validateDesign(design);
     expect(validated.compositions?.cover.typeCut).toEqual({ angle: -180, stop: 100 });
+    expect(validated.compositions?.cover.metadataPosition).toBe("bottom");
     expect(validated.branding.legalNotice).toBe("© Example Systems GmbH · Zürich");
   });
 
@@ -208,6 +216,25 @@ describe("validateDesign", () => {
       closingPage: DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage,
     };
     expect(() => validateDesign(standard)).toThrow(/typeCut/);
+
+    const bottomStandard = validDesign() as unknown as Record<string, unknown>;
+    bottomStandard.compositions = {
+      cover: { kind: "standard", logo: "show", metadataPosition: "bottom" },
+      closingPage: DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage,
+    };
+    expect(() => validateDesign(bottomStandard)).toThrow(/metadataPosition/);
+
+    const invalidPosition = validDesign() as unknown as Record<string, unknown>;
+    invalidPosition.compositions = {
+      cover: {
+        kind: "type-cut",
+        logo: "hide",
+        metadataPosition: "footer",
+        typeCut: { angle: 43, stop: 58 },
+      },
+      closingPage: DEFAULT_DESIGN_PAGE_COMPOSITIONS.closingPage,
+    };
+    expect(() => validateDesign(invalidPosition)).toThrow(/"flow", "bottom"/);
 
     const unknown = validDesign() as unknown as Record<string, unknown>;
     unknown.compositions = {

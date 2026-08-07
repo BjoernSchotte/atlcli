@@ -35,6 +35,7 @@ function validRecipe(): Record<string, unknown> {
         cover: {
           kind: "type-cut",
           logo: "hide",
+          metadataPosition: "bottom",
           typeCut: { angle: 43, stop: 58 },
         },
         closingPage: {
@@ -65,7 +66,11 @@ function validRecipe(): Record<string, unknown> {
       },
       tokens: {
         colors: { ink: "#172B4D", accent: "#E75204" },
-        layout: { paragraphSpacing: "10pt", leading: "0.74em" },
+        layout: {
+          paragraphSpacing: "10pt",
+          leading: "0.74em",
+          coverMetaBottomInset: "24mm",
+        },
         ratios: { coverWidth: 90 },
         contrast: { minimum: 4.5 },
       },
@@ -119,6 +124,8 @@ describe("validatePdfTemplateRecipeV1", () => {
     const recipe = validatePdfTemplateRecipeV1(validRecipe());
     expect(recipe.schema).toBe(WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1);
     expect(recipe.design.compositions?.cover.typeCut).toEqual({ angle: 43, stop: 58 });
+    expect(recipe.design.compositions?.cover.metadataPosition).toBe("bottom");
+    expect(recipe.design.tokens.layout.coverMetaBottomInset).toBe("24mm");
     expect(recipe.design.branding.legalNotice).toBe("© Example Systems GmbH · Zürich");
     expect(recipe.localization.locales.en?.document?.coverEyebrow).toBe(
       "EXECUTIVE BRIEFING"

@@ -335,7 +335,11 @@ function assertExactDesignShape(value: unknown, path: string): void {
     const compositions = object(design.compositions, `${path}.compositions`);
     exactKeys(compositions, ["cover", "closingPage"], `${path}.compositions`);
     const cover = object(compositions.cover, `${path}.compositions.cover`);
-    exactKeys(cover, ["kind", "logo", "typeCut"], `${path}.compositions.cover`);
+    exactKeys(
+      cover,
+      ["kind", "logo", "metadataPosition", "typeCut"],
+      `${path}.compositions.cover`
+    );
     if (cover.typeCut !== undefined) {
       exactKeys(
         object(cover.typeCut, `${path}.compositions.cover.typeCut`),

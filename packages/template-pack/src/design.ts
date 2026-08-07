@@ -65,6 +65,11 @@ export const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode = "title";
 export const DESIGN_COVER_COMPOSITION_KINDS = ["standard", "type-cut"] as const;
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
 
+/** Where the cover rule and metadata grid are anchored. */
+export const DESIGN_COVER_METADATA_POSITIONS = ["flow", "bottom"] as const;
+export type DesignCoverMetadataPosition =
+  (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
 /** The bounded closing-page kinds understood by the portable design model. */
 export const DESIGN_CLOSING_COMPOSITION_KINDS = [
   "document-summary",
@@ -82,6 +87,8 @@ export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[nu
 export interface DesignCoverCompositionV1 {
   kind: DesignCoverCompositionKind;
   logo: DesignVisibility;
+  /** Absent preserves the historical flow layout. */
+  metadataPosition?: DesignCoverMetadataPosition;
   typeCut?: {
     angle: number;
     stop: number;
@@ -463,20 +470,35 @@ function validatePageCompositions(value: unknown, path: string): DesignPageCompo
 
 function validateCoverComposition(value: unknown, path: string): DesignCoverCompositionV1 {
   if (!isObject(value)) fail(path, "must be an object");
-  exactKeys(value, ["kind", "logo", "typeCut"], path);
+  exactKeys(value, ["kind", "logo", "metadataPosition", "typeCut"], path);
   const kind = validateEnum(value.kind, DESIGN_COVER_COMPOSITION_KINDS, `${path}.kind`);
   const logo = validateEnum(value.logo, DESIGN_VISIBILITIES, `${path}.logo`);
+  const metadataPosition = value.metadataPosition === undefined
+    ? undefined
+    : validateEnum(
+        value.metadataPosition,
+        DESIGN_COVER_METADATA_POSITIONS,
+        `${path}.metadataPosition`
+      );
   if (kind === "standard") {
     if (value.typeCut !== undefined) {
       fail(`${path}.typeCut`, 'is not valid when kind is "standard"');
     }
-    return { kind, logo };
+    if (metadataPosition === "bottom") {
+      fail(`${path}.metadataPosition`, 'is not valid when kind is "standard"');
+    }
+    return {
+      kind,
+      logo,
+      ...(metadataPosition === undefined ? {} : { metadataPosition }),
+    };
   }
   if (!isObject(value.typeCut)) fail(`${path}.typeCut`, 'is required when kind is "type-cut"');
   exactKeys(value.typeCut, ["angle", "stop"], `${path}.typeCut`);
   return {
     kind,
     logo,
+    ...(metadataPosition === undefined ? {} : { metadataPosition }),
     typeCut: {
       angle: validateBoundedNumber(value.typeCut.angle, `${path}.typeCut.angle`, {
         min: -180,

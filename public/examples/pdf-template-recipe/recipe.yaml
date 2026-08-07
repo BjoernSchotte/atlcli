@@ -167,6 +167,7 @@ design:
       closingColophonGap: 24pt
       closingTitleLeading: 1.02em
       coverTitleFrameHeight: 92mm
+      coverMetaBottomInset: 24mm
       closingBrandBottomInset: 24mm
       closingBrandBlockWidth: 92mm
       closingBrandLogoWidth: 42mm
@@ -203,6 +204,7 @@ design:
     cover:
       kind: type-cut
       logo: hide
+      metadataPosition: bottom
       typeCut:
         angle: 43
         stop: 58

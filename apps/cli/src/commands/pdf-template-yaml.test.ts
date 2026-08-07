@@ -57,6 +57,7 @@ function recipe(): WikiPdfTemplateRecipeV1 {
     cover: {
       kind: "type-cut",
       logo: "show",
+      metadataPosition: "bottom",
       typeCut: { angle: 43, stop: 64 },
     },
     closingPage: {
@@ -79,6 +80,7 @@ function recipe(): WikiPdfTemplateRecipeV1 {
   });
   Object.assign(design.tokens.layout, {
     coverTitleFrameHeight: "92mm",
+    coverMetaBottomInset: "24mm",
     closingBrandBottomInset: "24mm",
     closingBrandBlockWidth: "92mm",
     closingBrandLogoWidth: "42mm",

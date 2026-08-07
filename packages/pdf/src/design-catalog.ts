@@ -317,6 +317,9 @@ const OWNED_DESCRIPTORS_V2_ONLY: readonly OwnedDescriptor[] = [
   optionalV2("compositions.cover.logo", "enum", "primary", {
     enumValues: ["show", "hide"],
   }),
+  optionalV2("compositions.cover.metadataPosition", "enum", "primary", {
+    enumValues: ["flow", "bottom"],
+  }),
   optionalV2("compositions.cover.typeCut.angle", "number", "primary", {
     minimum: -180,
     maximum: 180,
@@ -344,6 +347,7 @@ const OWNED_DESCRIPTORS_V2_ONLY: readonly OwnedDescriptor[] = [
   ),
   ...([
     "coverTitleFrameHeight",
+    "coverMetaBottomInset",
     "closingBrandBottomInset",
     "closingBrandBlockWidth",
     "closingBrandLogoWidth",
@@ -492,9 +496,9 @@ export const PDF_TEMPLATE_CAPABILITY_DIGEST_V1 =
 export const PDF_TEMPLATE_PRESENTATION_REVISION_V1 =
   "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d" as const;
 export const PDF_TEMPLATE_CAPABILITY_DIGEST_V2 =
-  "e6c5098ecb4e19857abd6f95c096b3daf6ed748c814a97088fc8af062600e9ca" as const;
+  "bf635cc84dcad85e2a5b91e53f3bf21a19e65a74d64a0cf31e7cc185fdb79607" as const;
 export const PDF_TEMPLATE_PRESENTATION_REVISION_V2 =
-  "16055eda491a674b713f77124cd2d5201fc2aff037b97d28662d21778b37e124" as const;
+  "60bbedbf085b411cdf77fc685a6a652dbfe2f12621a840356197a87d3fe424e2" as const;
 
 /** Exact aliases used by the pre-catalog renderer for sparse V1 manifests. */
 export const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<
