@@ -546,28 +546,39 @@ T0 Typst spike
 
 ### T0 — Prove the pinned Typst primitives before extending contracts
 
+T0 is an isolated primitive/feasibility proof only. Its hand-written Typst
+probe is not real PDF acceptance evidence. T7/T8 must produce every acceptance
+PDF through the public atlcli YAML build and
+`wiki export --format pdf --template` paths.
+
+**Proven formulation:** Typst 0.14.2 renders
+`gradient.linear(..., relative: "parent").sharp(2)` with a stable hard
+boundary when the single title content value is rendered in a fixed-size
+parent block. The three-tier fitting measurement uses an auto-height version
+of that same title block; only the selected fixed-height block is emitted.
+
 **Implementation**
 
-- [ ] Create a disposable or committed neutral compiler test in
+- [x] Create a disposable or committed neutral compiler test in
       `packages/pdf-compiler-browser/src/template-composition-v4.test.ts` that
       compiles a fixed A4 page with a single multiline title, a hard two-color
       gradient fill, and `relative: "parent"` using the pinned Typst-WASM and
       bundled fonts.
-- [ ] Try `.sharp(2)` first. If it does not produce a stable hard boundary in
+- [x] Try `.sharp(2)` first. If it does not produce a stable hard boundary in
       Typst 0.14.2, use two repeated stops. Record the selected form in a test
       comment and in this plan before proceeding.
-- [ ] Prove a fixed-height title frame can be measured and assigned one of
+- [x] Prove a fixed-height title frame can be measured and assigned one of
       three font-size tiers without duplicating `meta.title`.
-- [ ] Compile one-, two-, three-, and deliberately overlong-title fixtures.
+- [x] Compile one-, two-, three-, and deliberately overlong-title fixtures.
       The first three must fit. The overlong fixture must fail through the
       planned explicit guard, not through an opaque Typst panic.
-- [ ] Use `pdftotext -layout` to prove each successful PDF contains the full
+- [x] Use `pdftotext -layout` to prove each successful PDF contains the full
       title once. Do not use raw PDF byte substring matching as the semantic
       oracle.
-- [ ] Rasterize the cover with `pdftoppm` and assert both title colors occur on
+- [x] Rasterize the cover with `pdftoppm` and assert both title colors occur on
       opposite sides of the expected diagonal. Include a negative fixture with
       a shifted cut so the oracle demonstrably fails.
-- [ ] Prove an HTTPS link with a Unicode legal string compiles and extracts as
+- [x] Prove an HTTPS link with a Unicode legal string compiles and extracts as
       text. This is a compiler feasibility check, not renderer implementation.
 
 **Verify**
@@ -576,8 +587,10 @@ T0 Typst spike
 rtk bun run test packages/pdf-compiler-browser/src/template-composition-v4.test.ts
 ```
 
-Expected: exit 0; real WASM compiler used, four fitting/title-boundary cases
-pass, the deliberate overflow and shifted-cut guards are observed as expected.
+Expected: exit 0; six tests pass using
+`typst.ts 0.7.0 / Typst 0.14.2`: compiler pin, three fitting/extraction cases,
+the deliberate overflow guard, and the hard-boundary test with its shifted-cut
+negative control.
 
 **STOP:** If the pinned compiler cannot render a single semantic title with a
 stable hard boundary across multiple lines, stop and report. Do not substitute
