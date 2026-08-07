@@ -15,5 +15,6 @@ export * from "./bindings.js";
 export * from "./localization.js";
 export * from "./localize.js";
 export * from "./pack.js";
+export * from "./recipe.js";
 export * from "./unpack.js";
 export * from "./validate.js";

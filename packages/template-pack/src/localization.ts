@@ -31,7 +31,17 @@ export const WIKI_PDF_V1_DOCUMENT_LABELS = [
   "spacePrefix",
 ] as const;
 
-export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+/** Additive document labels supported by newer renderers but not required by V1. */
+export const WIKI_PDF_OPTIONAL_DOCUMENT_LABELS = ["coverEyebrow"] as const;
+
+/** The complete known vocabulary; completeness still uses the V1 subset. */
+export const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS = [
+  ...WIKI_PDF_V1_DOCUMENT_LABELS,
+  ...WIKI_PDF_OPTIONAL_DOCUMENT_LABELS,
+] as const;
+
+export type WikiPdfDocumentLabelKey =
+  (typeof WIKI_PDF_SUPPORTED_DOCUMENT_LABELS)[number];
 
 export interface LocaleTemplateCopy {
   name: string;
@@ -68,6 +78,8 @@ export interface DeclaredSettingsShape {
 export interface ValidateLocalizationOptions {
   /** Document labels the fallback locale must define in full. */
   requiredDocumentLabels?: readonly string[];
+  /** Known optional labels which must not be reported as ignored. */
+  supportedDocumentLabels?: readonly string[];
   /** Declared settings/groups the fallback locale must label in full. */
   declared?: DeclaredSettingsShape;
   /** Sink for non-fatal warnings (partial non-fallback locales). */
@@ -233,8 +245,9 @@ export function validateLocalization(
     // labels this build does not know, so an unknown key must still import —
     // it is dropped at render time, and this warning is how a template author
     // finds out instead of watching a label silently vanish.
-    if (requiredDocs.length > 0) {
-      const known = new Set<string>(requiredDocs);
+    const supportedDocs = options.supportedDocumentLabels ?? requiredDocs;
+    if (supportedDocs.length > 0) {
+      const known = new Set<string>(supportedDocs);
       for (const [locale, bundle] of Object.entries(locales)) {
         for (const key of Object.keys(bundle.document ?? {})) {
           if (known.has(key)) continue;

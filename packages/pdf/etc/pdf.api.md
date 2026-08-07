@@ -1187,6 +1187,7 @@ export interface WikiPdfTemplateDesignV1 {
     typography: DesignTypography;
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
 }
 ```
 
@@ -2373,6 +2374,7 @@ export interface WikiPdfTemplateDesignV1 {
     typography: DesignTypography;
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
 }
 ```
 
@@ -3559,6 +3561,7 @@ export interface WikiPdfTemplateDesignV1 {
     typography: DesignTypography;
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
 }
 ```
 

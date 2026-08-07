@@ -95,16 +95,53 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION
+export declare const DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION: Readonly<DesignClosingPageCompositionV1>;
+
+// export: DEFAULT_DESIGN_COVER_COMPOSITION
+export declare const DEFAULT_DESIGN_COVER_COMPOSITION: Readonly<DesignCoverCompositionV1>;
+
 // export: DEFAULT_DESIGN_HEADER_MODE
 export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 
+// export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
+export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
+
+// export: DESIGN_CLOSING_COMPOSITION_KINDS
+export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
+    "document-summary",
+    "brand-lockup"
+];
+
+// export: DESIGN_COVER_COMPOSITION_KINDS
+export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
+    "standard",
+    "type-cut"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HORIZONTAL_ALIGNMENTS
+export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
+    "left",
+    "center",
+    "right"
+];
+
+// export: DESIGN_VISIBILITIES
+export declare const DESIGN_VISIBILITIES: readonly [
+    "show",
+    "hide"
+];
 
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+    websiteLabel?: string;
+    websiteUrl?: string;
+    legalNotice?: string;
 }
 
 // export: DesignCatalogValidationV1
@@ -115,8 +152,33 @@ export interface DesignCatalogValidationV1 {
     missingCapabilities: readonly string[];
 }
 
+// export: DesignClosingCompositionKind
+export type DesignClosingCompositionKind = (typeof DESIGN_CLOSING_COMPOSITION_KINDS)[number];
+
+// export: DesignClosingPageCompositionV1
+export interface DesignClosingPageCompositionV1 {
+    kind: DesignClosingCompositionKind;
+    logo: DesignVisibility;
+    website: DesignVisibility;
+    legalNotice: DesignVisibility;
+    align: DesignHorizontalAlignment;
+}
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCoverCompositionKind
+export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
+
+// export: DesignCoverCompositionV1
+export interface DesignCoverCompositionV1 {
+    kind: DesignCoverCompositionKind;
+    logo: DesignVisibility;
+    typeCut?: {
+        angle: number;
+        stop: number;
+    };
+}
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -142,6 +204,9 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHorizontalAlignment
+export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
+
 // export: DesignLength
 export type DesignLength = string;
 
@@ -155,6 +220,12 @@ export interface DesignPage {
         left: DesignLength;
         right: DesignLength;
     };
+}
+
+// export: DesignPageCompositionsV1
+export interface DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1;
+    closingPage: DesignClosingPageCompositionV1;
 }
 
 // export: DesignSemanticPalettes
@@ -178,6 +249,9 @@ export interface DesignTypography {
     fonts: Record<FontRole, string>;
     roles: Record<string, TypographyRole>;
 }
+
+// export: DesignVisibility
+export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
@@ -276,6 +350,25 @@ export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
 export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+
+// export: PdfTemplateRecipeAssetV1
+export interface PdfTemplateRecipeAssetV1 {
+    source: string;
+    decorative: boolean;
+    alt?: string;
+    placement?: PdfTemplateRecipePlacementV1;
+}
+
+// export: PdfTemplateRecipePlacementV1
+export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
+
+// export: PdfTemplateRecipeTemplateV1
+export interface PdfTemplateRecipeTemplateV1 {
+    id: string;
+    name: string;
+    version: string;
+    compilerRange: string;
+}
 
 // export: PINNED_TYPST_VERSION
 export declare const PINNED_TYPST_VERSION = "0.14.2";
@@ -524,6 +617,7 @@ export declare function validateLocalization(value: unknown, options?: ValidateL
 // export: ValidateLocalizationOptions
 export interface ValidateLocalizationOptions {
     requiredDocumentLabels?: readonly string[];
+    supportedDocumentLabels?: readonly string[];
     declared?: DeclaredSettingsShape;
     onWarning?: (warning: string) => void;
 }
@@ -556,6 +650,9 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateRecipeV1
+export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -564,6 +661,27 @@ export declare function validateTemplateAssetCapabilitiesV1(value: unknown): Tem
 
 // export: validateTemplateVisualManifestFieldsV1
 export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
+// export: WIKI_PDF_OPTIONAL_DOCUMENT_LABELS
+export declare const WIKI_PDF_OPTIONAL_DOCUMENT_LABELS: readonly [
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS
+export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix",
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -584,7 +702,7 @@ export interface WikiPdfCanonicalSourceV1 {
 }
 
 // export: WikiPdfDocumentLabelKey
-export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_SUPPORTED_DOCUMENT_LABELS)[number];
 
 // export: WikiPdfTemplateDesignV1
 export interface WikiPdfTemplateDesignV1 {
@@ -594,6 +712,7 @@ export interface WikiPdfTemplateDesignV1 {
     typography: DesignTypography;
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
 }
 
 // export: WikiPdfTemplateImageDecorationV1
@@ -653,6 +772,15 @@ export interface WikiPdfTemplatePageBorderV1 {
 
 // export: WikiPdfTemplatePageDecorationV1
 export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
+
+// export: WikiPdfTemplateRecipeV1
+export interface WikiPdfTemplateRecipeV1 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1;
+    template: PdfTemplateRecipeTemplateV1;
+    design: WikiPdfTemplateDesignV1;
+    localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {
@@ -753,16 +881,53 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION
+export declare const DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION: Readonly<DesignClosingPageCompositionV1>;
+
+// export: DEFAULT_DESIGN_COVER_COMPOSITION
+export declare const DEFAULT_DESIGN_COVER_COMPOSITION: Readonly<DesignCoverCompositionV1>;
+
 // export: DEFAULT_DESIGN_HEADER_MODE
 export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 
+// export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
+export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
+
+// export: DESIGN_CLOSING_COMPOSITION_KINDS
+export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
+    "document-summary",
+    "brand-lockup"
+];
+
+// export: DESIGN_COVER_COMPOSITION_KINDS
+export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
+    "standard",
+    "type-cut"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HORIZONTAL_ALIGNMENTS
+export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
+    "left",
+    "center",
+    "right"
+];
+
+// export: DESIGN_VISIBILITIES
+export declare const DESIGN_VISIBILITIES: readonly [
+    "show",
+    "hide"
+];
 
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+    websiteLabel?: string;
+    websiteUrl?: string;
+    legalNotice?: string;
 }
 
 // export: DesignCatalogValidationV1
@@ -773,8 +938,33 @@ export interface DesignCatalogValidationV1 {
     missingCapabilities: readonly string[];
 }
 
+// export: DesignClosingCompositionKind
+export type DesignClosingCompositionKind = (typeof DESIGN_CLOSING_COMPOSITION_KINDS)[number];
+
+// export: DesignClosingPageCompositionV1
+export interface DesignClosingPageCompositionV1 {
+    kind: DesignClosingCompositionKind;
+    logo: DesignVisibility;
+    website: DesignVisibility;
+    legalNotice: DesignVisibility;
+    align: DesignHorizontalAlignment;
+}
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCoverCompositionKind
+export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
+
+// export: DesignCoverCompositionV1
+export interface DesignCoverCompositionV1 {
+    kind: DesignCoverCompositionKind;
+    logo: DesignVisibility;
+    typeCut?: {
+        angle: number;
+        stop: number;
+    };
+}
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -800,6 +990,9 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHorizontalAlignment
+export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
+
 // export: DesignLength
 export type DesignLength = string;
 
@@ -813,6 +1006,12 @@ export interface DesignPage {
         left: DesignLength;
         right: DesignLength;
     };
+}
+
+// export: DesignPageCompositionsV1
+export interface DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1;
+    closingPage: DesignClosingPageCompositionV1;
 }
 
 // export: DesignSemanticPalettes
@@ -836,6 +1035,9 @@ export interface DesignTypography {
     fonts: Record<FontRole, string>;
     roles: Record<string, TypographyRole>;
 }
+
+// export: DesignVisibility
+export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
@@ -934,6 +1136,25 @@ export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
 export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+
+// export: PdfTemplateRecipeAssetV1
+export interface PdfTemplateRecipeAssetV1 {
+    source: string;
+    decorative: boolean;
+    alt?: string;
+    placement?: PdfTemplateRecipePlacementV1;
+}
+
+// export: PdfTemplateRecipePlacementV1
+export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
+
+// export: PdfTemplateRecipeTemplateV1
+export interface PdfTemplateRecipeTemplateV1 {
+    id: string;
+    name: string;
+    version: string;
+    compilerRange: string;
+}
 
 // export: PINNED_TYPST_VERSION
 export declare const PINNED_TYPST_VERSION = "0.14.2";
@@ -1182,6 +1403,7 @@ export declare function validateLocalization(value: unknown, options?: ValidateL
 // export: ValidateLocalizationOptions
 export interface ValidateLocalizationOptions {
     requiredDocumentLabels?: readonly string[];
+    supportedDocumentLabels?: readonly string[];
     declared?: DeclaredSettingsShape;
     onWarning?: (warning: string) => void;
 }
@@ -1214,6 +1436,9 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateRecipeV1
+export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -1222,6 +1447,27 @@ export declare function validateTemplateAssetCapabilitiesV1(value: unknown): Tem
 
 // export: validateTemplateVisualManifestFieldsV1
 export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
+// export: WIKI_PDF_OPTIONAL_DOCUMENT_LABELS
+export declare const WIKI_PDF_OPTIONAL_DOCUMENT_LABELS: readonly [
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS
+export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix",
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -1242,7 +1488,7 @@ export interface WikiPdfCanonicalSourceV1 {
 }
 
 // export: WikiPdfDocumentLabelKey
-export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_SUPPORTED_DOCUMENT_LABELS)[number];
 
 // export: WikiPdfTemplateDesignV1
 export interface WikiPdfTemplateDesignV1 {
@@ -1252,6 +1498,7 @@ export interface WikiPdfTemplateDesignV1 {
     typography: DesignTypography;
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
 }
 
 // export: WikiPdfTemplateImageDecorationV1
@@ -1311,6 +1558,15 @@ export interface WikiPdfTemplatePageBorderV1 {
 
 // export: WikiPdfTemplatePageDecorationV1
 export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
+
+// export: WikiPdfTemplateRecipeV1
+export interface WikiPdfTemplateRecipeV1 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1;
+    template: PdfTemplateRecipeTemplateV1;
+    design: WikiPdfTemplateDesignV1;
+    localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {
@@ -1411,16 +1667,53 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION
+export declare const DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION: Readonly<DesignClosingPageCompositionV1>;
+
+// export: DEFAULT_DESIGN_COVER_COMPOSITION
+export declare const DEFAULT_DESIGN_COVER_COMPOSITION: Readonly<DesignCoverCompositionV1>;
+
 // export: DEFAULT_DESIGN_HEADER_MODE
 export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 
+// export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
+export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
+
+// export: DESIGN_CLOSING_COMPOSITION_KINDS
+export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
+    "document-summary",
+    "brand-lockup"
+];
+
+// export: DESIGN_COVER_COMPOSITION_KINDS
+export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
+    "standard",
+    "type-cut"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HORIZONTAL_ALIGNMENTS
+export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
+    "left",
+    "center",
+    "right"
+];
+
+// export: DESIGN_VISIBILITIES
+export declare const DESIGN_VISIBILITIES: readonly [
+    "show",
+    "hide"
+];
 
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+    websiteLabel?: string;
+    websiteUrl?: string;
+    legalNotice?: string;
 }
 
 // export: DesignCatalogValidationV1
@@ -1431,8 +1724,33 @@ export interface DesignCatalogValidationV1 {
     missingCapabilities: readonly string[];
 }
 
+// export: DesignClosingCompositionKind
+export type DesignClosingCompositionKind = (typeof DESIGN_CLOSING_COMPOSITION_KINDS)[number];
+
+// export: DesignClosingPageCompositionV1
+export interface DesignClosingPageCompositionV1 {
+    kind: DesignClosingCompositionKind;
+    logo: DesignVisibility;
+    website: DesignVisibility;
+    legalNotice: DesignVisibility;
+    align: DesignHorizontalAlignment;
+}
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCoverCompositionKind
+export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
+
+// export: DesignCoverCompositionV1
+export interface DesignCoverCompositionV1 {
+    kind: DesignCoverCompositionKind;
+    logo: DesignVisibility;
+    typeCut?: {
+        angle: number;
+        stop: number;
+    };
+}
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -1458,6 +1776,9 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHorizontalAlignment
+export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
+
 // export: DesignLength
 export type DesignLength = string;
 
@@ -1471,6 +1792,12 @@ export interface DesignPage {
         left: DesignLength;
         right: DesignLength;
     };
+}
+
+// export: DesignPageCompositionsV1
+export interface DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1;
+    closingPage: DesignClosingPageCompositionV1;
 }
 
 // export: DesignSemanticPalettes
@@ -1494,6 +1821,9 @@ export interface DesignTypography {
     fonts: Record<FontRole, string>;
     roles: Record<string, TypographyRole>;
 }
+
+// export: DesignVisibility
+export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
@@ -1592,6 +1922,25 @@ export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
 export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+
+// export: PdfTemplateRecipeAssetV1
+export interface PdfTemplateRecipeAssetV1 {
+    source: string;
+    decorative: boolean;
+    alt?: string;
+    placement?: PdfTemplateRecipePlacementV1;
+}
+
+// export: PdfTemplateRecipePlacementV1
+export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
+
+// export: PdfTemplateRecipeTemplateV1
+export interface PdfTemplateRecipeTemplateV1 {
+    id: string;
+    name: string;
+    version: string;
+    compilerRange: string;
+}
 
 // export: PINNED_TYPST_VERSION
 export declare const PINNED_TYPST_VERSION = "0.14.2";
@@ -1840,6 +2189,7 @@ export declare function validateLocalization(value: unknown, options?: ValidateL
 // export: ValidateLocalizationOptions
 export interface ValidateLocalizationOptions {
     requiredDocumentLabels?: readonly string[];
+    supportedDocumentLabels?: readonly string[];
     declared?: DeclaredSettingsShape;
     onWarning?: (warning: string) => void;
 }
@@ -1872,6 +2222,9 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateRecipeV1
+export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -1880,6 +2233,27 @@ export declare function validateTemplateAssetCapabilitiesV1(value: unknown): Tem
 
 // export: validateTemplateVisualManifestFieldsV1
 export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
+// export: WIKI_PDF_OPTIONAL_DOCUMENT_LABELS
+export declare const WIKI_PDF_OPTIONAL_DOCUMENT_LABELS: readonly [
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS
+export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix",
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -1900,7 +2274,7 @@ export interface WikiPdfCanonicalSourceV1 {
 }
 
 // export: WikiPdfDocumentLabelKey
-export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_SUPPORTED_DOCUMENT_LABELS)[number];
 
 // export: WikiPdfTemplateDesignV1
 export interface WikiPdfTemplateDesignV1 {
@@ -1910,6 +2284,7 @@ export interface WikiPdfTemplateDesignV1 {
     typography: DesignTypography;
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
 }
 
 // export: WikiPdfTemplateImageDecorationV1
@@ -1969,6 +2344,15 @@ export interface WikiPdfTemplatePageBorderV1 {
 
 // export: WikiPdfTemplatePageDecorationV1
 export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
+
+// export: WikiPdfTemplateRecipeV1
+export interface WikiPdfTemplateRecipeV1 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1;
+    template: PdfTemplateRecipeTemplateV1;
+    design: WikiPdfTemplateDesignV1;
+    localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {
@@ -2069,16 +2453,53 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION
+export declare const DEFAULT_DESIGN_CLOSING_PAGE_COMPOSITION: Readonly<DesignClosingPageCompositionV1>;
+
+// export: DEFAULT_DESIGN_COVER_COMPOSITION
+export declare const DEFAULT_DESIGN_COVER_COMPOSITION: Readonly<DesignCoverCompositionV1>;
+
 // export: DEFAULT_DESIGN_HEADER_MODE
 export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 
+// export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
+export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
+
+// export: DESIGN_CLOSING_COMPOSITION_KINDS
+export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
+    "document-summary",
+    "brand-lockup"
+];
+
+// export: DESIGN_COVER_COMPOSITION_KINDS
+export declare const DESIGN_COVER_COMPOSITION_KINDS: readonly [
+    "standard",
+    "type-cut"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HORIZONTAL_ALIGNMENTS
+export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
+    "left",
+    "center",
+    "right"
+];
+
+// export: DESIGN_VISIBILITIES
+export declare const DESIGN_VISIBILITIES: readonly [
+    "show",
+    "hide"
+];
 
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+    websiteLabel?: string;
+    websiteUrl?: string;
+    legalNotice?: string;
 }
 
 // export: DesignCatalogValidationV1
@@ -2089,8 +2510,33 @@ export interface DesignCatalogValidationV1 {
     missingCapabilities: readonly string[];
 }
 
+// export: DesignClosingCompositionKind
+export type DesignClosingCompositionKind = (typeof DESIGN_CLOSING_COMPOSITION_KINDS)[number];
+
+// export: DesignClosingPageCompositionV1
+export interface DesignClosingPageCompositionV1 {
+    kind: DesignClosingCompositionKind;
+    logo: DesignVisibility;
+    website: DesignVisibility;
+    legalNotice: DesignVisibility;
+    align: DesignHorizontalAlignment;
+}
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCoverCompositionKind
+export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
+
+// export: DesignCoverCompositionV1
+export interface DesignCoverCompositionV1 {
+    kind: DesignCoverCompositionKind;
+    logo: DesignVisibility;
+    typeCut?: {
+        angle: number;
+        stop: number;
+    };
+}
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -2116,6 +2562,9 @@ export interface DesignFeatures {
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
 
+// export: DesignHorizontalAlignment
+export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
+
 // export: DesignLength
 export type DesignLength = string;
 
@@ -2129,6 +2578,12 @@ export interface DesignPage {
         left: DesignLength;
         right: DesignLength;
     };
+}
+
+// export: DesignPageCompositionsV1
+export interface DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1;
+    closingPage: DesignClosingPageCompositionV1;
 }
 
 // export: DesignSemanticPalettes
@@ -2152,6 +2607,9 @@ export interface DesignTypography {
     fonts: Record<FontRole, string>;
     roles: Record<string, TypographyRole>;
 }
+
+// export: DesignVisibility
+export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
@@ -2250,6 +2708,25 @@ export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
 export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+
+// export: PdfTemplateRecipeAssetV1
+export interface PdfTemplateRecipeAssetV1 {
+    source: string;
+    decorative: boolean;
+    alt?: string;
+    placement?: PdfTemplateRecipePlacementV1;
+}
+
+// export: PdfTemplateRecipePlacementV1
+export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
+
+// export: PdfTemplateRecipeTemplateV1
+export interface PdfTemplateRecipeTemplateV1 {
+    id: string;
+    name: string;
+    version: string;
+    compilerRange: string;
+}
 
 // export: PINNED_TYPST_VERSION
 export declare const PINNED_TYPST_VERSION = "0.14.2";
@@ -2498,6 +2975,7 @@ export declare function validateLocalization(value: unknown, options?: ValidateL
 // export: ValidateLocalizationOptions
 export interface ValidateLocalizationOptions {
     requiredDocumentLabels?: readonly string[];
+    supportedDocumentLabels?: readonly string[];
     declared?: DeclaredSettingsShape;
     onWarning?: (warning: string) => void;
 }
@@ -2530,6 +3008,9 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateRecipeV1
+export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
 
@@ -2538,6 +3019,27 @@ export declare function validateTemplateAssetCapabilitiesV1(value: unknown): Tem
 
 // export: validateTemplateVisualManifestFieldsV1
 export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
+// export: WIKI_PDF_OPTIONAL_DOCUMENT_LABELS
+export declare const WIKI_PDF_OPTIONAL_DOCUMENT_LABELS: readonly [
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS
+export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix",
+    "coverEyebrow"
+];
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -2558,7 +3060,7 @@ export interface WikiPdfCanonicalSourceV1 {
 }
 
 // export: WikiPdfDocumentLabelKey
-export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_SUPPORTED_DOCUMENT_LABELS)[number];
 
 // export: WikiPdfTemplateDesignV1
 export interface WikiPdfTemplateDesignV1 {
@@ -2568,6 +3070,7 @@ export interface WikiPdfTemplateDesignV1 {
     typography: DesignTypography;
     tokens: DesignTokens;
     semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
 }
 
 // export: WikiPdfTemplateImageDecorationV1
@@ -2627,6 +3130,15 @@ export interface WikiPdfTemplatePageBorderV1 {
 
 // export: WikiPdfTemplatePageDecorationV1
 export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
+
+// export: WikiPdfTemplateRecipeV1
+export interface WikiPdfTemplateRecipeV1 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1;
+    template: PdfTemplateRecipeTemplateV1;
+    design: WikiPdfTemplateDesignV1;
+    localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {

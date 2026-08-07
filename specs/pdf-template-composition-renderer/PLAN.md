@@ -314,7 +314,7 @@ localization:
 
 assets:
   asset.coverBackground:
-    source: ./assets/cover-sail.svg
+    source: assets/cover-sail.svg
     decorative: true
     placement:
       relativeTo: page
@@ -324,7 +324,7 @@ assets:
       width: 210mm
       height: 297mm
   asset.logo:
-    source: ./assets/logo.svg
+    source: assets/logo.svg
     decorative: false
     alt: Mayflower
 ```
@@ -600,37 +600,41 @@ duplicate text layers, raster text, arbitrary clipping, or a Typst upgrade.
 
 **Implementation**
 
-- [ ] Add the composition types, enum constants, defaults, and validators to
+- [x] Add the composition types, enum constants, defaults, and validators to
       `packages/template-pack/src/design.ts` exactly as described under
       “Target declarative contract.” Follow the optional-mode pattern already
       used by `features.header.mode`: reject invalid explicit values and keep
       absence distinguishable from an explicit value.
-- [ ] Add `websiteLabel`, `websiteUrl`, and `legalNotice` to
+- [x] Add `websiteLabel`, `websiteUrl`, and `legalNotice` to
       `DesignBranding`. Implement a dedicated HTTPS validator for
       `websiteUrl`; a generic safe-string check is insufficient for a link
       target.
-- [ ] Bound all strings and numbers. Reject control characters, non-finite
+- [x] Bound all strings and numbers. Reject control characters, non-finite
       numbers, unsupported schemes, usernames/passwords in URLs, fragments if
       the product does not need them, and stray configuration that would be
       ignored by the selected composition kind.
-- [ ] Add optional document label `coverEyebrow` without making it mandatory
+- [x] Add optional document label `coverEyebrow` without making it mandatory
       for V1 packs. Split the localization vocabulary into required V1 labels
       and supported optional labels; preserve the old required set exactly.
-- [ ] Add `packages/template-pack/src/recipe.ts` with
+- [x] Add `packages/template-pack/src/recipe.ts` with
       `WikiPdfTemplateRecipeV1` and `validatePdfTemplateRecipeV1(unknown)`.
       This module validates structured data only and performs no filesystem IO.
-- [ ] The recipe validator must reject renderer-generated fields, unknown keys,
-      raw source/code fields, unsafe asset paths, duplicate slots, and an
+- [x] The recipe validator must reject renderer-generated fields, unknown keys,
+      raw source/code fields, unsafe asset paths, invalid slot identities, and an
       invalid portable design shape. Catalog-V2 completeness and asset/design
       cross-references belong to the PDF materializer in T5; do not introduce a
-      `@atlcli/template-pack` → `@atlcli/pdf` dependency.
-- [ ] Export the pure types/validators from `index.browser.ts`; preserve the
+      `@atlcli/template-pack` → `@atlcli/pdf` dependency. Duplicate YAML keys
+      are rejected by the parser adapter in T6; a parsed object cannot retain
+      that source-level fact.
+- [x] Export the pure types/validators from `index.browser.ts`; preserve the
       browser-safe dependency graph.
-- [ ] Add positive and boundary tests in `design.test.ts`,
+- [x] Add positive and boundary tests in `design.test.ts`,
       `localization` tests, `manifest.test.ts`, and `recipe.test.ts`.
-- [ ] Add negative tests for unsafe URLs, injected Typst-like strings,
+- [x] Add negative tests for unsafe URLs, injected Typst-like strings,
       non-finite angle/stop values, missing conditional fields, stray Type Cut
       data on a standard cover, and brand-lockup visibility without content.
+- [x] Regenerate and verify the template-pack and transitively affected PDF API
+      reports and closure classifications.
 
 **Verify**
 
@@ -639,9 +643,10 @@ rtk bun run test packages/template-pack/src/design.test.ts packages/template-pac
 rtk bun run check:browser
 ```
 
-Expected: both commands exit 0; the old required localization set is unchanged,
-new optional copy resolves when present, and no Node/Bun import enters the
-template-pack browser graph.
+Expected: 66 focused tests pass; the old required localization set is
+unchanged, new optional copy resolves when present, and no Node/Bun import
+enters the template-pack browser graph. Typecheck, build, and the API-report
+guard also exit 0.
 
 ### T2 — Introduce capability catalog V2 and revision-aware compatibility
 
