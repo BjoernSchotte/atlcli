@@ -50,6 +50,8 @@
         "url": "https://github.com/BjoernSchotte/typst.ts/releases/tag/web-compiler-v0.8.0-rc3.typst0151.1",
         "asset": "myriaddreamin-typst-ts-web-compiler-0.8.0-rc3.typst0151.1.tgz",
         "assetSha256": "7b7746c3e630d510b13c888127f00a39e7f84b6cc8402fce952c394594f8a20b",
+        "checksumAsset": "https://github.com/BjoernSchotte/typst.ts/releases/download/web-compiler-v0.8.0-rc3.typst0151.1/SHA256SUMS",
+        "checksumAssetSha256": "1e49ea31d5e5291945965ff9f773eceda0e0ed60ceb766de63e8a9469839e0fb",
         "bunIntegrity": "sha512-zq4Un/kw5cLAgCLlcKX9KVZsWFmAdzr943fmYBIhJnZAd4WOZC1r8B8xFloUXeOpxW2TayCv+Pl8nNu/Nte7FA=="
       },
       "reproducibleBuildCi": "https://github.com/BjoernSchotte/typst.ts/actions/runs/31175218426"

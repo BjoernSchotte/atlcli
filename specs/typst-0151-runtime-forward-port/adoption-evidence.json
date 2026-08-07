@@ -8,6 +8,7 @@
     "typstCoreCommit": "301531fcfc4cb7ba9d688aa8a0738e8a6372c122",
     "releaseTag": "web-compiler-v0.8.0-rc3.typst0151.1",
     "packageSha256": "7b7746c3e630d510b13c888127f00a39e7f84b6cc8402fce952c394594f8a20b",
+    "checksumAssetSha256": "1e49ea31d5e5291945965ff9f773eceda0e0ed60ceb766de63e8a9469839e0fb",
     "glueSha256": "542926574dc2659de3fcb34b3e286f8aa1fc42f7a91d19d6e0fd2a123bf3753a",
     "wasmSha256": "39d2ce3cda6cc41ed267a8dd641a358785bca65c99df39bdd55574f7f688cd27"
   },
