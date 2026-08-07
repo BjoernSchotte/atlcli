@@ -517,7 +517,7 @@ digest, semantic/raster checks pass, and cleanup reports zero owned residue.
       passes. Two full-suite attempts exposed different unrelated timing/path
       flakes; both affected files pass repeated isolated reruns, as recorded in
       `adoption-evidence.json`.
-- [ ] Commit the coherent atlcli migration and stop. Do not push, open a PR,
+- [x] Commit the coherent atlcli migration and stop. Do not push, open a PR,
       publish upstream changes, or release unless explicitly authorized.
 - [ ] Only after this runtime PR merges may
       `specs/pdf-template-capabilities-v3/PLAN.md` begin T1.
@@ -561,7 +561,7 @@ future event that removes any temporary fork.
       reruns and are recorded in the adoption evidence.
 - [x] The public CLI and LIVE DOCSY proof pass with redacted evidence and
       verified cleanup.
-- [ ] The final atlcli migration is committed separately before Capability V3
+- [x] The final atlcli migration is committed separately before Capability V3
       implementation begins; nothing is pushed or released automatically.
 
 ## STOP conditions

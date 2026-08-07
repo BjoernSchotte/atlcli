@@ -1,6 +1,7 @@
 {
   "schema": "atlcli.typst-0151-adoption-evidence/1",
   "recordedAt": "2026-08-07",
+  "atlcliMigrationCommit": "6c65d23d",
   "runtime": {
     "compilerVersion": "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1",
     "typstTsCommit": "2ff4a660328415013d739fe69e12b2f06f12ed82",
