@@ -61,6 +61,7 @@ export * from "./chat-agent/session.js";
 export * from "./chat-agent/interaction.js";
 export * from "./chat-agent/activity.js";
 export * from "./chat-agent/feedback.js";
+export * from "./chat-agent/release-gates.js";
 export * from "./chat-agent/port.js";
 export * from "./chat-agent/answer.js";
 export * from "./chat-agent/prompts.js";

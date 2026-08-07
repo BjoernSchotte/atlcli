@@ -680,6 +680,12 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_RELEASE_GATE_SCHEMA_V1
+export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
+
+// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
+export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
+
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -1373,6 +1379,43 @@ export interface ChatRelationshipTraversalProposalV1 {
     traversalId: string;
     kind: ChatRelationshipTraversalKindV1;
     maxDepth: 1;
+}
+
+// export: ChatReleaseGateFailureCodeV1
+export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
+
+// export: ChatReleaseGateFailureV1
+export interface ChatReleaseGateFailureV1 {
+    code: ChatReleaseGateFailureCodeV1;
+    scenarioIds: string[];
+}
+
+// export: ChatReleaseGatePolicyV1
+export interface ChatReleaseGatePolicyV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}
+
+// export: ChatReleaseGateResultV1
+export interface ChatReleaseGateResultV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    passed: boolean;
+    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
+    scenarioCount: number;
+    simpleScenarioCount: number;
+    complexScenarioCount: number;
+    failures: ChatReleaseGateFailureV1[];
+    aggregate: {
+        legacyQuality: number;
+        autoQuality: number;
+        quickSimpleQuality: number;
+        deepSimpleQuality: number;
+        quickComplexQuality: number;
+        deepComplexQuality: number;
+    };
 }
 
 // export: ChatResolvedRetrievalEntityV1
@@ -2305,6 +2348,15 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
 
+// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
+export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
+    schema: "atlcli.chat-release-gate/v1";
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}>;
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -2391,6 +2443,15 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatReleaseGatesV1
+export declare function evaluateChatReleaseGatesV1(input: {
+    cases: readonly {
+        scenario: ChatEvaluationScenarioV1;
+        comparison: ChatReleaseEvaluationComparisonResultV1;
+    }[];
+    policy?: ChatReleaseGatePolicyV1;
+}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -8365,6 +8426,12 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_RELEASE_GATE_SCHEMA_V1
+export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
+
+// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
+export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
+
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -9058,6 +9125,43 @@ export interface ChatRelationshipTraversalProposalV1 {
     traversalId: string;
     kind: ChatRelationshipTraversalKindV1;
     maxDepth: 1;
+}
+
+// export: ChatReleaseGateFailureCodeV1
+export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
+
+// export: ChatReleaseGateFailureV1
+export interface ChatReleaseGateFailureV1 {
+    code: ChatReleaseGateFailureCodeV1;
+    scenarioIds: string[];
+}
+
+// export: ChatReleaseGatePolicyV1
+export interface ChatReleaseGatePolicyV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}
+
+// export: ChatReleaseGateResultV1
+export interface ChatReleaseGateResultV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    passed: boolean;
+    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
+    scenarioCount: number;
+    simpleScenarioCount: number;
+    complexScenarioCount: number;
+    failures: ChatReleaseGateFailureV1[];
+    aggregate: {
+        legacyQuality: number;
+        autoQuality: number;
+        quickSimpleQuality: number;
+        deepSimpleQuality: number;
+        quickComplexQuality: number;
+        deepComplexQuality: number;
+    };
 }
 
 // export: ChatResolvedRetrievalEntityV1
@@ -9981,6 +10085,15 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
 
+// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
+export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
+    schema: "atlcli.chat-release-gate/v1";
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}>;
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -10067,6 +10180,15 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatReleaseGatesV1
+export declare function evaluateChatReleaseGatesV1(input: {
+    cases: readonly {
+        scenario: ChatEvaluationScenarioV1;
+        comparison: ChatReleaseEvaluationComparisonResultV1;
+    }[];
+    policy?: ChatReleaseGatePolicyV1;
+}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -16030,6 +16152,12 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_RELEASE_GATE_SCHEMA_V1
+export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
+
+// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
+export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
+
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -16723,6 +16851,43 @@ export interface ChatRelationshipTraversalProposalV1 {
     traversalId: string;
     kind: ChatRelationshipTraversalKindV1;
     maxDepth: 1;
+}
+
+// export: ChatReleaseGateFailureCodeV1
+export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
+
+// export: ChatReleaseGateFailureV1
+export interface ChatReleaseGateFailureV1 {
+    code: ChatReleaseGateFailureCodeV1;
+    scenarioIds: string[];
+}
+
+// export: ChatReleaseGatePolicyV1
+export interface ChatReleaseGatePolicyV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}
+
+// export: ChatReleaseGateResultV1
+export interface ChatReleaseGateResultV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    passed: boolean;
+    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
+    scenarioCount: number;
+    simpleScenarioCount: number;
+    complexScenarioCount: number;
+    failures: ChatReleaseGateFailureV1[];
+    aggregate: {
+        legacyQuality: number;
+        autoQuality: number;
+        quickSimpleQuality: number;
+        deepSimpleQuality: number;
+        quickComplexQuality: number;
+        deepComplexQuality: number;
+    };
 }
 
 // export: ChatResolvedRetrievalEntityV1
@@ -17655,6 +17820,15 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
 
+// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
+export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
+    schema: "atlcli.chat-release-gate/v1";
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}>;
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -17741,6 +17915,15 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatReleaseGatesV1
+export declare function evaluateChatReleaseGatesV1(input: {
+    cases: readonly {
+        scenario: ChatEvaluationScenarioV1;
+        comparison: ChatReleaseEvaluationComparisonResultV1;
+    }[];
+    policy?: ChatReleaseGatePolicyV1;
+}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -23724,6 +23907,12 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_RELEASE_GATE_SCHEMA_V1
+export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
+
+// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
+export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
+
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -24426,6 +24615,43 @@ export interface ChatRelationshipTraversalProposalV1 {
     traversalId: string;
     kind: ChatRelationshipTraversalKindV1;
     maxDepth: 1;
+}
+
+// export: ChatReleaseGateFailureCodeV1
+export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
+
+// export: ChatReleaseGateFailureV1
+export interface ChatReleaseGateFailureV1 {
+    code: ChatReleaseGateFailureCodeV1;
+    scenarioIds: string[];
+}
+
+// export: ChatReleaseGatePolicyV1
+export interface ChatReleaseGatePolicyV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}
+
+// export: ChatReleaseGateResultV1
+export interface ChatReleaseGateResultV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    passed: boolean;
+    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
+    scenarioCount: number;
+    simpleScenarioCount: number;
+    complexScenarioCount: number;
+    failures: ChatReleaseGateFailureV1[];
+    aggregate: {
+        legacyQuality: number;
+        autoQuality: number;
+        quickSimpleQuality: number;
+        deepSimpleQuality: number;
+        quickComplexQuality: number;
+        deepComplexQuality: number;
+    };
 }
 
 // export: ChatResolvedRetrievalEntityV1
@@ -25505,6 +25731,15 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
 
+// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
+export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
+    schema: "atlcli.chat-release-gate/v1";
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}>;
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -25634,6 +25869,15 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatReleaseGatesV1
+export declare function evaluateChatReleaseGatesV1(input: {
+    cases: readonly {
+        scenario: ChatEvaluationScenarioV1;
+        comparison: ChatReleaseEvaluationComparisonResultV1;
+    }[];
+    policy?: ChatReleaseGatePolicyV1;
+}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -31875,6 +32119,12 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_RELEASE_GATE_SCHEMA_V1
+export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
+
+// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
+export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
+
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -32577,6 +32827,43 @@ export interface ChatRelationshipTraversalProposalV1 {
     traversalId: string;
     kind: ChatRelationshipTraversalKindV1;
     maxDepth: 1;
+}
+
+// export: ChatReleaseGateFailureCodeV1
+export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
+
+// export: ChatReleaseGateFailureV1
+export interface ChatReleaseGateFailureV1 {
+    code: ChatReleaseGateFailureCodeV1;
+    scenarioIds: string[];
+}
+
+// export: ChatReleaseGatePolicyV1
+export interface ChatReleaseGatePolicyV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}
+
+// export: ChatReleaseGateResultV1
+export interface ChatReleaseGateResultV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    passed: boolean;
+    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
+    scenarioCount: number;
+    simpleScenarioCount: number;
+    complexScenarioCount: number;
+    failures: ChatReleaseGateFailureV1[];
+    aggregate: {
+        legacyQuality: number;
+        autoQuality: number;
+        quickSimpleQuality: number;
+        deepSimpleQuality: number;
+        quickComplexQuality: number;
+        deepComplexQuality: number;
+    };
 }
 
 // export: ChatResolvedRetrievalEntityV1
@@ -33646,6 +33933,15 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
 
+// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
+export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
+    schema: "atlcli.chat-release-gate/v1";
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}>;
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -33775,6 +34071,15 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatReleaseGatesV1
+export declare function evaluateChatReleaseGatesV1(input: {
+    cases: readonly {
+        scenario: ChatEvaluationScenarioV1;
+        comparison: ChatReleaseEvaluationComparisonResultV1;
+    }[];
+    policy?: ChatReleaseGatePolicyV1;
+}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -41838,6 +42143,12 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
+// export: CHAT_RELEASE_GATE_SCHEMA_V1
+export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
+
+// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
+export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
+
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -42540,6 +42851,43 @@ export interface ChatRelationshipTraversalProposalV1 {
     traversalId: string;
     kind: ChatRelationshipTraversalKindV1;
     maxDepth: 1;
+}
+
+// export: ChatReleaseGateFailureCodeV1
+export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
+
+// export: ChatReleaseGateFailureV1
+export interface ChatReleaseGateFailureV1 {
+    code: ChatReleaseGateFailureCodeV1;
+    scenarioIds: string[];
+}
+
+// export: ChatReleaseGatePolicyV1
+export interface ChatReleaseGatePolicyV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}
+
+// export: ChatReleaseGateResultV1
+export interface ChatReleaseGateResultV1 {
+    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
+    passed: boolean;
+    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
+    scenarioCount: number;
+    simpleScenarioCount: number;
+    complexScenarioCount: number;
+    failures: ChatReleaseGateFailureV1[];
+    aggregate: {
+        legacyQuality: number;
+        autoQuality: number;
+        quickSimpleQuality: number;
+        deepSimpleQuality: number;
+        quickComplexQuality: number;
+        deepComplexQuality: number;
+    };
 }
 
 // export: ChatResolvedRetrievalEntityV1
@@ -43609,6 +43957,15 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
 
+// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
+export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
+    schema: "atlcli.chat-release-gate/v1";
+    minimumExactContextQuality: number;
+    minimumAutoQualityGainOverLegacy: number;
+    minimumDeepComplexQualityGainOverQuick: number;
+    maximumDeepSimpleQualityRegression: number;
+}>;
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -43738,6 +44095,15 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatReleaseGatesV1
+export declare function evaluateChatReleaseGatesV1(input: {
+    cases: readonly {
+        scenario: ChatEvaluationScenarioV1;
+        comparison: ChatReleaseEvaluationComparisonResultV1;
+    }[];
+    policy?: ChatReleaseGatePolicyV1;
+}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;

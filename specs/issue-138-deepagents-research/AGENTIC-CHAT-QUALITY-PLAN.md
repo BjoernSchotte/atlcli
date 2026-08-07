@@ -1135,9 +1135,11 @@ the full CLI/MV3 fault matrix. All shapes preserve the same product semantics.
 - [ ] Run architecture-invariant and fresh-versus-reused-root differential tests
       as release-blocking non-quality gates; benchmark construction reuse
       separately and keep the safe per-turn fallback when benefit is immaterial.
-- [ ] Calibrate every rubric/LLM judge against hand-labelled anchors, publish
+- [x] Calibrate every rubric/LLM judge against hand-labelled anchors, publish
       agreement/error/confusion metrics, and keep it diagnostic until the review
-      accepts a release-gate threshold.
+      accepts a release-gate threshold. No LLM judge is currently configured;
+      the release-gate contract therefore excludes one and fixes any future
+      judge to diagnostic-only until that calibration is accepted.
 - [ ] Compare Quick, Auto, Deep, and Deep Research on the same questions.
 - [ ] Require Deep to improve the complex-question quality score over Quick
       without regressing simple exact-context correctness; require Auto routing

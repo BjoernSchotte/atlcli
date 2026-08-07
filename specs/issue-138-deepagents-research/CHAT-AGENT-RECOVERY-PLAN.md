@@ -1243,7 +1243,7 @@ Implementation:
       model/PTC/HTTP calls, and peak supervisor context.
 - [x] Compare `legacy-chat`, Quick, Auto, Deep, and explicit Deep Research on the
       same eligible questions and budget disclosures.
-- [ ] Calibrate any model judge against hand-labelled anchors and keep it
+- [x] Calibrate any model judge against hand-labelled anchors and keep it
       diagnostic until human agreement/error thresholds are reviewed and
       accepted.
 - [x] Add privacy-safe optional answer feedback without committing tenant-derived
@@ -1284,6 +1284,21 @@ small accessible helpful/not-helpful actions. Core privacy, replacement,
 foreign-conversation, CLI adapter/control, and Sidebar presenter tests pass;
 root typecheck, public API/closure guards, production MV3 build/output gate, and
 tracked-tree privacy scan also pass.
+
+Deterministic release-gate proof (2026-08-07): no model judge is constructed or
+accepted as blocking evidence. The exported policy fixes every future model
+judge to diagnostic-only until a separately reviewed hand-labelled calibration
+accepts agreement, error, and confusion thresholds. Blocking evaluation instead
+re-normalizes and re-scores the body-free comparison observations against the
+hand-labelled gold registry. It fails on a wrong source, unsupported assertion,
+false completeness, incorrect outcome/strategy, incomplete exact-context
+source/detail/citation coverage, missed relationship/gap, insufficient Auto
+gain over the legacy path, insufficient Deep gain over Quick on complex cases,
+or a Deep regression on simple cases. The twenty-scenario proof passes the
+accepted deterministic envelope; negative tests prove wrong-source, no-quality-
+gain, duplicate-identity, and invalid-threshold failures. Runtime observations
+and operator acceptance remain open rather than being replaced by synthetic
+gate tests.
 
 Automated proof:
 
