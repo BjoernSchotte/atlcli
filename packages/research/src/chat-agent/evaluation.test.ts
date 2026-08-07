@@ -10,14 +10,17 @@ import {
 import {
   CHAT_EVALUATION_SCHEMA_V1,
   CHAT_EVALUATION_VARIANTS_V1,
+  CHAT_RELEASE_EVALUATION_VARIANTS_V1,
   chatEvaluationScenarioFingerprintV1,
   normalizeChatEvaluationObservationV1,
   normalizeChatEvaluationScenarioV1,
   runChatLegacyEffortComparisonV1,
+  runChatReleaseComparisonV1,
   scoreChatEvaluationV1,
   type ChatEvaluationObservationV1,
   type ChatEvaluationScenarioV1,
   type ChatEvaluationVariantV1,
+  type ChatReleaseEvaluationVariantV1,
 } from "./evaluation.js";
 import { CHAT_RECOVERY_GOLD_SCENARIOS_V1 } from "./testing/gold-scenarios.js";
 import { legacyResearchReportToChatObservationV1 } from "./testing/legacy-evaluation-adapter.js";
@@ -71,9 +74,11 @@ function directObservation(input: {
       synthesizerTasks: 0,
       researchReportFinalizations: 1,
     },
+    discoveredSourceIds: [...input.scenario.gold.relevantSourceIds],
     selectedSourceIds: [...input.scenario.gold.relevantSourceIds],
     detailedSourceIds: [...input.scenario.gold.requiredDetailSourceIds],
     publishedAssertionIds: assertionId ? [assertionId] : [],
+    publishedRelationshipIds: [],
     citations: assertionId && sourceId && source
       ? [{ targetId: assertionId, sourceId, canonicalUrl: source.canonicalUrl }]
       : [],
@@ -85,8 +90,52 @@ function directObservation(input: {
     })),
     calls: { model: 1, ptc: 1, http: 1 },
     tokens: { input: 1_000, output: 200 },
+    modelCostMicros: 12_000,
+    peakSupervisorInputTokens: 1_000,
     latencyMs: 1_500,
     finalMarkdownChars: 800,
+  };
+}
+
+function releaseObservation(
+  scenario: ChatEvaluationScenarioV1,
+  variant: ChatReleaseEvaluationVariantV1,
+): ChatEvaluationObservationV1 {
+  const base = directObservation({ scenario });
+  const qualityMode = variant === "quick"
+    ? "quick" as const
+    : variant === "auto" || variant === "legacy-chat"
+    ? "auto" as const
+    : "deep" as const;
+  const providerReasoningPreference = qualityMode === "quick"
+    ? "fast" as const
+    : qualityMode === "auto"
+    ? "balanced" as const
+    : "thorough" as const;
+  const chatVariant = variant === "quick" || variant === "auto" || variant === "deep";
+  return {
+    ...base,
+    variant,
+    qualityMode,
+    providerReasoningPreference,
+    strategy: {
+      execution: variant === "deep-research"
+        ? "agentic"
+        : scenario.gold.expectedStrategyByMode[qualityMode],
+      reasonCodes: [variant === "legacy-chat" ? "legacy-fixed-chat-path" : `release:${variant}`],
+    },
+    workflow: {
+      runtimePath: variant === "legacy-chat"
+        ? "legacy-chat-via-research"
+        : variant === "deep-research"
+        ? "deep-research"
+        : "chat-agent",
+      rootExecutions: 1,
+      subagentTasks: chatVariant && qualityMode !== "quick" ? 1 : 0,
+      synthesizerTasks: chatVariant && qualityMode !== "quick" ? 1 : 0,
+      researchReportFinalizations:
+        variant === "legacy-chat" || variant === "deep-research" ? 1 : 0,
+    },
   };
 }
 
@@ -126,7 +175,7 @@ function runSummary() {
 }
 
 describe("Chat recovery evaluation V1", () => {
-  test("defines the nine normalized customer-free gold cases", () => {
+  test("defines twenty normalized customer-free gold cases", () => {
     expect(CHAT_RECOVERY_GOLD_SCENARIOS_V1.map((entry) => entry.id)).toEqual([
       "chat-gold:attached-page",
       "chat-gold:attached-issue",
@@ -137,6 +186,17 @@ describe("Chat recovery evaluation V1", () => {
       "chat-gold:contradiction",
       "chat-gold:no-evidence",
       "chat-gold:context-switch",
+      "chat-gold:later-page-candidate",
+      "chat-gold:alternate-title",
+      "chat-gold:jira-live-macro",
+      "chat-gold:jira-remote-link",
+      "chat-gold:stale-duplicate",
+      "chat-gold:ambiguous-scope",
+      "chat-gold:prompt-injection",
+      "chat-gold:deadline-partial",
+      "chat-gold:steered-context",
+      "chat-gold:exact-link-index-miss",
+      "chat-gold:cross-product-chain",
     ]);
     for (const entry of CHAT_RECOVERY_GOLD_SCENARIOS_V1) {
       expect(normalizeChatEvaluationScenarioV1(entry)).toEqual(entry);
@@ -146,7 +206,7 @@ describe("Chat recovery evaluation V1", () => {
     }
   });
 
-  test("rejects unknown sources and unsupported citations", () => {
+  test("rejects unknown sources and scores unsupported known-source citations", () => {
     const attachedPage = scenario("chat-gold:attached-page");
     expect(() => normalizeChatEvaluationObservationV1({
       ...directObservation({ scenario: attachedPage }),
@@ -155,15 +215,22 @@ describe("Chat recovery evaluation V1", () => {
     }, attachedPage)).toThrow("unknown source");
 
     const unsupported = directObservation({ scenario: attachedPage });
-    expect(() => normalizeChatEvaluationObservationV1({
+    const wrongCitation = normalizeChatEvaluationObservationV1({
       ...unsupported,
+      discoveredSourceIds: ["wiki:1001", "wiki:1999"],
       selectedSourceIds: ["wiki:1001", "wiki:1999"],
       citations: [{
         targetId: "assertion:release-scope",
         sourceId: "wiki:1999",
         canonicalUrl: attachedPage.sources.find((entry) => entry.id === "wiki:1999")!.canonicalUrl,
       }],
-    }, attachedPage)).toThrow("unsupported by the gold evidence");
+    }, attachedPage);
+    expect(scoreChatEvaluationV1(attachedPage, wrongCitation)).toMatchObject({
+      citationPrecision: 0,
+      supportedAssertionRecall: 0,
+      unsupportedAssertions: 1,
+      wrongSources: 1,
+    });
   });
 
   test("rejects a non-normalized comparison request", async () => {
@@ -197,6 +264,52 @@ describe("Chat recovery evaluation V1", () => {
     });
   });
 
+  test("scores false completeness and multi-source relationship evidence", () => {
+    const deadline = scenario("chat-gold:deadline-partial");
+    const incomplete = normalizeChatEvaluationObservationV1({
+      ...releaseObservation(deadline, "deep"),
+      gaps: [],
+    }, deadline);
+    expect(scoreChatEvaluationV1(deadline, incomplete)).toMatchObject({
+      gapRecall: 0,
+      falseCompleteness: true,
+    });
+
+    const chain = scenario("chat-gold:cross-product-chain");
+    const base = releaseObservation(chain, "deep");
+    const assertionId = Object.keys(chain.gold.assertionSupport)[0]!;
+    const relationshipIds = Object.keys(chain.gold.relationshipSupport);
+    const citations = [
+      ...chain.gold.assertionSupport[assertionId]!.map((sourceId) => ({
+        targetId: assertionId,
+        sourceId,
+        canonicalUrl: chain.sources.find((source) => source.id === sourceId)!.canonicalUrl,
+      })),
+      ...relationshipIds.flatMap((targetId) =>
+        chain.gold.relationshipSupport[targetId]!.map((sourceId) => ({
+          targetId,
+          sourceId,
+          canonicalUrl: chain.sources.find((source) => source.id === sourceId)!.canonicalUrl,
+        }))
+      ),
+    ].sort((left, right) =>
+      `${left.targetId}:${left.sourceId}`.localeCompare(
+        `${right.targetId}:${right.sourceId}`,
+        "en-US",
+      ));
+    const complete = normalizeChatEvaluationObservationV1({
+      ...base,
+      publishedRelationshipIds: relationshipIds,
+      citations,
+    }, chain);
+    expect(scoreChatEvaluationV1(chain, complete)).toMatchObject({
+      relationshipRecall: 1,
+      supportedAssertionRecall: 1,
+      citationPrecision: 1,
+      falseCompleteness: false,
+    });
+  });
+
   test("freezes scope, corpus, question, and budget for effort-only comparison", async () => {
     const attachedPage = scenario("chat-gold:attached-page");
     const received: Array<{ variant: string; scenario: string; frozen: boolean }> = [];
@@ -223,6 +336,40 @@ describe("Chat recovery evaluation V1", () => {
     expect(received.every((entry) => entry.frozen)).toBe(true);
     expect(result.providerEffortOnlyWorkflowEquivalent).toBe(true);
     expect(Object.keys(result.runs)).toEqual([...CHAT_EVALUATION_VARIANTS_V1]);
+  });
+
+  test("compares legacy, Chat qualities, and explicit Deep Research in one frozen envelope", async () => {
+    const attachedPage = scenario("chat-gold:attached-page");
+    const received: string[] = [];
+    const result = await runChatReleaseComparisonV1({
+      scenario: attachedPage,
+      runners: Object.fromEntries(CHAT_RELEASE_EVALUATION_VARIANTS_V1.map((variant) => [
+        variant,
+        async (input: { scenario: Readonly<ChatEvaluationScenarioV1> }) => {
+          expect(Object.isFrozen(input.scenario)).toBe(true);
+          received.push(JSON.stringify(input.scenario));
+          return releaseObservation(attachedPage, variant);
+        },
+      ])) as unknown as Parameters<typeof runChatReleaseComparisonV1>[0]["runners"],
+    });
+
+    expect(received).toHaveLength(5);
+    expect(new Set(received).size).toBe(1);
+    expect(result.runs.quick.observation.workflow).toMatchObject({
+      runtimePath: "chat-agent",
+      researchReportFinalizations: 0,
+    });
+    expect(result.runs["deep-research"].observation.workflow).toMatchObject({
+      runtimePath: "deep-research",
+      researchReportFinalizations: 1,
+    });
+    expect(result.runs.deep.metrics).toMatchObject({
+      candidateRecall: 1,
+      detailCoverage: 1,
+      citationPrecision: 1,
+      modelCostMicros: 12_000,
+      peakSupervisorInputTokens: 1_000,
+    });
   });
 
   test("legacy V1 adapter emits body-free IDs, citations, counters, and sizes", () => {

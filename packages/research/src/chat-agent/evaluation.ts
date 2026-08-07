@@ -9,8 +9,23 @@ export const CHAT_EVALUATION_VARIANTS_V1 = [
   "deep-effort-only",
 ] as const;
 
+export const CHAT_RELEASE_EVALUATION_VARIANTS_V1 = [
+  "legacy-chat",
+  "quick",
+  "auto",
+  "deep",
+  "deep-research",
+] as const;
+
 export type ChatEvaluationVariantV1 =
   (typeof CHAT_EVALUATION_VARIANTS_V1)[number];
+
+export type ChatReleaseEvaluationVariantV1 =
+  (typeof CHAT_RELEASE_EVALUATION_VARIANTS_V1)[number];
+
+export type ChatAnyEvaluationVariantV1 =
+  | ChatEvaluationVariantV1
+  | ChatReleaseEvaluationVariantV1;
 
 export type ChatEvaluationOutcomeV1 =
   | "answer"
@@ -34,6 +49,8 @@ export interface ChatEvaluationBudgetV1 {
   maxHttpCalls: number;
   maxInputTokens: number;
   maxOutputTokens: number;
+  maxModelCostMicros: number;
+  maxPeakSupervisorInputTokens: number;
   maxDurationMs: number;
 }
 
@@ -43,7 +60,9 @@ export interface ChatEvaluationGoldV1 {
   requiredDetailSourceIds: readonly string[];
   forbiddenSourceIds: readonly string[];
   assertionSupport: Readonly<Record<string, readonly string[]>>;
+  relationshipSupport: Readonly<Record<string, readonly string[]>>;
   requiredGapIds: readonly string[];
+  requiredContradictionIds: readonly string[];
   expectedStrategyByMode: Readonly<
     Record<ChatQualityModeV1, ChatEvaluationStrategyExecutionV1>
   >;
@@ -84,7 +103,7 @@ export interface ChatEvaluationObservationV1 {
   schema: typeof CHAT_EVALUATION_SCHEMA_V1;
   scenarioId: string;
   scenarioFingerprint: string;
-  variant: ChatEvaluationVariantV1;
+  variant: ChatAnyEvaluationVariantV1;
   outcome: ChatEvaluationOutcomeV1;
   qualityMode: ChatQualityModeV1;
   providerReasoningPreference: "fast" | "balanced" | "thorough";
@@ -93,15 +112,17 @@ export interface ChatEvaluationObservationV1 {
     reasonCodes: readonly string[];
   };
   workflow: {
-    runtimePath: "legacy-chat-via-research" | "chat-agent";
+    runtimePath: "legacy-chat-via-research" | "chat-agent" | "deep-research";
     rootExecutions: number;
     subagentTasks: number;
     synthesizerTasks: number;
     researchReportFinalizations: number;
   };
   selectedSourceIds: readonly string[];
+  discoveredSourceIds: readonly string[];
   detailedSourceIds: readonly string[];
   publishedAssertionIds: readonly string[];
+  publishedRelationshipIds: readonly string[];
   citations: readonly ChatEvaluationCitationV1[];
   gaps: readonly ChatEvaluationGapV1[];
   calls: {
@@ -113,6 +134,8 @@ export interface ChatEvaluationObservationV1 {
     input: number;
     output: number;
   };
+  modelCostMicros: number;
+  peakSupervisorInputTokens: number;
   latencyMs: number;
   finalMarkdownChars: number;
 }
@@ -120,16 +143,24 @@ export interface ChatEvaluationObservationV1 {
 export interface ChatEvaluationMetricsV1 {
   schema: typeof CHAT_EVALUATION_SCHEMA_V1;
   sourceRecall: number;
+  candidateRecall: number;
   detailRecall: number;
+  detailCoverage: number;
   citationPrecision: number;
   supportedAssertionRecall: number;
+  relationshipRecall: number;
+  contradictionRecall: number;
   unsupportedAssertions: number;
   wrongSources: number;
   gapRecall: number;
+  falseCompleteness: boolean;
   outcomeCorrect: boolean;
   strategyCorrect: boolean;
+  qualityScore: number;
   calls: ChatEvaluationObservationV1["calls"] & { total: number };
   tokens: ChatEvaluationObservationV1["tokens"] & { total: number };
+  modelCostMicros: number;
+  peakSupervisorInputTokens: number;
   latencyMs: number;
   finalMarkdownChars: number;
 }
@@ -154,9 +185,26 @@ export interface ChatEvaluationComparisonResultV1 {
   >;
 }
 
+export interface ChatReleaseEvaluationComparisonResultV1 {
+  schema: typeof CHAT_EVALUATION_SCHEMA_V1;
+  scenarioId: string;
+  scenarioFingerprint: string;
+  runs: Readonly<Record<
+    ChatReleaseEvaluationVariantV1,
+    { observation: ChatEvaluationObservationV1; metrics: ChatEvaluationMetricsV1 }
+  >>;
+}
+
 export type ChatEvaluationVariantRunnerV1 = (
   input: ChatEvaluationRunInputV1,
 ) => Promise<ChatEvaluationObservationV1>;
+
+export type ChatReleaseEvaluationVariantRunnerV1 = (input: Readonly<{
+  schema: typeof CHAT_EVALUATION_SCHEMA_V1;
+  variant: ChatReleaseEvaluationVariantV1;
+  scenario: Readonly<ChatEvaluationScenarioV1>;
+  scenarioFingerprint: string;
+}>) => Promise<ChatEvaluationObservationV1>;
 
 const QUALITY_BY_VARIANT = {
   "legacy-chat": "auto",
@@ -186,12 +234,16 @@ const OBSERVATION_KEYS = new Set([
   "strategy",
   "workflow",
   "selectedSourceIds",
+  "discoveredSourceIds",
   "detailedSourceIds",
   "publishedAssertionIds",
+  "publishedRelationshipIds",
   "citations",
   "gaps",
   "calls",
   "tokens",
+  "modelCostMicros",
+  "peakSupervisorInputTokens",
   "latencyMs",
   "finalMarkdownChars",
 ]);
@@ -335,6 +387,8 @@ function normalizeBudget(value: unknown): ChatEvaluationBudgetV1 {
     "maxHttpCalls",
     "maxInputTokens",
     "maxOutputTokens",
+    "maxModelCostMicros",
+    "maxPeakSupervisorInputTokens",
     "maxDurationMs",
   ], "scenario budget");
   return {
@@ -343,6 +397,16 @@ function normalizeBudget(value: unknown): ChatEvaluationBudgetV1 {
     maxHttpCalls: safeInteger(value.maxHttpCalls, "maxHttpCalls", 1),
     maxInputTokens: safeInteger(value.maxInputTokens, "maxInputTokens", 1),
     maxOutputTokens: safeInteger(value.maxOutputTokens, "maxOutputTokens", 1),
+    maxModelCostMicros: safeInteger(
+      value.maxModelCostMicros,
+      "maxModelCostMicros",
+      1,
+    ),
+    maxPeakSupervisorInputTokens: safeInteger(
+      value.maxPeakSupervisorInputTokens,
+      "maxPeakSupervisorInputTokens",
+      1,
+    ),
     maxDurationMs: safeInteger(value.maxDurationMs, "maxDurationMs", 1),
   };
 }
@@ -406,7 +470,9 @@ export function normalizeChatEvaluationScenarioV1(
     "requiredDetailSourceIds",
     "forbiddenSourceIds",
     "assertionSupport",
+    "relationshipSupport",
     "requiredGapIds",
+    "requiredContradictionIds",
     "expectedStrategyByMode",
   ], "scenario gold");
   if (!["answer", "abstained", "failed", "paused"].includes(value.gold.expectedOutcome)) {
@@ -419,6 +485,17 @@ export function normalizeChatEvaluationScenarioV1(
       .map(([assertionId, sourceIds]) => [
         boundedString(assertionId, "assertion id", 200),
         uniqueSortedStrings(sourceIds, `support for ${assertionId}`),
+      ]),
+  );
+  if (!isRecord(value.gold.relationshipSupport)) {
+    invalid("relationship support is invalid");
+  }
+  const relationshipSupport = Object.fromEntries(
+    Object.entries(value.gold.relationshipSupport)
+      .sort(([left], [right]) => left.localeCompare(right, "en-US"))
+      .map(([relationshipId, sourceIds]) => [
+        boundedString(relationshipId, "relationship id", 200),
+        uniqueSortedStrings(sourceIds, `support for ${relationshipId}`),
       ]),
   );
   if (!isRecord(value.gold.expectedStrategyByMode)) {
@@ -440,11 +517,38 @@ export function normalizeChatEvaluationScenarioV1(
     requiredDetailSourceIds,
     forbiddenSourceIds,
     exactAnchorSourceIds,
-    supportSourceIds: Object.values(assertionSupport).flat(),
+    supportSourceIds: [
+      ...Object.values(assertionSupport).flat(),
+      ...Object.values(relationshipSupport).flat(),
+    ],
   })) {
     if (ids.some((id) => !knownSourceIds.has(id))) {
       invalid(`${label} contains an unknown source`);
     }
+  }
+  if (requiredDetailSourceIds.some((id) => !relevantSourceIds.includes(id))) {
+    invalid("required details must be relevant sources");
+  }
+  if (forbiddenSourceIds.some((id) => relevantSourceIds.includes(id))) {
+    invalid("relevant and forbidden sources overlap");
+  }
+  for (const [assertionId, sourceIds] of Object.entries(assertionSupport)) {
+    if (sourceIds.length === 0 || sourceIds.some((id) => !relevantSourceIds.includes(id))) {
+      invalid(`support for ${assertionId} must use relevant sources`);
+    }
+  }
+  for (const [relationshipId, sourceIds] of Object.entries(relationshipSupport)) {
+    if (sourceIds.length < 2 || sourceIds.some((id) => !relevantSourceIds.includes(id))) {
+      invalid(`support for ${relationshipId} must use at least two relevant sources`);
+    }
+  }
+  const requiredGapIds = uniqueSortedStrings(value.gold.requiredGapIds, "required gaps");
+  const requiredContradictionIds = uniqueSortedStrings(
+    value.gold.requiredContradictionIds,
+    "required contradictions",
+  );
+  if (requiredContradictionIds.some((id) => !requiredGapIds.includes(id))) {
+    invalid("required contradictions must also be required gaps");
   }
   return {
     schema: CHAT_EVALUATION_SCHEMA_V1,
@@ -464,7 +568,9 @@ export function normalizeChatEvaluationScenarioV1(
       requiredDetailSourceIds,
       forbiddenSourceIds,
       assertionSupport,
-      requiredGapIds: uniqueSortedStrings(value.gold.requiredGapIds, "required gaps"),
+      relationshipSupport,
+      requiredGapIds,
+      requiredContradictionIds,
       expectedStrategyByMode: {
         quick: value.gold.expectedStrategyByMode.quick,
         auto: value.gold.expectedStrategyByMode.auto,
@@ -502,7 +608,10 @@ export function normalizeChatEvaluationObservationV1(
   if (Object.keys(value).length !== OBSERVATION_KEYS.size) {
     invalid("observation is missing a field");
   }
-  if (!CHAT_EVALUATION_VARIANTS_V1.includes(value.variant)) {
+  if (
+    !([...CHAT_EVALUATION_VARIANTS_V1, ...CHAT_RELEASE_EVALUATION_VARIANTS_V1] as readonly string[])
+      .includes(value.variant)
+  ) {
     invalid("observation variant is invalid");
   }
   if (!["answer", "abstained", "failed", "paused"].includes(value.outcome)) {
@@ -527,7 +636,9 @@ export function normalizeChatEvaluationObservationV1(
     "synthesizerTasks",
     "researchReportFinalizations",
   ], "observation workflow");
-  if (!["legacy-chat-via-research", "chat-agent"].includes(value.workflow.runtimePath)) {
+  if (!["legacy-chat-via-research", "chat-agent", "deep-research"].includes(
+    value.workflow.runtimePath,
+  )) {
     invalid("observation runtime path is invalid");
   }
   if (!isRecord(value.calls)) invalid("observation calls are invalid");
@@ -535,16 +646,41 @@ export function normalizeChatEvaluationObservationV1(
   if (!isRecord(value.tokens)) invalid("observation tokens are invalid");
   exactKeys(value.tokens, ["input", "output"], "observation tokens");
   const selectedSourceIds = uniqueSortedStrings(value.selectedSourceIds, "selected sources");
+  const discoveredSourceIds = uniqueSortedStrings(
+    value.discoveredSourceIds,
+    "discovered sources",
+  );
   const detailedSourceIds = uniqueSortedStrings(value.detailedSourceIds, "detailed sources");
   const publishedAssertionIds = uniqueSortedStrings(value.publishedAssertionIds, "published assertions");
+  const publishedRelationshipIds = uniqueSortedStrings(
+    value.publishedRelationshipIds,
+    "published relationships",
+  );
   const reasonCodes = uniqueSortedStrings(value.strategy.reasonCodes, "strategy reason codes", 20);
   assertAlreadyNormalized(value.selectedSourceIds, selectedSourceIds, "selected sources");
+  assertAlreadyNormalized(
+    value.discoveredSourceIds,
+    discoveredSourceIds,
+    "discovered sources",
+  );
   assertAlreadyNormalized(value.detailedSourceIds, detailedSourceIds, "detailed sources");
   assertAlreadyNormalized(value.publishedAssertionIds, publishedAssertionIds, "published assertions");
+  assertAlreadyNormalized(
+    value.publishedRelationshipIds,
+    publishedRelationshipIds,
+    "published relationships",
+  );
   assertAlreadyNormalized(value.strategy.reasonCodes, reasonCodes, "strategy reason codes");
   const sources = new Map(scenario.sources.map((source) => [source.id, source]));
-  for (const sourceId of [...selectedSourceIds, ...detailedSourceIds]) {
+  for (const sourceId of [
+    ...discoveredSourceIds,
+    ...selectedSourceIds,
+    ...detailedSourceIds,
+  ]) {
     if (!sources.has(sourceId)) invalid("observation references an unknown source");
+  }
+  if (selectedSourceIds.some((sourceId) => !discoveredSourceIds.includes(sourceId))) {
+    invalid("a selected source was not discovered");
   }
   if (detailedSourceIds.some((sourceId) => !selectedSourceIds.includes(sourceId))) {
     invalid("a detailed source was not selected");
@@ -559,11 +695,11 @@ export function normalizeChatEvaluationObservationV1(
     const sourceId = boundedString(citation.sourceId, "citation source", 200);
     const source = sources.get(sourceId);
     if (!source) invalid("citation references an unknown source");
-    if (!publishedAssertionIds.includes(targetId)) {
+    if (
+      !publishedAssertionIds.includes(targetId) &&
+      !publishedRelationshipIds.includes(targetId)
+    ) {
       invalid("citation target was not published");
-    }
-    if (!(scenario.gold.assertionSupport[targetId] ?? []).includes(sourceId)) {
-      invalid("citation is unsupported by the gold evidence");
     }
     const canonicalUrl = normalizedHttpsUrl(citation.canonicalUrl, "citation URL");
     if (canonicalUrl !== source.canonicalUrl) {
@@ -615,9 +751,11 @@ export function normalizeChatEvaluationObservationV1(
         "research report finalizations",
       ),
     },
+    discoveredSourceIds,
     selectedSourceIds,
     detailedSourceIds,
     publishedAssertionIds,
+    publishedRelationshipIds,
     citations,
     gaps,
     calls: {
@@ -629,6 +767,11 @@ export function normalizeChatEvaluationObservationV1(
       input: safeInteger(value.tokens.input, "input tokens"),
       output: safeInteger(value.tokens.output, "output tokens"),
     },
+    modelCostMicros: safeInteger(value.modelCostMicros, "model cost"),
+    peakSupervisorInputTokens: safeInteger(
+      value.peakSupervisorInputTokens,
+      "peak supervisor input tokens",
+    ),
     latencyMs: safeInteger(value.latencyMs, "latency"),
     finalMarkdownChars: safeInteger(value.finalMarkdownChars, "Markdown characters"),
   };
@@ -639,43 +782,117 @@ export function scoreChatEvaluationV1(
   value: ChatEvaluationObservationV1,
 ): ChatEvaluationMetricsV1 {
   const observation = normalizeChatEvaluationObservationV1(value, scenario);
+  if (
+    observation.scenarioId !== scenario.id ||
+    observation.scenarioFingerprint !== chatEvaluationScenarioFingerprintV1(scenario)
+  ) {
+    invalid("observation has a foreign scenario identity");
+  }
   const relevant = new Set(scenario.gold.relevantSourceIds);
   const requiredDetails = new Set(scenario.gold.requiredDetailSourceIds);
+  const discovered = new Set(observation.discoveredSourceIds);
   const selected = new Set(observation.selectedSourceIds);
   const detailed = new Set(observation.detailedSourceIds);
   const supportedAssertions = new Set(Object.keys(scenario.gold.assertionSupport));
   const published = new Set(observation.publishedAssertionIds);
   const supportedPublished = [...published].filter((assertionId) =>
     supportedAssertions.has(assertionId) &&
-    observation.citations.some((citation) => citation.targetId === assertionId));
+    (scenario.gold.assertionSupport[assertionId] ?? []).every((sourceId) =>
+      observation.citations.some((citation) =>
+        citation.targetId === assertionId && citation.sourceId === sourceId)));
+  const supportedRelationships = new Set(
+    Object.keys(scenario.gold.relationshipSupport),
+  );
+  const publishedRelationships = new Set(observation.publishedRelationshipIds);
+  const supportedPublishedRelationships = [...publishedRelationships].filter(
+    (relationshipId) =>
+      supportedRelationships.has(relationshipId) &&
+      (scenario.gold.relationshipSupport[relationshipId] ?? []).every(
+        (sourceId) => observation.citations.some((citation) =>
+          citation.targetId === relationshipId && citation.sourceId === sourceId),
+      ),
+  );
+  const correctCitationCount = observation.citations.filter((citation) =>
+    [
+      ...(scenario.gold.assertionSupport[citation.targetId] ?? []),
+      ...(scenario.gold.relationshipSupport[citation.targetId] ?? []),
+    ].includes(citation.sourceId)
+  ).length;
   const expectedGaps = new Set(scenario.gold.requiredGapIds);
   const observedGaps = new Set(observation.gaps.map((gap) => gap.id));
+  const requiredContradictions = new Set(
+    scenario.gold.requiredContradictionIds,
+  );
   const wrongSources = observation.selectedSourceIds.filter(
     (sourceId) =>
       !relevant.has(sourceId) || scenario.gold.forbiddenSourceIds.includes(sourceId),
   ).length;
+  const candidateRecall = ratio(
+    intersectionSize(discovered, relevant),
+    relevant.size,
+  );
+  const sourceRecall = ratio(intersectionSize(selected, relevant), relevant.size);
+  const detailRecall = ratio(
+    intersectionSize(detailed, requiredDetails),
+    requiredDetails.size,
+  );
+  const detailCoverage = ratio(
+    [...selected].filter((sourceId) => detailed.has(sourceId)).length,
+    selected.size,
+  );
+  const citationPrecision = ratio(
+    correctCitationCount,
+    observation.citations.length,
+  );
+  const supportedAssertionRecall = ratio(
+    supportedPublished.length,
+    supportedAssertions.size,
+  );
+  const relationshipRecall = ratio(
+    supportedPublishedRelationships.length,
+    supportedRelationships.size,
+  );
+  const contradictionRecall = ratio(
+    intersectionSize(observedGaps, requiredContradictions),
+    requiredContradictions.size,
+  );
+  const gapRecall = ratio(
+    intersectionSize(observedGaps, expectedGaps),
+    expectedGaps.size,
+  );
+  const falseCompleteness =
+    observation.outcome === "answer" &&
+    [...expectedGaps].some((gapId) => !observedGaps.has(gapId));
+  const outcomeCorrect = observation.outcome === scenario.gold.expectedOutcome;
+  const strategyCorrect =
+    observation.strategy.execution ===
+      scenario.gold.expectedStrategyByMode[observation.qualityMode];
+  const qualityScore = Math.max(0, Math.min(1,
+    (
+      candidateRecall + sourceRecall + detailRecall + detailCoverage +
+      citationPrecision + supportedAssertionRecall + relationshipRecall +
+      contradictionRecall + gapRecall + Number(outcomeCorrect)
+    ) / 10 -
+      Math.min(0.3, (wrongSources + published.size - supportedPublished.length) * 0.05) -
+      (falseCompleteness ? 0.2 : 0)
+  ));
   return {
     schema: CHAT_EVALUATION_SCHEMA_V1,
-    sourceRecall: ratio(intersectionSize(selected, relevant), relevant.size),
-    detailRecall: ratio(
-      intersectionSize(detailed, requiredDetails),
-      requiredDetails.size,
-    ),
-    citationPrecision: ratio(observation.citations.length, observation.citations.length),
-    supportedAssertionRecall: ratio(
-      supportedPublished.length,
-      supportedAssertions.size,
-    ),
+    sourceRecall,
+    candidateRecall,
+    detailRecall,
+    detailCoverage,
+    citationPrecision,
+    supportedAssertionRecall,
+    relationshipRecall,
+    contradictionRecall,
     unsupportedAssertions: published.size - supportedPublished.length,
     wrongSources,
-    gapRecall: ratio(
-      intersectionSize(observedGaps, expectedGaps),
-      expectedGaps.size,
-    ),
-    outcomeCorrect: observation.outcome === scenario.gold.expectedOutcome,
-    strategyCorrect:
-      observation.strategy.execution ===
-        scenario.gold.expectedStrategyByMode[observation.qualityMode],
+    gapRecall,
+    falseCompleteness,
+    outcomeCorrect,
+    strategyCorrect,
+    qualityScore,
     calls: {
       ...observation.calls,
       total: observation.calls.model + observation.calls.ptc + observation.calls.http,
@@ -684,6 +901,8 @@ export function scoreChatEvaluationV1(
       ...observation.tokens,
       total: observation.tokens.input + observation.tokens.output,
     },
+    modelCostMicros: observation.modelCostMicros,
+    peakSupervisorInputTokens: observation.peakSupervisorInputTokens,
     latencyMs: observation.latencyMs,
     finalMarkdownChars: observation.finalMarkdownChars,
   };
@@ -699,6 +918,8 @@ function assertWithinBudget(
     observation.calls.http > budget.maxHttpCalls ||
     observation.tokens.input > budget.maxInputTokens ||
     observation.tokens.output > budget.maxOutputTokens ||
+    observation.modelCostMicros > budget.maxModelCostMicros ||
+    observation.peakSupervisorInputTokens > budget.maxPeakSupervisorInputTokens ||
     observation.latencyMs > budget.maxDurationMs
   ) {
     invalid("observation exceeds the frozen scenario budget");
@@ -778,6 +999,105 @@ export async function runChatLegacyEffortComparisonV1(input: {
     scenarioFingerprint,
     providerEffortOnlyWorkflowEquivalent:
       new Set(workflowFingerprints).size === 1,
+    runs,
+  };
+}
+
+const RELEASE_QUALITY_BY_VARIANT_V1 = {
+  "legacy-chat": "auto",
+  quick: "quick",
+  auto: "auto",
+  deep: "deep",
+  "deep-research": "deep",
+} as const satisfies Record<
+  ChatReleaseEvaluationVariantV1,
+  ChatQualityModeV1
+>;
+
+const RELEASE_RUNTIME_BY_VARIANT_V1 = {
+  "legacy-chat": "legacy-chat-via-research",
+  quick: "chat-agent",
+  auto: "chat-agent",
+  deep: "chat-agent",
+  "deep-research": "deep-research",
+} as const satisfies Record<
+  ChatReleaseEvaluationVariantV1,
+  ChatEvaluationObservationV1["workflow"]["runtimePath"]
+>;
+
+/**
+ * Compare the legacy path, all three Chat qualities, and explicit Deep Research
+ * inside one frozen, serial envelope. The evaluator records body-free metrics;
+ * it never persists source bodies or model prose.
+ */
+export async function runChatReleaseComparisonV1(input: {
+  scenario: ChatEvaluationScenarioV1;
+  runners: Readonly<Record<
+    ChatReleaseEvaluationVariantV1,
+    ChatReleaseEvaluationVariantRunnerV1
+  >>;
+}): Promise<ChatReleaseEvaluationComparisonResultV1> {
+  assertScenarioAlreadyNormalized(input.scenario);
+  const scenarioFingerprint = chatEvaluationScenarioFingerprintV1(input.scenario);
+  const runs = {} as Record<
+    ChatReleaseEvaluationVariantV1,
+    { observation: ChatEvaluationObservationV1; metrics: ChatEvaluationMetricsV1 }
+  >;
+  for (const variant of CHAT_RELEASE_EVALUATION_VARIANTS_V1) {
+    const runner = input.runners[variant];
+    if (typeof runner !== "function") invalid(`missing ${variant} runner`);
+    const runnerInput = deepFreeze({
+      schema: CHAT_EVALUATION_SCHEMA_V1,
+      variant,
+      scenario: cloneJson(input.scenario),
+      scenarioFingerprint,
+    });
+    const observation = normalizeChatEvaluationObservationV1(
+      await runner(runnerInput),
+      input.scenario,
+    );
+    if (
+      observation.scenarioId !== input.scenario.id ||
+      observation.scenarioFingerprint !== scenarioFingerprint ||
+      observation.variant !== variant
+    ) {
+      invalid(`${variant} returned a foreign evaluation identity`);
+    }
+    if (observation.qualityMode !== RELEASE_QUALITY_BY_VARIANT_V1[variant]) {
+      invalid(`${variant} changed its quality mode`);
+    }
+    if (
+      observation.workflow.runtimePath !== RELEASE_RUNTIME_BY_VARIANT_V1[variant]
+    ) {
+      invalid(`${variant} used the wrong product runtime`);
+    }
+    const reportFinalizations = observation.workflow.researchReportFinalizations;
+    if (
+      (variant === "quick" || variant === "auto" || variant === "deep") &&
+      reportFinalizations !== 0
+    ) {
+      invalid(`${variant} finalized a Research report`);
+    }
+    if (variant === "deep-research" && reportFinalizations !== 1) {
+      invalid("deep-research did not finalize exactly one Research report");
+    }
+    if (
+      variant !== "deep-research" &&
+      observation.strategy.execution !==
+        input.scenario.gold.expectedStrategyByMode[observation.qualityMode]
+    ) {
+      invalid(`${variant} used the wrong accepted strategy`);
+    }
+    assertWithinBudget(observation, input.scenario.budget);
+    runs[variant] = {
+      observation,
+      metrics: scoreChatEvaluationV1(input.scenario, observation),
+    };
+  }
+  return {
+    schema: CHAT_EVALUATION_SCHEMA_V1,
+    scenarioId: input.scenario.id,
+    scenarioFingerprint,
     runs,
   };
 }

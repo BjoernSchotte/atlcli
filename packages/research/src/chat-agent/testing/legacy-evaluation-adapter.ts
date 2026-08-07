@@ -53,24 +53,27 @@ export function legacyResearchReportToChatObservationV1(input: {
     input.report.sources.map((source) => [source.id, source.url]),
   );
   const assertionSources = input.report.schema === RESEARCH_REPORT_SCHEMA_V1
-    ? [
-        ...input.report.findings.map((finding) => ({
+    ? input.report.findings.map((finding) => ({
           id: finding.id,
           sourceIds: finding.sourceIds,
-        })),
-        ...input.report.relationships.map((relationship) => ({
-          id: relationship.id,
-          sourceIds: relationship.sourceIds,
-        })),
-      ]
+        }))
     : input.report.claims.map((claim) => ({
         id: claim.id,
         sourceIds: claim.sourceIds,
       }));
+  const relationshipSources = input.report.schema === RESEARCH_REPORT_SCHEMA_V1
+    ? input.report.relationships.map((relationship) => ({
+        id: relationship.id,
+        sourceIds: relationship.sourceIds,
+      }))
+    : [];
   const publishedAssertionIds = uniqueSorted(
     assertionSources.map((assertion) => assertion.id),
   );
-  const citations = assertionSources.flatMap((assertion) =>
+  const publishedRelationshipIds = uniqueSorted(
+    relationshipSources.map((relationship) => relationship.id),
+  );
+  const citations = [...assertionSources, ...relationshipSources].flatMap((assertion) =>
     assertion.sourceIds.map((sourceId) => ({
       targetId: assertion.id,
       sourceId,
@@ -101,9 +104,11 @@ export function legacyResearchReportToChatObservationV1(input: {
       synthesizerTasks: 0,
       researchReportFinalizations: 1,
     },
+    discoveredSourceIds: uniqueSorted(input.report.sources.map((source) => source.id)),
     selectedSourceIds: uniqueSorted(input.report.sources.map((source) => source.id)),
     detailedSourceIds: uniqueSorted(input.detailedSourceIds),
     publishedAssertionIds,
+    publishedRelationshipIds,
     citations,
     gaps: [...(input.gaps ?? [])].sort((left, right) =>
       left.id.localeCompare(right.id, "en-US")),
@@ -116,6 +121,8 @@ export function legacyResearchReportToChatObservationV1(input: {
       input: input.report.run.usage?.inputTokens ?? 0,
       output: input.report.run.usage?.outputTokens ?? 0,
     },
+    modelCostMicros: 0,
+    peakSupervisorInputTokens: input.report.run.usage?.inputTokens ?? 0,
     latencyMs: input.report.run.durationMs,
     finalMarkdownChars: input.report.markdown.length,
   }, input.scenario);

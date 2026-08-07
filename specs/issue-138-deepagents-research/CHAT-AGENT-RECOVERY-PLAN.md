@@ -1233,15 +1233,15 @@ the mode promises are empirically true.
 
 Implementation:
 
-- [ ] Expand the committed synthetic gold set to roughly twenty hand-labelled
+- [x] Expand the committed synthetic gold set to roughly twenty hand-labelled
       scenarios spanning routing, exact context, long documents, discovery,
       relationships, contradiction, clarification, repair, multi-turn reuse,
       steering, deadline, and injection.
-- [ ] Score answer correctness, supported-claim recall, citation precision,
+- [x] Score answer correctness, supported-claim recall, citation precision,
       wrong-source rate, source/candidate recall, detail coverage, relationship
       recall, contradiction handling, false completeness, latency, tokens, cost,
       model/PTC/HTTP calls, and peak supervisor context.
-- [ ] Compare `legacy-chat`, Quick, Auto, Deep, and explicit Deep Research on the
+- [x] Compare `legacy-chat`, Quick, Auto, Deep, and explicit Deep Research on the
       same eligible questions and budget disclosures.
 - [ ] Calibrate any model judge against hand-labelled anchors and keep it
       diagnostic until human agreement/error thresholds are reviewed and
@@ -1253,6 +1253,25 @@ Implementation:
       migration and release gates pass.
 - [ ] Update user, architecture, provider, security, troubleshooting, and
       operations documentation in the same delivery commit.
+
+Proof record (2026-08-07): the customer-free gold registry now contains twenty
+normalized, hand-labelled scenarios spanning exact page/issue context, late
+document sections and pagination, alternate titles, multi-source comparison,
+Confluence-to-Jira text/macro references, Jira-to-Confluence links, relationship
+chains, contradictions, stale duplicates, scope ambiguity, prompt injection,
+deadline partials, follow-up/context switch, steering, index-miss exact links,
+and no-evidence abstention. The body-free evaluator now measures candidate and
+selected-source recall, detail recall and coverage, citation precision,
+supported-claim and relationship recall, contradiction/gap handling, wrong
+sources, unsupported claims, false completeness, outcome/strategy correctness,
+quality score, latency, model/PTC/HTTP calls, tokens, cost, and peak supervisor
+context. Known but wrong citations are scored rather than discarded. A frozen
+serial comparison contract gives `legacy-chat`, Quick, Auto, Deep, and explicit
+Deep Research the identical scenario, corpus, scope, and budget while rejecting
+Chat report finalization or a Deep Research run without exactly one report.
+Focused evaluation and routing suites pass all twenty cases. Runtime scoring,
+judge calibration, optional feedback, legacy deletion, and release acceptance
+remain separate open gates.
 
 Automated proof:
 
