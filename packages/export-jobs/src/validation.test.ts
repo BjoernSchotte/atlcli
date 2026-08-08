@@ -258,6 +258,31 @@ describe("parsePdfExportJobRequestV1", () => {
       request.options.imagePpi = 2400;
     }],
     ["image ppi with original profile", (request: any) => (request.options.imagePpi = 240)],
+    ["unknown output policy field", (request: any) => {
+      request.options.outputPolicy = {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+        fallback: true,
+      };
+    }],
+    ["unknown output standard", (request: any) => {
+      request.options.outputPolicy = {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["pdf-x"],
+      };
+    }],
+    ["multiple output standards", (request: any) => {
+      request.options.outputPolicy = {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["a-2a", "ua-1"],
+      };
+    }],
+    ["empty output standards", (request: any) => {
+      request.options.outputPolicy = {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: [],
+      };
+    }],
   ])("rejects %s", (_name, mutate) => {
     expect(() => parsePdfExportJobRequestV1(changed(pdfRequest(), mutate))).toThrow(
       ExportJobValidationError,
@@ -272,6 +297,19 @@ describe("parsePdfExportJobRequestV1", () => {
     const parsed = parsePdfExportJobRequestV1(request);
     expect(parsed.options.imageProfile).toBe("standard");
     expect(parsed.options.imagePpi).toBe(240);
+  });
+
+  it("accepts and preserves a strict replay-pinned PDF standard", () => {
+    const request = changed(pdfRequest(), (value: any) => {
+      value.options.outputPolicy = {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      };
+    });
+    expect(parsePdfExportJobRequestV1(request).options.outputPolicy).toEqual({
+      schema: "atlcli.pdf-output-policy/1",
+      standards: ["ua-1"],
+    });
   });
 });
 

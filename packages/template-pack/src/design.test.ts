@@ -13,7 +13,9 @@ import {
   DEFAULT_DESIGN_HEADER_MODE,
   DESIGN_HEADER_MODES,
   validateDesign,
+  validatePdfTemplateDesignV3,
   type WikiPdfTemplateDesignV1,
+  type WikiPdfTemplateDesignV3,
 } from "./design.js";
 import { validateBindings } from "./bindings.js";
 import {
@@ -21,7 +23,11 @@ import {
   WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
 } from "./localization.js";
-import { validateManifest, ManifestValidationError } from "./manifest.js";
+import {
+  validateManifest,
+  validateManifestV3,
+  ManifestValidationError,
+} from "./manifest.js";
 import { localizeTemplateUi } from "./localize.js";
 
 function validDesign(): WikiPdfTemplateDesignV1 {
@@ -59,6 +65,505 @@ function validDesign(): WikiPdfTemplateDesignV1 {
     },
   };
 }
+
+function validDesignV3(): WikiPdfTemplateDesignV3 {
+  const legacy = validDesign();
+  return {
+    page: {
+      format: { kind: "preset", name: "a4" },
+      orientation: "portrait",
+      binding: "left",
+      margin: {
+        mode: "physical",
+        top: "23mm",
+        bottom: "20mm",
+        left: "22mm",
+        right: "22mm",
+      },
+    },
+    branding: legacy.branding,
+    typography: legacy.typography,
+    tokens: legacy.tokens,
+    semanticPalettes: legacy.semanticPalettes,
+    compositions: {
+      cover: { kind: "standard", logo: "hide", metadataPosition: "flow" },
+      closingPage: {
+        kind: "document-summary",
+        logo: "hide",
+        website: "hide",
+        legalNotice: "hide",
+        align: "left",
+      },
+      running: {
+        header: {
+          enabled: true,
+          layout: "single",
+          first: "hide",
+          odd: { center: { field: "documentTitle" } },
+          even: { center: { field: "chapterTitle" } },
+        },
+        footer: {
+          enabled: true,
+          layout: "three-column",
+          first: "hide",
+          odd: {
+            start: { field: "literal", value: "Internal" },
+            center: { field: "pageNumber", numbering: "current-of-total" },
+            end: { field: "organizationName" },
+          },
+          even: {
+            start: { field: "organizationName" },
+            center: { field: "pageNumber", numbering: "current" },
+            end: { field: "literal", value: "Internal" },
+          },
+        },
+      },
+    },
+    navigation: {
+      contents: { enabled: true, depth: 3, pageNumbers: "show", leader: "dots" },
+      bookmarks: { enabled: true, depth: 4, includeHeadingNumbers: true },
+      headingNumbers: { enabled: false, preset: "decimal" },
+      pageNumbers: { enabled: true, preset: "arabic", start: 1 },
+    },
+    components: {
+      paragraph: { align: "left", hyphenation: "auto" },
+      list: { bulletPreset: "disc-circle-square", markerAlign: "start" },
+      enumeration: {
+        numberingPreset: "decimal-alpha-roman",
+        markerAlign: "end",
+      },
+      table: { repeatHeader: true, banding: "none", borders: "all" },
+      outline: { leader: "dots", pageNumbers: "show" },
+      callout: { preset: "accent-bar", icon: "show" },
+      codeBlock: { wrap: "soft", lineNumbers: "hide" },
+    },
+  };
+}
+
+describe("validatePdfTemplateDesignV3", () => {
+  it("accepts only the bounded Typst 0.15 text-policy values", () => {
+    const design = validDesignV3();
+    design.typography.roles.body = {
+      ...design.typography.roles.body!,
+      style: "oblique",
+      stretch: "condensed",
+      kerning: false,
+      ligatures: "none",
+      numberType: "old-style",
+      numberWidth: "tabular",
+    };
+    expect(validatePdfTemplateDesignV3(design).typography.roles.body).toEqual(
+      design.typography.roles.body,
+    );
+
+    for (const [property, value] of [
+      ["style", "slanted"],
+      ["stretch", "250%"],
+      ["kerning", "yes"],
+      ["ligatures", "all"],
+      ["numberType", "fractions"],
+      ["numberWidth", "fixed"],
+    ] as const) {
+      const invalid = validDesignV3() as unknown as Record<string, unknown>;
+      const typography = invalid.typography as Record<string, unknown>;
+      const roles = typography.roles as Record<string, Record<string, unknown>>;
+      roles.body![property] = value;
+      expect(() => validatePdfTemplateDesignV3(invalid)).toThrow(
+        `design.typography.roles.body.${property}`,
+      );
+    }
+  });
+
+  it("binds variable axes to inspected family metadata and exact bounds", () => {
+    const design = validDesignV3();
+    design.typography.fonts.body = "Noto Emoji";
+    design.typography.fontAxes = { body: { wght: 650 } };
+    const availableFonts = [
+      {
+        family: "Noto Emoji",
+        style: "normal",
+        weight: 400,
+        axes: [{ tag: "wght", min: 300, default: 400, max: 700 }],
+      },
+    ];
+    expect(
+      validatePdfTemplateDesignV3(design, "design", { availableFonts })
+        .typography.fontAxes,
+    ).toEqual({ body: { wght: 650 } });
+    expect(() => validatePdfTemplateDesignV3(design)).toThrow(
+      /byte-inspected available-font inventory/,
+    );
+
+    design.typography.fontAxes.body = { wdth: 100 };
+    expect(() =>
+      validatePdfTemplateDesignV3(design, "design", { availableFonts })
+    ).toThrow(/axis is not declared/);
+    design.typography.fontAxes.body = { wght: 701 };
+    expect(() =>
+      validatePdfTemplateDesignV3(design, "design", { availableFonts })
+    ).toThrow(/within \[300, 700\]/);
+  });
+
+  it("accepts preset and custom page formats, both bindings, both margin modes, and bounded bleed", () => {
+    const preset = validDesignV3();
+    expect(validatePdfTemplateDesignV3(preset)).toEqual(preset);
+
+    const custom = validDesignV3();
+    custom.page = {
+      format: { kind: "custom", width: "210mm", height: "297mm" },
+      orientation: "landscape",
+      binding: "right",
+      margin: {
+        mode: "logical",
+        top: "20mm",
+        bottom: "20mm",
+        inside: "25mm",
+        outside: "15mm",
+      },
+      bleed: {
+        top: "3mm",
+        bottom: "3mm",
+        inside: "0pt",
+        outside: "5mm",
+      },
+    };
+    expect(validatePdfTemplateDesignV3(custom).page).toEqual(custom.page);
+  });
+
+  it("dispatches V3 designs through the portable manifest import gate", () => {
+    const manifest = validateManifestV3({
+      schemaVersion: 1,
+      id: "builtin.catalog-v3-test",
+      name: "Catalog V3 test",
+      version: "1.0.0",
+      engine: {
+        kind: "typst",
+        api: "wiki.pdf-template/v1",
+        entry: "atlcli.typ",
+        compilerRange: ">=0.15.1 <0.16",
+      },
+      design: validDesignV3(),
+    });
+    expect(manifest.design).toBeDefined();
+    expect("format" in manifest.design!.page).toBe(true);
+  });
+
+  it("rejects malformed page-format unions and unsupported page units", () => {
+    for (const format of [
+      { kind: "custom", width: "210mm" },
+      { kind: "preset", name: "a4", width: "210mm", height: "297mm" },
+      { kind: "custom", width: "8.5in", height: "11in" },
+    ]) {
+      const design = validDesignV3() as unknown as Record<string, unknown>;
+      (design.page as Record<string, unknown>).format = format;
+      expect(() => validatePdfTemplateDesignV3(design)).toThrow(
+        ManifestValidationError,
+      );
+    }
+  });
+
+  it("rejects mixed margin modes and margins that consume the page body", () => {
+    const mixed = validDesignV3() as unknown as Record<string, unknown>;
+    (mixed.page as Record<string, unknown>).margin = {
+      mode: "logical",
+      top: "20mm",
+      bottom: "20mm",
+      inside: "20mm",
+      outside: "20mm",
+      left: "20mm",
+    };
+    expect(() => validatePdfTemplateDesignV3(mixed)).toThrow(/not recognized/);
+
+    const consumed = validDesignV3();
+    consumed.page.margin = {
+      mode: "physical",
+      top: "149mm",
+      bottom: "149mm",
+      left: "20mm",
+      right: "20mm",
+    };
+    expect(() => validatePdfTemplateDesignV3(consumed)).toThrow(
+      /positive page body area/,
+    );
+  });
+
+  it("rejects out-of-bounds bleed and layout-slot mismatches", () => {
+    const bleed = validDesignV3();
+    bleed.page.bleed = {
+      top: "51mm",
+      bottom: "0mm",
+      inside: "0mm",
+      outside: "0mm",
+    };
+    expect(() => validatePdfTemplateDesignV3(bleed)).toThrow(/50mm/);
+
+    const single = validDesignV3() as unknown as Record<string, unknown>;
+    const compositions = single.compositions as Record<string, unknown>;
+    const running = compositions.running as Record<string, unknown>;
+    const header = running.header as Record<string, unknown>;
+    header.odd = { start: { field: "documentTitle" } };
+    expect(() => validatePdfTemplateDesignV3(single)).toThrow(
+      /not recognized|center/,
+    );
+  });
+
+  it("requires literal values, restricts numbering, and bounds literal text", () => {
+    const missingLiteral = validDesignV3() as unknown as Record<string, unknown>;
+    const compositions = missingLiteral.compositions as Record<string, unknown>;
+    const running = compositions.running as Record<string, unknown>;
+    const footer = running.footer as Record<string, unknown>;
+    const odd = footer.odd as Record<string, unknown>;
+    odd.start = { field: "literal" };
+    expect(() => validatePdfTemplateDesignV3(missingLiteral)).toThrow(
+      /required for field "literal"/,
+    );
+
+    const badNumbering = validDesignV3() as unknown as Record<string, unknown>;
+    const badCompositions = badNumbering.compositions as Record<string, unknown>;
+    const badRunning = badCompositions.running as Record<string, unknown>;
+    const badFooter = badRunning.footer as Record<string, unknown>;
+    const badOdd = badFooter.odd as Record<string, unknown>;
+    badOdd.start = { field: "documentTitle", numbering: "current" };
+    expect(() => validatePdfTemplateDesignV3(badNumbering)).toThrow(
+      /not valid for field "documentTitle"/,
+    );
+
+    const hostile = validDesignV3();
+    const footerRegion = hostile.compositions.running.footer;
+    if (footerRegion.odd.start && footerRegion.odd.start.field === "literal") {
+      footerRegion.odd.start.value = "#panic";
+    }
+    expect(() => validatePdfTemplateDesignV3(hostile)).toThrow(/metacharacters/);
+  });
+
+  it("validates independent navigation policies and a bounded body page-number reset", () => {
+    const design = validDesignV3();
+    design.navigation = {
+      contents: { enabled: false, depth: 1 },
+      bookmarks: { enabled: true, depth: 6, includeHeadingNumbers: true },
+      headingNumbers: {
+        enabled: true,
+        preset: "decimal-alpha-roman",
+      },
+      pageNumbers: {
+        enabled: true,
+        preset: "roman-lower",
+        start: 3,
+        body: { preset: "arabic", start: 1 },
+      },
+    };
+    expect(validatePdfTemplateDesignV3(design).navigation).toEqual(
+      design.navigation,
+    );
+
+    for (const depth of [0, 7, 1.5]) {
+      const invalid = validDesignV3();
+      invalid.navigation.contents.depth = depth;
+      expect(() => validatePdfTemplateDesignV3(invalid)).toThrow(
+        /within \[1, 6\]|integer/,
+      );
+    }
+
+    const invalidStart = validDesignV3();
+    invalidStart.navigation.pageNumbers.start = 0;
+    expect(() => validatePdfTemplateDesignV3(invalidStart)).toThrow(
+      /within \[1, 99999\]/,
+    );
+
+    const unsupportedBookmarkTitle = validDesignV3();
+    unsupportedBookmarkTitle.navigation.headingNumbers.enabled = true;
+    unsupportedBookmarkTitle.navigation.bookmarks.includeHeadingNumbers = false;
+    expect(() => validatePdfTemplateDesignV3(unsupportedBookmarkTitle)).toThrow(
+      /must be true while viewer bookmarks and native heading numbering/,
+    );
+  });
+
+  it("accepts every bounded component preset and resolves only existing color tokens", () => {
+    const design = validDesignV3();
+    design.components = {
+      paragraph: { align: "justify", hyphenation: "off" },
+      list: {
+        bulletPreset: "compact",
+        markerAlign: "horizon",
+        markerColor: "accent",
+      },
+      enumeration: {
+        numberingPreset: "roman-lower",
+        markerAlign: "start",
+        markerColor: "ink",
+      },
+      table: {
+        repeatHeader: false,
+        banding: "columns",
+        borders: "horizontal",
+        bandColor: "ink",
+        borderColor: "accent",
+      },
+      outline: {
+        leader: "line",
+        pageNumbers: "hide",
+        leaderColor: "accent",
+      },
+      callout: { preset: "outline", icon: "hide", accentColor: "accent" },
+      codeBlock: {
+        wrap: "none",
+        lineNumbers: "show",
+        backgroundColor: "ink",
+      },
+    };
+    expect(validatePdfTemplateDesignV3(design).components).toEqual(
+      design.components,
+    );
+
+    const unknownToken = validDesignV3();
+    unknownToken.components.table.bandColor = "missing";
+    expect(() => validatePdfTemplateDesignV3(unknownToken)).toThrow(
+      /existing design\.tokens\.colors entry/,
+    );
+
+    const arbitraryMarker = validDesignV3() as unknown as Record<string, unknown>;
+    const components = arbitraryMarker.components as Record<string, unknown>;
+    components.list = {
+      bulletPreset: "#panic()",
+      markerAlign: "end",
+    };
+    expect(() => validatePdfTemplateDesignV3(arbitraryMarker)).toThrow(
+      /disc-circle-square/,
+    );
+  });
+
+  it("validates every named paint and flat decorative shape", () => {
+    const design = validDesignV3();
+    design.paints = {
+      ink: { kind: "solid", color: "ink" },
+      linear: {
+        kind: "linear",
+        angle: 43,
+        relativeTo: "parent",
+        stops: [
+          { at: 0, color: "ink" },
+          { at: 58, color: "accent" },
+          { at: 58, color: "ink" },
+          { at: 100, color: "accent" },
+        ],
+      },
+      radial: {
+        kind: "radial",
+        center: { x: 40, y: 60 },
+        radius: 75,
+        relativeTo: "self",
+        stops: [
+          { at: 0, color: "accent" },
+          { at: 100, color: "ink" },
+        ],
+      },
+      conic: {
+        kind: "conic",
+        angle: -90,
+        center: { x: 50, y: 50 },
+        relativeTo: "parent",
+        stops: [
+          { at: 0, color: "accent" },
+          { at: 100, color: "ink" },
+        ],
+      },
+    };
+    design.decorations = [
+      {
+        kind: "rect",
+        scope: "first",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "210mm", height: "80mm" },
+        fill: "linear",
+        radius: "2mm",
+      },
+      {
+        kind: "line",
+        scope: "odd",
+        layer: "header",
+        from: { x: "0mm", y: "2mm" },
+        to: { x: "120mm", y: "2mm" },
+        stroke: { paint: "ink", width: "0.5pt" },
+      },
+      {
+        kind: "circle",
+        scope: "even",
+        layer: "footer",
+        center: { x: "10mm", y: "10mm" },
+        radius: "4mm",
+        fill: "radial",
+        stroke: { paint: "conic", width: "0.25pt" },
+        rotation: 15,
+      },
+    ];
+    const validated = validatePdfTemplateDesignV3(design);
+    expect(validated.paints).toEqual(design.paints);
+    expect(validated.decorations).toEqual(design.decorations);
+  });
+
+  it("rejects unsafe paint stops, missing paint references, and unbounded shapes", () => {
+    const descending = validDesignV3();
+    descending.paints = {
+      hero: {
+        kind: "linear",
+        angle: 0,
+        relativeTo: "parent",
+        stops: [
+          { at: 70, color: "ink" },
+          { at: 20, color: "accent" },
+        ],
+      },
+    };
+    expect(() => validatePdfTemplateDesignV3(descending)).toThrow(/sorted/);
+
+    const missingToken = validDesignV3();
+    missingToken.paints = { ink: { kind: "solid", color: "missing" } };
+    expect(() => validatePdfTemplateDesignV3(missingToken)).toThrow(
+      /existing design\.tokens\.colors entry/,
+    );
+
+    const missingPaint = validDesignV3();
+    missingPaint.decorations = [
+      {
+        kind: "rect",
+        scope: "all",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "10mm", height: "10mm" },
+        fill: "missing",
+      },
+    ];
+    expect(() => validatePdfTemplateDesignV3(missingPaint)).toThrow(
+      /missing paint/,
+    );
+
+    const oversized = validDesignV3();
+    oversized.paints = { ink: { kind: "solid", color: "ink" } };
+    oversized.decorations = [
+      {
+        kind: "circle",
+        scope: "all",
+        layer: "page-background",
+        center: { x: "0mm", y: "0mm" },
+        radius: "1001mm",
+        fill: "ink",
+      },
+    ];
+    expect(() => validatePdfTemplateDesignV3(oversized)).toThrow(/1000mm/);
+
+    const noAppearance = validDesignV3() as unknown as Record<string, unknown>;
+    noAppearance.decorations = [
+      {
+        kind: "rect",
+        scope: "all",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "10mm", height: "10mm" },
+      },
+    ];
+    expect(() => validatePdfTemplateDesignV3(noAppearance)).toThrow(
+      /fill or stroke/,
+    );
+  });
+});
 
 describe("validateDesign", () => {
   it("accepts a complete, in-bounds design", () => {

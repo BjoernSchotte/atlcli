@@ -6,10 +6,18 @@ export interface PdfRuntimeFontAsset {
     | "Source Sans 3"
     | "Source Serif 4"
     | "Source Code Pro"
+    | "Noto Sans Arabic"
     | "Noto Sans Symbols2"
     | "Noto Emoji";
   style: "normal" | "italic";
   weight: 400 | 600 | 700;
+  /** Byte-inspected OpenType `fvar` axes; absent for static faces. */
+  axes?: readonly {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+  }[];
   sourceUrl: string;
   sha256: string;
 }
@@ -28,6 +36,10 @@ function notoRaw(fileName: string): string {
   return `https://raw.githubusercontent.com/notofonts/noto-fonts/${NOTO_FONTS_COMMIT}/hinted/ttf/NotoSansSymbols2/${fileName}`;
 }
 
+function notoFamilyRaw(family: string, fileName: string): string {
+  return `https://raw.githubusercontent.com/notofonts/noto-fonts/${NOTO_FONTS_COMMIT}/hinted/ttf/${family}/${fileName}`;
+}
+
 function googleFontsRaw(path: string): string {
   return `https://raw.githubusercontent.com/google/fonts/${GOOGLE_FONTS_COMMIT}/${path}`;
 }
@@ -43,8 +55,9 @@ const fontRecords: readonly Omit<PdfRuntimeFontAsset, "assetId">[] = [
   { fileName: "SourceSerif4-Bold.ttf", family: "Source Serif 4", style: "normal", weight: 700, sourceUrl: adobeRaw("source-serif", SOURCE_SERIF_COMMIT, "SourceSerif4-Bold.ttf"), sha256: "7cf4f4e1ad74f45058d5bc61716b82560442fbdcd9d3654d2dea96bf6c683d86" },
   { fileName: "SourceCodePro-Regular.ttf", family: "Source Code Pro", style: "normal", weight: 400, sourceUrl: adobeRaw("source-code-pro", SOURCE_CODE_PRO_COMMIT, "SourceCodePro-Regular.ttf"), sha256: "74bd80d3e42a08517cd7e1108ba3d86f2da29ac0f3065be95e0357956ab9db37" },
   { fileName: "SourceCodePro-Bold.ttf", family: "Source Code Pro", style: "normal", weight: 700, sourceUrl: adobeRaw("source-code-pro", SOURCE_CODE_PRO_COMMIT, "SourceCodePro-Bold.ttf"), sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f" },
+  { fileName: "NotoSansArabic-Regular.ttf", family: "Noto Sans Arabic", style: "normal", weight: 400, sourceUrl: notoFamilyRaw("NotoSansArabic", "NotoSansArabic-Regular.ttf"), sha256: "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b" },
   { fileName: "NotoSansSymbols2-Regular.ttf", family: "Noto Sans Symbols2", style: "normal", weight: 400, sourceUrl: notoRaw("NotoSansSymbols2-Regular.ttf"), sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6" },
-  { fileName: "NotoEmoji-wght.ttf", family: "Noto Emoji", style: "normal", weight: 400, sourceUrl: googleFontsRaw("ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf"), sha256: "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551" },
+  { fileName: "NotoEmoji-wght.ttf", family: "Noto Emoji", style: "normal", weight: 400, axes: [{ tag: "wght", min: 300, default: 400, max: 700 }], sourceUrl: googleFontsRaw("ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf"), sha256: "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551" },
 ];
 
 const fonts: readonly PdfRuntimeFontAsset[] = fontRecords.map((font) =>

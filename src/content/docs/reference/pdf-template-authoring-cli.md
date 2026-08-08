@@ -5,8 +5,8 @@ description: "Command, state, JSON, automation, graphics, and recovery reference
 
 # PDF Template Authoring CLI
 
-`atlcli pdf-template` turns design evidence from a `.docx` into a reviewed,
-compiled `.wiki-pdf-template` pack. The primary commands are task-oriented;
+`atlcli pdf-template` turns design evidence from a `.docx` or a declarative
+YAML recipe into a compiled `.wiki-pdf-template` pack. The primary commands are task-oriented;
 expert commands expose the same host-neutral workflow for scripts and future
 browser-based authoring surfaces.
 
@@ -114,10 +114,21 @@ uses a reference frame the PDF runtime cannot reproduce safely.
 | `clear-optional --target <path>` | Explicitly clear a supported optional value |
 | `validate <project>` | Validate the current build inputs without writing a pack |
 | `pack <project> --output <path>` | Expert spelling of the verified build boundary |
+| `validate <recipe.yaml>` | Resolve, pack, reload, and compile Recipe V1 or V2 without publishing an archive |
+| `build <recipe.yaml> --output <path>` | Publish a verified deterministic recipe pack |
+| `explain <recipe-v2.yaml>` | Read-only baseline, override, constraint, compiler, asset-slot, and proof view |
+| `migrate-runtime <recipe-v1.yaml> --output <path>` | Create a distinct V1 recipe whose range accepts Typst 0.15.1 |
 
 Unknown capability paths, wrong JSON value types, out-of-range values,
 duplicate flags, and conflicting actions fail without moving the active
 generation.
+
+Recipe V2 uses only baselines shipped with the running installation. Its
+`baseline.id`, integer version, Catalog version, and SHA-256 digest must match
+exactly; URL-like values, paths, implicit `latest`, and network fetching are
+rejected. `explain` does not open declared asset files and does not return asset
+bytes or absolute paths. See [Create a PDF template from YAML](/confluence/pdf-template-from-yaml/)
+for the minimal and advanced machine-checked examples.
 
 ## Stages and resumability
 

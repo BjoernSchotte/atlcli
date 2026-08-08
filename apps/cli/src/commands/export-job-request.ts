@@ -9,6 +9,7 @@ import type {
   ExportSourceV1,
   PdfExportJobRequestV1,
   PdfTemplateReferenceV1,
+  PdfOutputPolicyV1,
 } from "@atlcli/export-jobs";
 import type { ParsedExportRequest } from "./export-request.js";
 
@@ -124,6 +125,7 @@ export function buildCliPdfJobRequest(
     /** Explicit image profile (issue #118 Phase 3); absent = original. */
     imageProfile?: "original" | "standard" | "print";
     imagePpi?: number;
+    outputPolicy?: PdfOutputPolicyV1;
     template?: PdfTemplateReferenceV1;
   },
 ): PdfExportJobRequestV1 {
@@ -165,6 +167,9 @@ export function buildCliPdfJobRequest(
         ? { imageProfile: input.imageProfile }
         : {}),
       ...(input.imagePpi !== undefined ? { imagePpi: input.imagePpi } : {}),
+      ...(input.outputPolicy !== undefined
+        ? { outputPolicy: input.outputPolicy }
+        : {}),
     },
   };
 }

@@ -166,7 +166,9 @@ ${logo}${website}${legal}      ]),
 export function createAtlcliTypstTemplateV4(
   design: WikiPdfTemplateDesignV1,
   labels: Record<string, string> = {},
-  visuals?: PdfTemplateVisualsV1
+  visuals?: PdfTemplateVisualsV1,
+  /** Optional revision-5 base source; still receives the proven V4 compositions. */
+  baseSource?: string,
 ): string {
   const catalogDesign = projectPdfDesignThroughCatalogV2(design);
   const composition = catalogDesign.compositions?.cover;
@@ -174,7 +176,7 @@ export function createAtlcliTypstTemplateV4(
     throw new Error("PDF template revision 4 is missing compositions.cover");
   }
 
-  const base = createAtlcliTypstTemplate(
+  const base = baseSource ?? createAtlcliTypstTemplate(
     projectPdfDesignV1SubsetFromCatalogV2(catalogDesign),
     labels,
     visuals,

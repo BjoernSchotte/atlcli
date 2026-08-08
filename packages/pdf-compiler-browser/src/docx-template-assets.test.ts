@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
+import type { TemplateManifest } from "@atlcli/template-pack";
 import {
   PDF_CANONICAL_SOURCE_API_V1,
   PDF_CANONICAL_SOURCE_REVISION,
@@ -673,7 +674,7 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
     };
     const resolveModel = async () => ({
       baseline: BUILTIN_PDF_TEMPLATE_MANIFEST,
-      current: pack.manifest,
+      current: pack.manifest as TemplateManifest,
       currentPack: pack,
     });
     const browserAdapter = new BrowserTemplatePreviewCompiler({
@@ -752,7 +753,7 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
     };
     const resolveModel = async () => ({
       baseline: BUILTIN_PDF_TEMPLATE_MANIFEST,
-      current: pack.manifest,
+      current: pack.manifest as TemplateManifest,
       currentPack: pack,
     });
     const nodeResult = await new NodeTemplatePreviewCompiler({

@@ -3,10 +3,21 @@ import { createHash } from "node:crypto";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
 import { CHART_KINDS_V1 } from "@atlcli/export-blocks";
 import {
+  validateManifestV3,
+  type WikiPdfTemplateDesignV3,
+} from "@atlcli/template-pack";
+import {
   CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
 } from "@atlcli/confluence";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+} from "./design-catalog.js";
+import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
+import type { PdfTemplateManifestV5 } from "./template-pack.js";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
 import type { PreparedPdfBlock } from "./types.js";
@@ -21,6 +32,35 @@ const metadata = {
   region: "US",
   exportedAt: new Date("2026-07-16T12:00:00Z"),
 };
+
+function revision5Manifest(
+  mutate?: (design: WikiPdfTemplateDesignV3) => void,
+): PdfTemplateManifestV5 {
+  const design = structuredClone(
+    BUILTIN_PDF_TEMPLATE_BASELINE_V1.design,
+  ) as unknown as WikiPdfTemplateDesignV3;
+  mutate?.(design);
+  return validateManifestV3({
+    schemaVersion: 1,
+    id: "fixture.serialize-catalog-v3",
+    name: "Serialize Catalog V3 fixture",
+    version: "1.0.0",
+    engine: {
+      kind: "typst",
+      api: "wiki.pdf-template/v1",
+      entry: "atlcli.typ",
+      compilerRange: ">=0.15.1 <0.16",
+    },
+    canonicalSource: { api: "wiki.pdf-canonical-typst", revision: "5" },
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    },
+    design,
+    requiredFonts: PDF_RUNTIME_ASSETS.fonts,
+  });
+}
 
 const NON_CHART_REGRESSION_BLOCKS_V1: ExportBlock[] = [
   { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
@@ -2502,6 +2542,166 @@ describe("serialize — T1.6 table header repeat", () => {
       },
     ]);
     expect(main).toContain("table.header(repeat: true,");
+  });
+
+  it("keeps header semantics while applying revision-5 repeat, banding, border, and code defaults", async () => {
+    const prepared = await preparePdfDocument(
+      [
+        {
+          type: "table",
+          rows: [
+            {
+              cells: [
+                {
+                  header: true,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Header" }],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              cells: [
+                {
+                  header: false,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Body" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "codeBlock",
+          language: "text",
+          code: "averylongunbreakableidentifierthatneedsemergencywrapping",
+        },
+      ],
+      { resolve: async () => { throw new Error("unused"); } },
+    );
+    const manifest = revision5Manifest((design) => {
+      design.components.table = {
+        repeatHeader: false,
+        banding: "rows",
+        borders: "outer",
+        bandColor: "codeBackground",
+        borderColor: "tableStroke",
+      };
+      design.components.codeBlock = {
+        wrap: "soft",
+        lineNumbers: "show",
+      };
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata,
+      templateManifest: manifest,
+    });
+    expect(bundle.main).toContain("table.header(repeat: false,");
+    expect(bundle.main).toContain("fill: (x, y) => if y >= 1");
+    expect(bundle.main).toContain("top: if y == 0");
+    expect(bundle.main).toContain("right: if x == 0");
+    expect(bundle.main).toContain("columns: (auto, 1fr)");
+    expect(bundle.main).toContain("#h(0 * 1pt, weak: true)");
+    expect(bundle.template).toContain("marker-align: start");
+  });
+
+  it("emits every bounded table banding/border mode and honors no-wrap code", async () => {
+    const prepared = await preparePdfDocument(
+      [
+        {
+          type: "table",
+          rows: [
+            {
+              cells: [
+                {
+                  header: true,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [{ type: "paragraph", content: [{ type: "text", text: "H" }] }],
+                },
+              ],
+            },
+            {
+              cells: [
+                {
+                  header: false,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [{ type: "paragraph", content: [{ type: "text", text: "B" }] }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "codeBlock",
+          language: "text",
+          code: "averylongunbreakableidentifierthatmustremainunbroken",
+        },
+      ],
+      { resolve: async () => { throw new Error("unused"); } },
+    );
+    const cases = [
+      {
+        banding: "none" as const,
+        borders: "all" as const,
+        fill: undefined,
+        stroke: 'stroke: rgb("#DFE1E6")',
+      },
+      {
+        banding: "rows" as const,
+        borders: "horizontal" as const,
+        fill: "if y >= 1",
+        stroke: "stroke: (x, y) => (top:",
+      },
+      {
+        banding: "columns" as const,
+        borders: "outer" as const,
+        fill: "if calc.odd(x)",
+        stroke: "top: if y == 0",
+      },
+      {
+        banding: "none" as const,
+        borders: "none" as const,
+        fill: undefined,
+        stroke: "stroke: none",
+      },
+    ];
+    for (const fixture of cases) {
+      const templateManifest = revision5Manifest((design) => {
+        design.components.table = {
+          repeatHeader: true,
+          banding: fixture.banding,
+          borders: fixture.borders,
+        };
+        design.components.codeBlock = {
+          wrap: "none",
+          lineNumbers: "hide",
+        };
+      });
+      const main = serializePdfDocument(prepared, {
+        metadata,
+        templateManifest,
+      }).main;
+      if (fixture.fill === undefined) {
+        expect(main).not.toContain("fill: (x, y) =>");
+      } else {
+        expect(main).toContain(fixture.fill);
+      }
+      expect(main).toContain(fixture.stroke);
+      expect(main).not.toContain("#h(0pt, weak: true)");
+    }
   });
 });
 

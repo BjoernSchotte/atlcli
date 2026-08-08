@@ -25,6 +25,7 @@ import { ManifestValidationError } from "./manifest-error.js";
 import { satisfiesRange } from "./manifest.js";
 
 export const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+export const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 export const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
 export interface PdfTemplateRecipeTemplateV1 {
@@ -52,18 +53,58 @@ export interface WikiPdfTemplateRecipeV1 {
   assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
+export interface PdfTemplateRecipeTemplateV2 {
+  id: string;
+  name: string;
+  version: string;
+}
+
+/** Exact installed-baseline identity; there is deliberately no latest alias. */
+export interface PdfTemplateRecipeBaselineV2 {
+  id: string;
+  version: number;
+  catalogVersion: number;
+  digest: string;
+}
+
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+export type PdfTemplateRecipeJsonValueV2 =
+  | PdfTemplateRecipeJsonScalarV2
+  | readonly PdfTemplateRecipeJsonValueV2[]
+  | PdfTemplateRecipeDesignOverlayV2;
+
+/**
+ * Sparse, portable design data. Catalog-specific exact-path and value checks
+ * happen at the PDF authoring boundary after the installed baseline resolves.
+ */
+export interface PdfTemplateRecipeDesignOverlayV2 {
+  readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+export interface WikiPdfTemplateRecipeV2 {
+  schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+  template: PdfTemplateRecipeTemplateV2;
+  baseline: PdfTemplateRecipeBaselineV2;
+  /** Omission means no design overrides. */
+  design: PdfTemplateRecipeDesignOverlayV2;
+  /** Omission keeps the installed baseline localization unchanged. */
+  localization?: WikiPdfTemplateLocalizationV1;
+  /** Assets remain declarations; bytes and hashes are host-resolved later. */
+  assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
 /**
  * Return a distinct, validated recipe object for the 0.15.1 runtime without
  * mutating the author's source object, design, localization, or assets.
  */
 export function migratePdfTemplateRecipeToTypst0151V1(
-  value: unknown
+  value: unknown,
 ): WikiPdfTemplateRecipeV1 {
   const recipe = validatePdfTemplateRecipeV1(value);
   if (satisfiesRange("0.15.1", recipe.template.compilerRange)) {
     fail(
       "recipe.template.compilerRange",
-      `already accepts Typst 0.15.1 (${recipe.template.compilerRange})`
+      `already accepts Typst 0.15.1 (${recipe.template.compilerRange})`,
     );
   }
   return validatePdfTemplateRecipeV1({
@@ -77,12 +118,18 @@ export function migratePdfTemplateRecipeToTypst0151V1(
 
 const STABLE_ID_RE = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/u;
 const VERSION_RE = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/u;
-const COMPILER_RANGE_RE = /^(?:(?:>=|<=|>|<|=)?\d+\.\d+(?:\.\d+)?)(?:\s+(?:(?:>=|<=|>|<|=)?\d+\.\d+(?:\.\d+)?))*$/u;
+const COMPILER_RANGE_RE =
+  /^(?:(?:>=|<=|>|<|=)?\d+\.\d+(?:\.\d+)?)(?:\s+(?:(?:>=|<=|>|<|=)?\d+\.\d+(?:\.\d+)?))*$/u;
 const LENGTH_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:pt|mm|cm|in)$/u;
 const MAX_ASSETS = 64;
 const MAX_DYNAMIC_ENTRIES = 256;
 const MAX_PATH_CODE_POINTS = 512;
 const MAX_ABSOLUTE_LENGTH = 1_000_000;
+const SHA256_RE = /^[a-f0-9]{64}$/u;
+const MAX_RECIPE_V2_DEPTH = 32;
+const MAX_RECIPE_V2_NODES = 8_192;
+const MAX_RECIPE_V2_ARRAY_ITEMS = 1_024;
+const MAX_RECIPE_V2_STRING_CODE_POINTS = 4_096;
 
 function fail(path: string, message: string): never {
   throw new ManifestValidationError("shape-error", `${path}: ${message}`, path);
@@ -95,13 +142,21 @@ function object(value: unknown, path: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function exactKeys(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
+function exactKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+): void {
   const known = new Set(allowed);
   const unknown = Object.keys(value).find((key) => !known.has(key));
   if (unknown) fail(`${path}.${unknown}`, "is not recognized");
 }
 
-function boundedEntries(value: Record<string, unknown>, path: string, maximum: number): void {
+function boundedEntries(
+  value: Record<string, unknown>,
+  path: string,
+  maximum: number,
+): void {
   if (Object.keys(value).length > maximum) {
     fail(path, `must contain at most ${maximum} entries`);
   }
@@ -112,7 +167,12 @@ function boolean(value: unknown, path: string): boolean {
   return value;
 }
 
-function finite(value: unknown, path: string, minimum: number, maximum: number): number {
+function finite(
+  value: unknown,
+  path: string,
+  minimum: number,
+  maximum: number,
+): number {
   if (
     typeof value !== "number" ||
     !Number.isFinite(value) ||
@@ -147,7 +207,9 @@ function portableSourcePath(value: unknown, path: string): string {
     value.includes("\\") ||
     value.startsWith("/") ||
     /^[A-Za-z]:/u.test(value) ||
-    value.split("/").some((part) => part === "" || part === "." || part === "..") ||
+    value
+      .split("/")
+      .some((part) => part === "" || part === "." || part === "..") ||
     /[\u0000-\u001f\u007f]/u.test(value)
   ) {
     fail(path, "must be a safe relative portable path without dot segments");
@@ -162,11 +224,17 @@ function stableId(value: unknown, path: string): string {
   return value;
 }
 
-function validateTemplate(value: unknown, path: string): PdfTemplateRecipeTemplateV1 {
+function validateTemplate(
+  value: unknown,
+  path: string,
+): PdfTemplateRecipeTemplateV1 {
   const template = object(value, path);
   exactKeys(template, ["id", "name", "version", "compilerRange"], path);
   const name = validateSafeString(template.name, `${path}.name`);
-  if (typeof template.version !== "string" || !VERSION_RE.test(template.version)) {
+  if (
+    typeof template.version !== "string" ||
+    !VERSION_RE.test(template.version)
+  ) {
     fail(`${path}.version`, "must be a semantic version");
   }
   if (
@@ -183,12 +251,142 @@ function validateTemplate(value: unknown, path: string): PdfTemplateRecipeTempla
   };
 }
 
-function validatePlacement(value: unknown, path: string): PdfTemplateRecipePlacementV1 {
+function validateTemplateV2(
+  value: unknown,
+  path: string,
+): PdfTemplateRecipeTemplateV2 {
+  const template = object(value, path);
+  exactKeys(template, ["id", "name", "version"], path);
+  const name = validateSafeString(template.name, `${path}.name`);
+  if (
+    typeof template.version !== "string" ||
+    !VERSION_RE.test(template.version)
+  ) {
+    fail(`${path}.version`, "must be a semantic version");
+  }
+  return {
+    id: stableId(template.id, `${path}.id`),
+    name,
+    version: template.version,
+  };
+}
+
+function positiveInteger(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    fail(path, "must be a positive safe integer");
+  }
+  return value as number;
+}
+
+function validateBaselineV2(
+  value: unknown,
+  path: string,
+): PdfTemplateRecipeBaselineV2 {
+  const baseline = object(value, path);
+  exactKeys(baseline, ["id", "version", "catalogVersion", "digest"], path);
+  if (typeof baseline.digest !== "string" || !SHA256_RE.test(baseline.digest)) {
+    fail(`${path}.digest`, "must be a lowercase SHA-256 digest");
+  }
+  return {
+    id: stableId(baseline.id, `${path}.id`),
+    version: positiveInteger(baseline.version, `${path}.version`),
+    catalogVersion: positiveInteger(
+      baseline.catalogVersion,
+      `${path}.catalogVersion`,
+    ),
+    digest: baseline.digest,
+  };
+}
+
+interface RecipeV2JsonBudget {
+  nodes: number;
+}
+
+function validateRecipeV2Json(
+  value: unknown,
+  path: string,
+  depth: number,
+  budget: RecipeV2JsonBudget,
+): PdfTemplateRecipeJsonValueV2 {
+  budget.nodes += 1;
+  if (budget.nodes > MAX_RECIPE_V2_NODES) {
+    fail(path, `must contain at most ${MAX_RECIPE_V2_NODES} JSON nodes`);
+  }
+  if (depth > MAX_RECIPE_V2_DEPTH) {
+    fail(path, `must be at most ${MAX_RECIPE_V2_DEPTH} levels deep`);
+  }
+  if (value === null) fail(path, "null is not a delete operator");
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) fail(path, "must be a finite number");
+    return value;
+  }
+  if (typeof value === "string") {
+    if (
+      [...value].length > MAX_RECIPE_V2_STRING_CODE_POINTS ||
+      /[\u0000-\u001f\u007f]/u.test(value)
+    ) {
+      fail(
+        path,
+        `must contain at most ${MAX_RECIPE_V2_STRING_CODE_POINTS} code points and no control characters`,
+      );
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > MAX_RECIPE_V2_ARRAY_ITEMS) {
+      fail(path, `must contain at most ${MAX_RECIPE_V2_ARRAY_ITEMS} items`);
+    }
+    return value.map((entry, index) =>
+      validateRecipeV2Json(entry, `${path}[${index}]`, depth + 1, budget),
+    );
+  }
+  const source = object(value, path);
+  boundedEntries(source, path, MAX_DYNAMIC_ENTRIES);
+  const result: Record<string, PdfTemplateRecipeJsonValueV2> = {};
+  for (const [key, entry] of Object.entries(source)) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,127}$/u.test(key)) {
+      fail(`${path}.${key}`, "key must be a bounded portable identifier");
+    }
+    result[key] = validateRecipeV2Json(
+      entry,
+      `${path}.${key}`,
+      depth + 1,
+      budget,
+    );
+  }
+  return result;
+}
+
+function validateDesignOverlayV2(
+  value: unknown,
+  path: string,
+): PdfTemplateRecipeDesignOverlayV2 {
+  return validateRecipeV2Json(value, path, 0, {
+    nodes: 0,
+  }) as PdfTemplateRecipeDesignOverlayV2;
+}
+
+function validatePlacement(
+  value: unknown,
+  path: string,
+): PdfTemplateRecipePlacementV1 {
   const placement = object(value, path);
   exactKeys(
     placement,
-    ["relativeTo", "fit", "x", "y", "width", "height", "opacity", "rotation", "crop"],
-    path
+    [
+      "relativeTo",
+      "fit",
+      "x",
+      "y",
+      "width",
+      "height",
+      "opacity",
+      "rotation",
+      "crop",
+      "clip",
+    ],
+    path,
   );
   if (placement.relativeTo !== "page" && placement.relativeTo !== "margin") {
     fail(`${path}.relativeTo`, 'must be "page" or "margin"');
@@ -215,6 +413,22 @@ function validatePlacement(value: unknown, path: string): PdfTemplateRecipePlace
       fail(`${path}.crop`, "must leave a positive visible area");
     }
   }
+  let clip: PdfTemplateRecipePlacementV1["clip"];
+  if (placement.clip !== undefined) {
+    const source = object(placement.clip, `${path}.clip`);
+    if (source.kind === "rounded-rect") {
+      exactKeys(source, ["kind", "radius"], `${path}.clip`);
+      clip = {
+        kind: "rounded-rect",
+        radius: length(source.radius, `${path}.clip.radius`, false),
+      };
+    } else if (source.kind === "rect" || source.kind === "circle") {
+      exactKeys(source, ["kind"], `${path}.clip`);
+      clip = { kind: source.kind };
+    } else {
+      fail(`${path}.clip.kind`, 'must be "rect", "rounded-rect", or "circle"');
+    }
+  }
   return {
     relativeTo: placement.relativeTo,
     ...(placement.fit === undefined
@@ -229,14 +443,17 @@ function validatePlacement(value: unknown, path: string): PdfTemplateRecipePlace
       : { opacity: finite(placement.opacity, `${path}.opacity`, 0, 1) }),
     ...(placement.rotation === undefined
       ? {}
-      : { rotation: finite(placement.rotation, `${path}.rotation`, -180, 180) }),
+      : {
+          rotation: finite(placement.rotation, `${path}.rotation`, -180, 180),
+        }),
     ...(crop === undefined ? {} : { crop }),
+    ...(clip === undefined ? {} : { clip }),
   };
 }
 
 function validateAssets(
   value: unknown,
-  path: string
+  path: string,
 ): Readonly<Record<string, PdfTemplateRecipeAssetV1>> {
   const assets = object(value, path);
   boundedEntries(assets, path, MAX_ASSETS);
@@ -244,7 +461,11 @@ function validateAssets(
   for (const [slot, unknownAsset] of Object.entries(assets)) {
     stableId(slot, `${path}.${slot}`);
     const asset = object(unknownAsset, `${path}.${slot}`);
-    exactKeys(asset, ["source", "decorative", "alt", "placement"], `${path}.${slot}`);
+    exactKeys(
+      asset,
+      ["source", "decorative", "alt", "placement"],
+      `${path}.${slot}`,
+    );
     const decorative = boolean(asset.decorative, `${path}.${slot}.decorative`);
     if (!decorative && asset.alt === undefined) {
       fail(`${path}.${slot}.alt`, "is required for a meaning-bearing asset");
@@ -259,7 +480,12 @@ function validateAssets(
       ...(alt === undefined ? {} : { alt }),
       ...(asset.placement === undefined
         ? {}
-        : { placement: validatePlacement(asset.placement, `${path}.${slot}.placement`) }),
+        : {
+            placement: validatePlacement(
+              asset.placement,
+              `${path}.${slot}.placement`,
+            ),
+          }),
     };
   }
   return validated;
@@ -268,7 +494,7 @@ function validateAssets(
 function exactDynamicMap(
   value: unknown,
   path: string,
-  each: (entry: Record<string, unknown>, entryPath: string) => void
+  each: (entry: Record<string, unknown>, entryPath: string) => void,
 ): void {
   const record = object(value, path);
   boundedEntries(record, path, MAX_DYNAMIC_ENTRIES);
@@ -283,42 +509,62 @@ function assertExactDesignShape(value: unknown, path: string): void {
   const design = object(value, path);
   exactKeys(
     design,
-    ["page", "features", "branding", "typography", "tokens", "semanticPalettes", "compositions"],
-    path
+    [
+      "page",
+      "features",
+      "branding",
+      "typography",
+      "tokens",
+      "semanticPalettes",
+      "compositions",
+    ],
+    path,
   );
   const page = object(design.page, `${path}.page`);
   exactKeys(page, ["size", "orientation", "margin"], `${path}.page`);
   exactKeys(
     object(page.margin, `${path}.page.margin`),
     ["top", "right", "bottom", "left"],
-    `${path}.page.margin`
+    `${path}.page.margin`,
   );
 
   const features = object(design.features, `${path}.features`);
-  exactKeys(features, ["cover", "outline", "header", "footer", "closingPage"], `${path}.features`);
-  exactKeys(object(features.cover, `${path}.features.cover`), ["enabled"], `${path}.features.cover`);
+  exactKeys(
+    features,
+    ["cover", "outline", "header", "footer", "closingPage"],
+    `${path}.features`,
+  );
+  exactKeys(
+    object(features.cover, `${path}.features.cover`),
+    ["enabled"],
+    `${path}.features.cover`,
+  );
   exactKeys(
     object(features.outline, `${path}.features.outline`),
     ["enabled", "depth"],
-    `${path}.features.outline`
+    `${path}.features.outline`,
   );
   exactKeys(
     object(features.header, `${path}.features.header`),
     ["enabled", "mode"],
-    `${path}.features.header`
+    `${path}.features.header`,
   );
-  exactKeys(object(features.footer, `${path}.features.footer`), ["enabled"], `${path}.features.footer`);
+  exactKeys(
+    object(features.footer, `${path}.features.footer`),
+    ["enabled"],
+    `${path}.features.footer`,
+  );
   exactKeys(
     object(features.closingPage, `${path}.features.closingPage`),
     ["enabled"],
-    `${path}.features.closingPage`
+    `${path}.features.closingPage`,
   );
 
   const branding = object(design.branding, `${path}.branding`);
   exactKeys(
     branding,
     ["accent", "organizationName", "websiteLabel", "websiteUrl", "legalNotice"],
-    `${path}.branding`
+    `${path}.branding`,
   );
 
   const typography = object(design.typography, `${path}.typography`);
@@ -326,32 +572,52 @@ function assertExactDesignShape(value: unknown, path: string): void {
   exactKeys(
     object(typography.fonts, `${path}.typography.fonts`),
     ["body", "heading", "mono"],
-    `${path}.typography.fonts`
+    `${path}.typography.fonts`,
   );
-  exactDynamicMap(typography.roles, `${path}.typography.roles`, (role, rolePath) => {
-    exactKeys(role, ["font", "size", "weight", "tracking"], rolePath);
-  });
+  exactDynamicMap(
+    typography.roles,
+    `${path}.typography.roles`,
+    (role, rolePath) => {
+      exactKeys(role, ["font", "size", "weight", "tracking"], rolePath);
+    },
+  );
 
   const tokens = object(design.tokens, `${path}.tokens`);
-  exactKeys(tokens, ["colors", "layout", "ratios", "contrast"], `${path}.tokens`);
+  exactKeys(
+    tokens,
+    ["colors", "layout", "ratios", "contrast"],
+    `${path}.tokens`,
+  );
   for (const key of ["colors", "layout", "ratios"] as const) {
     const values = object(tokens[key], `${path}.tokens.${key}`);
     boundedEntries(values, `${path}.tokens.${key}`, MAX_DYNAMIC_ENTRIES);
-    for (const name of Object.keys(values)) assertSafeIdentifier(name, `${path}.tokens.${key}.${name}`);
+    for (const name of Object.keys(values))
+      assertSafeIdentifier(name, `${path}.tokens.${key}.${name}`);
   }
   exactKeys(
     object(tokens.contrast, `${path}.tokens.contrast`),
     ["minimum"],
-    `${path}.tokens.contrast`
+    `${path}.tokens.contrast`,
   );
 
   const palettes = object(design.semanticPalettes, `${path}.semanticPalettes`);
   exactKeys(palettes, ["callouts", "statuses"], `${path}.semanticPalettes`);
-  exactDynamicMap(palettes.callouts, `${path}.semanticPalettes.callouts`, (palette, palettePath) => {
-    exactKeys(palette, ["background", "foreground"], palettePath);
-  });
-  const statuses = object(palettes.statuses, `${path}.semanticPalettes.statuses`);
-  boundedEntries(statuses, `${path}.semanticPalettes.statuses`, MAX_DYNAMIC_ENTRIES);
+  exactDynamicMap(
+    palettes.callouts,
+    `${path}.semanticPalettes.callouts`,
+    (palette, palettePath) => {
+      exactKeys(palette, ["background", "foreground"], palettePath);
+    },
+  );
+  const statuses = object(
+    palettes.statuses,
+    `${path}.semanticPalettes.statuses`,
+  );
+  boundedEntries(
+    statuses,
+    `${path}.semanticPalettes.statuses`,
+    MAX_DYNAMIC_ENTRIES,
+  );
   for (const name of Object.keys(statuses)) {
     assertSafeIdentifier(name, `${path}.semanticPalettes.statuses.${name}`);
   }
@@ -363,19 +629,19 @@ function assertExactDesignShape(value: unknown, path: string): void {
     exactKeys(
       cover,
       ["kind", "logo", "metadataPosition", "typeCut"],
-      `${path}.compositions.cover`
+      `${path}.compositions.cover`,
     );
     if (cover.typeCut !== undefined) {
       exactKeys(
         object(cover.typeCut, `${path}.compositions.cover.typeCut`),
         ["angle", "stop"],
-        `${path}.compositions.cover.typeCut`
+        `${path}.compositions.cover.typeCut`,
       );
     }
     exactKeys(
       object(compositions.closingPage, `${path}.compositions.closingPage`),
       ["kind", "logo", "website", "legalNotice", "align"],
-      `${path}.compositions.closingPage`
+      `${path}.compositions.closingPage`,
     );
   }
 }
@@ -386,16 +652,24 @@ function assertExactLocalizationShape(value: unknown, path: string): void {
   const locales = object(localization.locales, `${path}.locales`);
   boundedEntries(locales, `${path}.locales`, 64);
   for (const [locale, raw] of Object.entries(locales)) {
-    if (locale.length === 0 || [...locale].length > 64 || /[\u0000-\u001f\u007f]/u.test(locale)) {
+    if (
+      locale.length === 0 ||
+      [...locale].length > 64 ||
+      /[\u0000-\u001f\u007f]/u.test(locale)
+    ) {
       fail(`${path}.locales.${locale}`, "locale key is invalid");
     }
     const bundle = object(raw, `${path}.locales.${locale}`);
-    exactKeys(bundle, ["template", "document", "settingGroups", "settings"], `${path}.locales.${locale}`);
+    exactKeys(
+      bundle,
+      ["template", "document", "settingGroups", "settings"],
+      `${path}.locales.${locale}`,
+    );
     if (bundle.template !== undefined) {
       exactKeys(
         object(bundle.template, `${path}.locales.${locale}.template`),
         ["name", "description"],
-        `${path}.locales.${locale}.template`
+        `${path}.locales.${locale}.template`,
       );
     }
     for (const mapName of ["document", "settingGroups"] as const) {
@@ -403,17 +677,25 @@ function assertExactLocalizationShape(value: unknown, path: string): void {
         boundedEntries(
           object(bundle[mapName], `${path}.locales.${locale}.${mapName}`),
           `${path}.locales.${locale}.${mapName}`,
-          MAX_DYNAMIC_ENTRIES
+          MAX_DYNAMIC_ENTRIES,
         );
       }
     }
     if (bundle.settings !== undefined) {
-      exactDynamicMap(bundle.settings, `${path}.locales.${locale}.settings`, (setting, settingPath) => {
-        exactKeys(setting, ["label", "help", "options"], settingPath);
-        if (setting.options !== undefined) {
-          boundedEntries(object(setting.options, `${settingPath}.options`), `${settingPath}.options`, MAX_DYNAMIC_ENTRIES);
-        }
-      });
+      exactDynamicMap(
+        bundle.settings,
+        `${path}.locales.${locale}.settings`,
+        (setting, settingPath) => {
+          exactKeys(setting, ["label", "help", "options"], settingPath);
+          if (setting.options !== undefined) {
+            boundedEntries(
+              object(setting.options, `${settingPath}.options`),
+              `${settingPath}.options`,
+              MAX_DYNAMIC_ENTRIES,
+            );
+          }
+        },
+      );
     }
   }
 }
@@ -421,10 +703,14 @@ function assertExactLocalizationShape(value: unknown, path: string): void {
 /** Validate parsed recipe data without performing filesystem or YAML operations. */
 export function validatePdfTemplateRecipeV1(
   value: unknown,
-  path = "recipe"
+  path = "recipe",
 ): WikiPdfTemplateRecipeV1 {
   const recipe = object(value, path);
-  exactKeys(recipe, ["schema", "template", "design", "localization", "assets"], path);
+  exactKeys(
+    recipe,
+    ["schema", "template", "design", "localization", "assets"],
+    path,
+  );
   if (recipe.schema !== WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1) {
     fail(`${path}.schema`, `must be "${WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1}"`);
   }
@@ -440,8 +726,48 @@ export function validatePdfTemplateRecipeV1(
         requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS,
         supportedDocumentLabels: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
       },
-      `${path}.localization`
+      `${path}.localization`,
     ),
     assets: validateAssets(recipe.assets, `${path}.assets`),
+  };
+}
+
+/**
+ * Validate the browser-safe Recipe-V2 authoring envelope. Installed-baseline
+ * lookup and catalog-specific projection intentionally stay out of this
+ * portable package.
+ */
+export function validatePdfTemplateRecipeV2(
+  value: unknown,
+  path = "recipe",
+): WikiPdfTemplateRecipeV2 {
+  const recipe = object(value, path);
+  exactKeys(
+    recipe,
+    ["schema", "template", "baseline", "design", "localization", "assets"],
+    path,
+  );
+  if (recipe.schema !== WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2) {
+    fail(`${path}.schema`, `must be "${WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2}"`);
+  }
+  let localization: WikiPdfTemplateLocalizationV1 | undefined;
+  if (recipe.localization !== undefined) {
+    assertExactLocalizationShape(recipe.localization, `${path}.localization`);
+    localization = validateLocalization(
+      recipe.localization,
+      {
+        requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS,
+        supportedDocumentLabels: WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
+      },
+      `${path}.localization`,
+    );
+  }
+  return {
+    schema: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2,
+    template: validateTemplateV2(recipe.template, `${path}.template`),
+    baseline: validateBaselineV2(recipe.baseline, `${path}.baseline`),
+    design: validateDesignOverlayV2(recipe.design ?? {}, `${path}.design`),
+    ...(localization === undefined ? {} : { localization }),
+    assets: validateAssets(recipe.assets ?? {}, `${path}.assets`),
   };
 }

@@ -6,12 +6,27 @@ declare module "@atlcli/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/ty
     map_shadow(path: string, content: Uint8Array): boolean;
     reset_shadow(): void;
     get_loaded_fonts(): string[];
+    snapshot(
+      root?: string | null,
+      mainFilePath?: string | null,
+      inputs?: Array<unknown> | null,
+    ): TypstCompileWorld;
     compile(
       mainFilePath: string,
       inputs: Array<unknown>,
       format: string,
       diagnosticsFormat: number
     ): unknown;
+  }
+
+  export interface TypstCompileWorld {
+    free(): void;
+    set_pdf_opts(options: {
+      pdf_standard?: string;
+      pdf_tags?: boolean;
+      creation_timestamp?: number;
+    }): void;
+    get_artifact(format: number, diagnosticsFormat: number): unknown;
   }
 
   export class TypstCompilerBuilder {

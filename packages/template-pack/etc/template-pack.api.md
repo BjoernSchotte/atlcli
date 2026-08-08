@@ -44,14 +44,59 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityCatalogV2
+export declare function canonicalCapabilityCatalogV2(catalogValue: unknown): unknown;
+
 // export: canonicalCapabilityJson
 export declare function canonicalCapabilityJson(value: unknown): string;
 
 // export: CapabilityComparisonKindV1
 export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
 
+// export: CapabilityConstraintContextV2
+export interface CapabilityConstraintContextV2 {
+    assets?: readonly string[];
+    labels?: readonly string[];
+    compilerVersion?: string;
+}
+
+// export: CapabilityConstraintV2
+export interface CapabilityConstraintV2 {
+    when: readonly CapabilityPredicateV2[];
+    require?: readonly CapabilityRequirementV2[];
+    forbid?: readonly CapabilityRequirementV2[];
+}
+
+// export: CapabilityConstraintViolationV2
+export interface CapabilityConstraintViolationV2 {
+    constraint: number;
+    effect: "required" | "forbidden" | "compiler-unavailable";
+    target: CapabilityRequirementV2 | {
+        kind: "path";
+        id: string;
+    };
+}
+
 // export: CapabilityEditKindV1
 export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityOwnerV2
+export type CapabilityOwnerV2 = "template" | "export" | "source" | "renderer";
+
+// export: CapabilityPredicateV2
+export interface CapabilityPredicateV2 {
+    path: string;
+    equals: string | number | boolean;
+}
+
+// export: CapabilityProofV2
+export type CapabilityProofV2 = "contract" | "canonical-source" | "compile" | "semantic-pdf" | "visual-pdf" | "browser" | "live";
+
+// export: CapabilityRequirementV2
+export interface CapabilityRequirementV2 {
+    kind: "path" | "asset" | "label";
+    id: string;
+}
 
 // export: CapabilityRuntimeWriterKindV1
 export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
@@ -61,6 +106,9 @@ export interface CapabilityRuntimeWriterV1 {
     kind: CapabilityRuntimeWriterKindV1;
     id: string;
 }
+
+// export: CapabilityStabilityV2
+export type CapabilityStabilityV2 = "experimental" | "stable" | "deprecated";
 
 // export: CapabilityValidationError
 export declare class CapabilityValidationError extends Error {
@@ -78,11 +126,20 @@ export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | 
 // export: CapabilityValueKindV1
 export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
 
+// export: CapabilityValueKindV2
+export type CapabilityValueKindV2 = CapabilityValueKindV1 | "array" | "object";
+
 // export: computeCapabilityCatalogDigest
 export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
 
+// export: computeCapabilityCatalogDigestV2
+export declare function computeCapabilityCatalogDigestV2(catalog: unknown): Promise<string>;
+
 // export: computeCapabilityPresentationRevision
 export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
+// export: computeCapabilityPresentationRevisionV2
+export declare function computeCapabilityPresentationRevisionV2(catalog: unknown, registry: unknown, detailsOnlyTargets: readonly string[]): Promise<string>;
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
@@ -107,10 +164,36 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
+];
+
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -125,8 +208,53 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
@@ -135,11 +263,127 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
+];
+
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -149,6 +393,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -170,8 +427,40 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -189,6 +478,62 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -211,14 +556,83 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
+
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
 
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
+
+// export: DesignOverlayValidationV2
+export interface DesignOverlayValidationV2 {
+    flat: FlatDesignV1;
+    suppliedCapabilities: readonly string[];
+}
 
 // export: DesignPage
 export interface DesignPage {
@@ -232,16 +646,172 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
 }
 
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
+}
+
 // export: DesignSemanticPalettes
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -257,7 +827,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -265,6 +836,9 @@ export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
+// export: evaluateCapabilityConstraintsV2
+export declare function evaluateCapabilityConstraintsV2(design: unknown, catalogValue: unknown, context?: CapabilityConstraintContextV2): readonly CapabilityConstraintViolationV2[];
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
@@ -362,7 +936,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -371,6 +945,25 @@ export interface PdfTemplateRecipeAssetV1 {
     alt?: string;
     placement?: PdfTemplateRecipePlacementV1;
 }
+
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
 
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
@@ -381,6 +974,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -414,6 +1014,9 @@ export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-ass
 
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2: "atlcli.template-capability-catalog/2";
 
 // export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
@@ -478,12 +1081,40 @@ export interface TemplateCapabilityCatalogV1 {
     descriptors: readonly TemplateCapabilityDescriptorV1[];
 }
 
+// export: TemplateCapabilityCatalogV2
+export interface TemplateCapabilityCatalogV2 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV2[];
+    assets?: readonly string[];
+    labels?: readonly string[];
+    constraints: readonly CapabilityConstraintV2[];
+}
+
 // export: TemplateCapabilityDescriptorV1
 export interface TemplateCapabilityDescriptorV1 {
     path: string;
     valueKind: CapabilityValueKindV1;
     required: boolean;
     consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityDescriptorV2
+export interface TemplateCapabilityDescriptorV2 {
+    path: string;
+    valueKind: CapabilityValueKindV2;
+    required: boolean;
+    owner: CapabilityOwnerV2;
+    consumers: readonly string[];
+    compilerRange?: string;
+    stability: CapabilityStabilityV2;
+    proofs: readonly CapabilityProofV2[];
     runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
     writeOrder?: readonly string[];
     enumValues?: readonly string[];
@@ -525,7 +1156,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -534,15 +1165,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -581,6 +1212,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -609,11 +1250,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
 // export: validateCapabilityCatalogV1
 export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
 
+// export: validateCapabilityCatalogV2
+export declare function validateCapabilityCatalogV2(value: unknown): TemplateCapabilityCatalogV2;
+
 // export: validateCapabilityPresentationRegistryV1
 export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
 
+// export: validateCapabilityPresentationRegistryV2
+export declare function validateCapabilityPresentationRegistryV2(catalogValue: unknown, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
 // export: validateCompleteBaseline
 export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
+// export: validateCompleteBaselineV2
+export declare function validateCompleteBaselineV2(design: unknown, catalogValue: unknown): Record<string, unknown>;
 
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
@@ -626,6 +1276,9 @@ export declare function validateDesignColor(value: unknown, path: string): Desig
 
 // export: validateDesignLength
 export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateDesignOverlayAgainstCatalogV2
+export declare function validateDesignOverlayAgainstCatalogV2(design: unknown, catalogValue: unknown): DesignOverlayValidationV2;
 
 // export: validateLocalization
 export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
@@ -644,13 +1297,12 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
+
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
 
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
@@ -666,8 +1318,19 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
+
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
@@ -698,6 +1361,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -731,6 +1397,30 @@ export interface WikiPdfTemplateDesignV1 {
     compositions?: DesignPageCompositionsV1;
 }
 
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
+}
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
+
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
     kind: "image";
@@ -754,6 +1444,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;
@@ -795,6 +1486,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
@@ -846,14 +1547,59 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityCatalogV2
+export declare function canonicalCapabilityCatalogV2(catalogValue: unknown): unknown;
+
 // export: canonicalCapabilityJson
 export declare function canonicalCapabilityJson(value: unknown): string;
 
 // export: CapabilityComparisonKindV1
 export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
 
+// export: CapabilityConstraintContextV2
+export interface CapabilityConstraintContextV2 {
+    assets?: readonly string[];
+    labels?: readonly string[];
+    compilerVersion?: string;
+}
+
+// export: CapabilityConstraintV2
+export interface CapabilityConstraintV2 {
+    when: readonly CapabilityPredicateV2[];
+    require?: readonly CapabilityRequirementV2[];
+    forbid?: readonly CapabilityRequirementV2[];
+}
+
+// export: CapabilityConstraintViolationV2
+export interface CapabilityConstraintViolationV2 {
+    constraint: number;
+    effect: "required" | "forbidden" | "compiler-unavailable";
+    target: CapabilityRequirementV2 | {
+        kind: "path";
+        id: string;
+    };
+}
+
 // export: CapabilityEditKindV1
 export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityOwnerV2
+export type CapabilityOwnerV2 = "template" | "export" | "source" | "renderer";
+
+// export: CapabilityPredicateV2
+export interface CapabilityPredicateV2 {
+    path: string;
+    equals: string | number | boolean;
+}
+
+// export: CapabilityProofV2
+export type CapabilityProofV2 = "contract" | "canonical-source" | "compile" | "semantic-pdf" | "visual-pdf" | "browser" | "live";
+
+// export: CapabilityRequirementV2
+export interface CapabilityRequirementV2 {
+    kind: "path" | "asset" | "label";
+    id: string;
+}
 
 // export: CapabilityRuntimeWriterKindV1
 export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
@@ -863,6 +1609,9 @@ export interface CapabilityRuntimeWriterV1 {
     kind: CapabilityRuntimeWriterKindV1;
     id: string;
 }
+
+// export: CapabilityStabilityV2
+export type CapabilityStabilityV2 = "experimental" | "stable" | "deprecated";
 
 // export: CapabilityValidationError
 export declare class CapabilityValidationError extends Error {
@@ -880,11 +1629,20 @@ export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | 
 // export: CapabilityValueKindV1
 export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
 
+// export: CapabilityValueKindV2
+export type CapabilityValueKindV2 = CapabilityValueKindV1 | "array" | "object";
+
 // export: computeCapabilityCatalogDigest
 export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
 
+// export: computeCapabilityCatalogDigestV2
+export declare function computeCapabilityCatalogDigestV2(catalog: unknown): Promise<string>;
+
 // export: computeCapabilityPresentationRevision
 export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
+// export: computeCapabilityPresentationRevisionV2
+export declare function computeCapabilityPresentationRevisionV2(catalog: unknown, registry: unknown, detailsOnlyTargets: readonly string[]): Promise<string>;
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
@@ -909,10 +1667,36 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
+];
+
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -927,8 +1711,53 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
@@ -937,11 +1766,127 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
+];
+
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -951,6 +1896,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -972,8 +1930,40 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -991,6 +1981,62 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -1013,14 +2059,83 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
+
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
 
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
+
+// export: DesignOverlayValidationV2
+export interface DesignOverlayValidationV2 {
+    flat: FlatDesignV1;
+    suppliedCapabilities: readonly string[];
+}
 
 // export: DesignPage
 export interface DesignPage {
@@ -1034,16 +2149,172 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
 }
 
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
+}
+
 // export: DesignSemanticPalettes
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -1059,7 +2330,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -1067,6 +2339,9 @@ export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
+// export: evaluateCapabilityConstraintsV2
+export declare function evaluateCapabilityConstraintsV2(design: unknown, catalogValue: unknown, context?: CapabilityConstraintContextV2): readonly CapabilityConstraintViolationV2[];
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
@@ -1164,7 +2439,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -1173,6 +2448,25 @@ export interface PdfTemplateRecipeAssetV1 {
     alt?: string;
     placement?: PdfTemplateRecipePlacementV1;
 }
+
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
 
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
@@ -1183,6 +2477,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -1216,6 +2517,9 @@ export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-ass
 
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2: "atlcli.template-capability-catalog/2";
 
 // export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
@@ -1280,12 +2584,40 @@ export interface TemplateCapabilityCatalogV1 {
     descriptors: readonly TemplateCapabilityDescriptorV1[];
 }
 
+// export: TemplateCapabilityCatalogV2
+export interface TemplateCapabilityCatalogV2 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV2[];
+    assets?: readonly string[];
+    labels?: readonly string[];
+    constraints: readonly CapabilityConstraintV2[];
+}
+
 // export: TemplateCapabilityDescriptorV1
 export interface TemplateCapabilityDescriptorV1 {
     path: string;
     valueKind: CapabilityValueKindV1;
     required: boolean;
     consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityDescriptorV2
+export interface TemplateCapabilityDescriptorV2 {
+    path: string;
+    valueKind: CapabilityValueKindV2;
+    required: boolean;
+    owner: CapabilityOwnerV2;
+    consumers: readonly string[];
+    compilerRange?: string;
+    stability: CapabilityStabilityV2;
+    proofs: readonly CapabilityProofV2[];
     runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
     writeOrder?: readonly string[];
     enumValues?: readonly string[];
@@ -1327,7 +2659,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -1336,15 +2668,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -1383,6 +2715,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -1411,11 +2753,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
 // export: validateCapabilityCatalogV1
 export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
 
+// export: validateCapabilityCatalogV2
+export declare function validateCapabilityCatalogV2(value: unknown): TemplateCapabilityCatalogV2;
+
 // export: validateCapabilityPresentationRegistryV1
 export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
 
+// export: validateCapabilityPresentationRegistryV2
+export declare function validateCapabilityPresentationRegistryV2(catalogValue: unknown, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
 // export: validateCompleteBaseline
 export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
+// export: validateCompleteBaselineV2
+export declare function validateCompleteBaselineV2(design: unknown, catalogValue: unknown): Record<string, unknown>;
 
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
@@ -1428,6 +2779,9 @@ export declare function validateDesignColor(value: unknown, path: string): Desig
 
 // export: validateDesignLength
 export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateDesignOverlayAgainstCatalogV2
+export declare function validateDesignOverlayAgainstCatalogV2(design: unknown, catalogValue: unknown): DesignOverlayValidationV2;
 
 // export: validateLocalization
 export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
@@ -1446,13 +2800,12 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
+
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
 
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
@@ -1468,8 +2821,19 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
+
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
@@ -1500,6 +2864,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -1533,6 +2900,30 @@ export interface WikiPdfTemplateDesignV1 {
     compositions?: DesignPageCompositionsV1;
 }
 
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
+}
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
+
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
     kind: "image";
@@ -1556,6 +2947,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;
@@ -1597,6 +2989,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
@@ -1648,14 +3050,59 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityCatalogV2
+export declare function canonicalCapabilityCatalogV2(catalogValue: unknown): unknown;
+
 // export: canonicalCapabilityJson
 export declare function canonicalCapabilityJson(value: unknown): string;
 
 // export: CapabilityComparisonKindV1
 export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
 
+// export: CapabilityConstraintContextV2
+export interface CapabilityConstraintContextV2 {
+    assets?: readonly string[];
+    labels?: readonly string[];
+    compilerVersion?: string;
+}
+
+// export: CapabilityConstraintV2
+export interface CapabilityConstraintV2 {
+    when: readonly CapabilityPredicateV2[];
+    require?: readonly CapabilityRequirementV2[];
+    forbid?: readonly CapabilityRequirementV2[];
+}
+
+// export: CapabilityConstraintViolationV2
+export interface CapabilityConstraintViolationV2 {
+    constraint: number;
+    effect: "required" | "forbidden" | "compiler-unavailable";
+    target: CapabilityRequirementV2 | {
+        kind: "path";
+        id: string;
+    };
+}
+
 // export: CapabilityEditKindV1
 export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityOwnerV2
+export type CapabilityOwnerV2 = "template" | "export" | "source" | "renderer";
+
+// export: CapabilityPredicateV2
+export interface CapabilityPredicateV2 {
+    path: string;
+    equals: string | number | boolean;
+}
+
+// export: CapabilityProofV2
+export type CapabilityProofV2 = "contract" | "canonical-source" | "compile" | "semantic-pdf" | "visual-pdf" | "browser" | "live";
+
+// export: CapabilityRequirementV2
+export interface CapabilityRequirementV2 {
+    kind: "path" | "asset" | "label";
+    id: string;
+}
 
 // export: CapabilityRuntimeWriterKindV1
 export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
@@ -1665,6 +3112,9 @@ export interface CapabilityRuntimeWriterV1 {
     kind: CapabilityRuntimeWriterKindV1;
     id: string;
 }
+
+// export: CapabilityStabilityV2
+export type CapabilityStabilityV2 = "experimental" | "stable" | "deprecated";
 
 // export: CapabilityValidationError
 export declare class CapabilityValidationError extends Error {
@@ -1682,11 +3132,20 @@ export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | 
 // export: CapabilityValueKindV1
 export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
 
+// export: CapabilityValueKindV2
+export type CapabilityValueKindV2 = CapabilityValueKindV1 | "array" | "object";
+
 // export: computeCapabilityCatalogDigest
 export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
 
+// export: computeCapabilityCatalogDigestV2
+export declare function computeCapabilityCatalogDigestV2(catalog: unknown): Promise<string>;
+
 // export: computeCapabilityPresentationRevision
 export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
+// export: computeCapabilityPresentationRevisionV2
+export declare function computeCapabilityPresentationRevisionV2(catalog: unknown, registry: unknown, detailsOnlyTargets: readonly string[]): Promise<string>;
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
@@ -1711,10 +3170,36 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
+];
+
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -1729,8 +3214,53 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
@@ -1739,11 +3269,127 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
+];
+
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -1753,6 +3399,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -1774,8 +3433,40 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -1793,6 +3484,62 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -1815,14 +3562,83 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
+
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
 
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
+
+// export: DesignOverlayValidationV2
+export interface DesignOverlayValidationV2 {
+    flat: FlatDesignV1;
+    suppliedCapabilities: readonly string[];
+}
 
 // export: DesignPage
 export interface DesignPage {
@@ -1836,16 +3652,172 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
 }
 
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
+}
+
 // export: DesignSemanticPalettes
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -1861,7 +3833,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -1869,6 +3842,9 @@ export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
+// export: evaluateCapabilityConstraintsV2
+export declare function evaluateCapabilityConstraintsV2(design: unknown, catalogValue: unknown, context?: CapabilityConstraintContextV2): readonly CapabilityConstraintViolationV2[];
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
@@ -1966,7 +3942,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -1975,6 +3951,25 @@ export interface PdfTemplateRecipeAssetV1 {
     alt?: string;
     placement?: PdfTemplateRecipePlacementV1;
 }
+
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
 
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
@@ -1985,6 +3980,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -2018,6 +4020,9 @@ export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-ass
 
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2: "atlcli.template-capability-catalog/2";
 
 // export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
@@ -2082,12 +4087,40 @@ export interface TemplateCapabilityCatalogV1 {
     descriptors: readonly TemplateCapabilityDescriptorV1[];
 }
 
+// export: TemplateCapabilityCatalogV2
+export interface TemplateCapabilityCatalogV2 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV2[];
+    assets?: readonly string[];
+    labels?: readonly string[];
+    constraints: readonly CapabilityConstraintV2[];
+}
+
 // export: TemplateCapabilityDescriptorV1
 export interface TemplateCapabilityDescriptorV1 {
     path: string;
     valueKind: CapabilityValueKindV1;
     required: boolean;
     consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityDescriptorV2
+export interface TemplateCapabilityDescriptorV2 {
+    path: string;
+    valueKind: CapabilityValueKindV2;
+    required: boolean;
+    owner: CapabilityOwnerV2;
+    consumers: readonly string[];
+    compilerRange?: string;
+    stability: CapabilityStabilityV2;
+    proofs: readonly CapabilityProofV2[];
     runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
     writeOrder?: readonly string[];
     enumValues?: readonly string[];
@@ -2129,7 +4162,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -2138,15 +4171,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -2185,6 +4218,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -2213,11 +4256,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
 // export: validateCapabilityCatalogV1
 export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
 
+// export: validateCapabilityCatalogV2
+export declare function validateCapabilityCatalogV2(value: unknown): TemplateCapabilityCatalogV2;
+
 // export: validateCapabilityPresentationRegistryV1
 export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
 
+// export: validateCapabilityPresentationRegistryV2
+export declare function validateCapabilityPresentationRegistryV2(catalogValue: unknown, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
 // export: validateCompleteBaseline
 export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
+// export: validateCompleteBaselineV2
+export declare function validateCompleteBaselineV2(design: unknown, catalogValue: unknown): Record<string, unknown>;
 
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
@@ -2230,6 +4282,9 @@ export declare function validateDesignColor(value: unknown, path: string): Desig
 
 // export: validateDesignLength
 export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateDesignOverlayAgainstCatalogV2
+export declare function validateDesignOverlayAgainstCatalogV2(design: unknown, catalogValue: unknown): DesignOverlayValidationV2;
 
 // export: validateLocalization
 export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
@@ -2248,13 +4303,12 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
+
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
 
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
@@ -2270,8 +4324,19 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
+
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
@@ -2302,6 +4367,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -2335,6 +4403,30 @@ export interface WikiPdfTemplateDesignV1 {
     compositions?: DesignPageCompositionsV1;
 }
 
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
+}
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
+
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
     kind: "image";
@@ -2358,6 +4450,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;
@@ -2399,6 +4492,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 
@@ -2450,14 +4553,59 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityCatalogV2
+export declare function canonicalCapabilityCatalogV2(catalogValue: unknown): unknown;
+
 // export: canonicalCapabilityJson
 export declare function canonicalCapabilityJson(value: unknown): string;
 
 // export: CapabilityComparisonKindV1
 export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
 
+// export: CapabilityConstraintContextV2
+export interface CapabilityConstraintContextV2 {
+    assets?: readonly string[];
+    labels?: readonly string[];
+    compilerVersion?: string;
+}
+
+// export: CapabilityConstraintV2
+export interface CapabilityConstraintV2 {
+    when: readonly CapabilityPredicateV2[];
+    require?: readonly CapabilityRequirementV2[];
+    forbid?: readonly CapabilityRequirementV2[];
+}
+
+// export: CapabilityConstraintViolationV2
+export interface CapabilityConstraintViolationV2 {
+    constraint: number;
+    effect: "required" | "forbidden" | "compiler-unavailable";
+    target: CapabilityRequirementV2 | {
+        kind: "path";
+        id: string;
+    };
+}
+
 // export: CapabilityEditKindV1
 export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityOwnerV2
+export type CapabilityOwnerV2 = "template" | "export" | "source" | "renderer";
+
+// export: CapabilityPredicateV2
+export interface CapabilityPredicateV2 {
+    path: string;
+    equals: string | number | boolean;
+}
+
+// export: CapabilityProofV2
+export type CapabilityProofV2 = "contract" | "canonical-source" | "compile" | "semantic-pdf" | "visual-pdf" | "browser" | "live";
+
+// export: CapabilityRequirementV2
+export interface CapabilityRequirementV2 {
+    kind: "path" | "asset" | "label";
+    id: string;
+}
 
 // export: CapabilityRuntimeWriterKindV1
 export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
@@ -2467,6 +4615,9 @@ export interface CapabilityRuntimeWriterV1 {
     kind: CapabilityRuntimeWriterKindV1;
     id: string;
 }
+
+// export: CapabilityStabilityV2
+export type CapabilityStabilityV2 = "experimental" | "stable" | "deprecated";
 
 // export: CapabilityValidationError
 export declare class CapabilityValidationError extends Error {
@@ -2484,11 +4635,20 @@ export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | 
 // export: CapabilityValueKindV1
 export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
 
+// export: CapabilityValueKindV2
+export type CapabilityValueKindV2 = CapabilityValueKindV1 | "array" | "object";
+
 // export: computeCapabilityCatalogDigest
 export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
 
+// export: computeCapabilityCatalogDigestV2
+export declare function computeCapabilityCatalogDigestV2(catalog: unknown): Promise<string>;
+
 // export: computeCapabilityPresentationRevision
 export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
+// export: computeCapabilityPresentationRevisionV2
+export declare function computeCapabilityPresentationRevisionV2(catalog: unknown, registry: unknown, detailsOnlyTargets: readonly string[]): Promise<string>;
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
@@ -2513,10 +4673,36 @@ export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
 // export: DEFAULT_DESIGN_PAGE_COMPOSITIONS
 export declare const DEFAULT_DESIGN_PAGE_COMPOSITIONS: Readonly<DesignPageCompositionsV1>;
 
+// export: DESIGN_BULLET_PRESETS_V3
+export declare const DESIGN_BULLET_PRESETS_V3: readonly [
+    "disc-circle-square",
+    "compact",
+    "dash"
+];
+
+// export: DESIGN_CALLOUT_PRESETS_V3
+export declare const DESIGN_CALLOUT_PRESETS_V3: readonly [
+    "accent-bar",
+    "filled",
+    "outline"
+];
+
 // export: DESIGN_CLOSING_COMPOSITION_KINDS
 export declare const DESIGN_CLOSING_COMPOSITION_KINDS: readonly [
     "document-summary",
     "brand-lockup"
+];
+
+// export: DESIGN_CODE_WRAP_MODES_V3
+export declare const DESIGN_CODE_WRAP_MODES_V3: readonly [
+    "soft",
+    "none"
+];
+
+// export: DESIGN_COMMON_LIGATURE_MODES_V3
+export declare const DESIGN_COMMON_LIGATURE_MODES_V3: readonly [
+    "common",
+    "none"
 ];
 
 // export: DESIGN_COVER_COMPOSITION_KINDS
@@ -2531,8 +4717,53 @@ export declare const DESIGN_COVER_METADATA_POSITIONS: readonly [
     "bottom"
 ];
 
+// export: DESIGN_DECORATION_LAYERS_V3
+export declare const DESIGN_DECORATION_LAYERS_V3: readonly [
+    "page-background",
+    "header",
+    "footer"
+];
+
+// export: DESIGN_DECORATION_SCOPES_V3
+export declare const DESIGN_DECORATION_SCOPES_V3: readonly [
+    "all",
+    "first",
+    "odd",
+    "even"
+];
+
+// export: DESIGN_ENUMERATION_PRESETS_V3
+export declare const DESIGN_ENUMERATION_PRESETS_V3: readonly [
+    "decimal-alpha-roman",
+    "decimal",
+    "alpha-lower",
+    "roman-lower"
+];
+
+// export: DESIGN_FONT_STRETCHES_V3
+export declare const DESIGN_FONT_STRETCHES_V3: readonly [
+    "normal",
+    "condensed",
+    "expanded"
+];
+
+// export: DESIGN_FONT_STYLES_V3
+export declare const DESIGN_FONT_STYLES_V3: readonly [
+    "normal",
+    "italic",
+    "oblique"
+];
+
 // export: DESIGN_HEADER_MODES
 export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
+// export: DESIGN_HEADING_NUMBERING_PRESETS_V3
+export declare const DESIGN_HEADING_NUMBERING_PRESETS_V3: readonly [
+    "decimal",
+    "decimal-dot",
+    "decimal-alpha",
+    "decimal-alpha-roman"
+];
 
 // export: DESIGN_HORIZONTAL_ALIGNMENTS
 export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
@@ -2541,11 +4772,127 @@ export declare const DESIGN_HORIZONTAL_ALIGNMENTS: readonly [
     "right"
 ];
 
+// export: DESIGN_HYPHENATION_MODES_V3
+export declare const DESIGN_HYPHENATION_MODES_V3: readonly [
+    "auto",
+    "off"
+];
+
+// export: DESIGN_LIST_MARKER_ALIGNMENTS_V3
+export declare const DESIGN_LIST_MARKER_ALIGNMENTS_V3: readonly [
+    "start",
+    "end",
+    "horizon"
+];
+
+// export: DESIGN_NAVIGATION_DEPTH_MAX_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MAX_V3 = 6;
+
+// export: DESIGN_NAVIGATION_DEPTH_MIN_V3
+export declare const DESIGN_NAVIGATION_DEPTH_MIN_V3 = 1;
+
+// export: DESIGN_NUMBER_TYPES_V3
+export declare const DESIGN_NUMBER_TYPES_V3: readonly [
+    "lining",
+    "old-style"
+];
+
+// export: DESIGN_NUMBER_WIDTHS_V3
+export declare const DESIGN_NUMBER_WIDTHS_V3: readonly [
+    "proportional",
+    "tabular"
+];
+
+// export: DESIGN_OUTLINE_LEADERS_V3
+export declare const DESIGN_OUTLINE_LEADERS_V3: readonly [
+    "dots",
+    "line",
+    "none"
+];
+
+// export: DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3
+export declare const DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3: readonly [
+    "show",
+    "hide"
+];
+
+// export: DESIGN_PAGE_NUMBERING_PRESETS_V3
+export declare const DESIGN_PAGE_NUMBERING_PRESETS_V3: readonly [
+    "arabic",
+    "roman-lower",
+    "roman-upper"
+];
+
+// export: DESIGN_PAINT_RELATIVE_TARGETS_V3
+export declare const DESIGN_PAINT_RELATIVE_TARGETS_V3: readonly [
+    "self",
+    "parent"
+];
+
+// export: DESIGN_PARAGRAPH_ALIGNMENTS_V3
+export declare const DESIGN_PARAGRAPH_ALIGNMENTS_V3: readonly [
+    "left",
+    "center",
+    "right",
+    "justify"
+];
+
+// export: DESIGN_RUNNING_FIELDS_V3
+export declare const DESIGN_RUNNING_FIELDS_V3: readonly [
+    "documentTitle",
+    "chapterTitle",
+    "spaceName",
+    "spaceKey",
+    "organizationName",
+    "version",
+    "exportDate",
+    "classification",
+    "literal",
+    "pageNumber"
+];
+
+// export: DESIGN_RUNNING_LAYOUTS_V3
+export declare const DESIGN_RUNNING_LAYOUTS_V3: readonly [
+    "single",
+    "split",
+    "three-column"
+];
+
+// export: DESIGN_TABLE_BANDING_MODES_V3
+export declare const DESIGN_TABLE_BANDING_MODES_V3: readonly [
+    "none",
+    "rows",
+    "columns"
+];
+
+// export: DESIGN_TABLE_BORDER_MODES_V3
+export declare const DESIGN_TABLE_BORDER_MODES_V3: readonly [
+    "all",
+    "horizontal",
+    "outer",
+    "none"
+];
+
 // export: DESIGN_VISIBILITIES
 export declare const DESIGN_VISIBILITIES: readonly [
     "show",
     "hide"
 ];
+
+// export: DesignAvailableFontV3
+export interface DesignAvailableFontV3 {
+    family: string;
+    style: string;
+    weight: number;
+    axes?: readonly DesignFontAxisMetadataV3[];
+}
+
+// export: DesignBookmarkNavigationV3
+export interface DesignBookmarkNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    includeHeadingNumbers: boolean;
+}
 
 // export: DesignBranding
 export interface DesignBranding {
@@ -2555,6 +4902,19 @@ export interface DesignBranding {
     websiteUrl?: string;
     legalNotice?: string;
 }
+
+// export: DesignBulletPresetV3
+export type DesignBulletPresetV3 = (typeof DESIGN_BULLET_PRESETS_V3)[number];
+
+// export: DesignCalloutComponentV3
+export interface DesignCalloutComponentV3 {
+    preset: DesignCalloutPresetV3;
+    icon: DesignVisibility;
+    accentColor?: string;
+}
+
+// export: DesignCalloutPresetV3
+export type DesignCalloutPresetV3 = (typeof DESIGN_CALLOUT_PRESETS_V3)[number];
 
 // export: DesignCatalogValidationV1
 export interface DesignCatalogValidationV1 {
@@ -2576,8 +4936,40 @@ export interface DesignClosingPageCompositionV1 {
     align: DesignHorizontalAlignment;
 }
 
+// export: DesignCodeBlockComponentV3
+export interface DesignCodeBlockComponentV3 {
+    wrap: DesignCodeWrapModeV3;
+    lineNumbers: DesignVisibility;
+    backgroundColor?: string;
+}
+
+// export: DesignCodeWrapModeV3
+export type DesignCodeWrapModeV3 = (typeof DESIGN_CODE_WRAP_MODES_V3)[number];
+
 // export: DesignColor
 export type DesignColor = string;
+
+// export: DesignCommonLigatureModeV3
+export type DesignCommonLigatureModeV3 = (typeof DESIGN_COMMON_LIGATURE_MODES_V3)[number];
+
+// export: DesignComponentsV3
+export interface DesignComponentsV3 {
+    paragraph: DesignParagraphComponentV3;
+    list: DesignListComponentV3;
+    enumeration: DesignEnumerationComponentV3;
+    table: DesignTableComponentV3;
+    outline: DesignOutlineComponentV3;
+    callout: DesignCalloutComponentV3;
+    codeBlock: DesignCodeBlockComponentV3;
+}
+
+// export: DesignContentsNavigationV3
+export interface DesignContentsNavigationV3 {
+    enabled: boolean;
+    depth: number;
+    pageNumbers?: DesignOutlinePageNumberModeV3;
+    leader?: DesignOutlineLeaderV3;
+}
 
 // export: DesignCoverCompositionKind
 export type DesignCoverCompositionKind = (typeof DESIGN_COVER_COMPOSITION_KINDS)[number];
@@ -2595,6 +4987,62 @@ export interface DesignCoverCompositionV1 {
 
 // export: DesignCoverMetadataPosition
 export type DesignCoverMetadataPosition = (typeof DESIGN_COVER_METADATA_POSITIONS)[number];
+
+// export: DesignDecorationLayerV3
+export type DesignDecorationLayerV3 = (typeof DESIGN_DECORATION_LAYERS_V3)[number];
+
+// export: DesignDecorationScopeV3
+export type DesignDecorationScopeV3 = (typeof DESIGN_DECORATION_SCOPES_V3)[number];
+
+// export: DesignDecorationStrokeV3
+export interface DesignDecorationStrokeV3 {
+    paint: string;
+    width: DesignLength;
+}
+
+// export: DesignDecorationV3
+export type DesignDecorationV3 = (DesignDecorationBaseV3 & {
+    kind: "rect";
+    box: {
+        x: DesignLength;
+        y: DesignLength;
+        width: DesignLength;
+        height: DesignLength;
+    };
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+    radius?: DesignLength;
+}) | (DesignDecorationBaseV3 & {
+    kind: "line";
+    from: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    to: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    stroke: DesignDecorationStrokeV3;
+}) | (DesignDecorationBaseV3 & {
+    kind: "circle";
+    center: {
+        x: DesignLength;
+        y: DesignLength;
+    };
+    radius: DesignLength;
+    fill?: string;
+    stroke?: DesignDecorationStrokeV3;
+});
+
+// export: DesignEnumerationComponentV3
+export interface DesignEnumerationComponentV3 {
+    numberingPreset: DesignEnumerationPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignEnumerationPresetV3
+export type DesignEnumerationPresetV3 = (typeof DESIGN_ENUMERATION_PRESETS_V3)[number];
 
 // export: DesignFeatures
 export interface DesignFeatures {
@@ -2617,14 +5065,83 @@ export interface DesignFeatures {
     };
 }
 
+// export: DesignFontAxisMetadataV3
+export interface DesignFontAxisMetadataV3 {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
+// export: DesignFontStretchV3
+export type DesignFontStretchV3 = (typeof DESIGN_FONT_STRETCHES_V3)[number];
+
+// export: DesignFontStyleV3
+export type DesignFontStyleV3 = (typeof DESIGN_FONT_STYLES_V3)[number];
+
 // export: DesignHeaderMode
 export type DesignHeaderMode = "title" | "chapter" | "custom";
+
+// export: DesignHeadingNumberingPresetV3
+export type DesignHeadingNumberingPresetV3 = (typeof DESIGN_HEADING_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignHeadingNumberNavigationV3
+export interface DesignHeadingNumberNavigationV3 {
+    enabled: boolean;
+    preset: DesignHeadingNumberingPresetV3;
+}
 
 // export: DesignHorizontalAlignment
 export type DesignHorizontalAlignment = (typeof DESIGN_HORIZONTAL_ALIGNMENTS)[number];
 
+// export: DesignHyphenationModeV3
+export type DesignHyphenationModeV3 = (typeof DESIGN_HYPHENATION_MODES_V3)[number];
+
 // export: DesignLength
 export type DesignLength = string;
+
+// export: DesignListComponentV3
+export interface DesignListComponentV3 {
+    bulletPreset: DesignBulletPresetV3;
+    markerAlign: DesignListMarkerAlignmentV3;
+    markerColor?: string;
+}
+
+// export: DesignListMarkerAlignmentV3
+export type DesignListMarkerAlignmentV3 = (typeof DESIGN_LIST_MARKER_ALIGNMENTS_V3)[number];
+
+// export: DesignNavigationV3
+export interface DesignNavigationV3 {
+    contents: DesignContentsNavigationV3;
+    bookmarks: DesignBookmarkNavigationV3;
+    headingNumbers: DesignHeadingNumberNavigationV3;
+    pageNumbers: DesignPageNumberNavigationV3;
+}
+
+// export: DesignNumberTypeV3
+export type DesignNumberTypeV3 = (typeof DESIGN_NUMBER_TYPES_V3)[number];
+
+// export: DesignNumberWidthV3
+export type DesignNumberWidthV3 = (typeof DESIGN_NUMBER_WIDTHS_V3)[number];
+
+// export: DesignOutlineComponentV3
+export interface DesignOutlineComponentV3 {
+    leader: DesignOutlineLeaderV3;
+    pageNumbers: DesignOutlinePageNumberModeV3;
+    leaderColor?: string;
+}
+
+// export: DesignOutlineLeaderV3
+export type DesignOutlineLeaderV3 = (typeof DESIGN_OUTLINE_LEADERS_V3)[number];
+
+// export: DesignOutlinePageNumberModeV3
+export type DesignOutlinePageNumberModeV3 = (typeof DESIGN_OUTLINE_PAGE_NUMBER_MODES_V3)[number];
+
+// export: DesignOverlayValidationV2
+export interface DesignOverlayValidationV2 {
+    flat: FlatDesignV1;
+    suppliedCapabilities: readonly string[];
+}
 
 // export: DesignPage
 export interface DesignPage {
@@ -2638,16 +5155,172 @@ export interface DesignPage {
     };
 }
 
+// export: DesignPageBleedV3
+export interface DesignPageBleedV3 {
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+}
+
 // export: DesignPageCompositionsV1
 export interface DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1;
     closingPage: DesignClosingPageCompositionV1;
 }
 
+// export: DesignPageCompositionsV3
+export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    running: {
+        header: DesignRunningRegionV3;
+        footer: DesignRunningRegionV3;
+    };
+}
+
+// export: DesignPageFormatV3
+export type DesignPageFormatV3 = {
+    kind: "preset";
+    name: "a4" | "letter";
+} | {
+    kind: "custom";
+    width: DesignLength;
+    height: DesignLength;
+};
+
+// export: DesignPageMarginV3
+export type DesignPageMarginV3 = {
+    mode: "physical";
+    top: DesignLength;
+    bottom: DesignLength;
+    left: DesignLength;
+    right: DesignLength;
+} | {
+    mode: "logical";
+    top: DesignLength;
+    bottom: DesignLength;
+    inside: DesignLength;
+    outside: DesignLength;
+};
+
+// export: DesignPageNumberingPresetV3
+export type DesignPageNumberingPresetV3 = (typeof DESIGN_PAGE_NUMBERING_PRESETS_V3)[number];
+
+// export: DesignPageNumberNavigationV3
+export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
+    enabled: boolean;
+    body?: DesignPageNumberPhaseV3;
+}
+
+// export: DesignPageNumberPhaseV3
+export interface DesignPageNumberPhaseV3 {
+    preset: DesignPageNumberingPresetV3;
+    start: number;
+}
+
+// export: DesignPageV3
+export interface DesignPageV3 {
+    format: DesignPageFormatV3;
+    orientation: "portrait" | "landscape";
+    binding: "left" | "right";
+    margin: DesignPageMarginV3;
+    bleed?: DesignPageBleedV3;
+}
+
+// export: DesignPaintRelativeTargetV3
+export type DesignPaintRelativeTargetV3 = (typeof DESIGN_PAINT_RELATIVE_TARGETS_V3)[number];
+
+// export: DesignPaintStopV3
+export interface DesignPaintStopV3 {
+    at: number;
+    color: string;
+}
+
+// export: DesignPaintV3
+export type DesignPaintV3 = {
+    kind: "solid";
+    color: string;
+} | {
+    kind: "linear";
+    angle: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "radial";
+    center: {
+        x: number;
+        y: number;
+    };
+    radius: number;
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+} | {
+    kind: "conic";
+    angle: number;
+    center: {
+        x: number;
+        y: number;
+    };
+    relativeTo: DesignPaintRelativeTargetV3;
+    stops: readonly DesignPaintStopV3[];
+};
+
+// export: DesignParagraphAlignmentV3
+export type DesignParagraphAlignmentV3 = (typeof DESIGN_PARAGRAPH_ALIGNMENTS_V3)[number];
+
+// export: DesignParagraphComponentV3
+export interface DesignParagraphComponentV3 {
+    align: DesignParagraphAlignmentV3;
+    hyphenation: DesignHyphenationModeV3;
+}
+
+// export: DesignRunningFieldV3
+export type DesignRunningFieldV3 = (typeof DESIGN_RUNNING_FIELDS_V3)[number];
+
+// export: DesignRunningLayoutV3
+export type DesignRunningLayoutV3 = (typeof DESIGN_RUNNING_LAYOUTS_V3)[number];
+
+// export: DesignRunningRegionV3
+export interface DesignRunningRegionV3 {
+    enabled: boolean;
+    layout: DesignRunningLayoutV3;
+    first: "hide" | DesignRunningVariantV3;
+    odd: DesignRunningVariantV3;
+    even: DesignRunningVariantV3;
+}
+
+// export: DesignRunningSlotV3
+export interface DesignRunningSlotV3 {
+    field: DesignRunningFieldV3;
+    value?: string;
+    numbering?: "current" | "current-of-total";
+}
+
+// export: DesignRunningVariantV3
+export interface DesignRunningVariantV3 {
+    start?: DesignRunningSlotV3;
+    center?: DesignRunningSlotV3;
+    end?: DesignRunningSlotV3;
+}
+
 // export: DesignSemanticPalettes
 export interface DesignSemanticPalettes {
     callouts: Record<string, CalloutPalette>;
     statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTableBandingModeV3
+export type DesignTableBandingModeV3 = (typeof DESIGN_TABLE_BANDING_MODES_V3)[number];
+
+// export: DesignTableBorderModeV3
+export type DesignTableBorderModeV3 = (typeof DESIGN_TABLE_BORDER_MODES_V3)[number];
+
+// export: DesignTableComponentV3
+export interface DesignTableComponentV3 {
+    repeatHeader: boolean;
+    banding: DesignTableBandingModeV3;
+    borders: DesignTableBorderModeV3;
+    bandColor?: string;
+    borderColor?: string;
 }
 
 // export: DesignTokens
@@ -2663,7 +5336,8 @@ export interface DesignTokens {
 // export: DesignTypography
 export interface DesignTypography {
     fonts: Record<FontRole, string>;
-    roles: Record<string, TypographyRole>;
+    roles: Record<string, TypographyRoleV3>;
+    fontAxes?: Partial<Record<FontRole, Readonly<Record<string, number>>>>;
 }
 
 // export: DesignVisibility
@@ -2671,6 +5345,9 @@ export type DesignVisibility = (typeof DESIGN_VISIBILITIES)[number];
 
 // export: DesignWeight
 export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
+// export: evaluateCapabilityConstraintsV2
+export declare function evaluateCapabilityConstraintsV2(design: unknown, catalogValue: unknown, context?: CapabilityConstraintContextV2): readonly CapabilityConstraintViolationV2[];
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
@@ -2768,7 +5445,7 @@ export interface PackIssue {
 export type PackIssueSeverity = "error" | "warning";
 
 // export: packTemplate
-export declare function packTemplate(contents: TemplatePackContents): Promise<Uint8Array>;
+export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
 // export: PdfTemplateRecipeAssetV1
 export interface PdfTemplateRecipeAssetV1 {
@@ -2777,6 +5454,25 @@ export interface PdfTemplateRecipeAssetV1 {
     alt?: string;
     placement?: PdfTemplateRecipePlacementV1;
 }
+
+// export: PdfTemplateRecipeBaselineV2
+export interface PdfTemplateRecipeBaselineV2 {
+    id: string;
+    version: number;
+    catalogVersion: number;
+    digest: string;
+}
+
+// export: PdfTemplateRecipeDesignOverlayV2
+export interface PdfTemplateRecipeDesignOverlayV2 {
+    readonly [key: string]: PdfTemplateRecipeJsonValueV2;
+}
+
+// export: PdfTemplateRecipeJsonScalarV2
+export type PdfTemplateRecipeJsonScalarV2 = string | number | boolean;
+
+// export: PdfTemplateRecipeJsonValueV2
+export type PdfTemplateRecipeJsonValueV2 = PdfTemplateRecipeJsonScalarV2 | readonly PdfTemplateRecipeJsonValueV2[] | PdfTemplateRecipeDesignOverlayV2;
 
 // export: PdfTemplateRecipePlacementV1
 export type PdfTemplateRecipePlacementV1 = WikiPdfTemplateImageDecorationV1["placement"];
@@ -2787,6 +5483,13 @@ export interface PdfTemplateRecipeTemplateV1 {
     name: string;
     version: string;
     compilerRange: string;
+}
+
+// export: PdfTemplateRecipeTemplateV2
+export interface PdfTemplateRecipeTemplateV2 {
+    id: string;
+    name: string;
+    version: string;
 }
 
 // export: PINNED_TYPST_VERSION
@@ -2820,6 +5523,9 @@ export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-ass
 
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2: "atlcli.template-capability-catalog/2";
 
 // export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
@@ -2884,12 +5590,40 @@ export interface TemplateCapabilityCatalogV1 {
     descriptors: readonly TemplateCapabilityDescriptorV1[];
 }
 
+// export: TemplateCapabilityCatalogV2
+export interface TemplateCapabilityCatalogV2 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV2[];
+    assets?: readonly string[];
+    labels?: readonly string[];
+    constraints: readonly CapabilityConstraintV2[];
+}
+
 // export: TemplateCapabilityDescriptorV1
 export interface TemplateCapabilityDescriptorV1 {
     path: string;
     valueKind: CapabilityValueKindV1;
     required: boolean;
     consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityDescriptorV2
+export interface TemplateCapabilityDescriptorV2 {
+    path: string;
+    valueKind: CapabilityValueKindV2;
+    required: boolean;
+    owner: CapabilityOwnerV2;
+    consumers: readonly string[];
+    compilerRange?: string;
+    stability: CapabilityStabilityV2;
+    proofs: readonly CapabilityProofV2[];
     runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
     writeOrder?: readonly string[];
     enumValues?: readonly string[];
@@ -2931,7 +5665,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -2940,15 +5674,15 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
-    design?: WikiPdfTemplateDesignV1;
+    design?: TDesign;
     capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
-export interface TemplatePackContents {
-    manifest: TemplateManifest;
+export interface TemplatePackContents<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> {
+    manifest: TemplateManifest<TDesign>;
     files: Record<string, Uint8Array>;
 }
 
@@ -2987,6 +5721,16 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: TypographyRoleV3
+export interface TypographyRoleV3 extends TypographyRole {
+    style?: DesignFontStyleV3;
+    stretch?: DesignFontStretchV3;
+    kerning?: boolean;
+    ligatures?: DesignCommonLigatureModeV3;
+    numberType?: DesignNumberTypeV3;
+    numberWidth?: DesignNumberWidthV3;
+}
+
 // export: TYPST_0151_RECIPE_COMPILER_RANGE
 export declare const TYPST_0151_RECIPE_COMPILER_RANGE = ">=0.15.1 <0.16";
 
@@ -3015,11 +5759,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
 // export: validateCapabilityCatalogV1
 export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
 
+// export: validateCapabilityCatalogV2
+export declare function validateCapabilityCatalogV2(value: unknown): TemplateCapabilityCatalogV2;
+
 // export: validateCapabilityPresentationRegistryV1
 export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
 
+// export: validateCapabilityPresentationRegistryV2
+export declare function validateCapabilityPresentationRegistryV2(catalogValue: unknown, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
 // export: validateCompleteBaseline
 export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
+// export: validateCompleteBaselineV2
+export declare function validateCompleteBaselineV2(design: unknown, catalogValue: unknown): Record<string, unknown>;
 
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
@@ -3032,6 +5785,9 @@ export declare function validateDesignColor(value: unknown, path: string): Desig
 
 // export: validateDesignLength
 export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateDesignOverlayAgainstCatalogV2
+export declare function validateDesignOverlayAgainstCatalogV2(design: unknown, catalogValue: unknown): DesignOverlayValidationV2;
 
 // export: validateLocalization
 export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
@@ -3050,13 +5806,12 @@ export declare function validateManifest(json: unknown, options?: ValidateManife
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
-    availableFonts?: ReadonlyArray<{
-        family: string;
-        style: string;
-        weight: number;
-    }>;
+    availableFonts?: readonly DesignAvailableFontV3[];
     collectWarnings?: (warning: string) => void;
 }
+
+// export: validateManifestV3
+export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
 
 // export: validatePack
 export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
@@ -3072,8 +5827,19 @@ export interface ValidatePackResult {
     issues: PackIssue[];
 }
 
+// export: validatePdfTemplateDesignV3
+export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
+
+// export: ValidatePdfTemplateDesignV3Options
+export interface ValidatePdfTemplateDesignV3Options {
+    availableFonts?: readonly DesignAvailableFontV3[];
+}
+
 // export: validatePdfTemplateRecipeV1
 export declare function validatePdfTemplateRecipeV1(value: unknown, path?: string): WikiPdfTemplateRecipeV1;
+
+// export: validatePdfTemplateRecipeV2
+export declare function validatePdfTemplateRecipeV2(value: unknown, path?: string): WikiPdfTemplateRecipeV2;
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
@@ -3104,6 +5870,9 @@ export declare const WIKI_PDF_SUPPORTED_DOCUMENT_LABELS: readonly [
 
 // export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1
 export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V1 = "wiki.pdf-template-recipe/v1";
+
+// export: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2
+export declare const WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2 = "wiki.pdf-template-recipe/v2";
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -3137,6 +5906,30 @@ export interface WikiPdfTemplateDesignV1 {
     compositions?: DesignPageCompositionsV1;
 }
 
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
+}
+
+// export: WikiPdfTemplateImageClipV1
+export type WikiPdfTemplateImageClipV1 = {
+    kind: "rect";
+} | {
+    kind: "rounded-rect";
+    radius: string;
+} | {
+    kind: "circle";
+};
+
 // export: WikiPdfTemplateImageDecorationV1
 export interface WikiPdfTemplateImageDecorationV1 {
     kind: "image";
@@ -3160,6 +5953,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
             right: number;
             bottom: number;
         };
+        clip?: WikiPdfTemplateImageClipV1;
     };
     decorative: boolean;
     alt?: string;
@@ -3201,6 +5995,16 @@ export interface WikiPdfTemplateRecipeV1 {
     template: PdfTemplateRecipeTemplateV1;
     design: WikiPdfTemplateDesignV1;
     localization: WikiPdfTemplateLocalizationV1;
+    assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
+}
+
+// export: WikiPdfTemplateRecipeV2
+export interface WikiPdfTemplateRecipeV2 {
+    schema: typeof WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2;
+    template: PdfTemplateRecipeTemplateV2;
+    baseline: PdfTemplateRecipeBaselineV2;
+    design: PdfTemplateRecipeDesignOverlayV2;
+    localization?: WikiPdfTemplateLocalizationV1;
     assets: Readonly<Record<string, PdfTemplateRecipeAssetV1>>;
 }
 

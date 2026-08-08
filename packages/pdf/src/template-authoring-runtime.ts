@@ -15,6 +15,7 @@ import type {
 import {
   validateDesign,
   validateManifest,
+  type WikiPdfTemplateDesignV1,
 } from "@atlcli/template-pack";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import type { PdfCompilePort } from "./compiler.js";
@@ -251,10 +252,12 @@ export class PdfGeneratedTemplateProofCompiler
       // Exercise dormant composition code even when the recipe selects a
       // disabled-by-default cover or closing page. The canonical source is
       // unchanged: both feature flags are runtime settings.
-      pack.manifest.design!.features.cover.enabled = true;
-      pack.manifest.design!.features.closingPage.enabled = true;
-      pack.runtimeSnapshot.design.features.cover.enabled = true;
-      pack.runtimeSnapshot.design.features.closingPage.enabled = true;
+      const manifestDesign = pack.manifest.design as WikiPdfTemplateDesignV1;
+      const snapshotDesign = pack.runtimeSnapshot.design as WikiPdfTemplateDesignV1;
+      manifestDesign.features.cover.enabled = true;
+      manifestDesign.features.closingPage.enabled = true;
+      snapshotDesign.features.cover.enabled = true;
+      snapshotDesign.features.closingPage.enabled = true;
     }
     const prepared = await preparePdfDocument([...NEUTRAL_FEATURE_ZOO], {
       resolve: async () => {

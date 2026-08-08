@@ -6,6 +6,7 @@ import {
   unpackTemplate,
   type WikiPdfTemplateDesignV1,
   type WikiPdfTemplateRecipeV1,
+  type WikiPdfTemplateRecipeV2,
 } from "@atlcli/template-pack";
 import {
   BUILTIN_PDF_DESIGN,
@@ -14,14 +15,18 @@ import {
 import type { PdfCompilePort } from "./compiler.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
 } from "./design-catalog.js";
+import { BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1 } from "./recipe-baselines.js";
 import {
   PDF_COMPOSITION_PROOF_TITLES_V1,
   PdfGeneratedTemplateProofCompiler,
 } from "./template-authoring-runtime.js";
 import {
   materializePdfTemplateRecipeV1,
+  materializePdfTemplateRecipeV2,
   type MaterializePdfTemplateRecipeInputV1,
   type ResolvedPdfTemplateRecipeAssetV1,
 } from "./template-recipe.js";
@@ -376,5 +381,121 @@ describe("materializePdfTemplateRecipeV1", () => {
       expect(mains[index]).toContain("cover: (enabled: true)");
       expect(mains[index]).toContain("closingPage: (enabled: true)");
     }
+  });
+});
+
+function recipeV2(): WikiPdfTemplateRecipeV2 {
+  return {
+    schema: "wiki.pdf-template-recipe/v2",
+    template: { id: "fixture.editorial-v5", name: "Editorial V5", version: "1.0.0" },
+    baseline: {
+      id: "atlcli.editorial",
+      version: 1,
+      catalogVersion: 3,
+      digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+    },
+    design: {},
+    assets: {},
+  };
+}
+
+describe("materializePdfTemplateRecipeV2", () => {
+  const compilerV5: TemplateGeneratedPackCompilerV1 = {
+    async compile({ packBytes, manifest }) {
+      expect(manifest.canonicalSource?.revision).toBe("5");
+      return { digest: await digest(packBytes), pageCount: 2 };
+    },
+  };
+
+  it("resolves the installed baseline into a complete Catalog V3/revision 5 pack", async () => {
+    const built = await materializePdfTemplateRecipeV2({
+      recipe: recipeV2(),
+      resolvedAssets: {},
+      compiler: compilerV5,
+    });
+    expect(built.manifest.capabilityCatalog).toEqual({
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    });
+    expect(built.manifest.canonicalSource?.revision).toBe("5");
+    expect(built.manifest.engine.compilerRange).toBe(">=0.15.1 <0.16");
+    expect(built.baseline).toEqual({
+      id: "atlcli.editorial",
+      version: 1,
+      digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+    });
+    expect(built.runtimeSnapshot.design).toEqual(built.manifest.design!);
+  });
+
+  it("is deterministic across key order and fails atomically before bytes escape", async () => {
+    const source = recipeV2();
+    const first = await materializePdfTemplateRecipeV2({
+      recipe: source,
+      resolvedAssets: {},
+      compiler: compilerV5,
+    });
+    const reordered = await materializePdfTemplateRecipeV2({
+      recipe: reverseKeys(source) as WikiPdfTemplateRecipeV2,
+      resolvedAssets: {},
+      compiler: compilerV5,
+    });
+    expectSameBytes(first.bytes, reordered.bytes);
+
+    const unknown = structuredClone(source);
+    unknown.baseline.id = "https://example.invalid/baseline";
+    await expect(
+      materializePdfTemplateRecipeV2({
+        recipe: unknown,
+        resolvedAssets: {},
+        compiler: compilerV5,
+      }),
+    ).rejects.toThrow(/baseline\.id|stable identifier/iu);
+
+    let escaped: Awaited<ReturnType<typeof materializePdfTemplateRecipeV2>> | undefined;
+    await expect(
+      (async () => {
+        escaped = await materializePdfTemplateRecipeV2({
+          recipe: source,
+          resolvedAssets: {},
+          compiler: { compile: async () => { throw new Error("v5 compile failed"); } },
+        });
+      })(),
+    ).rejects.toThrow("v5 compile failed");
+    expect(escaped).toBeUndefined();
+  });
+
+  it("keeps conditionally active Catalog-V3 cover tokens in canonical generation", async () => {
+    const source = recipeV2();
+    source.design = {
+      compositions: {
+        cover: {
+          kind: "type-cut",
+          logo: "hide",
+          metadataPosition: "flow",
+          typeCut: { angle: 43, stop: 58 },
+        },
+      },
+      typography: {
+        roles: {
+          coverTitleCompact: { font: "heading", size: "25pt", weight: "semibold" },
+          coverTitleMinimum: { font: "heading", size: "19pt", weight: "semibold" },
+        },
+      },
+      tokens: {
+        colors: { coverTitleInverse: "#FFFFFF" },
+        layout: { coverTitleFrameHeight: "92mm" },
+      },
+    };
+    source.assets = {
+      "asset.coverBackground": { source: COVER_SOURCE, decorative: true },
+    };
+    const coverAsset = (await resolvedAssets())["asset.coverBackground"]!;
+    const built = await materializePdfTemplateRecipeV2({
+      recipe: source,
+      resolvedAssets: { "asset.coverBackground": coverAsset },
+      compiler: compilerV5,
+    });
+    expect(built.canonicalTypst).toContain("#FFFFFF");
   });
 });

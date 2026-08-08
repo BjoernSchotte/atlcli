@@ -74,6 +74,39 @@ export function parseVeraPdfReport(json: unknown, fixture: string): RuleFailure[
   return out;
 }
 
+export interface VeraPdfCompliance {
+  compliant: boolean;
+  profileNames: string[];
+  validationResults: number;
+}
+
+/**
+ * Parse the high-level compliance verdict while proving the report contains a
+ * real validation result. Missing or inconclusive output is a hard error, not
+ * success.
+ */
+export function parseVeraPdfCompliance(json: unknown): VeraPdfCompliance {
+  const report = (json as { report?: unknown }).report ?? json;
+  const jobs = ((report as { jobs?: unknown[] }).jobs ?? []) as Array<Record<string, unknown>>;
+  const results = jobs.flatMap((job) =>
+    ((job.validationResult as unknown[]) ?? []) as Array<Record<string, unknown>>
+  );
+  if (results.length === 0) {
+    throw new Error("veraPDF report contains no validation result");
+  }
+  const verdicts = results.map((result) => result.compliant);
+  if (verdicts.some((verdict) => typeof verdict !== "boolean")) {
+    throw new Error("veraPDF report contains an inconclusive compliance result");
+  }
+  return {
+    compliant: verdicts.every((verdict) => verdict === true),
+    profileNames: results
+      .map((result) => result.profileName)
+      .filter((value): value is string => typeof value === "string"),
+    validationResults: results.length,
+  };
+}
+
 export interface RatchetResult {
   /** Hard failures — a new rule failure, or a rising count on a baselined rule. */
   failures: string[];

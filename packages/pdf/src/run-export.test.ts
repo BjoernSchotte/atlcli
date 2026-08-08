@@ -28,6 +28,12 @@ import { packTemplate, validateManifest } from "@atlcli/template-pack";
 const validPdf = new TextEncoder().encode(
   "%PDF-1.7\n/Type/Page /StructTreeRoot /MarkInfo /Outlines /FontFile2\n%%EOF\n"
 );
+const strictUaPdf = new TextEncoder().encode(
+  "%PDF-1.7\n" +
+  "1 0 obj << /Type /Catalog /Lang (en) /StructTreeRoot 2 0 R /MarkInfo << /Marked true >> >> endobj\n" +
+  "/Type /Page /FontFile2 /ID [<0123><0123>]\n" +
+  "<pdfuaid:part>1</pdfuaid:part>\n%%EOF\n",
+);
 const blocks: ExportBlock[] = [{ type: "paragraph", content: [{ type: "text", text: "Hello" }] }];
 const metadata = { title: "Test", exportedAt: new Date("2026-07-17T00:00:00Z") };
 const assets = { resolve: async () => { throw new Error("no assets"); } };
@@ -220,6 +226,60 @@ describe("neutral runPdfExport", () => {
     expect(report.notes[0]?.code).toBe("browser-harness");
     expect(phases).toEqual(["configuration", "preparing", "fetching", "compiling", "validating", "emitting"]);
     expect(emitted).toBe(1);
+  });
+
+  it("persists a strict output policy and replays it through the compiler port", async () => {
+    const outputPolicy = {
+      schema: "atlcli.pdf-output-policy/1" as const,
+      standards: ["ua-1"] as const,
+    };
+    const prepared = await preparePdfExport(
+      { blocks, metadata, filename: "UA.pdf", outputPolicy },
+      { assets },
+    );
+    expect(prepared.outputPolicy).toEqual(outputPolicy);
+    let received: unknown;
+    const report = await renderPreparedPdfExport(prepared, {}, {
+      compiler: {
+        compile: async (_bundle, context) => {
+          received = context?.outputPolicy;
+          return { pdf: strictUaPdf, diagnostics: [], compilerVersion: "test" };
+        },
+      },
+      output: { emit: async () => {} },
+    });
+    expect(received).toEqual(outputPolicy);
+    expect(report.outputPolicy).toEqual(outputPolicy);
+    expect(report.outputStandardEvidence).toMatchObject({
+      requestedStandard: "ua-1",
+      basePdfVersion: "1.7",
+      pdfua: { part: "1" },
+      hasDocumentIdentifier: true,
+      tagged: true,
+      hasLang: true,
+      embeddedFontFiles: 1,
+    });
+  });
+
+  it("rejects an unsupported or incompatible output policy before asset IO", async () => {
+    let resolveCalls = 0;
+    await expect(preparePdfExport({
+      blocks,
+      metadata,
+      filename: "Invalid.pdf",
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["a-2a", "ua-1"],
+      },
+    }, {
+      assets: {
+        resolve: async () => {
+          resolveCalls += 1;
+          throw new Error("must not resolve");
+        },
+      },
+    })).rejects.toMatchObject({ phase: "configuration" });
+    expect(resolveCalls).toBe(0);
   });
 
   it("fails settings validation before any asset fetch", async () => {

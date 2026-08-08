@@ -40,6 +40,7 @@ import {
   type PdfExportPhase as NeutralPdfExportPhase,
   type PdfExportReport,
   type PdfOutputSink,
+  type PdfOutputPolicyV1,
   type PdfProfile,
   type PdfTemplateSettings,
   type PdfThemeOptions,
@@ -112,6 +113,7 @@ export interface RunPdfExportInput {
   maxPages?: number;
   theme?: PdfThemeOptions;
   profile?: PdfProfile;
+  outputPolicy?: PdfOutputPolicyV1;
   /** Level-A template settings (spec 007), threaded straight to the engine. */
   settings?: PdfTemplateSettings;
   /** Product-owned Shiki theme shared with DOCX. */
@@ -556,6 +558,7 @@ export async function runPdfExport(
       ...(root.spaceKey !== undefined ? { spaceKey: root.spaceKey } : {}),
     },
     profile: input.profile,
+    ...(input.outputPolicy ? { outputPolicy: input.outputPolicy } : {}),
     theme: input.theme,
     ...(input.settings ? { settings: input.settings } : {}),
     ...(input.codeTheme ? { codeTheme: input.codeTheme } : {}),

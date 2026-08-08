@@ -393,6 +393,34 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
 });
 
 describe("typstSettingsDict", () => {
+  it("fails closed for every unknown declared catalog identity", () => {
+    for (const capabilityCatalog of [
+      {
+        id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+        digest: "0".repeat(64),
+      },
+      {
+        id: "foreign.pdf-template",
+        version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+      },
+      {
+        id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+        version: 999,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+      }
+    ]) {
+      const manifest = revision4Manifest(true);
+      manifest.capabilityCatalog = capabilityCatalog;
+      const error = expectSettingsError(
+        () => resolvePdfSettings({}, { manifest }),
+        "manifest.capabilityCatalog"
+      );
+      expect(error.constraint).toContain("Unsupported PDF capability catalog");
+    }
+  });
+
   it("preserves Catalog V2 and emits the revision-4 closing-page feature", () => {
     for (const enabled of [true, false]) {
       const resolved = resolvePdfSettings({}, {
@@ -421,6 +449,12 @@ describe("typstSettingsDict", () => {
     expect(dict).toContain('version: "Version"');
     expect(dict).not.toContain("header-text");
     expect(dict).not.toContain("watermark:");
+  });
+
+  it("emits an empty label map as a Typst dictionary, never an array", () => {
+    const dict = typstSettingsDict({ ...resolvePdfSettings(), labels: {} });
+    expect(dict).toContain("labels: (:)");
+    expect(dict).not.toContain("labels: (\n  )");
   });
 
   it("emits the settings-driven design subset and filled watermark defaults", () => {
@@ -477,6 +511,8 @@ describe("typstSettingsDict", () => {
               y: "-0.423mm",
               width: "49.989mm",
               height: "11.342mm",
+              crop: { left: 0.1, top: 0, right: 0.1, bottom: 0 },
+              clip: { kind: "rounded-rect", radius: "2mm" },
             },
           },
         },
@@ -494,6 +530,12 @@ describe("typstSettingsDict", () => {
     expect(dict).toContain("width: 49.989mm");
     expect(dict).toContain("height: 11.342mm");
     expect(dict).toContain("rotation: 0");
+    expect(dict).toContain("crop: (");
+    expect(dict).toContain("left: 0.1");
+    expect(dict).toContain("right: 0.1");
+    expect(dict).toContain("clip: (");
+    expect(dict).toContain('kind: "rounded-rect"');
+    expect(dict).toContain("radius: 2mm");
   });
 
   it("keeps quote/backslash/#{ injection attempts literal in free-text fields", () => {

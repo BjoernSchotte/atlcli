@@ -28,8 +28,12 @@ import {
   PDF_TEMPLATE_ASSET_CAPABILITIES_V1,
 } from "@atlcli/pdf";
 import {
+  PDF_TEMPLATE_CAPABILITIES_V3,
   materializePdfTemplateRecipeV1,
+  materializePdfTemplateRecipeV2,
+  resolvePdfTemplateRecipeV2Design,
   type MaterializedPdfTemplateRecipeV1,
+  type MaterializedPdfTemplateRecipeV2,
   type ResolvedPdfTemplateRecipeAssetV1,
 } from "@atlcli/pdf/internal";
 import type { TemplateGeneratedPackCompilerV1 } from "@atlcli/pdf-template-authoring";
@@ -37,8 +41,10 @@ import {
   MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES,
   migratePdfTemplateRecipeToTypst0151V1,
   validatePdfTemplateRecipeV1,
+  validatePdfTemplateRecipeV2,
   type TemplateAssetMediaTypeV1,
   type WikiPdfTemplateRecipeV1,
+  type WikiPdfTemplateRecipeV2,
 } from "@atlcli/template-pack";
 import {
   LineCounter,
@@ -183,7 +189,7 @@ function semanticError(error: unknown): PdfTemplateYamlError {
 /** Parse one bounded YAML 1.2/core document and validate the recipe contract. */
 export function parsePdfTemplateRecipeYaml(
   source: string
-): WikiPdfTemplateRecipeV1 {
+): WikiPdfTemplateRecipeV1 | WikiPdfTemplateRecipeV2 {
   if (new TextEncoder().encode(source).byteLength > PDF_TEMPLATE_RECIPE_MAX_YAML_BYTES) {
     failValidation(
       `PDF template recipe YAML exceeds ${PDF_TEMPLATE_RECIPE_MAX_YAML_BYTES} bytes`
@@ -221,7 +227,22 @@ export function parsePdfTemplateRecipeYaml(
     throw semanticError(error);
   }
   try {
-    return validatePdfTemplateRecipeV1(value);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      Array.isArray(value) ||
+      !("schema" in value)
+    ) {
+      failValidation("PDF template recipe must declare an exact schema");
+    }
+    const schema = (value as { schema?: unknown }).schema;
+    if (schema === "wiki.pdf-template-recipe/v1") {
+      return validatePdfTemplateRecipeV1(value);
+    }
+    if (schema === "wiki.pdf-template-recipe/v2") {
+      return validatePdfTemplateRecipeV2(value);
+    }
+    failValidation(`Unsupported PDF template recipe schema: ${String(schema)}`);
   } catch (error) {
     throw semanticError(error);
   }
@@ -270,7 +291,7 @@ async function readRecipeFile(path: string): Promise<string> {
 
 async function resolveRecipeAssets(
   recipePath: string,
-  recipe: WikiPdfTemplateRecipeV1
+  recipe: WikiPdfTemplateRecipeV1 | WikiPdfTemplateRecipeV2
 ): Promise<Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>> {
   const recipeRoot = await realpath(dirname(recipePath));
   const pending: {
@@ -358,19 +379,94 @@ export interface MaterializePdfTemplateYamlInputV1 {
   compiler: TemplateGeneratedPackCompilerV1;
 }
 
+export interface PdfTemplateRecipeExplanationV1 {
+  schema: "atlcli.pdf-template-recipe-explanation/1";
+  recipeSchema: "wiki.pdf-template-recipe/v2";
+  template: { id: string; name: string; version: string };
+  baseline: { id: string; version: number; digest: string };
+  catalog: { id: string; version: number; digest: string };
+  canonicalSource: { api: string; revision: string };
+  compilerRange: string;
+  authorOverrides: readonly string[];
+  assetSlots: readonly string[];
+  activeConstraints: readonly {
+    when: readonly { path: string; equals: string | number | boolean }[];
+    require: readonly { kind: "path" | "asset" | "label"; id: string }[];
+    forbid: readonly { kind: "path" | "asset" | "label"; id: string }[];
+  }[];
+  requiredProofs: readonly string[];
+}
+
+function valueAtPath(value: unknown, path: string): unknown {
+  let cursor = value;
+  for (const segment of path.split(".")) {
+    if (typeof cursor !== "object" || cursor === null || Array.isArray(cursor)) return undefined;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor;
+}
+
+/** Read-only Recipe V2 explanation; no asset is opened and no absolute path escapes. */
+export async function explainPdfTemplateYamlRecipe(
+  recipePath: string,
+): Promise<PdfTemplateRecipeExplanationV1> {
+  const absolute = resolve(recipePath);
+  const recipe = parsePdfTemplateRecipeYaml(await readRecipeFile(absolute));
+  if (recipe.schema !== "wiki.pdf-template-recipe/v2") {
+    failValidation("pdf-template explain requires recipe schema v2");
+  }
+  const resolvedRecipe = await resolvePdfTemplateRecipeV2Design(recipe);
+  const authorOverrides = PDF_TEMPLATE_CAPABILITIES_V3.descriptors
+    .filter((descriptor) => valueAtPath(recipe.design, descriptor.path) !== undefined)
+    .map((descriptor) => descriptor.path)
+    .sort();
+  const activeConstraints = PDF_TEMPLATE_CAPABILITIES_V3.constraints
+    .filter((constraint) =>
+      constraint.when.every(
+        (predicate) => valueAtPath(resolvedRecipe.design, predicate.path) === predicate.equals,
+      ),
+    )
+    .map((constraint) => ({
+      when: constraint.when.map((predicate) => ({ ...predicate })),
+      require: (constraint.require ?? []).map((requirement) => ({ ...requirement })),
+      forbid: (constraint.forbid ?? []).map((requirement) => ({ ...requirement })),
+    }));
+  return {
+    schema: "atlcli.pdf-template-recipe-explanation/1",
+    recipeSchema: recipe.schema,
+    template: { ...recipe.template },
+    baseline: { ...resolvedRecipe.baseline },
+    catalog: { ...resolvedRecipe.catalog },
+    canonicalSource: { ...resolvedRecipe.canonicalSource },
+    compilerRange: resolvedRecipe.compilerRange,
+    authorOverrides,
+    assetSlots: Object.keys(recipe.assets).sort(),
+    activeConstraints,
+    requiredProofs: [...new Set(
+      PDF_TEMPLATE_CAPABILITIES_V3.descriptors.flatMap((descriptor) => descriptor.proofs),
+    )].sort(),
+  };
+}
+
 export async function materializePdfTemplateYamlRecipe(
   input: MaterializePdfTemplateYamlInputV1
-): Promise<MaterializedPdfTemplateRecipeV1> {
+): Promise<MaterializedPdfTemplateRecipeV1 | MaterializedPdfTemplateRecipeV2> {
   const absolute = resolve(input.recipePath);
   const source = await readRecipeFile(absolute);
   const recipe = parsePdfTemplateRecipeYaml(source);
   const resolvedAssets = await resolveRecipeAssets(absolute, recipe);
   try {
-    return await materializePdfTemplateRecipeV1({
-      recipe,
-      resolvedAssets,
-      compiler: input.compiler,
-    });
+    return recipe.schema === "wiki.pdf-template-recipe/v2"
+      ? await materializePdfTemplateRecipeV2({
+          recipe,
+          resolvedAssets,
+          compiler: input.compiler,
+        })
+      : await materializePdfTemplateRecipeV1({
+          recipe,
+          resolvedAssets,
+          compiler: input.compiler,
+        });
   } catch (error) {
     throw semanticError(error);
   }
@@ -382,6 +478,9 @@ export async function migratePdfTemplateYamlRecipeToTypst0151(
 ): Promise<WikiPdfTemplateRecipeV1> {
   const sourcePath = resolve(inputPath);
   const recipe = parsePdfTemplateRecipeYaml(await readRecipeFile(sourcePath));
+  if (recipe.schema !== "wiki.pdf-template-recipe/v1") {
+    failValidation("migrate-runtime accepts only recipe schema v1");
+  }
   const migrated = migratePdfTemplateRecipeToTypst0151V1(recipe);
   const yaml = stringify(migrated, { lineWidth: 0 });
   await writeNoClobber(outputPath, new TextEncoder().encode(yaml), "recipe");

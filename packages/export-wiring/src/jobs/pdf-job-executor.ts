@@ -610,6 +610,9 @@ async function prepareResolvedPdfExport(
             },
           }
         : {}),
+      ...(request.options.outputPolicy !== undefined
+        ? { outputPolicy: request.options.outputPolicy }
+        : {}),
       signal,
     },
     { ...resolved.env, now },

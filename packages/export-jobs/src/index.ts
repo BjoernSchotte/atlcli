@@ -15,6 +15,8 @@ export type {
   PdfBuiltinTemplateReferenceV1,
   PdfTemplatePackReferenceV1,
   PdfTemplateReferenceV1,
+  PdfOutputPolicyV1,
+  PdfOutputStandardV1,
   ExportJobRequestV1,
 } from "./request.js";
 export type {

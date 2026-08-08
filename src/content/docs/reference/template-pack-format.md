@@ -26,6 +26,7 @@ package is the canonical owner of the size-cap constants.
 - [Prerequisites](#prerequisites)
 - [Container layout](#container-layout)
 - [Manifest schema](#manifest-schema)
+- [Recipe V2 materialization](#recipe-v2-materialization)
 - [Deterministic packing](#deterministic-packing)
 - [Payload hash vs archive hash](#payload-hash-vs-archive-hash)
 - [Size caps](#size-caps)
@@ -100,6 +101,29 @@ The manifest's open `settings` map is **not** the same shape as the built-in
 [PDF Template Settings](pdf-template-settings.md)). The two stay separate in
 v1: threading manifest-declared settings into a render call needs host-side
 Level-B loading glue that is out of scope for this format.
+
+## Recipe V2 materialization
+
+Recipe V2 is authoring input, not a second archive format. The CLI resolves the
+exact installed baseline, validates sparse overrides, preflights assets, and
+writes the same deterministic `.wiki-pdf-template` container:
+
+```text
+Recipe V2 + installed digest-pinned baseline
+  -> complete Catalog V3 design
+  -> canonical revision-5 atlcli.typ
+  -> pack / unpack / repack / load / compile proof
+  -> wiki.pdf-template/v1 archive
+```
+
+Current Recipe V2 packs declare Catalog V3, canonical revision 5, and compiler
+range `>=0.15.1 <0.16`. They contain the complete resolved design and hashed
+assets, never the sparse overlay, a baseline URL, `latest`, or arbitrary Typst.
+Historical Catalog V1/V2 and revisions 1-4 retain their pinned source evidence;
+an old archive whose range excludes 0.15.1 must be rebuilt from its recipe.
+
+PDF/A/PDF/UA output standards are not manifest fields. They are strict export
+policy and are validated against emitted bytes in the export lane.
 
 ## Deterministic packing
 

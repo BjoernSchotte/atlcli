@@ -3,6 +3,10 @@ import type {
   PdfFontLoadEvidenceV1,
   PdfSourceBundle,
 } from "./types.js";
+import type {
+  PdfOutputPolicyV1,
+  TypstPdfOptions0151,
+} from "./output-policy.js";
 
 export interface PdfCompileResult {
   pdf?: Uint8Array;
@@ -13,6 +17,10 @@ export interface PdfCompileResult {
 
 export interface PdfCompileContext {
   signal?: AbortSignal;
+  /** Strict request-scoped PDF standard selection; absent preserves legacy output. */
+  outputPolicy?: PdfOutputPolicyV1;
+  /** Auditable low-level Typst 0.15.1 seam; product callers use outputPolicy. */
+  pdfOptions?: TypstPdfOptions0151;
 }
 
 export interface PdfCompilePort {

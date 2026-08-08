@@ -141,12 +141,24 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     // PDF-shaped success report.
     const pdfReport = buildReport({
       format: "pdf",
+      outputPolicy: { schema: "atlcli.pdf-output-policy/1", standards: ["ua-1"] },
+      outputStandardEvidence: {
+        schema: "atlcli.pdf-output-standard-evidence/1",
+        requestedStandard: "ua-1",
+        basePdfVersion: "1.7",
+        pdfua: { part: "1" },
+        hasDocumentIdentifier: true,
+        tagged: true,
+        hasLang: true,
+        embeddedFontFiles: 1,
+      },
       sourcePages: [{ id: "1", title: "P", notes: [] }],
       outputDetails: [{ output: "/tmp/x.pdf", pageCount: 2, embeddedImages: 1, renderedDiagrams: 0, skippedAssets: 0 }],
       issues: [{ code: "c", severity: "warning", phase: "prepare", retryable: false }],
       strict: false,
     });
     expect(validate(pdfReport) ? [] : validate.errors).toEqual([]);
+    expect(pdfReport.outputStandardEvidence?.requestedStandard).toBe("ua-1");
 
     // DOCX-shaped tree report carrying the 002 fields WITHIN the unified schema.
     const docxReport = buildReport({

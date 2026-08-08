@@ -15,6 +15,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  PDF_OUTPUT_STANDARDS_V1,
   PDF_RUNTIME_ASSETS,
   runPdfExport,
   type ExportBlock,
@@ -22,6 +23,7 @@ import {
   type PdfCompilePort,
   type PdfExportMetadata,
   type PdfBytesHandle,
+  type PdfOutputStandardV1,
 } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import {
@@ -64,6 +66,32 @@ export const VERAPDF_CORPUS: ReadonlyArray<{
   { id: "blocks", blocks: BLOCKS_ALL_FIELDS, metadata: BLOCKS_METADATA },
   { id: "pdf-settings-a", blocks: PDF_SETTINGS_BLOCKS, metadata: PDF_SETTINGS_METADATA, settings: PDF_SETTINGS_A },
 ];
+
+export const VERAPDF_FLAVOUR_BY_STANDARD: Readonly<
+  Record<PdfOutputStandardV1, string>
+> = {
+  "a-1b": "1b",
+  "a-1a": "1a",
+  "a-2b": "2b",
+  "a-2u": "2u",
+  "a-2a": "2a",
+  "a-3b": "3b",
+  "a-3u": "3u",
+  "a-3a": "3a",
+  "a-4": "4",
+  "a-4f": "4f",
+  "a-4e": "4e",
+  "ua-1": "ua1",
+};
+
+export interface VeraPdfStandardFixture {
+  id: string;
+  path: string;
+  standard: PdfOutputStandardV1;
+  flavour: string;
+  expectedCompliant: boolean;
+  compilerVersion: string;
+}
 
 const noAssets: PdfAssetResolver = {
   async resolve(): Promise<never> {
@@ -120,6 +148,74 @@ class MemorySink {
   async emit(_name: string, bytes: PdfBytesHandle): Promise<void> {
     this.bytes = (await bytes.asUint8Array()).slice();
   }
+}
+
+async function compileFixture(
+  compiler: PdfCompilePort,
+  filename: string,
+  outputPolicy?: {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [PdfOutputStandardV1];
+  },
+): Promise<{ bytes: Uint8Array; compilerVersion: string }> {
+  const output = new MemorySink();
+  const report = await runPdfExport(
+    {
+      blocks: CANARY_BLOCKS,
+      metadata: CANARY_METADATA,
+      filename,
+      ...(outputPolicy === undefined ? { profile: "tagged" as const } : { outputPolicy }),
+    },
+    { assets: noAssets, compiler, output, now: deterministicClock() },
+  );
+  if (!output.bytes) throw new Error(`corpus fixture "${filename}" produced no PDF`);
+  return { bytes: output.bytes, compilerVersion: report.compilerVersion };
+}
+
+/**
+ * Compile one neutral document for every product-facing Typst standard plus a
+ * deliberately non-conforming PDF/A-2b canary. The invalid fixture is compiled
+ * without a standard request, so veraPDF must reject it while still producing
+ * a healthy, parseable validation report.
+ */
+export async function compileStandardCorpus(): Promise<VeraPdfStandardFixture[]> {
+  const compiler = await buildCompiler();
+  mkdirSync(VERAPDF_OUT_DIR, { recursive: true });
+  const fixtures: VeraPdfStandardFixture[] = [];
+
+  for (const standard of PDF_OUTPUT_STANDARDS_V1) {
+    const id = `standard-${standard}`;
+    const filename = `${id}.pdf`;
+    const compiled = await compileFixture(compiler, filename, {
+      schema: "atlcli.pdf-output-policy/1",
+      standards: [standard],
+    });
+    const path = resolve(VERAPDF_OUT_DIR, filename);
+    writeFileSync(path, compiled.bytes);
+    fixtures.push({
+      id,
+      path,
+      standard,
+      flavour: VERAPDF_FLAVOUR_BY_STANDARD[standard],
+      expectedCompliant: true,
+      compilerVersion: compiled.compilerVersion,
+    });
+  }
+
+  const invalidId = "invalid-a-2b";
+  const invalid = await compileFixture(compiler, `${invalidId}.pdf`);
+  const invalidPath = resolve(VERAPDF_OUT_DIR, `${invalidId}.pdf`);
+  writeFileSync(invalidPath, invalid.bytes);
+  fixtures.push({
+    id: invalidId,
+    path: invalidPath,
+    standard: "a-2b",
+    flavour: VERAPDF_FLAVOUR_BY_STANDARD["a-2b"],
+    expectedCompliant: false,
+    compilerVersion: invalid.compilerVersion,
+  });
+
+  return fixtures;
 }
 
 /** Compile the whole corpus to `out/<id>.pdf`; returns the file paths. */

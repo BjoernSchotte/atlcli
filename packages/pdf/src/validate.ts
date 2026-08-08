@@ -1,3 +1,10 @@
+import type {
+  PdfOutputPolicyV1,
+  PdfOutputStandardEvidenceV1,
+  PdfOutputStandardV1,
+} from "./output-policy.js";
+import { resolvePdfOutputPolicyV1 } from "./output-policy.js";
+
 export interface PdfOutputInspection {
   pageCount: number;
   tagged: boolean;
@@ -90,6 +97,39 @@ function indexOfAscii(bytes: Uint8Array, ascii: string, from: number): number {
     if (matchesAt(bytes, i, ascii)) return i;
   }
   return -1;
+}
+
+function includesAscii(bytes: Uint8Array, ascii: string): boolean {
+  return indexOfAscii(bytes, ascii, 0) >= 0;
+}
+
+function pdfVersion(bytes: Uint8Array): string | undefined {
+  if (!matchesAt(bytes, 0, "%PDF-") || bytes.byteLength < 8) return undefined;
+  return new TextDecoder("latin1").decode(bytes.subarray(5, 8));
+}
+
+function expectedPdfa(
+  standard: Exclude<PdfOutputStandardV1, "ua-1">,
+): NonNullable<PdfOutputStandardEvidenceV1["pdfa"]> {
+  const match = standard.match(/^a-([1-4])([abefu])?$/u);
+  if (!match) throw new Error(`Unsupported PDF/A evidence standard ${standard}.`);
+  return {
+    part: match[1] as "1" | "2" | "3" | "4",
+    ...(match[2] === undefined
+      ? {}
+      : { conformance: match[2].toUpperCase() as "A" | "B" | "E" | "F" | "U" }),
+  };
+}
+
+function xmpValue(bytes: Uint8Array, key: string): string | undefined {
+  const at = indexOfAscii(bytes, key, 0);
+  if (at < 0) return undefined;
+  const start = Math.max(0, at - 128);
+  const end = Math.min(bytes.byteLength, at + key.length + 256);
+  const text = new TextDecoder("latin1").decode(bytes.subarray(start, end));
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return text.match(new RegExp(`${escaped}\\s*=\\s*["']([^"']+)["']`, "u"))?.[1]
+    ?? text.match(new RegExp(`<${escaped}>([^<]+)</${escaped}>`, "u"))?.[1];
 }
 
 /**
@@ -243,5 +283,75 @@ export function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection {
     hasOutline: tally.hasOutline,
     embeddedFontFiles: tally.fontFiles,
     hasLang: hasCatalogLang(bytes, tally.catalogAt),
+  };
+}
+
+/**
+ * Fail-closed verification for an explicit standard request.
+ *
+ * This is deliberately an internal byte-level gate, not a certification
+ * claim. The release acceptance lane still runs an external validator.
+ */
+export function validatePdfOutputStandard(
+  bytes: Uint8Array,
+  policy: PdfOutputPolicyV1,
+  inspection: PdfOutputInspection = validatePdfOutput(bytes),
+): PdfOutputStandardEvidenceV1 {
+  const resolved = resolvePdfOutputPolicyV1(policy)!;
+  const requestedStandard = resolved.standards[0];
+  const actualVersion = pdfVersion(bytes);
+  if (actualVersion !== resolved.basePdfVersion) {
+    throw new Error(
+      `PDF standard ${requestedStandard} requires PDF ${resolved.basePdfVersion}, got ${actualVersion ?? "unknown"}.`,
+    );
+  }
+  const hasDocumentIdentifier = includesAscii(bytes, "xmpMM:DocumentID") ||
+    includesAscii(bytes, "/ID");
+  if (!hasDocumentIdentifier) {
+    throw new Error(`PDF standard ${requestedStandard} output has no document identifier.`);
+  }
+
+  if (requestedStandard === "ua-1") {
+    const part = xmpValue(bytes, "pdfuaid:part");
+    if (part !== "1") {
+      throw new Error(`PDF/UA-1 output has no matching pdfuaid:part identifier.`);
+    }
+    if (!inspection.hasLang) {
+      throw new Error("PDF/UA-1 output has no document language.");
+    }
+    return {
+      schema: "atlcli.pdf-output-standard-evidence/1",
+      requestedStandard,
+      basePdfVersion: resolved.basePdfVersion,
+      pdfua: { part: "1" },
+      hasDocumentIdentifier,
+      tagged: inspection.tagged,
+      hasLang: inspection.hasLang,
+      embeddedFontFiles: inspection.embeddedFontFiles,
+    };
+  }
+
+  const expected = expectedPdfa(requestedStandard);
+  const part = xmpValue(bytes, "pdfaid:part");
+  const conformance = xmpValue(bytes, "pdfaid:conformance")?.toUpperCase();
+  if (part !== expected.part) {
+    throw new Error(
+      `PDF/A-${expected.part} output has no matching pdfaid:part identifier.`,
+    );
+  }
+  if (expected.conformance !== undefined && conformance !== expected.conformance) {
+    throw new Error(
+      `PDF/A-${expected.part}${expected.conformance.toLowerCase()} output has no matching conformance identifier.`,
+    );
+  }
+  return {
+    schema: "atlcli.pdf-output-standard-evidence/1",
+    requestedStandard,
+    basePdfVersion: resolved.basePdfVersion,
+    pdfa: expected,
+    hasDocumentIdentifier,
+    tagged: inspection.tagged,
+    hasLang: inspection.hasLang,
+    embeddedFontFiles: inspection.embeddedFontFiles,
   };
 }

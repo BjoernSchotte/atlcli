@@ -30,6 +30,11 @@ export interface TemplateAssetReferenceV1 {
 
 export type TemplateDecorationScopeV1 = "all" | "first" | "odd" | "even";
 
+export type WikiPdfTemplateImageClipV1 =
+  | { kind: "rect" }
+  | { kind: "rounded-rect"; radius: string }
+  | { kind: "circle" };
+
 export interface WikiPdfTemplateImageDecorationV1 {
   kind: "image";
   id: string;
@@ -48,6 +53,7 @@ export interface WikiPdfTemplateImageDecorationV1 {
     opacity?: number;
     rotation?: number;
     crop?: { left: number; top: number; right: number; bottom: number };
+    clip?: WikiPdfTemplateImageClipV1;
   };
   decorative: boolean;
   alt?: string;
@@ -331,7 +337,7 @@ function validatePlacement(
   const placement = object(value, path);
   exactKeys(
     placement,
-    ["relativeTo", "fit", "x", "y", "width", "height", "opacity", "rotation", "crop"],
+    ["relativeTo", "fit", "x", "y", "width", "height", "opacity", "rotation", "crop", "clip"],
     path
   );
   if (placement.relativeTo !== "page" && placement.relativeTo !== "margin") {
@@ -359,6 +365,22 @@ function validatePlacement(
       fail(`${path}.crop`, "must leave a positive visible area");
     }
   }
+  let clip: WikiPdfTemplateImageDecorationV1["placement"]["clip"];
+  if (placement.clip !== undefined) {
+    const value = object(placement.clip, `${path}.clip`);
+    if (value.kind === "rounded-rect") {
+      exactKeys(value, ["kind", "radius"], `${path}.clip`);
+      clip = {
+        kind: "rounded-rect",
+        radius: length(value.radius, `${path}.clip.radius`, false),
+      };
+    } else if (value.kind === "rect" || value.kind === "circle") {
+      exactKeys(value, ["kind"], `${path}.clip`);
+      clip = { kind: value.kind };
+    } else {
+      fail(`${path}.clip.kind`, 'must be "rect", "rounded-rect", or "circle"');
+    }
+  }
   return {
     relativeTo: placement.relativeTo,
     ...(placement.fit === undefined
@@ -375,6 +397,7 @@ function validatePlacement(
       ? {}
       : { rotation: finite(placement.rotation, `${path}.rotation`, -180, 180) }),
     ...(crop === undefined ? {} : { crop }),
+    ...(clip === undefined ? {} : { clip }),
   };
 }
 

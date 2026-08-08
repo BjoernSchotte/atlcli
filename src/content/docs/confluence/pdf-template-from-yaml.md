@@ -26,6 +26,8 @@ recipe.yaml
 - [Prerequisites](#prerequisites)
 - [Build and use a template](#build-and-use-a-template)
 - [Minimal working recipe](#minimal-working-recipe)
+- [Recipe V2 and installed baselines](#recipe-v2-and-installed-baselines)
+- [Advanced Recipe V2 example](#advanced-recipe-v2-example)
 - [Recipe field reference](#recipe-field-reference)
 - [Cover composition](#cover-composition)
 - [Closing-page composition](#closing-page-composition)
@@ -40,7 +42,8 @@ recipe.yaml
 
 - atlcli with the PDF compiler installed.
 - PNG, JPEG, or sanitized SVG assets that you are allowed to reuse.
-- A complete recipe based on the current revision-4 design catalog.
+- A Recipe V2 file pinned to the installed `atlcli.editorial` baseline, or a
+  complete migrated Recipe V1 file for legacy authoring.
 - A configured Confluence profile only when you export wiki content. Building
   and validating a recipe is local.
 
@@ -96,6 +99,74 @@ files. Do not edit generated archive members.
 
 ## Minimal working recipe
 
+Recipe V2 is the recommended authoring format. It pins an installed baseline
+by exact identity and digest, then stores only sparse author overrides:
+
+```yaml
+schema: wiki.pdf-template-recipe/v2
+template:
+  id: example.editorial-minimal
+  name: Editorial Minimal
+  version: 1.0.0
+baseline:
+  id: atlcli.editorial
+  version: 1
+  catalogVersion: 3
+  digest: 46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a
+design: {}
+assets: {}
+```
+
+Download the [machine-checked minimal Recipe V2](https://atlcli.sh/examples/pdf-template-recipe-v2-minimal/recipe.yaml).
+It resolves to a complete Catalog V3 design and canonical source revision 5.
+The generated pack contains that complete resolved design; it does not depend
+on the baseline registry when loaded or exported.
+
+Inspect resolution without opening asset files or writing a pack:
+
+```bash
+atlcli pdf-template explain ./recipe.yaml --json
+```
+
+The result lists the pinned baseline, sparse author override paths, active
+conditional requirements, compiler range, asset slot names, and required proof
+classes. It never returns asset bytes or absolute local paths.
+
+## Recipe V2 and installed baselines
+
+| Field | Type | Default | Required | Constraints |
+|---|---|---|---|---|
+| `schema` | string | — | Yes | Exactly `wiki.pdf-template-recipe/v2`. |
+| `template.id` | stable identifier | — | Yes | No URL, path, or implicit namespace. |
+| `template.name` | string | — | Yes | Non-empty bounded safe text. |
+| `template.version` | semver string | — | Yes | `MAJOR.MINOR.PATCH`, optional prerelease. |
+| `baseline.id` | stable identifier | — | Yes | Must be shipped by this atlcli installation; URL-like and path-like values are rejected. |
+| `baseline.version` | positive integer | — | Yes | Exact version; there is no `latest`. |
+| `baseline.catalogVersion` | positive integer | — | Yes | Must match the installed baseline; currently `3`. |
+| `baseline.digest` | SHA-256 hex | — | Yes | Must match both the recipe and recomputed installed content. |
+| `design` | sparse object | `{}` | Yes | Only Catalog V3 paths; `null` is not a delete operator. Object/array capabilities replace atomically. |
+| `localization` | complete localization object | installed baseline | No | Replacement, not a sparse merge; fallback labels remain mandatory. |
+| `assets` | asset declaration map | `{}` | Yes | Relative local declarations only; bytes and hashes are host-resolved. |
+
+Resolution is local and fail-closed. atlcli never downloads baselines, accepts
+an implicit newest version, widens a compiler range, or follows a baseline URL.
+The installed baseline targets Typst `>=0.15.1 <0.16`, Catalog V3, and canonical
+source revision 5.
+
+## Advanced Recipe V2 example
+
+The [advanced handbook recipe](https://atlcli.sh/examples/pdf-template-recipe-v2-advanced/recipe.yaml)
+exercises logical margins, right binding, split running heads, contents and
+bookmarks, table/list/outline policies, a named linear paint, a flat decorative
+shape, and a cropped/clipped image. Its
+[synthetic cover SVG](https://atlcli.sh/examples/pdf-template-recipe-v2-advanced/assets/cover.svg)
+contains no tenant data.
+
+Both examples are executable acceptance fixtures: `pdf-template validate`
+resolves, packs, reloads, and compiles them with the pinned Typst 0.15.1 runtime.
+
+### Legacy Recipe V1
+
 Revision 4 intentionally requires a complete design baseline; missing catalog
 fields are rejected instead of receiving hidden renderer defaults. Download
 the [complete neutral starter recipe](https://atlcli.sh/examples/pdf-template-recipe/recipe.yaml)
@@ -145,6 +216,9 @@ Recipe fields have no implicit authoring defaults unless the table says so.
 errors at every level.
 
 ### Top level and template identity
+
+This table describes legacy Recipe V1. New recipes should use the Recipe V2
+envelope above.
 
 | Field | Type | Default | Required | Constraints |
 |---|---|---|---|---|
@@ -315,6 +389,9 @@ Common categories are:
 | compiler range mismatch | The recipe or pack targets the pre-0.15 runtime | Run `pdf-template migrate-runtime` against the original recipe, then build its distinct output. |
 | output already exists | Build never clobbers a pack | Choose a new path or move the reviewed old output first. |
 | compiler proof failed | Missing font, impossible title fit, or invalid generated layout | Use bundled fonts, adjust fitting roles/frame, and rebuild. |
+| baseline is not installed | Recipe V2 names an id/version not shipped by this installation | Use an exact installed baseline identity; do not replace it with a URL or `latest`. |
+| baseline digest mismatch | The Recipe V2 pin or installed baseline content changed | Restore the reviewed digest/version pair or deliberately adopt a newly shipped baseline version. |
+| conditional capability error | A selected composition requires another token, label, or asset | Run `pdf-template explain --json`, then add the listed requirement or select another bounded composition. |
 
 ## Security and privacy
 
@@ -330,6 +407,8 @@ Common categories are:
 - Treat the recipe and generated pack as brand assets. Do not commit private
   logos, legal copy, customer titles, tenant identifiers, or rendered PDFs to a
   public repository.
+- PDF/A and PDF/UA standards are export policy (`--pdf-standard`), not Recipe
+  V2 or pack fields. A template cannot claim or certify output conformance.
 
 ## Troubleshooting
 

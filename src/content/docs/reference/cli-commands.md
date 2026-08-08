@@ -322,6 +322,7 @@ atlcli wiki export <page-id> --output ./page.docx
 atlcli wiki export <page-id> --code-theme dracula --output ./page.docx
 atlcli wiki export <page-id> --format pdf --output ./page.pdf
 atlcli wiki export <page-id> --format pdf --code-theme nord --output ./page.pdf
+atlcli wiki export <page-id> --format pdf --pdf-standard ua-1 --output ./page-ua.pdf
 atlcli wiki export <page-id> --format pdf \
   --template ./brand.wiki-pdf-template --output ./brand-page.pdf
 atlcli wiki export <page-id> --scope tree --output ./handbook.docx
@@ -424,6 +425,12 @@ atlcli pdf-template set --dir ./brand-pdf-template \
 atlcli pdf-template validate ./brand-pdf-template
 atlcli pdf-template pack ./brand-pdf-template \
   --output ./brand.wiki-pdf-template
+
+# Declarative Recipe V2
+atlcli pdf-template explain ./recipe.yaml --json
+atlcli pdf-template validate ./recipe.yaml
+atlcli pdf-template build ./recipe.yaml \
+  --output ./recipe.wiki-pdf-template
 ```
 
 The default import uses Editorial Indigo as a complete baseline and applies no
@@ -432,6 +439,9 @@ and placement decisions. JSON mode is non-interactive and emits one
 `atlcli.pdf-template-result/1` document on stdout; progress is JSONL on stderr.
 See [PDF Template Authoring CLI](/reference/pdf-template-authoring-cli/) for
 all stages, options, schemas, and recovery behavior.
+Recipe V2 pins an installed baseline by exact id, version, Catalog version, and
+digest; `explain` performs no asset I/O. PDF output standards remain a separate
+`wiki export --pdf-standard <standard>` policy.
 
 ## Jira
 

@@ -9,6 +9,11 @@ import type {
   TablePresentation,
 } from "@atlcli/confluence";
 import {
+  validatePdfTemplateDesignV3,
+  type DesignComponentsV3,
+  type WikiPdfTemplateDesignV3,
+} from "@atlcli/template-pack";
+import {
   UNSAFE_LINK_NOTE_CODE,
   computeHeadingOffset,
   formatAdfDateTimestamp,
@@ -26,16 +31,14 @@ import {
   DEFAULT_CODE_THEME,
   resolveCodeTheme,
 } from "@atlcli/code-highlight/registry";
-import {
-  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
-  projectPdfDesignThroughCatalog,
-  projectPdfDesignThroughCatalogV2,
-  readPdfDesignCapability,
-} from "./design-catalog.js";
+import { readPdfDesignCapability } from "./design-catalog.js";
+import { resolvePdfCatalogRuntime } from "./catalog-runtime.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
+import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
 import { resolvePdfFontRequirementsV1 } from "./font-requirements.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import {
   pdfColorContrast,
   pdfTableCellForeground,
@@ -1066,9 +1069,23 @@ interface Writer {
   contrastWarnings: Set<string>;
   /** The ACTIVE template design driving serializer-emitted presentation. */
   catalogDesign: ResolvedPdfDesign;
+  /** Revision-5 semantic component policy; absent keeps revisions 1-4 exact. */
+  componentsV5?: DesignComponentsV3;
   /** BCP-47 locale for semantic inline dates. */
   locale: string;
   comments: PdfCommentRegistry;
+}
+
+function resolveComponentsV5(
+  options: PdfSerializeOptions,
+): DesignComponentsV3 | undefined {
+  const manifest = options.templatePack?.manifest ?? options.templateManifest;
+  if (manifest?.canonicalSource?.revision !== "5" || !manifest.design) {
+    return undefined;
+  }
+  return validatePdfTemplateDesignV3(
+    manifest.design as WikiPdfTemplateDesignV3,
+  ).components;
 }
 
 function serializeDecisionItem(
@@ -1167,6 +1184,23 @@ function shikiRgb(value: string, fallback: string): string {
   return alpha ? alpha[1]!.toUpperCase() : safeColor(raw, fallback);
 }
 
+function softCodeTokenSource(
+  value: string,
+  render: (chunk: string) => string,
+): string {
+  if (![...value].some((_, index) => index >= 24) || /\s/u.test(value)) {
+    return render(value);
+  }
+  const characters = [...value];
+  const chunks: string[] = [];
+  for (let index = 0; index < characters.length; index += 12) {
+    chunks.push(render(characters.slice(index, index + 12).join("")));
+  }
+  // Zero-width weak spacing creates renderer-owned emergency line-break
+  // opportunities without adding extractable characters to the source text.
+  return chunks.join("#h(0 * 1pt, weak: true)");
+}
+
 /**
  * Render the shared Shiki projection without asking Typst to choose syntax
  * colors. Each source line remains a distinct grid row, including trailing
@@ -1178,37 +1212,93 @@ function serializeHighlightedCodeBlock(
 ): string {
   const mono = writer.catalogDesign.typography.fonts.mono;
   const size = writer.catalogDesign.typography.roles.code!.size;
+  const softWrap = writer.componentsV5 !== undefined &&
+    (block.wrap ?? writer.componentsV5.codeBlock.wrap === "soft");
   const firstLineNumber = block.firstLineNumber ?? 1;
+  const showLineNumbers = block.hideLineNumbers === undefined
+    ? writer.componentsV5?.codeBlock.lineNumbers === "show"
+    : block.hideLineNumbers === false;
   const lastLineNumber = firstLineNumber + Math.max(0, block.highlight.lines.length - 1);
   const lineNumberWidth = String(lastLineNumber).length;
   const rows = block.highlight.lines.map((tokens, index) => {
     const spans = tokens.length === 0 || tokens.every((token) => token.text.length === 0)
       ? `#box(height: ${size})[]`
-      : tokens.map((token) =>
-          `#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(
-            shikiRgb(
-              token.color ?? block.highlight.theme.foreground,
-              block.highlight.theme.foreground,
-            ),
-          )}), ${typstString(token.text)})`
-        ).join("");
+      : tokens.map((token) => {
+          const color = shikiRgb(
+            token.color ?? block.highlight.theme.foreground,
+            block.highlight.theme.foreground,
+          );
+          const render = (text: string): string =>
+            `#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(
+              color,
+            )}), ${typstString(text)})`;
+          return softWrap ? softCodeTokenSource(token.text, render) : render(token.text);
+        }).join("");
     const body = `#box(width: 100%)[${spans}]`;
-    if (block.hideLineNumbers !== false) return `[${body}]`;
+    if (!showLineNumbers) return `[${body}]`;
     const number = String(firstLineNumber + index).padStart(lineNumberWidth);
     return `[#grid(columns: (auto, 1fr), column-gutter: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
       `[${`#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}), ${typstString(number)})`}], ` +
       `[${body}])]`;
   });
-  const background = shikiRgb(
-    block.highlight.theme.background,
-    block.highlight.theme.background,
-  );
+  const background = writer.componentsV5?.codeBlock.backgroundColor
+    ? componentColorV5(
+        writer,
+        writer.componentsV5.codeBlock.backgroundColor,
+        "codeBackground",
+      )
+    : shikiRgb(
+        block.highlight.theme.background,
+        block.highlight.theme.background,
+      );
   return (
     `block(width: 100%, fill: rgb(${typstString(background)}), ` +
     `inset: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
     `radius: ${writer.catalogDesign.tokens.layout.codeRadius})[` +
     `#grid(columns: (1fr), row-gutter: ${size} * 0.35, ${rows.join(", ")})]`
   );
+}
+
+function componentColorV5(
+  writer: Writer,
+  token: string | undefined,
+  fallback: string,
+): string {
+  const name = token ?? fallback;
+  const color = writer.catalogDesign.tokens.colors[name];
+  if (color === undefined) {
+    throw new Error(`PDF component policy references missing color token "${name}".`);
+  }
+  return color;
+}
+
+function tableFillSourceV5(
+  writer: Writer,
+  leadingHeaderCount: number,
+): string | undefined {
+  const table = writer.componentsV5?.table;
+  if (!table || table.banding === "none") return undefined;
+  const color = componentColorV5(writer, table.bandColor, "codeBackground");
+  return table.banding === "rows"
+    ? `(x, y) => if y >= ${leadingHeaderCount} and calc.odd(y - ${leadingHeaderCount}) { rgb(${typstString(color)}) } else { none }`
+    : `(x, y) => if calc.odd(x) { rgb(${typstString(color)}) } else { none }`;
+}
+
+function tableStrokeSourceV5(
+  writer: Writer,
+  columnCount: number,
+  rowCount: number,
+): string | undefined {
+  const table = writer.componentsV5?.table;
+  if (!table) return undefined;
+  if (table.borders === "none") return "none";
+  const color = componentColorV5(writer, table.borderColor, "tableStroke");
+  const paint = `rgb(${typstString(color)})`;
+  if (table.borders === "all") return paint;
+  if (table.borders === "horizontal") {
+    return `(x, y) => (top: ${paint}, bottom: ${paint})`;
+  }
+  return `(x, y) => (top: if y == 0 { ${paint} } else { none }, bottom: if y == ${Math.max(0, rowCount - 1)} { ${paint} } else { none }, left: if x == 0 { ${paint} } else { none }, right: if x == ${Math.max(0, columnCount - 1)} { ${paint} } else { none })`;
 }
 
 function serializeBlocks(
@@ -1702,11 +1792,19 @@ function serializeBlock(
           .flatMap((row) => row.cells);
         // `repeat: true` is Typst's default, but pin it explicitly so the golden
         // proves header rows repeat on every page across a break (spec 003 T1.6).
-        rows.push(`table.header(repeat: true, ${headerCells.join(", ")})`);
+        rows.push(
+          `table.header(repeat: ${writer.componentsV5?.table.repeatHeader === false ? "false" : "true"}, ${headerCells.join(", ")})`,
+        );
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
       const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
-      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.catalogDesign.tokens.layout.tableCellInsetY}), stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}),\n${rows.join(",\n")}\n)`;
+      const fillV5 = tableFillSourceV5(writer, leadingHeaderCount);
+      const strokeV5 = tableStrokeSourceV5(
+        writer,
+        columnCount,
+        serializedRows.length,
+      );
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.catalogDesign.tokens.layout.tableCellInsetY}),${fillV5 ? ` fill: ${fillV5},` : ""} stroke: ${strokeV5 ?? `rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)})`},\n${rows.join(",\n")}\n)`;
       // "scaled"/"overflow-warned" render body text at the readability floor
       // (accept wrap/clip over losing content).
       const scaled = layout === "scaled" || layout === "overflow-warned";
@@ -2041,6 +2139,7 @@ export function serializePdfDocument(
     ...(options.templatePack !== undefined ? { templatePack: options.templatePack } : {}),
   });
   const collected = collectHeadingLabels(document.blocks);
+  const componentsV5 = resolveComponentsV5(options);
   const writer: Writer = {
     sourceMap: [],
     notes: [...document.notes],
@@ -2050,10 +2149,10 @@ export function serializePdfDocument(
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
-    catalogDesign:
-      settings.capabilityCatalogDigest === PDF_TEMPLATE_CAPABILITY_DIGEST_V2
-        ? projectPdfDesignThroughCatalogV2(settings.design)
-        : projectPdfDesignThroughCatalog(settings.design),
+    catalogDesign: componentsV5
+      ? settings.design
+      : resolvePdfCatalogRuntime(settings.capabilityCatalog).project(settings.design),
+    ...(componentsV5 === undefined ? {} : { componentsV5 }),
     locale: documentLocale(options.metadata.language, options.metadata.region),
     comments: new PdfCommentRegistry(),
   };
@@ -2127,7 +2226,7 @@ export function serializePdfDocument(
   exporter: ${typstString(meta.exporter ?? author)},
   language: ${typstString(meta.language ?? "en")},
   region: ${meta.region ? typstString(meta.region) : "none"},
-  exported-at: ${typstDate(meta.exportedAt)},
+${meta.direction === undefined ? "" : `  direction: ${meta.direction},\n`}  exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
 ), settings: ${typstSettingsDict(settings, { logoPath: logoAsset?.path })})
 
@@ -2142,11 +2241,21 @@ ${body}${commentAppendix}
     // again per document locale.
     template:
       options.templatePack?.canonicalSource.source ??
-      createAtlcliTypstTemplate(
-        settings.design,
-        settings.labels,
-        settings.templateVisuals
-      ),
+      (options.templateManifest?.canonicalSource?.revision === "5"
+        ? createAtlcliTypstTemplateV5(
+            validatePdfTemplateDesignV3(
+              options.templateManifest.design as WikiPdfTemplateDesignV3,
+              "design",
+              { availableFonts: PDF_RUNTIME_ASSETS.fonts },
+            ),
+            settings.labels,
+            settings.templateVisuals,
+          )
+        : createAtlcliTypstTemplate(
+            settings.design,
+            settings.labels,
+            settings.templateVisuals,
+          )),
     assets: [
       ...document.assets,
       ...(logoAsset ? [logoAsset] : []),

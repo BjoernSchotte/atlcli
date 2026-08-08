@@ -448,6 +448,9 @@ describe.skipIf(!RUN)("wiki export --format pdf (live E2E)", () => {
         });
 
         const design = runtime.manifest.design!;
+        if (!("features" in design)) {
+          throw new Error("Revision-3 fixture unexpectedly resolved a V3 design");
+        }
         const expectedSyntheticPageCount =
           1 +
           Number(design.features.cover.enabled) +

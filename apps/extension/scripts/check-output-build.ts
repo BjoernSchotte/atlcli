@@ -202,6 +202,11 @@ const REQUIRED_PDF_ARTIFACTS = [
     sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f",
   },
   {
+    label: "Noto Sans Arabic Regular",
+    pattern: /(?:^|\/)assets\/NotoSansArabic-Regular-[^/]+\.ttf$/,
+    sha256: "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b",
+  },
+  {
     label: "Noto Sans Symbols 2 Regular",
     pattern: /(?:^|\/)assets\/NotoSansSymbols2-Regular-[^/]+\.ttf$/,
     sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6",

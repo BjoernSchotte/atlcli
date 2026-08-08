@@ -20,6 +20,7 @@ of symbols generated content depends on, and the versioning policy. It is
 ## On this page
 
 - [Prerequisites](#prerequisites)
+- [Authoring and export policy boundaries](#authoring-and-export-policy-boundaries)
 - [The render surface](#the-render-surface)
 - [Required meta keys](#required-meta-keys)
 - [The settings dictionary](#the-settings-dictionary)
@@ -60,6 +61,27 @@ The engine invokes it from the generated `main.typ`:
 
 `settings: (:)` as the default is itself the backward-compatibility guarantee:
 a caller that passes no `settings` keeps compiling unchanged.
+
+## Authoring and export policy boundaries
+
+The stable archive/render API remains `wiki.pdf-template/v1`; authoring recipe
+versions do not change it. Recipe V2 (`wiki.pdf-template-recipe/v2`) resolves an
+exact installed baseline plus sparse overrides into a complete Catalog V3
+manifest and canonical source revision 5 before packing. The resulting archive
+is self-contained and never fetches its baseline at export time.
+
+The three ownership planes are intentionally separate:
+
+| Plane | Owns | Does not own |
+|---|---|---|
+| Recipe and pack | Reusable design, semantic components, paints, relative asset declarations | Tenant metadata, PDF-standard claims, raw Typst |
+| Export request | Document metadata, language/region, requested PDF/A or PDF/UA standard | Reusable brand geometry |
+| Renderer | Catalog/compiler availability, canonical source, output evidence | Author assets or certification claims |
+
+`--pdf-standard` therefore cannot appear in a recipe or pack. Conversely,
+running heads, component styles, and paints cannot be selected through the PDF
+output-policy contract. A successful template compile is evidence that the
+design executes; it is not PDF/A or PDF/UA certification.
 
 ## Required meta keys
 

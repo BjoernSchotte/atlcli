@@ -60,6 +60,7 @@ import { ensurePdfFonts } from "../../../packages/pdf/scripts/ensure-fonts.js";
 import { MemoryOutputSink } from "../src/memory-output.js";
 import { runDocxTemplateIntakeFlow } from "../src/docx-template-intake-flow.js";
 import { buildPdfV4RuntimeFixture } from "../src/pdf-v4-runtime-fixture.js";
+import { buildPdfV5RuntimeFixture } from "../src/pdf-v5-runtime-fixture.js";
 import {
   compareReportProjection,
   compareStructuredParity,
@@ -197,6 +198,35 @@ async function runPdfSettingsCli(compiler: PdfCompilePort): Promise<CliCaseResul
   };
 }
 
+async function runPdfV5Cli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const fixture = await buildPdfV5RuntimeFixture();
+  const output = new MemoryOutputSink();
+  const report = await runPdfExport(
+    {
+      blocks: PDF_SETTINGS_BLOCKS,
+      metadata: PDF_SETTINGS_METADATA,
+      templatePack: fixture.runtime,
+      profile: "tagged",
+      filename: "Catalog V3 Browser Conformance.pdf",
+    },
+    { assets: noAssets, compiler, output, now: deterministicClock() },
+  );
+  const inspection = validatePdfOutput(output.single.bytes);
+  return {
+    compilerVersion: report.compilerVersion,
+    digests: {
+      "runtime-v5.wiki-pdf-template": sha256Hex(fixture.packBytes),
+      "runtime-v5.pdf": sha256Hex(output.single.bytes),
+    },
+    notes: report.notes.map(({ code, level }) => ({ code, level })),
+    parity: {
+      runtimeSnapshot: structuredClone(fixture.runtime.runtimeSnapshot),
+      runtimeInspection: inspection,
+      runtimeReportNotes: report.notes.map(({ code, level }) => ({ code, level })),
+    },
+  };
+}
+
 async function runBlocksCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
   const r = await cliCompile(compiler, BLOCKS_ALL_FIELDS, BLOCKS_METADATA, "Block Model Coverage.pdf");
   return { compilerVersion: r.version, digests: { "blocks.pdf": sha256Hex(r.bytes) }, notes: r.notes };
@@ -288,6 +318,7 @@ async function runDocxTemplateIntakeCli(
  */
 const PARITY_CASES: Record<string, (compiler: PdfCompilePort) => Promise<CliCaseResult>> = {
   "pdf-settings": runPdfSettingsCli,
+  "pdf-v5": runPdfV5Cli,
   "docx-template-intake": runDocxTemplateIntakeCli,
   blocks: runBlocksCli,
   scope: runScopeCli,

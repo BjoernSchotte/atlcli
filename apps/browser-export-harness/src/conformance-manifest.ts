@@ -100,6 +100,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: true,
   },
   {
+    id: "pdf-v5",
+    title: "Catalog V3 / canonical revision 5 PDF runtime",
+    folderTaskIds: ["pdf-template-capabilities-v3/T10"],
+    engines: ["pdf"],
+    mediaPolicy: "none",
+    emitsDigests: true,
+  },
+  {
     id: "docx-template-intake",
     title: "DOCX to PDF template intake",
     folderTaskIds: ["pdf-template-docx-intake/T10"],
@@ -215,6 +223,7 @@ export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf",
   "pdf-job-parity",
   "pdf-settings",
+  "pdf-v5",
   "docx-template-intake",
   "blocks",
   "charts",

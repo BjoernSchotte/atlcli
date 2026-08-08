@@ -8,7 +8,15 @@ import {
   statusDisplayText,
   type AdfAnnotationIdentity,
 } from "@atlcli/confluence";
-import type { TemplateManifest } from "@atlcli/template-pack";
+import type {
+  DesignRunningSlotV3,
+  TemplateManifest,
+  TypographyRoleV3,
+} from "@atlcli/template-pack";
+import type {
+  AnyPdfTemplateManifest,
+  PdfTemplateManifestV5,
+} from "./template-pack.js";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import { PDF_FONT_COVERAGE_V1 } from "./font-coverage.generated.js";
 import { PDF_RUNTIME_ASSETS, type PdfRuntimeFontAsset } from "./runtime-assets.js";
@@ -55,13 +63,29 @@ export interface ResolvedPdfFontRequirementsV1 {
   /** Deterministic active-compiler cache key. */
   key: string;
   assets: readonly ResolvedPdfFontAssetRequirementV1[];
+  /** Stable, text-free diagnostics derived from font metadata and coverage. */
+  diagnostics?: readonly PdfFontDiagnosticV1[];
+}
+
+export type PdfFontDiagnosticCodeV1 =
+  | "PDF_FONT_STYLE_FALLBACK"
+  | "PDF_FONT_STRETCH_FALLBACK"
+  | "PDF_FONT_WEIGHT_FALLBACK"
+  | "PDF_FONT_MISSING_GLYPH";
+
+export interface PdfFontDiagnosticV1 {
+  code: PdfFontDiagnosticCodeV1;
+  severity: "warning";
+  family: string;
+  role: string;
+  requested: string;
 }
 
 export interface ResolvePdfFontRequirementsInputV1 {
   document: PreparedPdfDocument;
   metadata: PdfExportMetadata;
   settings: ResolvedPdfSettings;
-  manifest?: TemplateManifest;
+  manifest?: AnyPdfTemplateManifest;
 }
 
 interface TextDemand {
@@ -223,6 +247,9 @@ export function resolvePdfFontRequirementsV1(
   input: ResolvePdfFontRequirementsInputV1,
 ): ResolvedPdfFontRequirementsV1 {
   const manifest = input.manifest ?? BUILTIN_PDF_TEMPLATE_MANIFEST;
+  const designV5 = manifest.canonicalSource?.revision === "5"
+    ? (manifest as PdfTemplateManifestV5).design
+    : undefined;
   const design = input.settings.design;
   const familyFor = (role: "body" | "heading" | "mono"): string =>
     design.typography.fonts[role];
@@ -234,6 +261,13 @@ export function resolvePdfFontRequirementsV1(
     Map<string, PdfFontRequirementReasonV1>
   >();
   const textDemands: TextDemand[] = [];
+  const diagnostics = new Map<string, PdfFontDiagnosticV1>();
+  const addDiagnostic = (diagnostic: PdfFontDiagnosticV1): void => {
+    diagnostics.set(
+      `${diagnostic.code}:${diagnostic.family}:${diagnostic.role}:${diagnostic.requested}`,
+      diagnostic,
+    );
+  };
 
   const addAsset = (
     asset: PdfRuntimeFontAsset,
@@ -273,12 +307,60 @@ export function resolvePdfFontRequirementsV1(
     inheritedFamily: string,
     reasonKind: PdfFontRequirementReasonKindV1 = "template-role",
   ): string => {
-    const role = design.typography.roles[roleName];
+    const role: TypographyRoleV3 | undefined =
+      designV5?.typography.roles[roleName] ?? design.typography.roles[roleName];
     if (!role) {
       throw new Error(`Resolved PDF template is missing typography role "${roleName}".`);
     }
     const family = role.font ? familyFor(role.font) : inheritedFamily;
-    addFace(family, "normal", weightNumber(role.weight), {
+    const requestedStyle = role.style === "italic" || role.style === "oblique"
+      ? "italic"
+      : "normal";
+    const requestedWeight = weightNumber(role.weight);
+    const familyFaces = PDF_RUNTIME_ASSETS.fonts.filter(
+      (asset) => asset.family === family,
+    );
+    if (
+      role.style === "oblique" ||
+      !familyFaces.some((asset) => asset.style === requestedStyle)
+    ) {
+      addDiagnostic({
+        code: "PDF_FONT_STYLE_FALLBACK",
+        severity: "warning",
+        family,
+        role: roleName,
+        requested: role.style ?? "normal",
+      });
+    }
+    if (!familyFaces.some(
+      (asset) => asset.style === requestedStyle && (
+        asset.weight === requestedWeight ||
+        asset.axes?.some(
+          (axis) =>
+            axis.tag === "wght" &&
+            requestedWeight >= axis.min &&
+            requestedWeight <= axis.max,
+        ) === true
+      )
+    )) {
+      addDiagnostic({
+        code: "PDF_FONT_WEIGHT_FALLBACK",
+        severity: "warning",
+        family,
+        role: roleName,
+        requested: String(requestedWeight),
+      });
+    }
+    if (role.stretch !== undefined && role.stretch !== "normal") {
+      addDiagnostic({
+        code: "PDF_FONT_STRETCH_FALLBACK",
+        severity: "warning",
+        family,
+        role: roleName,
+        requested: role.stretch,
+      });
+    }
+    addFace(family, requestedStyle, requestedWeight, {
       kind: reasonKind,
       detail: roleName,
     });
@@ -287,31 +369,115 @@ export function resolvePdfFontRequirementsV1(
 
   // Renderer-owned page furniture. These facts are reachable even when the
   // document body is empty, and therefore cannot come from a block-kind scan.
+  addRole("body", bodyFamily);
   addText(input.metadata.title, bodyFamily, "normal", 400, {
     kind: "template-role",
     detail: "body",
   });
-  addFace(headingFamily, "normal", 400, {
-    kind: "renderer-synthetic",
-    detail: "page-furniture",
-  });
-  addRole("runningHead", headingFamily);
-  addText(input.settings.headerText ?? input.metadata.title, headingFamily, "normal", 400, {
-    kind: "renderer-synthetic",
-    detail: "running-header",
-  });
-  addText(
-    input.settings.footerText ?? input.settings.organizationName ?? "1",
-    headingFamily,
-    "normal",
-    400,
-    { kind: "renderer-synthetic", detail: "running-footer" },
-  );
+  if (designV5) {
+    const regions = designV5.compositions.running;
+    if (regions.header.enabled || regions.footer.enabled) {
+      addFace(headingFamily, "normal", 400, {
+        kind: "renderer-synthetic",
+        detail: "page-furniture",
+      });
+      addRole("runningHead", headingFamily);
+    }
+    const slotValue = (slot: DesignRunningSlotV3): string | undefined => {
+      switch (slot.field) {
+        case "documentTitle":
+        case "chapterTitle":
+          return input.metadata.title;
+        case "spaceName":
+        case "spaceKey":
+          return input.metadata.space ?? "Confluence";
+        case "organizationName":
+          return input.settings.organizationName;
+        case "version":
+          return input.metadata.version === undefined
+            ? "—"
+            : `v${input.metadata.version}`;
+        case "exportDate":
+          return exportedDateLabel(input.metadata);
+        case "classification":
+          return undefined;
+        case "literal":
+          return slot.value;
+        case "pageNumber":
+          if (!designV5.navigation.pageNumbers.enabled) return undefined;
+          return slot.numbering === "current-of-total" ? "1 / 1" : "1";
+      }
+    };
+    for (const [regionName, region] of Object.entries(regions)) {
+      if (!region.enabled) continue;
+      const variants = [
+        ["first", region.first],
+        ["odd", region.odd],
+        ["even", region.even],
+      ] as const;
+      for (const [variantName, variant] of variants) {
+        if (variant === "hide") continue;
+        for (const [position, slot] of Object.entries(variant)) {
+          if (!slot) continue;
+          const value = slotValue(slot);
+          if (value === undefined) continue;
+          addText(value, headingFamily, "normal", 400, {
+            kind: "renderer-synthetic",
+            detail: `running-${regionName}-${variantName}-${position}-${slot.field}`,
+          });
+        }
+      }
+    }
+    if (designV5.navigation.contents.enabled) {
+      const outlineLeader = designV5.navigation.contents.leader ??
+        designV5.components.outline.leader;
+      if (outlineLeader === "dots") {
+        addText("…", headingFamily, "normal", 400, {
+          kind: "renderer-synthetic",
+          detail: "outline-leader",
+        });
+      }
+      const outlinePages = designV5.navigation.contents.pageNumbers ??
+        designV5.components.outline.pageNumbers;
+      if (outlinePages === "show" && designV5.navigation.pageNumbers.enabled) {
+        addText("1", headingFamily, "normal", 400, {
+          kind: "renderer-synthetic",
+          detail: "outline-page-number",
+        });
+      }
+    }
+    if (designV5.navigation.headingNumbers.enabled) {
+      addRole("numbering", headingFamily);
+      addText("1.a.i.", headingFamily, "normal", 600, {
+        kind: "renderer-synthetic",
+        detail: "heading-numbering",
+      });
+    }
+  } else {
+    addFace(headingFamily, "normal", 400, {
+      kind: "renderer-synthetic",
+      detail: "page-furniture",
+    });
+    addRole("runningHead", headingFamily);
+    addText(input.settings.headerText ?? input.metadata.title, headingFamily, "normal", 400, {
+      kind: "renderer-synthetic",
+      detail: "running-header",
+    });
+    addText(
+      input.settings.footerText ?? input.settings.organizationName ?? "1",
+      headingFamily,
+      "normal",
+      400,
+      { kind: "renderer-synthetic", detail: "running-footer" },
+    );
+  }
 
   if (input.settings.cover) {
     addRole("coverEyebrow", headingFamily);
     const coverTitleFamily = addRole("coverTitle", bodyFamily);
-    const typeCut = design.compositions?.cover.kind === "type-cut";
+    const typeCut =
+      (designV5?.compositions.cover ?? design.compositions?.cover)?.kind ===
+      "type-cut";
     const compactFamily = typeCut
       ? addRole("coverTitleCompact", bodyFamily)
       : undefined;
@@ -348,8 +514,8 @@ export function resolvePdfFontRequirementsV1(
     );
   }
 
-  const closing = design.compositions?.closingPage;
-  const closingEnabled = closing === undefined || design.features.closingPage.enabled;
+  const closing = designV5?.compositions.closingPage ?? design.compositions?.closingPage;
+  const closingEnabled = designV5 !== undefined || closing === undefined || design.features.closingPage.enabled;
   if (closingEnabled && closing?.kind === "brand-lockup") {
     if (closing.website === "show") {
       const family = addRole("closingWebsite", headingFamily);
@@ -526,6 +692,17 @@ export function resolvePdfFontRequirementsV1(
             });
           }
           walkCaption(block.caption);
+          if (
+            designV5 &&
+            (block.hideLineNumbers === undefined
+              ? designV5.components.codeBlock.lineNumbers === "show"
+              : block.hideLineNumbers === false)
+          ) {
+            addText("0123456789", monoFamily, "normal", 400, {
+              kind: "renderer-synthetic",
+              detail: `${path}:code-line-numbers`,
+            });
+          }
           break;
         case "diagram":
           if (block.title) {
@@ -538,7 +715,7 @@ export function resolvePdfFontRequirementsV1(
           break;
         case "callout": {
           const icon = resolveCalloutIcon(block);
-          if (icon) {
+          if (icon && designV5?.components.callout.icon !== "hide") {
             addText(
               icon.source === "explicit" ? icon.text : icon.icon.symbol,
               headingFamily,
@@ -566,9 +743,22 @@ export function resolvePdfFontRequirementsV1(
           walkBlocks(block.content, inheritedFamily, path);
           break;
         case "list":
-          if (block.ordered) addRole("numbering", headingFamily);
+          if (block.ordered) {
+            addRole("numbering", headingFamily);
+            if (designV5) {
+              addText("1.a.i.", headingFamily, "normal", 600, {
+                kind: "renderer-synthetic",
+                detail: `${path}:enumeration-markers`,
+              });
+            }
+          }
           else {
-            addText("—•◦", headingFamily, "normal", 400, {
+            const markers = designV5?.components.list.bulletPreset === "compact"
+              ? "•"
+              : designV5?.components.list.bulletPreset === "dash"
+                ? "—"
+                : "—•◦";
+            addText(markers, headingFamily, "normal", 400, {
               kind: "renderer-synthetic",
               detail: `${path}:list-markers`,
             });
@@ -675,10 +865,15 @@ export function resolvePdfFontRequirementsV1(
     PDF_RUNTIME_ASSETS.fonts.filter(
       (asset) =>
         reasonsByAsset.has(asset.assetId) &&
+        asset.family !== "Noto Sans Arabic" &&
         asset.family !== "Noto Sans Symbols2" &&
         asset.family !== "Noto Emoji",
     );
-  const fallbackOrder = ["Noto Sans Symbols2", "Noto Emoji"] as const;
+  const fallbackOrder = [
+    "Noto Sans Arabic",
+    "Noto Sans Symbols2",
+    "Noto Emoji",
+  ] as const;
   for (const demand of textDemands) {
     const primary = selectedPrimary().filter(
       (asset) => asset.family === demand.family,
@@ -694,12 +889,26 @@ export function resolvePdfFontRequirementsV1(
         if (!fallback) continue;
         addAsset(fallback, {
           kind: "fallback",
-          detail:
-            fallbackFamily === "Noto Emoji"
-              ? "unicode-emoji"
+          detail: fallbackFamily === "Noto Emoji"
+            ? "unicode-emoji"
+            : fallbackFamily === "Noto Sans Arabic"
+              ? "unicode-arabic"
               : "unicode-symbol",
         });
         break;
+      }
+      if (!fallbackOrder.some((fallbackFamily) =>
+        PDF_RUNTIME_ASSETS.fonts.some(
+          (asset) => asset.family === fallbackFamily && covers(asset, codePoint),
+        )
+      )) {
+        addDiagnostic({
+          code: "PDF_FONT_MISSING_GLYPH",
+          severity: "warning",
+          family: demand.family,
+          role: demand.reason.detail,
+          requested: `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`,
+        });
       }
     }
   }
@@ -725,6 +934,11 @@ export function resolvePdfFontRequirementsV1(
       .map((asset) => `${asset.assetId}@${asset.sha256}`)
       .join("|"),
     assets,
+    diagnostics: [...diagnostics.values()].sort((left, right) =>
+      `${left.code}:${left.family}:${left.role}:${left.requested}`.localeCompare(
+        `${right.code}:${right.family}:${right.role}:${right.requested}`,
+      )
+    ),
   };
 }
 
@@ -754,6 +968,7 @@ export function resolveFullPdfFontRequirementsV1(
       .map((asset) => `${asset.assetId}@${asset.sha256}`)
       .join("|"),
     assets,
+    diagnostics: [],
   };
 }
 
@@ -774,7 +989,22 @@ export function assertResolvedPdfFontRequirementsV1(
     typeof value.template.version !== "string" ||
     value.template.version === "" ||
     typeof value.key !== "string" ||
-    !Array.isArray(value.assets)
+    !Array.isArray(value.assets) ||
+    (value.diagnostics !== undefined && (!Array.isArray(value.diagnostics) ||
+    value.diagnostics.some(
+      (diagnostic) =>
+        !isRecord(diagnostic) ||
+        ![
+          "PDF_FONT_STYLE_FALLBACK",
+          "PDF_FONT_STRETCH_FALLBACK",
+          "PDF_FONT_WEIGHT_FALLBACK",
+          "PDF_FONT_MISSING_GLYPH",
+        ].includes(String(diagnostic.code)) ||
+        diagnostic.severity !== "warning" ||
+        typeof diagnostic.family !== "string" ||
+        typeof diagnostic.role !== "string" ||
+        typeof diagnostic.requested !== "string",
+    )))
   ) {
     throw new Error("Malformed PDF font-requirement contract.");
   }

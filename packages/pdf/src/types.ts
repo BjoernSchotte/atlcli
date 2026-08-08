@@ -11,8 +11,10 @@ import type {
   TableCell,
   TableRow,
 } from "@atlcli/confluence";
-import type { TemplateManifest } from "@atlcli/template-pack";
-import type { ValidatedPdfTemplatePackV1 } from "./template-pack.js";
+import type {
+  AnyPdfTemplateManifest,
+  ValidatedPdfTemplatePackV1,
+} from "./template-pack.js";
 import type { ResolvedPdfFontRequirementsV1 } from "./font-requirements.js";
 import type { HighlightedCode } from "@atlcli/code-highlight/contract";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
@@ -25,6 +27,8 @@ export interface PdfExportMetadata {
   exporter?: string;
   language?: string;
   region?: string;
+  /** Resolved document direction from source/export metadata, never template locale. */
+  direction?: "ltr" | "rtl";
   exportedAt: Date;
 }
 
@@ -202,6 +206,10 @@ export interface PdfSourceBundle {
   fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
+/**
+ * @deprecated Legacy rendering/report label. It does not request PDF/UA
+ * conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
+ */
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 export type PdfTableCellTextMode = "auto" | "source";
@@ -306,7 +314,7 @@ export interface PdfSerializeOptions {
    * — only this manifest differs. Host UI for selecting a template is folder
    * 010's job; this field is the data seam it drives.
    */
-  templateManifest?: TemplateManifest;
+  templateManifest?: AnyPdfTemplateManifest;
   /**
    * Explicit image-quality request (issue #118 Phase 1), applied here ONLY
    * to the template logo — the fourth asset source, which bypasses
@@ -339,6 +347,10 @@ export interface PdfExportReport {
   codeTheme: CodeThemeId;
   filename: string;
   profile: PdfProfile;
+  /** Explicit achieved-by-compiler standard request; absent is legacy tagged output. */
+  outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+  /** Standard evidence inspected from the emitted compiler bytes. */
+  outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
   compilerVersion: string;
   pageCount?: number;
   embeddedImages: number;

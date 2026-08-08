@@ -13,6 +13,7 @@ import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
 import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
 import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
+import arabicRegularUrl from "@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf?url";
 import sansLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Source-Sans-3.txt?url&no-inline";
 import serifLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Source-Serif-4.txt?url&no-inline";
 import codeLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Source-Code-Pro.txt?url&no-inline";
@@ -55,6 +56,7 @@ const fontUrls = new Map<string, string>([
   ["SourceSerif4-Bold.ttf", serifBoldUrl],
   ["SourceCodePro-Regular.ttf", codeRegularUrl],
   ["SourceCodePro-Bold.ttf", codeBoldUrl],
+  ["NotoSansArabic-Regular.ttf", arabicRegularUrl],
   ["NotoSansSymbols2-Regular.ttf", symbolsRegularUrl],
   ["NotoEmoji-wght.ttf", emojiRegularUrl],
 ]);
@@ -114,7 +116,9 @@ async function compileJob(jobId: string): Promise<PdfWorkerResponse> {
       throw new Error("PDF job is missing, cancelled, or no longer ready to compile.");
     }
     const compiler = await getCompiler();
-    const result = await compiler.compile(claimed.bundle);
+    const result = await compiler.compile(claimed.bundle, {
+      ...(claimed.outputPolicy ? { outputPolicy: claimed.outputPolicy } : {}),
+    });
     if (!result.pdf) {
       const error = formatPdfCompilerDiagnostics(result.diagnostics);
       await failPdfJob(jobId, error, result.diagnostics);

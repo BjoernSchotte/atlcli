@@ -179,6 +179,9 @@ export function extensionPdfCompilePort(options: ExtensionPdfCompilePortOptions)
           ...(options.title === undefined ? {} : { title: options.title }),
           ...(options.filename === undefined ? {} : { filename: options.filename }),
           ...(options.scopeLabel === undefined ? {} : { scopeLabel: options.scopeLabel }),
+          ...(context.outputPolicy === undefined
+            ? {}
+            : { outputPolicy: context.outputPolicy }),
         });
         stored = true;
         options.onJobCreated?.(jobId);

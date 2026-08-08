@@ -10,6 +10,7 @@ import {
   type TemplateAssetDescriptorV1,
   type TemplateAssetReferenceV1,
   type WikiPdfTemplateDesignV1,
+  type WikiPdfTemplateDesignV3,
   type WikiPdfTemplateImageDecorationV1,
   type WikiPdfTemplatePageDecorationV1,
 } from "@atlcli/template-pack";
@@ -133,21 +134,29 @@ export async function validatePdfTemplateAssetPreflight(
 }
 
 function pageDimensions(
-  design: WikiPdfTemplateDesignV1
+  design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3
 ): { width: string; height: string } {
   const page = design.page;
-  const base =
-    page?.size === "letter"
-      ? ([215.9, 279.4] as const)
-      : ([210, 297] as const);
+  const base: readonly [string | number, string | number] = "size" in page
+    ? page.size === "letter"
+      ? [215.9, 279.4]
+      : [210, 297]
+    : page.format.kind === "preset"
+      ? page.format.name === "letter"
+        ? [215.9, 279.4]
+        : [210, 297]
+      : [page.format.width, page.format.height];
   const [width, height] =
     page?.orientation === "landscape" ? [base[1], base[0]] : base;
-  return { width: `${width}mm`, height: `${height}mm` };
+  return {
+    width: typeof width === "number" ? `${width}mm` : width,
+    height: typeof height === "number" ? `${height}mm` : height,
+  };
 }
 
 function defaultDecoration(
   asset: TemplateRuntimeAssetV1,
-  design: WikiPdfTemplateDesignV1
+  design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3
 ): WikiPdfTemplateImageDecorationV1 | undefined {
   const page = pageDimensions(design);
   const common = {
@@ -220,7 +229,7 @@ function defaultDecoration(
 
 function decorationFor(
   asset: TemplateRuntimeAssetV1,
-  design: WikiPdfTemplateDesignV1
+  design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3
 ): WikiPdfTemplateImageDecorationV1 | undefined {
   if (asset.slot === "asset.logo") return undefined;
   const fallback = defaultDecoration(asset, design);
@@ -254,7 +263,7 @@ export interface PdfTemplateAssetFieldsV1 {
 
 export function materializePdfTemplateAssetFields(
   assets: readonly TemplateRuntimeAssetV1[],
-  design: WikiPdfTemplateDesignV1,
+  design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3,
   identity: PdfTemplateAssetIdentityV1
 ): PdfTemplateAssetFieldsV1 {
   const descriptors: Record<string, TemplateAssetDescriptorV1> = {};
