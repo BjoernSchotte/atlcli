@@ -159,7 +159,7 @@ describe("Chat groundedness quality boundary", () => {
       criticDefects: [{
         defectId: "chat-defect:minor-wording",
         code: "question-not-answered",
-        severity: "minor",
+        severity: "advisory",
         sourceIds: ["wiki:1001"],
         repairAction: "resynthesize",
         message: "The provisional wording needs a small answer-focus correction.",

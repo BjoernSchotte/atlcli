@@ -142,6 +142,26 @@ describe("Anthropic Chat model binding", () => {
       thinking: { type: "disabled" },
       outputConfig: { effort: "low" },
     });
+    expect(deep.modelForRoute?.({
+      role: "critique",
+      preference: "balanced",
+    })).toMatchObject({
+      effectiveModelId: "claude-sonnet-4-6",
+      requestedPreference: "balanced",
+      effectivePreference: "balanced",
+      thinkingMode: "adaptive-summary",
+      finalizationCorridor: "standard",
+    });
+    expect(deep.modelForRoute?.({
+      role: "synthesis",
+      preference: "thorough",
+    })).toMatchObject({
+      effectiveModelId: "claude-sonnet-4-6",
+      requestedPreference: "thorough",
+      effectivePreference: "fast",
+      thinkingMode: "disabled",
+      finalizationCorridor: "finalize-only",
+    });
     expect(deep.projectResponseSchema?.({
       type: "object",
       properties: {

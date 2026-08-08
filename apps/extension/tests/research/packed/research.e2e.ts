@@ -6249,6 +6249,38 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
       canonicalUrlCorrectness: 1,
       atlassianHttpCalls: 1,
     });
+    expect(complex.report.run.modelRouting).toMatchObject({
+      effectiveModelIds: ["claude-sonnet-4-6"],
+      callsByRoute: mode === "quick"
+        ? { "root-planning": expect.any(Number) }
+        : expect.objectContaining({
+            "root-planning": expect.any(Number),
+            extraction: expect.any(Number),
+            analysis: expect.any(Number),
+            drafting: expect.any(Number),
+            critique: expect.any(Number),
+            synthesis: expect.any(Number),
+          }),
+      callsByEffectivePreference: expect.objectContaining({ fast: expect.any(Number) }),
+      callsByThinkingMode: expect.objectContaining({ disabled: expect.any(Number) }),
+      callsByFinalizationCorridor: expect.objectContaining({ standard: expect.any(Number) }),
+    });
+    if (mode !== "quick") {
+      expect(complex.report.run.modelRouting).toMatchObject({
+        callsByEffectivePreference: expect.objectContaining({
+          balanced: expect.any(Number),
+          fast: expect.any(Number),
+        }),
+        callsByThinkingMode: expect.objectContaining({
+          "adaptive-summary": expect.any(Number),
+          disabled: expect.any(Number),
+        }),
+        callsByFinalizationCorridor: expect.objectContaining({
+          standard: expect.any(Number),
+          "finalize-only": expect.any(Number),
+        }),
+      });
+    }
     // Agentic exact-context Chat uses strategy, proposal, one direct evidence
     // extraction, host strategy review, and host quality review.
     expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 5);

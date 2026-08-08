@@ -38,6 +38,10 @@ function observation(input: Partial<ResearchModelCallObservationV1> = {}): Resea
     wave: 1,
     attempt: 1,
     preference: "balanced",
+    routeRole: "analysis",
+    effectivePreference: "balanced",
+    thinkingMode: "adaptive-summary",
+    finalizationCorridor: "standard",
     requestBytes: {
       systemBytes: 100,
       messageBytes: 200,
@@ -98,6 +102,11 @@ describe("Deep Chat performance ratchet", () => {
       callsByRole: { subagent: 2, root: 1 },
       callsByProfile: { "comparison-analyst": 1, "contradiction-analyst": 1 },
       callsByPhase: { analysis: 2 },
+      callsByEffectiveModel: { "synthetic-model": 3 },
+      callsByRoute: { analysis: 3 },
+      callsByEffectivePreference: { balanced: 3 },
+      callsByThinkingMode: { "adaptive-summary": 3 },
+      callsByFinalizationCorridor: { standard: 3 },
     });
     expect(JSON.stringify(value)).not.toContain("prompt");
     expect(JSON.stringify(value)).not.toContain("source");

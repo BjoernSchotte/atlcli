@@ -17,6 +17,7 @@ import { DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY } from "../dispatch-adapter.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
 import { navigateConfluenceStorageV1 } from "../document-navigation.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
+import type { ChatModelRouteRequestV1, ChatModelRouteV1 } from "./model.js";
 import type { ChatWorkflowDispatchV1 } from "./workflow.js";
 import {
   providerCompatibleChatJsonSchemaV1,
@@ -305,6 +306,7 @@ function createHarness(input: {
   beforeSynthesis?: () => void;
   modelForPreference?: (preference: "fast" | "balanced" | "thorough") => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
+  modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
   promptCache?: { ttl: "5m" | "1h" };
   structuredOutput?: "native" | "tool";
   projectResponseSchema?: (
@@ -382,6 +384,7 @@ function createHarness(input: {
     ...(input.modelForFinalization
       ? { modelForFinalization: input.modelForFinalization }
       : {}),
+    ...(input.modelForRoute ? { modelForRoute: input.modelForRoute } : {}),
     ...(input.promptCache ? { promptCache: input.promptCache } : {}),
     structuredOutput: input.structuredOutput ?? "tool",
     ...(input.projectResponseSchema
@@ -922,7 +925,7 @@ describe("Chat agentic workflow runtime", () => {
     })).toBe(2_048);
   });
 
-  test("prefers a provider finalize-only binding for the terminal synthesizer", () => {
+  test("makes the bounded drafting, repair, and synthesis corridor explicit", () => {
     const thorough = { preference: "thorough" } as unknown as BaseChatModel;
     const finalizer = { preference: "finalize-only" } as unknown as BaseChatModel;
     const harness = createHarness({
@@ -940,6 +943,37 @@ describe("Chat agentic workflow runtime", () => {
     expect(harness.compiledSubagents.find((entry) =>
       entry.name === "chat-answer-drafter-v1"
     )?.model).toBe(finalizer);
+  });
+
+  test("routes every profile through an explicit provider-neutral role contract", () => {
+    const routed = new Map<string, BaseChatModel>();
+    const requests: ChatModelRouteRequestV1[] = [];
+    const harness = createHarness({
+      modelForRoute: (request) => {
+        requests.push(request);
+        const key = `${request.role}:${request.preference}`;
+        const model = routed.get(key) ??
+          ({ route: key } as unknown as BaseChatModel);
+        routed.set(key, model);
+        return {
+          model,
+          effectiveModelId: "synthetic-route-model",
+          requestedPreference: request.preference,
+          effectivePreference: request.preference,
+          thinkingMode: "provider-default",
+          finalizationCorridor: request.role === "synthesis" ? "finalize-only" : "standard",
+        };
+      },
+    });
+    const byName = new Map(harness.compiledSubagents.map((entry) => [entry.name, entry.model]));
+
+    expect(byName.get("chat-exact-context-reader-v1")).toBe(routed.get("extraction:fast"));
+    expect(byName.get("chat-comparison-analyst-v1")).toBe(routed.get("analysis:balanced"));
+    expect(byName.get("chat-answer-drafter-v1")).toBe(routed.get("drafting:balanced"));
+    expect(byName.get("chat-answer-critic-v1")).toBe(routed.get("critique:balanced"));
+    expect(byName.get("chat-answer-repairer-v1")).toBe(routed.get("repair:balanced"));
+    expect(byName.get("chat-synthesizer-v1")).toBe(routed.get("synthesis:thorough"));
+    expect(requests).toContainEqual({ role: "synthesis", preference: "thorough" });
   });
 
   test("streams body-free child eval lifecycle and terminates a looping ninth reader eval", async () => {
@@ -2810,8 +2844,20 @@ describe("Chat agentic workflow runtime", () => {
       Number(!draft.messageMarkdown.includes("according to the wrong source")) +
       Number(draft.messageMarkdown.includes("does not establish")) +
       Number(draft.gaps.some((gap) => gap.code === "unresolved-reference"));
+    const lowerQualityFinalizer = { id: "lower-quality-finalizer" } as unknown as BaseChatModel;
+    const ordinaryModel = { id: "ordinary-model" } as unknown as BaseChatModel;
     const harness = createHarness({
       withRetrievalAssessment: true,
+      modelForRoute: (request) => ({
+        model: request.role === "synthesis" ? lowerQualityFinalizer : ordinaryModel,
+        effectiveModelId: request.role === "synthesis"
+          ? "lower-quality-finalizer"
+          : "ordinary-model",
+        requestedPreference: request.preference,
+        effectivePreference: request.preference,
+        thinkingMode: "provider-default",
+        finalizationCorridor: request.role === "synthesis" ? "finalize-only" : "standard",
+      }),
       async invoke(taskInput) {
         invoked.push(taskInput.subagent_type);
         seenDescriptions.set(taskInput.subagent_type, taskInput.description);
@@ -2850,6 +2896,9 @@ describe("Chat agentic workflow runtime", () => {
       }]),
       maxConcurrency: 1,
     }));
+    expect(harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-synthesizer-v1"
+    )?.model).toBe(lowerQualityFinalizer);
     const initial = new Map<string, ChatWorkflowDispatchV1>(
       proposal.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
     );

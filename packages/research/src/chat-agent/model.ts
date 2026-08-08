@@ -5,6 +5,41 @@ import type {
   ProviderReasoningPreferenceV1,
 } from "../quality-policy.js";
 
+export type ChatModelRouteRoleV1 =
+  | "root-planning"
+  | "extraction"
+  | "analysis"
+  | "drafting"
+  | "critique"
+  | "repair"
+  | "synthesis";
+
+export type ChatModelThinkingModeV1 =
+  | "provider-default"
+  | "disabled"
+  | "adaptive-summary";
+
+export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
+
+export interface ChatModelRouteRequestV1 {
+  role: ChatModelRouteRoleV1;
+  preference: ProviderReasoningPreferenceV1;
+}
+
+/**
+ * Provider-neutral result of a host-owned role route. The selected model may
+ * be the binding's only model; metadata remains explicit so telemetry never
+ * confuses the requested quality preference with the effective provider path.
+ */
+export interface ChatModelRouteV1 {
+  model: BaseChatModel;
+  effectiveModelId: string;
+  requestedPreference: ProviderReasoningPreferenceV1;
+  effectivePreference: ProviderReasoningPreferenceV1;
+  thinkingMode: ChatModelThinkingModeV1;
+  finalizationCorridor: ChatModelFinalizationCorridorV1;
+}
+
 export interface ChatModelBindingV1 {
   model: BaseChatModel;
   modelId: string;
@@ -16,6 +51,11 @@ export interface ChatModelBindingV1 {
   promptCache?: {
     ttl: "5m" | "1h";
   };
+  /**
+   * Explicit role-to-capability route. It may return the same model for every
+   * role; routing metadata cannot grant tools, scope, or workflow authority.
+   */
+  modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
   /**
    * Provider-neutral role selection for bounded Chat children. The host owns
    * the preference; adapters may map it to effort, another model, or the same
@@ -36,6 +76,27 @@ export interface ChatModelBindingV1 {
   ) => {
     type: "object";
     [key: string]: unknown;
+  };
+}
+
+export function resolveChatModelRouteV1(
+  binding: ChatModelBindingV1,
+  request: ChatModelRouteRequestV1,
+): ChatModelRouteV1 {
+  const routed = binding.modelForRoute?.(request);
+  if (routed) return routed;
+  const finalizeOnly = ["drafting", "repair", "synthesis"].includes(request.role) &&
+    binding.modelForFinalization !== undefined;
+  const model = finalizeOnly
+    ? binding.modelForFinalization!()
+    : binding.modelForPreference?.(request.preference) ?? binding.model;
+  return {
+    model,
+    effectiveModelId: binding.modelId,
+    requestedPreference: request.preference,
+    effectivePreference: finalizeOnly ? "fast" : request.preference,
+    thinkingMode: "provider-default",
+    finalizationCorridor: finalizeOnly ? "finalize-only" : "standard",
   };
 }
 

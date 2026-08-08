@@ -10,6 +10,11 @@ import {
   type ResearchModelRequestBytesV1,
 } from "./budget.js";
 import { ResearchContractError } from "./contracts.js";
+import type {
+  ChatModelFinalizationCorridorV1,
+  ChatModelRouteRoleV1,
+  ChatModelThinkingModeV1,
+} from "./chat-agent/model.js";
 
 export type ResearchModelCallRoleV1 =
   | "root"
@@ -33,6 +38,10 @@ export interface ResearchModelCallObservationV1 {
   attempt?: number;
   recoveryReason?: string;
   preference?: "fast" | "balanced" | "thorough";
+  routeRole?: ChatModelRouteRoleV1;
+  effectivePreference?: "fast" | "balanced" | "thorough";
+  thinkingMode?: ChatModelThinkingModeV1;
+  finalizationCorridor?: ChatModelFinalizationCorridorV1;
   requestBytes: ResearchModelRequestBytesV1;
   reservation: {
     inputTokens: number;
@@ -50,6 +59,10 @@ export interface ResearchModelCallObservationContextV1 {
   attempt?: number;
   recoveryReason?: string;
   preference?: "fast" | "balanced" | "thorough";
+  routeRole?: ChatModelRouteRoleV1;
+  effectivePreference?: "fast" | "balanced" | "thorough";
+  thinkingMode?: ChatModelThinkingModeV1;
+  finalizationCorridor?: ChatModelFinalizationCorridorV1;
 }
 
 function safeDiagnosticLabel(value: unknown, fallback: string): string {
@@ -75,6 +88,7 @@ export function parseResearchModelCallObservationV1(
   const allowed = new Set([
     "schema", "sequence", "role", "status", "durationMs", "middlewareName", "modelName",
     "modelId", "profileId", "phase", "wave", "attempt", "recoveryReason", "preference",
+    "routeRole", "effectivePreference", "thinkingMode", "finalizationCorridor",
     "requestBytes", "reservation", "observedUsage",
   ]);
   const required = [
@@ -97,6 +111,23 @@ export function parseResearchModelCallObservationV1(
   }
   if (record.preference !== undefined &&
       !["fast", "balanced", "thorough"].includes(String(record.preference))) {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  if (record.routeRole !== undefined &&
+      !["root-planning", "extraction", "analysis", "drafting", "critique", "repair", "synthesis"]
+        .includes(String(record.routeRole))) {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  if (record.effectivePreference !== undefined &&
+      !["fast", "balanced", "thorough"].includes(String(record.effectivePreference))) {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  if (record.thinkingMode !== undefined &&
+      !["provider-default", "disabled", "adaptive-summary"].includes(String(record.thinkingMode))) {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  if (record.finalizationCorridor !== undefined &&
+      !["standard", "finalize-only"].includes(String(record.finalizationCorridor))) {
     throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
   }
   const requestBytes = record.requestBytes as Record<string, unknown>;
@@ -125,6 +156,18 @@ export function parseResearchModelCallObservationV1(
     ...(record.preference === undefined
       ? {}
       : { preference: record.preference as ResearchModelCallObservationV1["preference"] }),
+    ...(record.routeRole === undefined
+      ? {}
+      : { routeRole: record.routeRole as ChatModelRouteRoleV1 }),
+    ...(record.effectivePreference === undefined
+      ? {}
+      : { effectivePreference: record.effectivePreference as ResearchModelCallObservationV1["effectivePreference"] }),
+    ...(record.thinkingMode === undefined
+      ? {}
+      : { thinkingMode: record.thinkingMode as ChatModelThinkingModeV1 }),
+    ...(record.finalizationCorridor === undefined
+      ? {}
+      : { finalizationCorridor: record.finalizationCorridor as ChatModelFinalizationCorridorV1 }),
     requestBytes: {
       systemBytes: observationInteger(requestBytes.systemBytes, "Observation system bytes"),
       messageBytes: observationInteger(requestBytes.messageBytes, "Observation message bytes"),
@@ -231,6 +274,14 @@ export function createResearchModelBudgetMiddlewareV1(
             ? { recoveryReason: safeDiagnosticLabel(context.recoveryReason, "unspecified") }
             : {}),
           ...(context.preference ? { preference: context.preference } : {}),
+          ...(context.routeRole ? { routeRole: context.routeRole } : {}),
+          ...(context.effectivePreference
+            ? { effectivePreference: context.effectivePreference }
+            : {}),
+          ...(context.thinkingMode ? { thinkingMode: context.thinkingMode } : {}),
+          ...(context.finalizationCorridor
+            ? { finalizationCorridor: context.finalizationCorridor }
+            : {}),
           requestBytes,
           reservation: {
             inputTokens: reservation.inputTokens,

@@ -519,9 +519,9 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
       ...CHAT_AGENT_DRAFT_JSON_SCHEMA_V2,
       title: "ChatAnswerDraftV2",
     }),
-    // Final synthesis needs enough output room for adaptive-thinking tokens
-    // plus the bounded conversational Markdown. Other balanced specialists
-    // remain smaller; only this terminal packet uses the thorough binding.
+    // The host requests thorough synthesis quality. A provider adapter may
+    // explicitly map this role to a bounded finalize-only corridor after the
+    // independent analysis and critique, and must report that effective route.
     modelPreference: "thorough",
     maxInputChars: 32_000,
     maxResultBytes: 32_000,

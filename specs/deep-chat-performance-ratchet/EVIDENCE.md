@@ -263,3 +263,53 @@ and the research privacy scan remained green. The full repository gate then
 passed 7,003 tests with 15 intentional skips and zero failures using a
 resource-capped two-test concurrency outside the local-port sandbox. No private
 question, source, answer, URL, identifier, trace, or receipt is recorded here.
+
+## T6 explicit provider-neutral model routing
+
+Chat model selection is now an explicit host-owned role contract for root
+planning, extraction, analysis, drafting, critique, repair, and synthesis. A
+provider adapter returns the effective model ID, requested and effective
+preference, thinking mode, and finalization corridor together with the selected
+LangChain model. A capability-free adapter remains a first-class one-model
+fallback. The route cannot grant scope, tools, workflow admission, or evidence
+authority.
+
+The current provider remains a one-model configuration. Root planning,
+extraction, analysis, and critique use their requested standard corridor;
+drafting, repair, and synthesis retain the already proven bounded
+`finalize-only` corridor. An initial experiment that moved drafting and repair
+to a reasoning-enabled balanced route took 136.2 seconds without an accepted
+quality gain and was rejected. No alternative model route was adopted.
+
+The final provider-backed synthetic matrix produced:
+
+| Trajectory | Duration | Model calls | Fresh input | Cache read | Output | Quality floor |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| two-source comparison with repair | 86.5s | 7 | 2,527 | 23,674 | 857 | pass |
+| explicit contradiction with repair | 75.9s | 7 | 2,544 | 23,674 | 883 | pass |
+| cross-product relationship | 123.0s | 12 | 7,463 | 3,836 | 3,021 | pass |
+
+Every run reported one effective model ID. The comparison and contradiction
+each reported three balanced standard calls and four fast calls, including
+three explicit finalize-only calls. The broader relationship path used four
+acquisition calls, two relationship-analysis calls, two critic calls, and the
+same bounded finalization corridor. All three retained complete exact/detail
+coverage, canonical citation precision, supported assertions, relationship and
+contradiction recall, zero wrong sources, zero false completeness, and streamed
+answers. All stayed below the 180-second absolute ceiling; provider latency
+variance did not justify a new model route.
+
+The built production-MV3 strategy E2E reports the same effective model,
+requested/effective preference split, thinking modes, standard corridor, and
+finalize-only corridor as the CLI receipt. Tests also prove that changing a
+route cannot change compiled tool grants or accepted graph semantics, and that
+a deliberately lower-quality finalizer cannot bypass critic, repair, or final
+host validation. No private tenant input or artifact was used for these T6
+measurements.
+
+The T6 release gates passed after the routing surface was frozen: 68 focused
+Chat tests, 11 public API/export guard tests, typecheck, the production build,
+all browser-isomorphism checks, the extension output/CSP gate, and the research
+privacy scan. The complete packed production-MV3 suite passed 45/45 with one
+worker. The resource-capped full workspace run passed 7,006 tests across 530
+files with 15 intentional skips and zero failures.

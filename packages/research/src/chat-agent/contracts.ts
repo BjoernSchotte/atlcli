@@ -110,6 +110,13 @@ export interface ChatRunSummaryV1 {
   durationMs: number;
   counts: ResearchRunCountsV1;
   usage?: ResearchRunUsageV1;
+  modelRouting?: {
+    effectiveModelIds: string[];
+    callsByRoute: Record<string, number>;
+    callsByEffectivePreference: Record<string, number>;
+    callsByThinkingMode: Record<string, number>;
+    callsByFinalizationCorridor: Record<string, number>;
+  };
   retrieval?: {
     discoveredCandidates: number;
     admittedCandidates: number;

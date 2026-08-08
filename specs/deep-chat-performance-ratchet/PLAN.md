@@ -640,41 +640,41 @@ Goal: permit genuinely faster acquisition/finalization models without making Ant
 
 Implementation:
 
-- [ ] Replace ambiguous preference comments with a typed role-to-capability
+- [x] Replace ambiguous preference comments with a typed role-to-capability
       routing contract covering extraction, analysis, critique, repair,
       synthesis, and root planning.
-- [ ] Keep one-model fallback as a first-class supported configuration.
-- [ ] Let provider adapters map a preference to the same model, another model,
+- [x] Keep one-model fallback as a first-class supported configuration.
+- [x] Let provider adapters map a preference to the same model, another model,
       reasoning controls, or no special control.
-- [ ] Record effective model ID, preference, thinking mode, and finalization
+- [x] Record effective model ID, preference, thinking mode, and finalization
       corridor in T0 telemetry.
-- [ ] Do not automatically move critic or synthesis to a cheaper model. Require
+- [x] Do not automatically move critic or synthesis to a cheaper model. Require
       the fixed quality matrix to prove each routing change separately.
-- [ ] Keep provider/model selection out of workflow and capability authorization.
+- [x] Keep provider/model selection out of workflow and capability authorization.
 
 Automated proof:
 
-- [ ] The same accepted trajectory runs with a capability-free one-model provider.
-- [ ] Routing changes model selection but cannot change scope, graph admission,
+- [x] The same accepted trajectory runs with a capability-free one-model provider.
+- [x] Routing changes model selection but cannot change scope, graph admission,
       tools, evidence validation, or completion shape.
-- [ ] Tests expose and resolve the current declared-`thorough` versus effective
+- [x] Tests expose and resolve the current declared-`thorough` versus effective
       finalization-model ambiguity.
-- [ ] A lower-quality injected finalizer fails quality gates and cannot be adopted.
+- [x] A lower-quality injected finalizer fails quality gates and cannot be adopted.
 
 Live proof:
 
-- [ ] Re-run the full synthetic matrix using the current Anthropic one-model
+- [x] Re-run the full synthetic matrix using the current Anthropic one-model
       adapter and confirm no behavioral regression.
-- [ ] If a second production-grade model route is configured, evaluate it as a
+- [x] If a second production-grade model route is configured, evaluate it as a
       separate candidate; do not make it default without operator acceptance.
-- [ ] CLI and installed MV3 report the same effective routing for the same configuration.
+- [x] CLI and installed MV3 report the same effective routing for the same configuration.
 
 Ratchet acceptance:
 
-- [ ] Provider neutrality and one-model fallback remain proven.
-- [ ] Any adopted role route improves its targeted latency/cost by at least 20%
+- [x] Provider neutrality and one-model fallback remain proven.
+- [x] Any adopted role route improves its targeted latency/cost by at least 20%
       with no quality-floor regression.
-- [ ] If no alternative route passes, retain the current model and mark the
+- [x] If no alternative route passes, retain the current model and mark the
       experiment rejected rather than blocking T7.
 
 Commit: `refactor(chat): make model routing measurable`

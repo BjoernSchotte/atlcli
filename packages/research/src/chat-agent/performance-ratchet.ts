@@ -82,6 +82,11 @@ export interface ChatPerformanceMetricsV1 {
   callsByRole: Record<string, number>;
   callsByProfile: Record<string, number>;
   callsByPhase: Record<string, number>;
+  callsByEffectiveModel: Record<string, number>;
+  callsByRoute: Record<string, number>;
+  callsByEffectivePreference: Record<string, number>;
+  callsByThinkingMode: Record<string, number>;
+  callsByFinalizationCorridor: Record<string, number>;
 }
 
 export interface ChatPerformanceReceiptV1 {
@@ -201,6 +206,8 @@ export function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceRe
     "modelCalls", "failedModelCalls", "unresolvedReservations", "inputTokens",
     "cacheCreationInputTokens", "cacheReadInputTokens", "outputTokens", "requestBytes",
     "ptcCalls", "httpCalls", "callsByRole", "callsByProfile", "callsByPhase",
+    "callsByEffectiveModel", "callsByRoute", "callsByEffectivePreference",
+    "callsByThinkingMode", "callsByFinalizationCorridor",
   ], "Chat performance metrics");
   const bytes = strictRecord(metrics.requestBytes, [
     "system", "messages", "tools", "responseFormat", "total",
@@ -237,6 +244,17 @@ export function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceRe
       callsByRole: countMap(metrics.callsByRole, "Call role map"),
       callsByProfile: countMap(metrics.callsByProfile, "Call profile map"),
       callsByPhase: countMap(metrics.callsByPhase, "Call phase map"),
+      callsByEffectiveModel: countMap(metrics.callsByEffectiveModel, "Effective model map"),
+      callsByRoute: countMap(metrics.callsByRoute, "Model route map"),
+      callsByEffectivePreference: countMap(
+        metrics.callsByEffectivePreference,
+        "Effective preference map",
+      ),
+      callsByThinkingMode: countMap(metrics.callsByThinkingMode, "Thinking mode map"),
+      callsByFinalizationCorridor: countMap(
+        metrics.callsByFinalizationCorridor,
+        "Finalization corridor map",
+      ),
     },
     quality: qualityMetrics(record.quality),
   };
@@ -274,6 +292,11 @@ export function createChatPerformanceReceiptV1(input: {
   const callsByRole: Record<string, number> = {};
   const callsByProfile: Record<string, number> = {};
   const callsByPhase: Record<string, number> = {};
+  const callsByEffectiveModel: Record<string, number> = {};
+  const callsByRoute: Record<string, number> = {};
+  const callsByEffectivePreference: Record<string, number> = {};
+  const callsByThinkingMode: Record<string, number> = {};
+  const callsByFinalizationCorridor: Record<string, number> = {};
   const requestBytes = { system: 0, messages: 0, tools: 0, responseFormat: 0, total: 0 };
   let inputTokens = 0;
   let cacheCreationInputTokens = 0;
@@ -283,6 +306,11 @@ export function createChatPerformanceReceiptV1(input: {
     increment(callsByRole, observation.role);
     increment(callsByProfile, observation.profileId);
     increment(callsByPhase, observation.phase);
+    increment(callsByEffectiveModel, observation.modelId);
+    increment(callsByRoute, observation.routeRole);
+    increment(callsByEffectivePreference, observation.effectivePreference);
+    increment(callsByThinkingMode, observation.thinkingMode);
+    increment(callsByFinalizationCorridor, observation.finalizationCorridor);
     inputTokens += observation.observedUsage?.inputTokens ?? 0;
     cacheCreationInputTokens += observation.observedUsage?.cacheCreationInputTokens ?? 0;
     cacheReadInputTokens += observation.observedUsage?.cacheReadInputTokens ?? 0;
@@ -323,6 +351,11 @@ export function createChatPerformanceReceiptV1(input: {
       callsByRole,
       callsByProfile,
       callsByPhase,
+      callsByEffectiveModel,
+      callsByRoute,
+      callsByEffectivePreference,
+      callsByThinkingMode,
+      callsByFinalizationCorridor,
     },
     quality: input.quality,
   });

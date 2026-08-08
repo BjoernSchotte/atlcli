@@ -8,7 +8,12 @@ import {
   ChatContractError,
   providerCompatibleChatJsonSchemaV1,
 } from "../contracts.js";
-import type { ChatModelBindingV1, ChatModelFactoryInputV1 } from "../model.js";
+import type {
+  ChatModelBindingV1,
+  ChatModelFactoryInputV1,
+  ChatModelRouteRequestV1,
+  ChatModelRouteV1,
+} from "../model.js";
 
 export const ANTHROPIC_CHAT_MODEL_ID = "claude-sonnet-4-6" as const;
 
@@ -98,6 +103,26 @@ export function createAnthropicChatModelBindingV1(
     ? modelForPreference(rootPreference)
     : createModel(rootPreference, rootMaxTokens);
   const resolved = resolveProviderQualityV1(input.qualityPolicy, ANTHROPIC_QUALITY_ADAPTER_V1);
+  const finalization = (): ChatAnthropic => {
+    finalizationModel ??= createModel(
+      "fast",
+      Math.min(input.maxOutputTokens, 5_000),
+    );
+    return finalizationModel;
+  };
+  const modelForRoute = (request: ChatModelRouteRequestV1): ChatModelRouteV1 => {
+    const finalizeOnly = ["drafting", "repair", "synthesis"].includes(request.role);
+    return {
+      model: finalizeOnly ? finalization() : modelForPreference(request.preference),
+      effectiveModelId: ANTHROPIC_CHAT_MODEL_ID,
+      requestedPreference: request.preference,
+      effectivePreference: finalizeOnly ? "fast" : request.preference,
+      thinkingMode: finalizeOnly || request.preference === "fast"
+        ? "disabled"
+        : "adaptive-summary",
+      finalizationCorridor: finalizeOnly ? "finalize-only" : "standard",
+    };
+  };
   return {
     model: rootModel,
     modelId: ANTHROPIC_CHAT_MODEL_ID,
@@ -109,14 +134,9 @@ export function createAnthropicChatModelBindingV1(
     // the model-binding contract.
     structuredOutput: "native",
     promptCache: { ttl: "5m" },
+    modelForRoute,
     modelForPreference,
-    modelForFinalization: () => {
-      finalizationModel ??= createModel(
-        "fast",
-        Math.min(input.maxOutputTokens, 5_000),
-      );
-      return finalizationModel;
-    },
+    modelForFinalization: finalization,
     projectResponseSchema: providerCompatibleChatJsonSchemaV1,
     ...(resolved.controls?.adaptiveThinking
       ? { reasoningPresentation: "summary" as const }

@@ -59,6 +59,11 @@ import { createChatPtcToolsV1 } from "./retrieval.js";
 import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
 import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
+import type {
+  ChatModelRouteRequestV1,
+  ChatModelRouteRoleV1,
+  ChatModelRouteV1,
+} from "./model.js";
 import {
   CHAT_SUBAGENT_PROFILES_V1,
   chatSubagentProfileByIdV1,
@@ -977,6 +982,7 @@ function compileChatSubagentsV1(input: {
   modelId: string;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
+  modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
   promptCache?: { ttl: "5m" | "1h" };
   broker: ResearchCapabilityBroker;
   limits: ResearchLimitsV1;
@@ -995,6 +1001,32 @@ function compileChatSubagentsV1(input: {
   exactReadCache?: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
 }): SubAgent[] {
   const subagents = CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
+    const routeRole: ChatModelRouteRoleV1 = profile.phase === "acquisition"
+      ? "extraction"
+      : profile.phase === "analysis" || profile.phase === "reconciliation"
+        ? "analysis"
+        : profile.phase === "drafting"
+          ? "drafting"
+          : profile.phase === "critique"
+            ? "critique"
+            : profile.phase === "repair"
+              ? "repair"
+              : "synthesis";
+    const finalizeOnly = ["drafting", "repair", "synthesis"].includes(routeRole) &&
+      input.modelForFinalization !== undefined;
+    const modelRoute = input.modelForRoute?.({
+      role: routeRole,
+      preference: profile.modelPreference,
+    }) ?? {
+      model: finalizeOnly
+        ? input.modelForFinalization!()
+        : input.modelForPreference?.(profile.modelPreference) ?? input.model,
+      effectiveModelId: input.modelId,
+      requestedPreference: profile.modelPreference,
+      effectivePreference: finalizeOnly ? "fast" as const : profile.modelPreference,
+      thinkingMode: "provider-default" as const,
+      finalizationCorridor: finalizeOnly ? "finalize-only" as const : "standard" as const,
+    };
     const searchProduct = profile.id === "confluence-search-reader"
       ? "confluence" as const
       : profile.id === "jira-search-reader"
@@ -1281,13 +1313,17 @@ function compileChatSubagentsV1(input: {
         onSnapshot: async (_snapshot, state) => input.onModelBudgetSnapshot(state),
         observation: () => ({
           role: "subagent",
-          modelId: input.modelId,
+          modelId: modelRoute.effectiveModelId,
           profileId: profile.id,
           phase: profile.phase,
           wave: ["acquisition", "analysis", "reconciliation", "drafting", "critique", "repair", "synthesis"]
             .indexOf(profile.phase),
           attempt: ++modelAttempt,
           preference: profile.modelPreference,
+          routeRole,
+          effectivePreference: modelRoute.effectivePreference,
+          thinkingMode: modelRoute.thinkingMode,
+          finalizationCorridor: modelRoute.finalizationCorridor,
         }),
         onObservation: input.onModelCallObservation,
       },
@@ -1342,12 +1378,7 @@ function compileChatSubagentsV1(input: {
     return {
       name: profile.subagentType,
       description: profile.description,
-      model: profile.id === "answer-drafter" ||
-          profile.id === "answer-repairer" ||
-          profile.id === "chat-synthesizer"
-        ? input.modelForFinalization?.() ??
-          input.modelForPreference?.(profile.modelPreference) ?? input.model
-        : input.modelForPreference?.(profile.modelPreference) ?? input.model,
+      model: modelRoute.model,
       systemPrompt: profilePromptV1({
         profile,
         // @langchain/quickjs exposes registered LangChain tools through the
@@ -1473,6 +1504,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   modelId?: string;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
+  modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
   promptCache?: { ttl: "5m" | "1h" };
   structuredOutput: "native" | "tool";
   projectResponseSchema?: (
@@ -1610,6 +1642,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     ...(input.modelForFinalization
       ? { modelForFinalization: input.modelForFinalization }
       : {}),
+    ...(input.modelForRoute ? { modelForRoute: input.modelForRoute } : {}),
     ...(input.promptCache ? { promptCache: input.promptCache } : {}),
     broker: input.broker,
     limits: input.limits,
@@ -1663,6 +1696,17 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       new HumanMessage(description),
     ];
     const maximumOutputTokens = Math.min(input.limits.maxModelOutputTokens, 3_072);
+    const extractionRoute = input.modelForRoute?.({
+      role: "extraction",
+      preference: "fast",
+    }) ?? {
+      model: input.modelForPreference?.("fast") ?? input.model,
+      effectiveModelId: runtimeModelId,
+      requestedPreference: "fast" as const,
+      effectivePreference: "fast" as const,
+      thinkingMode: "provider-default" as const,
+      finalizationCorridor: "standard" as const,
+    };
     const extractionRequest = {
       messages,
       responseFormat: "atlcli.chat-evidence-packet/v1",
@@ -1690,8 +1734,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     let settled = false;
     let observationDelivered = false;
     try {
-      const model = input.modelForPreference?.("fast") ?? input.model;
-      const structured = model.withStructuredOutput<ChatEvidencePacketV1>(
+      const structured = extractionRoute.model.withStructuredOutput<ChatEvidencePacketV1>(
         chatSubagentProfileByIdV1("exact-context-reader").responseSchema as Record<string, unknown>,
         {
           name: "KiteweaveExactEvidenceExtractionV1",
@@ -1719,13 +1762,17 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         status: "completed",
         durationMs: Math.max(0, Math.round(performance.now() - extractionStartedAt)),
         middlewareName: "ChatExactEvidenceExtractor",
-        modelName: runtimeModelId,
-        modelId: runtimeModelId,
+        modelName: extractionRoute.effectiveModelId,
+        modelId: extractionRoute.effectiveModelId,
         profileId: "exact-context-reader",
         phase: "acquisition",
         wave: 0,
         attempt: 1,
         preference: "fast",
+        routeRole: "extraction",
+        effectivePreference: extractionRoute.effectivePreference,
+        thinkingMode: extractionRoute.thinkingMode,
+        finalizationCorridor: extractionRoute.finalizationCorridor,
         requestBytes: researchModelRequestBytesV1(extractionRequest),
         reservation: {
           inputTokens: reservation.inputTokens,
@@ -1783,12 +1830,16 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
           durationMs: Math.max(0, Math.round(performance.now() - extractionStartedAt)),
           middlewareName: "ChatExactEvidenceExtractor",
           modelName: "unknown-model",
-          modelId: runtimeModelId,
+          modelId: extractionRoute.effectiveModelId,
           profileId: "exact-context-reader",
           phase: "acquisition",
           wave: 0,
           attempt: 1,
           preference: "fast",
+          routeRole: "extraction",
+          effectivePreference: extractionRoute.effectivePreference,
+          thinkingMode: extractionRoute.thinkingMode,
+          finalizationCorridor: extractionRoute.finalizationCorridor,
           requestBytes: researchModelRequestBytesV1(extractionRequest),
           reservation: {
             inputTokens: reservation.inputTokens,

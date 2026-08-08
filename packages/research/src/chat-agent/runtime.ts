@@ -98,7 +98,11 @@ import {
   createChatRetrievalPlanV1,
   type ChatRetrievalPlanProposalV1,
 } from "./retrieval-plan.js";
-import type { ChatModelBindingV1, ChatModelFactoryV1 } from "./model.js";
+import {
+  resolveChatModelRouteV1,
+  type ChatModelBindingV1,
+  type ChatModelFactoryV1,
+} from "./model.js";
 import {
   CHAT_STRATEGY_RECORD_SCHEMA_V1,
   CHAT_STRATEGY_REVIEW_RECORD_SCHEMA_V1,
@@ -1368,8 +1372,13 @@ export function createKiteweaveChatAgent(
           qualityMode: qualityPolicy.mode,
           execution: strategyDecision.execution,
         });
-        const model = modelBinding.modelForPreference?.(rootPlanningPreference) ??
-          modelBinding.model;
+        const modelForRoute = (request: Parameters<typeof resolveChatModelRouteV1>[1]) =>
+          resolveChatModelRouteV1(modelBinding, request);
+        const rootModelRoute = modelForRoute({
+          role: "root-planning",
+          preference: rootPlanningPreference,
+        });
+        const model = rootModelRoute.model;
         const modelBudget = new ResearchModelRunBudget({
           ...turn.limits,
           maxModelCalls: chatModelCallLimitV1({
@@ -1378,6 +1387,13 @@ export function createKiteweaveChatAgent(
             execution: strategyDecision.execution,
           }),
         });
+        const modelCallObservations: ResearchModelCallObservationV1[] = [];
+        const observeModelCall = async (
+          observation: ResearchModelCallObservationV1,
+        ): Promise<void> => {
+          modelCallObservations.push(structuredClone(observation));
+          await input.onModelCallObservation?.(observation);
+        };
         let modelBudgetWrite = Promise.resolve();
         const persistModelBudget = (
           state: ResearchModelBudgetStateV1,
@@ -1592,6 +1608,7 @@ export function createKiteweaveChatAgent(
               ...(modelBinding.modelForFinalization
                 ? { modelForFinalization: modelBinding.modelForFinalization }
                 : {}),
+              modelForRoute,
               ...(modelBinding.promptCache
                 ? { promptCache: modelBinding.promptCache }
                 : {}),
@@ -1604,7 +1621,7 @@ export function createKiteweaveChatAgent(
               modelBudget,
               modelId: modelBinding.modelId,
               onModelBudgetSnapshot: persistModelBudget,
-              onModelCallObservation: input.onModelCallObservation,
+              onModelCallObservation: observeModelCall,
               broker,
               workspace: input.workspace,
               conversationId: turn.conversationId,
@@ -1872,10 +1889,14 @@ export function createKiteweaveChatAgent(
             onSnapshot: async (_snapshot, state) => persistModelBudget(state),
             observation: {
               role: "root",
-              modelId: modelBinding.modelId,
+              modelId: rootModelRoute.effectiveModelId,
               preference: rootPlanningPreference,
+              routeRole: "root-planning",
+              effectivePreference: rootModelRoute.effectivePreference,
+              thinkingMode: rootModelRoute.thinkingMode,
+              finalizationCorridor: rootModelRoute.finalizationCorridor,
             },
-            onObservation: input.onModelCallObservation,
+            onObservation: observeModelCall,
           },
         );
         const durableSummarizationMiddleware =
@@ -2340,6 +2361,33 @@ export function createKiteweaveChatAgent(
             durationMs: Math.max(0, completedAtMs - startedAtMs),
             counts: broker.budget.counts(),
             retrieval: retrievalAssessment.metrics,
+            modelRouting: (() => {
+              const count = (
+                select: (observation: ResearchModelCallObservationV1) => string | undefined,
+              ): Record<string, number> => {
+                const output: Record<string, number> = {};
+                for (const observation of modelCallObservations) {
+                  const key = select(observation);
+                  if (key) output[key] = (output[key] ?? 0) + 1;
+                }
+                return output;
+              };
+              return {
+                effectiveModelIds: [...new Set(
+                  modelCallObservations.flatMap((observation) =>
+                    observation.modelId ? [observation.modelId] : []
+                  ),
+                )].sort((left, right) => left.localeCompare(right, "en-US")),
+                callsByRoute: count((observation) => observation.routeRole),
+                callsByEffectivePreference: count(
+                  (observation) => observation.effectivePreference,
+                ),
+                callsByThinkingMode: count((observation) => observation.thinkingMode),
+                callsByFinalizationCorridor: count(
+                  (observation) => observation.finalizationCorridor,
+                ),
+              };
+            })(),
             ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
           },
         });

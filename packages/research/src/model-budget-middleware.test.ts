@@ -24,6 +24,10 @@ describe("research model budget middleware", () => {
         wave: 1,
         attempt: 1,
         preference: "balanced",
+        routeRole: "analysis",
+        effectivePreference: "fast",
+        thinkingMode: "disabled",
+        finalizationCorridor: "standard",
       },
       onObservation: async (observation) => {
         observations.push(observation);
@@ -59,6 +63,10 @@ describe("research model budget middleware", () => {
       phase: "analysis",
       wave: 1,
       attempt: 1,
+      routeRole: "analysis",
+      effectivePreference: "fast",
+      thinkingMode: "disabled",
+      finalizationCorridor: "standard",
       observedUsage: {
         inputTokens: 100,
         cacheCreationInputTokens: 20,

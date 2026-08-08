@@ -1529,6 +1529,7 @@ export interface ChatModelBindingV1 {
     promptCache?: {
         ttl: "5m" | "1h";
     };
+    modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -1546,6 +1547,31 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatModelFinalizationCorridorV1
+export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
+
+// export: ChatModelRouteRequestV1
+export interface ChatModelRouteRequestV1 {
+    role: ChatModelRouteRoleV1;
+    preference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatModelRouteRoleV1
+export type ChatModelRouteRoleV1 = "root-planning" | "extraction" | "analysis" | "drafting" | "critique" | "repair" | "synthesis";
+
+// export: ChatModelRouteV1
+export interface ChatModelRouteV1 {
+    model: BaseChatModel;
+    effectiveModelId: string;
+    requestedPreference: ProviderReasoningPreferenceV1;
+    effectivePreference: ProviderReasoningPreferenceV1;
+    thinkingMode: ChatModelThinkingModeV1;
+    finalizationCorridor: ChatModelFinalizationCorridorV1;
+}
+
+// export: ChatModelThinkingModeV1
+export type ChatModelThinkingModeV1 = "provider-default" | "disabled" | "adaptive-summary";
 
 // export: ChatOperationalMemoryV1
 export interface ChatOperationalMemoryV1 {
@@ -1595,6 +1621,11 @@ export interface ChatPerformanceMetricsV1 {
     callsByRole: Record<string, number>;
     callsByProfile: Record<string, number>;
     callsByPhase: Record<string, number>;
+    callsByEffectiveModel: Record<string, number>;
+    callsByRoute: Record<string, number>;
+    callsByEffectivePreference: Record<string, number>;
+    callsByThinkingMode: Record<string, number>;
+    callsByFinalizationCorridor: Record<string, number>;
 }
 
 // export: ChatPerformanceQualityMetricsV1
@@ -1872,6 +1903,13 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    modelRouting?: {
+        effectiveModelIds: string[];
+        callsByRoute: Record<string, number>;
+        callsByEffectivePreference: Record<string, number>;
+        callsByThinkingMode: Record<string, number>;
+        callsByFinalizationCorridor: Record<string, number>;
+    };
     retrieval?: {
         discoveredCandidates: number;
         admittedCandidates: number;
@@ -5499,6 +5537,10 @@ export interface ResearchModelCallObservationV1 {
     attempt?: number;
     recoveryReason?: string;
     preference?: "fast" | "balanced" | "thorough";
+    routeRole?: ChatModelRouteRoleV1;
+    effectivePreference?: "fast" | "balanced" | "thorough";
+    thinkingMode?: ChatModelThinkingModeV1;
+    finalizationCorridor?: ChatModelFinalizationCorridorV1;
     requestBytes: ResearchModelRequestBytesV1;
     reservation: {
         inputTokens: number;
@@ -7805,6 +7847,9 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     requested?: AgenticCompletionObjectiveV1;
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
+
+// export: resolveChatModelRouteV1
+export declare function resolveChatModelRouteV1(binding: ChatModelBindingV1, request: ChatModelRouteRequestV1): ChatModelRouteV1;
 
 // export: resolveChatScopeClarificationV1
 export declare function resolveChatScopeClarificationV1(input: {
@@ -9714,6 +9759,7 @@ export interface ChatModelBindingV1 {
     promptCache?: {
         ttl: "5m" | "1h";
     };
+    modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -9731,6 +9777,31 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatModelFinalizationCorridorV1
+export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
+
+// export: ChatModelRouteRequestV1
+export interface ChatModelRouteRequestV1 {
+    role: ChatModelRouteRoleV1;
+    preference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatModelRouteRoleV1
+export type ChatModelRouteRoleV1 = "root-planning" | "extraction" | "analysis" | "drafting" | "critique" | "repair" | "synthesis";
+
+// export: ChatModelRouteV1
+export interface ChatModelRouteV1 {
+    model: BaseChatModel;
+    effectiveModelId: string;
+    requestedPreference: ProviderReasoningPreferenceV1;
+    effectivePreference: ProviderReasoningPreferenceV1;
+    thinkingMode: ChatModelThinkingModeV1;
+    finalizationCorridor: ChatModelFinalizationCorridorV1;
+}
+
+// export: ChatModelThinkingModeV1
+export type ChatModelThinkingModeV1 = "provider-default" | "disabled" | "adaptive-summary";
 
 // export: ChatOperationalMemoryV1
 export interface ChatOperationalMemoryV1 {
@@ -9780,6 +9851,11 @@ export interface ChatPerformanceMetricsV1 {
     callsByRole: Record<string, number>;
     callsByProfile: Record<string, number>;
     callsByPhase: Record<string, number>;
+    callsByEffectiveModel: Record<string, number>;
+    callsByRoute: Record<string, number>;
+    callsByEffectivePreference: Record<string, number>;
+    callsByThinkingMode: Record<string, number>;
+    callsByFinalizationCorridor: Record<string, number>;
 }
 
 // export: ChatPerformanceQualityMetricsV1
@@ -10057,6 +10133,13 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    modelRouting?: {
+        effectiveModelIds: string[];
+        callsByRoute: Record<string, number>;
+        callsByEffectivePreference: Record<string, number>;
+        callsByThinkingMode: Record<string, number>;
+        callsByFinalizationCorridor: Record<string, number>;
+    };
     retrieval?: {
         discoveredCandidates: number;
         admittedCandidates: number;
@@ -13675,6 +13758,10 @@ export interface ResearchModelCallObservationV1 {
     attempt?: number;
     recoveryReason?: string;
     preference?: "fast" | "balanced" | "thorough";
+    routeRole?: ChatModelRouteRoleV1;
+    effectivePreference?: "fast" | "balanced" | "thorough";
+    thinkingMode?: ChatModelThinkingModeV1;
+    finalizationCorridor?: ChatModelFinalizationCorridorV1;
     requestBytes: ResearchModelRequestBytesV1;
     reservation: {
         inputTokens: number;
@@ -15982,6 +16069,9 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatModelRouteV1
+export declare function resolveChatModelRouteV1(binding: ChatModelBindingV1, request: ChatModelRouteRequestV1): ChatModelRouteV1;
+
 // export: resolveChatScopeClarificationV1
 export declare function resolveChatScopeClarificationV1(input: {
     store: ResearchSessionStoreV1;
@@ -17879,6 +17969,7 @@ export interface ChatModelBindingV1 {
     promptCache?: {
         ttl: "5m" | "1h";
     };
+    modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -17896,6 +17987,31 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatModelFinalizationCorridorV1
+export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
+
+// export: ChatModelRouteRequestV1
+export interface ChatModelRouteRequestV1 {
+    role: ChatModelRouteRoleV1;
+    preference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatModelRouteRoleV1
+export type ChatModelRouteRoleV1 = "root-planning" | "extraction" | "analysis" | "drafting" | "critique" | "repair" | "synthesis";
+
+// export: ChatModelRouteV1
+export interface ChatModelRouteV1 {
+    model: BaseChatModel;
+    effectiveModelId: string;
+    requestedPreference: ProviderReasoningPreferenceV1;
+    effectivePreference: ProviderReasoningPreferenceV1;
+    thinkingMode: ChatModelThinkingModeV1;
+    finalizationCorridor: ChatModelFinalizationCorridorV1;
+}
+
+// export: ChatModelThinkingModeV1
+export type ChatModelThinkingModeV1 = "provider-default" | "disabled" | "adaptive-summary";
 
 // export: ChatOperationalMemoryV1
 export interface ChatOperationalMemoryV1 {
@@ -17945,6 +18061,11 @@ export interface ChatPerformanceMetricsV1 {
     callsByRole: Record<string, number>;
     callsByProfile: Record<string, number>;
     callsByPhase: Record<string, number>;
+    callsByEffectiveModel: Record<string, number>;
+    callsByRoute: Record<string, number>;
+    callsByEffectivePreference: Record<string, number>;
+    callsByThinkingMode: Record<string, number>;
+    callsByFinalizationCorridor: Record<string, number>;
 }
 
 // export: ChatPerformanceQualityMetricsV1
@@ -18222,6 +18343,13 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    modelRouting?: {
+        effectiveModelIds: string[];
+        callsByRoute: Record<string, number>;
+        callsByEffectivePreference: Record<string, number>;
+        callsByThinkingMode: Record<string, number>;
+        callsByFinalizationCorridor: Record<string, number>;
+    };
     retrieval?: {
         discoveredCandidates: number;
         admittedCandidates: number;
@@ -21849,6 +21977,10 @@ export interface ResearchModelCallObservationV1 {
     attempt?: number;
     recoveryReason?: string;
     preference?: "fast" | "balanced" | "thorough";
+    routeRole?: ChatModelRouteRoleV1;
+    effectivePreference?: "fast" | "balanced" | "thorough";
+    thinkingMode?: ChatModelThinkingModeV1;
+    finalizationCorridor?: ChatModelFinalizationCorridorV1;
     requestBytes: ResearchModelRequestBytesV1;
     reservation: {
         inputTokens: number;
@@ -24155,6 +24287,9 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     requested?: AgenticCompletionObjectiveV1;
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
+
+// export: resolveChatModelRouteV1
+export declare function resolveChatModelRouteV1(binding: ChatModelBindingV1, request: ChatModelRouteRequestV1): ChatModelRouteV1;
 
 // export: resolveChatScopeClarificationV1
 export declare function resolveChatScopeClarificationV1(input: {
@@ -26082,6 +26217,7 @@ export interface ChatModelBindingV1 {
     promptCache?: {
         ttl: "5m" | "1h";
     };
+    modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -26099,6 +26235,31 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatModelFinalizationCorridorV1
+export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
+
+// export: ChatModelRouteRequestV1
+export interface ChatModelRouteRequestV1 {
+    role: ChatModelRouteRoleV1;
+    preference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatModelRouteRoleV1
+export type ChatModelRouteRoleV1 = "root-planning" | "extraction" | "analysis" | "drafting" | "critique" | "repair" | "synthesis";
+
+// export: ChatModelRouteV1
+export interface ChatModelRouteV1 {
+    model: BaseChatModel;
+    effectiveModelId: string;
+    requestedPreference: ProviderReasoningPreferenceV1;
+    effectivePreference: ProviderReasoningPreferenceV1;
+    thinkingMode: ChatModelThinkingModeV1;
+    finalizationCorridor: ChatModelFinalizationCorridorV1;
+}
+
+// export: ChatModelThinkingModeV1
+export type ChatModelThinkingModeV1 = "provider-default" | "disabled" | "adaptive-summary";
 
 // export: ChatOperationalMemoryV1
 export interface ChatOperationalMemoryV1 {
@@ -26148,6 +26309,11 @@ export interface ChatPerformanceMetricsV1 {
     callsByRole: Record<string, number>;
     callsByProfile: Record<string, number>;
     callsByPhase: Record<string, number>;
+    callsByEffectiveModel: Record<string, number>;
+    callsByRoute: Record<string, number>;
+    callsByEffectivePreference: Record<string, number>;
+    callsByThinkingMode: Record<string, number>;
+    callsByFinalizationCorridor: Record<string, number>;
 }
 
 // export: ChatPerformanceQualityMetricsV1
@@ -26425,6 +26591,13 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    modelRouting?: {
+        effectiveModelIds: string[];
+        callsByRoute: Record<string, number>;
+        callsByEffectivePreference: Record<string, number>;
+        callsByThinkingMode: Record<string, number>;
+        callsByFinalizationCorridor: Record<string, number>;
+    };
     retrieval?: {
         discoveredCandidates: number;
         admittedCandidates: number;
@@ -30328,6 +30501,10 @@ export interface ResearchModelCallObservationV1 {
     attempt?: number;
     recoveryReason?: string;
     preference?: "fast" | "balanced" | "thorough";
+    routeRole?: ChatModelRouteRoleV1;
+    effectivePreference?: "fast" | "balanced" | "thorough";
+    thinkingMode?: ChatModelThinkingModeV1;
+    finalizationCorridor?: ChatModelFinalizationCorridorV1;
     requestBytes: ResearchModelRequestBytesV1;
     reservation: {
         inputTokens: number;
@@ -32720,6 +32897,9 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatModelRouteV1
+export declare function resolveChatModelRouteV1(binding: ChatModelBindingV1, request: ChatModelRouteRequestV1): ChatModelRouteV1;
+
 // export: resolveChatScopeClarificationV1
 export declare function resolveChatScopeClarificationV1(input: {
     store: ResearchSessionStoreV1;
@@ -34730,6 +34910,7 @@ export interface ChatModelBindingV1 {
     promptCache?: {
         ttl: "5m" | "1h";
     };
+    modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -34747,6 +34928,31 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatModelFinalizationCorridorV1
+export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
+
+// export: ChatModelRouteRequestV1
+export interface ChatModelRouteRequestV1 {
+    role: ChatModelRouteRoleV1;
+    preference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatModelRouteRoleV1
+export type ChatModelRouteRoleV1 = "root-planning" | "extraction" | "analysis" | "drafting" | "critique" | "repair" | "synthesis";
+
+// export: ChatModelRouteV1
+export interface ChatModelRouteV1 {
+    model: BaseChatModel;
+    effectiveModelId: string;
+    requestedPreference: ProviderReasoningPreferenceV1;
+    effectivePreference: ProviderReasoningPreferenceV1;
+    thinkingMode: ChatModelThinkingModeV1;
+    finalizationCorridor: ChatModelFinalizationCorridorV1;
+}
+
+// export: ChatModelThinkingModeV1
+export type ChatModelThinkingModeV1 = "provider-default" | "disabled" | "adaptive-summary";
 
 // export: ChatOperationalMemoryV1
 export interface ChatOperationalMemoryV1 {
@@ -34796,6 +35002,11 @@ export interface ChatPerformanceMetricsV1 {
     callsByRole: Record<string, number>;
     callsByProfile: Record<string, number>;
     callsByPhase: Record<string, number>;
+    callsByEffectiveModel: Record<string, number>;
+    callsByRoute: Record<string, number>;
+    callsByEffectivePreference: Record<string, number>;
+    callsByThinkingMode: Record<string, number>;
+    callsByFinalizationCorridor: Record<string, number>;
 }
 
 // export: ChatPerformanceQualityMetricsV1
@@ -35073,6 +35284,13 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    modelRouting?: {
+        effectiveModelIds: string[];
+        callsByRoute: Record<string, number>;
+        callsByEffectivePreference: Record<string, number>;
+        callsByThinkingMode: Record<string, number>;
+        callsByFinalizationCorridor: Record<string, number>;
+    };
     retrieval?: {
         discoveredCandidates: number;
         admittedCandidates: number;
@@ -38981,6 +39199,10 @@ export interface ResearchModelCallObservationV1 {
     attempt?: number;
     recoveryReason?: string;
     preference?: "fast" | "balanced" | "thorough";
+    routeRole?: ChatModelRouteRoleV1;
+    effectivePreference?: "fast" | "balanced" | "thorough";
+    thinkingMode?: ChatModelThinkingModeV1;
+    finalizationCorridor?: ChatModelFinalizationCorridorV1;
     requestBytes: ResearchModelRequestBytesV1;
     reservation: {
         inputTokens: number;
@@ -41377,6 +41599,9 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
 
+// export: resolveChatModelRouteV1
+export declare function resolveChatModelRouteV1(binding: ChatModelBindingV1, request: ChatModelRouteRequestV1): ChatModelRouteV1;
+
 // export: resolveChatScopeClarificationV1
 export declare function resolveChatScopeClarificationV1(input: {
     store: ResearchSessionStoreV1;
@@ -42512,6 +42737,13 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    modelRouting?: {
+        effectiveModelIds: string[];
+        callsByRoute: Record<string, number>;
+        callsByEffectivePreference: Record<string, number>;
+        callsByThinkingMode: Record<string, number>;
+        callsByFinalizationCorridor: Record<string, number>;
+    };
     retrieval?: {
         discoveredCandidates: number;
         admittedCandidates: number;
@@ -45407,6 +45639,7 @@ export interface ChatModelBindingV1 {
     promptCache?: {
         ttl: "5m" | "1h";
     };
+    modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -45424,6 +45657,31 @@ export interface ChatModelFactoryInputV1 {
 
 // export: ChatModelFactoryV1
 export type ChatModelFactoryV1 = (input: ChatModelFactoryInputV1) => ChatModelBindingV1;
+
+// export: ChatModelFinalizationCorridorV1
+export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
+
+// export: ChatModelRouteRequestV1
+export interface ChatModelRouteRequestV1 {
+    role: ChatModelRouteRoleV1;
+    preference: ProviderReasoningPreferenceV1;
+}
+
+// export: ChatModelRouteRoleV1
+export type ChatModelRouteRoleV1 = "root-planning" | "extraction" | "analysis" | "drafting" | "critique" | "repair" | "synthesis";
+
+// export: ChatModelRouteV1
+export interface ChatModelRouteV1 {
+    model: BaseChatModel;
+    effectiveModelId: string;
+    requestedPreference: ProviderReasoningPreferenceV1;
+    effectivePreference: ProviderReasoningPreferenceV1;
+    thinkingMode: ChatModelThinkingModeV1;
+    finalizationCorridor: ChatModelFinalizationCorridorV1;
+}
+
+// export: ChatModelThinkingModeV1
+export type ChatModelThinkingModeV1 = "provider-default" | "disabled" | "adaptive-summary";
 
 // export: ChatOperationalMemoryV1
 export interface ChatOperationalMemoryV1 {
@@ -45473,6 +45731,11 @@ export interface ChatPerformanceMetricsV1 {
     callsByRole: Record<string, number>;
     callsByProfile: Record<string, number>;
     callsByPhase: Record<string, number>;
+    callsByEffectiveModel: Record<string, number>;
+    callsByRoute: Record<string, number>;
+    callsByEffectivePreference: Record<string, number>;
+    callsByThinkingMode: Record<string, number>;
+    callsByFinalizationCorridor: Record<string, number>;
 }
 
 // export: ChatPerformanceQualityMetricsV1
@@ -45750,6 +46013,13 @@ export interface ChatRunSummaryV1 {
     durationMs: number;
     counts: ResearchRunCountsV1;
     usage?: ResearchRunUsageV1;
+    modelRouting?: {
+        effectiveModelIds: string[];
+        callsByRoute: Record<string, number>;
+        callsByEffectivePreference: Record<string, number>;
+        callsByThinkingMode: Record<string, number>;
+        callsByFinalizationCorridor: Record<string, number>;
+    };
     retrieval?: {
         discoveredCandidates: number;
         admittedCandidates: number;
@@ -49658,6 +49928,10 @@ export interface ResearchModelCallObservationV1 {
     attempt?: number;
     recoveryReason?: string;
     preference?: "fast" | "balanced" | "thorough";
+    routeRole?: ChatModelRouteRoleV1;
+    effectivePreference?: "fast" | "balanced" | "thorough";
+    thinkingMode?: ChatModelThinkingModeV1;
+    finalizationCorridor?: ChatModelFinalizationCorridorV1;
     requestBytes: ResearchModelRequestBytesV1;
     reservation: {
         inputTokens: number;
@@ -52053,6 +52327,9 @@ export declare function resolveAgenticCompletionObjectiveV1(input: {
     requested?: AgenticCompletionObjectiveV1;
     hasWorkflowGraph: boolean;
 }): AgenticCompletionObjectiveV1;
+
+// export: resolveChatModelRouteV1
+export declare function resolveChatModelRouteV1(binding: ChatModelBindingV1, request: ChatModelRouteRequestV1): ChatModelRouteV1;
 
 // export: resolveChatScopeClarificationV1
 export declare function resolveChatScopeClarificationV1(input: {
