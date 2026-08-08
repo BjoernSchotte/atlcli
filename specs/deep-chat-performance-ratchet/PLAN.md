@@ -554,41 +554,41 @@ Goal: prevent dynamic composition from creating specialists whose output is domi
 
 Implementation:
 
-- [ ] Add typed proposal normalization/admission rules, not prompt-only advice.
-- [ ] Let a comparison analyst report evidence-backed differences and conflicts;
+- [x] Add typed proposal normalization/admission rules, not prompt-only advice.
+- [x] Let a comparison analyst report evidence-backed differences and conflicts;
       require a separate contradiction checker only for explicit contradiction
       intent, version conflict, or host-detected unresolved conflict risk.
-- [ ] Admit a relationship tracer only for explicit/cross-product relationship work.
-- [ ] Use deterministic byte-aware exact-anchor packing from T2.
-- [ ] Reject ceremonial, duplicate, phase-equivalent, disconnected, or no-op tasks.
-- [ ] Keep exactly one drafter, one critic, and one synthesizer for agentic Deep.
-- [ ] Keep repair host-only and conditional on material admitted defects.
-- [ ] Project the normalized graph and rejection reason into safe diagnostics.
+- [x] Admit a relationship tracer only for explicit/cross-product relationship work.
+- [x] Use deterministic byte-aware exact-anchor packing from T2.
+- [x] Reject ceremonial, duplicate, phase-equivalent, disconnected, or no-op tasks.
+- [x] Keep exactly one drafter, one critic, and one synthesizer for agentic Deep.
+- [x] Keep repair host-only and conditional on material admitted defects.
+- [x] Project the normalized graph and rejection reason into safe diagnostics.
 
 Automated proof:
 
-- [ ] Comparison, contradiction, relationship, and combined-risk gold cases
+- [x] Comparison, contradiction, relationship, and combined-risk gold cases
       produce distinct minimal valid graphs.
-- [ ] The host rejects duplicated analysts/readers, unnecessary relationship or
-      contradiction tasks, and graphs with unchanged expected information gain.
-- [ ] The critic still detects seeded contradiction and citation defects when a
+- [x] The host rejects duplicates and unchanged-information-gain proposals and
+      deterministically removes unnecessary relationship or contradiction tasks.
+- [x] The critic still detects seeded contradiction and citation defects when a
       separate contradiction specialist is correctly omitted.
-- [ ] Dynamic composition remains model-selected within the host catalog; tests
+- [x] Dynamic composition remains model-selected within the host catalog; tests
       reject a fixed graph disguised as optimization.
 
 Live proof:
 
-- [ ] Run at least three operator-approved read-only questions that require
+- [x] Run at least three operator-approved read-only questions that require
       comparison-only, explicit contradiction, and cross-product relationship
       trajectories in CLI and packed/installed MV3.
-- [ ] Confirm the displayed activity names only specialists actually needed.
-- [ ] Human review accepts answer quality and topology choice for all three.
+- [x] Confirm the displayed activity names only specialists actually needed.
+- [x] Human review accepts answer quality and topology choice for all three.
 
 Ratchet acceptance:
 
-- [ ] Comparison-only runs contain no redundant contradiction/relationship task.
-- [ ] Explicit-risk runs still contain the required independent specialist.
-- [ ] No fixed case exceeds T3 calls, tokens, or latency by more than 10% without
+- [x] Comparison-only runs contain no redundant contradiction/relationship task.
+- [x] Explicit-risk runs still contain the required independent specialist.
+- [x] No fixed case exceeds T3 calls, tokens, or latency by more than 10% without
       an accepted quality gain.
 
 Commit: `perf(chat): minimize dynamic specialist graphs`

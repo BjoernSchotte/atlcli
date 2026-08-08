@@ -181,6 +181,20 @@ function defect(input: Omit<ChatQualityDefectV1, "defectId">): ChatQualityDefect
   };
 }
 
+export function createChatMissingComparisonCoverageDefectV1(
+  sourceIds: readonly string[],
+): ChatQualityDefectV1 | undefined {
+  const missing = uniqueSorted(sourceIds);
+  if (missing.length === 0) return undefined;
+  return defect({
+    code: "question-not-answered",
+    severity: "material",
+    sourceIds: missing,
+    repairAction: "resynthesize",
+    message: "The comparison draft does not give every detail-read source its own substantive answer block or precise gap.",
+  });
+}
+
 export function assessChatGroundednessBeforeCriticV1(input: {
   conversationId: string;
   turnId: string;

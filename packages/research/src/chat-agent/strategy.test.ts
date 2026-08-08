@@ -308,7 +308,8 @@ describe("host-owned Chat strategy decisions", () => {
     expect(controller.acknowledgedDecision()).toEqual(decision);
     expect(accepted).toEqual(["agentic"]);
     expect(() => controller.assertAcknowledged()).not.toThrow();
-    await expect(controller.tool.invoke({})).rejects.toThrow("already been acknowledged");
+    expect(JSON.parse(await controller.tool.invoke({}))).toEqual(decision);
+    expect(accepted).toEqual(["agentic"]);
   });
 
   test("does not expose an acknowledgement when its publication fails", async () => {

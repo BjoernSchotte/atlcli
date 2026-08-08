@@ -79,6 +79,7 @@ import {
 import {
   assessChatGroundednessBeforeCriticV1,
   chatFinalGapCodeForQualityDefectV1,
+  createChatMissingComparisonCoverageDefectV1,
   createChatQualityDispositionV1,
   persistChatQualityArtifactsV1,
   type ChatGroundednessAssessmentV1,
@@ -488,6 +489,25 @@ function chatDraftSourceIdsV1(draft: ChatAgentDraft): Set<string> {
   ]);
 }
 
+export function chatDraftDedicatedSourceIdsV1(draft: ChatAgentDraft): Set<string> {
+  if (!("blocks" in draft)) return new Set(draft.citationSourceIds);
+  return new Set(draft.blocks.flatMap((block) => {
+    if (block.assertion !== "positive" || block.markdown.trim().length < 20) return [];
+    const sourceIds = [...new Set(block.sourceRefs.map((sourceRef) => {
+      const separator = sourceRef.indexOf("#");
+      return separator === -1 ? sourceRef : sourceRef.slice(0, separator);
+    }))];
+    return sourceIds.length === 1 ? sourceIds : [];
+  }));
+}
+
+function chatDraftAccountedComparisonSourceIdsV1(draft: ChatAgentDraft): Set<string> {
+  return new Set([
+    ...chatDraftDedicatedSourceIdsV1(draft),
+    ...draft.gaps.flatMap((gap) => gap.sourceIds),
+  ]);
+}
+
 export function preserveChatRepairEvidenceFloorV1(input: {
   original: ChatAgentDraft;
   repaired: ChatAgentDraft;
@@ -550,6 +570,11 @@ export function normalizeKnownSourceReferencesV1(
   value: ChatSubagentResultV1,
 ): ChatSubagentResultV1 {
   const aliases = new Map<string, string>();
+  const knownSectionRefs = new Set(
+    (broker.readSectionReferenceLedger?.() ?? []).map((entry) =>
+      `${entry.sourceId}#${entry.sectionId}`
+    ),
+  );
   for (const entry of broker.detailEvidenceLedger()) {
     aliases.set(entry.source.id, entry.source.id);
     if (entry.source.issueKey) aliases.set(entry.source.issueKey, entry.source.id);
@@ -575,7 +600,14 @@ export function normalizeKnownSourceReferencesV1(
           const suffix = separator === -1 ? "" : item.slice(separator);
           const normalizedSource = aliases.get(sourceId) ??
             broker.canonicalDetailSourceIdForRef(sourceId) ?? sourceId;
-          return `${normalizedSource}${suffix}`;
+          const normalizedRef = `${normalizedSource}${suffix}`;
+          // A model may coin a semantic section label even though the host
+          // detail-read the complete page rather than that exact section.
+          // Preserve the supported page claim, but never present the invented
+          // label as a section-level citation.
+          return suffix && aliases.has(normalizedSource) && !knownSectionRefs.has(normalizedRef)
+            ? normalizedSource
+            : normalizedRef;
         });
       }
       if (key === "sourceIds" || key === "citationSourceIds") {
@@ -1349,7 +1381,7 @@ function compileChatSubagentsV1(input: {
               ptc,
               subagents: false,
               toolName: "eval",
-              systemPrompt: "Use the documented tools.* functions only. Top-level await is available. Return the useful value as the final expression; console and delegation are unavailable.",
+              systemPrompt: "Use the documented tools.* functions only. Top-level await is available. Return the useful value as the final expression. Console output is local diagnostic context only; delegation is unavailable.",
               memoryLimitBytes: input.limits.maxInterpreterMemoryBytes,
               maxStackSizeBytes: 320 * 1024,
               executionTimeoutMs: Math.min(
@@ -1363,7 +1395,7 @@ function compileChatSubagentsV1(input: {
                   ? input.limits.maxPtcOutputBytes
                   : profile.maxResultBytes,
               ),
-              captureConsole: false,
+              captureConsole: true,
               })]),
       ],
     };
@@ -2114,10 +2146,26 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
           chatDraftHasEvidenceV1(fallback.data);
         const fallbackHasSubstance = fallback?.success &&
           chatDraftMarkdownV1(fallback.data).replace(/^#+\s.*$/gmu, "").trim().length >= 20;
+        const requiredDedicatedSources = input.strategy.requiredCapabilities.includes(
+            "comparison-analysis",
+          )
+          ? groundednessAssessment?.knownDetailedSourceIds ?? []
+          : [];
+        const synthesizedDedicatedSources = chatDraftDedicatedSourceIdsV1(synthesized);
+        const fallbackDedicatedSources = fallback?.success
+          ? chatDraftDedicatedSourceIdsV1(fallback.data)
+          : new Set<string>();
+        const synthesizedDedicatedCoverage = requiredDedicatedSources.filter((sourceId) =>
+          synthesizedDedicatedSources.has(sourceId)
+        ).length;
+        const fallbackDedicatedCoverage = requiredDedicatedSources.filter((sourceId) =>
+          fallbackDedicatedSources.has(sourceId)
+        ).length;
         if (
           fallback?.success &&
           ((!hasEvidenceParagraph && fallbackHasEvidence) ||
-            (synthesizedSubstance < 20 && fallbackHasSubstance))
+            (synthesizedSubstance < 20 && fallbackHasSubstance) ||
+            fallbackDedicatedCoverage > synthesizedDedicatedCoverage)
         ) {
           const gapKeys = new Set<string>();
           const gaps = [...fallback.data.gaps, ...synthesized.gaps].filter((gap) => {
@@ -2197,6 +2245,31 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       );
     }
     const assessment = await ensureGroundednessAssessment();
+    const draftTask = workflow.tasks.find((task) => task.profileId === "answer-drafter");
+    const draft = draftTask ? state.acceptedResults[draftTask.taskId] : undefined;
+    const missingComparisonSourceIds = input.strategy.requiredCapabilities.includes(
+        "comparison-analysis",
+      ) && draft
+      ? assessment.knownDetailedSourceIds.filter((sourceId) =>
+          !chatDraftAccountedComparisonSourceIdsV1(parseChatAnswerDraftV1(draft)).has(sourceId)
+        )
+      : [];
+    const comparisonCoverageDefect = createChatMissingComparisonCoverageDefectV1(
+      missingComparisonSourceIds,
+    );
+    const effectiveAssessment = comparisonCoverageDefect
+      ? {
+          ...assessment,
+          checks: assessment.checks.map((check) => check.dimension === "question-coverage"
+            ? {
+                ...check,
+                status: "failed" as const,
+                sourceIds: [...new Set([...check.sourceIds, ...missingComparisonSourceIds])],
+              }
+            : check),
+          hostDefects: [...assessment.hostDefects, comparisonCoverageDefect],
+        }
+      : assessment;
     const criticTask = workflow.tasks.find((task) => task.profileId === "answer-critic");
     const critic = criticTask
       ? state.acceptedResults[criticTask.taskId]
@@ -2209,7 +2282,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     }
     const criticPacket = critic as ChatCritiquePacketV1;
     const preliminary = createChatQualityDispositionV1({
-      assessment,
+      assessment: effectiveAssessment,
       criticDefects: criticPacket.defects,
       repairAdmitted: false,
       now,
@@ -2224,7 +2297,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       );
     }
     qualityDisposition = createChatQualityDispositionV1({
-      assessment,
+      assessment: effectiveAssessment,
       criticDefects: criticPacket.defects,
       repairAdmitted: repairDecision.admit,
       ...(repairDecision.reason ? { repairSkippedReason: repairDecision.reason } : {}),
@@ -2232,7 +2305,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     });
     await persistChatQualityArtifactsV1({
       workspace: input.workspace,
-      assessment,
+      assessment: effectiveAssessment,
       disposition: qualityDisposition,
     });
 
@@ -2293,7 +2366,10 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         originalSynth.objective,
         "Host quality disposition:",
         JSON.stringify({
-          hostConfirmedDetailSourceIds: assessment.knownDetailedSourceIds,
+          hostConfirmedDetailSourceIds: effectiveAssessment.knownDetailedSourceIds,
+          hostCanonicalSources: input.broker.detailEvidenceLedger()
+            .filter((entry) => effectiveAssessment.knownDetailedSourceIds.includes(entry.source.id))
+            .map((entry) => ({ id: entry.source.id, title: entry.source.title })),
           requiredGapMappings: qualityDisposition.requiredGapCodes.map((defectCode) => ({
             defectCode,
             finalGapCode: chatFinalGapCodeForQualityDefectV1(defectCode),
@@ -2303,6 +2379,8 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
           repairSkippedReason: qualityDisposition.repairSkippedReason,
         }),
         "Every hostConfirmedDetailSourceId above is a successful detail read. Ignore any model-generated claim that those sources were unread or unverified.",
+        "Use hostCanonicalSources as authoritative identity and title. Replace stale related-anchor labels silently; do not describe a title mismatch as uncertainty.",
+        "A URL or related-anchor proves a relationship but not a Jira macro, smart-link rendering mode, or remote-link subtype unless accepted evidence explicitly names that mechanism.",
         "Cover every hostConfirmedDetailSourceId with at least one substantive question-answering factual block or one precise typed gap. A relationship-only mention does not satisfy source coverage.",
         "A host display name may be stale after a rename; the canonical source identity and title are authoritative. Do not mention a display-name mismatch unless the user asked about naming or source identity.",
       ].join("\n\n"),

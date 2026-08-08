@@ -1082,8 +1082,30 @@ export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-ques
 // export: CHAT_USER_QUESTION_SCHEMA_V1
 export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
 
+// export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
+    "host-exact-anchors-bound",
+    "exact-readers-packed",
+    "dominated-specialists-removed",
+    "phase-dependencies-normalized"
+];
+
+// export: CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1: "atlcli.chat-workflow-normalization/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
+// export: CHAT_WORKFLOW_REJECTION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
+    "duplicate-specialist",
+    "duplicate-reader",
+    "duplicate-exact-anchor",
+    "unchanged-information-gain",
+    "unnecessary-comparison",
+    "unnecessary-relationship",
+    "unnecessary-contradiction"
+];
 
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
@@ -2226,6 +2248,7 @@ export interface ChatWorkflowAdmissionResponseV1 {
     maxConcurrency: number;
     synthesizerTaskId: string;
     qualityReviewRequired: true;
+    normalization: ChatWorkflowNormalizationV1;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -2239,6 +2262,18 @@ export interface ChatWorkflowDispatchV1 {
     responseSchema: Readonly<Record<string, unknown>>;
 }
 
+// export: ChatWorkflowNormalizationReasonCodeV1
+export type ChatWorkflowNormalizationReasonCodeV1 = (typeof CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1)[number];
+
+// export: ChatWorkflowNormalizationV1
+export interface ChatWorkflowNormalizationV1 {
+    schema: typeof CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1;
+    proposedTaskCount: number;
+    admittedTaskCount: number;
+    admittedProfileIds: ChatSubagentProfileIdV1[];
+    reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
+}
+
 // export: ChatWorkflowProposalV1
 export interface ChatWorkflowProposalV1 {
     schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
@@ -2246,6 +2281,9 @@ export interface ChatWorkflowProposalV1 {
     maxConcurrency: number;
     retrievalPlan?: ChatRetrievalPlanProposalV1;
 }
+
+// export: ChatWorkflowRejectionReasonCodeV1
+export type ChatWorkflowRejectionReasonCodeV1 = (typeof CHAT_WORKFLOW_REJECTION_REASON_CODES_V1)[number];
 
 // export: ChatWorkflowTaskProposalV1
 export interface ChatWorkflowTaskProposalV1 {
@@ -2471,6 +2509,7 @@ export declare function createChatStrategyReviewControllerV1(input: {
     onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
+    review(): Promise<ChatStrategyReviewV1>;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
@@ -2485,6 +2524,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    exactAnchorRefs?: readonly string[];
     taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
@@ -9227,8 +9267,30 @@ export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-ques
 // export: CHAT_USER_QUESTION_SCHEMA_V1
 export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
 
+// export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
+    "host-exact-anchors-bound",
+    "exact-readers-packed",
+    "dominated-specialists-removed",
+    "phase-dependencies-normalized"
+];
+
+// export: CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1: "atlcli.chat-workflow-normalization/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
+// export: CHAT_WORKFLOW_REJECTION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
+    "duplicate-specialist",
+    "duplicate-reader",
+    "duplicate-exact-anchor",
+    "unchanged-information-gain",
+    "unnecessary-comparison",
+    "unnecessary-relationship",
+    "unnecessary-contradiction"
+];
 
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
@@ -10371,6 +10433,7 @@ export interface ChatWorkflowAdmissionResponseV1 {
     maxConcurrency: number;
     synthesizerTaskId: string;
     qualityReviewRequired: true;
+    normalization: ChatWorkflowNormalizationV1;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -10384,6 +10447,18 @@ export interface ChatWorkflowDispatchV1 {
     responseSchema: Readonly<Record<string, unknown>>;
 }
 
+// export: ChatWorkflowNormalizationReasonCodeV1
+export type ChatWorkflowNormalizationReasonCodeV1 = (typeof CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1)[number];
+
+// export: ChatWorkflowNormalizationV1
+export interface ChatWorkflowNormalizationV1 {
+    schema: typeof CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1;
+    proposedTaskCount: number;
+    admittedTaskCount: number;
+    admittedProfileIds: ChatSubagentProfileIdV1[];
+    reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
+}
+
 // export: ChatWorkflowProposalV1
 export interface ChatWorkflowProposalV1 {
     schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
@@ -10391,6 +10466,9 @@ export interface ChatWorkflowProposalV1 {
     maxConcurrency: number;
     retrievalPlan?: ChatRetrievalPlanProposalV1;
 }
+
+// export: ChatWorkflowRejectionReasonCodeV1
+export type ChatWorkflowRejectionReasonCodeV1 = (typeof CHAT_WORKFLOW_REJECTION_REASON_CODES_V1)[number];
 
 // export: ChatWorkflowTaskProposalV1
 export interface ChatWorkflowTaskProposalV1 {
@@ -10616,6 +10694,7 @@ export declare function createChatStrategyReviewControllerV1(input: {
     onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
+    review(): Promise<ChatStrategyReviewV1>;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
@@ -10630,6 +10709,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    exactAnchorRefs?: readonly string[];
     taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
@@ -17352,8 +17432,30 @@ export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-ques
 // export: CHAT_USER_QUESTION_SCHEMA_V1
 export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
 
+// export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
+    "host-exact-anchors-bound",
+    "exact-readers-packed",
+    "dominated-specialists-removed",
+    "phase-dependencies-normalized"
+];
+
+// export: CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1: "atlcli.chat-workflow-normalization/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
+// export: CHAT_WORKFLOW_REJECTION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
+    "duplicate-specialist",
+    "duplicate-reader",
+    "duplicate-exact-anchor",
+    "unchanged-information-gain",
+    "unnecessary-comparison",
+    "unnecessary-relationship",
+    "unnecessary-contradiction"
+];
 
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
@@ -18496,6 +18598,7 @@ export interface ChatWorkflowAdmissionResponseV1 {
     maxConcurrency: number;
     synthesizerTaskId: string;
     qualityReviewRequired: true;
+    normalization: ChatWorkflowNormalizationV1;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -18509,6 +18612,18 @@ export interface ChatWorkflowDispatchV1 {
     responseSchema: Readonly<Record<string, unknown>>;
 }
 
+// export: ChatWorkflowNormalizationReasonCodeV1
+export type ChatWorkflowNormalizationReasonCodeV1 = (typeof CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1)[number];
+
+// export: ChatWorkflowNormalizationV1
+export interface ChatWorkflowNormalizationV1 {
+    schema: typeof CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1;
+    proposedTaskCount: number;
+    admittedTaskCount: number;
+    admittedProfileIds: ChatSubagentProfileIdV1[];
+    reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
+}
+
 // export: ChatWorkflowProposalV1
 export interface ChatWorkflowProposalV1 {
     schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
@@ -18516,6 +18631,9 @@ export interface ChatWorkflowProposalV1 {
     maxConcurrency: number;
     retrievalPlan?: ChatRetrievalPlanProposalV1;
 }
+
+// export: ChatWorkflowRejectionReasonCodeV1
+export type ChatWorkflowRejectionReasonCodeV1 = (typeof CHAT_WORKFLOW_REJECTION_REASON_CODES_V1)[number];
 
 // export: ChatWorkflowTaskProposalV1
 export interface ChatWorkflowTaskProposalV1 {
@@ -18741,6 +18859,7 @@ export declare function createChatStrategyReviewControllerV1(input: {
     onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
+    review(): Promise<ChatStrategyReviewV1>;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
@@ -18755,6 +18874,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    exactAnchorRefs?: readonly string[];
     taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
@@ -25506,8 +25626,30 @@ export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-ques
 // export: CHAT_USER_QUESTION_SCHEMA_V1
 export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
 
+// export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
+    "host-exact-anchors-bound",
+    "exact-readers-packed",
+    "dominated-specialists-removed",
+    "phase-dependencies-normalized"
+];
+
+// export: CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1: "atlcli.chat-workflow-normalization/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
+// export: CHAT_WORKFLOW_REJECTION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
+    "duplicate-specialist",
+    "duplicate-reader",
+    "duplicate-exact-anchor",
+    "unchanged-information-gain",
+    "unnecessary-comparison",
+    "unnecessary-relationship",
+    "unnecessary-contradiction"
+];
 
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
@@ -26669,6 +26811,7 @@ export interface ChatWorkflowAdmissionResponseV1 {
     maxConcurrency: number;
     synthesizerTaskId: string;
     qualityReviewRequired: true;
+    normalization: ChatWorkflowNormalizationV1;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -26682,6 +26825,18 @@ export interface ChatWorkflowDispatchV1 {
     responseSchema: Readonly<Record<string, unknown>>;
 }
 
+// export: ChatWorkflowNormalizationReasonCodeV1
+export type ChatWorkflowNormalizationReasonCodeV1 = (typeof CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1)[number];
+
+// export: ChatWorkflowNormalizationV1
+export interface ChatWorkflowNormalizationV1 {
+    schema: typeof CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1;
+    proposedTaskCount: number;
+    admittedTaskCount: number;
+    admittedProfileIds: ChatSubagentProfileIdV1[];
+    reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
+}
+
 // export: ChatWorkflowProposalV1
 export interface ChatWorkflowProposalV1 {
     schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
@@ -26689,6 +26844,9 @@ export interface ChatWorkflowProposalV1 {
     maxConcurrency: number;
     retrievalPlan?: ChatRetrievalPlanProposalV1;
 }
+
+// export: ChatWorkflowRejectionReasonCodeV1
+export type ChatWorkflowRejectionReasonCodeV1 = (typeof CHAT_WORKFLOW_REJECTION_REASON_CODES_V1)[number];
 
 // export: ChatWorkflowTaskProposalV1
 export interface ChatWorkflowTaskProposalV1 {
@@ -27003,6 +27161,7 @@ export declare function createChatStrategyReviewControllerV1(input: {
     onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
+    review(): Promise<ChatStrategyReviewV1>;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
@@ -27017,6 +27176,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    exactAnchorRefs?: readonly string[];
     taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
@@ -34114,8 +34274,30 @@ export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-ques
 // export: CHAT_USER_QUESTION_SCHEMA_V1
 export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
 
+// export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
+    "host-exact-anchors-bound",
+    "exact-readers-packed",
+    "dominated-specialists-removed",
+    "phase-dependencies-normalized"
+];
+
+// export: CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1: "atlcli.chat-workflow-normalization/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
+// export: CHAT_WORKFLOW_REJECTION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
+    "duplicate-specialist",
+    "duplicate-reader",
+    "duplicate-exact-anchor",
+    "unchanged-information-gain",
+    "unnecessary-comparison",
+    "unnecessary-relationship",
+    "unnecessary-contradiction"
+];
 
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
@@ -35267,6 +35449,7 @@ export interface ChatWorkflowAdmissionResponseV1 {
     maxConcurrency: number;
     synthesizerTaskId: string;
     qualityReviewRequired: true;
+    normalization: ChatWorkflowNormalizationV1;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -35280,6 +35463,18 @@ export interface ChatWorkflowDispatchV1 {
     responseSchema: Readonly<Record<string, unknown>>;
 }
 
+// export: ChatWorkflowNormalizationReasonCodeV1
+export type ChatWorkflowNormalizationReasonCodeV1 = (typeof CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1)[number];
+
+// export: ChatWorkflowNormalizationV1
+export interface ChatWorkflowNormalizationV1 {
+    schema: typeof CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1;
+    proposedTaskCount: number;
+    admittedTaskCount: number;
+    admittedProfileIds: ChatSubagentProfileIdV1[];
+    reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
+}
+
 // export: ChatWorkflowProposalV1
 export interface ChatWorkflowProposalV1 {
     schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
@@ -35287,6 +35482,9 @@ export interface ChatWorkflowProposalV1 {
     maxConcurrency: number;
     retrievalPlan?: ChatRetrievalPlanProposalV1;
 }
+
+// export: ChatWorkflowRejectionReasonCodeV1
+export type ChatWorkflowRejectionReasonCodeV1 = (typeof CHAT_WORKFLOW_REJECTION_REASON_CODES_V1)[number];
 
 // export: ChatWorkflowTaskProposalV1
 export interface ChatWorkflowTaskProposalV1 {
@@ -35601,6 +35799,7 @@ export declare function createChatStrategyReviewControllerV1(input: {
     onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
+    review(): Promise<ChatStrategyReviewV1>;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
@@ -35615,6 +35814,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    exactAnchorRefs?: readonly string[];
     taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;
@@ -44751,8 +44951,30 @@ export declare const CHAT_USER_QUESTION_ANSWER_SCHEMA_V1: "atlcli.chat-user-ques
 // export: CHAT_USER_QUESTION_SCHEMA_V1
 export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1";
 
+// export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
+    "host-exact-anchors-bound",
+    "exact-readers-packed",
+    "dominated-specialists-removed",
+    "phase-dependencies-normalized"
+];
+
+// export: CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1
+export declare const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1: "atlcli.chat-workflow-normalization/v1";
+
 // export: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1
 export declare const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1: "atlcli.chat-workflow-proposal/v1";
+
+// export: CHAT_WORKFLOW_REJECTION_REASON_CODES_V1
+export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
+    "duplicate-specialist",
+    "duplicate-reader",
+    "duplicate-exact-anchor",
+    "unchanged-information-gain",
+    "unnecessary-comparison",
+    "unnecessary-relationship",
+    "unnecessary-contradiction"
+];
 
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
@@ -45904,6 +46126,7 @@ export interface ChatWorkflowAdmissionResponseV1 {
     maxConcurrency: number;
     synthesizerTaskId: string;
     qualityReviewRequired: true;
+    normalization: ChatWorkflowNormalizationV1;
     dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
 }
 
@@ -45917,6 +46140,18 @@ export interface ChatWorkflowDispatchV1 {
     responseSchema: Readonly<Record<string, unknown>>;
 }
 
+// export: ChatWorkflowNormalizationReasonCodeV1
+export type ChatWorkflowNormalizationReasonCodeV1 = (typeof CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1)[number];
+
+// export: ChatWorkflowNormalizationV1
+export interface ChatWorkflowNormalizationV1 {
+    schema: typeof CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1;
+    proposedTaskCount: number;
+    admittedTaskCount: number;
+    admittedProfileIds: ChatSubagentProfileIdV1[];
+    reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
+}
+
 // export: ChatWorkflowProposalV1
 export interface ChatWorkflowProposalV1 {
     schema: typeof CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1;
@@ -45924,6 +46159,9 @@ export interface ChatWorkflowProposalV1 {
     maxConcurrency: number;
     retrievalPlan?: ChatRetrievalPlanProposalV1;
 }
+
+// export: ChatWorkflowRejectionReasonCodeV1
+export type ChatWorkflowRejectionReasonCodeV1 = (typeof CHAT_WORKFLOW_REJECTION_REASON_CODES_V1)[number];
 
 // export: ChatWorkflowTaskProposalV1
 export interface ChatWorkflowTaskProposalV1 {
@@ -46238,6 +46476,7 @@ export declare function createChatStrategyReviewControllerV1(input: {
     onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
+    review(): Promise<ChatStrategyReviewV1>;
     latestReview(): ChatStrategyReviewV1 | undefined;
     assertCurrent(): void;
 };
@@ -46252,6 +46491,7 @@ export declare function createChatWorkflowDispatchV1(input: {
 export declare function createChatWorkflowProposalControllerV1(input: {
     strategy: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    exactAnchorRefs?: readonly string[];
     taskContext?: string | ((task: Readonly<ChatWorkflowTaskProposalV1>, tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[]) => string);
     allowedProfileIds?: readonly ChatSubagentProfileIdV1[];
     beforeProposal?: () => void;

@@ -36,6 +36,7 @@ import type {
 import {
   CHAT_WORKFLOW_STATE_PATH_V1,
   chatSubagentEvalAttemptLimitV1,
+  chatDraftDedicatedSourceIdsV1,
   chatSubagentModelOutputLimitV1,
   chatSubagentPtcCallLimitV1,
   createExactContextAcquisitionToolV1,
@@ -48,6 +49,29 @@ import {
   type ChatSubagentEvalDiagnosticV1,
   type ChatSubagentModelStreamEventV1,
 } from "./workflow-runtime.js";
+
+test("counts only substantive single-source blocks as dedicated comparison coverage", () => {
+  const draft: ChatAgentDraftV2 = {
+    blocks: [
+      {
+        id: "answer-block:source-a",
+        markdown: "Source A establishes its own central design decision.",
+        sourceRefs: ["wiki:1001#decision"],
+        assertion: "positive",
+        scope: "none",
+      },
+      {
+        id: "answer-block:cross-source",
+        markdown: "The sources differ in where they place control.",
+        sourceRefs: ["wiki:1001", "wiki:1002"],
+        assertion: "positive",
+        scope: "none",
+      },
+    ],
+    gaps: [],
+  };
+  expect([...chatDraftDedicatedSourceIdsV1(draft)]).toEqual(["wiki:1001"]);
+});
 
 test("keeps the supported provisional evidence when a repair drops every citation", () => {
   const original: ChatAgentDraftV2 = {
@@ -104,6 +128,24 @@ const strategy: ChatStrategyDecisionV1 = {
   requiredCapabilities: ["comparison-analysis"],
   expectedComplexity: "complex",
   qualityRisks: ["multiple-sources"],
+};
+
+const combinedRiskStrategy: ChatStrategyDecisionV1 = {
+  ...strategy,
+  reasonCodes: ["multi-source-comparison", "cross-product-relationship", "contradiction-risk"],
+  requiredCapabilities: [
+    "comparison-analysis",
+    "relationship-tracing",
+    "contradiction-check",
+  ],
+  qualityRisks: ["multiple-sources", "cross-product", "contradictory-evidence"],
+};
+
+const relationshipComparisonStrategy: ChatStrategyDecisionV1 = {
+  ...strategy,
+  reasonCodes: ["multi-source-comparison", "cross-product-relationship"],
+  requiredCapabilities: ["comparison-analysis", "relationship-tracing"],
+  qualityRisks: ["multiple-sources", "cross-product"],
 };
 
 const request: ResearchRequestV1 = {
@@ -255,6 +297,7 @@ function requireDispatch(
 }
 
 function createHarness(input: {
+  strategy?: ChatStrategyDecisionV1;
   invoke?(
     input: { description: string; subagent_type: string },
     config?: RunnableConfig,
@@ -344,7 +387,7 @@ function createHarness(input: {
     ...(input.projectResponseSchema
       ? { projectResponseSchema: input.projectResponseSchema }
       : {}),
-    strategy,
+    strategy: input.strategy ?? strategy,
     budget,
     modelBudget,
     onModelBudgetSnapshot: async () => {},
@@ -471,7 +514,7 @@ describe("Chat agentic workflow runtime", () => {
       claims: [{
         text: "Synthetic claim",
         sourceIds: ["DEMO-1"],
-        sourceRefs: ["DEMO-1"],
+        sourceRefs: ["DEMO-1#invented-section"],
       }],
       relationships: [{
         fromSourceId: "https://tenant-a.atlassian.net/browse/DEMO-1",
@@ -487,7 +530,10 @@ describe("Chat agentic workflow runtime", () => {
         "research-anchor:unread",
         "UNKNOWN-2",
       ],
-      claims: [{ sourceIds: ["jira:DEMO-1"] }],
+      claims: [{
+        sourceIds: ["jira:DEMO-1"],
+        sourceRefs: ["jira:DEMO-1"],
+      }],
       relationships: [{
         fromSourceId: "jira:DEMO-1",
         toSourceId: "UNKNOWN-2",
@@ -2326,6 +2372,7 @@ describe("Chat agentic workflow runtime", () => {
     let reviewComplete = false;
     const seenDescriptions = new Map<string, string>();
     const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
       withRetrievalAssessment: true,
       beforeSynthesis: () => {
         if (!reviewComplete) throw new Error("review pending");
@@ -2414,6 +2461,7 @@ describe("Chat agentic workflow runtime", () => {
     let maximumActive = 0;
     const invoked: string[] = [];
     const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
       withRetrievalAssessment: true,
       strategyReviewCurrent: () => reviewCurrent,
       async invoke(taskInput) {
@@ -2486,6 +2534,7 @@ describe("Chat agentic workflow runtime", () => {
     const invoked: string[] = [];
     const descriptions = new Map<string, string>();
     const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
       withRetrievalAssessment: true,
       strategyReviewCurrent: () => reviewCurrent,
       runStrategyReview: () => {
@@ -2538,31 +2587,24 @@ describe("Chat agentic workflow runtime", () => {
     expect(descriptions.get("chat-synthesizer-v1"))
       .toContain("hostConfirmedDetailSourceIds");
     expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("hostCanonicalSources");
+    expect(descriptions.get("chat-synthesizer-v1"))
       .toContain("relationship-only mention does not satisfy source coverage");
     expect(descriptions.get("chat-synthesizer-v1"))
       .toContain("Do not mention a display-name mismatch");
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("but not a Jira macro");
     expect(harness.runtime.assertComplete()).toEqual(answerDraft());
     await expect(harness.runtime.qualityReviewTool.invoke({}))
       .rejects.toThrow("exactly once");
   });
 
-  test("batches a ready phase at the accepted workflow concurrency", async () => {
-    let active = 0;
-    let maximumActive = 0;
-    const invoked: string[] = [];
+  test("rejects duplicate phase-equivalent specialists before dispatch", async () => {
     const harness = createHarness({
+      strategy: combinedRiskStrategy,
       withRetrievalAssessment: true,
-      strategyReviewCurrent: () => false,
-      async invoke(taskInput) {
-        invoked.push(taskInput.subagent_type);
-        active += 1;
-        maximumActive = Math.max(maximumActive, active);
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        active -= 1;
-        return analysisPacket();
-      },
     });
-    await harness.runtime.proposalTool.invoke({
+    await expect(harness.runtime.proposalTool.invoke({
       tasks: qualityWorkflowTasks([
         {
           taskId: "task:comparison-a",
@@ -2596,16 +2638,8 @@ describe("Chat agentic workflow runtime", () => {
         },
       ]),
       maxConcurrency: 2,
-    });
-
-    const beforeReview = JSON.parse(await harness.runtime.advanceTool.invoke({}));
-
-    expect(beforeReview).toMatchObject({
-      status: "strategy-review-required",
-    });
-    expect(beforeReview.completedTaskIds).toHaveLength(5);
-    expect(invoked).toHaveLength(5);
-    expect(maximumActive).toBe(2);
+    })).rejects.toThrow("duplicate-specialist");
+    expect(harness.runtime.dispatchSnapshot().dispatchedTasks).toBe(0);
   });
 
   test("fails closed when a child bypasses an incomplete dependency", async () => {
@@ -2918,6 +2952,7 @@ describe("Chat agentic workflow runtime", () => {
       releaseFirst = resolve;
     });
     const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
       async invoke(taskInput) {
         if (taskInput.subagent_type === "chat-comparison-analyst-v1") {
           await firstPending;

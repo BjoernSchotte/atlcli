@@ -787,6 +787,33 @@ describe("Chat answer contract", () => {
     })]);
   });
 
+  test("retains a Jira-key mention supported by a detail-read Confluence page", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown:
+          "The DEMO-1 design mandates bounded read-only tools. [[source:wiki:1001]]",
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{
+        source: syntheticPageSource,
+        content: {
+          text: "The DEMO-1 design mandates bounded read-only tools.",
+          inputBytes: 51,
+          truncated: false,
+          linkTargets: [],
+        },
+      }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).toContain("DEMO-1 design mandates");
+    expect(answer.citations).toEqual([expect.objectContaining({ sourceId: "wiki:1001" })]);
+    expect(answer.gaps).toEqual([]);
+  });
+
   test("retains a detailed canonical Jira source when optional issueKey metadata is absent", () => {
     const jiraSource = {
       id: "jira:DEMO-7",

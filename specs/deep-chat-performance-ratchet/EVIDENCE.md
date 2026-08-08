@@ -217,3 +217,49 @@ exact reads without search, three connected Chat turns across worker recreation,
 HITL, interrupted-stream recovery, steering, cooperative stop, queued-follow-up
 editing, durable key rehydration, and safe Markdown rendering. No private prompt,
 source, answer, URL, identifier, trace, or receipt is recorded here.
+
+## T4 host-owned graph dominance and anchor packing
+
+The central supervisor still selects a dynamic graph from the host catalog, but
+the host now normalizes that proposal before admission. It binds exact anchors,
+packs compatible exact readers, rewires phase dependencies, removes dominated
+relationship or contradiction work, and rejects duplicate, disconnected, or
+unchanged-information-gain tasks. The admitted graph retains exactly one
+drafter, critic, and synthesizer; repair remains a conditional host decision.
+
+Three provider-backed, customer-free Deep runs exercised distinct topologies:
+
+| Trajectory | Duration | Model calls | Fresh input | Cache read | Output | Admitted specialist |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| comparison only | 35.1s | 6 | 2,563 | 23,673 | 845 | comparison analyst |
+| explicit contradiction | 57.4s | 7 | 2,606 | 0 | 936 | contradiction checker |
+| cross-product relationship | 84.3s | 10 | 2,396 | 26,451 | 1,173 | relationship tracer |
+
+The comparison answer covered both detailed sources and described their
+differences without a redundant contradiction or relationship task. The
+explicit-risk run retained an independent contradiction check. The relationship
+run followed the bounded cross-product evidence in both directions, used the
+canonical source title, and did not infer a macro or link subtype that the
+evidence did not establish. The broader relationship trajectory consumed more
+work than the fixed comparison because it required two product-specific readers
+and a dedicated relation analysis; the accepted quality gain stayed below the
+absolute 180-second ceiling. The fixed comparison used the same six-call
+no-repair topology as T3 and improved latency by 47.7% from the 67.3-second T3
+median.
+
+Gold tests cover minimal comparison, contradiction, relationship, and combined
+risk graphs; exact-reader packing; dependency rewiring; dominated-specialist
+removal; duplicate rejection; and host quality repair for missing source-specific
+comparison coverage. Regression tests also prove that a Jira key explicitly
+supported by a detail-read Confluence source is preserved while unsupported Jira
+claims remain blocked. The packed production-MV3 suite passed 45/45 and exercised
+the same strategy, graph admission, exact-read, streaming, recovery, stop,
+steering, and safe-rendering contracts in the built extension. The three
+provider-backed CLI trajectories and packed-host contract proofs exposed only the
+specialists admitted for their requested capability.
+
+Focused tests, type checking, the production build, browser/output/CSP checks,
+and the research privacy scan remained green. The full repository gate then
+passed 7,003 tests with 15 intentional skips and zero failures using a
+resource-capped two-test concurrency outside the local-port sandbox. No private
+question, source, answer, URL, identifier, trace, or receipt is recorded here.

@@ -50,6 +50,26 @@ describe("synthetic provider-backed Chat live harness", () => {
     ])).toThrow("mutually exclusive");
   });
 
+  test("selects contradiction and cross-product relationship benchmark receipts", () => {
+    expect(parseChatAgentLiveArgumentsV1([
+      "--exact-page-pair",
+      "--benchmark", "deep-explicit-contradiction",
+      "Which decision conflicts?",
+    ])).toMatchObject({
+      exactPagePair: true,
+      benchmarkId: "deep-explicit-contradiction",
+      question: "Which decision conflicts?",
+    });
+    expect(parseChatAgentLiveArgumentsV1([
+      "--benchmark", "deep-cross-product-relationship",
+      "Trace the explicit relationship.",
+    ])).toMatchObject({
+      exactPagePair: false,
+      benchmarkId: "deep-cross-product-relationship",
+      question: "Trace the explicit relationship.",
+    });
+  });
+
   test("supports compact live-proof output without changing the run", () => {
     expect(parseChatAgentLiveArgumentsV1(["--summary-only", "Compare", "sources"]))
       .toMatchObject({ summaryOnly: true, question: "Compare sources" });

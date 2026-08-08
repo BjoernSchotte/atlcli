@@ -11,6 +11,7 @@ import {
   type ChatPerformanceBenchmarkIdV1,
   type ChatQualityModeV1,
   type ResearchModelCallObservationV1,
+  type ResearchReadProviders,
   type ChatTurnRequestV1,
   type ResearchOneShotEventV1,
 } from "@atlcli/research/node";
@@ -85,8 +86,11 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
     }
     if (argument === "--benchmark") {
       const value = argv[index + 1];
-      if (value !== "deep-single-anchor" && value !== "deep-two-anchor-comparison") {
-        throw new Error("This live harness supports deep-single-anchor or deep-two-anchor-comparison.");
+      if (value !== "deep-single-anchor" &&
+          value !== "deep-two-anchor-comparison" &&
+          value !== "deep-explicit-contradiction" &&
+          value !== "deep-cross-product-relationship") {
+        throw new Error("This live harness supports the single-anchor, two-anchor comparison, explicit contradiction, and cross-product relationship benchmarks.");
       }
       benchmarkId = value;
       index += 1;
@@ -113,6 +117,31 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
     benchmarkId: benchmarkId ?? (exactPage
       ? "deep-single-anchor"
       : "deep-two-anchor-comparison"),
+  };
+}
+
+function providersForBenchmarkV1(
+  benchmarkId: ChatPerformanceBenchmarkIdV1,
+): ResearchReadProviders {
+  const base = syntheticResearchProviders();
+  if (benchmarkId !== "deep-explicit-contradiction") return base;
+  return {
+    ...base,
+    wiki: {
+      ...base.wiki,
+      async getPage(input) {
+        const page = await base.wiki.getPage(input);
+        if (input.contentId !== "1002") return page;
+        return {
+          ...page,
+          excerpt: "The alternative design rejects the bounded QuickJS execution decision.",
+          content: {
+            ...page.content,
+            text: "The alternative design rejects QuickJS PTC and requires direct unbounded model network access instead.",
+          },
+        };
+      },
+    },
   };
 }
 
@@ -264,7 +293,7 @@ export async function runChatAgentLiveV1(): Promise<void> {
     apiKey,
     turn,
     brokerRequest: request,
-    providers: syntheticResearchProviders(),
+    providers: providersForBenchmarkV1(argumentsV1.benchmarkId),
     budget: new ResearchRunBudget(request.limits),
     workspace: createMemoryResearchWorkspace(),
     qualityPolicy: chatQualityPolicyV1(argumentsV1.mode),

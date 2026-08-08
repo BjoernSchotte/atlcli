@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ResearchDetailEvidenceV1 } from "../broker.js";
 import {
   assessChatGroundednessBeforeCriticV1,
+  createChatMissingComparisonCoverageDefectV1,
   createChatQualityDispositionV1,
   type ChatQualityDefectV1,
 } from "./quality.js";
@@ -59,6 +60,21 @@ function retrieval(input: {
 }
 
 describe("Chat groundedness quality boundary", () => {
+  test("turns omitted comparison-source coverage into one repairable host defect", () => {
+    const defect = createChatMissingComparisonCoverageDefectV1([
+      "wiki:1002",
+      "wiki:1002",
+    ]);
+
+    expect(defect).toMatchObject({
+      code: "question-not-answered",
+      severity: "material",
+      sourceIds: ["wiki:1002"],
+      repairAction: "resynthesize",
+    });
+    expect(createChatMissingComparisonCoverageDefectV1([])).toBeUndefined();
+  });
+
   test("runs deterministic source, coverage, and instruction-isolation checks before critic", () => {
     const assessment = assessChatGroundednessBeforeCriticV1({
       conversationId: "conversation:quality",

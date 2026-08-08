@@ -276,10 +276,17 @@ export function createChatStrategyDecisionControllerV1(input: {
   let acknowledged: ChatStrategyDecisionV1 | undefined;
   let acknowledging = false;
   const strategyTool = tool(async () => {
-    if (acknowledged || acknowledging) {
+    if (acknowledged) {
+      // QuickJS eval can be retried after a later host admission rejects the
+      // proposed graph. Returning the same immutable decision is idempotent:
+      // it performs no budget accounting or acknowledgement side effect and
+      // cannot widen the already accepted turn strategy.
+      return JSON.stringify(structuredClone(acknowledged));
+    }
+    if (acknowledging) {
       throw new ChatContractError(
         "invalid-request",
-        "The accepted Chat strategy decision has already been acknowledged for this turn.",
+        "The accepted Chat strategy decision acknowledgement is still in progress.",
       );
     }
     if (input.decision.ambiguityDisposition !== "none") {
@@ -302,7 +309,7 @@ export function createChatStrategyDecisionControllerV1(input: {
   }, {
     name: "chat_strategy_decide",
     description:
-      "Accept the host-derived direct or agentic Chat strategy exactly once before any Atlassian content capability. Takes an empty object and returns the bounded strategy decision.",
+      "Accept the host-derived direct or agentic Chat strategy before any Atlassian content capability. Repeated calls return the same immutable decision without another side effect.",
     schema: z.object({}).strict(),
   });
   return {

@@ -527,6 +527,14 @@ function removeUncitedJiraKeyLinesV1(
   const lines = inputLines.flatMap((line, index): string[] => {
     const issueKeys = [...line.matchAll(JIRA_ISSUE_KEY_V1)].map((match) => match[0]!);
     if (issueKeys.length === 0) return [line];
+    const citedDetailedConfluenceSource = chatEvidencePlaceholdersV1(line).some((placeholder) =>
+      sources.get(placeholder.sourceId)?.product === "confluence"
+    );
+    // A detail-read Confluence page can directly support that its own text
+    // mentions or defines work associated with a Jira key. Requiring a second
+    // Jira detail read here would erase valid Confluence -> Jira evidence. A
+    // Jira-state claim without either detailed source remains blocked below.
+    if (citedDetailedConfluenceSource) return [line];
     const issueSources = issueKeys.map((issueKey) =>
       [...sources.values()].find((source) =>
         source.product === "jira" &&

@@ -31,7 +31,40 @@ const agentic: ChatStrategyDecisionV1 = {
   ambiguityDisposition: "none",
   requiredCapabilities: ["jira-discovery", "confluence-discovery", "relationship-tracing"],
   expectedComplexity: "complex",
+  qualityRisks: ["multiple-sources", "cross-product"],
+};
+
+const comparisonAgentic: ChatStrategyDecisionV1 = {
+  ...agentic,
+  reasonCodes: ["multi-source-comparison"],
+  requiredCapabilities: ["comparison-analysis", "quality-review", "chat-answer"],
   qualityRisks: ["multiple-sources"],
+};
+
+const comparisonContradictionAgentic: ChatStrategyDecisionV1 = {
+  ...comparisonAgentic,
+  reasonCodes: ["multi-source-comparison", "contradiction-risk"],
+  requiredCapabilities: [
+    "comparison-analysis",
+    "contradiction-check",
+    "quality-review",
+    "chat-answer",
+  ],
+  qualityRisks: ["multiple-sources", "contradictory-evidence"],
+};
+
+const relationshipAgentic: ChatStrategyDecisionV1 = {
+  ...comparisonAgentic,
+  reasonCodes: ["cross-product-relationship"],
+  requiredCapabilities: ["relationship-tracing", "quality-review", "chat-answer"],
+  qualityRisks: ["cross-product"],
+};
+
+const contradictionAgentic: ChatStrategyDecisionV1 = {
+  ...comparisonAgentic,
+  reasonCodes: ["contradiction-risk"],
+  requiredCapabilities: ["contradiction-check", "quality-review", "chat-answer"],
+  qualityRisks: ["contradictory-evidence"],
 };
 
 function proposal(tasks: ChatWorkflowProposalV1["tasks"]): ChatWorkflowProposalV1 {
@@ -174,6 +207,124 @@ describe("Chat dynamic workflow admission", () => {
         },
       ]),
     })).toThrow("direct Chat strategy");
+  });
+
+  test("admits distinct minimal graphs for comparison, contradiction, relationship, and combined risk", async () => {
+    const combined: ChatStrategyDecisionV1 = {
+      ...comparisonContradictionAgentic,
+      reasonCodes: [
+        "multi-source-comparison",
+        "cross-product-relationship",
+        "contradiction-risk",
+      ],
+      requiredCapabilities: [
+        "comparison-analysis",
+        "relationship-tracing",
+        "contradiction-check",
+        "quality-review",
+        "chat-answer",
+      ],
+      qualityRisks: ["multiple-sources", "cross-product", "contradictory-evidence"],
+    };
+    const cases = [
+      { strategy: comparisonAgentic, profiles: ["comparison-analyst"] as const },
+      { strategy: contradictionAgentic, profiles: ["contradiction-checker"] as const },
+      { strategy: relationshipAgentic, profiles: ["relationship-tracer"] as const },
+      {
+        strategy: combined,
+        profiles: [
+          "comparison-analyst",
+          "relationship-tracer",
+          "contradiction-checker",
+        ] as const,
+      },
+    ];
+    for (const [caseIndex, gold] of cases.entries()) {
+      const controller = createChatWorkflowProposalControllerV1({
+        strategy: gold.strategy,
+        budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      });
+      const leading = gold.profiles.map((profileId, profileIndex) => ({
+        taskId: `task:gold:${caseIndex}:${profileIndex}`,
+        profileId,
+        objective: `Perform the required ${profileId} work.`,
+        dependencyTaskIds: [],
+      }));
+      const response = JSON.parse(await controller.tool.invoke({
+        tasks: qualityWorkflowTasks(leading),
+        maxConcurrency: Math.min(3, leading.length),
+      }));
+      expect(response.normalization).toMatchObject({
+        schema: "atlcli.chat-workflow-normalization/v1",
+        proposedTaskCount: leading.length + 3,
+        admittedTaskCount: leading.length + 3,
+        reasonCodes: [],
+      });
+      expect(response.normalization.admittedProfileIds).toEqual([
+        ...gold.profiles,
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+      ]);
+    }
+  });
+
+  test("removes unrequired specialists and rejects duplicate readers with privacy-safe reason codes", async () => {
+    const unnecessaryRelationship = createChatWorkflowProposalControllerV1({
+      strategy: comparisonAgentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+    });
+    const normalized = JSON.parse(await unnecessaryRelationship.tool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:compare",
+          profileId: "comparison-analyst",
+          objective: "Compare accepted evidence.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:relationship",
+          profileId: "relationship-tracer",
+          objective: "Perform ceremonial relationship work.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    }));
+    expect(normalized.normalization).toMatchObject({
+      proposedTaskCount: 5,
+      admittedTaskCount: 4,
+      reasonCodes: ["dominated-specialists-removed"],
+    });
+    expect(normalized.normalization.admittedProfileIds).not.toContain("relationship-tracer");
+
+    const duplicateReader = createChatWorkflowProposalControllerV1({
+      strategy: relationshipAgentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+    });
+    await expect(duplicateReader.tool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:wiki:a",
+          profileId: "confluence-search-reader",
+          objective: "Search the first equivalent facet.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:wiki:b",
+          profileId: "confluence-search-reader",
+          objective: "Search the second equivalent facet.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:relationship",
+          profileId: "relationship-tracer",
+          objective: "Trace explicit relationships.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    })).rejects.toThrow("duplicate-reader");
   });
 
   test("admits a dynamic two-sibling parallel frontier and one synthesizer", () => {
@@ -337,7 +488,7 @@ describe("Chat dynamic workflow admission", () => {
     let strategyAcknowledged = false;
     const accepted: string[] = [];
     const controller = createChatWorkflowProposalControllerV1({
-      strategy: agentic,
+      strategy: comparisonAgentic,
       budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
       taskContext: JSON.stringify({ question: "Compare the two approved sources." }),
       beforeProposal: () => {
@@ -379,7 +530,7 @@ describe("Chat dynamic workflow admission", () => {
 
   test("repairs model-proposed backward phase edges without changing dynamic task selection", async () => {
     const controller = createChatWorkflowProposalControllerV1({
-      strategy: agentic,
+      strategy: comparisonContradictionAgentic,
       budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
     });
     await controller.tool.invoke({
@@ -762,7 +913,14 @@ describe("Chat dynamic workflow admission", () => {
         },
       ]),
       maxConcurrency: 2,
-    })) as { dispatches: ChatWorkflowDispatchV1[] };
+    })) as {
+      dispatches: ChatWorkflowDispatchV1[];
+      normalization: {
+        proposedTaskCount: number;
+        admittedTaskCount: number;
+        reasonCodes: string[];
+      };
+    };
     const exactDispatches = response.dispatches.filter((dispatch) =>
       dispatch.subagentType === "chat-exact-context-reader-v1"
     );
@@ -776,6 +934,11 @@ describe("Chat dynamic workflow admission", () => {
     expect(JSON.stringify(exactDispatch)).toContain("research-anchor:synthetic-b");
     expect(response.dispatches.find((dispatch) => dispatch.taskId === "task:compare")
       ?.dependencyTaskIds).toEqual(["task:reader:a"]);
+    expect(response.normalization).toMatchObject({
+      proposedTaskCount: 6,
+      admittedTaskCount: 5,
+      reasonCodes: ["host-exact-anchors-bound", "exact-readers-packed"],
+    });
     expect(controller.tool.description).toContain(
       "host deterministically packs up to three small exact anchors",
     );

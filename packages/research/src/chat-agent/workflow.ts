@@ -416,7 +416,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "relationship-tracer",
     phase: "analysis",
     description: "Trace only explicit relationships in accepted evidence packets.",
-    systemPrompt: "Relate only host-accepted source and claim references supplied as data. Do not retrieve, delegate, infer missing links, or return source bodies.",
+    systemPrompt: "Relate only host-accepted source and claim references supplied as data. A URL or related-anchor proves a link but does not prove a Jira macro, smart-link rendering mode, or remote-link subtype unless the accepted packet names that mechanism explicitly. Canonical source identity and title override stale related-anchor labels. Do not retrieve, delegate, infer missing links, or return source bodies.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-analysis-packet/v1",
     responseSchema: CHAT_ANALYSIS_PACKET_SCHEMA_V1,
@@ -430,8 +430,8 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     subagentType: "chat-comparison-analyst-v1",
     roleId: "comparison-analyst",
     phase: "analysis",
-    description: "Compare accepted claims without acquiring or widening scope.",
-    systemPrompt: "Compare only accepted claim and source references. Preserve disagreement and missing coverage. Do not retrieve, delegate, or synthesize the final answer.",
+    description: "Compare accepted claims, including evidence-backed differences and conflicts, without widening scope.",
+    systemPrompt: "Compare only accepted claim and source references. Report evidence-backed differences, conflicts, and missing coverage. Preserve unresolved disagreement for the critic and synthesizer. A separate contradiction checker is reserved for explicit or host-detected material contradiction risk. Do not retrieve, delegate, or synthesize the final answer.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-analysis-packet/v1",
     responseSchema: CHAT_ANALYSIS_PACKET_SCHEMA_V1,
@@ -580,7 +580,29 @@ export interface ChatWorkflowAdmissionResponseV1 {
   maxConcurrency: number;
   synthesizerTaskId: string;
   qualityReviewRequired: true;
+  normalization: ChatWorkflowNormalizationV1;
   dispatches: readonly Readonly<ChatWorkflowDispatchV1>[];
+}
+
+export const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1 =
+  "atlcli.chat-workflow-normalization/v1" as const;
+
+export const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1 = [
+  "host-exact-anchors-bound",
+  "exact-readers-packed",
+  "dominated-specialists-removed",
+  "phase-dependencies-normalized",
+] as const;
+
+export type ChatWorkflowNormalizationReasonCodeV1 =
+  (typeof CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1)[number];
+
+export interface ChatWorkflowNormalizationV1 {
+  schema: typeof CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1;
+  proposedTaskCount: number;
+  admittedTaskCount: number;
+  admittedProfileIds: ChatSubagentProfileIdV1[];
+  reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
 }
 
 export function createChatWorkflowDispatchV1(input: {
@@ -919,6 +941,153 @@ function bindSmallHostExactAnchorsV1(
   });
 }
 
+export const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1 = [
+  "duplicate-specialist",
+  "duplicate-reader",
+  "duplicate-exact-anchor",
+  "unchanged-information-gain",
+  "unnecessary-comparison",
+  "unnecessary-relationship",
+  "unnecessary-contradiction",
+] as const;
+
+export type ChatWorkflowRejectionReasonCodeV1 =
+  (typeof CHAT_WORKFLOW_REJECTION_REASON_CODES_V1)[number];
+
+function rejectDominatedWorkflowV1(reason: ChatWorkflowRejectionReasonCodeV1): never {
+  throw new ChatContractError(
+    "invalid-request",
+    `The Chat workflow was rejected by host graph admission (${reason}).`,
+  );
+}
+
+function exactAnchorRefsInTaskV1(task: Readonly<ChatWorkflowTaskProposalV1>): string[] {
+  return [...new Set(
+    [...task.objective.matchAll(/\bresearch-anchor:[A-Za-z0-9-]{1,200}\b/gu)]
+      .map((match) => match[0]),
+  )].sort((left, right) => left.localeCompare(right, "en-US"));
+}
+
+function assertChatWorkflowDominanceV1(input: {
+  strategy: Readonly<ChatStrategyDecisionV1>;
+  tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+}): void {
+  const counts = new Map<ChatSubagentProfileIdV1, number>();
+  for (const task of input.tasks) {
+    counts.set(task.profileId, (counts.get(task.profileId) ?? 0) + 1);
+  }
+  for (const [profileId, count] of counts) {
+    if (count < 2 || profileId === "exact-context-reader") continue;
+    rejectDominatedWorkflowV1(
+      profileId === "jira-search-reader" || profileId === "confluence-search-reader"
+        ? "duplicate-reader"
+        : "duplicate-specialist",
+    );
+  }
+
+  const required = new Set(input.strategy.requiredCapabilities);
+  if (counts.has("comparison-analyst") && !required.has("comparison-analysis")) {
+    rejectDominatedWorkflowV1("unnecessary-comparison");
+  }
+  if (counts.has("relationship-tracer") && !required.has("relationship-tracing")) {
+    rejectDominatedWorkflowV1("unnecessary-relationship");
+  }
+  if (counts.has("contradiction-checker") &&
+      !required.has("contradiction-check") &&
+      !input.strategy.qualityRisks.includes("contradictory-evidence")) {
+    rejectDominatedWorkflowV1("unnecessary-contradiction");
+  }
+
+  const objectiveFingerprints = new Set<string>();
+  for (const task of input.tasks) {
+    const fingerprint = JSON.stringify([
+      task.profileId,
+      task.objective.replace(/\s+/gu, " ").trim().toLocaleLowerCase("en-US"),
+      [...task.dependencyTaskIds].sort((left, right) => left.localeCompare(right, "en-US")),
+    ]);
+    if (objectiveFingerprints.has(fingerprint)) {
+      rejectDominatedWorkflowV1("unchanged-information-gain");
+    }
+    objectiveFingerprints.add(fingerprint);
+  }
+}
+
+function removeUnrequiredSpecialistsV1(input: {
+  strategy: Readonly<ChatStrategyDecisionV1>;
+  tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[];
+}): ChatWorkflowTaskProposalV1[] {
+  const required = new Set(input.strategy.requiredCapabilities);
+  const removed = new Map(input.tasks.flatMap((task) => {
+    const unnecessary =
+      (task.profileId === "comparison-analyst" && !required.has("comparison-analysis")) ||
+      (task.profileId === "relationship-tracer" && !required.has("relationship-tracing")) ||
+      (task.profileId === "contradiction-checker" &&
+        !required.has("contradiction-check") &&
+        !input.strategy.qualityRisks.includes("contradictory-evidence"));
+    return unnecessary ? [[task.taskId, task] as const] : [];
+  }));
+  if (removed.size === 0) return input.tasks.map((task) => ({ ...task }));
+  const expandDependency = (taskId: string, seen = new Set<string>()): string[] => {
+    if (seen.has(taskId)) return [];
+    const task = removed.get(taskId);
+    if (!task) return [taskId];
+    const nextSeen = new Set(seen).add(taskId);
+    return task.dependencyTaskIds.flatMap((dependencyTaskId) =>
+      expandDependency(dependencyTaskId, nextSeen)
+    );
+  };
+  return input.tasks.flatMap((task): ChatWorkflowTaskProposalV1[] => removed.has(task.taskId)
+    ? []
+    : [{
+        ...task,
+        dependencyTaskIds: [...new Set(task.dependencyTaskIds.flatMap((dependencyTaskId) =>
+          expandDependency(dependencyTaskId)
+        ))],
+      }]);
+}
+
+function normalizeChatWorkflowProposalTasksV1(input: {
+  strategy: Readonly<ChatStrategyDecisionV1>;
+  tasks: readonly ChatWorkflowTaskProposalV1[];
+  exactAnchorRefs?: readonly string[];
+}): {
+  tasks: ChatWorkflowTaskProposalV1[];
+  reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
+} {
+  const reasonCodes: ChatWorkflowNormalizationReasonCodeV1[] = [];
+  const dominated = removeUnrequiredSpecialistsV1({
+    strategy: input.strategy,
+    tasks: input.tasks,
+  });
+  if (dominated.length < input.tasks.length) {
+    reasonCodes.push("dominated-specialists-removed");
+  }
+  const bound = bindSmallHostExactAnchorsV1(dominated, input.exactAnchorRefs);
+  if (bound.some((task, index) => task.objective !== dominated[index]?.objective)) {
+    reasonCodes.push("host-exact-anchors-bound");
+  }
+  const packed = packSmallExactReaderTasksV1(bound);
+  if (packed.length < bound.length) reasonCodes.push("exact-readers-packed");
+  const normalized = normalizeModelWorkflowDependenciesV1(packed);
+  if (normalized.some((task, index) =>
+    JSON.stringify(task.dependencyTaskIds) !== JSON.stringify(packed[index]?.dependencyTaskIds)
+  )) {
+    reasonCodes.push("phase-dependencies-normalized");
+  }
+
+  const exactOwners = new Map<string, string>();
+  for (const task of normalized.filter((entry) => entry.profileId === "exact-context-reader")) {
+    for (const anchorRef of exactAnchorRefsInTaskV1(task)) {
+      const previous = exactOwners.get(anchorRef);
+      if (previous && previous !== task.taskId) {
+        rejectDominatedWorkflowV1("duplicate-exact-anchor");
+      }
+      exactOwners.set(anchorRef, task.taskId);
+    }
+  }
+  return { tasks: normalized, reasonCodes };
+}
+
 function normalizeModelRetrievalPlanV1(
   proposal: ChatRetrievalPlanProposalV1 | undefined,
 ): ChatRetrievalPlanProposalV1 | undefined {
@@ -1102,21 +1271,23 @@ export function createChatWorkflowProposalControllerV1(input: {
       const normalizedRetrievalPlan = normalizeModelRetrievalPlanV1(
         proposal.retrievalPlan,
       );
+      const normalizedProposal = normalizeChatWorkflowProposalTasksV1({
+        strategy: input.strategy,
+        tasks: proposal.tasks.map((task) => ({ ...task })),
+        exactAnchorRefs: input.exactAnchorRefs,
+      });
+      assertChatWorkflowDominanceV1({
+        strategy: input.strategy,
+        tasks: normalizedProposal.tasks,
+      });
       const workflowProposal: ChatWorkflowProposalV1 = {
         schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1,
         maxConcurrency: proposal.maxConcurrency,
-        tasks: proposal.tasks.map((task) => ({ ...task })),
+        tasks: normalizedProposal.tasks,
         ...(normalizedRetrievalPlan ? { retrievalPlan: normalizedRetrievalPlan } : {}),
       };
       await input.beforeAdmission?.(workflowProposal);
-      const normalizedTasks = normalizeModelWorkflowDependenciesV1(
-        packSmallExactReaderTasksV1(
-          bindSmallHostExactAnchorsV1(
-            proposal.tasks.map((task) => ({ ...task })),
-            input.exactAnchorRefs,
-          ),
-        ),
-      );
+      const normalizedTasks = normalizedProposal.tasks;
       const workflow = admitChatWorkflowProposalV1({
         strategy: input.strategy,
         proposal: {
@@ -1146,6 +1317,13 @@ export function createChatWorkflowProposalControllerV1(input: {
         maxConcurrency: workflow.compiled.maxConcurrency,
         synthesizerTaskId: workflow.synthesizerTaskId,
         qualityReviewRequired: true,
+        normalization: {
+          schema: CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1,
+          proposedTaskCount: proposal.tasks.length,
+          admittedTaskCount: workflow.tasks.length,
+          admittedProfileIds: workflow.tasks.map((task) => task.profileId),
+          reasonCodes: normalizedProposal.reasonCodes,
+        },
         dispatches: Object.freeze(workflow.tasks
           .filter((task) => task.taskId !== workflow.synthesizerTaskId)
           .map((task) => createChatWorkflowDispatchV1({
@@ -1168,7 +1346,7 @@ export function createChatWorkflowProposalControllerV1(input: {
       `The complete profile set available in this turn is: ${allowedProfileList.join(", ")}. ` +
       `The accepted strategy requires these profiles in this proposal: ${requiredProfiles.join(", ") || "none"}. ` +
       `Assign at most ${MAX_EXACT_ANCHORS_PER_CHAT_READER_V1} explicit opaque anchorRefs to each exact-context-reader task; split larger exact source sets into parallel readers. ` +
-      "Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. The host deterministically packs up to three small exact anchors into one reader and splits only when the bounded projection requires it. Keep admitted search variants for the same product in one search-reader task because its host controller owns the product-wide pagination and detail budget. Split other readers when their products, capability grants, independent facets, or latency benefit materially differ. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, and response schemas for dispatch.",
+      "Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. The comparison analyst owns evidence-backed differences and conflicts by default. Add a contradiction checker only when the accepted strategy explicitly requires contradiction checking. Add a relationship tracer only when the accepted strategy requires cross-product relationship work. The host rejects duplicate or phase-equivalent specialists. The host deterministically packs up to three small exact anchors into one reader and splits only when the bounded projection requires it. Keep admitted search variants for the same product in one search-reader task because its host controller owns the product-wide pagination and detail budget. Split exact readers only when their bounded anchor packets cannot be packed together. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, response schemas, and privacy-safe normalization reason codes for dispatch.",
     schema: z.object({
       tasks: z.array(workflowTaskProposalSchema).min(4).max(9),
       maxConcurrency: z.number().int().min(1).max(3),

@@ -70,6 +70,7 @@ const NON_EXPORT_NOTE_CODES = new Set([
   "missing-context",
   "no-detail-evidence",
   "prompt-injection-risk",
+  "question-not-answered",
   "stale-source",
   "uncovered-candidate",
   "unresolved-contradiction",
