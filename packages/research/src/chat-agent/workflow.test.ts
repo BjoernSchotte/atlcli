@@ -8,6 +8,7 @@ import {
   admitChatWorkflowProposalV1,
   createChatWorkflowProposalControllerV1,
   parseChatSubagentResultV1,
+  type ChatWorkflowDispatchV1,
   type ChatWorkflowProposalV1,
 } from "./workflow.js";
 
@@ -75,7 +76,7 @@ describe("Chat dynamic workflow admission", () => {
       budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
     });
     expect(controller.tool.description).toContain(
-      "one parallel exact-context reader per bounded anchor",
+      "host deterministically packs up to three small exact anchors",
     );
     expect(controller.tool.description).toContain(
       "Keep admitted search variants for the same product in one search-reader task",
@@ -717,6 +718,62 @@ describe("Chat dynamic workflow admission", () => {
     );
     expect(controller.tool.description).toContain(
       "Assign at most 3 explicit opaque anchorRefs",
+    );
+  });
+
+  test("packs two small exact-reader proposals into one deterministic host task", async () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: {
+        ...agentic,
+        requiredCapabilities: ["exact-read", "comparison-analysis", "quality-review", "chat-answer"],
+      },
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      allowedProfileIds: [
+        "exact-context-reader",
+        "comparison-analyst",
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+      ],
+    });
+    const response = JSON.parse(await controller.tool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:reader:b",
+          profileId: "exact-context-reader",
+          objective: "Read research-anchor:synthetic-b.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:reader:a",
+          profileId: "exact-context-reader",
+          objective: "Read research-anchor:synthetic-a.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:compare",
+          profileId: "comparison-analyst",
+          objective: "Compare both exact sources.",
+          dependencyTaskIds: ["task:reader:a", "task:reader:b"],
+        },
+      ]),
+      maxConcurrency: 2,
+    })) as { dispatches: ChatWorkflowDispatchV1[] };
+    const exactDispatches = response.dispatches.filter((dispatch) =>
+      dispatch.subagentType === "chat-exact-context-reader-v1"
+    );
+    expect(exactDispatches).toHaveLength(1);
+    const exactDispatch = exactDispatches[0];
+    if (!exactDispatch) throw new Error("missing packed exact dispatch");
+    expect(exactDispatch).toMatchObject({
+      taskId: "task:reader:a",
+      objective: expect.stringContaining("research-anchor:synthetic-a"),
+    });
+    expect(JSON.stringify(exactDispatch)).toContain("research-anchor:synthetic-b");
+    expect(response.dispatches.find((dispatch) => dispatch.taskId === "task:compare")
+      ?.dependencyTaskIds).toEqual(["task:reader:a"]);
+    expect(controller.tool.description).toContain(
+      "host deterministically packs up to three small exact anchors",
     );
   });
 

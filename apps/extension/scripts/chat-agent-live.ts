@@ -28,6 +28,7 @@ export interface ChatAgentLiveArgumentsV1 {
   mode: ChatQualityModeV1;
   question: string;
   exactPage: boolean;
+  exactPagePair: boolean;
   summaryOnly: boolean;
   receiptPath?: string;
   sample: "warmup" | "measured";
@@ -37,6 +38,7 @@ export interface ChatAgentLiveArgumentsV1 {
 export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgentLiveArgumentsV1 {
   let mode: ChatQualityModeV1 = "deep";
   let exactPage = false;
+  let exactPagePair = false;
   let summaryOnly = false;
   let receiptPath: string | undefined;
   let sample: "warmup" | "measured" = "measured";
@@ -55,6 +57,10 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
     }
     if (argument === "--exact-page") {
       exactPage = true;
+      continue;
+    }
+    if (argument === "--exact-page-pair") {
+      exactPagePair = true;
       continue;
     }
     if (argument === "--summary-only") {
@@ -89,12 +95,18 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
     if (argument.startsWith("--")) throw new Error(`Unknown option: ${argument}`);
     questionParts.push(argument);
   }
+  if (exactPage && exactPagePair) {
+    throw new Error("--exact-page and --exact-page-pair are mutually exclusive.");
+  }
   return {
     mode,
-    question: questionParts.join(" ").trim() || (exactPage
-      ? "Summarize the attached synthetic Confluence page and cite its central design decision."
-      : DEFAULT_QUESTION),
+    question: questionParts.join(" ").trim() || (exactPagePair
+      ? "Compare the two attached synthetic Confluence pages and cite their central design decisions."
+      : exactPage
+        ? "Summarize the attached synthetic Confluence page and cite its central design decision."
+        : DEFAULT_QUESTION),
     exactPage,
+    exactPagePair,
     summaryOnly,
     ...(receiptPath ? { receiptPath } : {}),
     sample,
@@ -125,10 +137,12 @@ export async function runChatAgentLiveV1(): Promise<void> {
     question: argumentsV1.question,
     scope: {
       siteOrigin: SYNTHETIC_SITE_ORIGIN,
-      jiraProjectKeys: argumentsV1.exactPage ? [] : [SYNTHETIC_PROJECT_KEY],
+      jiraProjectKeys: argumentsV1.exactPage || argumentsV1.exactPagePair
+        ? []
+        : [SYNTHETIC_PROJECT_KEY],
       confluenceSpaceKeys: [SYNTHETIC_SPACE_KEY],
     },
-    scopeSeeds: argumentsV1.exactPage
+    scopeSeeds: argumentsV1.exactPage || argumentsV1.exactPagePair
       ? [{
             binding: {
               schema: "atlcli.research-scope-binding/v1",
@@ -157,7 +171,23 @@ export async function runChatAgentLiveV1(): Promise<void> {
               authority: "approved",
             },
             precedence: 300,
-          }]
+          }, ...(argumentsV1.exactPagePair
+            ? [{
+                binding: {
+                  schema: "atlcli.research-scope-binding/v1" as const,
+                  id: "scope-binding:current:synthetic-page-1002",
+                  tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+                  product: "confluence" as const,
+                  entityKind: "page" as const,
+                  entityRef: "research-scope-entity:synthetic-page-1002",
+                  key: "1002",
+                  name: "Alternative design",
+                  source: "current_context" as const,
+                  authority: "approved" as const,
+                },
+                precedence: 300,
+              }]
+            : [])]
       : [{
           binding: {
             schema: "atlcli.research-scope-binding/v1",
@@ -187,7 +217,7 @@ export async function runChatAgentLiveV1(): Promise<void> {
           },
           precedence: 500,
         }],
-    ...(argumentsV1.exactPage
+    ...(argumentsV1.exactPage || argumentsV1.exactPagePair
       ? { exactContextProducts: ["confluence" as const] }
       : {}),
     limits: {
@@ -195,8 +225,8 @@ export async function runChatAgentLiveV1(): Promise<void> {
       // The production default is much larger. Keep this synthetic live proof
       // bounded without forcing several extra provider turns for pagination.
       pageSize: 4,
-      maxSearchPagesPerProduct: argumentsV1.exactPage ? 3 : 9,
-      maxItemsPerProduct: argumentsV1.exactPage ? 4 : 12,
+      maxSearchPagesPerProduct: argumentsV1.exactPage || argumentsV1.exactPagePair ? 3 : 9,
+      maxItemsPerProduct: argumentsV1.exactPage || argumentsV1.exactPagePair ? 4 : 12,
       maxDetailItemsPerProduct: 4,
       // Agentic Chat may admit several bounded query variants per product
       // before its analysis wave. Keep this synthetic harness below the

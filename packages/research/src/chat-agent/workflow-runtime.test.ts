@@ -15,6 +15,7 @@ import {
 } from "../contracts.js";
 import { DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY } from "../dispatch-adapter.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
+import { navigateConfluenceStorageV1 } from "../document-navigation.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 import type { ChatWorkflowDispatchV1 } from "./workflow.js";
 import {
@@ -226,21 +227,22 @@ function createHarness(input: {
   withRetrievalAssessment?: boolean;
   searchExhaustedWithoutCandidates?: boolean;
   searchPlanSaturated?: boolean;
+  onRetrievalObserve?: (capability: string, result: unknown, callId: string) => void;
   strategyReviewCurrent?: () => boolean;
   decideRepairAdmission?: (
     disposition: ChatQualityDispositionV1,
   ) => { admit: boolean; reason?: ChatRepairSkippedReasonV1 };
   researchRequest?: ResearchRequestV1;
   readProviders?: ResearchReadProviders;
-  exactReaderPrimaryMaxMs?: number;
 } = {}) {
   const activeRequest = input.researchRequest ?? request;
   const budget = new ResearchRunBudget(activeRequest.limits);
   const modelBudget = new ResearchModelRunBudget(activeRequest.limits);
+  let anchorSequence = 0;
   const broker = new ResearchCapabilityBroker(
     activeRequest,
     input.readProviders ?? providers,
-    { budget, createAnchorId: () => "workflow-page" },
+    { budget, createAnchorId: () => `workflow-page-${++anchorSequence}` },
   );
   const workspace = createMemoryResearchWorkspace();
   let compiledSubagents: Array<{
@@ -310,9 +312,6 @@ function createHarness(input: {
     boundProjectKeys: [],
     boundSpaceKeys: [],
     signal: new AbortController().signal,
-    ...(input.exactReaderPrimaryMaxMs === undefined
-      ? {}
-      : { exactReaderPrimaryMaxMs: input.exactReaderPrimaryMaxMs }),
     ...(input.strategyReviewCurrent
       ? { strategyReviewCurrent: input.strategyReviewCurrent }
       : {}),
@@ -331,7 +330,9 @@ function createHarness(input: {
             }),
             allowedInitialQueries: () => [{ text: "synthetic" }],
             assertToolInput: () => {},
-            observe: async () => {},
+            observe: async (capability: string, result: unknown, callId: string) => {
+              input.onRetrievalObserve?.(capability, result, callId);
+            },
             isSearchExhaustedWithoutCandidates: () =>
               input.searchExhaustedWithoutCandidates === true,
             isSearchPlanSaturated: () => input.searchPlanSaturated === true,
@@ -370,6 +371,7 @@ async function invokeDispatch(
     subagentType: string;
     responseSchema: Readonly<Record<string, unknown>>;
   },
+  config: RunnableConfig = {},
 ): Promise<unknown> {
   const taskTool = runtime.middleware.tools?.find((candidate) => candidate.name === "task");
   if (!taskTool) throw new Error("missing bounded task");
@@ -377,7 +379,9 @@ async function invokeDispatch(
     description: dispatch.description,
     subagent_type: dispatch.subagentType,
   }, {
+    ...config,
     configurable: {
+      ...config.configurable,
       [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: dispatch.responseSchema,
     },
   });
@@ -1484,27 +1488,34 @@ describe("Chat agentic workflow runtime", () => {
     expect(harness.runtime.dispatchSnapshot().taskStatuses["task:search"]).toBe("completed");
   });
 
-  test("recovers one failed exact reader from its already-read evidence without replaying Atlassian", async () => {
-    let pageReads = 0;
-    let primaryAttempts = 0;
-    let recoveryAttempts = 0;
-    let primarySignalAborted = false;
-    let primaryAbortReasonName: string | undefined;
-    const recoveryPacket = {
+  test("reads two small exact anchors once and extracts one aggregate packet", async () => {
+    const pageReads: string[] = [];
+    let exactChildAttempts = 0;
+    let extractionAttempts = 0;
+    let confluenceSearches = 0;
+    const retrievalObservations: Array<{ capability: string; callId: string }> = [];
+    const extractionPacket = {
       schema: "atlcli.chat-evidence-packet/v1" as const,
-      sourceIds: ["wiki:1001"],
-      claims: [{
-        text: "The bounded conclusion is established.",
-        sourceIds: ["wiki:1001"],
-        sourceRefs: ["wiki:1001#invented-section"],
-      }],
+      sourceIds: ["wiki:1001", "wiki:1002"],
+      claims: [
+        {
+          text: "The first bounded conclusion is established.",
+          sourceIds: ["wiki:1001"],
+          sourceRefs: ["wiki:1001"],
+        },
+        {
+          text: "The second bounded conclusion is established.",
+          sourceIds: ["wiki:1002"],
+          sourceRefs: ["wiki:1002"],
+        },
+      ],
       relationships: [],
       gaps: [],
     };
-    const recoveryModel = {
+    const extractionModel = {
       withStructuredOutput: (schema: unknown, options: unknown) => ({
         invoke: async (messages: unknown) => {
-          recoveryAttempts += 1;
+          extractionAttempts += 1;
           expect(schema).toMatchObject({
             type: "object",
             properties: {
@@ -1521,15 +1532,17 @@ describe("Chat agentic workflow runtime", () => {
           const projected = JSON.stringify(messages);
           expect(projected).toContain("already-read projections");
           expect(projected).toContain("wiki:1001");
-          expect(projected).toContain("bounded conclusion");
+          expect(projected).toContain("wiki:1002");
+          expect(projected).toContain("first bounded conclusion");
+          expect(projected).toContain("second bounded conclusion");
           expect(projected).not.toContain("research-anchor:");
           return {
             raw: new AIMessage({
               content: "",
               tool_calls: [{
-                name: "KiteweaveExactEvidenceRecoveryV1",
-                args: recoveryPacket,
-                id: "tool:exact-recovery",
+                name: "KiteweaveExactEvidenceExtractionV1",
+                args: extractionPacket,
+                id: "tool:exact-extraction",
                 type: "tool_call",
               }],
               usage_metadata: {
@@ -1538,9 +1551,6 @@ describe("Chat agentic workflow runtime", () => {
                 total_tokens: 150,
               },
             }),
-            // Regression: LangChain can leave an empty parsed object for a
-            // valid streamed Anthropic structured tool call. The host still
-            // parses and validates the exact named raw tool arguments.
             parsed: {},
           };
         },
@@ -1548,21 +1558,152 @@ describe("Chat agentic workflow runtime", () => {
     } as unknown as BaseChatModel;
     const exactRequest: ResearchRequestV1 = {
       ...request,
-      question: "Summarize the attached synthetic page.",
+      question: "Compare the two attached synthetic pages.",
       scope: {
         ...request.scope,
         confluenceSpaceKeys: ["DEMO"],
       },
+      scopeSeeds: ["1001", "1002"].map((key, index) => ({
+        binding: {
+          schema: "atlcli.research-scope-binding/v1" as const,
+          id: `scope-binding:current:workflow-page-${key}`,
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence" as const,
+          entityKind: "page" as const,
+          entityRef: `research-scope-entity:workflow-page-${key}`,
+          key,
+          name: `Synthetic attached page ${index + 1}`,
+          source: "current_context" as const,
+          authority: "approved" as const,
+        },
+        precedence: 300,
+      })),
+      exactContextProducts: ["confluence"],
+    };
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      withRetrievalAssessment: true,
+      onRetrievalObserve: (capability, _result, callId) => {
+        retrievalObservations.push({ capability, callId });
+      },
+      modelForPreference: () => extractionModel,
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async searchPage() {
+            confluenceSearches += 1;
+            return { items: [] };
+          },
+          async getPage({ contentId }) {
+            pageReads.push(contentId);
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: `Synthetic attached page ${contentId}`,
+              content: {
+                text: contentId === "1001"
+                  ? "The first bounded conclusion is established."
+                  : "The second bounded conclusion is established.",
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 52,
+              },
+            };
+          },
+        },
+      },
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-exact-context-reader-v1") {
+          exactChildAttempts += 1;
+          throw new Error("The exact-reader child must not run for small complete anchors.");
+        }
+        return analysisPacket();
+      },
+    });
+    const anchors = harness.broker.exactAnchors();
+    if (anchors.length !== 2) throw new Error("missing exact anchors");
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:exact:first",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchors[0]!.anchorRef} and extract bounded claims.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:exact:second",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchors[1]!.anchorRef} and extract bounded claims.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Analyze the bounded evidence.",
+          dependencyTaskIds: ["task:exact:first", "task:exact:second"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft a provisional answer.",
+          dependencyTaskIds: ["task:analysis"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique the provisional answer.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the accepted answer.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 2,
+    }));
+    const exactDispatches = response.dispatches.filter((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId.startsWith("task:exact:")
+    );
+    expect(exactDispatches).toHaveLength(1);
+    const packets = await Promise.all(exactDispatches.map((dispatch: ChatWorkflowDispatchV1) =>
+      invokeDispatch(harness.runtime, dispatch)
+    ));
+    expect(packets).toEqual([extractionPacket]);
+    expect(pageReads).toEqual(["1001", "1002"]);
+    expect({ exactChildAttempts, extractionAttempts, confluenceSearches }).toEqual({
+      exactChildAttempts: 0,
+      extractionAttempts: 1,
+      confluenceSearches: 0,
+    });
+    expect(retrievalObservations).toEqual([
+      { capability: "atlassian.bound.read", callId: "chat-exact-fast-path:1" },
+      { capability: "atlassian.bound.read", callId: "chat-exact-fast-path:2" },
+    ]);
+  });
+
+  test("falls back to one guarded section read for a navigable truncated exact page without replaying HTTP", async () => {
+    let pageReads = 0;
+    let directExtractions = 0;
+    let exactChildAttempts = 0;
+    let anchorRef = "";
+    let acquireTool: { invoke(input: unknown): Promise<unknown> } | undefined;
+    let sectionTool: { invoke(input: unknown): Promise<unknown> } | undefined;
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      question: "What decision does the attached synthetic page establish?",
       scopeSeeds: [{
         binding: {
           schema: "atlcli.research-scope-binding/v1",
-          id: "scope-binding:current:workflow-page",
+          id: "scope-binding:current:navigable-page",
           tenantOrigin: request.scope.siteOrigin,
           product: "confluence",
           entityKind: "page",
-          entityRef: "research-scope-entity:workflow-page",
-          key: "1001",
-          name: "Synthetic attached page",
+          entityRef: "research-scope-entity:navigable-page",
+          key: "1003",
+          name: "Navigable synthetic page",
           source: "current_context",
           authority: "approved",
         },
@@ -1570,10 +1711,31 @@ describe("Chat agentic workflow runtime", () => {
       }],
       exactContextProducts: ["confluence"],
     };
+    const navigation = navigateConfluenceStorageV1({
+      storage: [
+        "<h1>Overview</h1><p>Background that does not answer the question.</p>",
+        "<h1>Current decision</h1><p>The bounded decision is approved.</p>",
+      ].join(""),
+      sourceVersion: 7,
+      siteOrigin: request.scope.siteOrigin,
+      projectionLimits: {
+        maxTextChars: 80,
+        maxTextBytes: 320,
+        maxLinks: 10,
+        maxNodes: 1_000,
+        maxDepth: 32,
+      },
+    });
     const harness = createHarness({
       researchRequest: exactRequest,
-      exactReaderPrimaryMaxMs: 10,
-      modelForPreference: () => recoveryModel,
+      modelForPreference: () => ({
+        withStructuredOutput: () => ({
+          invoke: async () => {
+            directExtractions += 1;
+            throw new Error("Direct extraction must defer the navigable truncated page.");
+          },
+        }),
+      } as unknown as BaseChatModel),
       readProviders: {
         ...providers,
         wiki: {
@@ -1583,55 +1745,81 @@ describe("Chat agentic workflow runtime", () => {
             return {
               contentId,
               spaceKey: "DEMO",
-              title: "Synthetic attached page",
+              title: "Navigable synthetic page",
               content: {
-                text: "The synthetic page establishes the bounded conclusion.",
+                text: "The initial projection is incomplete.",
                 linkTargets: [],
-                truncated: false,
-                inputBytes: 55,
+                truncated: true,
+                inputBytes: 4_000,
               },
+              navigation,
             };
           },
         },
       },
-      async invoke(taskInput, config) {
-        if (taskInput.subagent_type === "chat-exact-context-reader-v1") {
-          primaryAttempts += 1;
-          await new Promise<never>((_resolve, reject) => {
-            const signal = config?.signal;
-            const fail = (): void => {
-              primarySignalAborted = signal?.aborted === true;
-              primaryAbortReasonName = signal?.reason instanceof Error
-                ? signal.reason.name
-                : undefined;
-              reject(signal?.reason ?? new Error("Synthetic exact reader timeout."));
-            };
-            if (signal?.aborted) fail();
-            else signal?.addEventListener("abort", fail, { once: true });
-          });
+      async invoke(taskInput) {
+        if (taskInput.subagent_type !== "chat-exact-context-reader-v1") {
+          return analysisPacket();
         }
-        return analysisPacket();
+        exactChildAttempts += 1;
+        if (!acquireTool || !sectionTool || !anchorRef) {
+          throw new Error("missing exact fallback tools");
+        }
+        const acquired = JSON.parse(String(await acquireTool.invoke({
+          anchorRefs: [anchorRef],
+        }))) as {
+          details: Array<{
+            document?: { sections: Array<{ sectionRef: string; heading: string }> };
+          }>;
+        };
+        const sectionRef = acquired.details[0]?.document?.sections.find((section) =>
+          section.heading === "Current decision"
+        )?.sectionRef;
+        if (!sectionRef) throw new Error("missing decision section");
+        const section = JSON.parse(String(await sectionTool.invoke({ sectionRef }))) as {
+          source: { sourceId: string };
+          section: { sectionId: string };
+        };
+        expect(section.source.sourceId).toBe("wiki:1003");
+        expect(section.section.sectionId).toBeString();
+        return {
+          schema: "atlcli.chat-evidence-packet/v1",
+          sourceIds: [section.source.sourceId],
+          claims: [{
+            text: "The bounded decision is approved.",
+            sourceIds: [section.source.sourceId],
+            sourceRefs: [`${section.source.sourceId}#${section.section.sectionId}`],
+          }],
+          relationships: [],
+          gaps: ["One remaining section was not required for this question."],
+        };
       },
     });
-    const anchor = harness.broker.exactAnchors()[0];
-    if (!anchor) throw new Error("missing exact anchor");
-    await harness.broker.readExactAnchor({
-      schema: "atlcli.ptc/atlassian.bound.read.input/v1",
-      anchorRef: anchor.anchorRef,
-    });
+    anchorRef = harness.broker.exactAnchors()[0]?.anchorRef ?? "";
+    const exactReader = harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-exact-context-reader-v1"
+    );
+    acquireTool = exactReader?.tools?.find((candidate) =>
+      Boolean(candidate && typeof candidate === "object" &&
+        (candidate as { name?: unknown }).name === "chat_exact_context_acquire")
+    ) as typeof acquireTool;
+    sectionTool = exactReader?.tools?.find((candidate) =>
+      Boolean(candidate && typeof candidate === "object" &&
+        (candidate as { name?: unknown }).name === "atlassian_bound_section_read")
+    ) as typeof sectionTool;
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
       tasks: [
         {
-          taskId: "task:exact",
+          taskId: "task:exact:navigable",
           profileId: "exact-context-reader",
-          objective: `Read ${anchor.anchorRef} and extract bounded claims.`,
+          objective: `Read ${anchorRef} and extract the current decision.`,
           dependencyTaskIds: [],
         },
         {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Analyze the bounded evidence.",
-          dependencyTaskIds: ["task:exact"],
+          dependencyTaskIds: ["task:exact:navigable"],
         },
         {
           taskId: "task:draft",
@@ -1655,38 +1843,42 @@ describe("Chat agentic workflow runtime", () => {
       maxConcurrency: 1,
     }));
     const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
-      entry.taskId === "task:exact"
+      entry.taskId === "task:exact:navigable"
     );
-    if (!dispatch) throw new Error("missing exact dispatch");
+    if (!dispatch) throw new Error("missing navigable exact dispatch");
 
-    await expect(invokeDispatch(harness.runtime, dispatch)).resolves.toMatchObject({
-      schema: "atlcli.chat-evidence-packet/v1",
-      sourceIds: ["wiki:1001"],
-      claims: [{ sourceRefs: ["wiki:1001"] }],
+    const packet = await invokeDispatch(harness.runtime, dispatch);
+    expect(packet).toMatchObject({
+      sourceIds: ["wiki:1003"],
+      claims: [{ sourceRefs: [expect.stringMatching(/^wiki:1003#/u)] }],
     });
-    expect({ pageReads, primaryAttempts, recoveryAttempts }).toEqual({
+    expect({ pageReads, directExtractions, exactChildAttempts }).toEqual({
       pageReads: 1,
-      primaryAttempts: 1,
-      recoveryAttempts: 1,
+      directExtractions: 0,
+      exactChildAttempts: 1,
     });
-    expect(primarySignalAborted).toBe(true);
-    expect(primaryAbortReasonName).toBe("GraphInterrupt");
+    expect(harness.broker.readSectionReferenceLedger()).toHaveLength(1);
   });
 
-  test("fails closed instead of invoking exact recovery without admitted evidence", async () => {
-    let recoveryAttempts = 0;
+  test("marks an interrupted exact extraction outcome unknown without retrying it", async () => {
+    let pageReads = 0;
+    let extractionAttempts = 0;
+    let extractionStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      extractionStarted = resolve;
+    });
     const exactRequest: ResearchRequestV1 = {
       ...request,
       scopeSeeds: [{
         binding: {
           schema: "atlcli.research-scope-binding/v1",
-          id: "scope-binding:current:unread-page",
+          id: "scope-binding:current:cancelled-page",
           tenantOrigin: request.scope.siteOrigin,
           product: "confluence",
           entityKind: "page",
-          entityRef: "research-scope-entity:unread-page",
+          entityRef: "research-scope-entity:cancelled-page",
           key: "1002",
-          name: "Unread page",
+          name: "Cancelled page",
           source: "current_context",
           authority: "approved",
         },
@@ -1694,19 +1886,43 @@ describe("Chat agentic workflow runtime", () => {
       }],
       exactContextProducts: ["confluence"],
     };
-    const recoveryModel = {
+    const extractionModel = {
       withStructuredOutput: () => ({
-        invoke: async () => {
-          recoveryAttempts += 1;
-          throw new Error("Exact recovery must not run without evidence.");
+        invoke: async (_messages: unknown, config?: RunnableConfig) => {
+          extractionAttempts += 1;
+          extractionStarted();
+          await new Promise<never>((_resolve, reject) => {
+            const fail = (): void => reject(
+              config?.signal?.reason ?? new DOMException("Cancelled", "AbortError"),
+            );
+            if (config?.signal?.aborted) fail();
+            else config?.signal?.addEventListener("abort", fail, { once: true });
+          });
         },
       }),
     } as unknown as BaseChatModel;
     const harness = createHarness({
       researchRequest: exactRequest,
-      modelForPreference: () => recoveryModel,
-      async invoke(taskInput) {
-        throw new Error("Synthetic unread exact specialist failure.");
+      modelForPreference: () => extractionModel,
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async getPage({ contentId }) {
+            pageReads += 1;
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: "Cancelled page",
+              content: {
+                text: "Bound evidence read before cancellation.",
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 40,
+              },
+            };
+          },
+        },
       },
     });
     const anchor = harness.broker.exactAnchors()[0];
@@ -1714,7 +1930,7 @@ describe("Chat agentic workflow runtime", () => {
     const response = JSON.parse(await harness.runtime.proposalTool.invoke({
       tasks: [
         {
-          taskId: "task:exact-unread",
+          taskId: "task:exact-cancelled",
           profileId: "exact-context-reader",
           objective: `Read ${anchor.anchorRef}.`,
           dependencyTaskIds: [],
@@ -1723,7 +1939,7 @@ describe("Chat agentic workflow runtime", () => {
           taskId: "task:analysis",
           profileId: "comparison-analyst",
           objective: "Analyze evidence.",
-          dependencyTaskIds: ["task:exact-unread"],
+          dependencyTaskIds: ["task:exact-cancelled"],
         },
         {
           taskId: "task:draft",
@@ -1747,14 +1963,26 @@ describe("Chat agentic workflow runtime", () => {
       maxConcurrency: 1,
     }));
     const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
-      entry.taskId === "task:exact-unread"
+      entry.taskId === "task:exact-cancelled"
     );
-    if (!dispatch) throw new Error("missing unread exact dispatch");
-
-    await expect(invokeDispatch(harness.runtime, dispatch)).rejects.toThrow(
-      "Synthetic unread exact specialist failure",
-    );
-    expect(recoveryAttempts).toBe(0);
+    if (!dispatch) throw new Error("missing cancelled exact dispatch");
+    const controller = new AbortController();
+    const pending = invokeDispatch(harness.runtime, dispatch, {
+      signal: controller.signal,
+    });
+    await started;
+    controller.abort(new DOMException("Cancelled", "AbortError"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect({ pageReads, extractionAttempts }).toEqual({
+      pageReads: 1,
+      extractionAttempts: 1,
+    });
+    const durableStateContents = await harness.workspace.readFile(CHAT_WORKFLOW_STATE_PATH_V1);
+    if (!durableStateContents) throw new Error("missing durable workflow state");
+    const durableState = JSON.parse(durableStateContents) as {
+      taskStatuses: Record<string, string>;
+    };
+    expect(durableState.taskStatuses["task:exact-cancelled"]).toBe("outcome_unknown");
   });
 
   test("uses native structured output only for side-effect-free answer children", async () => {

@@ -1626,6 +1626,10 @@ globalThis.fetch = async (input, init) => {
       );
     };
 
+    if (serializedRequest.includes("Kiteweave's internal exact-evidence extraction boundary")) {
+      return structured(packedChatExactEvidencePacket);
+    }
+
     if (
       serializedRequest.includes("Read only opaque host-attached entities.") ||
       (

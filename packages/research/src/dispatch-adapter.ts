@@ -757,11 +757,15 @@ export function createAgenticDispatchInterceptionAdapter(
       await observeUncommitted("aborted");
       emit({ taskId, status: "cancelled", code });
       void upstreamOutcome.then(async (late) => {
+        // A late error proves no result exists to quarantine. Keep the
+        // authoritative started-but-uncommitted outcome unknown so a caller
+        // cannot mistake cancellation for a safely replayable failure.
+        if (late.kind === "error") return;
         try {
           await options.onLateResult?.({
             taskId,
             admission,
-            ...(late.kind === "result" ? { resultBytes: serializedBytes(late.value) } : {}),
+            resultBytes: serializedBytes(late.value),
           });
         } catch {
           // The authoritative task remains outcome_unknown if the later
@@ -773,9 +777,7 @@ export function createAgenticDispatchInterceptionAdapter(
           taskId,
           status: "quarantined",
           code: "late-result",
-          ...(late.kind === "result"
-            ? { resultBytes: serializedBytes(late.value) }
-            : {}),
+          resultBytes: serializedBytes(late.value),
         });
       });
       throw code === "timeout" ? timeoutError(admission.maxDurationMs) : abortError();

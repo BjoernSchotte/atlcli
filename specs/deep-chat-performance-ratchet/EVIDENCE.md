@@ -136,3 +136,50 @@ Focused cache, adapter, and workflow tests, type checking, the production
 extension build, browser/output/CSP checks, packed MV3 tests, and the research
 privacy scan remained green. No private prompt, source, answer, URL, trace,
 identifier, or receipt is recorded here.
+
+## T2 direct exact-evidence extraction
+
+The host now reads every admitted exact anchor once, retains the resulting
+evidence in the existing broker ledger, and uses one tool-free, provider-neutral
+structured extraction call when the combined projection is small and complete.
+The routine 30-second sacrificial exact-reader run and its second recovery call
+have been removed. Navigable truncated or oversized projections retain the
+guarded child path, but consume the already-read host projection rather than
+replaying the Atlassian request.
+
+One provider-backed customer-free two-anchor measurement produced:
+
+| Metric | T0 observation | T2 measurement | Change |
+| --- | ---: | ---: | ---: |
+| Exact-evidence acquisition window | approximately 116s | 8.3s | approximately -93% |
+| Total duration | 122.8s T0 median | 88.4s | -28.0% |
+| Total model calls | 18 T0 median | 12 | -6 calls |
+| Fresh input tokens | 219,512 T0 median | 28,594 | -87.0% |
+| Cache-read input tokens | 0 | 143,622 | observed separately |
+| Output tokens | 2,062 T0 median | 1,646 | -20.2% |
+| Exact-reader recovery | routine fallback in the old path | 0 | removed |
+
+The measurement reported the expected agentic trajectory, 100% exact-anchor
+and detail-read coverage, 100% canonical citation precision, zero wrong-source
+or false-completeness findings, and streamed output. It performed the two
+synthetic detail reads without search; the in-memory provider correctly reports
+zero external HTTP attempts while the broker and retrieval ledger record both
+detail operations.
+
+Two separately scoped, operator-approved private CLI page runs completed in
+77.0s and 64.6s. Each performed one direct exact read, no Jira or Confluence
+search, no recovery, and produced one useful evidence-backed answer with one
+canonical source. Only those aggregate observations are retained here.
+
+The focused 88-test workflow/retrieval/dispatch/harness suite, typecheck,
+production build, browser/output/CSP/privacy gates, and all 45 packed MV3 tests
+passed. The packed suite covers exact-page and exact-issue reads without search,
+Quick/Auto/Deep strategy separation, long-page section reads, worker recovery,
+HITL, steering, stop, queue, durable key rehydration, and the new direct
+extraction response contract. A sandboxed Chromium startup failure and one
+disposable-worker harness race were repeated outside the sandbox; the final
+full packed run passed 45/45. The full workspace lane completed 6,795 tests
+with 15 intentional skips; 50 local-server cases were denied ephemeral ports
+by the filesystem/network sandbox. All 27 affected test files were then rerun
+outside that sandbox and passed 332/332, including the one CLI timeout seen
+under the earlier accidental parallel load. No private input or artifact entered Git.

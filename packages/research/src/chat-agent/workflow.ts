@@ -849,6 +849,45 @@ function normalizeModelWorkflowDependenciesV1(
   });
 }
 
+function packSmallExactReaderTasksV1(
+  tasks: readonly ChatWorkflowTaskProposalV1[],
+): ChatWorkflowTaskProposalV1[] {
+  const exactTasks = tasks.filter((task) => task.profileId === "exact-context-reader")
+    .map((task) => ({
+      task,
+      anchorRefs: [...new Set(
+        [...task.objective.matchAll(/\bresearch-anchor:[A-Za-z0-9-]{1,200}\b/gu)]
+          .map((match) => match[0]),
+      )].sort((left, right) => left.localeCompare(right, "en-US")),
+    }))
+    .sort((left, right) => left.task.taskId.localeCompare(right.task.taskId, "en-US"));
+  if (exactTasks.length < 2 || exactTasks.some((entry) => entry.anchorRefs.length === 0)) {
+    return tasks.map((task) => ({ ...task }));
+  }
+  const anchorRefs = [...new Set(exactTasks.flatMap((entry) => entry.anchorRefs))]
+    .sort((left, right) => left.localeCompare(right, "en-US"));
+  if (anchorRefs.length > MAX_EXACT_ANCHORS_PER_CHAT_READER_V1) {
+    return tasks.map((task) => ({ ...task }));
+  }
+  const retained = exactTasks[0]!.task;
+  const replacedIds = new Set(exactTasks.slice(1).map((entry) => entry.task.taskId));
+  const mergedObjective = [
+    `Read these host-bound exact sources in one bounded batch: ${anchorRefs.join(", ")}.`,
+    ...exactTasks.map((entry) => entry.task.objective),
+  ].join("\n").slice(0, 4_000);
+  return tasks.flatMap((task): ChatWorkflowTaskProposalV1[] => {
+    if (replacedIds.has(task.taskId)) return [];
+    const dependencyTaskIds = [...new Set(task.dependencyTaskIds.map((dependencyTaskId) =>
+      replacedIds.has(dependencyTaskId) ? retained.taskId : dependencyTaskId
+    ))];
+    return [{
+      ...task,
+      ...(task.taskId === retained.taskId ? { objective: mergedObjective } : {}),
+      dependencyTaskIds,
+    }];
+  });
+}
+
 function normalizeModelRetrievalPlanV1(
   proposal: ChatRetrievalPlanProposalV1 | undefined,
 ): ChatRetrievalPlanProposalV1 | undefined {
@@ -1038,7 +1077,9 @@ export function createChatWorkflowProposalControllerV1(input: {
       };
       await input.beforeAdmission?.(workflowProposal);
       const normalizedTasks = normalizeModelWorkflowDependenciesV1(
-        proposal.tasks.map((task) => ({ ...task })),
+        packSmallExactReaderTasksV1(
+          proposal.tasks.map((task) => ({ ...task })),
+        ),
       );
       const workflow = admitChatWorkflowProposalV1({
         strategy: input.strategy,
@@ -1091,7 +1132,7 @@ export function createChatWorkflowProposalControllerV1(input: {
       `The complete profile set available in this turn is: ${allowedProfileList.join(", ")}. ` +
       `The accepted strategy requires these profiles in this proposal: ${requiredProfiles.join(", ") || "none"}. ` +
       `Assign at most ${MAX_EXACT_ANCHORS_PER_CHAT_READER_V1} explicit opaque anchorRefs to each exact-context-reader task; split larger exact source sets into parallel readers. ` +
-      "Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. Default to one parallel exact-context reader per bounded anchor so each child context and QuickJS result stays bounded. Group exact anchors only when the host objective establishes that their combined projections fit one task's byte and output limits. Keep admitted search variants for the same product in one search-reader task because its host controller owns the product-wide pagination and detail budget. Split other readers when their products, capability grants, independent facets, or latency benefit materially differ. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, and response schemas for dispatch.",
+      "Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. The host deterministically packs up to three small exact anchors into one reader and splits only when the bounded projection requires it. Keep admitted search variants for the same product in one search-reader task because its host controller owns the product-wide pagination and detail budget. Split other readers when their products, capability grants, independent facets, or latency benefit materially differ. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, and response schemas for dispatch.",
     schema: z.object({
       tasks: z.array(workflowTaskProposalSchema).min(4).max(9),
       maxConcurrency: z.number().int().min(1).max(3),

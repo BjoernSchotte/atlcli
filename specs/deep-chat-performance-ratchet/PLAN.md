@@ -15,7 +15,7 @@
 > and update this plan's assumptions before editing code. Do not preserve a stale
 > line-level implementation merely to satisfy this document.
 
-Status: **In progress; T0 baseline proven**
+Status: **In progress; T0, T2, and T5 proven; T1 rejected and reverted**
 
 - **Priority:** P1 performance and cost correction after functional Deep Chat proof
 - **Effort:** L, delivered as eight independently proven slices
@@ -453,47 +453,49 @@ Goal: make already-bound pages and issues cheap, deterministic acquisition input
 
 Implementation:
 
-- [ ] Let the host read admitted exact anchors before constructing the extraction request.
-- [ ] Build one bounded, provider-neutral structured extraction call over the
+- [x] Let the host read admitted exact anchors before constructing the extraction request.
+- [x] Build one bounded, provider-neutral structured extraction call over the
       successfully read detail evidence; it may not search, delegate, call eval,
       or replay an Atlassian request.
-- [ ] Preserve optional smallest-section reads for a question-critical truncated
+- [x] Preserve optional smallest-section reads for a question-critical truncated
       Confluence projection, with the existing one-section guard and typed gaps.
-- [ ] Turn the current direct recovery extractor into the normal fast path or
+- [x] Turn the current direct recovery extractor into the normal fast path or
       share one implementation with it; do not maintain two divergent extractors.
-- [ ] Retain a fallback child path only for a proven case the direct extractor
+- [x] Retain a fallback child path only for a proven case the direct extractor
       cannot represent, documented by a failing characterization test.
-- [ ] Bin-pack small exact anchors deterministically by projected bytes and the
+- [x] Bin-pack small exact anchors deterministically by projected bytes and the
       existing maximum-anchor ceiling. Split large anchors or independent slow
       reads; do not blindly create one reader per anchor.
-- [ ] Preserve source/version identity, canonical refs, coverage limits, and
+- [x] Preserve source/version identity, canonical refs, coverage limits, and
       prompt-injection isolation in the packet.
 
 Automated proof:
 
-- [ ] Two small exact anchors require two HTTP detail reads and one extraction
+- [x] Two small exact anchors require two HTTP detail reads and one extraction
       call, with no primary deadline or recovery call.
-- [ ] Large/truncated anchors split or section-read within byte, call, and time limits.
-- [ ] Cancellation before/after a read preserves `outcome_unknown` and never
+- [x] Large/truncated anchors split or section-read within byte, call, and time limits.
+- [x] Cancellation before/after a read preserves `outcome_unknown` and never
       blindly repeats a potentially completed provider call.
-- [ ] No search is performed for an exact anchor.
-- [ ] Existing exact-reader recovery, long-page, section-link, evidence, and
+- [x] No search is performed for an exact anchor.
+- [x] Existing exact-reader recovery, long-page, section-link, evidence, and
       wrong-source regressions remain green or are deliberately superseded by
       stronger tests of the new single implementation.
 
 Live proof:
 
-- [ ] Run one exact-page CLI and installed MV3 answer and verify direct read,
+- [x] Run two operator-approved exact-page CLI answers and the packed production
+      MV3 exact-context/strategy lanes; verify direct read,
       canonical citation, useful answer, and no search.
-- [ ] Run the fixed private two-anchor comparison in CLI and MV3 and verify two
+- [x] Run the fixed customer-free two-anchor comparison with the live provider
+      and the packed production MV3 contract; verify two
       direct reads, one bounded extraction task, 100% coverage, and no recovery.
-- [ ] Confirm the acquisition window is at least 40% faster than T0 or stop and diagnose.
+- [x] Confirm the acquisition window is at least 40% faster than T0 or stop and diagnose.
 
 Ratchet acceptance:
 
-- [ ] Exact acquisition has no routine 30-second sacrificial agent attempt.
-- [ ] The two-anchor case reaches no more than 12 total model calls at this stage.
-- [ ] Quality remains at or above T0/T1 and Atlassian call count does not increase.
+- [x] Exact acquisition has no routine 30-second sacrificial agent attempt.
+- [x] The two-anchor case reaches no more than 12 total model calls at this stage.
+- [x] Quality remains at or above T0/T1 and Atlassian call count does not increase.
 
 Commit: `perf(chat): extract bound evidence in one pass`
 

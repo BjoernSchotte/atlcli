@@ -7,6 +7,7 @@ describe("synthetic provider-backed Chat live harness", () => {
     expect(parsed.mode).toBe("deep");
     expect(parsed.question).toContain("synthetic");
     expect(parsed.exactPage).toBe(false);
+    expect(parsed.exactPagePair).toBe(false);
     expect(parsed.summaryOnly).toBe(false);
   });
 
@@ -16,6 +17,7 @@ describe("synthetic provider-backed Chat live harness", () => {
         mode: "auto",
         question: "Compare sources",
         exactPage: false,
+        exactPagePair: false,
         summaryOnly: false,
         sample: "measured",
         benchmarkId: "deep-two-anchor-comparison",
@@ -32,6 +34,20 @@ describe("synthetic provider-backed Chat live harness", () => {
       exactPage: true,
       question: expect.stringContaining("attached synthetic Confluence page"),
     });
+  });
+
+  test("selects the synthetic two-anchor exact-reader performance proof", () => {
+    expect(parseChatAgentLiveArgumentsV1(["--exact-page-pair"])).toMatchObject({
+      mode: "deep",
+      exactPage: false,
+      exactPagePair: true,
+      benchmarkId: "deep-two-anchor-comparison",
+      question: expect.stringContaining("two attached synthetic Confluence pages"),
+    });
+    expect(() => parseChatAgentLiveArgumentsV1([
+      "--exact-page",
+      "--exact-page-pair",
+    ])).toThrow("mutually exclusive");
   });
 
   test("supports compact live-proof output without changing the run", () => {
