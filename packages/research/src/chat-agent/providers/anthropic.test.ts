@@ -117,6 +117,7 @@ describe("Anthropic Chat model binding", () => {
     });
     expect(quick.reasoningPresentation).toBeUndefined();
     expect(quick.structuredOutput).toBe("native");
+    expect(quick.promptCache).toEqual({ ttl: "5m" });
     expect(deep.model).toMatchObject({
       streaming: true,
       thinking: { type: "adaptive", display: "summarized" },

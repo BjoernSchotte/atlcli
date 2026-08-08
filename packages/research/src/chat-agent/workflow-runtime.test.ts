@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -212,6 +212,7 @@ function createHarness(input: {
   beforeSynthesis?: () => void;
   modelForPreference?: (preference: "fast" | "balanced" | "thorough") => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
+  promptCache?: { ttl: "5m" | "1h" };
   structuredOutput?: "native" | "tool";
   projectResponseSchema?: (
     schema: Readonly<Record<string, unknown>>,
@@ -286,6 +287,7 @@ function createHarness(input: {
     ...(input.modelForFinalization
       ? { modelForFinalization: input.modelForFinalization }
       : {}),
+    ...(input.promptCache ? { promptCache: input.promptCache } : {}),
     structuredOutput: input.structuredOutput ?? "tool",
     ...(input.projectResponseSchema
       ? { projectResponseSchema: input.projectResponseSchema }
@@ -542,6 +544,44 @@ describe("Chat agentic workflow runtime", () => {
     expect(harness.compiledSubagents.find((entry) =>
       entry.name === "chat-synthesizer-v1"
     )?.systemPrompt).toContain("sourceRefs");
+  });
+
+  test("applies the provider-granted stable cache boundary to every child profile", async () => {
+    const cached = createHarness({
+      promptCache: { ttl: "1h" },
+      invoke: async () => analysisPacket(),
+    });
+    for (const subagent of cached.compiledSubagents) {
+      const names = (subagent.middleware ?? []).map((entry) => entry.name);
+      expect(names).toContain("PromptCachingMiddleware");
+      expect(names).toContain("CacheBreakpointMiddleware");
+      const breakpoint = subagent.middleware?.find((entry) =>
+        entry.name === "CacheBreakpointMiddleware"
+      );
+      const projected = await breakpoint!.wrapModelCall!(
+        {
+          messages: [],
+          state: {},
+          model: { getName: () => "ProviderChosenByBinding" },
+          systemMessage: new SystemMessage("Stable child profile contract."),
+          tools: [],
+        } as never,
+        async (received) => received as never,
+      );
+      expect((projected as unknown as { systemMessage: SystemMessage }).systemMessage.content)
+        .toEqual([{
+          type: "text",
+          text: "Stable child profile contract.",
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        }]);
+    }
+
+    const portable = createHarness({ invoke: async () => analysisPacket() });
+    for (const subagent of portable.compiledSubagents) {
+      const names = (subagent.middleware ?? []).map((entry) => entry.name);
+      expect(names).not.toContain("PromptCachingMiddleware");
+      expect(names).not.toContain("CacheBreakpointMiddleware");
+    }
   });
 
   test("allows one optional exact-reader section read and blocks later section loops", async () => {

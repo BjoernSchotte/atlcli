@@ -12,6 +12,10 @@ export interface ChatModelBindingV1 {
   structuredOutput: "native" | "tool";
   /** Explicit provider-adapter grant; absent means no reasoning text may cross the host boundary. */
   reasoningPresentation?: "summary";
+  /** Provider-granted prompt-cache control; absent keeps the portable no-cache path. */
+  promptCache?: {
+    ttl: "5m" | "1h";
+  };
   /**
    * Provider-neutral role selection for bounded Chat children. The host owns
    * the preference; adapters may map it to effort, another model, or the same

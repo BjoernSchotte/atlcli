@@ -1570,6 +1570,9 @@ export function createKiteweaveChatAgent(
               ...(modelBinding.modelForFinalization
                 ? { modelForFinalization: modelBinding.modelForFinalization }
                 : {}),
+              ...(modelBinding.promptCache
+                ? { promptCache: modelBinding.promptCache }
+                : {}),
               structuredOutput: modelBinding.structuredOutput,
               ...(modelBinding.projectResponseSchema
                 ? { projectResponseSchema: modelBinding.projectResponseSchema }
@@ -1904,7 +1907,12 @@ export function createKiteweaveChatAgent(
             }),
             durableSummarizationMiddleware,
             rootModelBudgetMiddleware,
-            ...createChatPromptCacheMiddlewareV1(),
+            ...createChatPromptCacheMiddlewareV1({
+              enabled: modelBinding.promptCache !== undefined,
+              ...(modelBinding.promptCache
+                ? { ttl: modelBinding.promptCache.ttl }
+                : {}),
+            }),
             agenticWorkflow?.middleware ?? createChatNoSubagentMiddlewareV1(),
             createChatCodeInterpreterMiddlewareV1({
               ptc: ptcTools,

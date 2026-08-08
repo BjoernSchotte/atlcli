@@ -7,7 +7,10 @@ import { projectPromptCacheSystemContentV1 } from "../quality-policy.js";
  * breakpoint. User turns, retained summaries, evidence bodies, steering, and
  * credentials remain outside the cached prefix for every provider.
  */
-export function createChatPromptCacheMiddlewareV1(): AgentMiddleware[] {
+export function createChatPromptCacheMiddlewareV1(input: {
+  enabled: boolean;
+  ttl?: "5m" | "1h";
+}): AgentMiddleware[] {
   return [
     createMiddleware({
       name: "PromptCachingMiddleware",
@@ -25,8 +28,8 @@ export function createChatPromptCacheMiddlewareV1(): AgentMiddleware[] {
         const content = projectPromptCacheSystemContentV1({
           existingContent: request.systemMessage.content,
           privateSegments: [],
-          cacheStablePrefix: request.model.getName() === "ChatAnthropic",
-          ttl: "5m",
+          cacheStablePrefix: input.enabled,
+          ttl: input.ttl ?? "5m",
         });
         if (content.length === 0) return handler(request);
         return handler({

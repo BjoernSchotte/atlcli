@@ -108,6 +108,7 @@ export function createAnthropicChatModelBindingV1(
     // Other providers remain free to select the portable ToolStrategy through
     // the model-binding contract.
     structuredOutput: "native",
+    promptCache: { ttl: "5m" },
     modelForPreference,
     modelForFinalization: () => {
       finalizationModel ??= createModel(

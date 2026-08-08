@@ -406,6 +406,11 @@ Commit: `perf(chat): establish deep chat performance ratchet`
 
 Goal: remove portable ToolStrategy closure calls where no tool or side effect can be replayed.
 
+Status: rejected and fully reverted. Provider-native output passed isolated
+contract tests but failed real DeepAgents/LangGraph child execution before
+synthesis. No T1 checkbox or performance claim is accepted; later slices must
+reduce topology without relying on this unsafe shortcut.
+
 Implementation:
 
 - [ ] Classify profiles by actual tool/eval/side-effect capability in a typed,
@@ -592,38 +597,38 @@ Goal: reduce billed repeated input without caching private or turn-specific cont
 
 Implementation:
 
-- [ ] Reuse one shared cache-boundary helper for root and children.
-- [ ] Cache only stable provider-compatible system/profile/schema/tool prefixes.
-- [ ] Keep user questions, conversation summaries, evidence bodies, dependency
+- [x] Reuse one shared cache-boundary helper for root and children.
+- [x] Cache only stable provider-compatible system/profile/schema/tool prefixes.
+- [x] Keep user questions, conversation summaries, evidence bodies, dependency
       packets, steering, credentials, scope, identifiers, and private metadata
       outside cached segments.
-- [ ] Use provider cache controls only when the binding explicitly supports them.
-- [ ] Preserve the provider-neutral no-cache path byte-for-byte semantically.
-- [ ] Expose cache creation/read token categories through T0 telemetry.
-- [ ] Evaluate the existing five-minute TTL with repeated fixed runs; change it
+- [x] Use provider cache controls only when the binding explicitly supports them.
+- [x] Preserve the provider-neutral no-cache path byte-for-byte semantically.
+- [x] Expose cache creation/read token categories through T0 telemetry.
+- [x] Evaluate the existing five-minute TTL with repeated fixed runs; change it
       only when measurements justify the privacy and cost trade-off.
 
 Automated proof:
 
-- [ ] Child cache tests prove stable-prefix hits and dynamic/private suffix exclusion.
-- [ ] Two different users, tenants, conversations, scopes, and steering revisions
+- [x] Child cache tests prove stable-prefix hits and dynamic/private suffix exclusion.
+- [x] Two different users, tenants, conversations, scopes, and steering revisions
       cannot share private cache identity or cached dynamic content.
-- [ ] Provider-neutral bindings receive no provider-specific cache metadata.
-- [ ] Cached and uncached execution produce identical accepted structured packets.
+- [x] Provider-neutral bindings receive no provider-specific cache metadata.
+- [x] Cached and uncached execution produce identical accepted structured packets.
 
 Live proof:
 
-- [ ] Run the same synthetic comparison twice within the TTL and demonstrate
+- [x] Run the same synthetic comparison twice within the TTL and demonstrate
       cache-read tokens on the second run without changed answer/evidence metrics.
-- [ ] Run one private CLI and one installed MV3 comparison and inspect only the
+- [x] Run one private CLI and one installed MV3 comparison and inspect only the
       safe aggregate receipt; no prompt or source text may appear.
 
 Ratchet acceptance:
 
-- [ ] Cache-read and cache-creation tokens are separately visible.
-- [ ] Repeated billed-equivalent input cost improves by at least 25% or the cache
+- [x] Cache-read and cache-creation tokens are separately visible.
+- [x] Repeated billed-equivalent input cost improves by at least 25% or the cache
       change remains diagnostic and is not claimed as successful.
-- [ ] Aggregate safety-budget accounting and privacy tests remain fail-closed.
+- [x] Aggregate safety-budget accounting and privacy tests remain fail-closed.
 
 Commit: `perf(chat): cache stable child prompts`
 

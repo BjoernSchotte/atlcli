@@ -57,6 +57,7 @@ import {
   type ChatAgentDraft,
 } from "./contracts.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
+import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
 import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 import {
@@ -893,6 +894,7 @@ function compileChatSubagentsV1(input: {
   modelId: string;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
+  promptCache?: { ttl: "5m" | "1h" };
   broker: ResearchCapabilityBroker;
   limits: ResearchLimitsV1;
   locale?: string;
@@ -1278,6 +1280,12 @@ function compileChatSubagentsV1(input: {
       middleware: [
         modelRetry,
         modelBudgetMiddleware,
+        ...(input.promptCache
+          ? createChatPromptCacheMiddlewareV1({
+              enabled: true,
+              ttl: input.promptCache.ttl,
+            })
+          : []),
         ...(profile.id === "exact-context-reader"
           ? [exactReaderSectionReadGuard]
           : ptc.length === 0
@@ -1378,6 +1386,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   modelId?: string;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
+  promptCache?: { ttl: "5m" | "1h" };
   structuredOutput: "native" | "tool";
   projectResponseSchema?: (
     schema: Readonly<Record<string, unknown>>,
@@ -1512,6 +1521,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     ...(input.modelForFinalization
       ? { modelForFinalization: input.modelForFinalization }
       : {}),
+    ...(input.promptCache ? { promptCache: input.promptCache } : {}),
     broker: input.broker,
     limits: input.limits,
     ...(input.locale ? { locale: input.locale } : {}),

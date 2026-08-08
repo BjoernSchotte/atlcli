@@ -1504,6 +1504,9 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    promptCache?: {
+        ttl: "5m" | "1h";
+    };
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -9646,6 +9649,9 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    promptCache?: {
+        ttl: "5m" | "1h";
+    };
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -17768,6 +17774,9 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    promptCache?: {
+        ttl: "5m" | "1h";
+    };
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -25928,6 +25937,9 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    promptCache?: {
+        ttl: "5m" | "1h";
+    };
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -34533,6 +34545,9 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    promptCache?: {
+        ttl: "5m" | "1h";
+    };
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
@@ -45167,6 +45182,9 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    promptCache?: {
+        ttl: "5m" | "1h";
+    };
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
     modelForFinalization?: () => BaseChatModel;
     projectResponseSchema?: (schema: Readonly<Record<string, unknown>>) => {
