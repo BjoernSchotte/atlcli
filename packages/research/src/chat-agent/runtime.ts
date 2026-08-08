@@ -17,7 +17,10 @@ import {
   ResearchRunBudget,
   type ResearchModelBudgetStateV1,
 } from "../budget.js";
-import { createResearchModelBudgetMiddlewareV1 } from "../model-budget-middleware.js";
+import {
+  createResearchModelBudgetMiddlewareV1,
+  type ResearchModelCallObservationV1,
+} from "../model-budget-middleware.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ChatPresentationStreamEventV1,
@@ -675,6 +678,8 @@ export interface RunChatAgentInput {
   onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
   onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
   onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+  /** Body-free provider-call metrics for external performance receipts. */
+  onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
   /** Host-internal control binding; never exposed to the model or presenter. */
   onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
   /** Host-private checkpoint envelope captured before model execution. */
@@ -1572,7 +1577,9 @@ export function createKiteweaveChatAgent(
               strategy: strategyDecision,
               budget,
               modelBudget,
+              modelId: modelBinding.modelId,
               onModelBudgetSnapshot: persistModelBudget,
+              onModelCallObservation: input.onModelCallObservation,
               broker,
               workspace: input.workspace,
               conversationId: turn.conversationId,
@@ -1819,6 +1826,12 @@ export function createKiteweaveChatAgent(
                 }
               : {}),
             onSnapshot: async (_snapshot, state) => persistModelBudget(state),
+            observation: {
+              role: "root",
+              modelId: modelBinding.modelId,
+              preference: qualityPolicy.providerReasoningPreference,
+            },
+            onObservation: input.onModelCallObservation,
           },
         );
         const durableSummarizationMiddleware =

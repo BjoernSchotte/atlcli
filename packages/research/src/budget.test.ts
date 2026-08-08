@@ -5,6 +5,7 @@ import {
   ResearchRunBudget,
   parseResearchModelBudgetStateV1,
   parseResearchRunBudgetStateV1,
+  researchModelRequestBytesV1,
 } from "./budget.js";
 
 describe("durable research budget state", () => {
@@ -148,6 +149,72 @@ describe("model run budget", () => {
     expect(resumed.snapshot()).toEqual(original.snapshot());
     expect(() => resumed.reserve({ messages: [{ content: "A second call." }] }, 1_000))
       .toThrow("model run budget was exhausted before another provider call");
+  });
+
+  test("restores old checkpoints and retains provider token categories separately", () => {
+    const limits = {
+      ...DEFAULT_RESEARCH_LIMITS_V1,
+      maxModelCalls: 3,
+      maxTotalModelInputTokens: 20_000,
+      maxTotalModelOutputTokens: 2_000,
+      maxModelCostMicros: 200_000,
+    };
+    const original = new ResearchModelRunBudget(limits);
+    const reservation = original.reserve({ messages: [{ content: "Bounded request." }] }, 500);
+    original.settle(reservation, {
+      response_metadata: {
+        usage: {
+          input_tokens: 120,
+          cache_creation_input_tokens: 40,
+          cache_read_input_tokens: 300,
+          output_tokens: 80,
+        },
+      },
+    });
+    expect(original.snapshot()).toMatchObject({ inputTokens: 460, outputTokens: 80 });
+    expect(original.observedUsage()).toEqual({
+      inputTokens: 120,
+      cacheCreationInputTokens: 40,
+      cacheReadInputTokens: 300,
+      outputTokens: 80,
+    });
+
+    const restored = new ResearchModelRunBudget(limits);
+    restored.restore(original.state());
+    expect(restored.observedUsage()).toEqual(original.observedUsage());
+
+    const { observedUsage: _removed, ...oldCheckpoint } = original.state();
+    const legacy = new ResearchModelRunBudget(limits);
+    legacy.restore(oldCheckpoint);
+    expect(legacy.observedUsage()).toEqual({
+      inputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      outputTokens: 0,
+    });
+  });
+
+  test("rejects unknown durable metrics and attributes request bytes without bodies", () => {
+    const budget = new ResearchModelRunBudget(DEFAULT_RESEARCH_LIMITS_V1);
+    expect(() => parseResearchModelBudgetStateV1({
+      ...budget.state(),
+      prompt: "must-never-enter-a-receipt",
+    })).toThrow("model budget state is invalid");
+
+    const bytes = researchModelRequestBytesV1({
+      systemMessage: "stable system prefix",
+      messages: [{ content: "bounded user input" }],
+      tools: [{ name: "read", description: "one allowed read", schema: { secret: "ignored" } }],
+      responseFormat: { type: "json_schema" },
+      runtime: { prompt: "ignored runtime metadata" },
+    });
+    expect(bytes.systemBytes).toBeGreaterThan(0);
+    expect(bytes.messageBytes).toBeGreaterThan(0);
+    expect(bytes.toolBytes).toBeGreaterThan(0);
+    expect(bytes.responseFormatBytes).toBeGreaterThan(0);
+    expect(bytes.totalBytes).toBe(
+      bytes.systemBytes + bytes.messageBytes + bytes.toolBytes + bytes.responseFormatBytes,
+    );
   });
 
   test("retains an observed provider overage so a recovered session stays fail-closed", () => {

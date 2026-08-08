@@ -33,6 +33,28 @@ export interface ResearchModelBudgetSnapshotV1 {
   costMicros: number;
 }
 
+/**
+ * Provider-observed token categories. The durable safety budget continues to
+ * enforce `inputTokens` as the conservative sum of all three input classes;
+ * this projection exists so performance and invoice-like diagnostics do not
+ * mistake cache reads for fresh prompt input.
+ */
+export interface ResearchModelObservedUsageV1 {
+  inputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  outputTokens: number;
+}
+
+/** Body-free byte attribution for the provider-visible request envelope. */
+export interface ResearchModelRequestBytesV1 {
+  systemBytes: number;
+  messageBytes: number;
+  toolBytes: number;
+  responseFormatBytes: number;
+  totalBytes: number;
+}
+
 export interface ResearchModelBudgetCapacityV1 {
   calls: number;
   inputTokens: number;
@@ -52,6 +74,8 @@ export interface ResearchModelBudgetStateV1 {
     "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros"
   >;
   snapshot: ResearchModelBudgetSnapshotV1;
+  /** Optional for backwards compatibility with checkpoints written before T0. */
+  observedUsage?: ResearchModelObservedUsageV1;
 }
 
 interface ResearchModelBudgetReservationV1 {
@@ -149,8 +173,11 @@ export function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBu
     throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
   }
   const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const allowedKeys = new Set(["schema", "limits", "snapshot", "observedUsage"]);
   if (record.schema !== RESEARCH_MODEL_BUDGET_SCHEMA_V1 ||
-      Object.keys(record).length !== 3 ||
+      (keys.length !== 3 && keys.length !== 4) ||
+      keys.some((key) => !allowedKeys.has(key)) ||
       !record.limits || typeof record.limits !== "object" || Array.isArray(record.limits) ||
       !record.snapshot || typeof record.snapshot !== "object" || Array.isArray(record.snapshot)) {
     throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
@@ -172,6 +199,9 @@ export function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBu
     outputTokens: nonNegativeInteger(snapshotRecord.outputTokens, "Research model output-token count"),
     costMicros: nonNegativeInteger(snapshotRecord.costMicros, "Research model cost count"),
   };
+  const observedUsage = record.observedUsage === undefined
+    ? undefined
+    : parseResearchModelObservedUsageV1(record.observedUsage);
   // A provider can report usage above a pessimistic pre-reservation. Retain
   // that observed overage so a recovered host fails closed on the next call;
   // rejecting it here would erase the only durable evidence of the spend.
@@ -179,6 +209,31 @@ export function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBu
     schema: RESEARCH_MODEL_BUDGET_SCHEMA_V1,
     limits,
     snapshot,
+    ...(observedUsage ? { observedUsage } : {}),
+  };
+}
+
+export function parseResearchModelObservedUsageV1(
+  value: unknown,
+): ResearchModelObservedUsageV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Research model observed usage is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== 4) {
+    throw new ResearchContractError("invalid-request", "Research model observed usage is invalid.");
+  }
+  return {
+    inputTokens: nonNegativeInteger(record.inputTokens, "Research model fresh input-token count"),
+    cacheCreationInputTokens: nonNegativeInteger(
+      record.cacheCreationInputTokens,
+      "Research model cache-creation input-token count",
+    ),
+    cacheReadInputTokens: nonNegativeInteger(
+      record.cacheReadInputTokens,
+      "Research model cache-read input-token count",
+    ),
+    outputTokens: nonNegativeInteger(record.outputTokens, "Research model observed output-token count"),
   };
 }
 
@@ -229,8 +284,17 @@ const MODEL_RESPONSE_FORMAT_RESERVE_BYTES = 2_048;
  * implementation metadata and middleware closures; those are not tokens and
  * would make a fail-closed budget reject ordinary short calls.
  */
-function providerRequestInputBytes(value: unknown): number {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return modelInputBytes(value);
+export function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const messageBytes = modelInputBytes(value);
+    return {
+      systemBytes: 0,
+      messageBytes,
+      toolBytes: 0,
+      responseFormatBytes: 0,
+      totalBytes: messageBytes,
+    };
+  }
   const request = value as {
     systemMessage?: unknown;
     messages?: unknown;
@@ -261,13 +325,30 @@ function providerRequestInputBytes(value: unknown): number {
       return { name: record.name, description: record.description };
     })
     : [];
-  return modelInputBytes({ systemMessage, messages, tools }) +
+  const systemBytes = modelInputBytes(systemMessage);
+  const messageBytes = modelInputBytes(messages);
+  const toolBytes = modelInputBytes(tools) +
     (tools.length > 0 ? MODEL_TOOL_USE_SYSTEM_RESERVE_BYTES : 0) +
-    tools.length * MODEL_TOOL_SCHEMA_RESERVE_BYTES +
-    (request.responseFormat === undefined ? 0 : MODEL_RESPONSE_FORMAT_RESERVE_BYTES);
+    tools.length * MODEL_TOOL_SCHEMA_RESERVE_BYTES;
+  const responseFormatBytes = request.responseFormat === undefined
+    ? 0
+    : MODEL_RESPONSE_FORMAT_RESERVE_BYTES;
+  return {
+    systemBytes,
+    messageBytes,
+    toolBytes,
+    responseFormatBytes,
+    totalBytes: systemBytes + messageBytes + toolBytes + responseFormatBytes,
+  };
 }
 
-function observedModelUsage(value: unknown): { inputTokens: number; outputTokens: number } | undefined {
+function providerRequestInputBytes(value: unknown): number {
+  return researchModelRequestBytesV1(value).totalBytes;
+}
+
+export function observedResearchModelUsageV1(
+  value: unknown,
+): ResearchModelObservedUsageV1 | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as {
     usage_metadata?: Record<string, unknown>;
@@ -278,9 +359,14 @@ function observedModelUsage(value: unknown): { inputTokens: number; outputTokens
   const token = (key: string): number => Number.isSafeInteger(usage[key]) && (usage[key] as number) >= 0
     ? usage[key] as number
     : 0;
-  const inputTokens = token("input_tokens") + token("cache_creation_input_tokens") + token("cache_read_input_tokens");
+  const inputTokens = token("input_tokens");
+  const cacheCreationInputTokens = token("cache_creation_input_tokens");
+  const cacheReadInputTokens = token("cache_read_input_tokens");
   const outputTokens = token("output_tokens");
-  return inputTokens > 0 || outputTokens > 0 ? { inputTokens, outputTokens } : undefined;
+  return inputTokens > 0 || cacheCreationInputTokens > 0 || cacheReadInputTokens > 0 ||
+      outputTokens > 0
+    ? { inputTokens, cacheCreationInputTokens, cacheReadInputTokens, outputTokens }
+    : undefined;
 }
 
 /**
@@ -298,6 +384,12 @@ export class ResearchModelRunBudget {
   #inputTokens = 0;
   #outputTokens = 0;
   #costMicros = 0;
+  #observedUsage: ResearchModelObservedUsageV1 = {
+    inputTokens: 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+    outputTokens: 0,
+  };
   #nextReservationId = 1;
   readonly #reservations = new Map<number, ResearchModelBudgetReservationV1>();
 
@@ -321,6 +413,10 @@ export class ResearchModelRunBudget {
     };
   }
 
+  observedUsage(): ResearchModelObservedUsageV1 {
+    return { ...this.#observedUsage };
+  }
+
   exceedsLimits(): boolean {
     return this.#calls > this.#limits.maxModelCalls ||
       this.#inputTokens > this.#limits.maxTotalModelInputTokens ||
@@ -339,6 +435,7 @@ export class ResearchModelRunBudget {
         maxModelCostMicros: this.#limits.maxModelCostMicros,
       },
       snapshot: this.snapshot(),
+      observedUsage: this.observedUsage(),
     };
   }
 
@@ -363,6 +460,12 @@ export class ResearchModelRunBudget {
     this.#inputTokens = parsed.snapshot.inputTokens;
     this.#outputTokens = parsed.snapshot.outputTokens;
     this.#costMicros = parsed.snapshot.costMicros;
+    this.#observedUsage = parsed.observedUsage ?? {
+      inputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      outputTokens: 0,
+    };
   }
 
   canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean {
@@ -421,13 +524,19 @@ export class ResearchModelRunBudget {
     const active = this.#reservations.get(reservation.id);
     if (!active) throw new ResearchContractError("invalid-request", "Research model budget reservation is unknown.");
     this.#reservations.delete(reservation.id);
-    const usage = observedModelUsage(response);
+    const usage = observedResearchModelUsageV1(response);
     if (!usage) return this.snapshot();
-    const actualCostMicros = usage.inputTokens * this.#inputCostMicrosPerToken +
+    const aggregateInputTokens = usage.inputTokens + usage.cacheCreationInputTokens +
+      usage.cacheReadInputTokens;
+    const actualCostMicros = aggregateInputTokens * this.#inputCostMicrosPerToken +
       usage.outputTokens * this.#outputCostMicrosPerToken;
-    this.#inputTokens += usage.inputTokens - active.inputTokens;
+    this.#inputTokens += aggregateInputTokens - active.inputTokens;
     this.#outputTokens += usage.outputTokens - active.outputTokens;
     this.#costMicros += actualCostMicros - active.costMicros;
+    this.#observedUsage.inputTokens += usage.inputTokens;
+    this.#observedUsage.cacheCreationInputTokens += usage.cacheCreationInputTokens;
+    this.#observedUsage.cacheReadInputTokens += usage.cacheReadInputTokens;
+    this.#observedUsage.outputTokens += usage.outputTokens;
     return this.snapshot();
   }
 }

@@ -3034,6 +3034,9 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: observedResearchModelUsageV1
+export declare function observedResearchModelUsageV1(value: unknown): ResearchModelObservedUsageV1 | undefined;
+
 // export: openDurableChatConversationWorkspaceV1
 export declare function openDurableChatConversationWorkspaceV1(input: {
     store: ResearchSessionStoreV1;
@@ -3069,6 +3072,9 @@ export declare function parseResearchGraphRevisionProposalV1(value: unknown): Re
 
 // export: parseResearchModelBudgetStateV1
 export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
+// export: parseResearchModelObservedUsageV1
+export declare function parseResearchModelObservedUsageV1(value: unknown): ResearchModelObservedUsageV1;
 
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
@@ -5310,16 +5316,38 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelObservedUsageV1
+export interface ResearchModelObservedUsageV1 {
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
 }
 
 // export: ResearchModelProfileIdV1
 export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
+// export: researchModelRequestBytesV1
+export declare function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1;
+
+// export: ResearchModelRequestBytesV1
+export interface ResearchModelRequestBytesV1 {
+    systemBytes: number;
+    messageBytes: number;
+    toolBytes: number;
+    responseFormatBytes: number;
+    totalBytes: number;
+}
 
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    observedUsage(): ResearchModelObservedUsageV1;
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
@@ -10994,6 +11022,9 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: observedResearchModelUsageV1
+export declare function observedResearchModelUsageV1(value: unknown): ResearchModelObservedUsageV1 | undefined;
+
 // export: openDurableChatConversationWorkspaceV1
 export declare function openDurableChatConversationWorkspaceV1(input: {
     store: ResearchSessionStoreV1;
@@ -11029,6 +11060,9 @@ export declare function parseResearchGraphRevisionProposalV1(value: unknown): Re
 
 // export: parseResearchModelBudgetStateV1
 export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
+// export: parseResearchModelObservedUsageV1
+export declare function parseResearchModelObservedUsageV1(value: unknown): ResearchModelObservedUsageV1;
 
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
@@ -13270,16 +13304,38 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelObservedUsageV1
+export interface ResearchModelObservedUsageV1 {
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
 }
 
 // export: ResearchModelProfileIdV1
 export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
+// export: researchModelRequestBytesV1
+export declare function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1;
+
+// export: ResearchModelRequestBytesV1
+export interface ResearchModelRequestBytesV1 {
+    systemBytes: number;
+    messageBytes: number;
+    toolBytes: number;
+    responseFormatBytes: number;
+    totalBytes: number;
+}
 
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    observedUsage(): ResearchModelObservedUsageV1;
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
@@ -18952,6 +19008,9 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: observedResearchModelUsageV1
+export declare function observedResearchModelUsageV1(value: unknown): ResearchModelObservedUsageV1 | undefined;
+
 // export: openDurableChatConversationWorkspaceV1
 export declare function openDurableChatConversationWorkspaceV1(input: {
     store: ResearchSessionStoreV1;
@@ -18987,6 +19046,9 @@ export declare function parseResearchGraphRevisionProposalV1(value: unknown): Re
 
 // export: parseResearchModelBudgetStateV1
 export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
+// export: parseResearchModelObservedUsageV1
+export declare function parseResearchModelObservedUsageV1(value: unknown): ResearchModelObservedUsageV1;
 
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
@@ -21228,16 +21290,38 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelObservedUsageV1
+export interface ResearchModelObservedUsageV1 {
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
 }
 
 // export: ResearchModelProfileIdV1
 export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
+// export: researchModelRequestBytesV1
+export declare function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1;
+
+// export: ResearchModelRequestBytesV1
+export interface ResearchModelRequestBytesV1 {
+    systemBytes: number;
+    messageBytes: number;
+    toolBytes: number;
+    responseFormatBytes: number;
+    totalBytes: number;
+}
 
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    observedUsage(): ResearchModelObservedUsageV1;
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
@@ -27132,6 +27216,9 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: observedResearchModelUsageV1
+export declare function observedResearchModelUsageV1(value: unknown): ResearchModelObservedUsageV1 | undefined;
+
 // export: openDurableChatConversationWorkspaceV1
 export declare function openDurableChatConversationWorkspaceV1(input: {
     store: ResearchSessionStoreV1;
@@ -27170,6 +27257,9 @@ export declare function parseResearchGraphRevisionProposalV1(value: unknown): Re
 
 // export: parseResearchModelBudgetStateV1
 export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
+// export: parseResearchModelObservedUsageV1
+export declare function parseResearchModelObservedUsageV1(value: unknown): ResearchModelObservedUsageV1;
 
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
@@ -29491,16 +29581,38 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelObservedUsageV1
+export interface ResearchModelObservedUsageV1 {
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
 }
 
 // export: ResearchModelProfileIdV1
 export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
+// export: researchModelRequestBytesV1
+export declare function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1;
+
+// export: ResearchModelRequestBytesV1
+export interface ResearchModelRequestBytesV1 {
+    systemBytes: number;
+    messageBytes: number;
+    toolBytes: number;
+    responseFormatBytes: number;
+    totalBytes: number;
+}
 
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    observedUsage(): ResearchModelObservedUsageV1;
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
@@ -32032,6 +32144,7 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
     onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
     onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
 }
@@ -35568,6 +35681,9 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: observedResearchModelUsageV1
+export declare function observedResearchModelUsageV1(value: unknown): ResearchModelObservedUsageV1 | undefined;
+
 // export: openDurableChatConversationWorkspaceV1
 export declare function openDurableChatConversationWorkspaceV1(input: {
     store: ResearchSessionStoreV1;
@@ -35606,6 +35722,9 @@ export declare function parseResearchGraphRevisionProposalV1(value: unknown): Re
 
 // export: parseResearchModelBudgetStateV1
 export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
+// export: parseResearchModelObservedUsageV1
+export declare function parseResearchModelObservedUsageV1(value: unknown): ResearchModelObservedUsageV1;
 
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
@@ -37927,16 +38046,38 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelObservedUsageV1
+export interface ResearchModelObservedUsageV1 {
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
 }
 
 // export: ResearchModelProfileIdV1
 export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
+// export: researchModelRequestBytesV1
+export declare function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1;
+
+// export: ResearchModelRequestBytesV1
+export interface ResearchModelRequestBytesV1 {
+    systemBytes: number;
+    messageBytes: number;
+    toolBytes: number;
+    responseFormatBytes: number;
+    totalBytes: number;
+}
 
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    observedUsage(): ResearchModelObservedUsageV1;
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
@@ -40472,6 +40613,7 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
     onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
     onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
 }
@@ -46028,6 +46170,9 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: observedResearchModelUsageV1
+export declare function observedResearchModelUsageV1(value: unknown): ResearchModelObservedUsageV1 | undefined;
+
 // export: openDurableChatConversationWorkspaceV1
 export declare function openDurableChatConversationWorkspaceV1(input: {
     store: ResearchSessionStoreV1;
@@ -46066,6 +46211,9 @@ export declare function parseResearchGraphRevisionProposalV1(value: unknown): Re
 
 // export: parseResearchModelBudgetStateV1
 export declare function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1;
+
+// export: parseResearchModelObservedUsageV1
+export declare function parseResearchModelObservedUsageV1(value: unknown): ResearchModelObservedUsageV1;
 
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
@@ -48387,16 +48535,38 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelObservedUsageV1
+export interface ResearchModelObservedUsageV1 {
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
 }
 
 // export: ResearchModelProfileIdV1
 export type ResearchModelProfileIdV1 = (typeof RESEARCH_MODEL_PROFILE_IDS_V1)[number];
+
+// export: researchModelRequestBytesV1
+export declare function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1;
+
+// export: ResearchModelRequestBytesV1
+export interface ResearchModelRequestBytesV1 {
+    systemBytes: number;
+    messageBytes: number;
+    toolBytes: number;
+    responseFormatBytes: number;
+    totalBytes: number;
+}
 
 // export: ResearchModelRunBudget
 export declare class ResearchModelRunBudget {
     #private;
     constructor(limits: ResearchLimitsV1);
     snapshot(): ResearchModelBudgetSnapshotV1;
+    observedUsage(): ResearchModelObservedUsageV1;
     exceedsLimits(): boolean;
     state(): ResearchModelBudgetStateV1;
     restore(state: ResearchModelBudgetStateV1): void;
@@ -50932,6 +51102,7 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
     onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
     onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
 }

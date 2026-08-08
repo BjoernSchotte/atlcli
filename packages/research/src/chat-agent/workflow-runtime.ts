@@ -28,6 +28,10 @@ import type {
   ResearchRunBudget,
 } from "../budget.js";
 import {
+  observedResearchModelUsageV1,
+  researchModelRequestBytesV1,
+} from "../budget.js";
+import {
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "../capability-contracts.js";
 import type { BoundEntityAnchorV1 } from "../capability-contracts.js";
@@ -40,7 +44,11 @@ import {
   type ResearchDispatchDiagnosticV1,
 } from "../dispatch-adapter.js";
 import type { ResearchWorkspace } from "../workspace.js";
-import { createResearchModelBudgetMiddlewareV1 } from "../model-budget-middleware.js";
+import {
+  createResearchModelBudgetMiddlewareV1,
+  deliverResearchModelCallObservationV1,
+  type ResearchModelCallObservationV1,
+} from "../model-budget-middleware.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V1,
   CHAT_AGENT_DRAFT_SCHEMA_V2,
@@ -882,6 +890,7 @@ export function createExactContextAcquisitionToolV1(input: {
 
 function compileChatSubagentsV1(input: {
   model: BaseChatModel;
+  modelId: string;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
   broker: ResearchCapabilityBroker;
@@ -897,6 +906,7 @@ function compileChatSubagentsV1(input: {
   retrievalLedger?: ChatCandidateLedgerControllerV1;
   modelBudget: ResearchModelRunBudget;
   onModelBudgetSnapshot: (state: ResearchModelBudgetStateV1) => Promise<void>;
+  onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
 }): SubAgent[] {
   const subagents = CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
     const searchProduct = profile.id === "confluence-search-reader"
@@ -1170,6 +1180,7 @@ function compileChatSubagentsV1(input: {
       modelPreference: profile.modelPreference,
       rootLimit: input.limits.maxModelOutputTokens,
     });
+    let modelAttempt = 0;
     const modelBudgetMiddleware: AgentMiddleware = createResearchModelBudgetMiddlewareV1(
       input.modelBudget,
       {
@@ -1179,6 +1190,17 @@ function compileChatSubagentsV1(input: {
           ? {}
           : { retain: { calls: 1, inputTokens: 4_096, outputTokens: 5_000 } }),
         onSnapshot: async (_snapshot, state) => input.onModelBudgetSnapshot(state),
+        observation: () => ({
+          role: "subagent",
+          modelId: input.modelId,
+          profileId: profile.id,
+          phase: profile.phase,
+          wave: ["acquisition", "analysis", "reconciliation", "drafting", "critique", "repair", "synthesis"]
+            .indexOf(profile.phase),
+          attempt: ++modelAttempt,
+          preference: profile.modelPreference,
+        }),
+        onObservation: input.onModelCallObservation,
       },
     );
     const modelRetry: AgentMiddleware = modelRetryMiddleware({
@@ -1353,6 +1375,7 @@ function cloneWorkflowStateV1(state: ChatWorkflowStateV1): ChatWorkflowStateV1 {
 export function createChatAgenticWorkflowRuntimeV1(input: {
   runtime: ChatWorkflowRuntimeBindingsV1;
   model: BaseChatModel;
+  modelId?: string;
   modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
   modelForFinalization?: () => BaseChatModel;
   structuredOutput: "native" | "tool";
@@ -1366,6 +1389,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   budget: ResearchRunBudget;
   modelBudget: ResearchModelRunBudget;
   onModelBudgetSnapshot: (state: ResearchModelBudgetStateV1) => Promise<void>;
+  onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
   broker: ResearchCapabilityBroker;
   workspace: ResearchWorkspace;
   conversationId: string;
@@ -1420,6 +1444,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     );
   }
   const now = input.now ?? Date.now;
+  const runtimeModelId = input.modelId ?? input.model.getName?.() ?? "unknown-model";
   const state: ChatWorkflowStateV1 = {
     schema: "atlcli.chat-workflow-state/v1",
     conversationId: input.conversationId,
@@ -1482,6 +1507,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   };
   const subagents = compileChatSubagentsV1({
     model: input.model,
+    modelId: runtimeModelId,
     modelForPreference: input.modelForPreference,
     ...(input.modelForFinalization
       ? { modelForFinalization: input.modelForFinalization }
@@ -1499,6 +1525,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     ...(input.retrievalLedger ? { retrievalLedger: input.retrievalLedger } : {}),
     modelBudget: input.modelBudget,
     onModelBudgetSnapshot: input.onModelBudgetSnapshot,
+    onModelCallObservation: input.onModelCallObservation,
   });
   const upstream = input.runtime.createSubAgentMiddleware({
     defaultModel: input.model,
@@ -1533,11 +1560,17 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       new HumanMessage(description),
     ];
     const maximumOutputTokens = Math.min(input.limits.maxModelOutputTokens, 3_072);
+    const recoveryRequest = {
+      messages,
+      responseFormat: "atlcli.chat-evidence-packet/v1",
+    };
+    const recoveryStartedAt = performance.now();
     const reservation = input.modelBudget.reserve(
-      { messages, responseFormat: "atlcli.chat-evidence-packet/v1" },
+      recoveryRequest,
       maximumOutputTokens,
       { calls: 1, inputTokens: 4_096, outputTokens: 5_000 },
     );
+    const recoverySequence = input.modelBudget.snapshot().calls;
     await input.onModelBudgetSnapshot(input.modelBudget.state());
     const controller = new AbortController();
     const forwardAbort = (): void => controller.abort(
@@ -1552,6 +1585,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       ),
     ), CHAT_EXACT_EVIDENCE_RECOVERY_MAX_MS_V1);
     let settled = false;
+    let observationDelivered = false;
     try {
       const model = input.modelForPreference?.("fast") ?? input.model;
       const structured = model.withStructuredOutput<ChatEvidencePacketV1>(
@@ -1574,6 +1608,32 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       input.modelBudget.settle(reservation, response.raw);
       await input.onModelBudgetSnapshot(input.modelBudget.state());
       settled = true;
+      const observedUsage = observedResearchModelUsageV1(response.raw);
+      await deliverResearchModelCallObservationV1(input.onModelCallObservation, {
+        schema: "atlcli.research-model-call-observation/v1",
+        sequence: recoverySequence,
+        role: "recovery",
+        status: "completed",
+        durationMs: Math.max(0, Math.round(performance.now() - recoveryStartedAt)),
+        middlewareName: "ChatExactEvidenceRecovery",
+        modelName: runtimeModelId,
+        modelId: runtimeModelId,
+        profileId: "exact-context-reader",
+        phase: "acquisition",
+        wave: 0,
+        attempt: 1,
+        recoveryReason: "exact-reader-primary-failed",
+        preference: "fast",
+        requestBytes: researchModelRequestBytesV1(recoveryRequest),
+        reservation: {
+          inputTokens: reservation.inputTokens,
+          outputTokens: reservation.outputTokens,
+        },
+        ...(observedUsage
+          ? { observedUsage }
+          : {}),
+      });
+      observationDelivered = true;
       if (input.modelBudget.exceedsLimits()) {
         throw new ChatContractError(
           "limit-exceeded",
@@ -1611,6 +1671,29 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       if (!settled) {
         // An uncertain provider call remains pessimistically charged.
         await input.onModelBudgetSnapshot(input.modelBudget.state());
+      }
+      if (!observationDelivered) {
+        await deliverResearchModelCallObservationV1(input.onModelCallObservation, {
+          schema: "atlcli.research-model-call-observation/v1",
+          sequence: recoverySequence,
+          role: "recovery",
+          status: "failed",
+          durationMs: Math.max(0, Math.round(performance.now() - recoveryStartedAt)),
+          middlewareName: "ChatExactEvidenceRecovery",
+          modelName: "unknown-model",
+          modelId: runtimeModelId,
+          profileId: "exact-context-reader",
+          phase: "acquisition",
+          wave: 0,
+          attempt: 1,
+          recoveryReason: "exact-reader-primary-failed",
+          preference: "fast",
+          requestBytes: researchModelRequestBytesV1(recoveryRequest),
+          reservation: {
+            inputTokens: reservation.inputTokens,
+            outputTokens: reservation.outputTokens,
+          },
+        });
       }
     }
   };
