@@ -351,18 +351,33 @@ export function observedResearchModelUsageV1(
 ): ResearchModelObservedUsageV1 | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as {
-    usage_metadata?: Record<string, unknown>;
+    usage_metadata?: Record<string, unknown> & {
+      input_token_details?: Record<string, unknown>;
+    };
     response_metadata?: { usage?: Record<string, unknown> };
   };
-  const usage = record.response_metadata?.usage ?? record.usage_metadata;
-  if (!usage) return undefined;
-  const token = (key: string): number => Number.isSafeInteger(usage[key]) && (usage[key] as number) >= 0
-    ? usage[key] as number
-    : 0;
-  const inputTokens = token("input_tokens");
-  const cacheCreationInputTokens = token("cache_creation_input_tokens");
-  const cacheReadInputTokens = token("cache_read_input_tokens");
-  const outputTokens = token("output_tokens");
+  const raw = record.response_metadata?.usage;
+  const normalized = record.usage_metadata;
+  const inputDetails = normalized?.input_token_details;
+  if (!raw && !normalized) return undefined;
+  const token = (source: Record<string, unknown> | undefined, key: string): number | undefined =>
+    Number.isSafeInteger(source?.[key]) && (source?.[key] as number) >= 0
+      ? source?.[key] as number
+      : undefined;
+  const cacheCreationInputTokens = token(raw, "cache_creation_input_tokens") ??
+    token(inputDetails, "cache_creation") ?? 0;
+  const cacheReadInputTokens = token(raw, "cache_read_input_tokens") ??
+    token(inputDetails, "cache_read") ?? 0;
+  // Anthropic's raw usage reports fresh input separately. LangChain's
+  // normalized input_tokens includes fresh, cache-write, and cache-read input,
+  // so subtract the separately retained cache categories when raw usage is not
+  // available. This keeps the four receipt dimensions mutually exclusive.
+  const normalizedInputTokens = token(normalized, "input_tokens") ?? 0;
+  const inputTokens = token(raw, "input_tokens") ?? Math.max(
+    0,
+    normalizedInputTokens - cacheCreationInputTokens - cacheReadInputTokens,
+  );
+  const outputTokens = token(raw, "output_tokens") ?? token(normalized, "output_tokens") ?? 0;
   return inputTokens > 0 || cacheCreationInputTokens > 0 || cacheReadInputTokens > 0 ||
       outputTokens > 0
     ? { inputTokens, cacheCreationInputTokens, cacheReadInputTokens, outputTokens }

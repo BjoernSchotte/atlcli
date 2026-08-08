@@ -15,7 +15,7 @@
 > and update this plan's assumptions before editing code. Do not preserve a stale
 > line-level implementation merely to satisfy this document.
 
-Status: **Planned; implementation not started**
+Status: **In progress; T0 baseline proven**
 
 - **Priority:** P1 performance and cost correction after functional Deep Chat proof
 - **Effort:** L, delivered as eight independently proven slices
@@ -358,45 +358,46 @@ Goal: attribute every token and millisecond before changing execution topology.
 
 Implementation:
 
-- [ ] Define a versioned `ChatModelCallObservationV1` containing only the safe
+- [x] Define a versioned `ResearchModelCallObservationV1` shared by Chat and
+      Deep Research and containing only the safe
       dimensions from section 4.3.
-- [ ] Extend model-budget settlement to retain normal input, cache creation,
+- [x] Extend model-budget settlement to retain normal input, cache creation,
       cache read, output, and unresolved pessimistic reservations separately.
-- [ ] Preserve the existing conservative total for hard budget enforcement;
+- [x] Preserve the existing conservative total for hard budget enforcement;
       do not weaken fail-closed reservations or restart semantics.
-- [ ] Attribute calls to root/profile/phase/wave/attempt without storing task
+- [x] Attribute calls to root/profile/phase/wave/attempt without storing task
       objectives or source identifiers.
-- [ ] Measure phase critical-path time and exact-reader primary/recovery time.
-- [ ] Add the fixed benchmark matrix and a deterministic comparison/ratchet evaluator.
-- [ ] Add `scripts/chat-performance-ratchet.ts` or an equivalent typed runner.
-- [ ] Create `EVIDENCE.md` containing only customer-free measurements, commands,
+- [x] Measure phase critical-path time and exact-reader primary/recovery time.
+- [x] Add the fixed benchmark matrix and a deterministic comparison/ratchet evaluator.
+- [x] Add `scripts/chat-performance-ratchet.ts` or an equivalent typed runner.
+- [x] Create `EVIDENCE.md` containing only customer-free measurements, commands,
       accepted ceilings, rejected experiments, and redacted private aggregate receipts.
 
 Automated proof:
 
-- [ ] Budget unit tests prove category arithmetic, reservations, settlement,
+- [x] Budget unit tests prove category arithmetic, reservations, settlement,
       retry accounting, cancellation, restore, and old-checkpoint compatibility.
-- [ ] Observation schemas reject prompts, messages, URLs, source IDs, query text,
+- [x] Observation schemas reject prompts, messages, URLs, source IDs, query text,
       credentials, reasoning, arbitrary metadata, and unknown fields.
-- [ ] The benchmark runner rejects changed corpus/scope/question/model/limits when
+- [x] The benchmark runner rejects changed corpus/scope/question/model/limits when
       comparing BEFORE and AFTER receipts.
-- [ ] A failing quality metric or performance ceiling returns non-zero.
-- [ ] Existing full tests, typecheck, build, browser, output/CSP, and privacy gates pass.
+- [x] A failing quality metric or performance ceiling returns non-zero.
+- [x] Existing full tests, typecheck, build, browser, output/CSP, and privacy gates pass.
 
 Live proof:
 
-- [ ] Run the fixed synthetic Deep comparison three times with the real model
+- [x] Run the fixed synthetic Deep comparison three times with the real model
       and retain one warm-up plus three measured receipts externally.
-- [ ] Run one operator-approved private CLI comparison and one installed or
+- [x] Run one operator-approved private CLI comparison and one installed or
       packed MV3 comparison read-only; retain all private material externally.
-- [ ] Confirm receipts contain model roles and metrics but no tenant-derived data.
-- [ ] Record the accepted T0 baseline and variance before changing behavior.
+- [x] Confirm receipts contain model roles and metrics but no tenant-derived data.
+- [x] Record the accepted T0 baseline and variance before changing behavior.
 
 Ratchet acceptance:
 
-- [ ] The 18-call/~232k aggregate can be attributed by role, phase, attempt,
+- [x] The 18-call/~232k aggregate can be attributed by role, phase, attempt,
       cache category, and duration.
-- [ ] Budget enforcement is unchanged and invoice-like cost is no longer inferred
+- [x] Budget enforcement is unchanged and invoice-like cost is no longer inferred
       from the conservative aggregate.
 
 Commit: `perf(chat): establish deep chat performance ratchet`

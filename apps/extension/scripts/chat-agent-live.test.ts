@@ -17,6 +17,8 @@ describe("synthetic provider-backed Chat live harness", () => {
         question: "Compare sources",
         exactPage: false,
         summaryOnly: false,
+        sample: "measured",
+        benchmarkId: "deep-two-anchor-comparison",
       });
     expect(() => parseChatAgentLiveArgumentsV1(["--thinking", "maximum"]))
       .toThrow("--thinking must be quick, auto, or deep.");
@@ -35,5 +37,19 @@ describe("synthetic provider-backed Chat live harness", () => {
   test("supports compact live-proof output without changing the run", () => {
     expect(parseChatAgentLiveArgumentsV1(["--summary-only", "Compare", "sources"]))
       .toMatchObject({ summaryOnly: true, question: "Compare sources" });
+  });
+
+  test("writes only an explicitly requested benchmark receipt", () => {
+    expect(parseChatAgentLiveArgumentsV1([
+      "--exact-page",
+      "--sample", "warmup",
+      "--receipt", "/private/tmp/chat-receipt.json",
+    ])).toMatchObject({
+      sample: "warmup",
+      receiptPath: "/private/tmp/chat-receipt.json",
+      benchmarkId: "deep-single-anchor",
+    });
+    expect(() => parseChatAgentLiveArgumentsV1(["--sample", "unknown"]))
+      .toThrow("--sample must be warmup or measured");
   });
 });

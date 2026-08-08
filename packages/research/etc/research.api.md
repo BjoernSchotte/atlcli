@@ -863,6 +863,28 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
+// export: CHAT_PERFORMANCE_BENCHMARK_IDS_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_IDS_V1: readonly [
+    "deep-single-anchor",
+    "deep-two-anchor-comparison",
+    "deep-explicit-contradiction",
+    "deep-cross-product-relationship",
+    "deep-quality-repair",
+    "deep-follow-up-reuse",
+    "auto-simple-control",
+    "research-isolation-control"
+];
+
+// export: CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatPerformanceBenchmarkIdV1, {
+    mode: "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    requiredSignals: readonly ("anchors" | "citations" | "contradiction" | "relationship" | "repair" | "reuse" | "report-isolation")[];
+}>>;
+
+// export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
+export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -1518,6 +1540,84 @@ export interface ChatPendingSteeringV1 {
     requestedAt: string;
     turnId?: string;
     resume?: ChatResumeEnvelopeV1;
+}
+
+// export: ChatPerformanceBenchmarkIdV1
+export type ChatPerformanceBenchmarkIdV1 = (typeof CHAT_PERFORMANCE_BENCHMARK_IDS_V1)[number];
+
+// export: ChatPerformanceMetricsV1
+export interface ChatPerformanceMetricsV1 {
+    durationMs: number;
+    modelCriticalPathMs: number;
+    exactReaderPrimaryMs: number;
+    exactReaderRecoveryMs: number;
+    modelCalls: number;
+    failedModelCalls: number;
+    unresolvedReservations: number;
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
+    requestBytes: {
+        system: number;
+        messages: number;
+        tools: number;
+        responseFormat: number;
+        total: number;
+    };
+    ptcCalls: number;
+    httpCalls: number;
+    callsByRole: Record<string, number>;
+    callsByProfile: Record<string, number>;
+    callsByPhase: Record<string, number>;
+}
+
+// export: ChatPerformanceQualityMetricsV1
+export interface ChatPerformanceQualityMetricsV1 {
+    expectedTrajectory: boolean;
+    exactAnchorCoveragePermille: number;
+    detailReadCoveragePermille: number;
+    citationPrecisionPermille: number;
+    supportedAssertionPermille: number;
+    wrongSourceCount: number;
+    contradictionRecallPermille: number;
+    relationshipRecallPermille: number;
+    materialGapRecallPermille: number;
+    falseCompletenessCount: number;
+    answerStreamingObserved: boolean;
+}
+
+// export: ChatPerformanceRatchetPolicyV1
+export interface ChatPerformanceRatchetPolicyV1 {
+    minimumCallReduction: number;
+    minimumFreshInputReductionPermille: number;
+    minimumDurationReductionPermille: number;
+    maximumFreshInputRegressionPermille: number;
+    maximumDurationRegressionPermille: number;
+}
+
+// export: ChatPerformanceRatchetResultV1
+export interface ChatPerformanceRatchetResultV1 {
+    accepted: boolean;
+    failures: string[];
+    changes: {
+        modelCalls: number;
+        freshInputPermille: number;
+        durationPermille: number;
+    };
+}
+
+// export: ChatPerformanceReceiptV1
+export interface ChatPerformanceReceiptV1 {
+    schema: typeof CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1;
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: "quick" | "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    modelId: string;
+    metrics: ChatPerformanceMetricsV1;
+    quality: ChatPerformanceQualityMetricsV1;
 }
 
 // export: chatPolicyForThinkingModeV1
@@ -2298,6 +2398,21 @@ export declare function createChatInteractionStateV1(input: {
     createdAt: string;
 }): ChatInteractionStateV1;
 
+// export: createChatPerformanceReceiptV1
+export declare function createChatPerformanceReceiptV1(input: {
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: ChatPerformanceReceiptV1["mode"];
+    strategy: ChatPerformanceReceiptV1["strategy"];
+    modelId: string;
+    durationMs: number;
+    observations: readonly ResearchModelCallObservationV1[];
+    ptcCalls: number;
+    httpCalls: number;
+    quality: ChatPerformanceQualityMetricsV1;
+}): ChatPerformanceReceiptV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -2653,6 +2768,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatPerformanceRatchetV1
+export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
 
 // export: evaluateChatReleaseGatesV1
 export declare function evaluateChatReleaseGatesV1(input: {
@@ -3048,6 +3166,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatPerformanceReceiptV1
+export declare function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceReceiptV1;
 
 // export: parseChatSessionV1
 export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
@@ -5316,6 +5437,30 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelCallObservationV1
+export interface ResearchModelCallObservationV1 {
+    schema: "atlcli.research-model-call-observation/v1";
+    sequence: number;
+    role: ResearchModelCallRoleV1;
+    status: "completed" | "failed";
+    durationMs: number;
+    middlewareName: string;
+    modelName: string;
+    modelId?: string;
+    profileId?: string;
+    phase?: string;
+    wave?: number;
+    attempt?: number;
+    recoveryReason?: string;
+    preference?: "fast" | "balanced" | "thorough";
+    requestBytes: ResearchModelRequestBytesV1;
+    reservation: {
+        inputTokens: number;
+        outputTokens: number;
+    };
     observedUsage?: ResearchModelObservedUsageV1;
 }
 
@@ -8860,6 +9005,28 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
+// export: CHAT_PERFORMANCE_BENCHMARK_IDS_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_IDS_V1: readonly [
+    "deep-single-anchor",
+    "deep-two-anchor-comparison",
+    "deep-explicit-contradiction",
+    "deep-cross-product-relationship",
+    "deep-quality-repair",
+    "deep-follow-up-reuse",
+    "auto-simple-control",
+    "research-isolation-control"
+];
+
+// export: CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatPerformanceBenchmarkIdV1, {
+    mode: "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    requiredSignals: readonly ("anchors" | "citations" | "contradiction" | "relationship" | "repair" | "reuse" | "report-isolation")[];
+}>>;
+
+// export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
+export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -9515,6 +9682,84 @@ export interface ChatPendingSteeringV1 {
     requestedAt: string;
     turnId?: string;
     resume?: ChatResumeEnvelopeV1;
+}
+
+// export: ChatPerformanceBenchmarkIdV1
+export type ChatPerformanceBenchmarkIdV1 = (typeof CHAT_PERFORMANCE_BENCHMARK_IDS_V1)[number];
+
+// export: ChatPerformanceMetricsV1
+export interface ChatPerformanceMetricsV1 {
+    durationMs: number;
+    modelCriticalPathMs: number;
+    exactReaderPrimaryMs: number;
+    exactReaderRecoveryMs: number;
+    modelCalls: number;
+    failedModelCalls: number;
+    unresolvedReservations: number;
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
+    requestBytes: {
+        system: number;
+        messages: number;
+        tools: number;
+        responseFormat: number;
+        total: number;
+    };
+    ptcCalls: number;
+    httpCalls: number;
+    callsByRole: Record<string, number>;
+    callsByProfile: Record<string, number>;
+    callsByPhase: Record<string, number>;
+}
+
+// export: ChatPerformanceQualityMetricsV1
+export interface ChatPerformanceQualityMetricsV1 {
+    expectedTrajectory: boolean;
+    exactAnchorCoveragePermille: number;
+    detailReadCoveragePermille: number;
+    citationPrecisionPermille: number;
+    supportedAssertionPermille: number;
+    wrongSourceCount: number;
+    contradictionRecallPermille: number;
+    relationshipRecallPermille: number;
+    materialGapRecallPermille: number;
+    falseCompletenessCount: number;
+    answerStreamingObserved: boolean;
+}
+
+// export: ChatPerformanceRatchetPolicyV1
+export interface ChatPerformanceRatchetPolicyV1 {
+    minimumCallReduction: number;
+    minimumFreshInputReductionPermille: number;
+    minimumDurationReductionPermille: number;
+    maximumFreshInputRegressionPermille: number;
+    maximumDurationRegressionPermille: number;
+}
+
+// export: ChatPerformanceRatchetResultV1
+export interface ChatPerformanceRatchetResultV1 {
+    accepted: boolean;
+    failures: string[];
+    changes: {
+        modelCalls: number;
+        freshInputPermille: number;
+        durationPermille: number;
+    };
+}
+
+// export: ChatPerformanceReceiptV1
+export interface ChatPerformanceReceiptV1 {
+    schema: typeof CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1;
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: "quick" | "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    modelId: string;
+    metrics: ChatPerformanceMetricsV1;
+    quality: ChatPerformanceQualityMetricsV1;
 }
 
 // export: chatPolicyForThinkingModeV1
@@ -10295,6 +10540,21 @@ export declare function createChatInteractionStateV1(input: {
     createdAt: string;
 }): ChatInteractionStateV1;
 
+// export: createChatPerformanceReceiptV1
+export declare function createChatPerformanceReceiptV1(input: {
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: ChatPerformanceReceiptV1["mode"];
+    strategy: ChatPerformanceReceiptV1["strategy"];
+    modelId: string;
+    durationMs: number;
+    observations: readonly ResearchModelCallObservationV1[];
+    ptcCalls: number;
+    httpCalls: number;
+    quality: ChatPerformanceQualityMetricsV1;
+}): ChatPerformanceReceiptV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -10641,6 +10901,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatPerformanceRatchetV1
+export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
 
 // export: evaluateChatReleaseGatesV1
 export declare function evaluateChatReleaseGatesV1(input: {
@@ -11036,6 +11299,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatPerformanceReceiptV1
+export declare function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceReceiptV1;
 
 // export: parseChatSessionV1
 export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
@@ -13304,6 +13570,30 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelCallObservationV1
+export interface ResearchModelCallObservationV1 {
+    schema: "atlcli.research-model-call-observation/v1";
+    sequence: number;
+    role: ResearchModelCallRoleV1;
+    status: "completed" | "failed";
+    durationMs: number;
+    middlewareName: string;
+    modelName: string;
+    modelId?: string;
+    profileId?: string;
+    phase?: string;
+    wave?: number;
+    attempt?: number;
+    recoveryReason?: string;
+    preference?: "fast" | "balanced" | "thorough";
+    requestBytes: ResearchModelRequestBytesV1;
+    reservation: {
+        inputTokens: number;
+        outputTokens: number;
+    };
     observedUsage?: ResearchModelObservedUsageV1;
 }
 
@@ -16837,6 +17127,28 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
+// export: CHAT_PERFORMANCE_BENCHMARK_IDS_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_IDS_V1: readonly [
+    "deep-single-anchor",
+    "deep-two-anchor-comparison",
+    "deep-explicit-contradiction",
+    "deep-cross-product-relationship",
+    "deep-quality-repair",
+    "deep-follow-up-reuse",
+    "auto-simple-control",
+    "research-isolation-control"
+];
+
+// export: CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatPerformanceBenchmarkIdV1, {
+    mode: "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    requiredSignals: readonly ("anchors" | "citations" | "contradiction" | "relationship" | "repair" | "reuse" | "report-isolation")[];
+}>>;
+
+// export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
+export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -17492,6 +17804,84 @@ export interface ChatPendingSteeringV1 {
     requestedAt: string;
     turnId?: string;
     resume?: ChatResumeEnvelopeV1;
+}
+
+// export: ChatPerformanceBenchmarkIdV1
+export type ChatPerformanceBenchmarkIdV1 = (typeof CHAT_PERFORMANCE_BENCHMARK_IDS_V1)[number];
+
+// export: ChatPerformanceMetricsV1
+export interface ChatPerformanceMetricsV1 {
+    durationMs: number;
+    modelCriticalPathMs: number;
+    exactReaderPrimaryMs: number;
+    exactReaderRecoveryMs: number;
+    modelCalls: number;
+    failedModelCalls: number;
+    unresolvedReservations: number;
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
+    requestBytes: {
+        system: number;
+        messages: number;
+        tools: number;
+        responseFormat: number;
+        total: number;
+    };
+    ptcCalls: number;
+    httpCalls: number;
+    callsByRole: Record<string, number>;
+    callsByProfile: Record<string, number>;
+    callsByPhase: Record<string, number>;
+}
+
+// export: ChatPerformanceQualityMetricsV1
+export interface ChatPerformanceQualityMetricsV1 {
+    expectedTrajectory: boolean;
+    exactAnchorCoveragePermille: number;
+    detailReadCoveragePermille: number;
+    citationPrecisionPermille: number;
+    supportedAssertionPermille: number;
+    wrongSourceCount: number;
+    contradictionRecallPermille: number;
+    relationshipRecallPermille: number;
+    materialGapRecallPermille: number;
+    falseCompletenessCount: number;
+    answerStreamingObserved: boolean;
+}
+
+// export: ChatPerformanceRatchetPolicyV1
+export interface ChatPerformanceRatchetPolicyV1 {
+    minimumCallReduction: number;
+    minimumFreshInputReductionPermille: number;
+    minimumDurationReductionPermille: number;
+    maximumFreshInputRegressionPermille: number;
+    maximumDurationRegressionPermille: number;
+}
+
+// export: ChatPerformanceRatchetResultV1
+export interface ChatPerformanceRatchetResultV1 {
+    accepted: boolean;
+    failures: string[];
+    changes: {
+        modelCalls: number;
+        freshInputPermille: number;
+        durationPermille: number;
+    };
+}
+
+// export: ChatPerformanceReceiptV1
+export interface ChatPerformanceReceiptV1 {
+    schema: typeof CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1;
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: "quick" | "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    modelId: string;
+    metrics: ChatPerformanceMetricsV1;
+    quality: ChatPerformanceQualityMetricsV1;
 }
 
 // export: chatPolicyForThinkingModeV1
@@ -18272,6 +18662,21 @@ export declare function createChatInteractionStateV1(input: {
     createdAt: string;
 }): ChatInteractionStateV1;
 
+// export: createChatPerformanceReceiptV1
+export declare function createChatPerformanceReceiptV1(input: {
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: ChatPerformanceReceiptV1["mode"];
+    strategy: ChatPerformanceReceiptV1["strategy"];
+    modelId: string;
+    durationMs: number;
+    observations: readonly ResearchModelCallObservationV1[];
+    ptcCalls: number;
+    httpCalls: number;
+    quality: ChatPerformanceQualityMetricsV1;
+}): ChatPerformanceReceiptV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -18627,6 +19032,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatPerformanceRatchetV1
+export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
 
 // export: evaluateChatReleaseGatesV1
 export declare function evaluateChatReleaseGatesV1(input: {
@@ -19022,6 +19430,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatPerformanceReceiptV1
+export declare function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceReceiptV1;
 
 // export: parseChatSessionV1
 export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
@@ -21290,6 +21701,30 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelCallObservationV1
+export interface ResearchModelCallObservationV1 {
+    schema: "atlcli.research-model-call-observation/v1";
+    sequence: number;
+    role: ResearchModelCallRoleV1;
+    status: "completed" | "failed";
+    durationMs: number;
+    middlewareName: string;
+    modelName: string;
+    modelId?: string;
+    profileId?: string;
+    phase?: string;
+    wave?: number;
+    attempt?: number;
+    recoveryReason?: string;
+    preference?: "fast" | "balanced" | "thorough";
+    requestBytes: ResearchModelRequestBytesV1;
+    reservation: {
+        inputTokens: number;
+        outputTokens: number;
+    };
     observedUsage?: ResearchModelObservedUsageV1;
 }
 
@@ -24843,6 +25278,28 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
+// export: CHAT_PERFORMANCE_BENCHMARK_IDS_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_IDS_V1: readonly [
+    "deep-single-anchor",
+    "deep-two-anchor-comparison",
+    "deep-explicit-contradiction",
+    "deep-cross-product-relationship",
+    "deep-quality-repair",
+    "deep-follow-up-reuse",
+    "auto-simple-control",
+    "research-isolation-control"
+];
+
+// export: CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatPerformanceBenchmarkIdV1, {
+    mode: "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    requiredSignals: readonly ("anchors" | "citations" | "contradiction" | "relationship" | "repair" | "reuse" | "report-isolation")[];
+}>>;
+
+// export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
+export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -25507,6 +25964,84 @@ export interface ChatPendingSteeringV1 {
     requestedAt: string;
     turnId?: string;
     resume?: ChatResumeEnvelopeV1;
+}
+
+// export: ChatPerformanceBenchmarkIdV1
+export type ChatPerformanceBenchmarkIdV1 = (typeof CHAT_PERFORMANCE_BENCHMARK_IDS_V1)[number];
+
+// export: ChatPerformanceMetricsV1
+export interface ChatPerformanceMetricsV1 {
+    durationMs: number;
+    modelCriticalPathMs: number;
+    exactReaderPrimaryMs: number;
+    exactReaderRecoveryMs: number;
+    modelCalls: number;
+    failedModelCalls: number;
+    unresolvedReservations: number;
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
+    requestBytes: {
+        system: number;
+        messages: number;
+        tools: number;
+        responseFormat: number;
+        total: number;
+    };
+    ptcCalls: number;
+    httpCalls: number;
+    callsByRole: Record<string, number>;
+    callsByProfile: Record<string, number>;
+    callsByPhase: Record<string, number>;
+}
+
+// export: ChatPerformanceQualityMetricsV1
+export interface ChatPerformanceQualityMetricsV1 {
+    expectedTrajectory: boolean;
+    exactAnchorCoveragePermille: number;
+    detailReadCoveragePermille: number;
+    citationPrecisionPermille: number;
+    supportedAssertionPermille: number;
+    wrongSourceCount: number;
+    contradictionRecallPermille: number;
+    relationshipRecallPermille: number;
+    materialGapRecallPermille: number;
+    falseCompletenessCount: number;
+    answerStreamingObserved: boolean;
+}
+
+// export: ChatPerformanceRatchetPolicyV1
+export interface ChatPerformanceRatchetPolicyV1 {
+    minimumCallReduction: number;
+    minimumFreshInputReductionPermille: number;
+    minimumDurationReductionPermille: number;
+    maximumFreshInputRegressionPermille: number;
+    maximumDurationRegressionPermille: number;
+}
+
+// export: ChatPerformanceRatchetResultV1
+export interface ChatPerformanceRatchetResultV1 {
+    accepted: boolean;
+    failures: string[];
+    changes: {
+        modelCalls: number;
+        freshInputPermille: number;
+        durationPermille: number;
+    };
+}
+
+// export: ChatPerformanceReceiptV1
+export interface ChatPerformanceReceiptV1 {
+    schema: typeof CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1;
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: "quick" | "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    modelId: string;
+    metrics: ChatPerformanceMetricsV1;
+    quality: ChatPerformanceQualityMetricsV1;
 }
 
 // export: chatPolicyForThinkingModeV1
@@ -26386,6 +26921,21 @@ export declare function createChatInteractionStateV1(input: {
     createdAt: string;
 }): ChatInteractionStateV1;
 
+// export: createChatPerformanceReceiptV1
+export declare function createChatPerformanceReceiptV1(input: {
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: ChatPerformanceReceiptV1["mode"];
+    strategy: ChatPerformanceReceiptV1["strategy"];
+    modelId: string;
+    durationMs: number;
+    observations: readonly ResearchModelCallObservationV1[];
+    ptcCalls: number;
+    httpCalls: number;
+    quality: ChatPerformanceQualityMetricsV1;
+}): ChatPerformanceReceiptV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -26833,6 +27383,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
 
+// export: evaluateChatPerformanceRatchetV1
+export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
+
 // export: evaluateChatReleaseGatesV1
 export declare function evaluateChatReleaseGatesV1(input: {
     cases: readonly {
@@ -27230,6 +27783,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatPerformanceReceiptV1
+export declare function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceReceiptV1;
 
 // export: parseChatSessionV1
 export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
@@ -29581,6 +30137,30 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelCallObservationV1
+export interface ResearchModelCallObservationV1 {
+    schema: "atlcli.research-model-call-observation/v1";
+    sequence: number;
+    role: ResearchModelCallRoleV1;
+    status: "completed" | "failed";
+    durationMs: number;
+    middlewareName: string;
+    modelName: string;
+    modelId?: string;
+    profileId?: string;
+    phase?: string;
+    wave?: number;
+    attempt?: number;
+    recoveryReason?: string;
+    preference?: "fast" | "balanced" | "thorough";
+    requestBytes: ResearchModelRequestBytesV1;
+    reservation: {
+        inputTokens: number;
+        outputTokens: number;
+    };
     observedUsage?: ResearchModelObservedUsageV1;
 }
 
@@ -33303,6 +33883,28 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
+// export: CHAT_PERFORMANCE_BENCHMARK_IDS_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_IDS_V1: readonly [
+    "deep-single-anchor",
+    "deep-two-anchor-comparison",
+    "deep-explicit-contradiction",
+    "deep-cross-product-relationship",
+    "deep-quality-repair",
+    "deep-follow-up-reuse",
+    "auto-simple-control",
+    "research-isolation-control"
+];
+
+// export: CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatPerformanceBenchmarkIdV1, {
+    mode: "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    requiredSignals: readonly ("anchors" | "citations" | "contradiction" | "relationship" | "repair" | "reuse" | "report-isolation")[];
+}>>;
+
+// export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
+export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -33967,6 +34569,84 @@ export interface ChatPendingSteeringV1 {
     requestedAt: string;
     turnId?: string;
     resume?: ChatResumeEnvelopeV1;
+}
+
+// export: ChatPerformanceBenchmarkIdV1
+export type ChatPerformanceBenchmarkIdV1 = (typeof CHAT_PERFORMANCE_BENCHMARK_IDS_V1)[number];
+
+// export: ChatPerformanceMetricsV1
+export interface ChatPerformanceMetricsV1 {
+    durationMs: number;
+    modelCriticalPathMs: number;
+    exactReaderPrimaryMs: number;
+    exactReaderRecoveryMs: number;
+    modelCalls: number;
+    failedModelCalls: number;
+    unresolvedReservations: number;
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
+    requestBytes: {
+        system: number;
+        messages: number;
+        tools: number;
+        responseFormat: number;
+        total: number;
+    };
+    ptcCalls: number;
+    httpCalls: number;
+    callsByRole: Record<string, number>;
+    callsByProfile: Record<string, number>;
+    callsByPhase: Record<string, number>;
+}
+
+// export: ChatPerformanceQualityMetricsV1
+export interface ChatPerformanceQualityMetricsV1 {
+    expectedTrajectory: boolean;
+    exactAnchorCoveragePermille: number;
+    detailReadCoveragePermille: number;
+    citationPrecisionPermille: number;
+    supportedAssertionPermille: number;
+    wrongSourceCount: number;
+    contradictionRecallPermille: number;
+    relationshipRecallPermille: number;
+    materialGapRecallPermille: number;
+    falseCompletenessCount: number;
+    answerStreamingObserved: boolean;
+}
+
+// export: ChatPerformanceRatchetPolicyV1
+export interface ChatPerformanceRatchetPolicyV1 {
+    minimumCallReduction: number;
+    minimumFreshInputReductionPermille: number;
+    minimumDurationReductionPermille: number;
+    maximumFreshInputRegressionPermille: number;
+    maximumDurationRegressionPermille: number;
+}
+
+// export: ChatPerformanceRatchetResultV1
+export interface ChatPerformanceRatchetResultV1 {
+    accepted: boolean;
+    failures: string[];
+    changes: {
+        modelCalls: number;
+        freshInputPermille: number;
+        durationPermille: number;
+    };
+}
+
+// export: ChatPerformanceReceiptV1
+export interface ChatPerformanceReceiptV1 {
+    schema: typeof CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1;
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: "quick" | "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    modelId: string;
+    metrics: ChatPerformanceMetricsV1;
+    quality: ChatPerformanceQualityMetricsV1;
 }
 
 // export: chatPolicyForThinkingModeV1
@@ -34836,6 +35516,21 @@ export declare function createChatInteractionStateV1(input: {
     createdAt: string;
 }): ChatInteractionStateV1;
 
+// export: createChatPerformanceReceiptV1
+export declare function createChatPerformanceReceiptV1(input: {
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: ChatPerformanceReceiptV1["mode"];
+    strategy: ChatPerformanceReceiptV1["strategy"];
+    modelId: string;
+    durationMs: number;
+    observations: readonly ResearchModelCallObservationV1[];
+    ptcCalls: number;
+    httpCalls: number;
+    quality: ChatPerformanceQualityMetricsV1;
+}): ChatPerformanceReceiptV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -35283,6 +35978,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
 
+// export: evaluateChatPerformanceRatchetV1
+export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
+
 // export: evaluateChatReleaseGatesV1
 export declare function evaluateChatReleaseGatesV1(input: {
     cases: readonly {
@@ -35695,6 +36393,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatPerformanceReceiptV1
+export declare function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceReceiptV1;
 
 // export: parseChatSessionV1
 export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
@@ -38046,6 +38747,30 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelCallObservationV1
+export interface ResearchModelCallObservationV1 {
+    schema: "atlcli.research-model-call-observation/v1";
+    sequence: number;
+    role: ResearchModelCallRoleV1;
+    status: "completed" | "failed";
+    durationMs: number;
+    middlewareName: string;
+    modelName: string;
+    modelId?: string;
+    profileId?: string;
+    phase?: string;
+    wave?: number;
+    attempt?: number;
+    recoveryReason?: string;
+    preference?: "fast" | "balanced" | "thorough";
+    requestBytes: ResearchModelRequestBytesV1;
+    reservation: {
+        inputTokens: number;
+        outputTokens: number;
+    };
     observedUsage?: ResearchModelObservedUsageV1;
 }
 
@@ -43792,6 +44517,28 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
 
+// export: CHAT_PERFORMANCE_BENCHMARK_IDS_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_IDS_V1: readonly [
+    "deep-single-anchor",
+    "deep-two-anchor-comparison",
+    "deep-explicit-contradiction",
+    "deep-cross-product-relationship",
+    "deep-quality-repair",
+    "deep-follow-up-reuse",
+    "auto-simple-control",
+    "research-isolation-control"
+];
+
+// export: CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1
+export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatPerformanceBenchmarkIdV1, {
+    mode: "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    requiredSignals: readonly ("anchors" | "citations" | "contradiction" | "relationship" | "repair" | "reuse" | "report-isolation")[];
+}>>;
+
+// export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
+export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
     "quick",
@@ -44456,6 +45203,84 @@ export interface ChatPendingSteeringV1 {
     requestedAt: string;
     turnId?: string;
     resume?: ChatResumeEnvelopeV1;
+}
+
+// export: ChatPerformanceBenchmarkIdV1
+export type ChatPerformanceBenchmarkIdV1 = (typeof CHAT_PERFORMANCE_BENCHMARK_IDS_V1)[number];
+
+// export: ChatPerformanceMetricsV1
+export interface ChatPerformanceMetricsV1 {
+    durationMs: number;
+    modelCriticalPathMs: number;
+    exactReaderPrimaryMs: number;
+    exactReaderRecoveryMs: number;
+    modelCalls: number;
+    failedModelCalls: number;
+    unresolvedReservations: number;
+    inputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    outputTokens: number;
+    requestBytes: {
+        system: number;
+        messages: number;
+        tools: number;
+        responseFormat: number;
+        total: number;
+    };
+    ptcCalls: number;
+    httpCalls: number;
+    callsByRole: Record<string, number>;
+    callsByProfile: Record<string, number>;
+    callsByPhase: Record<string, number>;
+}
+
+// export: ChatPerformanceQualityMetricsV1
+export interface ChatPerformanceQualityMetricsV1 {
+    expectedTrajectory: boolean;
+    exactAnchorCoveragePermille: number;
+    detailReadCoveragePermille: number;
+    citationPrecisionPermille: number;
+    supportedAssertionPermille: number;
+    wrongSourceCount: number;
+    contradictionRecallPermille: number;
+    relationshipRecallPermille: number;
+    materialGapRecallPermille: number;
+    falseCompletenessCount: number;
+    answerStreamingObserved: boolean;
+}
+
+// export: ChatPerformanceRatchetPolicyV1
+export interface ChatPerformanceRatchetPolicyV1 {
+    minimumCallReduction: number;
+    minimumFreshInputReductionPermille: number;
+    minimumDurationReductionPermille: number;
+    maximumFreshInputRegressionPermille: number;
+    maximumDurationRegressionPermille: number;
+}
+
+// export: ChatPerformanceRatchetResultV1
+export interface ChatPerformanceRatchetResultV1 {
+    accepted: boolean;
+    failures: string[];
+    changes: {
+        modelCalls: number;
+        freshInputPermille: number;
+        durationPermille: number;
+    };
+}
+
+// export: ChatPerformanceReceiptV1
+export interface ChatPerformanceReceiptV1 {
+    schema: typeof CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1;
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: "quick" | "auto" | "deep" | "research";
+    strategy: "direct" | "agentic" | "research";
+    modelId: string;
+    metrics: ChatPerformanceMetricsV1;
+    quality: ChatPerformanceQualityMetricsV1;
 }
 
 // export: chatPolicyForThinkingModeV1
@@ -45325,6 +46150,21 @@ export declare function createChatInteractionStateV1(input: {
     createdAt: string;
 }): ChatInteractionStateV1;
 
+// export: createChatPerformanceReceiptV1
+export declare function createChatPerformanceReceiptV1(input: {
+    benchmarkId: ChatPerformanceBenchmarkIdV1;
+    benchmarkFingerprint: string;
+    sample: "warmup" | "measured";
+    mode: ChatPerformanceReceiptV1["mode"];
+    strategy: ChatPerformanceReceiptV1["strategy"];
+    modelId: string;
+    durationMs: number;
+    observations: readonly ResearchModelCallObservationV1[];
+    ptcCalls: number;
+    httpCalls: number;
+    quality: ChatPerformanceQualityMetricsV1;
+}): ChatPerformanceReceiptV1;
+
 // export: createChatPtcToolsV1
 export declare function createChatPtcToolsV1(broker: ResearchCapabilityBroker, options?: ChatPtcToolOptionsV1): DynamicStructuredTool[];
 
@@ -45772,6 +46612,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
 
+// export: evaluateChatPerformanceRatchetV1
+export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
+
 // export: evaluateChatReleaseGatesV1
 export declare function evaluateChatReleaseGatesV1(input: {
     cases: readonly {
@@ -46184,6 +47027,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
+
+// export: parseChatPerformanceReceiptV1
+export declare function parseChatPerformanceReceiptV1(value: unknown): ChatPerformanceReceiptV1;
 
 // export: parseChatSessionV1
 export declare function parseChatSessionV1(value: unknown): ChatSessionV1;
@@ -48535,6 +49381,30 @@ export interface ResearchModelBudgetStateV1 {
     schema: "atlcli.research-model-budget/v1";
     limits: Pick<ResearchLimitsV1, "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros">;
     snapshot: ResearchModelBudgetSnapshotV1;
+    observedUsage?: ResearchModelObservedUsageV1;
+}
+
+// export: ResearchModelCallObservationV1
+export interface ResearchModelCallObservationV1 {
+    schema: "atlcli.research-model-call-observation/v1";
+    sequence: number;
+    role: ResearchModelCallRoleV1;
+    status: "completed" | "failed";
+    durationMs: number;
+    middlewareName: string;
+    modelName: string;
+    modelId?: string;
+    profileId?: string;
+    phase?: string;
+    wave?: number;
+    attempt?: number;
+    recoveryReason?: string;
+    preference?: "fast" | "balanced" | "thorough";
+    requestBytes: ResearchModelRequestBytesV1;
+    reservation: {
+        inputTokens: number;
+        outputTokens: number;
+    };
     observedUsage?: ResearchModelObservedUsageV1;
 }
 

@@ -2,6 +2,7 @@ import { createMiddleware, type AgentMiddleware } from "langchain";
 import {
   ResearchModelRunBudget,
   observedResearchModelUsageV1,
+  parseResearchModelObservedUsageV1,
   researchModelRequestBytesV1,
   type ResearchModelBudgetCapacityV1,
   type ResearchModelBudgetStateV1,
@@ -57,13 +58,101 @@ function safeDiagnosticLabel(value: unknown, fallback: string): string {
   return /^[A-Za-z0-9._:-]{1,120}$/u.test(normalized) ? normalized : fallback;
 }
 
+function observationInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new ResearchContractError("invalid-request", `${label} is invalid.`);
+  }
+  return value as number;
+}
+
+export function parseResearchModelCallObservationV1(
+  value: unknown,
+): ResearchModelCallObservationV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  const allowed = new Set([
+    "schema", "sequence", "role", "status", "durationMs", "middlewareName", "modelName",
+    "modelId", "profileId", "phase", "wave", "attempt", "recoveryReason", "preference",
+    "requestBytes", "reservation", "observedUsage",
+  ]);
+  const required = [
+    "schema", "sequence", "role", "status", "durationMs", "middlewareName", "modelName",
+    "requestBytes", "reservation",
+  ];
+  if (Object.keys(record).some((key) => !allowed.has(key)) ||
+      required.some((key) => !(key in record)) ||
+      record.schema !== "atlcli.research-model-call-observation/v1" ||
+      !["root", "subagent", "recovery", "summarization", "research"].includes(String(record.role)) ||
+      !["completed", "failed"].includes(String(record.status)) ||
+      !isSafeObservationLabel(record.middlewareName) || !isSafeObservationLabel(record.modelName)) {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  const optionalLabels = ["modelId", "profileId", "phase", "recoveryReason"] as const;
+  for (const key of optionalLabels) {
+    if (record[key] !== undefined && !isSafeObservationLabel(record[key])) {
+      throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+    }
+  }
+  if (record.preference !== undefined &&
+      !["fast", "balanced", "thorough"].includes(String(record.preference))) {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  const requestBytes = record.requestBytes as Record<string, unknown>;
+  const reservation = record.reservation as Record<string, unknown>;
+  if (!requestBytes || typeof requestBytes !== "object" || Array.isArray(requestBytes) ||
+      Object.keys(requestBytes).sort().join(",") !==
+        "messageBytes,responseFormatBytes,systemBytes,toolBytes,totalBytes" ||
+      !reservation || typeof reservation !== "object" || Array.isArray(reservation) ||
+      Object.keys(reservation).sort().join(",") !== "inputTokens,outputTokens") {
+    throw new ResearchContractError("invalid-request", "Research model call observation is invalid.");
+  }
+  return {
+    schema: "atlcli.research-model-call-observation/v1",
+    sequence: observationInteger(record.sequence, "Observation sequence"),
+    role: record.role as ResearchModelCallRoleV1,
+    status: record.status as ResearchModelCallObservationV1["status"],
+    durationMs: observationInteger(record.durationMs, "Observation duration"),
+    middlewareName: record.middlewareName as string,
+    modelName: record.modelName as string,
+    ...(record.modelId === undefined ? {} : { modelId: record.modelId as string }),
+    ...(record.profileId === undefined ? {} : { profileId: record.profileId as string }),
+    ...(record.phase === undefined ? {} : { phase: record.phase as string }),
+    ...(record.wave === undefined ? {} : { wave: observationInteger(record.wave, "Observation wave") }),
+    ...(record.attempt === undefined ? {} : { attempt: observationInteger(record.attempt, "Observation attempt") }),
+    ...(record.recoveryReason === undefined ? {} : { recoveryReason: record.recoveryReason as string }),
+    ...(record.preference === undefined
+      ? {}
+      : { preference: record.preference as ResearchModelCallObservationV1["preference"] }),
+    requestBytes: {
+      systemBytes: observationInteger(requestBytes.systemBytes, "Observation system bytes"),
+      messageBytes: observationInteger(requestBytes.messageBytes, "Observation message bytes"),
+      toolBytes: observationInteger(requestBytes.toolBytes, "Observation tool bytes"),
+      responseFormatBytes: observationInteger(requestBytes.responseFormatBytes, "Observation response-format bytes"),
+      totalBytes: observationInteger(requestBytes.totalBytes, "Observation total bytes"),
+    },
+    reservation: {
+      inputTokens: observationInteger(reservation.inputTokens, "Observation reservation input tokens"),
+      outputTokens: observationInteger(reservation.outputTokens, "Observation reservation output tokens"),
+    },
+    ...(record.observedUsage === undefined
+      ? {}
+      : { observedUsage: parseResearchModelObservedUsageV1(record.observedUsage) }),
+  };
+}
+
+function isSafeObservationLabel(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{1,120}$/u.test(value);
+}
+
 export async function deliverResearchModelCallObservationV1(
   observer: ((observation: ResearchModelCallObservationV1) => void | Promise<void>) | undefined,
   observation: ResearchModelCallObservationV1,
 ): Promise<void> {
   if (!observer) return;
   try {
-    await observer(observation);
+    await observer(parseResearchModelCallObservationV1(observation));
   } catch {
     // Performance receipts are intentionally best-effort. They must never
     // change the authoritative provider result or retry policy.

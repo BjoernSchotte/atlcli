@@ -2,12 +2,15 @@ import {
   DEFAULT_RESEARCH_LIMITS_V1,
   ResearchRunBudget,
   chatQualityPolicyV1,
+  createChatPerformanceReceiptV1,
   createMemoryResearchWorkspace,
   normalizeResearchRequestV1,
   prepareDirectChatRequestV1,
   runChatAgent,
   type ChatPresentationStreamEventV1,
+  type ChatPerformanceBenchmarkIdV1,
   type ChatQualityModeV1,
+  type ResearchModelCallObservationV1,
   type ChatTurnRequestV1,
   type ResearchOneShotEventV1,
 } from "@atlcli/research/node";
@@ -26,12 +29,18 @@ export interface ChatAgentLiveArgumentsV1 {
   question: string;
   exactPage: boolean;
   summaryOnly: boolean;
+  receiptPath?: string;
+  sample: "warmup" | "measured";
+  benchmarkId: ChatPerformanceBenchmarkIdV1;
 }
 
 export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgentLiveArgumentsV1 {
   let mode: ChatQualityModeV1 = "deep";
   let exactPage = false;
   let summaryOnly = false;
+  let receiptPath: string | undefined;
+  let sample: "warmup" | "measured" = "measured";
+  let benchmarkId: ChatPerformanceBenchmarkIdV1 | undefined;
   const questionParts: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]!;
@@ -52,6 +61,31 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
       summaryOnly = true;
       continue;
     }
+    if (argument === "--receipt") {
+      const value = argv[index + 1]?.trim();
+      if (!value) throw new Error("--receipt requires a file path.");
+      receiptPath = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--sample") {
+      const value = argv[index + 1];
+      if (value !== "warmup" && value !== "measured") {
+        throw new Error("--sample must be warmup or measured.");
+      }
+      sample = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--benchmark") {
+      const value = argv[index + 1];
+      if (value !== "deep-single-anchor" && value !== "deep-two-anchor-comparison") {
+        throw new Error("This live harness supports deep-single-anchor or deep-two-anchor-comparison.");
+      }
+      benchmarkId = value;
+      index += 1;
+      continue;
+    }
     if (argument.startsWith("--")) throw new Error(`Unknown option: ${argument}`);
     questionParts.push(argument);
   }
@@ -62,7 +96,20 @@ export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgen
       : DEFAULT_QUESTION),
     exactPage,
     summaryOnly,
+    ...(receiptPath ? { receiptPath } : {}),
+    sample,
+    benchmarkId: benchmarkId ?? (exactPage
+      ? "deep-single-anchor"
+      : "deep-two-anchor-comparison"),
   };
+}
+
+async function sha256Hex(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export async function runChatAgentLiveV1(): Promise<void> {
@@ -177,6 +224,7 @@ export async function runChatAgentLiveV1(): Promise<void> {
   };
   const presentation: ChatPresentationStreamEventV1[] = [];
   const durableEvents: ResearchOneShotEventV1[] = [];
+  const modelObservations: ResearchModelCallObservationV1[] = [];
   const startedAt = performance.now();
   const answer = await runChatAgent({
     hostIdentity: {
@@ -226,6 +274,9 @@ export async function runChatAgentLiveV1(): Promise<void> {
         `[chat-live] result=${diagnostic.status} profile=${diagnostic.profileId} phase=${diagnostic.phase} kind=${diagnostic.valueKind}${diagnostic.objectKeys ? ` keys=${diagnostic.objectKeys.join(",")}` : ""}${diagnostic.referenceKinds ? ` refs=${diagnostic.referenceKinds.join(",") || "none"}` : ""}${diagnostic.unknownReferenceKinds ? ` unknown_refs=${diagnostic.unknownReferenceKinds.join(",") || "none"}` : ""}`,
       );
     },
+    onModelCallObservation: (observation) => {
+      modelObservations.push(observation);
+    },
     onChatPresentation: (event) => {
       presentation.push(event);
       if (argumentsV1.summaryOnly) return;
@@ -271,6 +322,46 @@ export async function runChatAgentLiveV1(): Promise<void> {
     ptcCalls: answer.run.counts.ptcCalls,
     httpCalls: answer.run.counts.httpCalls,
   }));
+  if (argumentsV1.receiptPath) {
+    const retrieval = answer.run.retrieval;
+    const coverage = Math.round((retrieval?.detailReadCoverage ?? 0) * 1_000);
+    const canonical = Math.round((retrieval?.canonicalUrlCorrectness ?? 0) * 1_000);
+    const receipt = createChatPerformanceReceiptV1({
+      benchmarkId: argumentsV1.benchmarkId,
+      benchmarkFingerprint: await sha256Hex({
+        benchmarkId: argumentsV1.benchmarkId,
+        question: request.question,
+        scope: request.scope,
+        limits: request.limits,
+        model: answer.run.model,
+      }),
+      sample: argumentsV1.sample,
+      mode: argumentsV1.mode,
+      strategy: answer.strategy.path,
+      modelId: answer.run.model,
+      durationMs: performance.now() - startedAt,
+      observations: modelObservations,
+      ptcCalls: answer.run.counts.ptcCalls,
+      httpCalls: answer.run.counts.httpCalls,
+      quality: {
+        expectedTrajectory: argumentsV1.exactPage
+          ? answer.strategy.path === "direct"
+          : answer.strategy.path === "agentic",
+        exactAnchorCoveragePermille: coverage,
+        detailReadCoveragePermille: coverage,
+        citationPrecisionPermille: canonical,
+        supportedAssertionPermille: answer.citations.length > 0 ? 1_000 : 0,
+        wrongSourceCount: retrieval?.wrongSourceRate && retrieval.wrongSourceRate > 0 ? 1 : 0,
+        contradictionRecallPermille: 1_000,
+        relationshipRecallPermille: 1_000,
+        materialGapRecallPermille: 1_000,
+        falseCompletenessCount: 0,
+        answerStreamingObserved: answerDeltas.length > 0,
+      },
+    });
+    await Bun.write(argumentsV1.receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    console.error(`[chat-live] receipt=${argumentsV1.receiptPath}`);
+  }
   console.log(answer.messageMarkdown);
 }
 

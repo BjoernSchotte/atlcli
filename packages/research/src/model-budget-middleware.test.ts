@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { AIMessage } from "@langchain/core/messages";
 import { ResearchModelRunBudget } from "./budget.js";
 import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
-import { createResearchModelBudgetMiddlewareV1 } from "./model-budget-middleware.js";
+import {
+  createResearchModelBudgetMiddlewareV1,
+  parseResearchModelCallObservationV1,
+} from "./model-budget-middleware.js";
 
 describe("research model budget middleware", () => {
   test("emits body-free category metrics without making observers authoritative", async () => {
@@ -67,6 +70,10 @@ describe("research model budget middleware", () => {
     expect(serialized).not.toContain("private prompt text");
     expect(serialized).not.toContain("private answer text");
     expect(serialized).not.toContain("private system text");
+    expect(() => parseResearchModelCallObservationV1({
+      ...(observations[0] as Record<string, unknown>),
+      prompt: "private prompt text",
+    })).toThrow("observation is invalid");
   });
 
   test("releases a dynamic synthesis reserve after the protected work completes", async () => {

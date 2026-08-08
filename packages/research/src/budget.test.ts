@@ -3,6 +3,7 @@ import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 import {
   ResearchModelRunBudget,
   ResearchRunBudget,
+  observedResearchModelUsageV1,
   parseResearchModelBudgetStateV1,
   parseResearchRunBudgetStateV1,
   researchModelRequestBytesV1,
@@ -191,6 +192,50 @@ describe("model run budget", () => {
       cacheCreationInputTokens: 0,
       cacheReadInputTokens: 0,
       outputTokens: 0,
+    });
+  });
+
+  test("splits LangChain-normalized cache details into mutually exclusive categories", () => {
+    expect(observedResearchModelUsageV1({
+      usage_metadata: {
+        input_tokens: 460,
+        output_tokens: 80,
+        total_tokens: 540,
+        input_token_details: {
+          cache_creation: 40,
+          cache_read: 300,
+        },
+      },
+    })).toEqual({
+      inputTokens: 120,
+      cacheCreationInputTokens: 40,
+      cacheReadInputTokens: 300,
+      outputTokens: 80,
+    });
+  });
+
+  test("merges partial raw streaming usage with LangChain-normalized totals", () => {
+    expect(observedResearchModelUsageV1({
+      response_metadata: {
+        usage: {
+          cache_creation_input_tokens: 40,
+          cache_read_input_tokens: 300,
+        },
+      },
+      usage_metadata: {
+        input_tokens: 460,
+        output_tokens: 80,
+        total_tokens: 540,
+        input_token_details: {
+          cache_creation: 40,
+          cache_read: 300,
+        },
+      },
+    })).toEqual({
+      inputTokens: 120,
+      cacheCreationInputTokens: 40,
+      cacheReadInputTokens: 300,
+      outputTokens: 80,
     });
   });
 
