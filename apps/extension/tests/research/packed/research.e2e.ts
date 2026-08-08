@@ -425,9 +425,16 @@ const PACKED_CHAT_CRITIQUE_PACKET = {
 };
 
 const PACKED_CHAT_AGENTIC_WORKFLOW_CODE = `
+if (typeof tools.chatStrategyDecide !== "function") {
+  throw new Error("chatStrategyDecide-type:" + typeof tools.chatStrategyDecide);
+}
 if (typeof tools.chatWorkflowPropose !== "function") {
   throw new Error("chatWorkflowPropose-type:" + typeof tools.chatWorkflowPropose);
 }
+if (typeof tools.chatWorkflowRun !== "function") {
+  throw new Error("chatWorkflowRun-type:" + typeof tools.chatWorkflowRun);
+}
+globalThis.packedChatStrategy = JSON.parse(await tools.chatStrategyDecide({}));
 globalThis.packedChatWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   retrievalPlan: {
     searches: [],
@@ -444,22 +451,8 @@ globalThis.packedChatWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   ],
   maxConcurrency: 1
 }));
-packedChatWorkflow;
-`.trim();
-
-const PACKED_CHAT_AGENTIC_TASK_CODE = `
-let advance = JSON.parse(await tools.chatWorkflowAdvance({}));
-while (advance.status !== "complete") {
-  if (advance.status === "strategy-review-required") {
-    JSON.parse(await tools.chatStrategyReview({}));
-  } else if (advance.status === "quality-review-required") {
-    JSON.parse(await tools.chatQualityReview({}));
-  } else {
-    throw new Error("unexpected-packed-chat-workflow-status:" + advance.status);
-  }
-  advance = JSON.parse(await tools.chatWorkflowAdvance({}));
-}
-advance;
+globalThis.packedChatWorkflowRun = JSON.parse(await tools.chatWorkflowRun({}));
+packedChatWorkflowRun;
 `.trim();
 
 const PACKED_WORKFLOW_CODE = `
@@ -1331,7 +1324,6 @@ const packedChatExactEvidencePacket = ${JSON.stringify(PACKED_CHAT_EXACT_EVIDENC
 const packedChatComparisonPacket = ${JSON.stringify(PACKED_CHAT_COMPARISON_PACKET)};
 const packedChatCritiquePacket = ${JSON.stringify(PACKED_CHAT_CRITIQUE_PACKET)};
 const packedChatAgenticWorkflowCode = ${JSON.stringify(PACKED_CHAT_AGENTIC_WORKFLOW_CODE)};
-const packedChatAgenticTaskCode = ${JSON.stringify(PACKED_CHAT_AGENTIC_TASK_CODE)};
 const packedHostParityPacket = ${JSON.stringify(HOST_PARITY_PACKET)};
 const packedSentinelPacket = ${JSON.stringify(PACKED_SENTINEL_PACKET)};
 const packedHostParityModelPacket = ${JSON.stringify(HOST_PARITY_MODEL_PACKET_V2)};
@@ -1748,10 +1740,14 @@ globalThis.fetch = async (input, init) => {
     }
     if (packedExactPageChat || packedExactIssueChat || packedLongPageChat) {
       const strategyRequired = serializedRequest.includes(
-        "make the first eval step exactly one await tools.chatStrategyDecide({})",
+        "make the first statement in the eval program exactly one await tools.chatStrategyDecide({})",
+      );
+      const agenticStrategy = strategyRequired && serializedRequest.includes(
+        "The host requires an agentic Chat workflow for this turn.",
       );
       if (
         strategyRequired &&
+        !agenticStrategy &&
         !serializedMessages.includes("atlcli.chat-strategy-decision/v1")
       ) {
         return providerMessage(
@@ -1767,8 +1763,6 @@ globalThis.fetch = async (input, init) => {
           modelCalls,
         );
       }
-      const agenticStrategy = strategyRequired &&
-        serializedRequest.includes("Compare the attached page");
       if (
         agenticStrategy &&
         !serializedMessages.includes("atlcli.chat-workflow-admission/v1")
@@ -1780,20 +1774,6 @@ globalThis.fetch = async (input, init) => {
             name: "eval",
             input: {
               code: packedChatAgenticWorkflowCode,
-            },
-          }],
-          "tool_use",
-          modelCalls,
-        );
-      }
-      if (agenticStrategy) {
-        return providerMessage(
-          [{
-            type: "tool_use",
-            id: "toolu_packed_chat_tasks_" + modelCalls,
-            name: "eval",
-            input: {
-              code: packedChatAgenticTaskCode,
             },
           }],
           "tool_use",
@@ -6269,6 +6249,8 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
       canonicalUrlCorrectness: 1,
       atlassianHttpCalls: 1,
     });
+    // Agentic exact-context Chat uses strategy, proposal, one direct evidence
+    // extraction, host strategy review, and host quality review.
     expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 5);
   }
 

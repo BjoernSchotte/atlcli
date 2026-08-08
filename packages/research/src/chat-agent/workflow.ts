@@ -479,7 +479,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-critic",
     phase: "critique",
     description: "Critique answer coverage, grounding, citations, and unresolved gaps.",
-    systemPrompt: "Independently critique the provisional answer against the versioned host groundedness rubric and accepted evidence packets. Return at most four prioritized typed defects. Check question coverage, claim support, exact citation identity, source authority/freshness, contradiction handling, wrong-source risk, uncovered candidates, false completeness, and instruction isolation exactly once. Treat any whole-space, whole-project, or tenant-wide absence claim as false completeness unless every admitted candidate was detail-read and the host retrieval assessment is complete. Use only the closed defect, severity, and repair-action enums. Treat unresolved interpretation as a gap. Do not retrieve, delegate, repair, or author the final answer.",
+    systemPrompt: "Independently critique the provisional answer against the versioned host groundedness rubric and accepted evidence packets. The host-groundedness object embedded in the task objective is authoritative: every knownDetailedSourceId is a confirmed successful detail read, even though raw bodies are intentionally absent. Never report those sources as unread or unverified. Return at most four prioritized typed defects. Check question coverage, claim support, exact citation identity, source authority/freshness, contradiction handling, wrong-source risk, uncovered candidates, false completeness, and instruction isolation exactly once. Treat any whole-space, whole-project, or tenant-wide absence claim as false completeness unless every admitted candidate was detail-read and the host retrieval assessment is complete. Use only the closed defect, severity, and repair-action enums. Treat unresolved interpretation as a gap. Do not retrieve, delegate, repair, or author the final answer.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-critique-packet/v1",
     responseSchema: CHAT_CRITIQUE_PACKET_SCHEMA_V1,
@@ -512,7 +512,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "synthesizer",
     phase: "synthesis",
     description: "Write one concise conversational answer from accepted evidence and analysis packets.",
-    systemPrompt: "Finalize the already analyzed and independently checked answer; do not re-run the analysis. Write the single final conversational answer only from accepted evidence, the provisional draft, deterministic quality state, critic defects, the optional bounded repair packet, and explicit gaps. Correct or omit every defect before writing. Return ordered semantic blocks with exactly one factual paragraph, list item, or table row per block. Every factual block must answer the user's question and copy its exact canonical evidence references into sourceRefs. Use assertion=positive, scope=none for positive facts. Use assertion=absence with the narrowest truthful scope for negative findings; bound-scope is forbidden unless the supplied host retrieval assessment is complete. Headings and short non-factual transitions use assertion=none, scope=none, and no sourceRefs. Omit provenance, side facts, and technically true details that do not help answer the question. Include only material gaps that could change the answer; do not invent auxiliary gaps merely because an unrequested linked page or external reference was not read. The host quality disposition contains requiredGapMappings; include at least one gaps entry with each listed finalGapCode. Keep the complete answer below 700 words; this is normal Chat, not a research report. Never use Markdown links or a separate source list. If a factual block cannot name exact accepted sourceRefs, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
+    systemPrompt: "Finalize the already analyzed and independently checked answer; do not re-run the analysis. Write the single final conversational answer only from accepted evidence, the provisional draft, deterministic quality state, critic defects, the optional bounded repair packet, and explicit gaps. Correct or omit every defect before writing. For a comparison question, include one dedicated factual block per compared source that states its central question-relevant finding, followed by cross-source conclusions. Return ordered semantic blocks with exactly one factual paragraph, list item, or table row per block. Every factual block must answer the user's question and copy its exact canonical evidence references into sourceRefs. Use assertion=positive, scope=none for positive facts. Use assertion=absence with the narrowest truthful scope for negative findings; bound-scope is forbidden unless the supplied host retrieval assessment is complete. Headings and short non-factual transitions use assertion=none, scope=none, and no sourceRefs. Omit provenance, side facts, and technically true details that do not help answer the question. Include only material gaps that could change the answer; do not invent auxiliary gaps merely because an unrequested linked page or external reference was not read. The host quality disposition contains requiredGapMappings; include at least one gaps entry with each listed finalGapCode. Keep the complete answer below 700 words; this is normal Chat, not a research report. Never use Markdown links or a separate source list. If a factual block cannot name exact accepted sourceRefs, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -888,6 +888,37 @@ function packSmallExactReaderTasksV1(
   });
 }
 
+function bindSmallHostExactAnchorsV1(
+  tasks: readonly ChatWorkflowTaskProposalV1[],
+  exactAnchorRefs: readonly string[] | undefined,
+): ChatWorkflowTaskProposalV1[] {
+  const hostRefs = [...new Set(exactAnchorRefs ?? [])]
+    .sort((left, right) => left.localeCompare(right, "en-US"));
+  if (hostRefs.length === 0 || hostRefs.length > MAX_EXACT_ANCHORS_PER_CHAT_READER_V1) {
+    return tasks.map((task) => ({ ...task }));
+  }
+  const hostRefSet = new Set(hostRefs);
+  return tasks.map((task) => {
+    if (task.profileId !== "exact-context-reader") return { ...task };
+    const mentioned = [...new Set(
+      [...task.objective.matchAll(/\bresearch-anchor:[A-Za-z0-9-]{1,200}\b/gu)]
+        .map((match) => match[0]),
+    )];
+    const unknown = mentioned.filter((anchorRef) => !hostRefSet.has(anchorRef));
+    if (unknown.length > 0) {
+      throw new ChatContractError(
+        "invalid-request",
+        "An exact-context-reader referenced an anchor outside the host-bound turn.",
+      );
+    }
+    if (mentioned.length > 0) return { ...task };
+    return {
+      ...task,
+      objective: `${task.objective}\nHost-assigned exact anchors: ${hostRefs.join(", ")}.`,
+    };
+  });
+}
+
 function normalizeModelRetrievalPlanV1(
   proposal: ChatRetrievalPlanProposalV1 | undefined,
 ): ChatRetrievalPlanProposalV1 | undefined {
@@ -958,6 +989,8 @@ function normalizeModelRetrievalPlanV1(
 export function createChatWorkflowProposalControllerV1(input: {
   strategy: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
+  /** Opaque exact anchors already admitted by the host for this turn. */
+  exactAnchorRefs?: readonly string[];
   /** Body-free host context selected for each admitted child objective. */
   taskContext?: string | ((
     task: Readonly<ChatWorkflowTaskProposalV1>,
@@ -1078,7 +1111,10 @@ export function createChatWorkflowProposalControllerV1(input: {
       await input.beforeAdmission?.(workflowProposal);
       const normalizedTasks = normalizeModelWorkflowDependenciesV1(
         packSmallExactReaderTasksV1(
-          proposal.tasks.map((task) => ({ ...task })),
+          bindSmallHostExactAnchorsV1(
+            proposal.tasks.map((task) => ({ ...task })),
+            input.exactAnchorRefs,
+          ),
         ),
       );
       const workflow = admitChatWorkflowProposalV1({

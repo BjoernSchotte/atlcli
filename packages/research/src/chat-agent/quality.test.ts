@@ -127,6 +127,38 @@ describe("Chat groundedness quality boundary", () => {
     });
   });
 
+  test("leaves minor resynthesis defects to the authoritative synthesizer", () => {
+    const assessment = assessChatGroundednessBeforeCriticV1({
+      conversationId: "conversation:quality",
+      turnId: "turn:minor-defect",
+      question: "Compare the sources.",
+      siteOrigin: ORIGIN,
+      evidence: [evidence()],
+      referencedSourceIds: ["wiki:1001"],
+      retrieval: retrieval(),
+      contradictionCount: 0,
+    });
+    const disposition = createChatQualityDispositionV1({
+      assessment,
+      criticDefects: [{
+        defectId: "chat-defect:minor-wording",
+        code: "question-not-answered",
+        severity: "minor",
+        sourceIds: ["wiki:1001"],
+        repairAction: "resynthesize",
+        message: "The provisional wording needs a small answer-focus correction.",
+      }],
+      repairAdmitted: true,
+    });
+
+    expect(disposition).toMatchObject({
+      repairRequired: false,
+      repairAdmitted: false,
+      repairDefectIds: [],
+      requiredGapCodes: ["question-not-answered"],
+    });
+  });
+
   test("rejects critic defects that smuggle unknown evidence into quality state", () => {
     const assessment = assessChatGroundednessBeforeCriticV1({
       conversationId: "conversation:quality",

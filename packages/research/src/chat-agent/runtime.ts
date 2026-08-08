@@ -35,6 +35,7 @@ import {
   chatQualityPolicyV1,
   normalizeChatQualityPolicyV1,
   type ChatQualityPolicyV1,
+  type ProviderReasoningPreferenceV1,
 } from "../quality-policy.js";
 import type { ResearchWorkspace } from "../workspace.js";
 import { classifyResearchError, redactResearchSecrets } from "../redaction.js";
@@ -356,7 +357,7 @@ function evalResultDiagnostic(value: unknown): {
     ? undefined
     : /\btools\b[^\n]*(?:not defined|unavailable)/iu.test(rendered)
       ? "tools-unavailable"
-      : /\b(?:chatStrategyDecide|chatStrategyReview|atlassianBoundRead|atlassianBoundSectionRead|jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
+      : /\b(?:chatStrategyDecide|chatWorkflowPropose|chatWorkflowRun|atlassianBoundRead|atlassianBoundSectionRead|jiraIssueSearch|jiraIssueGet|wikiSearch|wikiPageGet|researchCandidateRank)\b[^\n]*(?:not a function|not defined|unavailable)/iu.test(rendered)
         ? "capability-unavailable"
         : /not defined/iu.test(rendered)
           ? "undefined-symbol"
@@ -515,7 +516,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
       const capabilityNames = [
         "chatStrategyDecide",
         "chatWorkflowPropose",
-        "chatStrategyReview",
+        "chatWorkflowRun",
         "chatConfluenceRetrievalAcquire",
         "chatJiraRetrievalAcquire",
         "jiraIssueSearch",
@@ -562,7 +563,11 @@ export function createChatDirectToolSurfaceMiddlewareV1(
           "atlassianBoundRead",
           "atlassianBoundSectionRead",
         ].includes(name));
-        completedFinalReview ||= capabilityNames.includes("chatStrategyReview");
+        // Merely mentioning the terminal runner in an eval program is not a
+        // completion signal: QuickJS returns tool failures as eval output so
+        // the supervisor can correct them. Close the root only after the host
+        // state machine confirms that synthesis actually committed.
+        completedFinalReview ||= options.agenticWorkflowComplete?.() === true;
         onDiagnostic?.({
           kind: "eval-step",
           status: "success",
@@ -630,9 +635,8 @@ function createChatCodeInterpreterMiddlewareV1(
   if (options.agentic) {
     evaluator.description = [
       "Advance the host-bounded agentic Chat workflow in a persistent QuickJS session.",
-      "First acknowledge chatStrategyDecide, then call chatWorkflowPropose exactly once. The calls may be separate eval steps; the host keeps their accepted state.",
-      "Then call chatWorkflowAdvance. The host executes every ready specialist wave from the accepted dynamic graph.",
-      "When advance requests chatStrategyReview or chatQualityReview, call that exact checkpoint once and then call chatWorkflowAdvance again.",
+      "In one eval program, first acknowledge chatStrategyDecide, then call chatWorkflowPropose exactly once, then call chatWorkflowRun exactly once.",
+      "The host executes every ready specialist wave, deterministic review checkpoint, optional repair, and terminal synthesis without returning intermediate transitions to the supervisor.",
       "Never construct, copy, or invoke a task dispatch yourself.",
     ].join(" ");
   }
@@ -718,6 +722,19 @@ export function chatModelCallLimitV1(input: {
     return 28;
   }
   return input.configuredMaxModelCalls;
+}
+
+export function chatRootPlanningPreferenceV1(input: {
+  qualityMode: ChatQualityPolicyV1["mode"];
+  execution: ChatStrategyDecisionV1["execution"];
+}): ProviderReasoningPreferenceV1 {
+  // Agentic depth comes from the admitted specialist topology, independent
+  // critique, and final synthesis. The root only selects that topology, so a
+  // bounded planning corridor avoids spending thorough reasoning on
+  // deterministic host transitions. Direct Deep answers retain thorough
+  // reasoning because no specialist workflow follows them.
+  if (input.execution === "agentic") return "balanced";
+  return chatQualityPolicyV1(input.qualityMode).providerReasoningPreference;
 }
 
 const CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 = 15_000;
@@ -1347,7 +1364,12 @@ export function createKiteweaveChatAgent(
             "The Chat host did not bind a LangChain chat model.",
           );
         }
-        const model = modelBinding.model;
+        const rootPlanningPreference = chatRootPlanningPreferenceV1({
+          qualityMode: qualityPolicy.mode,
+          execution: strategyDecision.execution,
+        });
+        const model = modelBinding.modelForPreference?.(rootPlanningPreference) ??
+          modelBinding.model;
         const modelBudget = new ResearchModelRunBudget({
           ...turn.limits,
           maxModelCalls: chatModelCallLimitV1({
@@ -1595,6 +1617,18 @@ export function createKiteweaveChatAgent(
               // packets. This keeps child context small without forcing a
               // reader to guess raw Jira or Confluence identifiers.
               taskContext: (task, tasks) => {
+                if (
+                  task.profileId === "answer-critic" ||
+                  task.profileId === "chat-synthesizer"
+                ) {
+                  return JSON.stringify({
+                    question: turn.question,
+                    hostGroundednessContract: {
+                      invariant:
+                        "Every sourceId present in a completed dependency evidence packet is a host-confirmed successful detail read. Raw bodies are intentionally absent and their absence is not a missing-detail defect.",
+                    },
+                  });
+                }
                 if (task.profileId !== "exact-context-reader" || anchors.length === 0) {
                   return minimalChatSubagentTaskContextV1(turn.question);
                 }
@@ -1639,6 +1673,15 @@ export function createKiteweaveChatAgent(
                 } catch {
                   return false;
                 }
+              },
+              runStrategyReview: async () => {
+                if (!strategyReviewController) {
+                  throw new ChatContractError(
+                    "invalid-request",
+                    "The agentic Chat workflow is missing its strategy-review controller.",
+                  );
+                }
+                await strategyReviewController.review();
               },
               beforeCritic: async () => {
                 strategyReviewController?.assertCurrent();
@@ -1758,9 +1801,7 @@ export function createKiteweaveChatAgent(
           ? [
               ...(strategyController ? [strategyController.tool] : []),
               agenticWorkflow!.proposalTool,
-              agenticWorkflow!.advanceTool,
-              ...(strategyReviewController ? [strategyReviewController.tool] : []),
-              agenticWorkflow!.qualityReviewTool,
+              agenticWorkflow!.runTool,
             ]
           : (() => {
               const raw = createChatPtcToolsV1(broker, {
@@ -1832,7 +1873,7 @@ export function createKiteweaveChatAgent(
             observation: {
               role: "root",
               modelId: modelBinding.modelId,
-              preference: qualityPolicy.providerReasoningPreference,
+              preference: rootPlanningPreference,
             },
             onObservation: input.onModelCallObservation,
           },
@@ -1919,7 +1960,7 @@ export function createKiteweaveChatAgent(
               subagents: strategyDecision.execution === "agentic",
               toolName: "eval",
               systemPrompt: strategyDecision.execution === "agentic"
-                ? "The eval tool advances an agentic Chat workflow in a persistent QuickJS REPL. Top-level await is available. Strategy, dynamic graph proposal, host-executed waves, review, and synthesis may use separate eval calls; accepted host state persists. Use only documented tools.* controls. The low-level task bridge is unavailable. Console is unavailable."
+                ? "The eval tool runs an agentic Chat workflow in a persistent QuickJS REPL. Top-level await is available. In one program acknowledge strategy, submit the dynamic graph, and call the host-owned terminal workflow runner. The low-level task bridge and intermediate transition controls are unavailable. Console is unavailable."
                 : "The eval tool runs JavaScript in a persistent QuickJS REPL. Top-level await is available. Return the useful value as the final expression; console is intentionally unavailable. External reads are possible only through the documented tools.* functions. When chatStrategyDecide is present, call it exactly once before any Atlassian content capability.",
               memoryLimitBytes: turn.limits.maxInterpreterMemoryBytes,
               maxStackSizeBytes: 320 * 1024,

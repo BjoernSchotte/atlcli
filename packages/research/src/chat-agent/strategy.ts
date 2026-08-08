@@ -377,13 +377,14 @@ export function createChatStrategyReviewControllerV1(input: {
   onReviewed?: (review: ChatStrategyReviewV1) => void | Promise<void>;
 }): {
   tool: DynamicStructuredTool;
+  review(): Promise<ChatStrategyReviewV1>;
   latestReview(): ChatStrategyReviewV1 | undefined;
   assertCurrent(): void;
 } {
   let latest: ChatStrategyReviewV1 | undefined;
   let reviewing = false;
   let attempts = 0;
-  const reviewTool = tool(async () => {
+  const review = async (): Promise<ChatStrategyReviewV1> => {
     if (reviewing || attempts >= 2) {
       throw new ChatContractError(
         "limit-exceeded",
@@ -394,26 +395,30 @@ export function createChatStrategyReviewControllerV1(input: {
     try {
       input.beforeReview?.();
       input.budget.beginPtc({ schema: CHAT_STRATEGY_REVIEW_SCHEMA_V1 });
-      const review = assessChatStrategyReviewV1({
+      const assessment = assessChatStrategyReviewV1({
         decision: input.decision,
         detailEvidence: input.detailEvidence(),
       });
-      input.budget.completePtc(review);
-      await input.onReviewed?.(structuredClone(review));
-      latest = review;
+      input.budget.completePtc(assessment);
+      await input.onReviewed?.(structuredClone(assessment));
+      latest = assessment;
       attempts += 1;
-      return JSON.stringify(review);
+      return assessment;
     } finally {
       reviewing = false;
     }
+  };
+  const reviewTool = tool(async () => {
+    return JSON.stringify(await review());
   }, {
     name: "chat_strategy_review",
     description:
-      "Perform the bounded host-owned evidence-gap checkpoint only when chatWorkflowAdvance requests it. The accepted dynamic graph owns acquisition; after this review, call chatWorkflowAdvance even when capability gaps remain so the critic and synthesizer preserve them without an ad-hoc root search.",
+      "Perform the bounded host-owned evidence-gap checkpoint for the accepted workflow. The terminal host runner invokes this internally; it is not a supervisor transition control.",
     schema: z.object({}).strict(),
   });
   return {
     tool: reviewTool,
+    review,
     latestReview: () => latest ? structuredClone(latest) : undefined,
     assertCurrent() {
       if (!latest) {

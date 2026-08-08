@@ -27,6 +27,7 @@ import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import {
   assertChatFinalReviewReserveV1,
   chatModelCallLimitV1,
+  chatRootPlanningPreferenceV1,
   chatRootOutputTokenLimitV1,
   createKiteweaveChatAgent,
   decideChatRepairAdmissionV1,
@@ -122,18 +123,10 @@ globalThis.syntheticWorkflow = JSON.parse(await tools.chatWorkflowPropose({
   ],
   maxConcurrency: 1
 }));
-syntheticWorkflow;`;
-    const firstAdvanceCode =
-      `JSON.parse(await tools.chatWorkflowAdvance({}))`;
-    const reviewedAdvanceCode = `
-JSON.parse(await tools.chatStrategyReview({}));
-JSON.parse(await tools.chatWorkflowAdvance({}));`;
-    const finalAdvanceCode = `
-JSON.parse(await tools.chatQualityReview({}));
-JSON.parse(await tools.chatWorkflowAdvance({}));`;
+globalThis.syntheticWorkflowRun = JSON.parse(await tools.chatWorkflowRun({}));
+syntheticWorkflowRun;`;
     return built
       .respondWithTools([{ name: "eval", args: { code: proposalCode } }])
-      .respondWithTools([{ name: "eval", args: { code: firstAdvanceCode } }])
       .respondWithTools([{
         name: "ChatAnalysisPacketV1",
         args: {
@@ -154,7 +147,6 @@ JSON.parse(await tools.chatWorkflowAdvance({}));`;
           gaps: [],
         },
       }])
-      .respondWithTools([{ name: "eval", args: { code: reviewedAdvanceCode } }])
       .respondWithTools([{
         name: "ChatProvisionalAnswerDraftV1",
         args: {
@@ -184,7 +176,6 @@ JSON.parse(await tools.chatWorkflowAdvance({}));`;
           readyForSynthesis: true,
         },
       }])
-      .respondWithTools([{ name: "eval", args: { code: finalAdvanceCode } }])
       .respondWithTools([{
         name: "ChatAnswerDraftV2",
         args: {
@@ -774,13 +765,18 @@ describe("real QuickJS Chat strategy trajectory", () => {
       const input = request("Compare the two policy positions and check for contradictions.");
       const workspace = createMemoryResearchWorkspace();
       const events: ResearchOneShotEventV1[] = [];
+      const observations: Array<{ role: string }> = [];
+      const trajectoryModel = model(true, true);
       const answer = await runtime.runChatAgent({
         ...input,
-        model: model(true, true),
+        model: trajectoryModel,
         providers,
         workspace,
         qualityPolicy: chatQualityPolicyV1(mode),
         onEvent: (event) => events.push(event),
+        onModelCallObservation: (observation) => {
+          observations.push(observation);
+        },
       });
       expect(answer.strategy).toMatchObject({
         qualityMode: mode,
@@ -795,6 +791,8 @@ describe("real QuickJS Chat strategy trajectory", () => {
         "contradiction-risk",
       ]);
       expect(answer.run.counts.ptcCalls).toBe(4);
+      expect(observations.filter((observation) => observation.role === "root")).toHaveLength(1);
+      expect(trajectoryModel.callCount).toBeLessThanOrEqual(10);
       expect(events.every(isResearchOneShotEventV1)).toBe(true);
       expect(events.filter((event) => event.kind === "activity").map((event) => event.code))
         .toEqual(expect.arrayContaining([
@@ -891,6 +889,25 @@ describe("real QuickJS Chat strategy trajectory", () => {
       qualityMode: "deep",
       execution: "agentic",
     })).toBe(12);
+  });
+
+  test("keeps direct Deep thorough while agentic depth uses bounded root planning", () => {
+    expect(chatRootPlanningPreferenceV1({
+      qualityMode: "deep",
+      execution: "direct",
+    })).toBe("thorough");
+    expect(chatRootPlanningPreferenceV1({
+      qualityMode: "deep",
+      execution: "agentic",
+    })).toBe("balanced");
+    expect(chatRootPlanningPreferenceV1({
+      qualityMode: "auto",
+      execution: "agentic",
+    })).toBe("balanced");
+    expect(chatRootPlanningPreferenceV1({
+      qualityMode: "quick",
+      execution: "direct",
+    })).toBe("fast");
   });
 
   test("keeps Auto conversational while Deep may admit one bounded repair", () => {

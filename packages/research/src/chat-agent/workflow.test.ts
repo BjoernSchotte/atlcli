@@ -728,6 +728,10 @@ describe("Chat dynamic workflow admission", () => {
         requiredCapabilities: ["exact-read", "comparison-analysis", "quality-review", "chat-answer"],
       },
       budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      exactAnchorRefs: [
+        "research-anchor:synthetic-a",
+        "research-anchor:synthetic-b",
+      ],
       allowedProfileIds: [
         "exact-context-reader",
         "comparison-analyst",
@@ -741,7 +745,7 @@ describe("Chat dynamic workflow admission", () => {
         {
           taskId: "task:reader:b",
           profileId: "exact-context-reader",
-          objective: "Read research-anchor:synthetic-b.",
+          objective: "Read the second attached exact source.",
           dependencyTaskIds: [],
         },
         {

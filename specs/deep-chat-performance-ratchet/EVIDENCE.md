@@ -183,3 +183,37 @@ with 15 intentional skips; 50 local-server cases were denied ephemeral ports
 by the filesystem/network sandbox. All 27 affected test files were then rerun
 outside that sandbox and passed 332/332, including the one CLI timeout seen
 under the earlier accidental parallel load. No private input or artifact entered Git.
+
+## T3 durable host auto-advance
+
+The root supervisor now owns strategy and dynamic graph composition only. Once
+the graph is admitted, one durable host control call executes ready specialist
+waves, strategy and quality reviews, an optional bounded repair, and terminal
+synthesis. Deterministic transitions no longer recall the root model. The final
+answer remains owned by exactly one synthesizer, and all specialist dependencies
+remain host-hydrated and body-free at the root boundary.
+
+Three provider-backed runs used the unchanged customer-free two-anchor benchmark
+and passed every deterministic quality floor:
+
+| Run | Duration | Model calls | Fresh input | Cache read | Output | Repair |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 1 | 76.8s | 7 | 2,512 | 23,618 | 962 | yes |
+| 2 | 67.3s | 7 | 2,538 | 23,618 | 865 | yes |
+| 3 | 64.5s | 6 | 2,516 | 23,618 | 893 | no |
+
+The 67.3-second median is 23.9% faster than the accepted T2 measurement of
+88.4 seconds and remains well below the 180-second ceiling. The no-repair path
+uses six calls and the repair path seven, both below the ratchet limits of ten
+and eleven. Exact/detail coverage, canonical citation precision, supported
+assertions, contradiction handling, relationship handling, material-gap
+disclosure, and streaming all remained at 100%; wrong-source and false-
+completeness counts remained zero.
+
+The focused workflow suite passed 92/92, followed by type checking, the full
+production build, browser-isomorphism, extension output/CSP, and research privacy
+gates. The packed production-MV3 suite passed 45/45 with one worker. It proves
+exact reads without search, three connected Chat turns across worker recreation,
+HITL, interrupted-stream recovery, steering, cooperative stop, queued-follow-up
+editing, durable key rehydration, and safe Markdown rendering. No private prompt,
+source, answer, URL, identifier, trace, or receipt is recorded here.

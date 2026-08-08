@@ -358,7 +358,8 @@ export function createChatQualityDispositionV1(input: {
   );
   const blocking = defects.filter((entry) => entry.severity === "blocking");
   const repairable = defects.filter((entry) =>
-    entry.repairAction === "resynthesize" && entry.severity !== "advisory"
+    entry.repairAction === "resynthesize" &&
+    (entry.severity === "material" || entry.severity === "blocking")
   );
   const repairRequired = repairable.length > 0;
   const repairAdmitted = repairRequired && input.repairAdmitted === true;

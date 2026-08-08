@@ -21,6 +21,7 @@ import type { ChatWorkflowDispatchV1 } from "./workflow.js";
 import {
   providerCompatibleChatJsonSchemaV1,
   type ChatAgentDraftV1,
+  type ChatAgentDraftV2,
 } from "./contracts.js";
 import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
 import {
@@ -42,10 +43,58 @@ import {
   createChatAgenticWorkflowRuntimeV1,
   createPlannedSearchAcquisitionToolV1,
   normalizeKnownSourceReferencesV1,
+  preserveChatRepairEvidenceFloorV1,
   quarantineUnreadEvidenceReferencesV1,
   type ChatSubagentEvalDiagnosticV1,
   type ChatSubagentModelStreamEventV1,
 } from "./workflow-runtime.js";
+
+test("keeps the supported provisional evidence when a repair drops every citation", () => {
+  const original: ChatAgentDraftV2 = {
+    blocks: [{
+      id: "answer-block:1",
+      markdown: "The supported bounded conclusion.",
+      sourceRefs: ["wiki:1001"],
+      assertion: "positive",
+      scope: "none",
+    }],
+    gaps: [],
+  };
+  const emptyRepair: ChatAgentDraftV2 = {
+    blocks: [{
+      id: "answer-block:1",
+      markdown: "No detail-backed claim remained.",
+      sourceRefs: [],
+      assertion: "none",
+      scope: "none",
+    }],
+    gaps: [],
+  };
+  expect(preserveChatRepairEvidenceFloorV1({
+    original,
+    repaired: emptyRepair,
+    rejectedSourceIds: [],
+  })).toEqual(original);
+  expect(preserveChatRepairEvidenceFloorV1({
+    original,
+    repaired: emptyRepair,
+    rejectedSourceIds: ["wiki:1001"],
+  })).toEqual(emptyRepair);
+
+  const disclosedRepair: ChatAgentDraftV2 = {
+    ...emptyRepair,
+    gaps: [{
+      code: "unresolved-reference",
+      message: "The original claim requires a narrower restatement.",
+      sourceIds: ["wiki:1001"],
+    }],
+  };
+  expect(preserveChatRepairEvidenceFloorV1({
+    original,
+    repaired: disclosedRepair,
+    rejectedSourceIds: [],
+  })).toEqual(disclosedRepair);
+});
 const strategy: ChatStrategyDecisionV1 = {
   schema: "atlcli.chat-strategy-decision/v1",
   qualityMode: "deep",
@@ -229,6 +278,7 @@ function createHarness(input: {
   searchPlanSaturated?: boolean;
   onRetrievalObserve?: (capability: string, result: unknown, callId: string) => void;
   strategyReviewCurrent?: () => boolean;
+  runStrategyReview?: () => void | Promise<void>;
   decideRepairAdmission?: (
     disposition: ChatQualityDispositionV1,
   ) => { admit: boolean; reason?: ChatRepairSkippedReasonV1 };
@@ -314,6 +364,9 @@ function createHarness(input: {
     signal: new AbortController().signal,
     ...(input.strategyReviewCurrent
       ? { strategyReviewCurrent: input.strategyReviewCurrent }
+      : {}),
+    ...(input.runStrategyReview
+      ? { runStrategyReview: input.runStrategyReview }
       : {}),
     beforeSynthesis: input.beforeSynthesis,
     ...(input.decideRepairAdmission
@@ -538,6 +591,12 @@ describe("Chat agentic workflow runtime", () => {
     );
     expect(exactReader?.systemPrompt).toContain(
       "Call chat_exact_context_acquire exactly once",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Never invent or guess an expansion",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Do not label accepted evidence summary-only",
     );
     expect(exactReader?.middleware?.some((entry) =>
       entry.name === "ChatSubagentEvalGuard:exact-context-reader"
@@ -1531,8 +1590,23 @@ describe("Chat agentic workflow runtime", () => {
           });
           const projected = JSON.stringify(messages);
           expect(projected).toContain("already-read projections");
+          expect(projected).toContain(
+            "sourceProjectionTruncated=false and extractionProjectionTruncated=false",
+          );
           expect(projected).toContain("wiki:1001");
           expect(projected).toContain("wiki:1002");
+          expect(projected).toContain(
+            '\\"requestedName\\":\\"Synthetic attached page 1\\"',
+          );
+          expect(projected).toContain(
+            '\\"canonicalTitle\\":\\"Synthetic attached page 1001\\"',
+          );
+          expect(projected).toContain(
+            '\\"requestedName\\":\\"Synthetic attached page 2\\"',
+          );
+          expect(projected).toContain(
+            '\\"canonicalTitle\\":\\"Synthetic attached page 1002\\"',
+          );
           expect(projected).toContain("first bounded conclusion");
           expect(projected).toContain("second bounded conclusion");
           expect(projected).not.toContain("research-anchor:");
@@ -2311,7 +2385,7 @@ describe("Chat agentic workflow runtime", () => {
       seenDescriptions.get("chat-synthesizer-v1")!,
     );
     expect(synthDescription.dependencyResults.map((entry: { taskId: string }) => entry.taskId).sort())
-      .toEqual(["task:critic", "task:draft"]);
+      .toEqual(["task:comparison", "task:critic", "task:draft", "task:relationships"]);
     expect(harness.runtime.assertComplete()).toMatchObject({
       messageMarkdown: "A bounded synthetic comparison.",
     });
@@ -2404,6 +2478,72 @@ describe("Chat agentic workflow runtime", () => {
       "chat-synthesizer-v1",
     ]);
     expect(harness.runtime.assertComplete()).toEqual(answerDraft());
+  });
+
+  test("runs deterministic specialist waves and host reviews to terminal synthesis in one control call", async () => {
+    let reviewCurrent = false;
+    let strategyReviews = 0;
+    const invoked: string[] = [];
+    const descriptions = new Map<string, string>();
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      strategyReviewCurrent: () => reviewCurrent,
+      runStrategyReview: () => {
+        strategyReviews += 1;
+        reviewCurrent = true;
+      },
+      async invoke(taskInput) {
+        invoked.push(taskInput.subagent_type);
+        descriptions.set(taskInput.subagent_type, taskInput.description);
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        if (taskInput.subagent_type === "chat-synthesizer-v1") return answerDraft();
+        return analysisPacket();
+      },
+    });
+    await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:relationships",
+          profileId: "relationship-tracer",
+          objective: "Trace explicit relationships.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:comparison",
+          profileId: "comparison-analyst",
+          objective: "Compare accepted claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    });
+
+    const complete = JSON.parse(await harness.runtime.runTool.invoke({}));
+
+    expect(complete).toMatchObject({
+      schema: "atlcli.chat-workflow-advance/v1",
+      status: "complete",
+      remainingTaskIds: [],
+    });
+    expect(strategyReviews).toBe(1);
+    expect(invoked).toEqual([
+      "chat-relationship-tracer-v1",
+      "chat-comparison-analyst-v1",
+      "chat-answer-drafter-v1",
+      "chat-answer-critic-v1",
+      "chat-synthesizer-v1",
+    ]);
+    expect(harness.runtime.qualityDisposition()).toBeDefined();
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("hostConfirmedDetailSourceIds");
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("relationship-only mention does not satisfy source coverage");
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("Do not mention a display-name mismatch");
+    expect(harness.runtime.assertComplete()).toEqual(answerDraft());
+    await expect(harness.runtime.qualityReviewTool.invoke({}))
+      .rejects.toThrow("exactly once");
   });
 
   test("batches a ready phase at the accepted workflow concurrency", async () => {
@@ -2707,8 +2847,9 @@ describe("Chat agentic workflow runtime", () => {
     const synthDescription = JSON.parse(
       seenDescriptions.get("chat-synthesizer-v1")!,
     );
+    expect(synthDescription.objective).toContain("hostConfirmedDetailSourceIds");
     expect(synthDescription.dependencyResults.map((entry: { taskId: string }) => entry.taskId))
-      .toEqual([repair.taskId]);
+      .toEqual(["task:analysis", "task:draft", "task:critic", repair.taskId]);
     const finalDraft = harness.runtime.assertComplete();
     expect(goldScore(wrongDraft)).toBe(0);
     expect("messageMarkdown" in finalDraft).toBe(true);

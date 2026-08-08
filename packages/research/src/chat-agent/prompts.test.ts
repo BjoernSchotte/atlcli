@@ -19,17 +19,19 @@ describe("Chat supervisor prompt", () => {
     expect(prompt).not.toContain("tools.researchCandidateRank");
   });
 
-  test("allows persistent checkpointed agentic eval steps with an exact profile catalog", () => {
+  test("runs one persistent agentic eval program with an exact profile catalog", () => {
     const prompt = buildChatSystemPromptV1({
       qualityMode: "deep",
       maxDetailItemsPerProduct: 8,
       strategyDecisionRequired: true,
       agenticWorkflowRequired: true,
     });
-    expect(prompt).toContain("separate eval calls");
+    expect(prompt).toContain("In one eval program");
+    expect(prompt).toContain("chatWorkflowRun exactly once");
+    expect(prompt).toContain("Intermediate advance/review controls");
     expect(prompt).toContain("exact-context-reader");
     expect(prompt).toContain("chat-synthesizer");
-    expect(prompt).not.toContain("split this workflow across eval calls");
+    expect(prompt).not.toContain("chatWorkflowAdvance");
   });
 
   test("publishes only the profile catalog available to the current turn", () => {

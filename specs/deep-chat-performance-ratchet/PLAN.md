@@ -505,46 +505,46 @@ Goal: keep the supervisor for decisions while removing model calls that merely s
 
 Implementation:
 
-- [ ] Separate **supervisor decisions** from **host state transitions** in the
+- [x] Separate **supervisor decisions** from **host state transitions** in the
       agentic workflow protocol.
-- [ ] Keep strategy and dynamic graph composition in the root supervisor.
-- [ ] After workflow admission, let the durable host state machine execute ready
+- [x] Keep strategy and dynamic graph composition in the root supervisor.
+- [x] After workflow admission, let the durable host state machine execute ready
       waves, mandatory deterministic strategy adequacy checks, quality admission,
       optional repair, and synthesis without requiring a new root model call for
       every `advance -> review -> advance` transition.
-- [ ] Re-enter the supervisor only for HITL, steering, changed scope, unexpected
+- [x] Re-enter the supervisor only for HITL, steering, changed scope, unexpected
       failure, no executable frontier, or a quality outcome that offers more
       than one materially different planning action.
-- [ ] Persist every transition before the next external call and preserve late-result quarantine.
-- [ ] Keep the final answer owned by the synthesizer, not rewritten by the supervisor.
-- [ ] Simplify the root prompt and QuickJS control surface to the new protocol;
+- [x] Persist every transition before the next external call and preserve late-result quarantine.
+- [x] Keep the final answer owned by the synthesizer, not rewritten by the supervisor.
+- [x] Simplify the root prompt and QuickJS control surface to the new protocol;
       remove obsolete ceremonial instructions and tools only after callers migrate.
 
 Automated proof:
 
-- [ ] A normal accepted graph completes with no root model recall between its
+- [x] A normal accepted graph completes with no root model recall between its
       deterministic waves and final synthesis.
-- [ ] Steering, HITL, stop, restart, worker loss, outcome-unknown, task failure,
+- [x] Steering, HITL, stop, restart, worker loss, outcome-unknown, task failure,
       and quality-required repair re-enter at the correct durable checkpoint.
-- [ ] The supervisor still composes different valid graphs for the fixed comparison,
+- [x] The supervisor still composes different valid graphs for the fixed comparison,
       contradiction, relationship, and repair scenarios.
-- [ ] One root `createDeepAgent` execution and one final synthesizer remain invariant.
-- [ ] No child can bypass dependencies, quality review, scope, or evidence validation.
+- [x] One root `createDeepAgent` execution and one final synthesizer remain invariant.
+- [x] No child can bypass dependencies, quality review, scope, or evidence validation.
 
 Live proof:
 
-- [ ] CLI and packed/installed MV3 Deep comparisons show the same specialist
+- [x] CLI and packed/installed MV3 Deep comparisons show the same specialist
       graph and answer quality with fewer root calls.
-- [ ] During one live run, queue a follow-up, steer at a safe checkpoint, and
+- [x] During one live run, queue a follow-up, steer at a safe checkpoint, and
       stop a separate run; all controls remain responsive and durable.
-- [ ] Recreate the MV3 worker during a bounded synthetic run and verify safe continuation.
+- [x] Recreate the MV3 worker during a bounded synthetic run and verify safe continuation.
 
 Ratchet acceptance:
 
-- [ ] Normal fixed comparison uses no more than 10 model calls without repair
+- [x] Normal fixed comparison uses no more than 10 model calls without repair
       and no more than 11 with one repair.
-- [ ] Median latency improves at least 20% from T2 and stays below 180 seconds.
-- [ ] No quality or durability gate regresses.
+- [x] Median latency improves at least 20% from T2 and stays below 180 seconds.
+- [x] No quality or durability gate regresses.
 
 Commit: `perf(chat): auto-advance accepted workflows`
 
