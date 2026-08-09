@@ -642,7 +642,11 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(chatRootOutputTokenLimitV1({
       configuredMaxOutputTokens: 8_000,
       qualityMode: "quick",
-    })).toBe(4_096);
+    })).toBe(6_144);
+    expect(chatRootOutputTokenLimitV1({
+      configuredMaxOutputTokens: 8_000,
+      qualityMode: "auto",
+    })).toBe(8_000);
     expect(chatRootOutputTokenLimitV1({
       configuredMaxOutputTokens: 3_000,
       qualityMode: "quick",

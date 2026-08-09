@@ -139,7 +139,11 @@ export function chatRootOutputTokenLimitV1(input: {
   configuredMaxOutputTokens: number;
   qualityMode: ChatQualityPolicyV1["mode"];
 }): number {
-  const modeLimit = input.qualityMode === "deep" ? 8_000 : 4_096;
+  // ChatAnswerDraftV2 carries per-block provenance in addition to the visible
+  // prose. A six-part but still ordinary answer can fit the Quick word limit
+  // while exceeding a 4K JSON envelope, especially after one structured
+  // repair. The visible 350/700-word contracts remain the primary output cap.
+  const modeLimit = input.qualityMode === "quick" ? 6_144 : 8_000;
   return Math.min(input.configuredMaxOutputTokens, modeLimit);
 }
 
