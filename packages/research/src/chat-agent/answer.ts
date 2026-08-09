@@ -537,6 +537,16 @@ function isMarkdownHeadingBlockV1(markdown: string): boolean {
   return /^\s{0,3}#{1,6}\s+\S/u.test(markdown);
 }
 
+function removeAbandonedTrailingGermanQuoteSentenceV1(markdown: string): string {
+  const lastOpen = markdown.lastIndexOf("„");
+  if (lastOpen === -1 || /[“”]/u.test(markdown.slice(lastOpen + 1))) return markdown;
+  const previousSentence = markdown.lastIndexOf(". ", lastOpen);
+  const previousLine = markdown.lastIndexOf("\n", lastOpen);
+  const boundary = Math.max(previousSentence === -1 ? -1 : previousSentence + 1, previousLine);
+  const retained = markdown.slice(0, boundary === -1 ? lastOpen : boundary).trimEnd();
+  return retained || markdown;
+}
+
 /**
  * One tool-free terminal repair is the final model-owned correction boundary.
  * After it, the host may remove only malformed non-factual prose. Factual
@@ -553,9 +563,14 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (!parsed.success) return undefined;
   const draft = normalizeChatAgentDraftV2(parsed.data);
-  const blocks = draft.blocks.filter((block) =>
-    !(block.assertion === "none" && strongMarkerCountV1(block.markdown) % 2 !== 0)
-  );
+  const blocks = draft.blocks
+    .filter((block) =>
+      !(block.assertion === "none" && strongMarkerCountV1(block.markdown) % 2 !== 0)
+    )
+    .map((block) => ({
+      ...block,
+      markdown: removeAbandonedTrailingGermanQuoteSentenceV1(block.markdown),
+    }));
   if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return undefined;
   }

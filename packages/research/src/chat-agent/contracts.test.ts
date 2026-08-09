@@ -235,6 +235,36 @@ describe("Chat answer contract", () => {
     })).toBeUndefined();
   });
 
+  test("preserves a supported repaired block after harmless ref whitespace and removes an abandoned trailing quote sentence", () => {
+    const repaired = chatDraftForFinalizationAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "The source recommends offline workloads. Als Profil gilt „lossless",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [` ${syntheticPageSource.id} `],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+
+    expect(repaired?.blocks).toEqual([expect.objectContaining({
+      markdown: "The source recommends offline workloads.",
+      sourceRefs: [syntheticPageSource.id],
+    })]);
+    const answer = finalizeChatAnswerV1({
+      draft: repaired,
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    });
+    expect(answer.messageMarkdown).toContain("offline workloads");
+    expect(answer.messageMarkdown).not.toContain("„lossless");
+    expect(answer.gaps).toEqual([]);
+  });
+
   test("keeps recoverable child eval retries out of user-facing activity", () => {
     expect(projectChatAgentDiagnosticActivityV1({
       kind: "eval-step",

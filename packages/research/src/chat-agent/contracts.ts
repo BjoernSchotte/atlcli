@@ -286,7 +286,9 @@ export function normalizeChatAgentDraftV2(
     ...value,
     gaps: value.gaps ?? [],
     blocks: value.blocks.map((block, index): ChatAnswerBlockV2 => {
-      const sourceRefs = block.sourceRefs ?? [];
+      const sourceRefs = (block.sourceRefs ?? [])
+        .map((sourceRef) => sourceRef.trim())
+        .filter(Boolean);
       const assertion = block.assertion ??
         (sourceRefs.length > 0 ? "positive" : "none");
       return {
