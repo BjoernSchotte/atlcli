@@ -344,9 +344,10 @@ export function selectedRetrievalProductsV1(
 export function hostSearchCoverageLimitationsV1(
   graph: ResearchGraphV1 | undefined,
   run: Pick<ResearchRunSummaryV1, "complete" | "counts">,
+  actualSearchProducts?: readonly ResearchProduct[],
 ): string[] {
   if (!run.complete) return [];
-  const searchedProducts = selectedSearchProductsV1(graph);
+  const searchedProducts = actualSearchProducts ?? selectedSearchProductsV1(graph);
   if (!searchedProducts) return [];
   const limitations: string[] = [];
   if (searchedProducts.includes("jira") && run.counts.jiraItems === 0) {
@@ -447,8 +448,9 @@ export function hostDetailCoverageLimitationsV1(
   graph: ResearchGraphV1 | undefined,
   sources: readonly ResearchSourceReferenceV1[],
   detailEvidence: readonly { source: ResearchSourceReferenceV1 }[],
+  actualSearchProducts?: readonly ResearchProduct[],
 ): string[] {
-  const searchedProducts = selectedSearchProductsV1(graph);
+  const searchedProducts = actualSearchProducts ?? selectedSearchProductsV1(graph);
   if (!searchedProducts) return [];
   return searchedProducts.flatMap((product) => {
     const candidateIds = new Set(
@@ -484,8 +486,9 @@ export function hostSearchFreshnessLimitationsV1(
   graph: ResearchGraphV1 | undefined,
   scopeBindings: readonly ResearchScopeBindingV1[] = [],
   directProducts?: readonly ResearchProduct[],
+  actualSearchProducts?: readonly ResearchProduct[],
 ): string[] {
-  const graphProducts = selectedSearchProductsV1(graph);
+  const graphProducts = actualSearchProducts ?? selectedSearchProductsV1(graph);
   const exactBoundProducts = graphProducts?.length === 0 && graph?.nodes.some((node) =>
       node.status !== "pruned" && node.grantedCapabilityIds.includes("atlassian.bound.read")
     )
@@ -496,7 +499,9 @@ export function hostSearchFreshnessLimitationsV1(
         )
         .map((binding) => binding.product))]
     : [];
-  const selectedProducts = graphProducts?.length
+  const selectedProducts = actualSearchProducts !== undefined
+    ? [...new Set(actualSearchProducts)]
+    : graphProducts?.length
     ? graphProducts
     : exactBoundProducts.length
       ? exactBoundProducts
@@ -5952,11 +5957,16 @@ async function runResearchAgentWithBindings(
               ...(input.brief
                 ? projectResearchProposedAssumptionLimitationsV1(input.brief)
                 : []),
-              ...hostSearchCoverageLimitationsV1(acceptedGraph, run),
+              ...hostSearchCoverageLimitationsV1(
+                acceptedGraph,
+                run,
+                broker.searchAttemptedProducts(),
+              ),
               ...hostDetailCoverageLimitationsV1(
                 acceptedGraph,
                 broker.sourceLedger(),
                 broker.detailEvidenceLedger(),
+                broker.searchAttemptedProducts(),
               ),
               ...hostSearchFreshnessLimitationsV1(
                 acceptedGraph,
@@ -5965,6 +5975,7 @@ async function runResearchAgentWithBindings(
                 acceptedGraph
                   ? undefined
                   : directChatProductsV1(input.request),
+                broker.searchAttemptedProducts(),
               ),
               ...revalidationLimitations,
             ],
@@ -5990,6 +6001,7 @@ async function runResearchAgentWithBindings(
                 input.brief?.scopeBindings ??
                   input.request.scopeSeeds?.map((seed) => seed.binding),
                 directChatProductsV1(input.request),
+                broker.searchAttemptedProducts(),
               ),
             ],
             run,

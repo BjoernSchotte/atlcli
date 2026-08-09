@@ -873,6 +873,18 @@ export class ResearchCapabilityBroker {
     return [...this.#sources.values()].map((source) => ({ ...source }));
   }
 
+  /**
+   * Products for which this run actually crossed the search boundary.
+   * Capability admission alone is not evidence that a search happened: an
+   * exact bound entity can be read directly by a worker that also has a
+   * search capability available for conditional follow-up work.
+   */
+  searchAttemptedProducts(): ResearchProduct[] {
+    return (["jira", "confluence"] as const).filter(
+      (product) => this.#searchAttempts[product] > 0,
+    );
+  }
+
   detailEvidenceLedger(): ResearchDetailEvidenceV1[] {
     return [...this.#detailEvidence.values()].map((entry) => ({
       source: { ...entry.source },

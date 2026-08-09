@@ -398,6 +398,8 @@ function renderResearchReportTail(
   language?: ResearchReportLanguageV1,
 ): string[] {
   const copy = researchReportCopyV1(language);
+  const detailedJiraSources = input.sources.filter((source) => source.product === "jira").length;
+  const detailedConfluenceSources = input.sources.filter((source) => source.product === "confluence").length;
   return [
     `## ${copy.limitations}`,
     "",
@@ -425,6 +427,7 @@ function renderResearchReportTail(
     `- ${copy.duration}: ${input.run.durationMs} ms`,
     `- ${copy.calls}: ${input.run.counts.ptcCalls} PTC / ${input.run.counts.httpCalls} HTTP`,
     `- ${copy.items}: ${input.run.counts.jiraItems} Jira / ${input.run.counts.confluenceItems} Confluence`,
+    `- ${copy.detailedSources}: ${detailedJiraSources} Jira / ${detailedConfluenceSources} Confluence`,
     ...(input.run.usage?.inputTokens !== undefined
       ? [`- ${copy.inputTokens}: ${input.run.usage.inputTokens}`]
       : []),

@@ -151,7 +151,8 @@ _None._
 - Complete: yes
 - Duration: 1000 ms
 - Calls: 2 PTC / 4 HTTP
-- Items: 1 Jira / 1 Confluence
+- Search candidates: 1 Jira / 1 Confluence
+- Detailed sources: 1 Jira / 1 Confluence
 - Input tokens: 100
 - Output tokens: 50
 `;

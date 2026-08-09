@@ -19,6 +19,7 @@ export interface ResearchReportCopyV1 {
   duration: string;
   calls: string;
   items: string;
+  detailedSources: string;
   inputTokens: string;
   outputTokens: string;
   warnings: string;
@@ -47,7 +48,8 @@ const ENGLISH: ResearchReportCopyV1 = {
   no: "no",
   duration: "Duration",
   calls: "Calls",
-  items: "Items",
+  items: "Search candidates",
+  detailedSources: "Detailed sources",
   inputTokens: "Input tokens",
   outputTokens: "Output tokens",
   warnings: "Warnings",
@@ -76,7 +78,8 @@ const GERMAN: ResearchReportCopyV1 = {
   no: "nein",
   duration: "Laufzeit",
   calls: "Aufrufe",
-  items: "Elemente",
+  items: "Suchkandidaten",
+  detailedSources: "Detailliert gelesene Quellen",
   inputTokens: "Eingabe-Token",
   outputTokens: "Ausgabe-Token",
   warnings: "Warnungen",

@@ -79,13 +79,15 @@ function sectionsFor(
     }];
   }
   const selected = new Set(claimIds);
-  const sections = outline.sections.map((section): ResearchReportSectionV2 => ({
-    id: section.id,
-    title: section.title,
-    question: section.question,
-    claimIds: section.claimIds.filter((id) => selected.has(id)),
-    coverageTargetIds: [...section.coverageTargetIds],
-  }));
+  const sections = outline.sections
+    .map((section): ResearchReportSectionV2 => ({
+      id: section.id,
+      title: section.title,
+      question: section.question,
+      claimIds: section.claimIds.filter((id) => selected.has(id)),
+      coverageTargetIds: [...section.coverageTargetIds],
+    }))
+    .filter((section) => section.claimIds.length > 0);
   const assigned = new Set(sections.flatMap((section) => section.claimIds));
   const unassigned = claimIds.filter((id) => !assigned.has(id));
   if (unassigned.length > 0) {
@@ -132,35 +134,6 @@ function markdownText(value: string): string {
     .replace(/([`*_[\]<>])/g, "\\$1")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function reconciliationMarkdown(report: ResearchReportV2, language: ResearchRequestV1["reportLanguage"]): string[] {
-  const outcomes = report.reconciliation ?? [];
-  if (outcomes.length === 0) return [];
-  const copy = researchReportCopyV1(language);
-  return [
-    `## ${copy.reconciliationDecisions}`,
-    "",
-    ...outcomes.map((entry) =>
-      `- ${markdownText(entry.target.kind)} ${markdownText(entry.target.id)}: ${entry.decision} (${entry.reasonCode}).`,
-    ),
-    "",
-  ];
-}
-
-function sourceAuthorityMarkdown(report: ResearchReportV2, language: ResearchRequestV1["reportLanguage"]): string[] {
-  if (!report.sourceAuthorities || report.sourceAuthorities.length === 0) return [];
-  const copy = researchReportCopyV1(language);
-  return [
-    `## ${copy.sourceAccessAuthority}`,
-    "",
-    ...report.sourceAuthorities.map((entry) =>
-      `- \`${markdownText(entry.sourceId)}\`: ${entry.authorityClasses
-        .map((authority) => authority === "exact_entity" ? copy.exactEntity : copy.wholeScope)
-        .join(", ")}.`,
-    ),
-    "",
-  ];
 }
 
 /**
@@ -258,8 +231,6 @@ function renderMarkdown(
       language,
     }).trimEnd().split("\n"),
     ...coverageMarkdown({ ...report, markdown: "" }, language),
-    ...reconciliationMarkdown({ ...report, markdown: "" }, language),
-    ...sourceAuthorityMarkdown({ ...report, markdown: "" }, language),
   ].join("\n");
 }
 

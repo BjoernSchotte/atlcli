@@ -1904,6 +1904,16 @@ describe("host search freshness limitations", () => {
     expect(hostSearchFreshnessLimitationsV1(graph, brief.scopeBindings)).toEqual([
       "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
     ]);
+    expect(hostSearchFreshnessLimitationsV1(
+      graph,
+      brief.scopeBindings,
+      undefined,
+      [],
+    )).toEqual([]);
+    expect(hostSearchCoverageLimitationsV1(graph, {
+      complete: true,
+      counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 0 },
+    }, [])).toEqual([]);
     expect(selectedRetrievalProductsV1(graph, ["confluence"])).toEqual([
       "confluence",
     ]);

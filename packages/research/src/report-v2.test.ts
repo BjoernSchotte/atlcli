@@ -212,10 +212,10 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("[Validated implementation item](https://example.atlassian.net/browse/ATLCLI-42)");
     expect(report.markdown).not.toContain(EVIDENCE);
     expect(report.markdown).not.toContain(CURRENT_CLAIM);
-    expect(report.markdown).toContain("## Reconciliation decisions");
-    expect(report.markdown).toContain("coverage coverage:delivery: abstain (insufficient_budget).");
-    expect(report.markdown).toContain("## Source access authority");
-    expect(report.markdown).toContain("`jira:ATLCLI-42`: whole scope.");
+    expect(report.markdown).not.toContain("## Reconciliation decisions");
+    expect(report.markdown).not.toContain("coverage:delivery: abstain");
+    expect(report.markdown).not.toContain("## Source access authority");
+    expect(report.markdown).not.toContain("`jira:ATLCLI-42`: whole scope.");
     expect(report.markdown).toContain("## Unresolved Jira ↔ Confluence relationships");
     expect(report.markdown).toContain("does not establish a direct Jira ↔ Confluence relationship");
   });
@@ -246,8 +246,8 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("Die Kandidatensuche in Jira verwendet den nativen Suchindex");
     expect(report.markdown).toContain("Es wurden nur Felder der erlaubten, schreibgeschützten Fähigkeiten ausgewertet");
     expect(report.markdown).toContain("## Laufdaten");
-    expect(report.markdown).toContain("## Zugriffsbereich der Quellen");
-    expect(report.markdown).toContain("`jira:ATLCLI-42`: vollständiger Bereich.");
+    expect(report.markdown).not.toContain("## Zugriffsbereich der Quellen");
+    expect(report.markdown).not.toContain("`jira:ATLCLI-42`: vollständiger Bereich.");
   });
 
   test("does not mark a cross-product relationship unresolved when one published claim retains both sources", async () => {
@@ -304,7 +304,7 @@ describe("V2 research report finalization", () => {
     expect(report.sourceAuthorities).toEqual([
       { sourceId: "jira:ATLCLI-42", authorityClasses: ["exact_entity"] },
     ]);
-    expect(report.markdown).toContain("`jira:ATLCLI-42`: exact entity.");
+    expect(report.markdown).not.toContain("`jira:ATLCLI-42`: exact entity.");
     expect(JSON.stringify(report.sourceAuthorities)).not.toContain("scope-binding");
   });
 
@@ -326,7 +326,7 @@ describe("V2 research report finalization", () => {
       claimIds: [CURRENT_CLAIM],
       run: {
         ...run,
-        counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 1 },
+        counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 0 },
       },
       checkedAt: "2026-08-01T12:01:00.000Z",
     });
@@ -339,6 +339,8 @@ describe("V2 research report finalization", () => {
       { sourceId: "wiki:1001", authorityClasses: ["exact_entity"] },
     ]);
     expect(report.markdown).toContain("Validated implementation documentation");
+    expect(report.markdown).toContain("Search candidates: 0 Jira / 0 Confluence");
+    expect(report.markdown).toContain("Detailed sources: 0 Jira / 1 Confluence");
   });
 
   test("derives sections and coverage from a validated outline without publishing stale support", async () => {
@@ -362,6 +364,15 @@ describe("V2 research report finalization", () => {
         evidenceIds: [EVIDENCE, STALE_EVIDENCE],
         contradictionIds: [],
         coverageTargetIds: ["coverage:delivery"],
+        dependsOnSectionIds: [],
+      }, {
+        id: "outline-section:stale-only",
+        title: "Additional validated findings",
+        question: "Which validated claims were not assigned to an outline section?",
+        claimIds: [STALE_CLAIM],
+        evidenceIds: [STALE_EVIDENCE],
+        contradictionIds: [],
+        coverageTargetIds: [],
         dependsOnSectionIds: [],
       }],
       contradictions: [],
@@ -405,6 +416,7 @@ describe("V2 research report finalization", () => {
     ]);
     expect(report.markdown).toContain("## Delivery \\*evidence\\*");
     expect(report.markdown).toContain("> Focus: What \\<is\\> currently established?");
+    expect(report.markdown).not.toContain("## Additional validated findings");
     expect(report.markdown).not.toContain("## Findings");
   });
 
