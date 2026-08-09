@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
+import {
+  buildChatSystemPromptV1,
+  buildChatTurnPromptV1,
+  chatAnswerOutputInstructionV1,
+} from "./prompts.js";
 
 describe("Chat supervisor prompt", () => {
   test("keeps direct discovery behind host-owned acquisition controllers", () => {
@@ -78,8 +82,17 @@ describe("Chat supervisor prompt", () => {
       locale: "de",
     });
 
-    expect(quick).toContain("below 350 words and 24 blocks");
+    expect(quick).toContain("below 350 words and 16 blocks");
+    expect(quick).toContain("do not reproduce the source document section by section");
     expect(auto).toContain("below 700 words and 60 blocks");
+  });
+
+  test("makes the structured-output repair corridor smaller for Quick", () => {
+    const repair = chatAnswerOutputInstructionV1("quick", true);
+
+    expect(repair).toContain("REPAIR OUTPUT CONTRACT (quick, hard limit)");
+    expect(repair).toContain("at most 350 visible words and 16 blocks");
+    expect(repair).toContain("Finish the complete ChatAnswerDraftV2 JSON");
   });
 
   test("projects only body-free planned-acquisition controls to direct Chat", () => {

@@ -2,6 +2,33 @@ import type { ChatQualityModeV1 } from "../quality-policy.js";
 import type { BoundEntityAnchorV1 } from "../capability-contracts.js";
 import type { ChatSearchQueryV1 } from "./retrieval-plan.js";
 
+export interface ChatAnswerOutputContractV1 {
+  maxWords: number;
+  maxBlocks: number;
+}
+
+export function chatAnswerOutputContractV1(
+  qualityMode: ChatQualityModeV1,
+): ChatAnswerOutputContractV1 {
+  return qualityMode === "quick"
+    ? { maxWords: 350, maxBlocks: 16 }
+    : { maxWords: 700, maxBlocks: 60 };
+}
+
+export function chatAnswerOutputInstructionV1(
+  qualityMode: ChatQualityModeV1,
+  repair = false,
+): string {
+  const contract = chatAnswerOutputContractV1(qualityMode);
+  return [
+    `${repair ? "REPAIR OUTPUT CONTRACT" : "OUTPUT CONTRACT"} (${qualityMode}, hard limit): at most ${contract.maxWords} visible words and ${contract.maxBlocks} blocks.`,
+    "Prioritize the direct answer and the facts needed to support it; do not reproduce the source document section by section.",
+    "When the question has many requested facets, compress them into short bullets or compact table rows instead of adding prose.",
+    "Do not repeat a fact, heading, qualification, or conclusion in another block.",
+    "Finish the complete ChatAnswerDraftV2 JSON inside this limit.",
+  ].join(" ");
+}
+
 export function buildChatSystemPromptV1(input: {
   qualityMode: ChatQualityModeV1;
   maxDetailItemsPerProduct: number;
@@ -11,6 +38,7 @@ export function buildChatSystemPromptV1(input: {
   allowedAgenticProfileIds?: readonly string[];
 }): string {
   const detailLimit = Math.max(1, Math.min(50, Math.trunc(input.maxDetailItemsPerProduct)));
+  const answerOutput = chatAnswerOutputContractV1(input.qualityMode);
   const allowedAgenticProfiles = input.allowedAgenticProfileIds?.join(", ") ??
     "exact-context-reader, confluence-search-reader, jira-search-reader, relationship-tracer, comparison-analyst, contradiction-checker, answer-drafter, answer-critic, chat-synthesizer";
   return [
@@ -36,7 +64,8 @@ export function buildChatSystemPromptV1(input: {
     `Read no more than ${detailLimit} detailed items per product. Use the smallest useful acquisition path. Do not search a product that the question and observed evidence do not require.`,
     "Opaque entityRef and cursor values are capabilities. Reuse only values returned by the host; never invent an issue key, content ID, URL, cursor, tenant, project, or space.",
     "Before making an Atlassian content claim, read at least one relevant item in detail. Search summaries are discovery hints, not evidence.",
-    `Return ChatAnswerDraftV2 with ordered semantic blocks and keep the complete answer below ${input.qualityMode === "quick" ? "350 words and 24 blocks" : "700 words and 60 blocks"}; this is normal Chat, not a research report. Put exactly one factual paragraph, list item, or table row in each block. Copy the exact successful detail-read SOURCE_ID into sourceRefs. A body-free outline does not establish a section reference: use SOURCE_ID#SECTION_ID only after a successful atlassianBoundSectionRead returned that exact SECTION_ID; otherwise use the whole SOURCE_ID. Positive facts use assertion=positive and scope=none. Every negative or absence finding uses assertion=absence and the narrowest truthful scope: source for the cited detail projection, selected-sources only when every cited source was read completely, and bound-scope only when the supplied host retrieval assessment is complete. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs. Never write source placeholders or Markdown links yourself; the host validates sourceRefs and renders canonical links.`,
+    `Return ChatAnswerDraftV2 with ordered semantic blocks and keep the complete answer below ${answerOutput.maxWords} words and ${answerOutput.maxBlocks} blocks; this is normal Chat, not a research report. Put exactly one factual paragraph, list item, or table row in each block. Copy the exact successful detail-read SOURCE_ID into sourceRefs. A body-free outline does not establish a section reference: use SOURCE_ID#SECTION_ID only after a successful atlassianBoundSectionRead returned that exact SECTION_ID; otherwise use the whole SOURCE_ID. Positive facts use assertion=positive and scope=none. Every negative or absence finding uses assertion=absence and the narrowest truthful scope: source for the cited detail projection, selected-sources only when every cited source was read completely, and bound-scope only when the supplied host retrieval assessment is complete. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs. Never write source placeholders or Markdown links yourself; the host validates sourceRefs and renders canonical links.`,
+    chatAnswerOutputInstructionV1(input.qualityMode),
     "Never write a URL yourself. Never cite a source that was not returned by a successful detail read. If evidence is absent or incomplete, answer only what is supported and record a concise gap. The gaps field MUST be an actual JSON array of objects shaped exactly as { code, message, sourceIds }; never serialize that array into a string.",
     "Never turn a bounded search into a universal absence claim. Unless every admitted candidate was detail-read and the host retrieval assessment is complete, say only that something was not found in the sources read in detail; never say it does not exist in the whole space, project, or tenant.",
     `The host-selected conversational quality mode is ${input.qualityMode}. This changes bounded strategy, not the output shape.`,

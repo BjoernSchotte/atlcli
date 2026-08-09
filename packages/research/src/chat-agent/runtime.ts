@@ -57,7 +57,11 @@ import {
   type ChatSessionStateV1,
   type ChatTurnRequestV1,
 } from "./contracts.js";
-import { buildChatSystemPromptV1, buildChatTurnPromptV1 } from "./prompts.js";
+import {
+  buildChatSystemPromptV1,
+  buildChatTurnPromptV1,
+  chatAnswerOutputInstructionV1,
+} from "./prompts.js";
 import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
 import {
   CHAT_SESSION_PATH_V1,
@@ -389,6 +393,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   options: {
     agenticWorkflowComplete?: () => boolean;
     nativeStructuredOutput?: boolean;
+    answerOutputInstruction?: string;
     strategyAcknowledged?: () => boolean;
     evidenceAccessRequired?: boolean;
     evidenceAccessAttempted?: () => boolean;
@@ -487,6 +492,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             systemPrompt: [
               filteredRequest.systemPrompt,
               "The previous terminal answer did not satisfy the required JSON schema. Retry the terminal answer exactly once from the already accepted evidence; do not call eval, ask a question, retrieve, or widen scope. Return ChatAnswerDraftV2 with ordered blocks and an actual gaps array. Put exactly one factual paragraph, list item, or table row in each block. Copy exact accepted evidence references into sourceRefs. Positive facts use assertion=positive and scope=none. Negative findings use assertion=absence and the narrowest truthful scope. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs.",
+              options.answerOutputInstruction,
             ].filter(Boolean).join("\n\n"),
           });
         }
@@ -1970,6 +1976,10 @@ export function createKiteweaveChatAgent(
               nativeStructuredOutput:
                 strategyDecision.execution !== "agentic" &&
                 modelBinding.structuredOutput === "native",
+              answerOutputInstruction: chatAnswerOutputInstructionV1(
+                qualityPolicy.mode,
+                true,
+              ),
               ...(agenticWorkflow
                 ? {
                     agenticWorkflowComplete: () => {
@@ -2030,7 +2040,10 @@ export function createKiteweaveChatAgent(
                       handleError: (error) => {
                         structuredRepairAttempts += 1;
                         if (structuredRepairAttempts > 1) throw error;
-                        return "The Chat answer did not match the required schema. Call ChatAnswerDraftV2 exactly once more with a non-empty blocks array and an actual gaps array. Put one factual paragraph, list item, or table row in each block; copy exact accepted sourceRefs; use assertion=positive/scope=none for positive facts, assertion=absence with the narrowest truthful scope for negative findings, and assertion=none/scope=none/no sourceRefs for headings and non-factual transitions. Do not call eval or any content capability again.";
+                        return [
+                          "The Chat answer did not match the required schema. Call ChatAnswerDraftV2 exactly once more with a non-empty blocks array and an actual gaps array. Put one factual paragraph, list item, or table row in each block; copy exact accepted sourceRefs; use assertion=positive/scope=none for positive facts, assertion=absence with the narrowest truthful scope for negative findings, and assertion=none/scope=none/no sourceRefs for headings and non-factual transitions. Do not call eval or any content capability again.",
+                          chatAnswerOutputInstructionV1(qualityPolicy.mode, true),
+                        ].join(" ");
                       },
                       toolMessageContent: "Chat answer accepted.",
                     })
