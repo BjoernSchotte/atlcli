@@ -23,34 +23,37 @@ async function proof(
   requirement: (typeof CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1)[number],
 ): Promise<ChatReleaseCandidateProofV1> {
   const privateProof = requirement.proofId.startsWith("private-");
-  const caseIds = requirement.requiredCaseIds
-    ? [...requirement.requiredCaseIds]
-    : Array.from({ length: requirement.minimumCases }, (_, index) =>
-      privateProof ? `private:CASE${String(index + 1).padStart(2, "0")}` : `packed:case-${index + 1}`);
+  const caseIds = requirement.requiredRuns
+    ? [...new Set(requirement.requiredRuns.map((run) => run.caseId))]
+    : requirement.requiredCaseIds
+      ? [...requirement.requiredCaseIds]
+      : Array.from({ length: requirement.minimumCases }, (_, index) =>
+        privateProof ? `private:CASE${String(index + 1).padStart(2, "0")}` : `packed:case-${index + 1}`);
+  const requiredRuns = requirement.requiredRuns ?? caseIds.flatMap((caseId) =>
+    requirement.requiredVariants.map((variant) => ({ caseId, variant }))
+  );
   const runs: ChatReleaseCandidateRunV1[] = [];
-  for (const caseId of caseIds) {
-    for (const variant of requirement.requiredVariants) {
-      const run: ChatReleaseCandidateRunV1 = {
-        schema: CHAT_RELEASE_CANDIDATE_RUN_SCHEMA_V1,
-        caseId,
-        variant,
-        status: "passed",
-        checks: requirement.requiredChecks.map((check) => ({ check, status: "passed" })),
-        failureCodes: [],
-        measurements: {
-          durationMs: 1_000,
-          modelCalls: 1,
-          ptcCalls: 1,
-          httpCalls: 1,
-          inputTokens: 100,
-          outputTokens: 20,
-          ...(requirement.maximumCostMicros ? { costMicros: 1 } : {}),
-        },
-        evidenceFingerprint: "0".repeat(64),
-      };
-      run.evidenceFingerprint = await fingerprintChatReleaseCandidateRunV1(run);
-      runs.push(run);
-    }
+  for (const { caseId, variant } of requiredRuns) {
+    const run: ChatReleaseCandidateRunV1 = {
+      schema: CHAT_RELEASE_CANDIDATE_RUN_SCHEMA_V1,
+      caseId,
+      variant,
+      status: "passed",
+      checks: requirement.requiredChecks.map((check) => ({ check, status: "passed" })),
+      failureCodes: [],
+      measurements: {
+        durationMs: 1_000,
+        modelCalls: 1,
+        ptcCalls: 1,
+        httpCalls: 1,
+        inputTokens: 100,
+        outputTokens: 20,
+        ...(requirement.maximumCostMicros ? { costMicros: 1 } : {}),
+      },
+      evidenceFingerprint: "0".repeat(64),
+    };
+    run.evidenceFingerprint = await fingerprintChatReleaseCandidateRunV1(run);
+    runs.push(run);
   }
   const sum = (key: keyof ChatReleaseCandidateRunV1["measurements"]) =>
     runs.reduce((total, run) => total + (run.measurements[key] ?? 0), 0);
@@ -146,6 +149,28 @@ describe("release-candidate quality matrix contract", () => {
       expect(result.failureCodes).toContain(expectedFailure);
       expect(result.failedProofIds).toContain(proofId);
     }
+  });
+
+  test("requires only the explicit packed MV3 run pairs and rejects a missing pair", async () => {
+    const value = await matrix();
+    const packed = value.proofs.find((entry) => entry.proofId === "packed-mv3-quality")!;
+    expect(packed.runs.map(({ caseId, variant }) => `${caseId}:${variant}`)).toEqual([
+      "packed:exact-page:quick",
+      "packed:exact-issue:quick",
+      "packed:mode-simple:quick",
+      "packed:mode-simple:auto",
+      "packed:mode-simple:deep",
+      "packed:mode-complex:quick",
+      "packed:mode-complex:auto",
+      "packed:mode-complex:deep",
+      "packed:deep-research:deep-research",
+      "packed:host-parity:deep-research",
+    ]);
+    packed.runs.splice(4, 1);
+    packed.measurements.runCount = packed.runs.length;
+    packed.measurements.durationMs = packed.runs.length * 1_000;
+    await resign(value);
+    expect((await evaluate(value)).failureCodes).toContain("run-coverage-missing");
   });
 
   test("rejects stale, foreign-revision, manifest, receipt, proof, and run fingerprints", async () => {

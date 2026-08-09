@@ -657,6 +657,7 @@ export class ChatTurnWorkspaceCheckpointerV1 extends WorkspaceLangGraphCheckpoin
     conversationId: string;
     turnId: string;
     workspace: ResearchWorkspace;
+    continuationId?: "hitl-portable";
   }) {
     const valid = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$/u;
     if (!valid.test(input.conversationId) || !valid.test(input.turnId)) {
@@ -665,10 +666,15 @@ export class ChatTurnWorkspaceCheckpointerV1 extends WorkspaceLangGraphCheckpoin
         "Chat checkpoint identity is invalid.",
       );
     }
-    const threadId = `atlcli:chat:${input.conversationId}:${input.turnId}`;
+    const continuationSuffix = input.continuationId
+      ? `:${input.continuationId}`
+      : "";
+    const threadId = `atlcli:chat:${input.conversationId}:${input.turnId}${continuationSuffix}`;
     super({
       threadId,
-      rootPath: `/.atlcli/chat/v1/checkpoints/${input.conversationId}/${input.turnId}`,
+      rootPath: `/.atlcli/chat/v1/checkpoints/${input.conversationId}/${input.turnId}${
+        input.continuationId ? `/${input.continuationId}` : ""
+      }`,
     }, input.workspace);
     this.threadId = threadId;
   }

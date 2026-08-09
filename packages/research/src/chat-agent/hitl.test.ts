@@ -7,6 +7,7 @@ import { z } from "zod/v4";
 import { createChatAskUserQuestionToolV1 } from "./hitl.js";
 import {
   CHAT_USER_QUESTION_ANSWER_SCHEMA_V1,
+  ChatUserQuestionRequiredError,
   WorkspaceChatInteractionControllerV1,
 } from "./interaction.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
@@ -129,6 +130,24 @@ describe("DeepAgentsJS durable Chat HITL", () => {
           prompt: { type: "string" },
         },
       });
+    });
+  });
+
+  test("projects a durable portable pause when ambient graph context is unavailable", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const interactions = await controller(workspace);
+    const questionTool = createChatAskUserQuestionToolV1({
+      turnId,
+      interactions,
+      resume,
+      now: () => Date.parse("2026-08-06T12:00:01.000Z"),
+    });
+    await expect(questionTool.invoke(scenarios[0].proposal))
+      .rejects.toBeInstanceOf(ChatUserQuestionRequiredError);
+    expect(interactions.snapshot().pendingQuestion).toMatchObject({
+      turnId,
+      question: { prompt: scenarios[0].proposal.prompt },
+      continuation: "portable-restart",
     });
   });
 

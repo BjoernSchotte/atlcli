@@ -164,6 +164,8 @@ export interface ChatInteractionStateV1 {
     question: ChatUserQuestionV1;
     askedAt: string;
     resume: ChatResumeEnvelopeV1;
+    /** How the next host must continue after accepting the answer. */
+    continuation: "graph-interrupt" | "portable-restart";
   };
   resolvedQuestions: Array<{
     turnId: string;
@@ -955,11 +957,30 @@ export function recordChatUserQuestionV1(input: {
       turnId: id(input.turnId, "Chat turn ID"),
       question,
       askedAt: iso(input.at, "Chat question time"),
+      continuation: "graph-interrupt",
       resume: {
         request: normalizeResearchRequestV1(input.resume.request),
         qualityPolicy: normalizeChatQualityPolicyV1(input.resume.qualityPolicy),
       },
     },
+  });
+}
+
+export function markChatUserQuestionPortableRestartV1(input: {
+  state: ChatInteractionStateV1;
+  expectedRevision: number;
+  turnId: string;
+  questionId: string;
+  at: string;
+}): ChatInteractionStateV1 {
+  assertRevision(input.state, input.expectedRevision);
+  const pending = input.state.pendingQuestion;
+  if (!pending || pending.turnId !== input.turnId ||
+      pending.question.id !== input.questionId) {
+    throw new ChatContractError("invalid-request", "Chat user question is stale or unavailable.");
+  }
+  return next(input.state, input.at, {
+    pendingQuestion: { ...pending, continuation: "portable-restart" },
   });
 }
 
@@ -1065,6 +1086,15 @@ export function parseChatInteractionStateV1(value: unknown): ChatInteractionStat
     id(state.pendingQuestion.turnId, "Chat pending question turn ID");
     normalizeChatUserQuestionV1(state.pendingQuestion.question);
     iso(state.pendingQuestion.askedAt, "Chat question time");
+    // V1 state written before portable browser continuation existed used the
+    // native LangGraph checkpoint implicitly. Preserve that meaning on read.
+    if (state.pendingQuestion.continuation === undefined) {
+      state.pendingQuestion.continuation = "graph-interrupt";
+    }
+    if (state.pendingQuestion.continuation !== "graph-interrupt" &&
+        state.pendingQuestion.continuation !== "portable-restart") {
+      throw new ChatContractError("invalid-request", "Chat question continuation is invalid.");
+    }
     if (!state.pendingQuestion.resume || typeof state.pendingQuestion.resume !== "object") {
       throw new ChatContractError("invalid-request", "Chat resume envelope is invalid.");
     }

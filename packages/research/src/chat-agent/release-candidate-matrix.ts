@@ -176,6 +176,10 @@ interface ProofRequirementV1 {
   producer: ChatReleaseCandidateProofV1["producer"];
   minimumCases: number;
   requiredCaseIds?: readonly string[];
+  requiredRuns?: readonly {
+    caseId: string;
+    variant: ChatReleaseCandidateVariantV1;
+  }[];
   requiredVariants: readonly ChatReleaseCandidateVariantV1[];
   requiredChecks: readonly ChatReleaseCandidateCheckV1[];
   maximumDurationMs: Partial<Record<ChatReleaseCandidateVariantV1, number>>;
@@ -226,7 +230,19 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
   {
     proofId: "packed-mv3-quality",
     producer: "packed-production-mv3",
-    minimumCases: 4,
+    minimumCases: 6,
+    requiredRuns: [
+      { caseId: "packed:exact-page", variant: "quick" },
+      { caseId: "packed:exact-issue", variant: "quick" },
+      { caseId: "packed:mode-simple", variant: "quick" },
+      { caseId: "packed:mode-simple", variant: "auto" },
+      { caseId: "packed:mode-simple", variant: "deep" },
+      { caseId: "packed:mode-complex", variant: "quick" },
+      { caseId: "packed:mode-complex", variant: "auto" },
+      { caseId: "packed:mode-complex", variant: "deep" },
+      { caseId: "packed:deep-research", variant: "deep-research" },
+      { caseId: "packed:host-parity", variant: "deep-research" },
+    ],
     requiredVariants: ["quick", "auto", "deep", "deep-research"],
     requiredChecks: [
       "source-selection", "detail-coverage", "citation-support", "outcome", "strategy",
@@ -238,7 +254,15 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
     proofId: "packed-mv3-lifecycle",
     producer: "packed-production-mv3",
     minimumCases: 6,
-    requiredVariants: ["auto", "deep"],
+    requiredRuns: [
+      { caseId: "lifecycle:three-turn", variant: "quick" },
+      { caseId: "lifecycle:hitl", variant: "quick" },
+      { caseId: "lifecycle:steering", variant: "deep" },
+      { caseId: "lifecycle:stop", variant: "auto" },
+      { caseId: "lifecycle:stream-recovery", variant: "auto" },
+      { caseId: "lifecycle:worker-recreation", variant: "deep" },
+    ],
+    requiredVariants: ["quick", "auto", "deep"],
     requiredChecks: [
       "three-turn-new-acquisition", "hitl-resume", "steering", "stop",
       "stream-recovery", "worker-recreation",
@@ -597,7 +621,9 @@ export async function evaluateChatReleaseCandidateMatrixV1(
     if (requirement.requiredVariants.some((variant) => !proof.variants.includes(variant))) {
       failureCodes.add("variant-coverage-missing"); failed = true;
     }
-    const expectedPairs = proof.caseIds.flatMap((caseId) => requirement.requiredVariants.map((variant) => `${caseId}\u0000${variant}`));
+    const expectedPairs = requirement.requiredRuns
+      ? requirement.requiredRuns.map((run) => `${run.caseId}\u0000${run.variant}`)
+      : proof.caseIds.flatMap((caseId) => requirement.requiredVariants.map((variant) => `${caseId}\u0000${variant}`));
     const actualPairs = new Set(proof.runs.map((run) => `${run.caseId}\u0000${run.variant}`));
     if (expectedPairs.some((pair) => !actualPairs.has(pair)) || actualPairs.size !== proof.runs.length) {
       failureCodes.add("run-coverage-missing"); failed = true;

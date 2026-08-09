@@ -19,7 +19,7 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
@@ -48,6 +48,14 @@ import {
   type ResearchSessionV1,
   type ResearchTaskAttemptV1,
 } from "@atlcli/research";
+import {
+  finalizeChatReleaseCandidateProofV1,
+  finalizeChatReleaseCandidateRunV1,
+  fingerprintChatReleaseCandidateManifestV1,
+  type ChatReleaseCandidateCheckV1,
+  type ChatReleaseCandidateRunV1,
+  type ChatReleaseCandidateVariantV1,
+} from "../../../../../packages/research/src/chat-agent/release-candidate-matrix.js";
 import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
 import {
   composeResearchGraphV1,
@@ -1162,6 +1170,11 @@ globalThis.addEventListener("error", (event) => {
   });
 });
 globalThis.addEventListener("unhandledrejection", (event) => {
+  if (event.reason?.message === "Chat requires a durable user answer before it can continue.") {
+    event.preventDefault();
+    channel.postMessage({ kind: "worker-hitl-pause", workerId });
+    return;
+  }
   channel.postMessage({
     kind: "worker-error",
     workerId,
@@ -1409,6 +1422,8 @@ globalThis.fetch = async (input, init) => {
           .join("\n")
         : "";
     const serializedCurrentQuestion = currentUserText.split("\n", 1)[0] ?? "";
+    const packedHitlAnswered = currentUserText.includes('"status":"answered"') ||
+      serializedMessages.includes('\\"status\\":\\"answered\\"');
     const packedSentinelRequest = packedSentinelRun || serializedRequest.includes("packed-sentinel");
     if (packedSentinelRequest) {
       const specialist = serializedRequest.match(/You are the ([a-z-]+) specialist in a read-only Atlassian research workflow/);
@@ -1460,6 +1475,12 @@ globalThis.fetch = async (input, init) => {
       modelCall: modelCalls,
       apiKeyPresent: request.headers.has("x-api-key"),
       toolNames,
+      ...(serializedRequest.includes("packed-hitl:")
+        ? {
+            packedHitlAnswered,
+            packedHitlCurrentQuestion: serializedCurrentQuestion,
+          }
+        : {}),
     });
     if (packedChatStreamInterruptionInitialRun) {
       channel.postMessage({
@@ -1717,7 +1738,7 @@ globalThis.fetch = async (input, init) => {
     if (
       serializedCurrentQuestion.includes("packed-hitl:") &&
       toolNames.includes("ask_user_question") &&
-      !serializedMessages.includes('"status":"answered"')
+      !packedHitlAnswered
     ) {
       return providerMessage(
         [{
@@ -3418,6 +3439,96 @@ let page: Page;
 let extensionId: string;
 let suiteRoot: string;
 
+const PACKED_QUALITY_CHECKS: readonly ChatReleaseCandidateCheckV1[] = [
+  "source-selection",
+  "detail-coverage",
+  "citation-support",
+  "outcome",
+  "strategy",
+  "mode-isolation",
+  "host-parity",
+  "credential-redaction",
+  "safe-markdown",
+];
+const PACKED_LIFECYCLE_CHECKS: readonly ChatReleaseCandidateCheckV1[] = [
+  "three-turn-new-acquisition",
+  "hitl-resume",
+  "steering",
+  "stop",
+  "stream-recovery",
+  "worker-recreation",
+];
+const packedQualityRuns: ChatReleaseCandidateRunV1[] = [];
+const packedLifecycleRuns: ChatReleaseCandidateRunV1[] = [];
+
+async function recordPackedReleaseRun(input: {
+  target: "quality" | "lifecycle";
+  caseId: string;
+  variant: ChatReleaseCandidateVariantV1;
+  durationMs: number;
+  passedChecks: readonly ChatReleaseCandidateCheckV1[];
+  measurements?: Omit<ChatReleaseCandidateRunV1["measurements"], "durationMs">;
+}): Promise<void> {
+  const requiredChecks = input.target === "quality" ? PACKED_QUALITY_CHECKS : PACKED_LIFECYCLE_CHECKS;
+  const passed = new Set(input.passedChecks);
+  const run = await finalizeChatReleaseCandidateRunV1({
+    schema: "atlcli.chat-release-candidate-run/v1",
+    caseId: input.caseId,
+    variant: input.variant,
+    status: "passed",
+    checks: requiredChecks.map((check) => ({
+      check,
+      status: passed.has(check) ? "passed" : "not-applicable",
+    })),
+    failureCodes: [],
+    measurements: {
+      durationMs: Math.max(0, Math.ceil(input.durationMs)),
+      ...input.measurements,
+    },
+  });
+  (input.target === "quality" ? packedQualityRuns : packedLifecycleRuns).push(run);
+}
+
+function packedReportMeasurements(report: {
+  run: {
+    counts: { ptcCalls: number; httpCalls: number };
+    usage?: { inputTokens?: number; outputTokens?: number };
+  };
+}): Omit<ChatReleaseCandidateRunV1["measurements"], "durationMs"> {
+  return {
+    ptcCalls: report.run.counts.ptcCalls,
+    httpCalls: report.run.counts.httpCalls,
+    ...(report.run.usage?.inputTokens === undefined
+      ? {}
+      : { inputTokens: report.run.usage.inputTokens }),
+    ...(report.run.usage?.outputTokens === undefined
+      ? {}
+      : { outputTokens: report.run.usage.outputTokens }),
+  };
+}
+
+async function writePackedReleaseProof(
+  path: string | undefined,
+  proofId: "packed-mv3-quality" | "packed-mv3-lifecycle",
+  runs: readonly ChatReleaseCandidateRunV1[],
+): Promise<void> {
+  if (!path || runs.length === 0) return;
+  if (!isAbsolute(path)) throw new Error(`${proofId} output path must be absolute.`);
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: EXTENSION_ROOT,
+    encoding: "utf8",
+  }).trim();
+  const proof = await finalizeChatReleaseCandidateProofV1({
+    proofId,
+    producer: "packed-production-mv3",
+    producedAt: new Date().toISOString(),
+    sourceRevision,
+    manifestFingerprint: await fingerprintChatReleaseCandidateManifestV1(),
+    runs,
+  });
+  writeFileSync(path, `${JSON.stringify(proof, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
 test.beforeAll(async () => {
   if (!existsSync(join(OUTPUT_DIR, "manifest.json"))) {
     throw new Error(
@@ -3493,8 +3604,21 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await context?.close();
-  if (suiteRoot) rmSync(suiteRoot, { recursive: true, force: true });
+  try {
+    await writePackedReleaseProof(
+      process.env.ATLCLI_PACKED_MV3_QUALITY_PROOF_PATH,
+      "packed-mv3-quality",
+      packedQualityRuns,
+    );
+    await writePackedReleaseProof(
+      process.env.ATLCLI_PACKED_MV3_LIFECYCLE_PROOF_PATH,
+      "packed-mv3-lifecycle",
+      packedLifecycleRuns,
+    );
+  } finally {
+    await context?.close();
+    if (suiteRoot) rmSync(suiteRoot, { recursive: true, force: true });
+  }
 });
 
 test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", async () => {
@@ -4950,6 +5074,7 @@ test("fences concurrent packed resumes so only one fresh worker owns a checkpoin
 });
 
 test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {
+  const releaseStarted = performance.now();
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
     await chrome.storage.session.set({ [key]: value });
@@ -5067,6 +5192,17 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
     .toBe(false);
   expect(events.some((event) => event.kind === "fetch" && event.url?.includes("/wiki/rest/api/content/search")))
     .toBe(false);
+  await recordPackedReleaseRun({
+    target: "quality",
+    caseId: "packed:host-parity",
+    variant: "deep-research",
+    durationMs: performance.now() - releaseStarted,
+    passedChecks: [
+      "source-selection", "detail-coverage", "citation-support", "outcome",
+      "mode-isolation", "host-parity",
+    ],
+    measurements: packedReportMeasurements(packed.report),
+  });
   await page.evaluate(async (key) => {
     await chrome.storage.session.remove(key);
   }, RESEARCH_ANTHROPIC_SESSION_KEY);
@@ -6033,12 +6169,15 @@ test("reads exact page and issue anchors in packed MV3 without search or ranking
     await chrome.storage.session.set({ [key]: value });
   }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
 
+  const pageStarted = performance.now();
   const pageResult = await runPackedResearchInBackground(
     page,
     packedExactContextRequest("confluence"),
     "packed-exact-page",
     "chat",
   );
+  const pageDurationMs = performance.now() - pageStarted;
+  const issueStarted = performance.now();
   const issueResult = await runPackedResearchInBackground(
     page,
     packedExactContextRequest("jira"),
@@ -6061,9 +6200,32 @@ test("reads exact page and issue anchors in packed MV3 without search or ranking
   expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
   expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(false);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  if (pageResult.ok && issueResult.ok) {
+    const passedChecks = [
+      "source-selection", "detail-coverage", "citation-support", "outcome",
+      "strategy", "mode-isolation",
+    ] as const;
+    await recordPackedReleaseRun({
+      target: "quality",
+      caseId: "packed:exact-page",
+      variant: "quick",
+      durationMs: pageDurationMs,
+      passedChecks,
+      measurements: packedReportMeasurements(pageResult.report),
+    });
+    await recordPackedReleaseRun({
+      target: "quality",
+      caseId: "packed:exact-issue",
+      variant: "quick",
+      durationMs: performance.now() - issueStarted,
+      passedChecks,
+      measurements: packedReportMeasurements(issueResult.report),
+    });
+  }
 });
 
 test("resumes three connected Chat turns across MV3 worker recreation and reuses fresh evidence", async () => {
+  const releaseStarted = performance.now();
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
     await chrome.storage.session.set({ [key]: value });
@@ -6184,6 +6346,13 @@ test("resumes three connected Chat turns across MV3 worker recreation and reuses
   expect(activityFile!.contents).not.toContain("reasoning-summary");
   expect(activityFile!.contents).not.toContain("sourceBody");
   expect(activityFile!.contents).not.toContain(FAKE_KEY);
+  await recordPackedReleaseRun({
+    target: "lifecycle",
+    caseId: "lifecycle:three-turn",
+    variant: "quick",
+    durationMs: performance.now() - releaseStarted,
+    passedChecks: ["three-turn-new-acquisition", "worker-recreation"],
+  });
 });
 
 test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat strategies in packed MV3", async () => {
@@ -6193,6 +6362,7 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
   }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
 
   for (const mode of ["quick", "auto", "deep"] as const) {
+    const simpleStarted = performance.now();
     const simple = await runPackedResearchInBackground(
       page,
       packedExactContextRequest("confluence"),
@@ -6209,12 +6379,24 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
       expectedComplexity: "simple",
     });
     expect(simple.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 2);
+    await recordPackedReleaseRun({
+      target: "quality",
+      caseId: "packed:mode-simple",
+      variant: mode,
+      durationMs: performance.now() - simpleStarted,
+      passedChecks: [
+        "source-selection", "detail-coverage", "citation-support", "outcome",
+        "strategy", "mode-isolation",
+      ],
+      measurements: packedReportMeasurements(simple.report),
+    });
 
     const complexRequest = {
       ...packedExactContextRequest("confluence"),
       question:
         "packed-exact-page: Compare the attached page with the approved rollout criteria and identify contradictions.",
     };
+    const complexStarted = performance.now();
     const complex = await runPackedResearchInBackground(
       page,
       complexRequest,
@@ -6284,6 +6466,17 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
     // Agentic exact-context Chat uses strategy, proposal, one direct evidence
     // extraction, host strategy review, and host quality review.
     expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 5);
+    await recordPackedReleaseRun({
+      target: "quality",
+      caseId: "packed:mode-complex",
+      variant: mode,
+      durationMs: performance.now() - complexStarted,
+      passedChecks: [
+        "source-selection", "detail-coverage", "citation-support", "outcome",
+        "strategy", "mode-isolation",
+      ],
+      measurements: packedReportMeasurements(complex.report),
+    });
   }
 
   const events = await harnessEvents(page);
@@ -6327,6 +6520,7 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
 });
 
 test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV3 workers", async () => {
+  const releaseStarted = performance.now();
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
     await chrome.storage.session.set({ [key]: value });
@@ -6345,7 +6539,16 @@ test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV
     qualityPolicy: chatQualityPolicyV1("quick"),
   });
   expect(interrupted.ok, JSON.stringify({ interrupted, events: await harnessEvents(page) })).toBe(false);
-  if (interrupted.ok || !interrupted.question) return;
+  const question = !interrupted.ok && "question" in interrupted
+    ? interrupted.question
+    : undefined;
+  expect(question, JSON.stringify({
+    interrupted,
+    events: await harnessEvents(page),
+  }, null, 2)).toBeDefined();
+  if (interrupted.ok || !question) {
+    throw new Error("Packed Chat did not expose the required HITL question.");
+  }
   expect(interrupted).toMatchObject({
     code: "clarification-required",
     question: {
@@ -6362,12 +6565,15 @@ test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV
     qualityPolicy: chatQualityPolicyV1("quick"),
     resumeAnswer: {
       schema: "atlcli.chat-user-question-answer/v1",
-      questionId: interrupted.question.id,
+      questionId: question.id,
       value: { kind: "selection", optionIds: ["audience:leadership"] },
     },
   });
-  expect(resumed.ok, JSON.stringify(resumed)).toBe(true);
-  if (!resumed.ok) return;
+  expect(resumed.ok, JSON.stringify({
+    resumed,
+    events: await harnessEvents(page),
+  }, null, 2)).toBe(true);
+  if (!resumed.ok) throw new Error("Packed Chat did not resume after HITL.");
   expect(resumed.report.schema).toBe("atlcli.chat-answer/v1");
   expect(resumed.report.messageMarkdown).toContain("packed implementation statement");
 
@@ -6378,9 +6584,17 @@ test("pauses and resumes an ordinary Chat HITL checkpoint across fresh packed MV
     .filter((workerId): workerId is string => typeof workerId === "string"));
   expect(modelWorkers.size).toBeGreaterThanOrEqual(2);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  await recordPackedReleaseRun({
+    target: "lifecycle",
+    caseId: "lifecycle:hitl",
+    variant: "quick",
+    durationMs: performance.now() - releaseStarted,
+    passedChecks: ["hitl-resume", "worker-recreation"],
+  });
 });
 
 test("recovers an interrupted ordinary Chat model stream at the same checkpoint across fresh packed MV3 workers", async () => {
+  const releaseStarted = performance.now();
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
     await chrome.storage.session.set({ [key]: value });
@@ -6396,7 +6610,7 @@ test("recovers an interrupted ordinary Chat model stream at the same checkpoint 
     runId: "packed-chat-stream-interruption-initial",
     sessionId,
     turnId,
-    qualityPolicy: chatQualityPolicyV1("quick"),
+    qualityPolicy: chatQualityPolicyV1("auto"),
   });
   expect(interrupted.ok, JSON.stringify({ interrupted, events: await harnessEvents(page) })).toBe(false);
   if (interrupted.ok) return;
@@ -6431,7 +6645,7 @@ test("recovers an interrupted ordinary Chat model stream at the same checkpoint 
     runId: "packed-chat-stream-interruption-resume",
     sessionId,
     turnId,
-    qualityPolicy: chatQualityPolicyV1("quick"),
+    qualityPolicy: chatQualityPolicyV1("auto"),
     resumeCheckpoint: { kind: "stream-interruption" },
   });
   expect(resumed.ok, JSON.stringify({ resumed, events: await harnessEvents(page) })).toBe(true);
@@ -6456,9 +6670,17 @@ test("recovers an interrupted ordinary Chat model stream at the same checkpoint 
     .filter((workerId): workerId is string => typeof workerId === "string"));
   expect(modelWorkers.size).toBeGreaterThanOrEqual(2);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  await recordPackedReleaseRun({
+    target: "lifecycle",
+    caseId: "lifecycle:stream-recovery",
+    variant: "auto",
+    durationMs: performance.now() - releaseStarted,
+    passedChecks: ["stream-recovery", "worker-recreation"],
+  });
 });
 
 test("steers and resumes the same ordinary Chat checkpoint across fresh packed MV3 workers", async () => {
+  const releaseStarted = performance.now();
   await installEventCapture(page);
   const runId = "packed-chat-checkpoint-steering";
   const sessionId = `research-session:${runId}`;
@@ -6484,7 +6706,7 @@ test("steers and resumes the same ordinary Chat checkpoint across fresh packed M
     runId,
     sessionId,
     turnId,
-    qualityPolicy: chatQualityPolicyV1("quick"),
+    qualityPolicy: chatQualityPolicyV1("deep"),
   });
   await expect.poll(async () => (await harnessEvents(page)).some((event) =>
     event.kind === "fetch" && event.url?.startsWith("https://api.anthropic.com")
@@ -6570,7 +6792,7 @@ test("steers and resumes the same ordinary Chat checkpoint across fresh packed M
     runId: `${runId}-resume`,
     sessionId,
     turnId,
-    qualityPolicy: chatQualityPolicyV1("quick"),
+    qualityPolicy: chatQualityPolicyV1("deep"),
     resumeCheckpoint: { kind: "steering" },
   });
   expect(resumed.ok, JSON.stringify({ resumed, events: await harnessEvents(page) })).toBe(true);
@@ -6588,9 +6810,25 @@ test("steers and resumes the same ordinary Chat checkpoint across fresh packed M
     .filter((workerId): workerId is string => typeof workerId === "string"));
   expect(modelWorkers.size).toBeGreaterThanOrEqual(2);
   expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  const lifecycleDurationMs = performance.now() - releaseStarted;
+  await recordPackedReleaseRun({
+    target: "lifecycle",
+    caseId: "lifecycle:steering",
+    variant: "deep",
+    durationMs: lifecycleDurationMs,
+    passedChecks: ["steering", "worker-recreation"],
+  });
+  await recordPackedReleaseRun({
+    target: "lifecycle",
+    caseId: "lifecycle:worker-recreation",
+    variant: "deep",
+    durationMs: lifecycleDurationMs,
+    passedChecks: ["steering", "worker-recreation"],
+  });
 });
 
 test("cooperatively stops packed Chat and durably acknowledges the cancellation", async () => {
+  const releaseStarted = performance.now();
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
     await chrome.storage.session.set({ [key]: value });
@@ -6605,7 +6843,7 @@ test("cooperatively stops packed Chat and durably acknowledges the cancellation"
     runId,
     sessionId,
     turnId: `research-turn:${runId}`,
-    qualityPolicy: chatQualityPolicyV1("quick"),
+    qualityPolicy: chatQualityPolicyV1("auto"),
   });
 
   await expect.poll(async () => (await harnessEvents(page)).some((event) =>
@@ -6634,6 +6872,13 @@ test("cooperatively stops packed Chat and durably acknowledges the cancellation"
     acknowledgedAt: expect.any(String),
   });
   expect((await harnessEvents(page)).some((event) => event.kind === "worker-error")).toBe(false);
+  await recordPackedReleaseRun({
+    target: "lifecycle",
+    caseId: "lifecycle:stop",
+    variant: "auto",
+    durationMs: performance.now() - releaseStarted,
+    passedChecks: ["stop"],
+  });
 });
 
 test("persists and edits a queued Chat follow-up through the packed MV3 worker", async () => {
@@ -6844,6 +7089,7 @@ test("redacts provider and browser credential text before durable browser persis
 
 test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders safe Markdown", async ({
 }, testInfo) => {
+  const releaseStarted = performance.now();
   await openResearchScreen(page);
   await installEventCapture(page);
   await excludeCurrentContext(page);
@@ -7289,4 +7535,19 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   await page.getByTestId("nav-settings").click();
   await page.getByTestId("settings-ai-forget-key").click();
   await expect(page.getByTestId("settings-ai-forget-key")).toHaveCount(0);
+  await recordPackedReleaseRun({
+    target: "quality",
+    caseId: "packed:deep-research",
+    variant: "deep-research",
+    durationMs: performance.now() - releaseStarted,
+    passedChecks: [
+      "source-selection", "detail-coverage", "citation-support", "outcome",
+      "mode-isolation", "credential-redaction", "safe-markdown",
+    ],
+    measurements: {
+      modelCalls: providerFetches.length,
+      ptcCalls: 10,
+      httpCalls: 10,
+    },
+  });
 });

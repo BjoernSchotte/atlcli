@@ -84,8 +84,10 @@ import {
   acknowledgeChatStopV1,
   completeChatStreamInterruptionV1,
   completeChatSteeringV1,
+  markChatUserQuestionPortableRestartV1,
   recordChatStreamInterruptionV1,
   requestChatStopV1,
+  resolveChatUserQuestionV1,
   type ChatResumeEnvelopeV1,
   type ChatUserQuestionAnswerV1,
 } from "./interaction.js";
@@ -1249,13 +1251,25 @@ export function createKiteweaveChatAgent(
           conversationId: turn.conversationId,
         });
         input.onInteractionReady?.(interactionController);
-        if (input.resumeAnswer &&
-            interactionController.snapshot().pendingQuestion?.question.id !==
-              input.resumeAnswer.questionId) {
-          throw new ChatContractError(
-            "invalid-request",
-            "Chat HITL answer does not match the waiting question.",
+        if (input.resumeAnswer) {
+          const waiting = interactionController.snapshot().pendingQuestion;
+          if (waiting?.question.id !== input.resumeAnswer.questionId) {
+            throw new ChatContractError(
+              "invalid-request",
+              "Chat HITL answer does not match the waiting question.",
+            );
+          }
+          await interactionController.update((state) =>
+            resolveChatUserQuestionV1({
+              state,
+              expectedRevision: state.revision,
+              turnId: turn.turnId,
+              answer: input.resumeAnswer!,
+              at: new Date(now()).toISOString(),
+            })
           );
+          emitPhase("user-answer-accepted");
+          emitActivity("hitl", "completed");
         }
         const retainedEvidenceIds = buildChatTurnContextV1(
           durableChatSession,
@@ -1911,6 +1925,10 @@ export function createKiteweaveChatAgent(
           conversationId: turn.conversationId,
           turnId: turn.turnId,
           workspace: input.workspace,
+          ...(input.resumeAnswer &&
+              pendingQuestion?.continuation === "portable-restart"
+            ? { continuationId: "hitl-portable" as const }
+            : {}),
         });
         const askUserQuestion = createChatAskUserQuestionToolV1({
           turnId: turn.turnId,
@@ -2021,8 +2039,38 @@ export function createKiteweaveChatAgent(
           completedCalls: 0,
           maxCalls: turn.limits.maxPtcCalls,
         });
-        const runInput = input.resumeAnswer
+        const initialTurnPrompt = buildChatTurnPromptV1({
+          question: turn.question,
+          jiraProjectKeys: turn.scope.jiraProjectKeys,
+          confluenceSpaceKeys: turn.scope.confluenceSpaceKeys,
+          anchors,
+          admittedSearches: retrievalPlan.searches.map((search) => ({
+            product: search.product,
+            queries: search.variants.map((variant) => variant.query),
+          })),
+          directPlannedAcquisition: strategyDecision.execution !== "agentic",
+          durableContext,
+        });
+        const runInput = input.resumeAnswer &&
+            pendingQuestion?.continuation === "graph-interrupt"
           ? new Command({ resume: input.resumeAnswer })
+          : input.resumeAnswer
+            ? {
+                messages: [{
+                  role: "user",
+                  content: [
+                    initialTurnPrompt,
+                    "",
+                    "Host-accepted clarification for this turn:",
+                    JSON.stringify({
+                      status: "answered",
+                      question: pendingQuestion?.question,
+                      answer: input.resumeAnswer.value,
+                    }),
+                    "Continue the original request using this answer. Do not ask the same question again.",
+                  ].join("\n"),
+                }],
+              }
           : input.resumeCheckpoint?.kind === "steering"
             ? new Command({
                 update: {
@@ -2045,23 +2093,7 @@ export function createKiteweaveChatAgent(
                     ].join("\n"))],
                   },
                 })
-              : {
-            messages: [{
-              role: "user",
-              content: buildChatTurnPromptV1({
-                question: turn.question,
-                jiraProjectKeys: turn.scope.jiraProjectKeys,
-                confluenceSpaceKeys: turn.scope.confluenceSpaceKeys,
-                anchors,
-                admittedSearches: retrievalPlan.searches.map((search) => ({
-                  product: search.product,
-                  queries: search.variants.map((variant) => variant.query),
-                })),
-                directPlannedAcquisition: strategyDecision.execution !== "agentic",
-                durableContext,
-              }),
-            }],
-          };
+              : { messages: [{ role: "user", content: initialTurnPrompt }] };
         if (input.resumeAnswer || input.resumeCheckpoint) {
           emitActivity("continuation", "started");
         }
@@ -2307,6 +2339,15 @@ export function createKiteweaveChatAgent(
               "Chat graph interrupted without a durable user question.",
             );
           }
+          await interactionController.update((state) =>
+            markChatUserQuestionPortableRestartV1({
+              state,
+              expectedRevision: state.revision,
+              turnId: turn.turnId,
+              questionId: pending.question.id,
+              at: new Date(now()).toISOString(),
+            })
+          );
           durableChatSession = pauseChatTurnV1({
             session: durableChatSession!,
             expectedSessionRevision: durableChatSession!.revision,
@@ -2458,6 +2499,22 @@ export function createKiteweaveChatAgent(
         return answer;
       } catch (error) {
         if (error instanceof ChatUserQuestionRequiredError) {
+          const currentTurn = durableChatSession?.conversation.recentTurns.find(
+            (candidate) => candidate.id === turn.turnId,
+          );
+          if (durableChatSession && currentTurn?.status === "running") {
+            durableChatSession = pauseChatTurnV1({
+              session: durableChatSession,
+              expectedSessionRevision: durableChatSession.revision,
+              turnId: turn.turnId,
+              at: new Date(now()).toISOString(),
+            });
+            await input.workspace.writeFile(
+              CHAT_SESSION_PATH_V1,
+              JSON.stringify(durableChatSession),
+            );
+          }
+          await activityJournal?.flush();
           throw error;
         }
         const classified = classifyResearchError(error);

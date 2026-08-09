@@ -367,6 +367,12 @@ describe("durable Chat interaction state", () => {
         resume,
         at: at(index + 1),
       });
+      if (responseKind === "free_text") {
+        const legacy = JSON.parse(JSON.stringify(pending));
+        delete legacy.pendingQuestion.continuation;
+        expect(parseChatInteractionStateV1(legacy).pendingQuestion?.continuation)
+          .toBe("graph-interrupt");
+      }
       const value = responseKind === "free_text"
         ? { kind: "text" as const, text: "Use the explicitly approved window." }
         : responseKind === "single_choice"

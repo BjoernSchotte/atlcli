@@ -3,6 +3,8 @@ import { interrupt } from "@langchain/langgraph";
 import { z } from "zod/v4";
 import {
   CHAT_USER_QUESTION_SCHEMA_V1,
+  ChatUserQuestionRequiredError,
+  markChatUserQuestionPortableRestartV1,
   recordChatUserQuestionV1,
   resolveChatUserQuestionV1,
   type ChatUserQuestionAnswerV1,
@@ -125,10 +127,38 @@ export function createChatAskUserQuestionToolV1(input: {
       input.onQuestion?.(recorded.pendingQuestion!.question);
     }
 
-    // LangGraph persists this exact tool-node checkpoint. On resume the node
-    // restarts, sees the idempotently recorded question, and receives the
-    // Command(resume=...) value here. Never wrap this call in try/catch.
-    const answer = interrupt<ChatUserQuestionV1, ChatUserQuestionAnswerV1>(question);
+    // Node LangGraph can persist and resume this exact tool-node interrupt.
+    // The host runtime additionally records a portable restart continuation
+    // so browser workers do not depend on Node AsyncLocalStorage semantics.
+    let answer: ChatUserQuestionAnswerV1;
+    try {
+      answer = interrupt<ChatUserQuestionV1, ChatUserQuestionAnswerV1>(question);
+    } catch (error) {
+      /*
+       * Browser runtimes do not provide Node AsyncLocalStorage. If the
+       * durable interaction write above crosses an async boundary, LangGraph
+       * can no longer recover its ambient node config for the first
+       * interrupt. Preserve the already-written host checkpoint and project
+       * the same portable pause signal. The host resumes from a separate,
+       * revision-bound checkpoint branch with the accepted answer included.
+       */
+      if (error instanceof Error && [
+        "Called interrupt() outside the context of a graph.",
+        "No configurable found in config",
+      ].includes(error.message)) {
+        await input.interactions.update((state) =>
+          markChatUserQuestionPortableRestartV1({
+            state,
+            expectedRevision: state.revision,
+            turnId: input.turnId,
+            questionId: question.id,
+            at: new Date(now()).toISOString(),
+          })
+        );
+        throw new ChatUserQuestionRequiredError(question);
+      }
+      throw error;
+    }
     const resolved = await input.interactions.update((state) =>
       resolveChatUserQuestionV1({
         state,

@@ -1548,6 +1548,7 @@ export interface ChatInteractionStateV1 {
         question: ChatUserQuestionV1;
         askedAt: string;
         resume: ChatResumeEnvelopeV1;
+        continuation: "graph-interrupt" | "portable-restart";
     };
     resolvedQuestions: Array<{
         turnId: string;
@@ -3163,6 +3164,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: markChatUserQuestionPortableRestartV1
+export declare function markChatUserQuestionPortableRestartV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    questionId: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
@@ -9822,6 +9832,7 @@ export interface ChatInteractionStateV1 {
         question: ChatUserQuestionV1;
         askedAt: string;
         resume: ChatResumeEnvelopeV1;
+        continuation: "graph-interrupt" | "portable-restart";
     };
     resolvedQuestions: Array<{
         turnId: string;
@@ -11428,6 +11439,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: markChatUserQuestionPortableRestartV1
+export declare function markChatUserQuestionPortableRestartV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    questionId: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
@@ -18076,6 +18096,7 @@ export interface ChatInteractionStateV1 {
         question: ChatUserQuestionV1;
         askedAt: string;
         resume: ChatResumeEnvelopeV1;
+        continuation: "graph-interrupt" | "portable-restart";
     };
     resolvedQuestions: Array<{
         turnId: string;
@@ -19691,6 +19712,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: markChatUserQuestionPortableRestartV1
+export declare function markChatUserQuestionPortableRestartV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    questionId: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
@@ -26368,6 +26398,7 @@ export interface ChatInteractionStateV1 {
         question: ChatUserQuestionV1;
         askedAt: string;
         resume: ChatResumeEnvelopeV1;
+        continuation: "graph-interrupt" | "portable-restart";
     };
     resolvedQuestions: Array<{
         turnId: string;
@@ -27081,6 +27112,7 @@ export declare class ChatTurnWorkspaceCheckpointerV1 extends WorkspaceLangGraphC
         conversationId: string;
         turnId: string;
         workspace: ResearchWorkspace;
+        continuationId?: "hitl-portable";
     });
 }
 
@@ -28176,6 +28208,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: markChatUserQuestionPortableRestartV1
+export declare function markChatUserQuestionPortableRestartV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    questionId: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
@@ -35106,6 +35147,7 @@ export interface ChatInteractionStateV1 {
         question: ChatUserQuestionV1;
         askedAt: string;
         resume: ChatResumeEnvelopeV1;
+        continuation: "graph-interrupt" | "portable-restart";
     };
     resolvedQuestions: Array<{
         turnId: string;
@@ -36919,6 +36961,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: markChatUserQuestionPortableRestartV1
+export declare function markChatUserQuestionPortableRestartV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    questionId: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
@@ -45889,6 +45940,7 @@ export interface ChatInteractionStateV1 {
         question: ChatUserQuestionV1;
         askedAt: string;
         resume: ChatResumeEnvelopeV1;
+        continuation: "graph-interrupt" | "portable-restart";
     };
     resolvedQuestions: Array<{
         turnId: string;
@@ -47702,6 +47754,15 @@ export interface JiraResearchSummary {
 
 // export: jiraResearchTextTerms
 export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: markChatUserQuestionPortableRestartV1
+export declare function markChatUserQuestionPortableRestartV1(input: {
+    state: ChatInteractionStateV1;
+    expectedRevision: number;
+    turnId: string;
+    questionId: string;
+    at: string;
+}): ChatInteractionStateV1;
 
 // export: MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1
 export declare const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1: number;
