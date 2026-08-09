@@ -96,20 +96,33 @@ research privacy gate, and `git diff --check` pass on the same worktree state.
 
 ## T2 - Prove packed MV3 and lifecycle parity
 
-- [ ] Build the production extension and execute the packed MV3 suite with one
+- [x] Build the production extension and execute the packed MV3 suite with one
       worker.
-- [ ] Feed packed exact-anchor, mode-selection, three-turn, HITL, steering,
+- [x] Feed packed exact-anchor, mode-selection, three-turn, HITL, steering,
       stop, stream-recovery, worker-recreation, redaction, and safe-Markdown
       results into the release receipt.
-- [ ] Compare the source/outcome/strategy projections for the selected CLI and
+- [x] Compare the source/outcome/strategy projections for the selected CLI and
       packed MV3 cases.
 
 Acceptance:
 
-- [ ] The production bundle passes the same structural and quality floors as
+- [x] The production bundle passes the same structural and quality floors as
       the Node host for the selected cases.
-- [ ] Worker recreation does not duplicate committed retrieval or publish a
+- [x] Worker recreation does not duplicate committed retrieval or publish a
       stale answer.
+
+Proof record (2026-08-09): production commit `bbf18cac` passes all 45 packed
+MV3 tests sequentially in 18.4 seconds. The revision-bound quality proof covers
+six cases and ten explicit runs across Quick, Auto, Deep, and the separate Deep
+Research path; it records 5.568 aggregate seconds, 30 PTC calls, 19 HTTP calls,
+360 synthetic input tokens, and 180 synthetic output tokens. The lifecycle
+proof covers six cases and six explicit runs across Quick, Auto, and Deep in
+2.245 aggregate seconds: three connected turns with new acquisition, durable
+HITL, steering, cooperative stop, interrupted-stream recovery, and fresh-worker
+continuation. The Node/packed host-parity case compares byte-identical source
+and result artifacts plus semantically equivalent progress. Both proof files are
+mode `0600`, contain only opaque case IDs, checks, aggregate measurements, and
+fingerprints, and remain outside Git.
 
 ## T3 - Run the private read-only operator matrix
 
