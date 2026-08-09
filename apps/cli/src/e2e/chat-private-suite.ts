@@ -307,6 +307,33 @@ export function privateFactGroupMatchesV1(
   return alternatives.some((alternative) => body.includes(normalizedFact(alternative)));
 }
 
+export function privateForbiddenClaimMatchesV1(
+  markdown: string,
+  claim: string,
+): boolean {
+  const body = normalized(markdown);
+  const needle = normalized(claim);
+  if (!needle) return false;
+  let offset = 0;
+  while (offset < body.length) {
+    const index = body.indexOf(needle, offset);
+    if (index === -1) return false;
+    const sentenceStart = Math.max(
+      body.lastIndexOf(".", index - 1),
+      body.lastIndexOf("!", index - 1),
+      body.lastIndexOf("?", index - 1),
+      body.lastIndexOf(";", index - 1),
+      body.lastIndexOf("\n", index - 1),
+    ) + 1;
+    const prefix = body.slice(sentenceStart, index).slice(-120);
+    const negated = /(?:\bnicht\b|\bkein(?:e[rmns]?)?\b|\bweder\b|\bohne\b|\bungeeignet\b|\bunmöglich\b|\bzu groß,?\s+um\b)[^.!?;]{0,100}$/u
+      .test(prefix);
+    if (!negated) return true;
+    offset = index + needle.length;
+  }
+  return false;
+}
+
 export function normalizePrivateSourceIdentityV1(value: string): string {
   try {
     const url = new URL(value);
@@ -393,7 +420,9 @@ function evaluateGold(answer: ProjectedAnswerV1, gold: ChatPrivateGoldV1): {
   const facts = gold.requiredFactGroups.every((alternatives) =>
     privateFactGroupMatchesV1(answer.markdown, alternatives)
   );
-  const forbidden = gold.forbiddenClaims.some((claim) => body.includes(normalized(claim)));
+  const forbidden = gold.forbiddenClaims.some((claim) =>
+    privateForbiddenClaimMatchesV1(answer.markdown, claim)
+  );
   const abstained = /(?:nicht (?:ausreichend )?belegt|keine (?:ausreichenden )?belege|cannot (?:be )?establish|insufficient evidence)/iu.test(answer.markdown);
   return {
     sourceSelection,

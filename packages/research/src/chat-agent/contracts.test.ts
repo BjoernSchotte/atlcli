@@ -13,6 +13,7 @@ import {
 } from "../quality-policy.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
 import {
+  chatDraftForFinalizationAfterHostRepairV1,
   chatDraftNeedsHostRepairV1,
   finalizeChatAnswerV1,
 } from "./answer.js";
@@ -112,6 +113,24 @@ describe("Chat answer contract", () => {
     expect(chatDraftNeedsHostRepairV1({
       draft: {
         blocks: [{
+          markdown: "A supported first facet.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "A second requested facet without an evidence classification.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+
+    expect(chatDraftNeedsHostRepairV1({
+      draft: {
+        blocks: [{
           markdown: "A factual answer without accepted evidence.",
           assertion: "positive",
           scope: "none",
@@ -134,6 +153,86 @@ describe("Chat answer contract", () => {
       },
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
     })).toBe(false);
+
+    expect(chatDraftNeedsHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "## Recommended configuration",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "The author calls this the **lossless profile",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "The accepted setting preserves stable quality.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+  });
+
+  test("accepts a repaired draft only after dropping safe prose and preserving non-empty evidence sections", () => {
+    const repaired = chatDraftForFinalizationAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "## Recommended configuration",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "The author calls this the **lossless profile",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "The accepted setting preserves stable quality.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+    expect(repaired?.blocks).toHaveLength(2);
+
+    const answer = finalizeChatAnswerV1({
+      draft: repaired,
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("deep"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).toContain("## Recommended configuration");
+    expect(answer.messageMarkdown).toContain("The accepted setting preserves stable quality.");
+    expect(answer.messageMarkdown).not.toContain("lossless profile");
+    expect(answer.citations).toHaveLength(1);
+
+    expect(chatDraftForFinalizationAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "## Recommended configuration",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "The author calls this the **lossless profile",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBeUndefined();
   });
 
   test("keeps recoverable child eval retries out of user-facing activity", () => {

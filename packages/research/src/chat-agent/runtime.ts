@@ -42,6 +42,7 @@ import { classifyResearchError, redactResearchSecrets } from "../redaction.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
 import {
+  chatDraftForFinalizationAfterHostRepairV1,
   chatDraftNeedsHostRepairV1,
   finalizeChatAnswerV1,
 } from "./answer.js";
@@ -2461,17 +2462,18 @@ export function createKiteweaveChatAgent(
               signal: controller.signal,
             });
             await modelBudgetWrite;
-            finalDraft = finalResult.structuredResponse;
-            if (chatDraftNeedsHostRepairV1({
-              draft: finalDraft,
+            const repairedDraft = chatDraftForFinalizationAfterHostRepairV1({
+              draft: finalResult.structuredResponse,
               detailEvidence: broker.detailEvidenceLedger(),
               readSectionReferences: broker.readSectionReferenceLedger(),
-            })) {
+            });
+            if (!repairedDraft) {
               throw new ChatContractError(
                 "invalid-report",
                 "The Chat answer repair did not produce a complete evidence-bound draft.",
               );
             }
+            finalDraft = repairedDraft;
             emitActivity("repair", "completed");
           } catch (error) {
             emitActivity("repair", "failed");

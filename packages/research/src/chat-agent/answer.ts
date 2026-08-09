@@ -496,9 +496,63 @@ export function chatDraftNeedsHostRepairV1(input: {
   const factual = draft.blocks.filter((block) => block.assertion !== "none");
   if (factual.length === 0) return true;
   const sections = input.readSectionReferences ?? [];
-  return !factual.some((block) => block.sourceRefs.some((sourceRef) =>
-    sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
-  ));
+  return factual.some((block) =>
+    block.sourceRefs.length === 0 || block.sourceRefs.some((sourceRef) =>
+      !sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
+    )
+  );
+}
+
+function isMarkdownHeadingBlockV1(markdown: string): boolean {
+  return /^\s{0,3}#{1,6}\s+\S/u.test(markdown);
+}
+
+/**
+ * One tool-free terminal repair is the final model-owned correction boundary.
+ * After it, the host may remove only malformed non-factual prose. Factual
+ * blocks remain subject to the normal evidence projection, which drops an
+ * unsupported neighbour and records a gap without discarding supported facts.
+ * A heading left without any factual block is rejected so a requested answer
+ * facet cannot silently collapse to an empty section.
+ */
+export function chatDraftForFinalizationAfterHostRepairV1(input: {
+  draft: unknown;
+  detailEvidence: readonly ResearchDetailEvidenceV1[];
+  readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+}): ChatAgentDraftV2 | undefined {
+  const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
+  if (!parsed.success) return undefined;
+  const draft = normalizeChatAgentDraftV2(parsed.data);
+  const blocks = draft.blocks.filter((block) =>
+    !(block.assertion === "none" && strongMarkerCountV1(block.markdown) % 2 !== 0)
+  );
+  if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
+    return undefined;
+  }
+  const sections = input.readSectionReferences ?? [];
+  const detailedFactual = blocks.filter((block) =>
+    block.assertion !== "none" && block.sourceRefs.some((sourceRef) =>
+      sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
+    )
+  );
+  if (input.detailEvidence.length > 0 && detailedFactual.length === 0) {
+    return undefined;
+  }
+  let pendingHeading = false;
+  for (const block of blocks) {
+    if (block.assertion === "none" && isMarkdownHeadingBlockV1(block.markdown)) {
+      if (pendingHeading) return undefined;
+      pendingHeading = true;
+      continue;
+    }
+    if (block.assertion !== "none" && block.sourceRefs.some((sourceRef) =>
+      sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
+    )) {
+      pendingHeading = false;
+    }
+  }
+  if (pendingHeading) return undefined;
+  return { ...draft, blocks };
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   parseChatPrivateSuiteArgumentsV1,
   parseChatPrivateSuiteV1,
   privateFactGroupMatchesV1,
+  privateForbiddenClaimMatchesV1,
   projectPrivateAnswerV1,
   runChatPrivateSuiteV1,
 } from "./chat-private-suite.js";
@@ -163,6 +164,25 @@ describe("private Chat release suite", () => {
     expect(privateFactGroupMatchesV1(
       "Empfohlen wird das verlustfreiem Profil.",
       ["verlustfreie Profil"],
+    )).toBe(true);
+  });
+
+  test("does not treat an explicit negation as a forbidden positive claim", () => {
+    expect(privateForbiddenClaimMatchesV1(
+      "Das Modell ist zu groß, um vollständig im RAM zu liegen.",
+      "vollständig im RAM",
+    )).toBe(false);
+    expect(privateForbiddenClaimMatchesV1(
+      "Dieses Profil ist nicht für interaktive Chats empfohlen.",
+      "für interaktive Chats empfohlen",
+    )).toBe(false);
+    expect(privateForbiddenClaimMatchesV1(
+      "Das Modell liegt vollständig im RAM.",
+      "vollständig im RAM",
+    )).toBe(true);
+    expect(privateForbiddenClaimMatchesV1(
+      "Dieses Profil ist für interaktive Chats empfohlen.",
+      "für interaktive Chats empfohlen",
     )).toBe(true);
   });
 
