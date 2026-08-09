@@ -24,7 +24,9 @@ export function chatAnswerOutputInstructionV1(
     `${repair ? "REPAIR OUTPUT CONTRACT" : "OUTPUT CONTRACT"} (${qualityMode}, hard limit): at most ${contract.maxWords} visible words and ${contract.maxBlocks} blocks.`,
     "Prioritize the direct answer and the facts needed to support it; do not reproduce the source document section by section.",
     "When the question has many requested facets, compress them into short bullets or compact table rows instead of adding prose.",
+    "Before finalizing, check every explicitly requested facet in the user's question once. Cover each facet with a supported answer block or a precise typed gap; never silently omit one.",
     "Do not repeat a fact, heading, qualification, or conclusion in another block.",
+    "Return only the finished wording. Do not leave abandoned sentence alternatives, unmatched Markdown emphasis, or a lower-case continuation in a separate block.",
     "Finish the complete ChatAnswerDraftV2 JSON inside this limit.",
   ].join(" ");
 }

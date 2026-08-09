@@ -474,6 +474,67 @@ function removeStandaloneEvidencePlaceholderLinesV1(markdown: string): string {
     .trim();
 }
 
+function strongMarkerCountV1(markdown: string): number {
+  const withoutCode = markdown
+    .replace(/```[\s\S]*?```/gu, "")
+    .replace(/`[^`\n]*`/gu, "");
+  return [...withoutCode.matchAll(/\*\*/gu)].length;
+}
+
+export function chatDraftNeedsHostRepairV1(input: {
+  draft: unknown;
+  detailEvidence: readonly ResearchDetailEvidenceV1[];
+  readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+}): boolean {
+  const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
+  if (!parsed.success) return false;
+  const draft = normalizeChatAgentDraftV2(parsed.data);
+  if (draft.blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
+    return true;
+  }
+  if (input.detailEvidence.length === 0) return false;
+  const factual = draft.blocks.filter((block) => block.assertion !== "none");
+  if (factual.length === 0) return true;
+  const sections = input.readSectionReferences ?? [];
+  return !factual.some((block) => block.sourceRefs.some((sourceRef) =>
+    sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
+  ));
+}
+
+/**
+ * Structured output can still contain syntactically valid JSON whose Markdown
+ * prose was abandoned and regenerated inside the same response. Do not expose
+ * those half-written alternatives to the user. This projection is deliberately
+ * conservative: it removes only paragraphs with an unmatched strong marker and
+ * joins a short, obviously lower-case continuation to the preceding paragraph.
+ * It never invents or rewrites factual content.
+ */
+function removeAbandonedMarkdownFragmentsV1(markdown: string): string {
+  const paragraphs = markdown
+    .split(/\n{2,}/gu)
+    .map((paragraph) => paragraph.trimEnd())
+    .filter((paragraph) => {
+      if (paragraph.includes("```")) return true;
+      return strongMarkerCountV1(paragraph) % 2 === 0;
+    });
+  const joined: string[] = [];
+  const continuation = /^(?:das|der|die|den|dem|ein(?:e[rmns]?)?|dies(?:e[rmns]?)?|und|aber|the|this|that|and|but|however)\b/u;
+  for (const paragraph of paragraphs) {
+    const previous = joined.at(-1);
+    if (
+      previous &&
+      continuation.test(paragraph.trimStart()) &&
+      !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||```)/u.test(previous.trimStart()) &&
+      !/```\s*$/u.test(previous.trimEnd())
+    ) {
+      joined[joined.length - 1] = `${previous.replace(/[\s.;:]+$/u, "")}; ${paragraph.trimStart()}`;
+      continue;
+    }
+    joined.push(paragraph);
+  }
+  return joined.join("\n\n").replace(/\n{3,}/gu, "\n\n").trim();
+}
+
 function humanizeInternalSourceIdsV1(
   value: string,
   sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
@@ -788,6 +849,7 @@ export function finalizeChatAnswerV1(input: {
   );
   messageMarkdown = documentationAbsenceProjection.markdown;
   messageMarkdown = removeStandaloneEvidencePlaceholderLinesV1(messageMarkdown);
+  messageMarkdown = removeAbandonedMarkdownFragmentsV1(messageMarkdown);
   const citationPlaceholders = chatEvidencePlaceholdersV1(messageMarkdown);
   const citationIds = [...new Set(citationPlaceholders.map((entry) => entry.sourceId))];
   const citationKeys = [...new Set(citationPlaceholders.map((entry) =>

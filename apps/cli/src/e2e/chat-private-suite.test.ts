@@ -151,6 +151,21 @@ describe("private Chat release suite", () => {
     )).toBe(false);
   });
 
+  test("matches bounded commercial abbreviations and German adjective inflections", () => {
+    expect(privateFactGroupMatchesV1(
+      "Die Umsetzung erfolgt nach T&M.",
+      ["Time & Material", "Time and Material"],
+    )).toBe(true);
+    expect(privateFactGroupMatchesV1(
+      "Empfohlen wird das verlustfreie Profil.",
+      ["verlustfreiem Profil", "verlustloses Profil"],
+    )).toBe(true);
+    expect(privateFactGroupMatchesV1(
+      "Empfohlen wird das verlustfreiem Profil.",
+      ["verlustfreie Profil"],
+    )).toBe(true);
+  });
+
   test("runs sequential production commands, scores local gold, and emits a neutral proof", async () => {
     const root = await mkdtemp(join(tmpdir(), "atlcli-chat-private-"));
     roots.push(root);

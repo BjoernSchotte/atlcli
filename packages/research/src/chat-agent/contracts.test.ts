@@ -12,7 +12,10 @@ import {
   chatQualityPolicyV1,
 } from "../quality-policy.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
-import { finalizeChatAnswerV1 } from "./answer.js";
+import {
+  chatDraftNeedsHostRepairV1,
+  finalizeChatAnswerV1,
+} from "./answer.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V2,
   CHAT_SESSION_STATE_PATH_V1,
@@ -92,6 +95,47 @@ const syntheticCompleteContent = {
 };
 
 describe("Chat answer contract", () => {
+  test("requests a terminal host repair for malformed or ungrounded factual drafts", () => {
+    expect(chatDraftNeedsHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "An abandoned **alternative",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+
+    expect(chatDraftNeedsHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "A factual answer without accepted evidence.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+
+    expect(chatDraftNeedsHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "A complete evidence-bound answer.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(false);
+  });
+
   test("keeps recoverable child eval retries out of user-facing activity", () => {
     expect(projectChatAgentDiagnosticActivityV1({
       kind: "eval-step",
@@ -291,6 +335,40 @@ describe("Chat answer contract", () => {
     expect(answer.messageMarkdown).toContain("## Zusammenfassung: „Synthetische Seite“");
     expect(answer.messageMarkdown).toContain("einen Wert von „zwei Einheiten.“");
     expect(answer.citations).toHaveLength(1);
+  });
+
+  test("removes abandoned strong-emphasis alternatives and joins an obvious continuation", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "## Empfohlene Konfiguration",
+          "",
+          "Der Autor empfiehlt ausdrücklich das **„lossless profile“",
+          "",
+          "Der Autor empfiehlt das **„Lossless-Profil“",
+          "",
+          "Der Autor empfiehlt `topp 0.85` als stabiles Profil. [[source:wiki:1001]]",
+          "",
+          "Das Profil erreicht rund 1,2 tok/s und bleibt kohärent",
+          "",
+          "das aggressivere Profil ist für offenen Chat ungeeignet.",
+        ].join("\n"),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+      locale: "de-DE",
+    });
+
+    expect(answer.messageMarkdown).not.toContain("lossless profile");
+    expect(answer.messageMarkdown).not.toContain("Der Autor empfiehlt das **");
+    expect(answer.messageMarkdown).toContain(
+      "Das Profil erreicht rund 1,2 tok/s und bleibt kohärent; das aggressivere Profil ist für offenen Chat ungeeignet.",
+    );
+    expect(answer.messageMarkdown).toContain("[Synthetic page]");
   });
 
   test("removes orphan citation lines and humanizes internal wiki IDs", () => {
@@ -1466,6 +1544,38 @@ describe("separate Chat root", () => {
       },
     );
     expect(visibleNames).toEqual(["eval", "ask_user_question"]);
+  });
+
+  test("makes terminal answer repair tool-free and evidence-bound", async () => {
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      terminalRepairOnly: () => true,
+      answerOutputInstruction: "Return the accepted ChatAnswerDraftV2 shape.",
+      strategyAcknowledged: () => false,
+      evidenceAccessRequired: true,
+      evidenceAccessAttempted: () => false,
+    });
+    let visibleNames: string[] = [];
+    let systemText = "";
+    let calls = 0;
+    const response = await middleware.wrapModelCall?.(
+      {
+        tools: [{ name: "eval" }, { name: "ask_user_question" }, { name: "task" }],
+        systemMessage: new SystemMessage("Stable Chat contract."),
+      } as never,
+      async (request) => {
+        calls += 1;
+        visibleNames = request.tools.map((candidate) => String(candidate.name));
+        systemText = request.systemMessage?.text ?? "";
+        return new AIMessage("Corrected terminal answer.") as never;
+      },
+    );
+
+    expect(calls).toBe(1);
+    expect(visibleNames).toEqual([]);
+    expect(systemText).toContain("Terminal answer correction for this turn");
+    expect(systemText).toContain("Do not call a tool");
+    expect(systemText).toContain("Return the accepted ChatAnswerDraftV2 shape.");
+    expect((response as AIMessage).text).toBe("Corrected terminal answer.");
   });
 
   test("recovers one premature answer by requiring the turn-local strategy acknowledgement", async () => {

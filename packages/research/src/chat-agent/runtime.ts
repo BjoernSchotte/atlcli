@@ -41,7 +41,10 @@ import type { ResearchWorkspace } from "../workspace.js";
 import { classifyResearchError, redactResearchSecrets } from "../redaction.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
-import { finalizeChatAnswerV1 } from "./answer.js";
+import {
+  chatDraftNeedsHostRepairV1,
+  finalizeChatAnswerV1,
+} from "./answer.js";
 import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
 import {
@@ -397,6 +400,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
     strategyAcknowledged?: () => boolean;
     evidenceAccessRequired?: boolean;
     evidenceAccessAttempted?: () => boolean;
+    terminalRepairOnly?: () => boolean;
   } = {},
 ) {
   let completedEvidenceStep = false;
@@ -425,6 +429,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         return response;
       }
       try {
+        const terminalRepairOnly = options.terminalRepairOnly?.() === true;
         const filteredRequest = {
           ...request,
           // createDeepAgent always assembles filesystem and task scaffolding.
@@ -432,15 +437,29 @@ export function createChatDirectToolSurfaceMiddlewareV1(
           // and its durable HITL control. Atlassian reads remain available only
           // behind eval/PTC; structured-output tools are bound by LangChain after
           // this middleware.
-          tools: request.tools.filter((candidate) =>
-            candidate.name === "eval" || candidate.name === "ask_user_question"
-          ),
+          tools: terminalRepairOnly
+            ? []
+            : request.tools.filter((candidate) =>
+                candidate.name === "eval" || candidate.name === "ask_user_question"
+              ),
+          ...(terminalRepairOnly
+            ? {
+                systemMessage: request.systemMessage.concat(new SystemMessage([
+                  "Terminal answer correction for this turn:",
+                  "The host rejected the previous draft because its Markdown was incomplete or none of its factual blocks used an accepted detail-evidence reference.",
+                  "Use only the evidence already present in this conversation. Do not call a tool, ask a question, retrieve, or broaden scope.",
+                  "Return one complete ChatAnswerDraftV2. Cover every explicitly requested facet with a supported block or a precise gap, use only the exact allowed source references supplied by the host, and emit no abandoned alternatives.",
+                  options.answerOutputInstruction ?? "",
+                ].filter(Boolean).join("\n"))),
+              }
+            : {}),
         };
         let response;
         try {
           response = await handler(filteredRequest);
           const calledTools = diagnosticMessage(response).toolNames;
           if (
+            !terminalRepairOnly &&
             options.strategyAcknowledged &&
             !options.strategyAcknowledged() &&
             !calledTools.includes("eval")
@@ -460,6 +479,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
               },
             });
           } else if (
+            !terminalRepairOnly &&
             options.evidenceAccessRequired &&
             !options.evidenceAccessAttempted?.() &&
             !calledTools.includes("eval")
@@ -1954,6 +1974,7 @@ export function createKiteweaveChatAgent(
             emitActivity("hitl", "completed");
           },
         });
+        let terminalAnswerRepairOnly = false;
         const agent = runtime.createDeepAgent({
           name: "kiteweave-chat-agent",
           model,
@@ -2001,6 +2022,7 @@ export function createKiteweaveChatAgent(
               evidenceAccessAttempted: () =>
                 broker.detailEvidenceLedger().length > 0 ||
                 budget.counts().httpCalls > 0,
+              terminalRepairOnly: () => terminalAnswerRepairOnly,
             }),
             durableSummarizationMiddleware,
             rootModelBudgetMiddleware,
@@ -2397,9 +2419,67 @@ export function createKiteweaveChatAgent(
             "The Chat answer was produced without an accepted strategy decision.",
           );
         }
-        const finalDraft = agenticWorkflow
+        let finalResult = result;
+        let finalDraft = agenticWorkflow
           ? agenticWorkflow.assertComplete()
           : result.structuredResponse;
+        if (
+          !agenticWorkflow &&
+          chatDraftNeedsHostRepairV1({
+            draft: finalDraft,
+            detailEvidence: broker.detailEvidenceLedger(),
+            readSectionReferences: broker.readSectionReferenceLedger(),
+          })
+        ) {
+          terminalAnswerRepairOnly = true;
+          emitActivity("repair", "started");
+          input.onChatPresentation?.({
+            kind: "chat-presentation",
+            seq: nextEventSequence(),
+            at: new Date(now()).toISOString(),
+            channel: "answer-markdown",
+            status: "reset",
+          });
+          try {
+            finalResult = await agent.invoke({
+              messages: [new HumanMessage([
+                "The host rejected the previous terminal draft.",
+                "Rewrite the complete answer now from the evidence already read for the original user question.",
+                `Allowed sourceRefs: ${JSON.stringify([
+                  ...new Set(broker.detailEvidenceLedger().flatMap((entry) => [
+                    entry.source.id,
+                    ...broker.readSectionReferenceLedger()
+                      .filter((section) => section.sourceId === entry.source.id)
+                      .map((section) => `${section.sourceId}#${section.sectionId}`),
+                  ])),
+                ])}.`,
+                "Cover every explicitly requested facet or state one precise gap. Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
+              ].join("\n"))],
+            }, {
+              configurable: { thread_id: checkpoint.threadId },
+              recursionLimit: 12,
+              signal: controller.signal,
+            });
+            await modelBudgetWrite;
+            finalDraft = finalResult.structuredResponse;
+            if (chatDraftNeedsHostRepairV1({
+              draft: finalDraft,
+              detailEvidence: broker.detailEvidenceLedger(),
+              readSectionReferences: broker.readSectionReferenceLedger(),
+            })) {
+              throw new ChatContractError(
+                "invalid-report",
+                "The Chat answer repair did not produce a complete evidence-bound draft.",
+              );
+            }
+            emitActivity("repair", "completed");
+          } catch (error) {
+            emitActivity("repair", "failed");
+            throw error;
+          } finally {
+            terminalAnswerRepairOnly = false;
+          }
+        }
         if (!agenticWorkflow) await retrievalLedger.finalize();
         const retrievalAssessment = retrievalLedger.assessment();
         emitPhase("rendering");
@@ -2449,10 +2529,36 @@ export function createKiteweaveChatAgent(
                 ),
               };
             })(),
-            ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
+            ...(collectUsage(finalResult.messages)
+              ? { usage: collectUsage(finalResult.messages) }
+              : {}),
           },
           onAcceptedProjection: input.onAcceptedAnswerProjection,
         });
+        if (finalResult !== result) {
+          input.onChatPresentation?.({
+            kind: "chat-presentation",
+            seq: nextEventSequence(),
+            at: new Date(now()).toISOString(),
+            channel: "answer-markdown",
+            status: "started",
+          });
+          input.onChatPresentation?.({
+            kind: "chat-presentation",
+            seq: nextEventSequence(),
+            at: new Date(now()).toISOString(),
+            channel: "answer-markdown",
+            status: "delta",
+            delta: answer.messageMarkdown,
+          });
+          input.onChatPresentation?.({
+            kind: "chat-presentation",
+            seq: nextEventSequence(),
+            at: new Date(now()).toISOString(),
+            channel: "answer-markdown",
+            status: "completed",
+          });
+        }
         const acceptedEvidenceIds = new Set(
           broker.detailEvidenceLedger().flatMap((entry) =>
             answer.evidenceRefs.includes(entry.source.id) && entry.evidenceId
