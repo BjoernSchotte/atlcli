@@ -427,8 +427,38 @@ function normalizeFinalMarkdownStructureV1(markdown: string): string {
     inOrderedList = true;
     return `${match[1]}${orderedListIndex}${match[2]} ${match[3]}`;
   });
+  const withTableSeparators: string[] = [];
+  let inFence = false;
+  const tableRow = (line: string): string[] | undefined => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) return undefined;
+    const cells = trimmed.slice(1, -1).split("|").map((cell) => cell.trim());
+    return cells.length >= 2 && cells.some(Boolean) ? cells : undefined;
+  };
+  const tableSeparator = (line: string): boolean =>
+    /^\s*\|(?:\s*:?-{3,}:?\s*\|){2,}\s*$/u.test(line);
+  for (let index = 0; index < normalized.length; index += 1) {
+    const line = normalized[index]!;
+    withTableSeparators.push(line);
+    if (/^\s*```/u.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || tableSeparator(line)) continue;
+    const cells = tableRow(line);
+    const next = normalized[index + 1];
+    const previous = normalized[index - 1];
+    if (
+      !cells ||
+      next === undefined ||
+      tableSeparator(next) ||
+      !tableRow(next) ||
+      (previous !== undefined && (tableRow(previous) !== undefined || tableSeparator(previous)))
+    ) continue;
+    withTableSeparators.push(`| ${cells.map(() => "---").join(" | ")} |`);
+  }
   return removeEmptyMarkdownHeadingsV1(
-    normalized.join("\n").replace(/\n{3,}/gu, "\n\n").trim(),
+    withTableSeparators.join("\n").replace(/\n{3,}/gu, "\n\n").trim(),
   );
 }
 

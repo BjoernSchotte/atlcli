@@ -680,6 +680,44 @@ describe("Chat answer contract", () => {
     expect(answer.messageMarkdown).not.toMatch(/^\s*\d+[.)]\s*$/mu);
   });
 
+  test("repairs a missing Markdown table separator without changing fenced content", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "The following cost table is supported. [[source:wiki:1001]]",
+          "",
+          "| Cost | Logic |",
+          "| 10 EUR | Fixed |",
+          "| 20 EUR | Variable |",
+          "",
+          "```text",
+          "| not | a | table |",
+          "| still | code | here |",
+          "```",
+        ].join("\n"),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      run,
+    });
+
+    expect(answer.messageMarkdown).toContain("| --- | --- |");
+    expect(answer.messageMarkdown).toContain([
+      "```text",
+      "| not | a | table |",
+      "| still | code | here |",
+      "```",
+    ].join("\n"));
+    expect(answer.messageMarkdown.match(/\| --- \| --- \|/gu)).toHaveLength(1);
+    expect(answer.messageMarkdown).toContain([
+      "| 10 EUR | Fixed |",
+      "| 20 EUR | Variable |",
+    ].join("\n"));
+  });
+
   test("preserves validated Confluence section locators as heading deep links", () => {
     const answer = finalizeChatAnswerV1({
       draft: {

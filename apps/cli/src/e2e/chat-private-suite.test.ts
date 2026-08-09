@@ -165,6 +165,10 @@ describe("private Chat release suite", () => {
       "Empfohlen wird das verlustfreiem Profil.",
       ["verlustfreie Profil"],
     )).toBe(true);
+    expect(privateFactGroupMatchesV1(
+      "Für den Betrieb hat Qualität Vorrang vor Geschwindigkeit.",
+      ["Qualität vor Geschwindigkeit"],
+    )).toBe(true);
   });
 
   test("does not treat an explicit negation as a forbidden positive claim", () => {

@@ -290,6 +290,7 @@ function normalizedFact(value: string): string {
   return normalized(value)
     .replace(/\bt\s*&\s*m\b/gu, "time material")
     .replace(/\btime\s*(?:&|and)\s*material\b/gu, "time material")
+    .replace(/\bvorrang\s+vor\b/gu, "vor")
     .replace(/\bverlustfrei(?:e|em|en|er|es)?\b/gu, "verlustfrei")
     .replace(/\bverlustlos(?:e|em|en|er|es)?\b/gu, "verlustlos")
     .replace(/\b(?:weder|nicht\s+als)\b/gu, "kein")
