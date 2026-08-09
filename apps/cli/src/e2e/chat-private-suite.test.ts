@@ -96,6 +96,8 @@ describe("private Chat release suite", () => {
     expect(followUp).toContain("research-session:private");
     expect(followUp).toContain("--thinking");
     expect(followUp).toContain("deep");
+    expect(followUp).not.toContain("--max-run-minutes");
+    expect(followUp).not.toContain("--language");
 
     const research = buildChatPrivateCommandV1({
       args, suite, entry: suite.cases[1]!, variant: "deep-research", turnIndex: 0,

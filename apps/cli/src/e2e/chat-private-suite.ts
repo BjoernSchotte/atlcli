@@ -247,15 +247,19 @@ export function buildChatPrivateCommandV1(input: {
       "--max-cost-usd", String(input.suite.maxCostUsd), "--json", "--no-log", "--output", input.outputPath,
     ];
   }
+  const retained = input.sessionId !== undefined;
   return [
     ...executable(input.args.mode, root), "chat", turn.question,
-    ...(input.sessionId ? ["--session", input.sessionId] : [
+    ...(retained ? ["--session", input.sessionId] : [
       ...input.entry.projectKeys.flatMap((key) => ["--project", key]),
       ...input.entry.spaceKeys.flatMap((key) => ["--space", key]),
     ]),
     "--profile", input.suite.profile, "--thinking", input.variant,
-    "--language", input.suite.reportLanguage, "--max-run-minutes", String(input.suite.maxRunMinutes),
-    "--max-cost-usd", String(input.suite.maxCostUsd), "--keep-session", "--json", "--no-log", "--output", input.outputPath,
+    ...(retained ? [] : [
+      "--language", input.suite.reportLanguage, "--max-run-minutes", String(input.suite.maxRunMinutes),
+      "--max-cost-usd", String(input.suite.maxCostUsd),
+    ]),
+    "--keep-session", "--json", "--no-log", "--output", input.outputPath,
   ];
 }
 
