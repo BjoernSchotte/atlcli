@@ -29,6 +29,7 @@
     "check:readme-media": "bun scripts/ci/validate-readme-media.ts",
     "check:research-privacy": "bun scripts/ci/research-privacy.ts",
     "check:chat-performance": "bun scripts/chat-performance-ratchet.ts",
+    "check:chat-release-candidate": "bun scripts/chat-release-candidate-matrix.ts",
     "typecheck:extension": "turbo run typecheck --filter=@atlcli/extension",
     "typecheck:pdf-compiler-browser": "turbo run typecheck --filter=@atlcli/pdf-compiler-browser",
     "typecheck:browser-export-harness": "turbo run typecheck --filter=@atlcli/browser-export-harness",
