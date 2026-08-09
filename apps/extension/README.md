@@ -90,6 +90,19 @@ The AI workspace has two separate agent runtimes:
 - **Research** is the explicit long-running mode for broader, cited Jira and
   Confluence investigation and a downloadable Markdown report.
 
+The fixed synthetic release gate targets a maximum 120-second median and a
+180-second worst-of-three for a two-source **Think deeper** Chat. Simple attached
+pages stay on the direct path and are normally much faster. Provider and
+Atlassian latency can vary; the UI continues to stream user-facing progress and
+always keeps **Stop** available. Research keeps its separate, up-to-ten-minute
+report workflow and is never selected merely because Chat uses **Think deeper**.
+
+Provider routing is an adapter concern rather than a Chat behavior. The current
+Anthropic adapter uses one model ID and a bounded non-thinking finalization
+corridor for drafting, repair, and synthesis. Run diagnostics expose only safe
+aggregate counts by effective route and never prompts, source text, URLs,
+credentials, or hidden reasoning.
+
 Both modes bind an attached page directly by its ID. Jira is added only when
 the question, an explicit context, or a Jira reference discovered in the page
 requires it. Chat and Research share read-only capability contracts, but Chat

@@ -119,6 +119,37 @@ export interface ChatPerformanceRatchetResultV1 {
   };
 }
 
+/**
+ * Frozen release ceilings for the fixed two-anchor Deep Chat benchmark. Cache
+ * reads use Anthropic's current five-minute prompt-cache multiplier only as a
+ * stable comparison metric; this is not an invoice or a provider contract.
+ */
+export const CHAT_DEEP_FINAL_CEILINGS_V1 = Object.freeze({
+  measuredSamples: 3,
+  maximumModelCallsWithoutRepair: 10,
+  maximumModelCallsWithRepair: 11,
+  maximumBilledEquivalentInputTokens: 120_000,
+  maximumFreshInputTokens: 109_756,
+  maximumOutputTokens: 15_000,
+  maximumMedianDurationMs: 120_000,
+  maximumWorstDurationMs: 180_000,
+  maximumHttpCalls: 2,
+  requiredCoveragePermille: 1_000,
+  maximumWrongSourceCount: 0,
+  maximumFalseCompletenessCount: 0,
+} as const);
+
+export interface ChatDeepFinalCeilingResultV1 {
+  accepted: boolean;
+  failures: string[];
+  medianDurationMs: number;
+  worstDurationMs: number;
+  maximumFreshInputTokens: number;
+  maximumBilledEquivalentInputTokens: number;
+  maximumOutputTokens: number;
+  maximumModelCalls: number;
+}
+
 const SAFE_ID = /^[A-Za-z0-9._:-]{1,120}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 
@@ -364,6 +395,120 @@ export function createChatPerformanceReceiptV1(input: {
 function changePermille(before: number, after: number): number {
   if (before === 0) return after === 0 ? 0 : 1_000;
   return Math.round(((before - after) * 1_000) / before);
+}
+
+function billedEquivalentInputTokens(receipt: ChatPerformanceReceiptV1): number {
+  return receipt.metrics.inputTokens +
+    Math.round(receipt.metrics.cacheCreationInputTokens * 1.25) +
+    Math.round(receipt.metrics.cacheReadInputTokens * 0.1);
+}
+
+/**
+ * Release-blocking final gate for the three measured fixed-comparison samples.
+ * It is deliberately independent from the per-slice before/after evaluator so
+ * an accepted historical improvement cannot hide a later absolute regression.
+ */
+export function evaluateChatDeepFinalCeilingsV1(
+  values: readonly unknown[],
+): ChatDeepFinalCeilingResultV1 {
+  const receipts = values.map(parseChatPerformanceReceiptV1);
+  if (receipts.length !== CHAT_DEEP_FINAL_CEILINGS_V1.measuredSamples ||
+      receipts.some((receipt) =>
+        receipt.benchmarkId !== "deep-two-anchor-comparison" ||
+        receipt.mode !== "deep" ||
+        receipt.strategy !== "agentic" ||
+        receipt.sample !== "measured"
+      ) ||
+      new Set(receipts.map((receipt) => receipt.benchmarkFingerprint)).size !== 1 ||
+      new Set(receipts.map((receipt) => receipt.modelId)).size !== 1) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Deep Chat final receipts do not describe three measured samples of the same fixed comparison.",
+    );
+  }
+
+  const failures: string[] = [];
+  const durations = receipts.map((receipt) => receipt.metrics.durationMs)
+    .sort((left, right) => left - right);
+  const medianDurationMs = durations[1]!;
+  const worstDurationMs = durations[2]!;
+  const maximumFreshInputTokens = Math.max(...receipts.map((receipt) =>
+    receipt.metrics.inputTokens
+  ));
+  const maximumBilledEquivalentInputTokens = Math.max(...receipts.map(
+    billedEquivalentInputTokens,
+  ));
+  const maximumOutputTokens = Math.max(...receipts.map((receipt) =>
+    receipt.metrics.outputTokens
+  ));
+  const maximumModelCalls = Math.max(...receipts.map((receipt) => receipt.metrics.modelCalls));
+
+  for (const [index, receipt] of receipts.entries()) {
+    const repairAdmitted = (receipt.metrics.callsByProfile["answer-repairer"] ?? 0) > 0;
+    const modelCallCeiling = repairAdmitted
+      ? CHAT_DEEP_FINAL_CEILINGS_V1.maximumModelCallsWithRepair
+      : CHAT_DEEP_FINAL_CEILINGS_V1.maximumModelCallsWithoutRepair;
+    if (receipt.metrics.modelCalls > modelCallCeiling) {
+      failures.push(`sample ${index + 1} model-call ceiling exceeded`);
+    }
+    if (receipt.metrics.httpCalls > CHAT_DEEP_FINAL_CEILINGS_V1.maximumHttpCalls) {
+      failures.push(`sample ${index + 1} direct-read ceiling exceeded`);
+    }
+    if (!receipt.quality.expectedTrajectory) {
+      failures.push(`sample ${index + 1} expected trajectory failed`);
+    }
+    if (!receipt.quality.answerStreamingObserved) {
+      failures.push(`sample ${index + 1} answer streaming failed`);
+    }
+    const qualityFloors: Array<[number, string]> = [
+      [receipt.quality.exactAnchorCoveragePermille, "exact-anchor coverage"],
+      [receipt.quality.detailReadCoveragePermille, "detail-read coverage"],
+      [receipt.quality.citationPrecisionPermille, "citation precision"],
+      [receipt.quality.supportedAssertionPermille, "supported-assertion score"],
+      [receipt.quality.contradictionRecallPermille, "contradiction recall"],
+      [receipt.quality.relationshipRecallPermille, "relationship recall"],
+      [receipt.quality.materialGapRecallPermille, "material-gap recall"],
+    ];
+    for (const [value, label] of qualityFloors) {
+      if (value < CHAT_DEEP_FINAL_CEILINGS_V1.requiredCoveragePermille) {
+        failures.push(`sample ${index + 1} ${label} below floor`);
+      }
+    }
+    if (receipt.quality.wrongSourceCount > CHAT_DEEP_FINAL_CEILINGS_V1.maximumWrongSourceCount) {
+      failures.push(`sample ${index + 1} wrong-source ceiling exceeded`);
+    }
+    if (receipt.quality.falseCompletenessCount >
+        CHAT_DEEP_FINAL_CEILINGS_V1.maximumFalseCompletenessCount) {
+      failures.push(`sample ${index + 1} false-completeness ceiling exceeded`);
+    }
+  }
+  if (maximumFreshInputTokens > CHAT_DEEP_FINAL_CEILINGS_V1.maximumFreshInputTokens) {
+    failures.push("fresh-input ceiling exceeded");
+  }
+  if (maximumBilledEquivalentInputTokens >
+      CHAT_DEEP_FINAL_CEILINGS_V1.maximumBilledEquivalentInputTokens) {
+    failures.push("billed-equivalent input ceiling exceeded");
+  }
+  if (maximumOutputTokens > CHAT_DEEP_FINAL_CEILINGS_V1.maximumOutputTokens) {
+    failures.push("output ceiling exceeded");
+  }
+  if (medianDurationMs > CHAT_DEEP_FINAL_CEILINGS_V1.maximumMedianDurationMs) {
+    failures.push("median-duration ceiling exceeded");
+  }
+  if (worstDurationMs > CHAT_DEEP_FINAL_CEILINGS_V1.maximumWorstDurationMs) {
+    failures.push("worst-duration ceiling exceeded");
+  }
+
+  return {
+    accepted: failures.length === 0,
+    failures,
+    medianDurationMs,
+    worstDurationMs,
+    maximumFreshInputTokens,
+    maximumBilledEquivalentInputTokens,
+    maximumOutputTokens,
+    maximumModelCalls,
+  };
 }
 
 export function evaluateChatPerformanceRatchetV1(

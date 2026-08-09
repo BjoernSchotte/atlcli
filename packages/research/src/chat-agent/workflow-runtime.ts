@@ -86,7 +86,11 @@ import {
   chatFinalGapCodeForQualityDefectV1,
   createChatMissingComparisonCoverageDefectV1,
   createChatQualityDispositionV1,
+  isUnsupportedInternalPacketDisclosureV1,
+  isFalseDetailCoverageDisclosureV1,
+  isUnsupportedDirectRelationshipDisclosureV1,
   persistChatQualityArtifactsV1,
+  removeUnsupportedAcronymExpansionsV1,
   type ChatGroundednessAssessmentV1,
   type ChatQualityDispositionV1,
   type ChatRepairSkippedReasonV1,
@@ -470,6 +474,42 @@ function chatDraftMarkdownV1(draft: ChatAgentDraft): string {
   return "blocks" in draft
     ? draft.blocks.map((block) => block.markdown).join("\n\n")
     : draft.messageMarkdown;
+}
+
+function sanitizeChatDraftForUserV1(
+  draft: ChatAgentDraft,
+  question: string,
+  evidenceTexts: readonly string[],
+  completeDetailEvidence: boolean,
+  relationshipSupported: boolean,
+): ChatAgentDraft {
+  const unsupported = (text: string): boolean =>
+    isUnsupportedInternalPacketDisclosureV1({ text, question, evidenceTexts }) ||
+    isFalseDetailCoverageDisclosureV1({ text, completeDetailEvidence }) ||
+    isUnsupportedDirectRelationshipDisclosureV1({ text, relationshipSupported });
+  if ("blocks" in draft) {
+    const blocks = draft.blocks
+      .filter((block) => !unsupported(block.markdown))
+      .map((block) => ({
+          ...block,
+          markdown: removeUnsupportedAcronymExpansionsV1(block.markdown, evidenceTexts),
+      }));
+    return {
+      ...draft,
+      blocks: blocks.length > 0 ? blocks : draft.blocks,
+      gaps: draft.gaps.filter((gap) => !unsupported(gap.message)),
+    };
+  }
+  const paragraphs = draft.messageMarkdown.split(/\n{2,}/gu)
+    .filter((paragraph) => !unsupported(paragraph));
+  return {
+    ...draft,
+    messageMarkdown: removeUnsupportedAcronymExpansionsV1(
+      (paragraphs.length > 0 ? paragraphs : [draft.messageMarkdown]).join("\n\n"),
+      evidenceTexts,
+    ),
+    gaps: draft.gaps.filter((gap) => !unsupported(gap.message)),
+  };
 }
 
 function chatDraftHasEvidenceV1(draft: ChatAgentDraft): boolean {
@@ -2162,6 +2202,27 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
             rejectedSourceIds: qualityDisposition?.rejectedSourceIds ?? [],
           });
         }
+      }
+      if (profileId === "answer-drafter" || profileId === "answer-repairer" ||
+          profileId === "chat-synthesizer") {
+        const detailEvidence = input.broker.detailEvidenceLedger();
+        const relationshipSupported = Object.values(state.acceptedResults).some((result) => {
+          if (!result || typeof result !== "object" || Array.isArray(result)) return false;
+          const record = result as Record<string, unknown>;
+          return (Array.isArray(record.relationships) && record.relationships.length > 0) ||
+            (Array.isArray(record.relationshipRefs) && record.relationshipRefs.length > 0);
+        });
+        accepted = sanitizeChatDraftForUserV1(
+          parseChatAnswerDraftV1(accepted),
+          input.question,
+          detailEvidence.map((entry) => entry.content.text),
+          detailEvidence.length > 0 && detailEvidence.every((entry) =>
+            !entry.content.truncated &&
+            entry.coverage?.completeDocumentRead !== false &&
+            (entry.coverage?.issues.length ?? 0) === 0
+          ),
+          relationshipSupported,
+        );
       }
       state.acceptedResults[taskId] = structuredClone(accepted);
       state.taskStatuses[taskId] = "completed";

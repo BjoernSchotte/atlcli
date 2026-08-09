@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CHAT_DEEP_FINAL_CEILINGS_V1,
   CHAT_PERFORMANCE_BENCHMARK_IDS_V1,
   CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1,
   createChatPerformanceReceiptV1,
+  evaluateChatDeepFinalCeilingsV1,
   evaluateChatPerformanceRatchetV1,
   parseChatPerformanceReceiptV1,
   type ChatPerformanceQualityMetricsV1,
@@ -76,6 +78,29 @@ function receipt(observations: ResearchModelCallObservationV1[]) {
   });
 }
 
+function finalReceipts() {
+  return [10_000, 11_000, 12_000].map((durationMs) => ({
+    ...receipt([
+      observation(),
+      observation({ sequence: 2, profileId: "answer-drafter", phase: "drafting" }),
+      observation({ sequence: 3, profileId: "answer-critic", phase: "critique" }),
+      observation({ sequence: 4, profileId: "answer-repairer", phase: "repair" }),
+      observation({ sequence: 5, profileId: "chat-synthesizer", phase: "synthesis" }),
+    ]),
+    metrics: {
+      ...receipt([observation()]).metrics,
+      ...receipt([
+        observation(),
+        observation({ sequence: 2, profileId: "answer-drafter", phase: "drafting" }),
+        observation({ sequence: 3, profileId: "answer-critic", phase: "critique" }),
+        observation({ sequence: 4, profileId: "answer-repairer", phase: "repair" }),
+        observation({ sequence: 5, profileId: "chat-synthesizer", phase: "synthesis" }),
+      ]).metrics,
+      durationMs,
+    },
+  }));
+}
+
 describe("Deep Chat performance ratchet", () => {
   test("freezes all eight benchmark trajectories and their hand-labelled quality signals", () => {
     expect(Object.keys(CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1))
@@ -147,5 +172,59 @@ describe("Deep Chat performance ratchet", () => {
     expect(result.failures).toContain("citation precision regressed");
     expect(result.failures).toContain("duration reduction missed");
     expect(result.failures).toContain("duration regression exceeded tolerance");
+  });
+
+  test("freezes the accepted three-sample Deep Chat release ceilings", () => {
+    const result = evaluateChatDeepFinalCeilingsV1(finalReceipts());
+    expect(result).toMatchObject({
+      accepted: true,
+      failures: [],
+      medianDurationMs: 11_000,
+      worstDurationMs: 12_000,
+      maximumModelCalls: 5,
+    });
+    expect(CHAT_DEEP_FINAL_CEILINGS_V1).toMatchObject({
+      measuredSamples: 3,
+      maximumModelCallsWithoutRepair: 10,
+      maximumModelCallsWithRepair: 11,
+      maximumFreshInputTokens: 109_756,
+      maximumBilledEquivalentInputTokens: 120_000,
+      maximumOutputTokens: 15_000,
+      maximumMedianDurationMs: 120_000,
+      maximumWorstDurationMs: 180_000,
+    });
+  });
+
+  test.each([
+    ["calls", "sample 1 model-call ceiling exceeded", (values: ReturnType<typeof finalReceipts>) => {
+      values[0]!.metrics.modelCalls = 12;
+    }],
+    ["fresh input", "fresh-input ceiling exceeded", (values: ReturnType<typeof finalReceipts>) => {
+      values[0]!.metrics.inputTokens = CHAT_DEEP_FINAL_CEILINGS_V1.maximumFreshInputTokens + 1;
+    }],
+    ["cache-weighted input", "billed-equivalent input ceiling exceeded", (values: ReturnType<typeof finalReceipts>) => {
+      values[0]!.metrics.cacheReadInputTokens = 1_200_001;
+    }],
+    ["output", "output ceiling exceeded", (values: ReturnType<typeof finalReceipts>) => {
+      values[0]!.metrics.outputTokens = CHAT_DEEP_FINAL_CEILINGS_V1.maximumOutputTokens + 1;
+    }],
+    ["latency", "worst-duration ceiling exceeded", (values: ReturnType<typeof finalReceipts>) => {
+      values[2]!.metrics.durationMs = CHAT_DEEP_FINAL_CEILINGS_V1.maximumWorstDurationMs + 1;
+    }],
+    ["wrong sources", "sample 1 wrong-source ceiling exceeded", (values: ReturnType<typeof finalReceipts>) => {
+      values[0]!.quality.wrongSourceCount = 1;
+    }],
+    ["false completeness", "sample 1 false-completeness ceiling exceeded", (values: ReturnType<typeof finalReceipts>) => {
+      values[0]!.quality.falseCompletenessCount = 1;
+    }],
+    ["lost quality", "sample 1 supported-assertion score below floor", (values: ReturnType<typeof finalReceipts>) => {
+      values[0]!.quality.supportedAssertionPermille = 999;
+    }],
+  ])("rejects an independent final %s regression", (_label, failure, mutate) => {
+    const values = finalReceipts();
+    mutate(values);
+    const result = evaluateChatDeepFinalCeilingsV1(values);
+    expect(result.accepted).toBe(false);
+    expect(result.failures).toContain(failure);
   });
 });

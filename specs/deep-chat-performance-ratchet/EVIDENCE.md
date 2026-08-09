@@ -313,3 +313,54 @@ all browser-isomorphism checks, the extension output/CSP gate, and the research
 privacy scan. The complete packed production-MV3 suite passed 45/45 with one
 worker. The resource-capped full workspace run passed 7,006 tests across 530
 files with 15 intentional skips and zero failures.
+
+## T7 final cross-shape ratchet
+
+The final evaluator freezes independent ceilings for model calls, fresh and
+cache-weighted input, output, median and worst-case latency, source correctness,
+false completeness, and the hand-labelled quality floor. Separate negative
+fixtures prove that each dimension fails independently instead of being hidden
+inside one aggregate score.
+
+One warm-up and three measured provider-backed runs used the unchanged neutral
+two-anchor comparison corpus. The accepted measured set produced:
+
+| Metric | Final result | Release ceiling | Change from T0 median |
+| --- | ---: | ---: | ---: |
+| Duration, median | 73.331s | 120s | -40.3% |
+| Duration, worst | 73.633s | 180s | -49.9% from T0 worst |
+| Model calls, maximum | 7 | 10 normally / 11 with repair | -61.1% |
+| Fresh input, maximum | 2,535 | 109,756 | -98.8% |
+| Cache-weighted input, maximum | 4,902 | 120,000 | n/a at T0 |
+| Output, maximum | 860 | 15,000 | -58.3% |
+
+All three runs retained full admitted detail coverage, canonical source
+correctness, zero wrong sources, zero false completeness, supported central
+claims, streamed output, the central supervisor, dynamic specialist admission,
+the independent critic, conditional repair, and one final synthesizer.
+
+Two operator-approved private exact-context pages were exercised separately in
+isolated external CLI stores. They completed in 59.3s and 63.8s with one direct
+read each, full detail coverage, one accepted canonical source, and no unrelated
+product access. A retained follow-up completed in 45.0s with zero new HTTP
+calls and reused the accepted evidence. Initial operator review rejected noisy
+duplicate whole-page citations and an unbalanced German quote. The final answer
+projection now collapses repeated whole-page links only for a complete
+single-page direct answer, balances the quote, and leaves multi-source,
+section-level, and incomplete-retrieval citations untouched. A post-fix private
+follow-up and deterministic regression tests accepted the corrected Markdown.
+No private wording, identity, URL, source, answer, trace, or receipt is retained
+in Git.
+
+The freshly built production MV3 suite passed 45/45 with one worker. It covers
+exact page and issue anchors without search, Quick/Auto/Deep strategy isolation,
+three connected turns across worker recreation, evidence reuse, HITL, interrupted
+stream recovery, steering, cooperative stop, queued-message editing, remembered
+BYOK recovery, privacy redaction, bounded PTC, and safe Markdown rendering.
+Explicit Deep Research continues through its separate durable Research root and
+was not routed through ordinary Chat.
+
+The final focused quality suite passed 126 tests before the repository-wide
+gate. Typecheck, production build, browser isomorphism, extension output/CSP,
+public API/closure, and tracked-tree privacy checks passed. All private artifacts
+remain only under the external timestamped operator artifact root.

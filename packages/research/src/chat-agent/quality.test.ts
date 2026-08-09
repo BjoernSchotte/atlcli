@@ -4,6 +4,10 @@ import {
   assessChatGroundednessBeforeCriticV1,
   createChatMissingComparisonCoverageDefectV1,
   createChatQualityDispositionV1,
+  isUnsupportedInternalPacketDisclosureV1,
+  isFalseDetailCoverageDisclosureV1,
+  isUnsupportedDirectRelationshipDisclosureV1,
+  removeUnsupportedAcronymExpansionsV1,
   type ChatQualityDefectV1,
 } from "./quality.js";
 
@@ -60,6 +64,62 @@ function retrieval(input: {
 }
 
 describe("Chat groundedness quality boundary", () => {
+  test("removes only acronym expansions absent from admitted detail evidence", () => {
+    expect(removeUnsupportedAcronymExpansionsV1(
+      "QuickJS PTC (Proper Tail Calls) remains bounded.",
+      ["The design uses QuickJS PTC with strict budgets."],
+    )).toBe("QuickJS PTC remains bounded.");
+    expect(removeUnsupportedAcronymExpansionsV1(
+      "Programmatic Tool Calling (PTC) remains bounded.",
+      ["The design uses QuickJS PTC with strict budgets."],
+    )).toBe("PTC remains bounded.");
+    expect(removeUnsupportedAcronymExpansionsV1(
+      "PTC (Programmatic Tool Calling) remains bounded.",
+      ["PTC means Programmatic Tool Calling in this document."],
+    )).toBe("PTC (Programmatic Tool Calling) remains bounded.");
+    expect(removeUnsupportedAcronymExpansionsV1(
+      "Research Design (Research design) remains a title.",
+      ["Research Design"],
+    )).toBe("Research Design (Research design) remains a title.");
+  });
+
+  test("keeps internal packet topology out of unrelated user-visible limits", () => {
+    expect(isUnsupportedInternalPacketDisclosureV1({
+      text: "Only one evidence packet was available for contradiction checking.",
+      question: "Compare the two design pages.",
+      evidenceTexts: ["The host renders deterministic Markdown."],
+    })).toBe(true);
+    expect(isUnsupportedInternalPacketDisclosureV1({
+      text: "The evidence packet schema is versioned.",
+      question: "How is the evidence packet structured?",
+      evidenceTexts: [],
+    })).toBe(false);
+  });
+
+  test("rejects invented summary-only limits only when the detail ledger is complete", () => {
+    for (const text of [
+      "Only summary-level evidence projections were reviewed.",
+      "No raw source body was available to confirm the acronym.",
+    ]) {
+      expect(isFalseDetailCoverageDisclosureV1({ text, completeDetailEvidence: true }))
+        .toBe(true);
+      expect(isFalseDetailCoverageDisclosureV1({ text, completeDetailEvidence: false }))
+        .toBe(false);
+    }
+  });
+
+  test("rejects direct linkage prose without an accepted relationship", () => {
+    const text = "Research design feeds into the Markdown output contract.";
+    expect(isUnsupportedDirectRelationshipDisclosureV1({
+      text,
+      relationshipSupported: false,
+    })).toBe(true);
+    expect(isUnsupportedDirectRelationshipDisclosureV1({
+      text,
+      relationshipSupported: true,
+    })).toBe(false);
+  });
+
   test("turns omitted comparison-source coverage into one repairable host defect", () => {
     const defect = createChatMissingComparisonCoverageDefectV1([
       "wiki:1002",

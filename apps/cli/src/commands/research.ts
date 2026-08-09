@@ -4099,6 +4099,10 @@ Ask a bounded, read-only Jira or Confluence question without composing a Deep Re
 The first turn uses only explicit --project/--space context or scope named in the question;
 profile defaults never widen an ordinary chat to an unrelated product. Follow-up turns restore
 the same durable DeepAgentsJS conversation and approved scope.
+Quick stays direct; Auto chooses a bounded strategy; Deep may compose focused specialists,
+an independent critic, and one synthesizer. Deep is still ordinary Chat, not the separate
+up-to-ten-minute Research report workflow. The fixed two-source Deep release gate is 120s
+median and 180s worst-of-three; real provider and Atlassian latency can vary.
 
 Options:
   --profile <name>       Auth profile

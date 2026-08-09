@@ -5,6 +5,7 @@ describe("Chat performance ratchet CLI", () => {
   test("keeps release defaults strict and accepts explicit T0 baseline thresholds", () => {
     expect(parseChatPerformanceRatchetArgumentsV1(["before.json", "after.json"]))
       .toMatchObject({
+        kind: "slice",
         beforePath: "before.json",
         afterPath: "after.json",
         policy: { minimumCallReduction: 1 },
@@ -20,6 +21,18 @@ describe("Chat performance ratchet CLI", () => {
         maximumDurationRegressionPermille: 75,
       },
     });
+  });
+
+  test("accepts exactly three final measured receipts", () => {
+    expect(parseChatPerformanceRatchetArgumentsV1([
+      "--final", "one.json", "two.json", "three.json",
+    ])).toEqual({
+      kind: "final",
+      receiptPaths: ["one.json", "two.json", "three.json"],
+    });
+    expect(() => parseChatPerformanceRatchetArgumentsV1([
+      "--final", "one.json", "two.json",
+    ])).toThrow("RUN1.json RUN2.json RUN3.json");
   });
 
   test("rejects unknown flags and malformed thresholds", () => {

@@ -217,6 +217,35 @@ describe("Chat answer contract", () => {
     });
   });
 
+  test("collapses repeated whole-page citations and balances German closing quotes", () => {
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          "## Zusammenfassung: „Synthetische Seite",
+          "",
+          "Die Seite belegt die erste Aussage. [[source:wiki:1001]]",
+          "",
+          "Eine zweite Aussage nennt einen Wert von „zwei Einheiten. [[source:wiki:1001]]",
+        ].join("\n"),
+        citationSourceIds: ["wiki:1001"],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{
+        source: syntheticPageSource,
+        content: syntheticCompleteContent,
+      }],
+      qualityPolicy: chatQualityPolicyV1("deep"),
+      run,
+    });
+
+    const canonical = "[Synthetic page](https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001)";
+    expect(answer.messageMarkdown.split(canonical)).toHaveLength(2);
+    expect(answer.messageMarkdown).toContain("## Zusammenfassung: „Synthetische Seite“");
+    expect(answer.messageMarkdown).toContain("einen Wert von „zwei Einheiten.“");
+    expect(answer.citations).toHaveLength(1);
+  });
+
   test("removes orphan citation lines and humanizes internal wiki IDs", () => {
     const answer = finalizeChatAnswerV1({
       draft: {

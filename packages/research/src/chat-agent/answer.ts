@@ -419,6 +419,39 @@ function normalizeFinalMarkdownStructureV1(markdown: string): string {
   );
 }
 
+function balanceGermanClosingQuotesV1(markdown: string): string {
+  return markdown.split("\n").map((line) => {
+    const opening = [...line.matchAll(/„/gu)].length;
+    const closing = [...line.matchAll(/“/gu)].length;
+    if (opening <= closing) return line;
+    const trailingCitation = /^(.*?)(\s+(?:\[[^\]]+\]\(https?:\/\/[^)]+\)\s*)+)$/u.exec(line);
+    return trailingCitation
+      ? `${trailingCitation[1]}“${trailingCitation[2]}`
+      : `${line}“`;
+  }).join("\n");
+}
+
+function collapseRepeatedSinglePageCitationV1(
+  markdown: string,
+  citationKeys: readonly string[],
+  sourceById: ReadonlyMap<string, ResearchSourceReferenceV1>,
+  allowed: boolean,
+): string {
+  if (!allowed || citationKeys.length !== 1 || citationKeys[0]!.includes("#")) return markdown;
+  const source = sourceById.get(citationKeys[0]!);
+  if (!source) return markdown;
+  const canonical = `[${escapeMarkdownLabel(source.title)}](${source.url})`;
+  let retained = false;
+  return markdown.split("\n").map((line) => {
+    if (!line.includes(canonical)) return line;
+    if (!retained) {
+      retained = true;
+      return line;
+    }
+    return line.split(canonical).join("").replace(/[ \t]+$/gu, "");
+  }).join("\n");
+}
+
 function removeStandaloneEvidencePlaceholderLinesV1(markdown: string): string {
   return markdown
     .split("\n")
@@ -907,6 +940,18 @@ export function finalizeChatAnswerV1(input: {
     const canonical = `[${escapeMarkdownLabel(label)}](${url})`;
     messageMarkdown = messageMarkdown.split(placeholder.raw).join(canonical);
   }
+  messageMarkdown = collapseRepeatedSinglePageCitationV1(
+    messageMarkdown,
+    citationKeys,
+    sourceById,
+    input.strategyReview === undefined && input.detailEvidence.length === 1 &&
+      detailProjectionCompleteV2(input.detailEvidence[0]!) &&
+      (input.run.retrieval === undefined ||
+        (input.run.retrieval.detailReadCoverage === 1 &&
+          input.run.retrieval.deferredCandidates === 0 &&
+          input.run.retrieval.admittedCandidates === input.run.retrieval.detailReadCandidates)),
+  );
+  messageMarkdown = balanceGermanClosingQuotesV1(messageMarkdown);
   const incompleteCitedDocument = [...citedCoverage.values()].some((coverage) =>
     coverage.incomplete && !coverage.complete
   );

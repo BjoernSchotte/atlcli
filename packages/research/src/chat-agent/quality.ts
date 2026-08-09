@@ -152,6 +152,72 @@ function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right, "en-US"));
 }
 
+function normalizedEvidencePhrase(value: string): string {
+  return value.normalize("NFKC").toLocaleLowerCase("en-US").replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * Removes only explicit acronym expansions that no admitted detail evidence
+ * contains. The acronym itself is retained, so the host never invents a
+ * definition while preserving the source's original terminology.
+ */
+export function removeUnsupportedAcronymExpansionsV1(
+  markdown: string,
+  evidenceTexts: readonly string[],
+): string {
+  const normalizedEvidence = evidenceTexts.map(normalizedEvidencePhrase);
+  const supported = (expansion: string): boolean => {
+    const normalized = normalizedEvidencePhrase(expansion);
+    return normalized.length > 0 && normalizedEvidence.some((text) => text.includes(normalized));
+  };
+  const acronymFirst = markdown.replace(
+    /\b([A-Z][A-Z0-9]{1,9})\s*\(([^()\n]{2,80})\)/gu,
+    (whole, acronym: string, expansion: string) => supported(expansion) ? whole : acronym,
+  );
+  return acronymFirst.replace(
+    /\b([A-Z][A-Za-z]+(?:[ -]+[A-Z][A-Za-z]+){1,7})\s*\(([A-Z][A-Z0-9]{1,9})\)/gu,
+    (whole, expansion: string, acronym: string) => supported(expansion) ? whole : acronym,
+  );
+}
+
+const INTERNAL_PACKET_PATTERN = /\b(?:dependency|evidence) packets?\b/iu;
+
+/** User-visible answers may discuss packet mechanics only when the question or
+ * admitted source text actually asks about them; runtime topology is not an
+ * evidence limitation and must not leak into an otherwise ordinary answer. */
+export function isUnsupportedInternalPacketDisclosureV1(input: {
+  text: string;
+  question: string;
+  evidenceTexts: readonly string[];
+}): boolean {
+  if (!INTERNAL_PACKET_PATTERN.test(input.text)) return false;
+  return !INTERNAL_PACKET_PATTERN.test(input.question) &&
+    !input.evidenceTexts.some((text) => INTERNAL_PACKET_PATTERN.test(text));
+}
+
+const FALSE_DETAIL_LIMIT_PATTERN = /(?:\bsummary[- ](?:only|level)\b|\bonly (?:the )?(?:summary|excerpt|outline) (?:was|were) (?:read|reviewed|available)\b|\braw (?:page|source) bod(?:y|ies) (?:was|were) not available\b|\bno raw (?:page|source) bod(?:y|ies) (?:was|were) available\b|\bfull (?:page|source) (?:was|were) not (?:read|available)\b)/iu;
+
+/** Rejects model-authored retrieval disclaimers that contradict the durable
+ * detail-evidence ledger. Genuine truncation and partial coverage remain in
+ * the typed host gaps and are never removed by this check. */
+export function isFalseDetailCoverageDisclosureV1(input: {
+  text: string;
+  completeDetailEvidence: boolean;
+}): boolean {
+  return input.completeDetailEvidence && FALSE_DETAIL_LIMIT_PATTERN.test(input.text);
+}
+
+const DIRECT_RELATIONSHIP_PATTERN = /\b(?:feeds? into|directly related|is linked to|connects? to|implements?|depends? on)\b/iu;
+
+/** Direct source-to-source linkage is stronger than an analytical comparison.
+ * Keep it only when the admitted evidence graph contains an explicit relation. */
+export function isUnsupportedDirectRelationshipDisclosureV1(input: {
+  text: string;
+  relationshipSupported: boolean;
+}): boolean {
+  return !input.relationshipSupported && DIRECT_RELATIONSHIP_PATTERN.test(input.text);
+}
+
 function validCanonicalSource(
   source: ResearchDetailEvidenceV1["source"],
   siteOrigin: string,

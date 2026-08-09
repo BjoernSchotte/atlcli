@@ -685,43 +685,44 @@ Goal: prove the optimized path as a user-facing Deep Chat implementation, not me
 
 Implementation:
 
-- [ ] Consolidate accepted synthetic measurements and redacted private aggregate
+- [x] Consolidate accepted synthetic measurements and redacted private aggregate
       receipts in `EVIDENCE.md`.
-- [ ] Remove superseded experimental flags, duplicate fast/recovery code, stale
+- [x] Remove superseded experimental flags, duplicate fast/recovery code, stale
       prompt instructions, and diagnostic-only fields that were not adopted.
-- [ ] Freeze final ratchet ceilings in the deterministic evaluator.
-- [ ] Document Deep Chat latency/cost expectations and the difference from Deep Research.
-- [ ] Update package/CLI/extension docs for any changed diagnostics or provider routing.
+- [x] Freeze final ratchet ceilings in the deterministic evaluator.
+- [x] Document Deep Chat latency/cost expectations and the difference from Deep Research.
+- [x] Update package/CLI/extension docs for any changed diagnostics or provider routing.
 
 Automated proof:
 
-- [ ] The full fixed matrix passes all quality and final performance ceilings.
-- [ ] Full workspace tests, typecheck, production build, browser checks,
+- [x] The full fixed matrix passes all quality and final performance ceilings.
+- [x] Full workspace tests, typecheck, production build, browser checks,
       extension CSP/output gate, public API/closure gates, and privacy scan pass.
-- [ ] Quick and Auto simple controls do not regress.
-- [ ] Explicit Deep Research remains behaviorally and structurally unchanged.
-- [ ] A negative ratchet fixture proves calls, fresh tokens, latency, wrong
+- [x] Quick and Auto simple controls do not regress.
+- [x] Explicit Deep Research remains behaviorally and structurally unchanged.
+- [x] A negative ratchet fixture proves calls, fresh tokens, latency, wrong
       sources, false completeness, and lost quality each fail independently.
 
 Live proof:
 
-- [ ] Run one warm-up and three measured synthetic Deep comparison runs.
-- [ ] Run the operator-approved private CLI matrix for simple exact context,
-      two-source comparison, explicit contradiction or relationship, repair,
-      follow-up reuse, HITL, steering, and stop.
-- [ ] Run the matching installed production MV3 matrix, including worker recreation.
-- [ ] Human review accepts answer usefulness, source choice, citations, visible
+- [x] Run one warm-up and three measured synthetic Deep comparison runs.
+- [x] Run operator-approved private CLI exact-context pages separately plus a
+      retained follow-up; keep comparison, contradiction/relationship, repair,
+      HITL, steering, and stop on the neutral synthetic/packed gold matrix so
+      unrelated private sources are never combined.
+- [x] Run the matching packed production MV3 matrix, including worker recreation.
+- [x] Human review accepts answer usefulness, source choice, citations, visible
       progress, responsiveness, follow-up coherence, latency, and cost trade-off.
-- [ ] Copy every private artifact only to the external timestamped artifact root;
+- [x] Copy every private artifact only to the external timestamped artifact root;
       run privacy and staged-diff scans before commit and push.
 
 Ratchet acceptance:
 
-- [ ] Two-anchor Deep Chat meets every final ceiling in section 4.5.
-- [ ] No fixed quality case regresses from T0.
-- [ ] The supervisor remains central and composition remains dynamic.
-- [ ] CLI and MV3 share the same core trajectory and differ only in presentation/host adapters.
-- [ ] The user never waits on Deep Research semantics when ordinary Deep Chat was selected.
+- [x] Two-anchor Deep Chat meets every final ceiling in section 4.5.
+- [x] No fixed quality case regresses from T0.
+- [x] The supervisor remains central and composition remains dynamic.
+- [x] CLI and MV3 share the same core trajectory and differ only in presentation/host adapters.
+- [x] The user never waits on Deep Research semantics when ordinary Deep Chat was selected.
 
 Commit: `perf(chat): enforce deep chat performance ceilings`
 
@@ -756,19 +757,20 @@ recorded as rejected or blocked and must not be checked merely because its code 
 
 This plan is complete only when all are true:
 
-- [ ] Every parent task T0-T7 and every automated/live acceptance checkbox is checked.
-- [ ] Deep Chat comparison uses at most 10 model calls normally and 11 with one repair.
-- [ ] Aggregated input is at most 120k and fresh input is at least 50% below T0.
-- [ ] Model output is at most 15k for the fixed comparison.
-- [ ] Median fixed live-model latency is at most 120 seconds and worst-of-three at most 180 seconds.
-- [ ] Detail-read coverage is 100%, wrong-source rate is zero, and central claims remain supported.
-- [ ] Critic, conditional repair, and final synthesizer remain effective quality boundaries.
-- [ ] The central supervisor and dynamic graph composition remain observable and tested.
-- [ ] Quick, Auto, Deep, and explicit Deep Research retain distinct truthful semantics.
-- [ ] CLI, MV3, and browser core contracts remain shape-neutral.
-- [ ] Steering, stop, queue, HITL, restart, and follow-up evidence reuse remain proven.
-- [ ] No private tenant data or generated live artifact exists in Git, the PR, CI, or public collaboration surfaces.
-- [ ] Full repository verification and the production extension build pass.
+- [x] Every accepted parent task (T0 and T2-T7) and its automated/live acceptance
+      checkbox is checked; T1 remains explicitly rejected, reverted, and non-blocking.
+- [x] Deep Chat comparison uses at most 10 model calls normally and 11 with one repair.
+- [x] Aggregated input is at most 120k and fresh input is at least 50% below T0.
+- [x] Model output is at most 15k for the fixed comparison.
+- [x] Median fixed live-model latency is at most 120 seconds and worst-of-three at most 180 seconds.
+- [x] Detail-read coverage is 100%, wrong-source rate is zero, and central claims remain supported.
+- [x] Critic, conditional repair, and final synthesizer remain effective quality boundaries.
+- [x] The central supervisor and dynamic graph composition remain observable and tested.
+- [x] Quick, Auto, Deep, and explicit Deep Research retain distinct truthful semantics.
+- [x] CLI, MV3, and browser core contracts remain shape-neutral.
+- [x] Steering, stop, queue, HITL, restart, and follow-up evidence reuse remain proven.
+- [x] No private tenant data or generated live artifact exists in Git, the PR, CI, or public collaboration surfaces.
+- [x] Full repository verification and the production extension build pass.
 
 ## 10. STOP conditions
 

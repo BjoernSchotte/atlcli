@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseChatAgentLiveArgumentsV1 } from "./chat-agent-live.js";
+import {
+  parseChatAgentLiveArgumentsV1,
+  syntheticSecondPageNameV1,
+} from "./chat-agent-live.js";
 
 describe("synthetic provider-backed Chat live harness", () => {
   test("defaults to Deep without embedding tenant input", () => {
@@ -68,6 +71,13 @@ describe("synthetic provider-backed Chat live harness", () => {
       benchmarkId: "deep-cross-product-relationship",
       question: "Trace the explicit relationship.",
     });
+  });
+
+  test("keeps the bound second-page label consistent with each synthetic corpus", () => {
+    expect(syntheticSecondPageNameV1("deep-two-anchor-comparison"))
+      .toBe("Markdown output contract");
+    expect(syntheticSecondPageNameV1("deep-explicit-contradiction"))
+      .toBe("Alternative design");
   });
 
   test("supports compact live-proof output without changing the run", () => {

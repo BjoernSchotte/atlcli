@@ -851,6 +851,22 @@ export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-led
 // export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
 export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
 
+// export: CHAT_DEEP_FINAL_CEILINGS_V1
+export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
+    readonly measuredSamples: 3;
+    readonly maximumModelCallsWithoutRepair: 10;
+    readonly maximumModelCallsWithRepair: 11;
+    readonly maximumBilledEquivalentInputTokens: 120000;
+    readonly maximumFreshInputTokens: 109756;
+    readonly maximumOutputTokens: 15000;
+    readonly maximumMedianDurationMs: 120000;
+    readonly maximumWorstDurationMs: 180000;
+    readonly maximumHttpCalls: 2;
+    readonly requiredCoveragePermille: 1000;
+    readonly maximumWrongSourceCount: 0;
+    readonly maximumFalseCompletenessCount: 0;
+}>;
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -1393,6 +1409,18 @@ export interface ChatConversationSummaryV1 {
 
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatDeepFinalCeilingResultV1
+export interface ChatDeepFinalCeilingResultV1 {
+    accepted: boolean;
+    failures: string[];
+    medianDurationMs: number;
+    worstDurationMs: number;
+    maximumFreshInputTokens: number;
+    maximumBilledEquivalentInputTokens: number;
+    maximumOutputTokens: number;
+    maximumModelCalls: number;
+}
 
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
@@ -2849,6 +2877,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatDeepFinalCeilingsV1
+export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown[]): ChatDeepFinalCeilingResultV1;
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
@@ -9081,6 +9112,22 @@ export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-led
 // export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
 export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
 
+// export: CHAT_DEEP_FINAL_CEILINGS_V1
+export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
+    readonly measuredSamples: 3;
+    readonly maximumModelCallsWithoutRepair: 10;
+    readonly maximumModelCallsWithRepair: 11;
+    readonly maximumBilledEquivalentInputTokens: 120000;
+    readonly maximumFreshInputTokens: 109756;
+    readonly maximumOutputTokens: 15000;
+    readonly maximumMedianDurationMs: 120000;
+    readonly maximumWorstDurationMs: 180000;
+    readonly maximumHttpCalls: 2;
+    readonly requiredCoveragePermille: 1000;
+    readonly maximumWrongSourceCount: 0;
+    readonly maximumFalseCompletenessCount: 0;
+}>;
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -9623,6 +9670,18 @@ export interface ChatConversationSummaryV1 {
 
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatDeepFinalCeilingResultV1
+export interface ChatDeepFinalCeilingResultV1 {
+    accepted: boolean;
+    failures: string[];
+    medianDurationMs: number;
+    worstDurationMs: number;
+    maximumFreshInputTokens: number;
+    maximumBilledEquivalentInputTokens: number;
+    maximumOutputTokens: number;
+    maximumModelCalls: number;
+}
 
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
@@ -11070,6 +11129,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatDeepFinalCeilingsV1
+export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown[]): ChatDeepFinalCeilingResultV1;
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
@@ -17291,6 +17353,22 @@ export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-led
 // export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
 export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
 
+// export: CHAT_DEEP_FINAL_CEILINGS_V1
+export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
+    readonly measuredSamples: 3;
+    readonly maximumModelCallsWithoutRepair: 10;
+    readonly maximumModelCallsWithRepair: 11;
+    readonly maximumBilledEquivalentInputTokens: 120000;
+    readonly maximumFreshInputTokens: 109756;
+    readonly maximumOutputTokens: 15000;
+    readonly maximumMedianDurationMs: 120000;
+    readonly maximumWorstDurationMs: 180000;
+    readonly maximumHttpCalls: 2;
+    readonly requiredCoveragePermille: 1000;
+    readonly maximumWrongSourceCount: 0;
+    readonly maximumFalseCompletenessCount: 0;
+}>;
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -17833,6 +17911,18 @@ export interface ChatConversationSummaryV1 {
 
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatDeepFinalCeilingResultV1
+export interface ChatDeepFinalCeilingResultV1 {
+    accepted: boolean;
+    failures: string[];
+    medianDurationMs: number;
+    worstDurationMs: number;
+    maximumFreshInputTokens: number;
+    maximumBilledEquivalentInputTokens: number;
+    maximumOutputTokens: number;
+    maximumModelCalls: number;
+}
 
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
@@ -19289,6 +19379,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatDeepFinalCeilingsV1
+export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown[]): ChatDeepFinalCeilingResultV1;
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
@@ -25530,6 +25623,22 @@ export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-led
 // export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
 export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
 
+// export: CHAT_DEEP_FINAL_CEILINGS_V1
+export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
+    readonly measuredSamples: 3;
+    readonly maximumModelCallsWithoutRepair: 10;
+    readonly maximumModelCallsWithRepair: 11;
+    readonly maximumBilledEquivalentInputTokens: 120000;
+    readonly maximumFreshInputTokens: 109756;
+    readonly maximumOutputTokens: 15000;
+    readonly maximumMedianDurationMs: 120000;
+    readonly maximumWorstDurationMs: 180000;
+    readonly maximumHttpCalls: 2;
+    readonly requiredCoveragePermille: 1000;
+    readonly maximumWrongSourceCount: 0;
+    readonly maximumFalseCompletenessCount: 0;
+}>;
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -26081,6 +26190,18 @@ export interface ChatConversationSummaryV1 {
 
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatDeepFinalCeilingResultV1
+export interface ChatDeepFinalCeilingResultV1 {
+    accepted: boolean;
+    failures: string[];
+    medianDurationMs: number;
+    worstDurationMs: number;
+    maximumFreshInputTokens: number;
+    maximumBilledEquivalentInputTokens: number;
+    maximumOutputTokens: number;
+    maximumModelCalls: number;
+}
 
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
@@ -27727,6 +27848,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatDeepFinalCeilingsV1
+export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown[]): ChatDeepFinalCeilingResultV1;
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
@@ -34223,6 +34347,22 @@ export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-led
 // export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
 export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
 
+// export: CHAT_DEEP_FINAL_CEILINGS_V1
+export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
+    readonly measuredSamples: 3;
+    readonly maximumModelCallsWithoutRepair: 10;
+    readonly maximumModelCallsWithRepair: 11;
+    readonly maximumBilledEquivalentInputTokens: 120000;
+    readonly maximumFreshInputTokens: 109756;
+    readonly maximumOutputTokens: 15000;
+    readonly maximumMedianDurationMs: 120000;
+    readonly maximumWorstDurationMs: 180000;
+    readonly maximumHttpCalls: 2;
+    readonly requiredCoveragePermille: 1000;
+    readonly maximumWrongSourceCount: 0;
+    readonly maximumFalseCompletenessCount: 0;
+}>;
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -34774,6 +34914,18 @@ export interface ChatConversationSummaryV1 {
 
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatDeepFinalCeilingResultV1
+export interface ChatDeepFinalCeilingResultV1 {
+    accepted: boolean;
+    failures: string[];
+    medianDurationMs: number;
+    worstDurationMs: number;
+    maximumFreshInputTokens: number;
+    maximumBilledEquivalentInputTokens: number;
+    maximumOutputTokens: number;
+    maximumModelCalls: number;
+}
 
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
@@ -36410,6 +36562,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatDeepFinalCeilingsV1
+export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown[]): ChatDeepFinalCeilingResultV1;
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
@@ -44952,6 +45107,22 @@ export declare const CHAT_CANDIDATE_LEDGER_SCHEMA_V1: "atlcli.chat-candidate-led
 // export: CHAT_CONVERSATION_MEMORY_SCHEMA_V1
 export declare const CHAT_CONVERSATION_MEMORY_SCHEMA_V1: "atlcli.chat-conversation-memory/v1";
 
+// export: CHAT_DEEP_FINAL_CEILINGS_V1
+export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
+    readonly measuredSamples: 3;
+    readonly maximumModelCallsWithoutRepair: 10;
+    readonly maximumModelCallsWithRepair: 11;
+    readonly maximumBilledEquivalentInputTokens: 120000;
+    readonly maximumFreshInputTokens: 109756;
+    readonly maximumOutputTokens: 15000;
+    readonly maximumMedianDurationMs: 120000;
+    readonly maximumWorstDurationMs: 180000;
+    readonly maximumHttpCalls: 2;
+    readonly requiredCoveragePermille: 1000;
+    readonly maximumWrongSourceCount: 0;
+    readonly maximumFalseCompletenessCount: 0;
+}>;
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -45503,6 +45674,18 @@ export interface ChatConversationSummaryV1 {
 
 // export: ChatCritiquePacketV1
 export type ChatCritiquePacketV1 = z.infer<typeof chatCritiquePacketSchemaV1>;
+
+// export: ChatDeepFinalCeilingResultV1
+export interface ChatDeepFinalCeilingResultV1 {
+    accepted: boolean;
+    failures: string[];
+    medianDurationMs: number;
+    worstDurationMs: number;
+    maximumFreshInputTokens: number;
+    maximumBilledEquivalentInputTokens: number;
+    maximumOutputTokens: number;
+    maximumModelCalls: number;
+}
 
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
@@ -47139,6 +47322,9 @@ export declare function escapeResearchCqlLiteral(value: string): string;
 
 // export: escapeResearchJqlLiteral
 export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: evaluateChatDeepFinalCeilingsV1
+export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown[]): ChatDeepFinalCeilingResultV1;
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;

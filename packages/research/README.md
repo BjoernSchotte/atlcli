@@ -39,6 +39,30 @@ session-only provider credentials and offers an explicit device-persistence
 opt-in restricted to trusted extension contexts; the CLI reads its key from the
 process environment and never persists it.
 
+### Chat depth, routing, and performance diagnostics
+
+Chat depth changes the bounded Chat strategy, not the product mode. **Quick**
+stays direct, **Auto** chooses direct or agentic work from the question and
+bound context, and **Deep** may compose focused reader, analysis, critic,
+repair, and synthesis roles. Deep Research remains a separate report runtime
+with its own approval and long-running completion contract.
+
+Model routing is provider-neutral and host-owned. Every root and specialist
+role declares a preference; a provider adapter may use one model for every
+role, select another model, or apply provider controls. The current Anthropic
+adapter keeps one model ID and uses an explicit bounded finalization corridor
+for drafting, repair, and synthesis. Routing never grants scope, tools, graph
+admission, or evidence authority.
+
+`ChatRunSummaryV1.modelRouting` exposes only aggregate counts by effective model,
+role route, preference, thinking mode, and finalization corridor. It contains no
+prompts, answers, source bodies, URLs, queries, identifiers, credentials, or
+hidden reasoning. The fixed two-anchor Deep Chat release gate allows at most ten
+model calls without repair or eleven with one repair, 120 seconds median and
+180 seconds worst-of-three on the synthetic provider lane. Real provider and
+Atlassian latency can vary; those ceilings do not weaken the evidence floor or
+turn ordinary Chat into the ten-minute Deep Research workflow.
+
 The pinned QuickJS and Anthropic packages still expose optional Node-only
 branches. Browser bundlers therefore need the optional-dependency aliases used
 by `apps/extension/wxt.config.ts`; the packed MV3 build and E2E are the

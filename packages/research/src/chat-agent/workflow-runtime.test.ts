@@ -2823,6 +2823,52 @@ describe("Chat agentic workflow runtime", () => {
       .rejects.toThrow(/exceeds|invalid structured packet/u);
   });
 
+  test("sanitizes unsupported acronym expansions and internal packet limits before completion", async () => {
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-synthesizer-v1") {
+          return {
+            messageMarkdown: "QuickJS PTC (Proper Tail Calls) remains bounded.\n\nResearch design feeds into the Markdown output contract.",
+            citationSourceIds: [],
+            gaps: [{
+              code: "incomplete-coverage",
+              message: "Only one evidence packet was available for contradiction checking.",
+              sourceIds: [],
+            }],
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare claims.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const qualityById = new Map(quality.dispatches.map((entry) => [entry.taskId, entry]));
+    await invokeDispatch(harness.runtime, requireDispatch(qualityById, "task:synth"));
+
+    expect(harness.runtime.assertComplete()).toEqual({
+      messageMarkdown: "QuickJS PTC remains bounded.",
+      citationSourceIds: [],
+      gaps: [],
+    });
+  });
+
   test("improves an intentionally wrong-citation gold answer through one targeted repair", async () => {
     const invoked: string[] = [];
     const seenDescriptions = new Map<string, string>();

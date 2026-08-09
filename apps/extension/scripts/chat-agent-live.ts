@@ -134,6 +134,7 @@ function providersForBenchmarkV1(
         if (input.contentId !== "1002") return page;
         return {
           ...page,
+          title: syntheticSecondPageNameV1(benchmarkId),
           excerpt: "The alternative design rejects the bounded QuickJS execution decision.",
           content: {
             ...page.content,
@@ -143,6 +144,14 @@ function providersForBenchmarkV1(
       },
     },
   };
+}
+
+export function syntheticSecondPageNameV1(
+  benchmarkId: ChatPerformanceBenchmarkIdV1,
+): "Alternative design" | "Markdown output contract" {
+  return benchmarkId === "deep-explicit-contradiction"
+    ? "Alternative design"
+    : "Markdown output contract";
 }
 
 async function sha256Hex(value: unknown): Promise<string> {
@@ -210,7 +219,7 @@ export async function runChatAgentLiveV1(): Promise<void> {
                   entityKind: "page" as const,
                   entityRef: "research-scope-entity:synthetic-page-1002",
                   key: "1002",
-                  name: "Alternative design",
+                  name: syntheticSecondPageNameV1(argumentsV1.benchmarkId),
                   source: "current_context" as const,
                   authority: "approved" as const,
                 },

@@ -1,13 +1,22 @@
 import {
+  evaluateChatDeepFinalCeilingsV1,
   evaluateChatPerformanceRatchetV1,
   type ChatPerformanceRatchetPolicyV1,
 } from "../packages/research/src/chat-agent/performance-ratchet.js";
 
-interface ArgumentsV1 {
+interface SliceArgumentsV1 {
+  kind: "slice";
   beforePath: string;
   afterPath: string;
   policy: ChatPerformanceRatchetPolicyV1;
 }
+
+interface FinalArgumentsV1 {
+  kind: "final";
+  receiptPaths: [string, string, string];
+}
+
+type ArgumentsV1 = SliceArgumentsV1 | FinalArgumentsV1;
 
 function nonNegativeInteger(value: string | undefined, flag: string): number {
   const parsed = Number(value);
@@ -18,6 +27,14 @@ function nonNegativeInteger(value: string | undefined, flag: string): number {
 }
 
 export function parseChatPerformanceRatchetArgumentsV1(argv: readonly string[]): ArgumentsV1 {
+  if (argv[0] === "--final") {
+    if (argv.length !== 4 || argv.slice(1).some((argument) => argument.startsWith("--"))) {
+      throw new Error(
+        "Usage: bun scripts/chat-performance-ratchet.ts --final RUN1.json RUN2.json RUN3.json",
+      );
+    }
+    return { kind: "final", receiptPaths: [argv[1]!, argv[2]!, argv[3]!] };
+  }
   const paths: string[] = [];
   const policy: ChatPerformanceRatchetPolicyV1 = {
     minimumCallReduction: 1,
@@ -47,11 +64,17 @@ export function parseChatPerformanceRatchetArgumentsV1(argv: readonly string[]):
   if (paths.length !== 2) {
     throw new Error("Usage: bun scripts/chat-performance-ratchet.ts BEFORE.json AFTER.json [options]");
   }
-  return { beforePath: paths[0]!, afterPath: paths[1]!, policy };
+  return { kind: "slice", beforePath: paths[0]!, afterPath: paths[1]!, policy };
 }
 
 export async function runChatPerformanceRatchetV1(argv: readonly string[]): Promise<number> {
   const args = parseChatPerformanceRatchetArgumentsV1(argv);
+  if (args.kind === "final") {
+    const receipts = await Promise.all(args.receiptPaths.map((path) => Bun.file(path).json()));
+    const result = evaluateChatDeepFinalCeilingsV1(receipts);
+    console.log(JSON.stringify(result, null, 2));
+    return result.accepted ? 0 : 1;
+  }
   const [before, after] = await Promise.all([
     Bun.file(args.beforePath).json(),
     Bun.file(args.afterPath).json(),
