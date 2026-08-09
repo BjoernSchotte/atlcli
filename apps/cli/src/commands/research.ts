@@ -115,6 +115,18 @@ import {
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
 
+export const MAX_AUTOMATIC_CHAT_STREAM_RESUMES_V1 = 2;
+
+export function shouldAutomaticallyResumeChatStreamV1(input: {
+  checkpointAvailable: boolean;
+  completedAttempts: number;
+}): boolean {
+  return input.checkpointAvailable &&
+    Number.isInteger(input.completedAttempts) &&
+    input.completedAttempts >= 0 &&
+    input.completedAttempts < MAX_AUTOMATIC_CHAT_STREAM_RESUMES_V1;
+}
+
 export interface ResearchCliInput {
   question: string;
   profile?: string;
@@ -3402,7 +3414,10 @@ async function runDirectChatCliConversation(input: {
             action = "steering";
             continue;
           }
-          if (state?.streamInterruption && interruptionRetries === 0) {
+          if (shouldAutomaticallyResumeChatStreamV1({
+            checkpointAvailable: state?.streamInterruption !== undefined,
+            completedAttempts: interruptionRetries,
+          })) {
             interruptionRetries += 1;
             action = "stream-interruption";
             continue;

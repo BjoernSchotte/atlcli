@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import {
   RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
   RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+  ChatContractError,
   ResearchContractError,
   ResearchSessionDispatchJournalV1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
@@ -42,6 +43,8 @@ import {
   completeChatTurnV1,
   chatScopeFingerprintV1,
   CHAT_SESSION_PATH_V1,
+  completeChatStreamInterruptionV1,
+  recordChatStreamInterruptionV1,
   recordChatUserQuestionV1,
   type ChatUserQuestionAnswerV1,
   type ChatUserQuestionV1,
@@ -62,11 +65,33 @@ import {
   parseResearchCliInput,
   promptChatUserQuestionV1,
   researchArtifactPath,
+  shouldAutomaticallyResumeChatStreamV1,
   writeResearchMarkdownAtomic,
   cliChatHostIdentityV1,
   type ResearchCliDependencies,
   type ResearchCliWorkspace,
 } from "./research.js";
+
+describe("CLI Chat stream continuation policy", () => {
+  test("allows two durable automatic resumes and then stops", () => {
+    expect(shouldAutomaticallyResumeChatStreamV1({
+      checkpointAvailable: true,
+      completedAttempts: 0,
+    })).toBe(true);
+    expect(shouldAutomaticallyResumeChatStreamV1({
+      checkpointAvailable: true,
+      completedAttempts: 1,
+    })).toBe(true);
+    expect(shouldAutomaticallyResumeChatStreamV1({
+      checkpointAvailable: true,
+      completedAttempts: 2,
+    })).toBe(false);
+    expect(shouldAutomaticallyResumeChatStreamV1({
+      checkpointAvailable: false,
+      completedAttempts: 0,
+    })).toBe(false);
+  });
+});
 
 const profile: Profile = {
   name: "mayflower",
@@ -1369,6 +1394,96 @@ describe("research CLI one-shot contract", () => {
       turnId: "research-turn:cli-steering",
       resumeCheckpoint: { kind: "steering" },
     });
+  });
+
+  test("resumes the same durable Chat turn after two consecutive stream interruptions", async () => {
+    const harness = cliHarness({
+      createTurnId: () => "research-turn:cli-stream-recovery",
+    });
+    let attempt = 0;
+    harness.dependencies.runChatAgent = async (input) => {
+      harness.chatRunInputs.push(input);
+      const identity = cliChatHostIdentityV1(input.profile);
+      const interactions = await WorkspaceChatInteractionControllerV1.bind({
+        workspace: input.workspace,
+        conversationId: input.sessionId,
+        binding: {
+          ...identity,
+          threadId: input.sessionId,
+          tenantOrigin: input.request.scope.siteOrigin,
+        },
+        at: `2026-08-09T12:00:0${attempt}.000Z`,
+      });
+      input.onInteractionReady?.(interactions);
+      input.onResumeEnvelopeReady?.({
+        request: input.request,
+        qualityPolicy: input.qualityPolicy,
+      });
+
+      if (attempt < 2) {
+        attempt += 1;
+        await interactions.update((state) => recordChatStreamInterruptionV1({
+          state,
+          expectedRevision: state.revision,
+          turnId: input.turnId,
+          resume: {
+            request: input.request,
+            qualityPolicy: input.qualityPolicy,
+          },
+          at: `2026-08-09T12:00:0${attempt}.000Z`,
+        }));
+        throw new ChatContractError(
+          "paused",
+          "The provider stream stopped after the durable checkpoint.",
+        );
+      }
+
+      const interruption = interactions.snapshot().streamInterruption;
+      expect(interruption).toBeDefined();
+      await interactions.update((state) => completeChatStreamInterruptionV1({
+        state,
+        expectedRevision: state.revision,
+        turnId: input.turnId,
+        expectedInterruptionRevision: interruption!.revision,
+        at: "2026-08-09T12:00:03.000Z",
+      }));
+      return chatAnswer;
+    };
+
+    await handleChat(
+      ["Summarize the accepted evidence."],
+      { space: "DOCSY", thinking: "deep" },
+      { json: false },
+      harness.dependencies,
+    );
+
+    expect(harness.chatRunInputs).toHaveLength(3);
+    expect(harness.chatRunInputs.map((input) => ({
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      resumeCheckpoint: input.resumeCheckpoint,
+    }))).toEqual([
+      {
+        sessionId: "research-session:cli-plan",
+        turnId: "research-turn:cli-stream-recovery",
+        resumeCheckpoint: undefined,
+      },
+      {
+        sessionId: "research-session:cli-plan",
+        turnId: "research-turn:cli-stream-recovery",
+        resumeCheckpoint: { kind: "stream-interruption" },
+      },
+      {
+        sessionId: "research-session:cli-plan",
+        turnId: "research-turn:cli-stream-recovery",
+        resumeCheckpoint: { kind: "stream-interruption" },
+      },
+    ]);
+    const workspace = await harness.durableStore.workspace("research-session:cli-plan");
+    expect(JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ).streamInterruption).toBeUndefined();
+    expect(harness.stdout.join("\n")).toContain("Synthetic chat answer.");
   });
 
   test("runs three real Chat-root turns across a fresh CLI host and reuses accepted evidence", async () => {
