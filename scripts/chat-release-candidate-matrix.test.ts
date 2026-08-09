@@ -14,6 +14,9 @@ describe("release-candidate matrix CLI", () => {
     expect(() => parseChatReleaseCandidateMatrixArgumentsV1([
       "--receipt", "/private/tmp/a.json", "extra",
     ])).toThrow("Usage");
+    expect(() => parseChatReleaseCandidateMatrixArgumentsV1([
+      "--receipt", "relative/matrix.json",
+    ])).toThrow("absolute");
   });
 
   test("returns non-zero for an incomplete receipt", async () => {
@@ -24,11 +27,14 @@ describe("release-candidate matrix CLI", () => {
       proofs: [],
     }));
     const original = console.log;
+    const originalError = console.error;
     console.log = () => {};
+    console.error = () => {};
     try {
       expect(await runChatReleaseCandidateMatrixV1(["--receipt", path])).toBe(1);
     } finally {
       console.log = original;
+      console.error = originalError;
       await Bun.file(path).delete();
     }
   });

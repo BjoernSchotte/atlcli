@@ -51,6 +51,17 @@ Acceptance:
       completeness, missing lifecycle proof, missing MV3 proof, or rejected
       operator review.
 
+Authority correction (2026-08-09):
+
+- [x] Bind every proof to the current Git revision, frozen gold/requirement
+      manifest, creation time, and a recomputed canonical fingerprint.
+- [x] Bind every result to one opaque `caseId × variant` pair with explicit
+      check outcomes; derive and verify proof aggregates from those runs.
+- [x] Reject stale, foreign-revision, manifest-mismatched, fingerprint-mismatched,
+      duplicate, missing, or non-neutral private proof records.
+- [x] Enforce blocking per-run Chat/Research latency and private-live cost
+      ceilings, and reject relative receipt paths before filesystem access.
+
 ## T1 - Execute the customer-free production-runtime matrix
 
 - [ ] Add deterministic bodies and provider behavior for the committed gold
