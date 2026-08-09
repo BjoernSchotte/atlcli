@@ -874,6 +874,9 @@ export function createPlannedSearchAcquisitionToolV1(input: {
           entityRefs: [...entityRefs],
         }, nestedConfig), "Chat candidate ranking");
         const rankedItems = Array.isArray(ranked.items) ? ranked.items : [];
+        const alreadyDetailedSourceIds = new Set(
+          input.retrievalLedger.detailReadSourceIds(input.product),
+        );
         const admittedRefs: string[] = [];
         const retainedSourceIds: string[] = [];
         const admittedSourceIds = new Set<string>();
@@ -882,7 +885,7 @@ export function createPlannedSearchAcquisitionToolV1(input: {
           const entityRef = (candidate as { entityRef?: unknown }).entityRef;
           const sourceId = (candidate as { sourceId?: unknown }).sourceId;
           if (typeof entityRef !== "string" || typeof sourceId !== "string" ||
-              admittedSourceIds.has(sourceId)) continue;
+              admittedSourceIds.has(sourceId) || alreadyDetailedSourceIds.has(sourceId)) continue;
           admittedSourceIds.add(sourceId);
           admittedRefs.push(entityRef);
           retainedSourceIds.push(sourceId);
@@ -1057,6 +1060,7 @@ function compileChatSubagentsV1(input: {
     const modelRoute = input.modelForRoute?.({
       role: routeRole,
       preference: profile.modelPreference,
+      profileId: profile.id,
     }) ?? {
       model: finalizeOnly
         ? input.modelForFinalization!()
@@ -1739,6 +1743,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     const extractionRoute = input.modelForRoute?.({
       role: "extraction",
       preference: "fast",
+      profileId: "exact-context-reader",
     }) ?? {
       model: input.modelForPreference?.("fast") ?? input.model,
       effectiveModelId: runtimeModelId,

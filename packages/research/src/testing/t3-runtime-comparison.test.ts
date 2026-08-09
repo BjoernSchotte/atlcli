@@ -22,6 +22,7 @@ import {
 } from "../agent-draft.js";
 import {
   RESEARCH_EVALUATION_SCHEMA_V1,
+  scoreResearchEvaluationV1,
   type ResearchEvaluationGoldV1,
   type ResearchEvaluationObservationV1,
 } from "./evaluation.js";
@@ -31,6 +32,13 @@ import {
   type ResearchT3ComparisonRunEvidenceV1,
   type ResearchT3ComparisonVariantV1,
 } from "./t3-comparison.js";
+import {
+  finalizeChatReleaseCandidateProofV1,
+  finalizeChatReleaseCandidateRunV1,
+  fingerprintChatReleaseCandidateManifestV1,
+  type ChatReleaseCandidateCheckResultV1,
+  type ChatReleaseCandidateRunV1,
+} from "../chat-agent/release-candidate-matrix.js";
 
 const request = normalizeResearchRequestV1({
   schema: "atlcli.research-request/v1",
@@ -489,6 +497,59 @@ async function runtimeEvidence(
   };
 }
 
+const controlCaseByVariant = {
+  S1: "research:single-worker-control",
+  S2: "research:parallel-workers-control",
+  S3: "research:reconciliation-control",
+} as const;
+
+async function releaseControlRun(
+  variant: keyof typeof controlCaseByVariant,
+): Promise<ChatReleaseCandidateRunV1> {
+  const started = performance.now();
+  const evidence = await runtimeEvidence(variant);
+  const metrics = scoreResearchEvaluationV1(gold, evidence.observation);
+  const expectedSources = variant === "S1" ? 1 : 2;
+  const check = (
+    name: ChatReleaseCandidateCheckResultV1["check"],
+    passed: boolean,
+  ): ChatReleaseCandidateCheckResultV1 => ({
+    check: name,
+    status: passed ? "passed" : "failed",
+  });
+  const checks = [
+    check("source-selection", evidence.observation.retrievedSourceIds.length === expectedSources),
+    check("detail-coverage", evidence.observation.detailedSourceIds.length === expectedSources),
+    check("citation-support", metrics.citationPrecision === 1),
+    check("claim-support", metrics.unsupportedClaims === 0),
+    check("gap-disclosure", metrics.abstentionCorrectness === 1),
+    check("outcome", evidence.composition.reportPublications === 1 && evidence.composition.markdownChars > 0),
+    check(
+      "mode-isolation",
+      evidence.composition.execution === "dynamic-graph" &&
+        evidence.composition.synthesizerTaskCount === 1,
+    ),
+  ];
+  const passed = checks.every((entry) => entry.status === "passed");
+  return finalizeChatReleaseCandidateRunV1({
+    schema: "atlcli.chat-release-candidate-run/v1",
+    caseId: controlCaseByVariant[variant],
+    variant: "deep-research",
+    status: passed ? "passed" : "failed",
+    checks,
+    failureCodes: passed ? [] : ["command-failed"],
+    measurements: {
+      durationMs: Math.ceil(performance.now() - started),
+      modelCalls: metrics.calls.model,
+      ptcCalls: metrics.calls.ptc,
+      httpCalls: metrics.calls.http,
+      inputTokens: metrics.tokens.modelInput,
+      outputTokens: metrics.tokens.modelOutput,
+      costMicros: Math.ceil(metrics.medianModelCostUsd * 1_000_000),
+    },
+  });
+}
+
 describe("T3 S0–S3 real runtime comparison", () => {
   test("runs S0 through S3 through the Node host under one immutable scope/budget envelope", async () => {
     const result = await runResearchT3ComparisonV1({
@@ -542,5 +603,26 @@ describe("T3 S0–S3 real runtime comparison", () => {
       }),
     ]);
     expect(result).toMatchObject({ decision: "go", recommendedDefault: "S3" });
+  });
+
+  test("produces a body-free passing proof from three separate Deep Research controls", async () => {
+    const runs: ChatReleaseCandidateRunV1[] = [];
+    for (const variant of ["S1", "S2", "S3"] as const) {
+      runs.push(await releaseControlRun(variant));
+    }
+    const proof = await finalizeChatReleaseCandidateProofV1({
+      proofId: "runtime-deep-research-control",
+      producer: "bun-production-runtime",
+      producedAt: "2026-08-09T12:00:00.000Z",
+      sourceRevision: "1".repeat(40),
+      manifestFingerprint: await fingerprintChatReleaseCandidateManifestV1(),
+      runs,
+    });
+
+    expect(proof.status).toBe("passed");
+    expect(proof.caseIds).toEqual(Object.values(controlCaseByVariant).sort());
+    expect(proof.runs).toHaveLength(3);
+    expect(JSON.stringify(proof)).not.toContain("markdown");
+    expect(JSON.stringify(proof)).not.toContain("canonicalUrl");
   });
 });

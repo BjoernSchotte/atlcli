@@ -24,6 +24,8 @@ export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
 export interface ChatModelRouteRequestV1 {
   role: ChatModelRouteRoleV1;
   preference: ProviderReasoningPreferenceV1;
+  /** Optional bounded-agent identity for profile-aware local or test adapters. */
+  profileId?: string;
 }
 
 /**

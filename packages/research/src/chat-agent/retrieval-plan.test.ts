@@ -151,14 +151,18 @@ describe("Chat retrieval plan", () => {
       "binding:project",
       "binding:space",
     ]);
-    expect(result.searches.map((entry) => entry.product)).toEqual(["jira"]);
-    expect(result.searches[0]?.scopeBindingIds).toEqual(["binding:project"]);
+    expect(result.searches.map((entry) => entry.product)).toEqual([
+      "confluence",
+      "jira",
+    ]);
+    expect(result.searches.find((entry) => entry.product === "jira")?.scopeBindingIds)
+      .toEqual(["binding:project"]);
+    expect(result.searches.find((entry) => entry.product === "confluence")?.scopeBindingIds)
+      .toEqual(["binding:space"]);
     expect(result.completionSignals).toContain("all-anchors-read");
-    expect(result.budgetReservations.supervisorCalls).toBe(12);
-    expect(result.budgetReservations.detailCallsByProduct).toEqual({
-      jira: 12,
-      confluence: 0,
-    });
+    expect(result.budgetReservations.supervisorCalls).toBe(4);
+    expect(result.budgetReservations.detailCallsByProduct.jira).toBeGreaterThan(0);
+    expect(result.budgetReservations.detailCallsByProduct.confluence).toBeGreaterThan(0);
     expect(result.budgetReservations.totalCalls).toBeLessThanOrEqual(
       DEFAULT_RESEARCH_LIMITS_V1.maxPtcCalls,
     );
@@ -237,6 +241,24 @@ describe("Chat retrieval plan", () => {
         }],
       },
     })).toThrow("Raw CQL or JQL");
+  });
+
+  test("keeps independently authorized same-product discovery beside an exact anchor", () => {
+    const result = plan({
+      anchors: [{
+        anchorRef: "research-anchor:attached-page",
+        product: "confluence",
+        entityKind: "page",
+        name: "Attached design page",
+      }],
+      exactProducts: ["confluence"],
+      searchProducts: ["confluence"],
+    });
+
+    expect(result.anchors).toHaveLength(1);
+    expect(result.searches.map((search) => search.product)).toEqual(["confluence"]);
+    expect(result.budgetReservations.directReadCalls).toBe(1);
+    expect(result.budgetReservations.detailCallsByProduct.confluence).toBeGreaterThan(0);
   });
 
   test("does not let a model proposal displace explicit Confluence titles", () => {
@@ -372,7 +394,7 @@ describe("Chat retrieval plan", () => {
     ]);
   });
 
-  test("clamps per-variant pagination so every admitted query fits the product root budget", () => {
+  test("retains per-variant pagination while the acquisition controller owns the product root budget", () => {
     const result = plan({
       searchProducts: ["confluence"],
       proposal: {
@@ -388,10 +410,29 @@ describe("Chat retrieval plan", () => {
         }],
       },
     });
-    expect(result.searches[0]?.maxPages).toBe(1);
-    expect(
-      result.searches[0]!.maxPages * result.searches[0]!.variants.length,
-    ).toBeLessThanOrEqual(DEFAULT_RESEARCH_LIMITS_V1.maxSearchPagesPerProduct);
+    expect(result.searches[0]?.maxPages).toBe(
+      DEFAULT_RESEARCH_LIMITS_V1.maxSearchPagesPerProduct,
+    );
+  });
+
+  test("reserves one detail per product for a bounded cross-product relationship chain", () => {
+    const result = plan({
+      anchors: [{
+        anchorRef: "research-anchor:design-page",
+        product: "confluence",
+        entityKind: "page",
+        name: "Design page",
+      }],
+      searchProducts: ["jira", "confluence"],
+      maxPtcCalls: 24,
+      relationshipTracing: true,
+    });
+
+    expect(result.budgetReservations.detailCallsByProduct).toEqual({
+      jira: 1,
+      confluence: 1,
+    });
+    expect(result.budgetReservations.totalCalls).toBeLessThanOrEqual(24);
   });
 
   test("adds a concise shared core term when verbose model variants would miss exact content", () => {
@@ -466,7 +507,7 @@ describe("Chat retrieval plan", () => {
       "atlcli",
       "Installation und Konfiguration",
     ]);
-    expect(result.searches[0]?.maxPages).toBe(1);
+    expect(result.searches[0]?.maxPages).toBe(2);
   });
 
   test("prefers an explicit mixed-case product term over a hyphenated scope phrase", () => {
@@ -506,7 +547,7 @@ describe("Chat retrieval plan", () => {
     ]);
   });
 
-  test("drops low-value variants that cannot receive one page inside a compact Chat budget", () => {
+  test("drops low-value variants while preserving the per-variant page ceiling", () => {
     const result = createChatRetrievalPlanV1({
       conversationId: "conversation:compact",
       turnId: "turn:compact",
@@ -540,7 +581,7 @@ describe("Chat retrieval plan", () => {
       "atlcli",
       "atlcli Installation erste Nutzung",
     ]);
-    expect(result.searches[0]?.maxPages).toBe(1);
+    expect(result.searches[0]?.maxPages).toBe(2);
   });
 
   test("rejects traversal depth, scope, cursor-like fields, and capability-budget overflow", () => {

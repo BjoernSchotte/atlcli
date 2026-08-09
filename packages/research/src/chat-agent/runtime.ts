@@ -52,6 +52,7 @@ import {
   ChatContractError,
   normalizeChatTurnRequestV1,
   providerCompatibleChatAnswerSchemaV2,
+  type ChatAcceptedAnswerProjectionV1,
   type ChatAnswerV1,
   type ChatSessionStateV1,
   type ChatTurnRequestV1,
@@ -686,6 +687,8 @@ export interface RunChatAgentInput {
   onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
   onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
   onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+  /** Body-free accepted answer semantics for release evaluation. */
+  onAcceptedAnswerProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
   /** Body-free provider-call metrics for external performance receipts. */
   onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
   /** Host-internal control binding; never exposed to the model or presenter. */
@@ -2390,6 +2393,7 @@ export function createKiteweaveChatAgent(
             })(),
             ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
           },
+          onAcceptedProjection: input.onAcceptedAnswerProjection,
         });
         const acceptedEvidenceIds = new Set(
           broker.detailEvidenceLedger().flatMap((entry) =>

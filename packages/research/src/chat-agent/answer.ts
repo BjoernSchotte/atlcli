@@ -17,6 +17,7 @@ import {
   normalizeChatAgentDraftV2,
   type ChatAgentDraftV2,
   type ChatAgentDraftV1,
+  type ChatAcceptedAnswerProjectionV1,
   type ChatAnswerBlockV2,
   type ChatAnswerGapV1,
   type ChatAnswerV1,
@@ -133,10 +134,14 @@ function projectStructuredDraftV2(input: {
   qualityDisposition?: ChatQualityDispositionV1;
   run: ChatRunSummaryV1;
   locale?: string;
-}): ChatAgentDraftV1 {
+}): {
+  draft: ChatAgentDraftV1;
+  projection: ChatAcceptedAnswerProjectionV1;
+} {
   const sourceIds = new Set(input.sources.map((source) => source.id));
   const rejectedIds = new Set(input.qualityDisposition?.rejectedSourceIds ?? []);
   const retained: string[] = [];
+  const retainedBlocks: ChatAcceptedAnswerProjectionV1["blocks"] = [];
   const retainedSourceIds = new Set<string>();
   const seenBlockIds = new Set<string>();
   const removedSourceIds = new Set<string>();
@@ -186,6 +191,11 @@ function projectStructuredDraftV2(input: {
     }
     normalizedRefs.forEach((sourceRef) => retainedSourceIds.add(answerSourceIdV2(sourceRef)));
     retained.push(appendEvidencePlaceholdersV2(block.markdown, normalizedRefs));
+    retainedBlocks.push({
+      id: block.id,
+      assertion: block.assertion,
+      sourceRefs: [...normalizedRefs],
+    });
   }
 
   const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
@@ -216,12 +226,15 @@ function projectStructuredDraftV2(input: {
       ? "Für diese Antwort blieb keine detailbelegte Aussage übrig."
       : "No detail-backed claim remained for this answer.");
   return {
-    messageMarkdown,
-    citationSourceIds: [...retainedSourceIds],
-    gaps,
-    ...(input.draft.continuation
-      ? { continuation: { ...input.draft.continuation } }
-      : {}),
+    draft: {
+      messageMarkdown,
+      citationSourceIds: [...retainedSourceIds],
+      gaps,
+      ...(input.draft.continuation
+        ? { continuation: { ...input.draft.continuation } }
+        : {}),
+    },
+    projection: { blocks: retainedBlocks },
   };
 }
 
@@ -682,20 +695,26 @@ export function finalizeChatAnswerV1(input: {
   delegated?: boolean;
   run: ChatRunSummaryV1;
   locale?: string;
+  /** Internal, body-free evaluator seam; not part of ChatAnswerV1. */
+  onAcceptedProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
+  /** Carries the already host-filtered projection through the V2 -> V1 pass. */
+  acceptedProjection?: ChatAcceptedAnswerProjectionV1;
 }): ChatAnswerV1 {
   const structured = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (structured.success) {
+    const projected = projectStructuredDraftV2({
+      draft: normalizeChatAgentDraftV2(structured.data),
+      sources: input.sources,
+      detailEvidence: input.detailEvidence,
+      readSectionReferences: input.readSectionReferences ?? [],
+      qualityDisposition: input.qualityDisposition,
+      run: input.run,
+      locale: input.locale,
+    });
     return finalizeChatAnswerV1({
       ...input,
-      draft: projectStructuredDraftV2({
-        draft: normalizeChatAgentDraftV2(structured.data),
-        sources: input.sources,
-        detailEvidence: input.detailEvidence,
-        readSectionReferences: input.readSectionReferences ?? [],
-        qualityDisposition: input.qualityDisposition,
-        run: input.run,
-        locale: input.locale,
-      }),
+      draft: projected.draft,
+      acceptedProjection: projected.projection,
     });
   }
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V1.safeParse(input.draft);
@@ -1133,7 +1152,7 @@ export function finalizeChatAnswerV1(input: {
       : input.qualityPolicy.mode === "deep"
         ? "deep-direct" as const
         : "auto-direct" as const;
-  return {
+  const answer: ChatAnswerV1 = {
     schema: CHAT_ANSWER_SCHEMA_V1,
     messageMarkdown,
     citations: citationKeys.map((citationKey) => {
@@ -1173,4 +1192,8 @@ export function finalizeChatAnswerV1(input: {
     ...(draft.continuation ? { continuation: { ...draft.continuation } } : {}),
     run: structuredClone(input.run),
   };
+  input.onAcceptedProjection?.(structuredClone(
+    input.acceptedProjection ?? { blocks: [] },
+  ));
+  return answer;
 }

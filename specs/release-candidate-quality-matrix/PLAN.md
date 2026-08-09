@@ -64,23 +64,35 @@ Authority correction (2026-08-09):
 
 ## T1 - Execute the customer-free production-runtime matrix
 
-- [ ] Add deterministic bodies and provider behavior for the committed gold
+- [x] Add deterministic bodies and provider behavior for the committed gold
       cases instead of deriving observations directly from gold labels.
-- [ ] Project actual `runChatAgent` and suitable `runResearchAgent` results,
+- [x] Project actual `runChatAgent` and suitable `runResearchAgent` results,
       events, calls, and timings into the existing evaluation observation.
-- [ ] Exercise direct anchors, long sections, pagination/query variants,
+- [x] Exercise direct anchors, long sections, pagination/query variants,
       Confluence-to-Jira and Jira-to-Confluence links, stale duplicates,
       contradiction, critic repair, no-answer, prompt injection, deadline gaps,
       and a cross-product chain.
-- [ ] Run the same eligible simple and complex cases through Quick, Auto, and
+- [x] Run the same eligible simple and complex cases through Quick, Auto, and
       Deep with frozen inputs and budgets.
-- [ ] Run research-suitable cases through the separate Deep Research root.
+- [x] Run research-suitable cases through the separate Deep Research root.
 
 Acceptance:
 
-- [ ] All blocking deterministic quality floors pass from runtime-produced
+- [x] All blocking deterministic quality floors pass from runtime-produced
       observations.
-- [ ] A deliberately defective runtime answer fails the matrix.
+- [x] A deliberately defective runtime answer fails the matrix.
+
+Proof record (2026-08-09): the customer-free runner executes all twenty frozen
+Chat cases through the production `runChatAgent` root in Quick, Auto, and Deep,
+for sixty body-free runtime observations. Three separate controls execute the
+production `runResearchAgent` root with single-worker, parallel-worker, and
+reconciliation topologies. The accepted proof contains only case IDs, checks,
+aggregate measurements, failure codes, and canonical fingerprints; it contains
+no question, answer, source body, URL, tenant identity, or model transcript. An
+independently malformed production answer fails with `unsupported-claim`. The
+focused runtime, retrieval, workflow, release-contract, CLI-verifier, and
+generated API/closure suites pass 187 tests. Root typecheck, the tracked-tree
+research privacy gate, and `git diff --check` pass on the same worktree state.
 
 ## T2 - Prove packed MV3 and lifecycle parity
 

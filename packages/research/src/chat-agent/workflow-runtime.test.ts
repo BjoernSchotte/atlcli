@@ -11,6 +11,7 @@ import {
 import { ResearchModelRunBudget, ResearchRunBudget } from "../budget.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  type ResearchProduct,
   type ResearchRequestV1,
 } from "../contracts.js";
 import { DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY } from "../dispatch-adapter.js";
@@ -973,7 +974,11 @@ describe("Chat agentic workflow runtime", () => {
     expect(byName.get("chat-answer-critic-v1")).toBe(routed.get("critique:balanced"));
     expect(byName.get("chat-answer-repairer-v1")).toBe(routed.get("repair:balanced"));
     expect(byName.get("chat-synthesizer-v1")).toBe(routed.get("synthesis:thorough"));
-    expect(requests).toContainEqual({ role: "synthesis", preference: "thorough" });
+    expect(requests).toContainEqual({
+      role: "synthesis",
+      preference: "thorough",
+      profileId: "chat-synthesizer",
+    });
   });
 
   test("streams body-free child eval lifecycle and terminates a looping ninth reader eval", async () => {
@@ -1119,6 +1124,7 @@ describe("Chat agentic workflow runtime", () => {
       tools: [search, rank, detail],
       retrievalLedger: {
         plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => [],
         allowedInitialQueries: () => [
           { text: "first" },
           { text: "second" },
@@ -1203,6 +1209,7 @@ describe("Chat agentic workflow runtime", () => {
       tools: [search, rank, detail],
       retrievalLedger: {
         plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => [],
         allowedInitialQueries: () => [{ text: "first" }, { text: "alternate" }],
         retainAdmittedCandidates: async () => {},
       } as unknown as ChatCandidateLedgerControllerV1,
@@ -1217,6 +1224,62 @@ describe("Chat agentic workflow runtime", () => {
       "detail:research-entity:first",
     ]);
     expect(maximumActiveDetails).toBe(1);
+  });
+
+  test("does not spend discovery detail budget on a rediscovered exact anchor", async () => {
+    const detailed: string[] = [];
+    const retained: string[][] = [];
+    const search = tool(async () => JSON.stringify({
+      items: [
+        { entityRef: "research-entity:existing" },
+        { entityRef: "research-entity:new" },
+      ],
+      page: { complete: true },
+    }), {
+      name: "wiki_search",
+      description: "synthetic search",
+      schema: z.object({ query: z.object({ text: z.string() }) }).strict(),
+    });
+    const rank = tool(async () => JSON.stringify({
+      items: [
+        { entityRef: "research-entity:existing", sourceId: "wiki:existing", rank: 1 },
+        { entityRef: "research-entity:new", sourceId: "wiki:new", rank: 2 },
+      ],
+    }), {
+      name: "research_candidate_rank",
+      description: "synthetic rank",
+      schema: z.object({
+        product: z.enum(["jira", "confluence"]),
+        entityRefs: z.array(z.string()),
+      }).strict(),
+    });
+    const detail = tool(async (value: { entityRef: string }) => {
+      detailed.push(value.entityRef);
+      return JSON.stringify({ source: { id: "wiki:new" } });
+    }, {
+      name: "wiki_page_get",
+      description: "synthetic detail",
+      schema: z.object({ entityRef: z.string() }).strict(),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: [search, rank, detail],
+      retrievalLedger: {
+        plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => ["wiki:existing"],
+        allowedInitialQueries: () => [{ text: "linked follow-up" }],
+        retainAdmittedCandidates: async (_product: ResearchProduct, sourceIds: readonly string[]) => {
+          retained.push([...sourceIds]);
+        },
+      } as unknown as ChatCandidateLedgerControllerV1,
+      maxSearchPages: 1,
+      maxDetails: 1,
+    });
+
+    const result = JSON.parse(String(await acquisition.invoke({})));
+    expect(detailed).toEqual(["research-entity:new"]);
+    expect(retained).toEqual([["wiki:new"]]);
+    expect(result.details).toEqual([{ source: { id: "wiki:new" } }]);
   });
 
   test("preserves successful detail reads when the shared detail budget ends mid-acquisition", async () => {
@@ -1268,6 +1331,7 @@ describe("Chat agentic workflow runtime", () => {
       tools: [search, rank, detail],
       retrievalLedger: {
         plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => [],
         allowedInitialQueries: () => [{ text: "bounded" }],
         retainAdmittedCandidates: async () => {},
       } as unknown as ChatCandidateLedgerControllerV1,

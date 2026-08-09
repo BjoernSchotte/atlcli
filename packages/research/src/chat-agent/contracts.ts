@@ -143,6 +143,20 @@ export interface ChatAnswerV1 {
   run: ChatRunSummaryV1;
 }
 
+/**
+ * Body-free host diagnostic emitted only after the structured answer blocks
+ * passed source, detail, rejection, and absence-scope validation. It lets
+ * release evaluators score the answer that was actually admitted without
+ * persisting answer text or widening the public Chat answer contract.
+ */
+export interface ChatAcceptedAnswerProjectionV1 {
+  blocks: Array<{
+    id: string;
+    assertion: ChatAnswerBlockV2["assertion"];
+    sourceRefs: string[];
+  }>;
+}
+
 export interface ChatSessionStateV1 {
   schema: typeof CHAT_SESSION_STATE_SCHEMA_V1;
   conversationId: string;

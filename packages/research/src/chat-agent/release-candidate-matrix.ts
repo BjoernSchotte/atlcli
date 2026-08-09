@@ -211,6 +211,11 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
     proofId: "runtime-deep-research-control",
     producer: "bun-production-runtime",
     minimumCases: 3,
+    requiredCaseIds: [
+      "research:single-worker-control",
+      "research:parallel-workers-control",
+      "research:reconciliation-control",
+    ],
     requiredVariants: ["deep-research"],
     requiredChecks: [
       "source-selection", "detail-coverage", "citation-support", "claim-support",
@@ -277,7 +282,7 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
 ]);
 
 const PRIVATE_CASE_ID = /^private:CASE[0-9]{2,4}$/u;
-const PUBLIC_CASE_ID = /^(?:chat-gold|packed|lifecycle):[a-z0-9][a-z0-9:-]{0,99}$/u;
+const PUBLIC_CASE_ID = /^(?:chat-gold|research|packed|lifecycle):[a-z0-9][a-z0-9:-]{0,99}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_REVISION = /^[a-f0-9]{40}$/u;
 const MAX_PROOF_AGE_MS = 24 * 60 * 60 * 1_000;
@@ -314,6 +319,48 @@ export async function fingerprintChatReleaseCandidateProofV1(
   proof: ChatReleaseCandidateProofV1,
 ): Promise<string> {
   return sha256(withoutFingerprint(proof));
+}
+
+export async function finalizeChatReleaseCandidateRunV1(
+  input: Omit<ChatReleaseCandidateRunV1, "evidenceFingerprint">,
+): Promise<ChatReleaseCandidateRunV1> {
+  const run: ChatReleaseCandidateRunV1 = {
+    ...structuredClone(input),
+    evidenceFingerprint: "0".repeat(64),
+  };
+  run.evidenceFingerprint = await fingerprintChatReleaseCandidateRunV1(run);
+  return parseChatReleaseCandidateRunV1(run);
+}
+
+export async function finalizeChatReleaseCandidateProofV1(input: {
+  proofId: ChatReleaseCandidateProofIdV1;
+  producer: ChatReleaseCandidateProofV1["producer"];
+  producedAt: string;
+  sourceRevision: string;
+  manifestFingerprint: string;
+  runs: readonly ChatReleaseCandidateRunV1[];
+}): Promise<ChatReleaseCandidateProofV1> {
+  const runs = input.runs.map((run) => structuredClone(run));
+  const proof: ChatReleaseCandidateProofV1 = {
+    schema: CHAT_RELEASE_CANDIDATE_PROOF_SCHEMA_V1,
+    proofId: input.proofId,
+    producer: input.producer,
+    producedAt: input.producedAt,
+    sourceRevision: input.sourceRevision,
+    manifestFingerprint: input.manifestFingerprint,
+    status: runs.every((run) => run.status === "passed") ? "passed" : "failed",
+    caseIds: [...new Set(runs.map((run) => run.caseId))].sort(),
+    variants: [...new Set(runs.map((run) => run.variant))].sort(),
+    checks: [...new Set(runs.flatMap((run) =>
+      run.checks.filter((entry) => entry.status === "passed").map((entry) => entry.check)
+    ))].sort(),
+    failureCodes: [...new Set(runs.flatMap((run) => run.failureCodes))].sort(),
+    runs,
+    measurements: sumsForRuns(runs),
+    evidenceFingerprint: "0".repeat(64),
+  };
+  proof.evidenceFingerprint = await fingerprintChatReleaseCandidateProofV1(proof);
+  return parseChatReleaseCandidateProofV1(proof);
 }
 
 export async function fingerprintChatReleaseCandidateManifestV1(): Promise<string> {

@@ -1123,6 +1123,15 @@ export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
     "unnecessary-contradiction"
 ];
 
+// export: ChatAcceptedAnswerProjectionV1
+export interface ChatAcceptedAnswerProjectionV1 {
+    blocks: Array<{
+        id: string;
+        assertion: ChatAnswerBlockV2["assertion"];
+        sourceRefs: string[];
+    }>;
+}
+
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
     searchProducts: Array<"jira" | "confluence">;
@@ -1303,6 +1312,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
+    detailReadSourceIds(product: ResearchProduct): string[];
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
@@ -1583,6 +1593,7 @@ export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
 export interface ChatModelRouteRequestV1 {
     role: ChatModelRouteRoleV1;
     preference: ProviderReasoningPreferenceV1;
+    profileId?: string;
 }
 
 // export: ChatModelRouteRoleV1
@@ -2909,6 +2920,8 @@ export declare function finalizeChatAnswerV1(input: {
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
+    onAcceptedProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
+    acceptedProjection?: ChatAcceptedAnswerProjectionV1;
 }): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
@@ -9384,6 +9397,15 @@ export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
     "unnecessary-contradiction"
 ];
 
+// export: ChatAcceptedAnswerProjectionV1
+export interface ChatAcceptedAnswerProjectionV1 {
+    blocks: Array<{
+        id: string;
+        assertion: ChatAnswerBlockV2["assertion"];
+        sourceRefs: string[];
+    }>;
+}
+
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
     searchProducts: Array<"jira" | "confluence">;
@@ -9564,6 +9586,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
+    detailReadSourceIds(product: ResearchProduct): string[];
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
@@ -9844,6 +9867,7 @@ export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
 export interface ChatModelRouteRequestV1 {
     role: ChatModelRouteRoleV1;
     preference: ProviderReasoningPreferenceV1;
+    profileId?: string;
 }
 
 // export: ChatModelRouteRoleV1
@@ -11161,6 +11185,8 @@ export declare function finalizeChatAnswerV1(input: {
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
+    onAcceptedProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
+    acceptedProjection?: ChatAcceptedAnswerProjectionV1;
 }): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
@@ -17625,6 +17651,15 @@ export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
     "unnecessary-contradiction"
 ];
 
+// export: ChatAcceptedAnswerProjectionV1
+export interface ChatAcceptedAnswerProjectionV1 {
+    blocks: Array<{
+        id: string;
+        assertion: ChatAnswerBlockV2["assertion"];
+        sourceRefs: string[];
+    }>;
+}
+
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
     searchProducts: Array<"jira" | "confluence">;
@@ -17805,6 +17840,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
+    detailReadSourceIds(product: ResearchProduct): string[];
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
@@ -18085,6 +18121,7 @@ export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
 export interface ChatModelRouteRequestV1 {
     role: ChatModelRouteRoleV1;
     preference: ProviderReasoningPreferenceV1;
+    profileId?: string;
 }
 
 // export: ChatModelRouteRoleV1
@@ -19411,6 +19448,8 @@ export declare function finalizeChatAnswerV1(input: {
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
+    onAcceptedProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
+    acceptedProjection?: ChatAcceptedAnswerProjectionV1;
 }): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
@@ -25895,6 +25934,15 @@ export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
     "unnecessary-contradiction"
 ];
 
+// export: ChatAcceptedAnswerProjectionV1
+export interface ChatAcceptedAnswerProjectionV1 {
+    blocks: Array<{
+        id: string;
+        assertion: ChatAnswerBlockV2["assertion"];
+        sourceRefs: string[];
+    }>;
+}
+
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
     searchProducts: Array<"jira" | "confluence">;
@@ -26084,6 +26132,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
+    detailReadSourceIds(product: ResearchProduct): string[];
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
@@ -26364,6 +26413,7 @@ export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
 export interface ChatModelRouteRequestV1 {
     role: ChatModelRouteRoleV1;
     preference: ProviderReasoningPreferenceV1;
+    profileId?: string;
 }
 
 // export: ChatModelRouteRoleV1
@@ -27883,6 +27933,8 @@ export declare function finalizeChatAnswerV1(input: {
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
+    onAcceptedProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
+    acceptedProjection?: ChatAcceptedAnswerProjectionV1;
 }): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
@@ -33200,6 +33252,7 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onAcceptedAnswerProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
     onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
     onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
     onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
@@ -34619,6 +34672,15 @@ export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
     "unnecessary-contradiction"
 ];
 
+// export: ChatAcceptedAnswerProjectionV1
+export interface ChatAcceptedAnswerProjectionV1 {
+    blocks: Array<{
+        id: string;
+        assertion: ChatAnswerBlockV2["assertion"];
+        sourceRefs: string[];
+    }>;
+}
+
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
     searchProducts: Array<"jira" | "confluence">;
@@ -34808,6 +34870,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
+    detailReadSourceIds(product: ResearchProduct): string[];
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
@@ -35088,6 +35151,7 @@ export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
 export interface ChatModelRouteRequestV1 {
     role: ChatModelRouteRoleV1;
     preference: ProviderReasoningPreferenceV1;
+    profileId?: string;
 }
 
 // export: ChatModelRouteRoleV1
@@ -36612,6 +36676,8 @@ export declare function finalizeChatAnswerV1(input: {
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
+    onAcceptedProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
+    acceptedProjection?: ChatAcceptedAnswerProjectionV1;
 }): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
@@ -41933,6 +41999,7 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onAcceptedAnswerProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
     onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
     onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
     onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;
@@ -42826,6 +42893,15 @@ export declare const CHAT_SESSION_STATE_SCHEMA_V1: "atlcli.chat-session-state/v1
 
 // export: CHAT_TURN_REQUEST_SCHEMA_V1
 export declare const CHAT_TURN_REQUEST_SCHEMA_V1: "atlcli.chat-turn-request/v1";
+
+// export: ChatAcceptedAnswerProjectionV1
+export interface ChatAcceptedAnswerProjectionV1 {
+    blocks: Array<{
+        id: string;
+        assertion: ChatAnswerBlockV2["assertion"];
+        sourceRefs: string[];
+    }>;
+}
 
 // export: ChatAgentDraft
 export type ChatAgentDraft = ChatAgentDraftV1 | ChatAgentDraftV2;
@@ -45379,6 +45455,15 @@ export declare const CHAT_WORKFLOW_REJECTION_REASON_CODES_V1: readonly [
     "unnecessary-contradiction"
 ];
 
+// export: ChatAcceptedAnswerProjectionV1
+export interface ChatAcceptedAnswerProjectionV1 {
+    blocks: Array<{
+        id: string;
+        assertion: ChatAnswerBlockV2["assertion"];
+        sourceRefs: string[];
+    }>;
+}
+
 // export: ChatAcquisitionProductsV1
 export interface ChatAcquisitionProductsV1 {
     searchProducts: Array<"jira" | "confluence">;
@@ -45568,6 +45653,7 @@ export declare class ChatCandidateLedgerControllerV1 {
     replacePlan(plan: ChatRetrievalPlanV1): Promise<void>;
     retainAdmittedCandidates(product: ResearchProduct, sourceIds: readonly string[], reason?: string): Promise<void>;
     plan(): ChatRetrievalPlanV1;
+    detailReadSourceIds(product: ResearchProduct): string[];
     snapshot(): ChatCandidateLedgerV1;
     observeRelatedScopeCandidate(candidate: ResearchRelatedScopeCandidateV1): Promise<void>;
     allowedInitialQueries(product: ResearchProduct): ChatSearchQueryV1[];
@@ -45848,6 +45934,7 @@ export type ChatModelFinalizationCorridorV1 = "standard" | "finalize-only";
 export interface ChatModelRouteRequestV1 {
     role: ChatModelRouteRoleV1;
     preference: ProviderReasoningPreferenceV1;
+    profileId?: string;
 }
 
 // export: ChatModelRouteRoleV1
@@ -47372,6 +47459,8 @@ export declare function finalizeChatAnswerV1(input: {
     delegated?: boolean;
     run: ChatRunSummaryV1;
     locale?: string;
+    onAcceptedProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
+    acceptedProjection?: ChatAcceptedAnswerProjectionV1;
 }): ChatAnswerV1;
 
 // export: finalizeResearchAgentDraftV1
@@ -52693,6 +52782,7 @@ export interface RunChatAgentInput {
     onAgentDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void;
     onDispatchDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
     onSubagentResultDiagnostic?: (diagnostic: ChatSubagentResultDiagnosticV1) => void;
+    onAcceptedAnswerProjection?: (projection: ChatAcceptedAnswerProjectionV1) => void;
     onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
     onInteractionReady?: (controller: WorkspaceChatInteractionControllerV1) => void;
     onResumeEnvelopeReady?: (resume: ChatResumeEnvelopeV1) => void;

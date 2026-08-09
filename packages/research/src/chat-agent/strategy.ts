@@ -196,16 +196,24 @@ export function deriveChatStrategyDecisionV1(input: {
   if (input.anchors.length > 0) capabilities.push("exact-read");
   if (
     !noNewSearchIntent &&
-    (relationship && jiraIntent) ||
-    (!noNewSearchIntent && input.scope.jiraProjectKeys.length > 0 &&
-      (!anchorProducts.has("jira") || broadScopeIntent))
+    input.scope.jiraProjectKeys.length > 0 &&
+    (
+      (relationship && jiraIntent && !anchorProducts.has("jira")) ||
+      !anchorProducts.has("jira") ||
+      broadScopeIntent
+    )
   ) {
     capabilities.push("jira-discovery");
   }
   if (
     !noNewSearchIntent &&
     input.scope.confluenceSpaceKeys.length > 0 &&
-    (!anchorProducts.has("confluence") || broadScopeIntent || singleTitleDiscovery)
+    (
+      !anchorProducts.has("confluence") ||
+      broadScopeIntent ||
+      singleTitleDiscovery ||
+      (relationship && scopeProducts.size > 1)
+    )
   ) {
     capabilities.push("confluence-discovery");
   }
@@ -254,12 +262,11 @@ export function deriveChatAcquisitionProductsV1(input: {
   ) {
     searchProducts.push("confluence");
   }
-  const searchSet = new Set(searchProducts);
   const anchorProducts = new Set(input.anchors.map((anchor) => anchor.product));
   return {
     searchProducts,
     exactContextProducts: (["jira", "confluence"] as const).filter(
-      (product) => anchorProducts.has(product) && !searchSet.has(product),
+      (product) => anchorProducts.has(product),
     ),
   };
 }

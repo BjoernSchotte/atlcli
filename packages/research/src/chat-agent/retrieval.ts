@@ -59,7 +59,7 @@ function sectionLabel(result: BoundEntitySectionReadOutputV1): string {
   return `${result.source.title}: ${result.section.heading}`.slice(0, 240);
 }
 
-/** Chat tool surface: direct exact reads plus discovery only where still authorized. */
+/** Chat tool surface: direct exact reads plus independently authorized discovery. */
 export function createChatPtcToolsV1(
   broker: ResearchCapabilityBroker,
   options: ChatPtcToolOptionsV1 = {},
@@ -185,7 +185,6 @@ export function createChatPtcToolsV1(
     schema: boundSectionReadInputSchema,
   });
 
-  const exact = new Set(options.exactContextProducts ?? []);
   const searchable = new Set(options.searchProducts ?? ["jira", "confluence"]);
   const researchOptions: ResearchPtcToolOptions = {
     ...(options.onDiagnostic
@@ -205,11 +204,11 @@ export function createChatPtcToolsV1(
     ...(options.onResult ? { onResult: options.onResult } : {}),
   };
   const discovery = createResearchPtcTools(broker, researchOptions).filter((candidate) => {
-    if ((!searchable.has("jira") || exact.has("jira")) &&
+    if (!searchable.has("jira") &&
         ["jira_issue_search", "jira_issue_get"].includes(candidate.name)) {
       return false;
     }
-    if ((!searchable.has("confluence") || exact.has("confluence")) &&
+    if (!searchable.has("confluence") &&
         ["wiki_search", "wiki_page_get"].includes(candidate.name)) {
       return false;
     }

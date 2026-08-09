@@ -406,12 +406,34 @@ describe("Chat exact-anchor retrieval", () => {
     }), providers(calls), { createAnchorId: () => "page-anchor" });
     expect(createChatPtcToolsV1(broker, {
       exactContextProducts: ["confluence"],
-      searchProducts: ["confluence"],
+      searchProducts: [],
     })
       .map((candidate) => candidate.name)).toEqual([
         "atlassian_bound_read",
         "atlassian_bound_section_read",
       ]);
+    expect(calls).toEqual([]);
+  });
+
+  test("keeps an exact page read while independently admitting same-product discovery", () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" })],
+      wiki: ["KB"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "page-anchor" });
+
+    expect(createChatPtcToolsV1(broker, {
+      exactContextProducts: ["confluence"],
+      searchProducts: ["confluence"],
+      boundSpaceKeys: ["KB"],
+    }).map((candidate) => candidate.name)).toEqual([
+      "atlassian_bound_read",
+      "atlassian_bound_section_read",
+      "wiki_search",
+      "wiki_page_get",
+      "research_candidate_rank",
+    ]);
     expect(calls).toEqual([]);
   });
 

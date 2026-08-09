@@ -549,7 +549,7 @@ function canonicalSearches(input: {
     searchId: `search:${product}`,
     product,
     variants: defaultQueryVariants(input.question),
-    maxPages: 1,
+    maxPages: input.limits.maxSearchPagesPerProduct,
   }));
   if (proposed.length > 2) invalid("Chat retrieval may contain at most two product searches.");
   const seenProducts = new Set<ResearchProduct>();
@@ -599,14 +599,14 @@ function canonicalSearches(input: {
       }).sort((left, right) =>
       gainRank[left.expectedInformationGain] - gainRank[right.expectedInformationGain]
     );
-    // ResearchRunBudget owns one product-wide page ceiling. The proposal's
-    // maxPages is a requested per-variant ceiling, so clamp it before admission
-    // such that all admitted variants are actually executable within that root
-    // budget. A plan must never advertise 3 x 5 pages while the broker permits
-    // only 5 Confluence pages in total.
+    // `maxPages` is a per-variant ceiling, while the acquisition controller
+    // independently enforces the product-wide page ceiling across every
+    // variant. Do not divide this value by the variant count: doing so makes a
+    // candidate on page two unreachable whenever query diversification is also
+    // admitted. The controller stops the combined traversal at the root limit.
     const maxPages = Math.min(
       search.maxPages,
-      Math.max(1, Math.floor(input.limits.maxSearchPagesPerProduct / variants.length)),
+      input.limits.maxSearchPagesPerProduct,
     );
     const scopeBindingIds = input.resolvedEntities
       .filter((entity) => entity.product === search.product &&
@@ -680,9 +680,8 @@ export function createChatRetrievalPlanV1(input: {
 }): ChatRetrievalPlanV1 {
   const conversationId = cleanText(input.conversationId, "Chat conversation ID", 240);
   const turnId = cleanText(input.turnId, "Chat turn ID", 240);
-  const exactProducts = new Set(input.exactContextProducts);
   const allowedSearchProducts = [...new Set(input.searchProducts)]
-    .filter((product) => !exactProducts.has(product));
+    .sort((left, right) => left.localeCompare(right, "en-US"));
   const anchors = input.anchors.map((anchor): ChatRetrievalAnchorV1 => ({
     anchorRef: cleanText(anchor.anchorRef, "Chat anchor reference", 220),
     product: anchor.product,
@@ -738,15 +737,18 @@ export function createChatRetrievalPlanV1(input: {
     cleanText(term, "Chat unresolved term", 160)
   ))].slice(0, 12).sort((left, right) => left.localeCompare(right, "en-US"));
   const directReadCalls = anchors.length;
-  // Strategy acknowledgement, workflow proposal/review, durable frontier
-  // control and the quality boundary use the same root PTC budget as source
-  // acquisition. Reserve their measured bounded envelope explicitly instead
-  // of pretending the budget belongs only to Atlassian tools.
+  // The auto-advancing agentic host performs exactly four budgeted control
+  // operations: strategy acknowledgement, workflow proposal, strategy review,
+  // and quality review. Specialist model calls are governed by the independent
+  // model budget and must not be counted again as PTC calls here.
   const supervisorCalls = input.agentic
-    ? Math.min(32, Math.max(10, Math.floor(input.limits.maxPtcCalls * 0.4)))
+    ? 4
     : 2;
   const discoveryCalls = searches.reduce((total, search) =>
-    total + (search.maxPages * search.variants.length) + 1, 0
+    total + Math.min(
+      input.limits.maxSearchPagesPerProduct,
+      search.maxPages * search.variants.length,
+    ) + 1, 0
   );
   const relationshipTraversalCalls = relationshipTraversals.length;
   const repairCalls = input.agentic ? 1 : 0;
@@ -996,6 +998,15 @@ export class ChatCandidateLedgerControllerV1 {
     return structuredClone(this.#plan);
   }
 
+  detailReadSourceIds(product: ResearchProduct): string[] {
+    return [...this.#candidateBySource.values()]
+      .filter((candidate) =>
+        candidate.product === product && candidate.state === "detail-read"
+      )
+      .map((candidate) => candidate.sourceId)
+      .sort((left, right) => left.localeCompare(right, "en-US"));
+  }
+
   snapshot(): ChatCandidateLedgerV1 {
     this.#ledger.candidates = [...this.#candidateBySource.values()]
       .map((entry) => structuredClone(entry))
@@ -1232,7 +1243,10 @@ export class ChatCandidateLedgerControllerV1 {
       if (!candidate || sourceId !== item.sourceId || !Number.isSafeInteger(item.rank) || item.rank < 1) {
         invalid("Chat candidate ranking contains an unknown or invalid candidate.");
       }
-      candidate.state = "admitted";
+      // A bound anchor can also be rediscovered by an independently admitted
+      // same-product search. Ranking must not downgrade that already accepted
+      // detail read or spend the bounded detail allowance reading it again.
+      if (candidate.state !== "detail-read") candidate.state = "admitted";
       candidate.admittedRank = item.rank;
       candidate.discoveries.push({
         kind: "scoped-search",

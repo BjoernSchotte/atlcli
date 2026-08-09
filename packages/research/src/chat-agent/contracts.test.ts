@@ -164,6 +164,53 @@ describe("Chat answer contract", () => {
     });
   });
 
+  test("emits only body-free semantics for structured blocks accepted by the host", () => {
+    const projections: unknown[] = [];
+    const answer = finalizeChatAnswerV1({
+      draft: {
+        blocks: [{
+          id: "assertion:accepted",
+          markdown: "The accepted source establishes the bounded claim.",
+          sourceRefs: ["wiki:1001"],
+          assertion: "positive",
+          scope: "none",
+        }, {
+          id: "assertion:rejected",
+          markdown: "The unread source establishes another claim.",
+          sourceRefs: ["wiki:9999"],
+          assertion: "positive",
+          scope: "none",
+        }],
+        gaps: [],
+      },
+      sources: [syntheticPageSource, {
+        ...syntheticPageSource,
+        id: "wiki:9999",
+        title: "Unread page",
+        url: "https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/9999",
+        contentId: "9999",
+      }],
+      detailEvidence: [{
+        source: syntheticPageSource,
+        content: syntheticCompleteContent,
+      }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+      onAcceptedProjection: (projection) => projections.push(projection),
+    });
+
+    expect(answer.messageMarkdown).toContain("bounded claim");
+    expect(answer.messageMarkdown).not.toContain("another claim");
+    expect(projections).toEqual([{
+      blocks: [{
+        id: "assertion:accepted",
+        assertion: "positive",
+        sourceRefs: ["wiki:1001"],
+      }],
+    }]);
+    expect(JSON.stringify(projections)).not.toContain("bounded claim");
+  });
+
   test("replaces evidence placeholders only with host-owned canonical links", () => {
     const answer = finalizeChatAnswerV1({
       draft: {

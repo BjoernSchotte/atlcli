@@ -194,7 +194,70 @@ describe("host-owned Chat strategy decisions", () => {
       anchors: [pageAnchor],
     })).toEqual({
       searchProducts: ["confluence"],
-      exactContextProducts: [],
+      exactContextProducts: ["confluence"],
+    });
+  });
+
+  test("admits both product readers for an explicit cross-product relationship chain", () => {
+    const decision = deriveChatStrategyDecisionV1({
+      qualityPolicy: chatQualityPolicyV1("deep"),
+      question:
+        "Trace the linked decision from this page through its Jira delivery item to the Confluence follow-up note.",
+      scope: {
+        siteOrigin: scope.siteOrigin,
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["SPACE"],
+      },
+      anchors: [pageAnchor],
+    });
+
+    expect(decision.requiredCapabilities).toEqual(expect.arrayContaining([
+      "jira-discovery",
+      "confluence-discovery",
+      "relationship-tracing",
+    ]));
+    expect(deriveChatAcquisitionProductsV1({
+      decision,
+      scope: {
+        siteOrigin: scope.siteOrigin,
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["SPACE"],
+      },
+      anchors: [pageAnchor],
+    })).toEqual({
+      searchProducts: ["jira", "confluence"],
+      exactContextProducts: ["confluence"],
+    });
+  });
+
+  test("uses an exact Jira anchor without inventing an unbound Jira search", () => {
+    const jiraAnchor = {
+      anchorRef: "research-anchor:selected-issue",
+      product: "jira" as const,
+      entityKind: "issue" as const,
+      name: "Selected Jira issue",
+    };
+    const remoteLinkScope = {
+      siteOrigin: scope.siteOrigin,
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: ["SPACE"],
+    };
+    const decision = deriveChatStrategyDecisionV1({
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      question: "Which Confluence decision page is linked from the selected Jira issue?",
+      scope: remoteLinkScope,
+      anchors: [jiraAnchor],
+    });
+
+    expect(decision.requiredCapabilities).not.toContain("jira-discovery");
+    expect(decision.requiredCapabilities).toContain("confluence-discovery");
+    expect(deriveChatAcquisitionProductsV1({
+      decision,
+      scope: remoteLinkScope,
+      anchors: [jiraAnchor],
+    })).toEqual({
+      searchProducts: ["confluence"],
+      exactContextProducts: ["jira"],
     });
   });
 
