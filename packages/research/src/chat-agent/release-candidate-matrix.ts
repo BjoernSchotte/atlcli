@@ -273,6 +273,15 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
     proofId: "private-cli-quality",
     producer: "private-cli-runner",
     minimumCases: 2,
+    requiredRuns: [
+      { caseId: "private:CASE01", variant: "quick" },
+      { caseId: "private:CASE01", variant: "auto" },
+      { caseId: "private:CASE01", variant: "deep" },
+      { caseId: "private:CASE02", variant: "quick" },
+      { caseId: "private:CASE02", variant: "auto" },
+      { caseId: "private:CASE02", variant: "deep" },
+      { caseId: "private:CASE02", variant: "deep-research" },
+    ],
     requiredVariants: ["quick", "auto", "deep", "deep-research"],
     requiredChecks: [
       "source-selection", "citation-support", "claim-support", "outcome", "mode-isolation",
@@ -285,6 +294,11 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
     proofId: "private-installed-mv3",
     producer: "installed-production-mv3",
     minimumCases: 2,
+    requiredRuns: [
+      { caseId: "private:CASE01", variant: "quick" },
+      { caseId: "private:CASE01", variant: "auto" },
+      { caseId: "private:CASE02", variant: "deep" },
+    ],
     requiredVariants: ["quick", "auto", "deep"],
     requiredChecks: [
       "source-selection", "citation-support", "outcome", "mode-isolation", "visible-activity",
@@ -296,6 +310,15 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
     proofId: "private-operator-review",
     producer: "operator-review",
     minimumCases: 2,
+    requiredRuns: [
+      { caseId: "private:CASE01", variant: "quick" },
+      { caseId: "private:CASE01", variant: "auto" },
+      { caseId: "private:CASE01", variant: "deep" },
+      { caseId: "private:CASE02", variant: "quick" },
+      { caseId: "private:CASE02", variant: "auto" },
+      { caseId: "private:CASE02", variant: "deep" },
+      { caseId: "private:CASE02", variant: "deep-research" },
+    ],
     requiredVariants: ["quick", "auto", "deep", "deep-research"],
     requiredChecks: [
       "usefulness", "source-selection", "citation-support", "visible-activity",

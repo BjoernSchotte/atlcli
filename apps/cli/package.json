@@ -35,7 +35,8 @@
     "research:e2e:source": "bun --env-file=../../.env --conditions=development src/e2e/research-live.ts --mode source",
     "research:e2e:built": "bun --env-file=../../.env --conditions=development src/e2e/research-live.ts --mode built",
     "research:e2e:multi-turn": "bun --env-file=../../.env --conditions=development src/e2e/research-multi-turn.ts --mode source",
-    "research:e2e:private-suite": "bun --env-file=../../.env --conditions=development src/e2e/research-private-suite.ts --mode source"
+    "research:e2e:private-suite": "bun --env-file=../../.env --conditions=development src/e2e/research-private-suite.ts --mode source",
+    "chat:e2e:private-suite": "bun --env-file=../../.env --conditions=development src/e2e/chat-private-suite.ts --mode source"
   },
   "devDependencies": {
     "@atlcli/export-fixtures": "workspace:*",
