@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   buildChatPrivateCommandV1,
+  chatPrivateSuiteEnvironmentV1,
   finalizeChatPrivateReviewV1,
   parseChatPrivateSuiteArgumentsV1,
   parseChatPrivateSuiteV1,
@@ -81,6 +82,17 @@ describe("private Chat release suite", () => {
     expect(() => parseChatPrivateSuiteArgumentsV1([
       "--suite", "/repo/private.json", "--output-dir", "/private/output",
     ], "/repo")).toThrow("outside");
+  });
+
+  test("isolates durable live sessions below the external artifact root", () => {
+    const args = parseChatPrivateSuiteArgumentsV1([
+      "--suite", "/private/suite.json", "--output-dir", "/private/output",
+    ], "/repo");
+    expect(chatPrivateSuiteEnvironmentV1(args, { PATH: "/bin" })).toEqual({
+      PATH: "/bin",
+      ATLCLI_DISABLE_UPDATE_CHECK: "1",
+      ATLCLI_RESEARCH_SESSIONS_DIR: "/private/output/sessions",
+    });
   });
 
   test("builds production Chat follow-ups and the separate Deep Research command", () => {

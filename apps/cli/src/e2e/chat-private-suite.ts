@@ -92,6 +92,17 @@ export interface ChatPrivateSuiteArgumentsV1 {
   mode: "source" | "built";
 }
 
+export function chatPrivateSuiteEnvironmentV1(
+  args: ChatPrivateSuiteArgumentsV1,
+  base: Record<string, string | undefined> = process.env,
+): Record<string, string | undefined> {
+  return {
+    ...base,
+    ATLCLI_DISABLE_UPDATE_CHECK: "1",
+    ATLCLI_RESEARCH_SESSIONS_DIR: join(args.outputDirectory, "sessions"),
+  };
+}
+
 function inside(root: string, candidate: string): boolean {
   const path = relative(root, candidate);
   return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
@@ -552,7 +563,7 @@ async function main(argv = Bun.argv.slice(2)): Promise<void> {
   const suite = parseChatPrivateSuiteV1(JSON.parse(await readFile(args.suitePath, "utf8")));
   const proof = await runChatPrivateSuiteV1(args, suite, async (command) => {
     const child = Bun.spawn([...command], {
-      cwd: REPOSITORY_ROOT, env: { ...process.env, ATLCLI_DISABLE_UPDATE_CHECK: "1" },
+      cwd: REPOSITORY_ROOT, env: chatPrivateSuiteEnvironmentV1(args),
       stdin: "ignore", stdout: "pipe", stderr: "pipe",
     });
     const [stdout, stderr, exitCode] = await Promise.all([capture(child.stdout, false), capture(child.stderr, true), child.exited]);
