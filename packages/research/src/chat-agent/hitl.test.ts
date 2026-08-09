@@ -133,6 +133,24 @@ describe("DeepAgentsJS durable Chat HITL", () => {
     });
   });
 
+  test("rejects optional or ceremonial questions before durable state changes", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const interactions = await controller(workspace);
+    const questionTool = createChatAskUserQuestionToolV1({
+      turnId,
+      interactions,
+      resume,
+    });
+    await expect(questionTool.invoke({
+      responseKind: "assumption",
+      prompt: "My answer is complete and no clarification is needed.",
+      required: false,
+      assumption: "The exact source already answered the question.",
+    })).rejects.toThrow();
+    expect(interactions.snapshot().pendingQuestion).toBeUndefined();
+    expect(interactions.snapshot().revision).toBe(1);
+  });
+
   test("projects a durable portable pause when ambient graph context is unavailable", async () => {
     const workspace = createMemoryResearchWorkspace();
     const interactions = await controller(workspace);

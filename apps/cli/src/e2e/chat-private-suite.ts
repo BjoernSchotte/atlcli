@@ -259,12 +259,15 @@ export function buildChatPrivateCommandV1(input: {
     ];
   }
   const retained = input.sessionId !== undefined;
+  const scopeOrSession: string[] = input.sessionId !== undefined
+    ? ["--session", input.sessionId]
+    : [
+        ...input.entry.projectKeys.flatMap((key) => ["--project", key]),
+        ...input.entry.spaceKeys.flatMap((key) => ["--space", key]),
+      ];
   return [
     ...executable(input.args.mode, root), "chat", turn.question,
-    ...(retained ? ["--session", input.sessionId] : [
-      ...input.entry.projectKeys.flatMap((key) => ["--project", key]),
-      ...input.entry.spaceKeys.flatMap((key) => ["--space", key]),
-    ]),
+    ...scopeOrSession,
     "--profile", input.suite.profile, "--thinking", input.variant,
     ...(retained ? [] : [
       "--language", input.suite.reportLanguage, "--max-run-minutes", String(input.suite.maxRunMinutes),

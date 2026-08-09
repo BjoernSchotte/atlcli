@@ -35,7 +35,10 @@ const questionProposalSchema = z.object({
     "assumption",
   ]),
   prompt: z.string().min(1).max(800),
-  required: z.boolean(),
+  // A tool call always pauses the durable graph. Optional questions therefore
+  // have no coherent runtime meaning and would turn ceremonial provider prose
+  // into a user-blocking checkpoint.
+  required: z.literal(true),
   options: z.array(optionSchema).min(2).max(12).optional(),
   minSelections: z.number().int().min(0).max(12).optional(),
   maxSelections: z.number().int().min(1).max(12).optional(),
