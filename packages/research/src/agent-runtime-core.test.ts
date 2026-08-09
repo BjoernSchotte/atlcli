@@ -30,6 +30,7 @@ import {
   researchSupervisorContinuationPhaseIdV1,
   shouldRepairRejectedCheckpointContinuationV1,
   selectResearchSupervisorPtcToolsV1,
+  selectedRetrievalProductsV1,
   validatedResearchGraphRequiredV1,
   type ResearchSupervisorScopeDiscoveryDispositionResultV1,
   type ResearchAgentRuntimeBindings,
@@ -703,7 +704,7 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     expect(evaluatorCalls).toBe(0);
     expect(result).toBeInstanceOf(ToolMessage);
     expect((result as ToolMessage).content).toContain("Do not wrap the workflow in an async IIFE");
-    expect(persistedWorkflows).toEqual([]);
+    expect(persistedWorkflows).toEqual([detachedWorkflow]);
     expect(diagnostics).toContainEqual(expect.objectContaining({
       attempt: 1,
       status: "failed",
@@ -715,7 +716,7 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     ]);
 
     await completeEval(middleware, JSON.stringify({ title: "Repaired" }));
-    expect(persistedWorkflows).toEqual([validWorkflowCode]);
+    expect(persistedWorkflows).toEqual([detachedWorkflow, validWorkflowCode]);
     expect(await observeOfferedTools(middleware)).toEqual([
       "AtlcliResearchAgentDraftV1",
     ]);
@@ -1614,6 +1615,26 @@ describe("durable graph revision PTC", () => {
     expect(prompt).not.toContain("Host-reviewed candidate subagent catalog for this run:");
     expect(prompt).not.toContain("Proposal input shape:");
     expect(prompt.length).toBeLessThan(initialPrompt.length);
+
+    const stoppedGraph = structuredClone(graph);
+    stoppedGraph.nodes
+      .filter((node) => node.kind === "search")
+      .forEach((node) => { node.status = "complete"; });
+    const terminalPrompt = buildCheckpointedDynamicSupervisorPrompt(stoppedGraph, {
+      resumeContinuation: {
+        graphRevision: stoppedGraph.revision,
+        wave: 1,
+        continuationId: "research-continuation:1.terminal",
+        action: "stop",
+        reason: "no_ranked_candidates",
+      },
+    });
+    expect(terminalPrompt).toContain("remaining frontier calls in this order");
+    expect(terminalPrompt).toContain("coverage-moderator (research-node:coverage-moderation)");
+    expect(terminalPrompt).toContain("reconciler (research-node:reconciler)");
+    expect(terminalPrompt).toContain("synthesizer (research-node:synthesizer)");
+    expect(terminalPrompt).toContain("Do not use a loop, if/else, switch, callback, or block-scoped final result");
+    expect(terminalPrompt).toContain("top-level `const finalDraft = await task(...)`");
   });
 
   test("gives a recovered continuation a phase-specific user turn", () => {
@@ -1882,6 +1903,9 @@ describe("host search freshness limitations", () => {
 
     expect(hostSearchFreshnessLimitationsV1(graph, brief.scopeBindings)).toEqual([
       "Only fields returned by the approved read-only capabilities were evaluated; unavailable fields were not inferred.",
+    ]);
+    expect(selectedRetrievalProductsV1(graph, ["confluence"])).toEqual([
+      "confluence",
     ]);
   });
 });

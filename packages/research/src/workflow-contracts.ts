@@ -193,6 +193,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     phase: "acquisition",
     availableFromPhase: "T3",
     allowedCapabilityIds: [
+      "atlassian.bound.read",
       "jira.issue.search",
       "jira.issue.get",
       "wiki.search",

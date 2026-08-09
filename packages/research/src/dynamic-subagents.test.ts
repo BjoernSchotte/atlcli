@@ -6,15 +6,190 @@ import { z } from "zod/v4";
 import { createResearchBriefV1 } from "./brief.js";
 import { ResearchCapabilityBroker } from "./broker.js";
 import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
+import { RESEARCH_REQUEST_SCHEMA_V1 } from "./contracts.js";
+import { BOUND_ENTITY_READ_INPUT_SCHEMA_V1 } from "./capability-contracts.js";
 import {
   boundResearchNodePtcToolsV1,
   buildResearchAcquisitionProgram,
+  buildResearchBoundAcquisitionProgramV1,
   compileDynamicResearchSubagents,
+  completeResearchNodeStructuredCandidateV1,
+  responseSchemaForResearchNodeV1,
 } from "./dynamic-subagents.js";
 import { composeResearchGraphV1 } from "./graph.js";
+import { RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2 } from "./response-schemas.js";
 import { RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
 
 describe("Jira focused-researcher acquisition", () => {
+  test("reads approved exact context directly without search or ranking", async () => {
+    const brief = createResearchBriefV1({
+      sessionId: "research-session:bound-acquisition",
+      turnId: "research-turn:bound-acquisition",
+      objective: "Summarize the attached Confluence page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:bound-acquisition:12345",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "page:12345",
+        key: "12345",
+        name: "Customer retention analysis",
+        source: "exact_link",
+        authority: "approved",
+      }],
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const anchors = [{
+      anchorRef: "research-anchor:opaque-12345",
+      product: "confluence" as const,
+      entityKind: "page" as const,
+      name: "Customer retention analysis",
+    }];
+    const wiki = compileDynamicResearchSubagents(graph, {
+      model: fakeModel(),
+      broker: { exactAnchors: () => anchors } as ResearchCapabilityBroker,
+      question: brief.objective,
+      maxInterpreterMs: DEFAULT_RESEARCH_LIMITS_V1.maxInterpreterMs,
+      maxInterpreterMemoryBytes: DEFAULT_RESEARCH_LIMITS_V1.maxInterpreterMemoryBytes,
+      maxPtcCalls: DEFAULT_RESEARCH_LIMITS_V1.maxPtcCalls,
+      maxSearchPagesPerProduct: DEFAULT_RESEARCH_LIMITS_V1.maxSearchPagesPerProduct,
+      maxDetailItemsPerProduct: DEFAULT_RESEARCH_LIMITS_V1.maxDetailItemsPerProduct,
+      maxPacketChars: DEFAULT_RESEARCH_LIMITS_V1.maxPtcOutputBytes,
+    }).find((subagent) => subagent.name.includes("wiki-research"));
+    const wikiNode = graph.nodes.find((node) => node.id === "research-node:wiki-research");
+    if (!wikiNode?.roleId) throw new Error("Expected exact Confluence research node.");
+
+    expect(wiki?.systemPrompt).toContain("exact context");
+    expect(wiki?.systemPrompt).toContain("tools.atlassianBoundRead");
+    expect(wiki?.systemPrompt).not.toContain("tools.wikiSearch");
+    expect(wiki?.systemPrompt).not.toContain("tools.researchCandidateRank");
+    expect(responseSchemaForResearchNodeV1(wikiNode)).toBe(
+      RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
+    );
+    const completed = completeResearchNodeStructuredCandidateV1(wikiNode, {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claimCandidates: [],
+      gaps: [],
+      coverageLimits: [],
+    });
+    expect(completed).toEqual({
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claimCandidates: [],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    });
+
+    const program = buildResearchBoundAcquisitionProgramV1(anchors, 1)
+      .replace("\n({ acquisition:", "\nreturn ({ acquisition:");
+    const invoked: string[] = [];
+    const projection = await (new Function(
+      "tools",
+      `return (async () => {${program}})();`,
+    ) as (tools: unknown) => Promise<unknown>)({
+      async atlassianBoundRead({ anchorRef }: { anchorRef: string }) {
+        invoked.push(anchorRef);
+        return JSON.stringify({
+          source: {
+            sourceId: "wiki:12345",
+            product: "confluence",
+            title: "Customer retention analysis",
+            url: "https://example.atlassian.net/wiki/pages/12345",
+            contentId: "12345",
+          },
+          content: {
+            text: "The page contains one directly supported conclusion.",
+            linkTargets: [],
+            truncated: false,
+          },
+        });
+      },
+    }) as { acquisition: { kind: string; requestedCount: number; availableCount: number }; details: unknown[] };
+
+    expect(invoked).toEqual(["research-anchor:opaque-12345"]);
+    expect(projection.acquisition).toEqual({
+      kind: "exact-bound-context",
+      requestedCount: 1,
+      availableCount: 1,
+    });
+    expect(projection.details).toHaveLength(1);
+  });
+
+  test("treats a fully read exact anchor as complete without inventing search warnings", async () => {
+    const binding = {
+      schema: "atlcli.research-scope-binding/v1" as const,
+      id: "scope-binding:bound-completion:12345",
+      tenantOrigin: "https://example.atlassian.net",
+      product: "confluence" as const,
+      entityKind: "page" as const,
+      entityRef: "research-scope-entity:page-12345",
+      key: "12345",
+      name: "Customer retention analysis",
+      source: "exact_link" as const,
+      authority: "approved" as const,
+    };
+    const broker = new ResearchCapabilityBroker({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Summarize the exact page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      wikiProvider: "rest",
+    }, {
+      jira: {
+        async searchPage() { throw new Error("jira search must not run"); },
+        async getIssue() { throw new Error("jira detail must not run"); },
+      },
+      wiki: {
+        async searchPage() { throw new Error("wiki search must not run"); },
+        async getPage({ contentId }) {
+          return {
+            contentId,
+            spaceKey: "DOCS",
+            title: "Customer retention analysis",
+            content: {
+              text: "The exact page contains supported content.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 42,
+            },
+          };
+        },
+      },
+    }, {
+      scopeBindings: [binding],
+      createAnchorId: () => "opaque-12345",
+    });
+    expect(broker.completionStatus(["confluence"]).complete).toBe(false);
+    const [anchor] = broker.exactAnchors();
+    await broker.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef: anchor!.anchorRef,
+    });
+    expect(broker.completionStatus(["confluence"])).toEqual({
+      complete: true,
+      warnings: [],
+    });
+  });
+
   test("uses one host-generated program with one candidate-ranking stage", () => {
     const brief = createResearchBriefV1({
       sessionId: "research-session:jira-acquisition",

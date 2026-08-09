@@ -6,6 +6,7 @@ import {
   buildChatPrivateCommandV1,
   chatPrivateSuiteEnvironmentV1,
   finalizeChatPrivateReviewV1,
+  normalizePrivateSourceIdentityV1,
   parseChatPrivateSuiteArgumentsV1,
   parseChatPrivateSuiteV1,
   projectPrivateAnswerV1,
@@ -50,7 +51,7 @@ function chatOutput(variant: "quick" | "auto" | "deep", turn: number): string {
   return JSON.stringify({
     sessionId: "research-session:private",
     answer: {
-      messageMarkdown: `## Antwort\n\nSupported fact ${turn}. [Quelle](${sourceUrl})`,
+      messageMarkdown: `## Antwort\n\nSupported-fact ${turn}. [Quelle](${sourceUrl})`,
       citations: [{ url: sourceUrl }],
       strategy: { qualityMode: variant },
       run: {
@@ -124,6 +125,18 @@ describe("private Chat release suite", () => {
     expect(projectPrivateAnswerV1(chatOutput("quick", 1), "quick").sourceUrls).toEqual([sourceUrl]);
     expect(projectPrivateAnswerV1(researchOutput(), "deep-research").qualityMode).toBe("deep-research");
     expect(() => projectPrivateAnswerV1(chatOutput("auto", 1), "quick")).toThrow("invalid");
+  });
+
+  test("normalizes Confluence blog and page routes to the same content identity", () => {
+    expect(normalizePrivateSourceIdentityV1(
+      "https://tenant.invalid/wiki/spaces/~person/blog/2026/08/07/1178632199/Private-title",
+    )).toBe("wiki:1178632199");
+    expect(normalizePrivateSourceIdentityV1(
+      "https://tenant.invalid/wiki/spaces/~person/pages/1178632199/Private-title",
+    )).toBe("wiki:1178632199");
+    expect(normalizePrivateSourceIdentityV1(
+      "https://tenant.invalid/browse/SAFE-42",
+    )).toBe("jira:SAFE-42");
   });
 
   test("runs sequential production commands, scores local gold, and emits a neutral proof", async () => {

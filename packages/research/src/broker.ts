@@ -1461,6 +1461,20 @@ export class ResearchCapabilityBroker {
     for (const product of new Set(products)) {
       const status = this.#searchCompletion[product];
       if (status.complete) continue;
+      const exactBindingCount = [...this.#exactEntityBindings.values()]
+        .filter((binding) => binding.product === product).length;
+      const exactDetailCount = new Set(
+        this.#successfulDetailReads
+          .filter((entry) => entry.product === product)
+          .map((entry) => entry.sourceId),
+      ).size;
+      if (
+        this.#searchAttempts[product] === 0 &&
+        exactBindingCount > 0 &&
+        exactDetailCount >= exactBindingCount
+      ) {
+        continue;
+      }
       const label = product === "jira" ? "Jira" : "Confluence";
       warnings.push(
         status.termination

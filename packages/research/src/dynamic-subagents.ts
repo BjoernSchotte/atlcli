@@ -18,9 +18,16 @@ import {
   parseResearchDynamicAgentDraftV1,
 } from "./agent-draft.js";
 import type { ResearchCapabilityBroker } from "./broker.js";
+import { createChatPtcToolsV1 } from "./chat-agent/retrieval.js";
+import {
+  BOUND_ENTITY_READ_CAPABILITY_ID_V1,
+  BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1,
+  type BoundEntityAnchorV1,
+} from "./capability-contracts.js";
 import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import { createResearchScopeCatalogPtcTools } from "./scope-catalog-tools.js";
 import {
+  RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
   RESEARCH_PACKET_BODY_JSON_SCHEMA_V1,
   RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
   RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
@@ -169,6 +176,7 @@ export function parseResearchCoverageModerationContextV1(
 }
 
 const toolForCapability: Record<ResearchGraphCapabilityV1, string> = {
+  "atlassian.bound.read": "atlassian_bound_read",
   "jira.issue.search": "jira_issue_search",
   "jira.issue.get": "jira_issue_get",
   "wiki.search": "wiki_search",
@@ -180,6 +188,7 @@ const toolForCapability: Record<ResearchGraphCapabilityV1, string> = {
 };
 
 const quickJsToolForCapability: Record<ResearchGraphCapabilityV1, string> = {
+  "atlassian.bound.read": "tools.atlassianBoundRead",
   "jira.issue.search": "tools.jiraIssueSearch",
   "jira.issue.get": "tools.jiraIssueGet",
   "wiki.search": "tools.wikiSearch",
@@ -237,6 +246,42 @@ export function responseSchemaForResearchRole(
     case "outline-planner":
       throw new Error("outline-planner is unavailable before T5.");
   }
+}
+
+/** Provider-facing schema for one admitted node, narrower only when later
+ * specialists own the omitted analysis fields. */
+export function responseSchemaForResearchNodeV1(
+  node: Pick<ResearchGraphNodeV1, "roleId" | "outputSchema" | "grantedCapabilityIds">,
+): Record<string, unknown> {
+  if (!node.roleId) throw new Error("A research response schema requires an admitted role.");
+  if (
+    node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2 &&
+    node.grantedCapabilityIds.includes(BOUND_ENTITY_READ_CAPABILITY_ID_V1)
+  ) {
+    return RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2;
+  }
+  return responseSchemaForResearchRole(node.roleId, node.outputSchema);
+}
+
+/** Restore host-owned empty analysis fields omitted by the exact-bound wire
+ * schema before the authoritative V2 parser and evidence normalizer run. */
+export function completeResearchNodeStructuredCandidateV1(
+  node: Pick<ResearchGraphNodeV1, "outputSchema" | "grantedCapabilityIds">,
+  candidate: unknown,
+): unknown {
+  if (
+    node.outputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V2 ||
+    !node.grantedCapabilityIds.includes(BOUND_ENTITY_READ_CAPABILITY_ID_V1) ||
+    !candidate || typeof candidate !== "object" || Array.isArray(candidate)
+  ) {
+    return candidate;
+  }
+  return {
+    ...(candidate as Record<string, unknown>),
+    contradictionCandidates: [],
+    outlineProposals: [],
+    proposedFollowUps: [],
+  };
 }
 
 const PROVIDER_UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
@@ -344,17 +389,46 @@ ${modelProjection}
 ({ search: { candidateCount: candidates.length, complete: result.page.complete === true, termination: compactText(result.page.termination, 80) }, candidates, details });`;
 }
 
+/** Host-owned direct acquisition for already approved exact context. */
+export function buildResearchBoundAcquisitionProgramV1(
+  anchors: readonly BoundEntityAnchorV1[],
+  maxDetailItems: number,
+): string {
+  const admitted = anchors.slice(0, Math.max(0, Math.trunc(maxDetailItems))).map((anchor) => ({
+    anchorRef: anchor.anchorRef,
+    product: anchor.product,
+    entityKind: anchor.entityKind,
+    name: anchor.name,
+  }));
+  return `const anchors = ${JSON.stringify(admitted)};
+const rawDetails = [];
+for (const anchor of anchors) {
+  try { rawDetails.push({ status: "available", value: JSON.parse(await tools.atlassianBoundRead({ anchorRef: anchor.anchorRef })) }); }
+  catch { rawDetails.push({ status: "unavailable", anchorRef: anchor.anchorRef }); }
+}
+function compactText(value, maximum) { const text = typeof value === "string" ? value.replace(/\\s+/g, " ").trim() : ""; return text.length <= maximum ? text : text.slice(0, maximum).trimEnd(); }
+function compactSource(value) { const source = value && typeof value === "object" ? value : {}; const projected = { sourceId: compactText(source.sourceId, 200), product: compactText(source.product, 32), title: compactText(source.title, 360), url: compactText(source.url, 512) }; for (const key of ["issueKey", "contentId", "projectKey", "spaceKey", "updatedAt"]) { const text = compactText(source[key], 160); if (text) projected[key] = text; } return projected; }
+function compactLinks(value) { const raw = Array.isArray(value) ? value.filter((entry) => typeof entry === "string").map((entry) => compactText(entry, 320)).filter(Boolean) : []; return { values: [...new Set(raw)].slice(0, 8), truncated: raw.length > 8 }; }
+const includeCompleteSingleDetail = anchors.length === 1 && rawDetails.length === 1;
+function projectDetailForModel(detail) { if (!detail || detail.status !== "available" || !detail.value || typeof detail.value !== "object") return { status: "unavailable", anchorRef: compactText(detail && detail.anchorRef, 220) }; const value = detail.value; const content = value.content && typeof value.content === "object" ? value.content : {}; const text = typeof content.text === "string" ? content.text : ""; const maximum = includeCompleteSingleDetail ? 32000 : 4000; const links = compactLinks(content.linkTargets); return { status: "available", source: compactSource(value.source), content: { text: text.slice(0, maximum), linkTargets: links.values, linkTargetsTruncated: links.truncated, truncated: content.truncated === true, projectionTruncated: text.length > maximum } }; }
+({ acquisition: { kind: "exact-bound-context", requestedCount: anchors.length, availableCount: rawDetails.filter((detail) => detail.status === "available").length }, details: rawDetails.map(projectDetailForModel) });`;
+}
+
 function acquisitionInstructions(
   node: ResearchGraphNodeV1,
   question: string,
   maxDetailItems: number,
   maxSearchCalls: number,
+  exactAnchors: readonly BoundEntityAnchorV1[],
 ): string {
   const emptyPacket = node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2
     ? `Return one schema-valid abstaining packet with schema "atlcli.research-packet-body/v2", empty claimCandidates/contradictionCandidates/outlineProposals/proposedFollowUps arrays, one gap whose sourceIds is empty, a concise coverageLimits entry explaining that the bounded Jira queries returned no candidates, and a non-empty abstentionReason.`
     : `Return one schema-valid abstaining packet with schema "atlcli.research-packet-body/v1", the original question in answeredQuestion, empty sourceIds/findingCandidates/relationshipCandidates/proposedFollowUps arrays, one gap whose sourceIds is empty, a concise coverageLimits entry explaining that the bounded Jira queries returned no candidates, and a non-empty abstentionReason.`;
   if (node.grantedCapabilityIds.length === 0) {
     return "You have no source tools. Work only from the dependency packets included in your task description.";
+  }
+  if (node.grantedCapabilityIds.includes(BOUND_ENTITY_READ_CAPABILITY_ID_V1)) {
+    return `Your only source-acquisition tool is eval. The host has already resolved and approved exact context, so do not search, rank candidates, widen scope, or infer another source. Make exactly one eval call with this host-generated program:\n${buildResearchBoundAcquisitionProgramV1(exactAnchors, maxDetailItems)}\nDo not call eval a second time. Use only available non-truncated detail content for positive claims. If an exact read is unavailable or truncated, return a typed gap or coverage limit instead of substituting another source.`;
   }
   const isJira = node.grantedCapabilityIds.includes("jira.issue.search");
   const isWiki = node.grantedCapabilityIds.includes("wiki.search");
@@ -393,8 +467,9 @@ interface ResearchNodeAcquisitionBudgetV1 {
  */
 function researchNodeAcquisitionBudgetV1(
   node: Pick<ResearchGraphNodeV1, "grantedCapabilityIds" | "budget">,
-  input: Pick<DynamicResearchSubagentOptions, "question" | "maxPtcCalls" | "maxSearchPagesPerProduct" | "maxDetailItemsPerProduct">,
+  input: Pick<DynamicResearchSubagentOptions, "question" | "maxPtcCalls" | "maxSearchPagesPerProduct" | "maxDetailItemsPerProduct"> & { exactAnchorCount?: number },
 ): ResearchNodeAcquisitionBudgetV1 {
+  const hasBoundRead = node.grantedCapabilityIds.includes(BOUND_ENTITY_READ_CAPABILITY_ID_V1);
   const hasJiraSearch = node.grantedCapabilityIds.includes("jira.issue.search");
   const hasWikiSearch = node.grantedCapabilityIds.includes("wiki.search");
   const searchProducts = Number(hasJiraSearch) + Number(hasWikiSearch);
@@ -418,6 +493,20 @@ function researchNodeAcquisitionBudgetV1(
           : input.maxSearchPagesPerProduct
         : 0;
   const limit = Math.min(input.maxPtcCalls, node.budget.maxCapabilityCalls);
+  if (hasBoundRead) {
+    const maxDetailCalls = Math.min(
+      input.exactAnchorCount ?? 0,
+      input.maxDetailItemsPerProduct,
+      limit,
+    );
+    return {
+      maxSearchCalls: 0,
+      maxCandidateRankCalls: 0,
+      maxDetailCalls,
+      maxCatalogCalls: 0,
+      maxPtcCalls: maxDetailCalls,
+    };
+  }
   const maxCatalogCalls = hasCatalog ? Math.min(3, limit) : 0;
   const requestedRankCalls = canReadDetails ? searchProducts : 0;
   const searchReserve = Math.max(
@@ -466,6 +555,7 @@ function rolePrompt(
   question: string,
   acquisitionBudget: ResearchNodeAcquisitionBudgetV1,
   reportLanguage: "en" | "de" | undefined,
+  exactAnchors: readonly BoundEntityAnchorV1[],
 ): string {
   const grantedCapabilityIds = [...new Set(node.grantedCapabilityIds)];
   const grants = grantedCapabilityIds.length > 0
@@ -516,7 +606,7 @@ Do not broaden scope, invent another follow-up, call a subagent, or retry an emp
 
   switch (node.roleId) {
     case "focused-researcher":
-      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, acquisitionBudget.maxDetailCalls, acquisitionBudget.maxSearchCalls)}${relatedScopeDiscoveryInstructions(node, acquisitionBudget.maxCatalogCalls)}\n\nReturn schema ${node.outputSchema}. Your packet must summarize detailed evidence, not merely the search result list. ${v2Packet ? "Select at most 4 claimCandidates: prioritize the four claims that most directly answer the question, rather than repeating every fetched item. Every factual candidate needs one or more exact detail quotes of at most 280 characters; never cite a search-only candidate, an empty detail body, or a truncated detail result as support." : "Select at most 12 findingCandidates that materially answer the question. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support."} Represent acquisition failures as typed gaps and coverageLimits.`;
+      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, acquisitionBudget.maxDetailCalls, acquisitionBudget.maxSearchCalls, exactAnchors)}${relatedScopeDiscoveryInstructions(node, acquisitionBudget.maxCatalogCalls)}\n\nReturn schema ${node.outputSchema}. Your packet must summarize detailed evidence, not merely the search result list. ${v2Packet ? exactAnchors.length > 0 ? "Select at most 8 claimCandidates. Cover every explicitly requested facet that the exact source materially supports; keep independently useful scope, cost, prerequisite, boundary, decision, and next-step facts in separate candidates instead of collapsing the whole page into two broad summaries. Every factual candidate needs one or more exact detail quotes of at most 280 characters; never cite an empty or truncated detail result as support. The exact-bound response tool intentionally asks only for claimCandidates, gaps, coverageLimits, and optional abstentionReason; later specialists own outlines, contradictions, and follow-up proposals." : "Select at most 4 claimCandidates: prioritize the four claims that most directly answer the question, rather than repeating every fetched item. Every factual candidate needs one or more exact detail quotes of at most 280 characters; never cite a search-only candidate, an empty detail body, or a truncated detail result as support." : "Select at most 12 findingCandidates that materially answer the question. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support."} Represent acquisition failures as typed gaps and coverageLimits.`;
     case "document-distiller":
       return `${shared}\n\nCompare the supplied Jira and Confluence packets. Return at most 8 non-overlapping relationship findings. A verified relationship requires explicit detailed content or a link; title or time similarity alone is only a hypothesis. Do not perform new reads.`;
     case "contradiction-verifier":
@@ -547,6 +637,20 @@ export function createResearchNodePtcToolsV1(
   ) => void | Promise<void>,
   now?: () => number,
 ): DynamicStructuredTool[] {
+  const boundTools = createChatPtcToolsV1(broker, {
+    exactContextProducts: ["jira", "confluence"],
+    searchProducts: [],
+    ...(onDiagnostic ? { onDiagnostic } : {}),
+    ...(onResult
+      ? {
+          onResult: (capability, result, callId) => {
+            if (capability === BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1) return;
+            return onResult(capability, result, callId);
+          },
+        }
+      : {}),
+    ...(now ? { now } : {}),
+  });
   const contentTools = createResearchPtcTools(broker, {
     ...(onDiagnostic ? { onDiagnostic } : {}),
     ...(onResult ? { onResult } : {}),
@@ -561,7 +665,7 @@ export function createResearchNodePtcToolsV1(
       })
     : [];
   const allowed = new Set(researchPtcToolNamesForNodeV1(node));
-  const selected = [...contentTools, ...catalogTools]
+  const selected = [...boundTools, ...contentTools, ...catalogTools]
     .filter((candidate) => allowed.has(candidate.name)) as DynamicStructuredTool[];
   return boundResearchNodePtcToolsV1(selected, node.budget.maxCapabilityCalls, node.id);
 }
@@ -702,6 +806,7 @@ export function compileDynamicResearchSubagents(
   const acquisitionNodeCount = graph.nodes.filter((node) =>
     node.executor === "subagent" && node.kind !== "repair" && node.status !== "pruned" &&
     node.grantedCapabilityIds.some((capability) =>
+      capability === BOUND_ENTITY_READ_CAPABILITY_ID_V1 ||
       capability === "jira.issue.search" || capability === "wiki.search"
     )
   ).length;
@@ -729,9 +834,16 @@ export function compileDynamicResearchSubagents(
       (tool, result, callId) => options.onNodePtcResult?.(node.id, tool, result, callId),
       options.now,
     );
+    const exactAnchors = node.grantedCapabilityIds.includes(BOUND_ENTITY_READ_CAPABILITY_ID_V1)
+      ? options.broker.exactAnchors().filter((anchor) =>
+          node.id.includes(":jira-") ? anchor.product === "jira" : anchor.product === "confluence"
+        )
+      : [];
     const acquisitionBudget = researchNodeAcquisitionBudgetV1(node, {
       ...options,
+      exactAnchorCount: exactAnchors.length,
       maxPtcCalls: node.grantedCapabilityIds.some((capability) =>
+        capability === BOUND_ENTITY_READ_CAPABILITY_ID_V1 ||
         capability === "jira.issue.search" || capability === "wiki.search"
       ) ? maxPtcCallsPerAcquisitionNode : options.maxPtcCalls,
     });
@@ -744,7 +856,7 @@ export function compileDynamicResearchSubagents(
       model: options.modelsByNode?.[node.id] ?? options.modelsByRole?.[role] ?? options.model,
       systemPrompt: [
         `Host-admitted specialization ${node.id}:`,
-        rolePrompt(node, options.question, acquisitionBudget, options.reportLanguage),
+        rolePrompt(node, options.question, acquisitionBudget, options.reportLanguage, exactAnchors),
       ].join("\n"),
       tools: [],
       middleware: [
@@ -1178,7 +1290,7 @@ export function createBoundedResearchSubagentMiddleware(
                 .map((dependencyNodeId) => taskIdByNodeId.get(dependencyNodeId))
                 .filter((taskId): taskId is string => Boolean(taskId)),
           grantedCapabilityIds: [...node.grantedCapabilityIds],
-          responseSchema: responseSchemaForResearchRole(node.roleId, node.outputSchema),
+          responseSchema: responseSchemaForResearchNodeV1(node),
           maxResultBytes: node.budget.maxResultBytes,
           maxDurationMs: node.budget.maxDurationMs,
         };
@@ -1376,7 +1488,8 @@ export function createBoundedResearchSubagentMiddleware(
         let candidate: unknown;
         try {
           const rawCandidate = extractResearchStructuredCandidateV1(result);
-          candidate = normalizeBlankCoverageLimits(rawCandidate);
+          const completedCandidate = completeResearchNodeStructuredCandidateV1(node, rawCandidate);
+          candidate = normalizeBlankCoverageLimits(completedCandidate);
           if (role === "synthesizer") parseResearchDynamicAgentDraftV1(candidate);
           else if (role === "reconciler") {
             const body = parseReconciliationBodyV1(candidate);
@@ -1742,10 +1855,7 @@ export function createBoundedResearchSubagentMiddleware(
         ...config,
         configurable: {
           ...config.configurable,
-          [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: responseSchemaForResearchRole(
-            node.roleId,
-            node.outputSchema,
-          ),
+          [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: responseSchemaForResearchNodeV1(node),
         },
       });
     } catch (error) {

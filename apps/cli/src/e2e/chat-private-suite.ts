@@ -278,14 +278,21 @@ export function buildChatPrivateCommandV1(input: {
 }
 
 function normalized(value: string): string {
-  return value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase("de-DE");
+  return value
+    .normalize("NFKC")
+    .replace(/\p{Dash_Punctuation}+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .toLocaleLowerCase("de-DE");
 }
 
-function sourceIdentity(value: string): string {
+export function normalizePrivateSourceIdentityV1(value: string): string {
   try {
     const url = new URL(value);
     const page = url.pathname.match(/\/wiki\/.*?\/pages\/(\d+)/u);
     if (page) return `wiki:${page[1]}`;
+    const blog = url.pathname.match(/\/wiki\/.*?\/blog\/\d{4}\/\d{2}\/\d{2}\/(\d+)(?:\/|$)/u);
+    if (blog) return `wiki:${blog[1]}`;
     const issue = url.pathname.match(/\/browse\/([A-Z][A-Z0-9_]*-\d+)/u);
     if (issue) return `jira:${issue[1]}`;
     return `${url.origin}${url.pathname.replace(/\/$/u, "")}`;
@@ -356,9 +363,9 @@ function evaluateGold(answer: ProjectedAnswerV1, gold: ChatPrivateGoldV1): {
   claimSupport: boolean;
   outcome: boolean;
 } {
-  const actual = new Set(answer.sourceUrls.map(sourceIdentity));
-  const required = gold.requiredSourceUrls.map(sourceIdentity);
-  const allowed = new Set(gold.allowedSourceUrls.map(sourceIdentity));
+  const actual = new Set(answer.sourceUrls.map(normalizePrivateSourceIdentityV1));
+  const required = gold.requiredSourceUrls.map(normalizePrivateSourceIdentityV1);
+  const allowed = new Set(gold.allowedSourceUrls.map(normalizePrivateSourceIdentityV1));
   const sourceSelection = required.every((source) => actual.has(source)) && [...actual].every((source) => allowed.has(source));
   const citationSupport = answer.sourceUrls.length > 0 && answer.sourceUrls.every((url) => /^https:\/\//u.test(url));
   const body = normalized(answer.markdown);

@@ -195,6 +195,25 @@ export const RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown> 
   ],
 );
 
+/**
+ * Exact bound acquisition already has one host-selected source and delegates
+ * outline, contradiction, and follow-up decisions to later graph nodes. Keep
+ * its provider-facing response tool deliberately small so one long source does
+ * not repeatedly re-send the same body while repairing irrelevant fields.
+ * The host restores the omitted empty arrays before authoritative V2 parsing.
+ */
+export const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown> = closedObject(
+  "ResearchExactBoundPacketModelBodyV2",
+  {
+    schema: { const: "atlcli.research-packet-body/v2" },
+    claimCandidates: boundedObjectArray(8, researchClaimCandidateV2Schema),
+    gaps: boundedObjectArray(16, gapSchema),
+    coverageLimits: boundedStringArray(16, 600),
+    abstentionReason: boundedString(1_000),
+  },
+  ["schema", "claimCandidates", "gaps", "coverageLimits"],
+);
+
 const researchReferenceContradictionV2Schema = closedObject(
   "ResearchReferenceContradictionV2",
   {

@@ -161,6 +161,12 @@ describe("dynamic research graph composition", () => {
       "research-node:synthesizer",
     ]);
     expect(graph.nodes.some((node) => node.id.includes("jira"))).toBe(false);
+    expect(graph.nodes[0]?.grantedCapabilityIds).toEqual(["atlassian.bound.read"]);
+    expect(graph.nodes[0]?.reasonCodes).toEqual(["exact_reference_follow"]);
+    expect(graph.nodes[0]?.outputSchema).toBe(RESEARCH_PACKET_BODY_SCHEMA_V2);
+    expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("wiki.search");
+    expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("research.candidate.rank");
+    expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("wiki.page.get");
   });
   test("gives every productive host the same standard cross-product graph", () => {
     const graph = composeStandardResearchGraphV1(
