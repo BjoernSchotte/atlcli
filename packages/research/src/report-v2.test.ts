@@ -11,6 +11,7 @@ import type { ResearchEvidenceRecordV1, ResearchEvidenceStoreV1 } from "./eviden
 import type { ResearchOutlineV1 } from "./outline.js";
 import {
   assertResearchReportV2,
+  completeResearchReportClaimSelectionV2,
   finalizeResearchReportV2,
   projectResearchReportReconciliationV2,
 } from "./report-v2.js";
@@ -152,6 +153,19 @@ function ports(input: {
 }
 
 describe("V2 research report finalization", () => {
+  test("keeps every host-outlined claim when the synthesizer selects an incomplete subset", () => {
+    expect(completeResearchReportClaimSelectionV2({
+      acceptedClaimIds: [CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM],
+      selectedClaimIds: [CURRENT_CLAIM],
+      outlineClaimIds: [CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM],
+    })).toEqual([CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM]);
+    expect(() => completeResearchReportClaimSelectionV2({
+      acceptedClaimIds: [CURRENT_CLAIM],
+      selectedClaimIds: [SECOND_CLAIM],
+      outlineClaimIds: [CURRENT_CLAIM],
+    })).toThrow("outside accepted evidence");
+  });
+
   test("projects host-recorded reconciliation decisions without publishing critic text or support", () => {
     const projected = projectResearchReportReconciliationV2([{
       id: "defect:report-coverage",
@@ -214,6 +228,12 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).not.toContain(CURRENT_CLAIM);
     expect(report.markdown).not.toContain("## Reconciliation decisions");
     expect(report.markdown).not.toContain("coverage:delivery: abstain");
+    expect(report.limitations).toContain(
+      "Independent review identified one open item that requires further follow-up.",
+    );
+    expect(report.markdown).toContain(
+      "Independent review identified one open item that requires further follow-up.",
+    );
     expect(report.markdown).not.toContain("## Source access authority");
     expect(report.markdown).not.toContain("`jira:ATLCLI-42`: whole scope.");
     expect(report.markdown).toContain("## Unresolved Jira ↔ Confluence relationships");
@@ -248,6 +268,34 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("## Laufdaten");
     expect(report.markdown).not.toContain("## Zugriffsbereich der Quellen");
     expect(report.markdown).not.toContain("`jira:ATLCLI-42`: vollständiger Bereich.");
+  });
+
+  test("surfaces unresolved reconciliation follow-ups without exposing critic details", async () => {
+    const current = claim(CURRENT_CLAIM, EVIDENCE, "current");
+    const report = await finalizeResearchReportV2({
+      request: normalizeResearchRequestV1({ ...request, reportLanguage: "de" }),
+      ...ports({ claims: [current], records: [record(EVIDENCE, "jira:ATLCLI-42")] }),
+      claimIds: [CURRENT_CLAIM],
+      reconciliation: [{
+        defectId: "defect:private-rationale-must-not-render",
+        target: { kind: "claim", id: CURRENT_CLAIM },
+        decision: "add_follow_up",
+        reasonCode: "material_defect",
+      }, {
+        defectId: "defect:handled-by-synthesis",
+        target: { kind: "claim", id: CURRENT_CLAIM },
+        decision: "revise",
+        reasonCode: "material_defect",
+      }],
+      run,
+      checkedAt: "2026-08-01T12:01:00.000Z",
+    });
+
+    expect(report.limitations).toContain(
+      "Die unabhängige Prüfung hat einen offenen Punkt identifiziert, der in einem Folgeschritt weiter geprüft werden muss.",
+    );
+    expect(report.markdown).not.toContain("private-rationale-must-not-render");
+    expect(report.markdown).not.toContain("handled-by-synthesis");
   });
 
   test("does not mark a cross-product relationship unresolved when one published claim retains both sources", async () => {

@@ -79,6 +79,7 @@ import {
   parseResearchAgentDraftV1,
 } from "./agent-draft.js";
 import {
+  completeResearchReportClaimSelectionV2,
   finalizeResearchReportV2,
   projectResearchReportReconciliationV2,
 } from "./report-v2.js";
@@ -5918,15 +5919,11 @@ async function runResearchAgentWithBindings(
       acceptedV2Bodies.length > 0
         ? synthesizerDraft.selectedClaimIds
         : undefined;
-    if (
-      selectedV2ClaimIds &&
-      selectedV2ClaimIds.some((claimId) => !v2ClaimIds.includes(claimId))
-    ) {
-      throw new ResearchContractError(
-        "invalid-report",
-        "The synthesizer selected a claim outside its current accepted evidence.",
-      );
-    }
+    const reportV2ClaimIds = completeResearchReportClaimSelectionV2({
+      acceptedClaimIds: v2ClaimIds,
+      ...(selectedV2ClaimIds === undefined ? {} : { selectedClaimIds: selectedV2ClaimIds }),
+      outlineClaimIds: outline?.sections.flatMap((section) => section.claimIds) ?? [],
+    });
     const reconciliationNode = acceptedGraph?.nodes.find(
       (node) => node.roleId === "reconciler" && node.status !== "pruned",
     );
@@ -5949,7 +5946,7 @@ async function runResearchAgentWithBindings(
             request: input.request,
             evidenceStore: durableEvidence,
             claimLedger: durableClaims,
-            claimIds: selectedV2ClaimIds ?? v2ClaimIds,
+            claimIds: reportV2ClaimIds,
             ...(outline ? { outline } : {}),
             reconciliation: reconciliationOutcomes,
             title: synthesizerDraft.title,

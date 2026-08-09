@@ -49,6 +49,29 @@ function distinctClaimIds(value: readonly string[], label: string): string[] {
   return [...value];
 }
 
+/**
+ * A validated outline is the host's completeness boundary. The synthesizer may
+ * prioritize claims for its compact draft, but it cannot silently remove a
+ * current claim that the host retained in that outline.
+ */
+export function completeResearchReportClaimSelectionV2(input: {
+  acceptedClaimIds: readonly string[];
+  selectedClaimIds?: readonly string[];
+  outlineClaimIds: readonly string[];
+}): string[] {
+  const accepted = distinctClaimIds(input.acceptedClaimIds, "Accepted V2 report claim IDs");
+  const selected = input.selectedClaimIds === undefined
+    ? accepted
+    : distinctClaimIds(input.selectedClaimIds, "Synthesizer-selected V2 report claim IDs");
+  const outlined = distinctClaimIds(input.outlineClaimIds, "Outlined V2 report claim IDs");
+  const acceptedSet = new Set(accepted);
+  if ([...selected, ...outlined].some((claimId) => !acceptedSet.has(claimId))) {
+    invalid("V2 report claim selection references a claim outside accepted evidence.");
+  }
+  const required = new Set([...selected, ...outlined]);
+  return accepted.filter((claimId) => required.has(claimId));
+}
+
 function sameSource(left: ResearchSourceReferenceV1, right: ResearchSourceReferenceV1): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -297,7 +320,9 @@ export function assertResearchReportV2(value: unknown): asserts value is Researc
   }
   boundedText(report.title, "V2 report title", 300);
   boundedText(report.question, "V2 report question", 4_000);
-  if (report.claims.length > MAXIMUM_REPORT_CLAIMS || report.sections.length === 0 || report.sections.length > MAXIMUM_REPORT_SECTIONS) {
+  if (report.claims.length > MAXIMUM_REPORT_CLAIMS ||
+      (report.claims.length > 0 && report.sections.length === 0) ||
+      report.sections.length > MAXIMUM_REPORT_SECTIONS) {
     invalid("V2 report claim or section count is invalid.");
   }
   const claims = new Map<string, ResearchReportClaimV2>();
@@ -400,6 +425,23 @@ function normalizedReconciliation(
     invalid("V2 report reconciliation defect is duplicated.");
   }
   return outcomes.map((outcome) => structuredClone(outcome));
+}
+
+function unresolvedReconciliationLimitations(
+  outcomes: readonly ResearchReportReconciliationV2[],
+  language: ResearchRequestV1["reportLanguage"],
+): string[] {
+  const unresolved = outcomes.filter((outcome) =>
+    outcome.decision === "add_follow_up" || outcome.decision === "abstain"
+  );
+  if (unresolved.length === 0) return [];
+  return [language === "de"
+    ? unresolved.length === 1
+      ? "Die unabhängige Prüfung hat einen offenen Punkt identifiziert, der in einem Folgeschritt weiter geprüft werden muss."
+      : `Die unabhängige Prüfung hat ${unresolved.length} offene Punkte identifiziert, die in einem Folgeschritt weiter geprüft werden müssen.`
+    : unresolved.length === 1
+      ? "Independent review identified one open item that requires further follow-up."
+      : `Independent review identified ${unresolved.length} open items that require further follow-up.`];
 }
 
 /**
@@ -513,6 +555,7 @@ export async function finalizeResearchReportV2(
       distinctSourceCount,
     };
   });
+  const reconciliation = normalizedReconciliation(input.reconciliation);
   const report = {
     schema: RESEARCH_REPORT_SCHEMA_V2,
     title: input.title === undefined ? "Evidence-backed research" : boundedText(input.title, "V2 report title", 300),
@@ -522,7 +565,7 @@ export async function finalizeResearchReportV2(
     claims: reportClaims,
     sections: sectionsFor(input.outline, reportClaims.map((claim) => claim.id)),
     coverage,
-    reconciliation: normalizedReconciliation(input.reconciliation),
+    reconciliation,
     sourceAuthorities: [...reportSourceIds]
       .map((sourceId) => ({
         sourceId,
@@ -537,6 +580,7 @@ export async function finalizeResearchReportV2(
       ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),
       ...staleLimitations.map((value) => localizeResearchLimitationV1(input.request.reportLanguage, value)),
       ...incompleteCoverageLimitations(coverage, input.request.reportLanguage),
+      ...unresolvedReconciliationLimitations(reconciliation, input.request.reportLanguage),
     ])].slice(0, 12),
     sources: [...new Set(reportClaims.flatMap((claim) => claim.sourceIds))]
       .map((sourceId) => sources.get(sourceId)!)
