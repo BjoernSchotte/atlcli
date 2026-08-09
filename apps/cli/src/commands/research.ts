@@ -3334,19 +3334,22 @@ async function runDirectChatCliConversation(input: {
         }
       },
       onPresentation(event: ChatPresentationStreamEventV1) {
+        // A line-oriented CLI cannot atomically replace an already printed
+        // provisional answer after host validation or a quality repair. Keep
+        // streaming the provider-approved reasoning summary and semantic tool
+        // activity, but publish answer Markdown only once through stdout after
+        // the authoritative ChatAnswerV1 has been accepted. Browser/TUI
+        // presenters can retain the replaceable answer-token experience.
+        if (event.channel !== "reasoning-summary") return;
         if (event.status === "started") {
-          input.dependencies.writeStderr(
-            event.channel === "reasoning-summary"
-              ? "[chat] Kiteweave: "
-              : "[chat] Answer: ",
-          );
+          input.dependencies.writeStderr("[chat] Kiteweave: ");
         } else if (event.status === "delta") {
           input.dependencies.writeStderr(event.delta ?? "");
         } else if (event.status === "reset") {
           input.dependencies.writeStderr(
             presentationLocale === "de"
-              ? "\n[chat] Der vorläufige Entwurf wird korrigiert.\n[chat] Answer: "
-              : "\n[chat] The provisional draft is being corrected.\n[chat] Answer: ",
+              ? "\n[chat] Kiteweave überprüft den nächsten Schritt: "
+              : "\n[chat] Kiteweave is reviewing the next step: ",
           );
         } else {
           input.dependencies.writeStderr("\n");

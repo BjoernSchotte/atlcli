@@ -286,6 +286,23 @@ function normalized(value: string): string {
     .toLocaleLowerCase("de-DE");
 }
 
+function normalizedFact(value: string): string {
+  return normalized(value)
+    .replace(/\b(?:weder|nicht\s+als)\b/gu, "kein")
+    .replace(/\b(?:keine|keinen|keiner|keines)\b/gu, "kein")
+    .replace(/\b(?:ein|eine|einen|einem|einer|eines)\b/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+export function privateFactGroupMatchesV1(
+  markdown: string,
+  alternatives: readonly string[],
+): boolean {
+  const body = normalizedFact(markdown);
+  return alternatives.some((alternative) => body.includes(normalizedFact(alternative)));
+}
+
 export function normalizePrivateSourceIdentityV1(value: string): string {
   try {
     const url = new URL(value);
@@ -369,7 +386,9 @@ function evaluateGold(answer: ProjectedAnswerV1, gold: ChatPrivateGoldV1): {
   const sourceSelection = required.every((source) => actual.has(source)) && [...actual].every((source) => allowed.has(source));
   const citationSupport = answer.sourceUrls.length > 0 && answer.sourceUrls.every((url) => /^https:\/\//u.test(url));
   const body = normalized(answer.markdown);
-  const facts = gold.requiredFactGroups.every((alternatives) => alternatives.some((term) => body.includes(normalized(term))));
+  const facts = gold.requiredFactGroups.every((alternatives) =>
+    privateFactGroupMatchesV1(answer.markdown, alternatives)
+  );
   const forbidden = gold.forbiddenClaims.some((claim) => body.includes(normalized(claim)));
   const abstained = /(?:nicht (?:ausreichend )?belegt|keine (?:ausreichenden )?belege|cannot (?:be )?establish|insufficient evidence)/iu.test(answer.markdown);
   return {

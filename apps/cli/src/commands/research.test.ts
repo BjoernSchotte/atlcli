@@ -330,6 +330,43 @@ function cliHarness(
         channel: "reasoning-summary",
         status: "completed",
       });
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 4,
+        at: "2026-08-06T12:00:00.003Z",
+        channel: "answer-markdown",
+        status: "started",
+      });
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 5,
+        at: "2026-08-06T12:00:00.004Z",
+        channel: "answer-markdown",
+        status: "delta",
+        delta: "Unsafe provisional answer.",
+      });
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 6,
+        at: "2026-08-06T12:00:00.005Z",
+        channel: "answer-markdown",
+        status: "reset",
+      });
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 7,
+        at: "2026-08-06T12:00:00.006Z",
+        channel: "answer-markdown",
+        status: "delta",
+        delta: "Corrected model draft.",
+      });
+      input.onChatPresentation({
+        kind: "chat-presentation",
+        seq: 8,
+        at: "2026-08-06T12:00:00.007Z",
+        channel: "answer-markdown",
+        status: "completed",
+      });
       input.onEvent({
         kind: "activity",
         seq: 1,
@@ -1194,6 +1231,9 @@ describe("research CLI one-shot contract", () => {
     });
     expect(harness.runInputs).toHaveLength(0);
     expect(harness.stderr.join("")).not.toContain("subagent=");
+    expect(harness.stderr.join("")).not.toContain("Unsafe provisional answer.");
+    expect(harness.stderr.join("")).not.toContain("Corrected model draft.");
+    expect(harness.stderr.join("")).not.toContain("[chat] Answer:");
     expect(harness.stderr.join("")).toContain(
       "[chat] Kiteweave: Checking the selected evidence.\n",
     );
@@ -1201,6 +1241,7 @@ describe("research CLI one-shot contract", () => {
       "[chat] ◇ Searching the approved scope\n",
     );
     expect(harness.stderr.join("")).not.toContain("tool=wiki.search");
+    expect(harness.stdout).toEqual(["Synthetic chat answer."]);
   });
 
   test("continues ordinary CLI chat from the same durable conversation", async () => {

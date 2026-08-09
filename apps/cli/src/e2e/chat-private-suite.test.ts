@@ -9,6 +9,7 @@ import {
   normalizePrivateSourceIdentityV1,
   parseChatPrivateSuiteArgumentsV1,
   parseChatPrivateSuiteV1,
+  privateFactGroupMatchesV1,
   projectPrivateAnswerV1,
   runChatPrivateSuiteV1,
 } from "./chat-private-suite.js";
@@ -137,6 +138,17 @@ describe("private Chat release suite", () => {
     expect(normalizePrivateSourceIdentityV1(
       "https://tenant.invalid/browse/SAFE-42",
     )).toBe("jira:SAFE-42");
+  });
+
+  test("matches equivalent German negative commercial boundaries", () => {
+    expect(privateFactGroupMatchesV1(
+      "Der Korridor ist weder Festpreis noch Aufwandsdeckel.",
+      ["kein Festpreis", "weder einen Festpreis", "nicht als Festpreis"],
+    )).toBe(true);
+    expect(privateFactGroupMatchesV1(
+      "Der Korridor ist ein Festpreis.",
+      ["kein Festpreis", "weder einen Festpreis", "nicht als Festpreis"],
+    )).toBe(false);
   });
 
   test("runs sequential production commands, scores local gold, and emits a neutral proof", async () => {
