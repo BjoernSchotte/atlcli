@@ -117,6 +117,23 @@ instead of guessing or printing attachment internals. `Coverage: degraded`
 means that review item must be resolved before treating the result as a
 complete SafeOps approval.
 
+### Combined Review
+
+Use `review` when an approver needs both views in one read-only result. atlcli
+acquires each exact version once, builds semantic changes from Cloud ADF (or
+the documented common Storage fallback), and builds text hunks from the exact
+Storage sidecars belonging to those same versions:
+
+```bash
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format review
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format review --word-diff
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format review --json
+```
+
+Terminal output prints the plain-language semantic review followed by Markdown
+text changes. JSON emits one document with `changeSet` and `textDiff`; the
+latter always retains `unified` and adds `wordDiff` only when requested.
+
 ### Diff Options
 
 | Flag | Description |
@@ -124,11 +141,11 @@ complete SafeOps approval.
 | `--version` | Compare this version with current |
 | `--from` | Start version for comparison |
 | `--to` | End version for comparison |
-| `--format` | `unified` (default), `text`, or `semantic` |
-| `--context` | Text/unified diff context lines (default: 3); invalid with `semantic` |
-| `--word-diff` | Mark changed words inline in text/unified output |
+| `--format` | `unified` (default), `text`, `semantic`, or `review` |
+| `--context` | Text-hunk context lines (default: 3); valid with text/unified/review |
+| `--word-diff` | Mark changed words inline in text/unified/review output |
 | `--no-color` | Disable colored output |
-| `--json` | Emit one JSON document; semantic mode returns `changeSet` |
+| `--json` | Emit one JSON document; review mode returns `changeSet` plus `textDiff` |
 
 `--to` requires `--from`. Do not combine `--version` with `--from` or `--to`.
 Versions must be positive integers.

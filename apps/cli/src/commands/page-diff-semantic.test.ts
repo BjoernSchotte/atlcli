@@ -312,10 +312,74 @@ describe("wiki page diff CLI shell", () => {
     expect(json.stdout).not.toContain("\u001b[");
   }, 30_000);
 
+  it("combines semantic review and text hunks from one exact DC pair", async () => {
+    const terminal = await runPageDiff([
+      "--id", PAGE_ID, "--from", "2", "--to", "3", "--format", "review",
+      "--context", "0", "--word-diff", "--no-color",
+    ]);
+    const json = await runPageDiff([
+      "--id", PAGE_ID, "--from", "2", "--to", "3", "--format", "review",
+      "--context", "0", "--word-diff", "--json",
+    ]);
+
+    expect(terminal.exitCode, terminal.stderr).toBe(0);
+    expect(terminal.stderr).toBe("");
+    expect(terminal.stdout).toContain(
+      "Wiki page \"Page Diff CLI Fixture\" — version 2 → 3 (Data Center, Storage)",
+    );
+    expect(terminal.stdout).toContain("~ Changed Text: “Second content” → “Third content”");
+    expect(terminal.stdout).toContain("Text changes (Markdown)");
+    expect(terminal.stdout).toContain("~ [-Second-]{+Third+} content");
+    expect(terminal.stdout).not.toContain("content[");
+    expect(terminal.stdout).not.toContain("\u001b[");
+
+    expect(json.exitCode, json.stderr).toBe(0);
+    const parsed = parseJson(json.stdout);
+    expect(parsed).toMatchObject({
+      schemaVersion: "1",
+      format: "review",
+      changeSet: {
+        schema: "atlcli.change-set/1",
+        baseline: { revision: "2", representation: "storage" },
+        target: { revision: "3", representation: "storage" },
+      },
+      textDiff: {
+        hasChanges: true,
+        additions: 1,
+        deletions: 1,
+      },
+    });
+    const textDiff = parsed.textDiff as Record<string, unknown>;
+    expect(textDiff.unified).toContain("-Second content");
+    expect(textDiff.wordDiff).toContain("~ [-Second-]{+Third+} content");
+    expect(json.stdout).not.toContain("\u001b[");
+    expect(requests).toHaveLength(4);
+    expect(requests.every((request) => request.pathname.includes("/version/"))).toBe(true);
+  }, 30_000);
+
+  it("uses exact Cloud ADF semantics and its Storage sidecars for one review", async () => {
+    const result = await runPageDiff([
+      "--profile", "cloud", "--id", PAGE_ID, "--from", "2", "--to", "3",
+      "--format", "review", "--json",
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(parseJson(result.stdout)).toMatchObject({
+      format: "review",
+      changeSet: {
+        baseline: { representation: "atlas_doc_format", acquisition: "rest-v2" },
+        target: { representation: "atlas_doc_format", acquisition: "rest-v2" },
+      },
+      textDiff: { hasChanges: true },
+    });
+    expect(requests).toHaveLength(4);
+    expect(requests.filter((request) => request.pathname.includes("/api/v2/"))).toHaveLength(2);
+  }, 30_000);
+
   const usageCases: Array<{ args: string[]; message: string }> = [
     {
       args: ["--id", PAGE_ID, "--format", "side-by-side"],
-      message: "--format must be 'unified', 'text', or 'semantic'.",
+      message: "--format must be 'unified', 'text', 'semantic', or 'review'.",
     },
     {
       args: ["--id", PAGE_ID, "--version", "2", "--from", "1"],
@@ -347,11 +411,11 @@ describe("wiki page diff CLI shell", () => {
     },
     {
       args: ["--id", PAGE_ID, "--format", "semantic", "--context", "3"],
-      message: "--context is only supported with --format unified or text.",
+      message: "--context is not supported with --format semantic.",
     },
     {
       args: ["--id", PAGE_ID, "--format", "semantic", "--word-diff"],
-      message: "--word-diff is only supported with --format unified or text.",
+      message: "--word-diff is not supported with --format semantic.",
     },
     {
       args: ["--id", PAGE_ID, "--word-diff=true"],

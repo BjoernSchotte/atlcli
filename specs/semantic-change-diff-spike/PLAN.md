@@ -1574,7 +1574,7 @@ shown directly in the task, privacy inspection, then its own commit and push.
 No live source body, page identifier, URL, or generated rendering is committed.
 
 - [x] Option B text alias and word diff are contract-tested and live-proven.
-- [ ] Option C combined review is contract-tested and live-proven.
+- [x] Option C combined review is contract-tested and live-proven.
 - [ ] The Pierre prototype is isolated, evaluated, and live-proven without
       contaminating the host-neutral core.
 

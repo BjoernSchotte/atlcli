@@ -237,6 +237,27 @@ Focused proof covers text/unified alias parity, unchanged legacy terminal and
 JSON goldens, ANSI-free JSON, word replacements, insertions, Unicode, unpaired
 lines, flag validation before I/O, and current shell completions.
 
+### Combined review follow-up
+
+Option C adds one opt-in `review` result. One exact-version pair feeds both
+views: the semantic ChangeSet uses Cloud ADF when available (or the documented
+common Storage fallback), while Markdown text hunks use the exact Storage
+sidecars acquired for those same revisions. Data Center uses the same exact
+Storage bodies for both projections and makes no Cloud request. JSON emits one
+document containing `changeSet` and `textDiff`; terminal output presents the
+plain-language semantic review before the text patch.
+
+A read-only real-world Cloud comparison from version 1 to version 3 exited 0
+with empty stderr. It reported complete semantic coverage, grouped structural
+additions, and the matching two text hunks. The complete live terminal output
+was shown in the task and was not saved in Git. This evidence retains no title,
+page identifier, URL, body, attachment name, tenant identifier, or account
+data.
+
+Focused contract proof covers Cloud ADF plus exact Storage sidecars, DC Storage
+without Cloud calls, one JSON document, ANSI-free word review, context control,
+readable terminal composition, and fail-closed flag validation before I/O.
+
 ## Verification commands
 
 ```bash

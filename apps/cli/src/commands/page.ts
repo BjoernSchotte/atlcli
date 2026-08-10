@@ -650,7 +650,7 @@ async function handleHistory(flags: Record<string, string | boolean | string[]>,
   }
 }
 
-type PageDiffFormat = "unified" | "text" | "semantic";
+type PageDiffFormat = "unified" | "text" | "semantic" | "review";
 
 type PageDiffSelection = {
   format: PageDiffFormat;
@@ -705,8 +705,9 @@ function parsePageDiffSelection(
     && formatRaw !== "unified"
     && formatRaw !== "text"
     && formatRaw !== "semantic"
+    && formatRaw !== "review"
   ) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--format must be 'unified', 'text', or 'semantic'.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--format must be 'unified', 'text', 'semantic', or 'review'.");
   }
   const format: PageDiffFormat = formatRaw ?? "unified";
 
@@ -722,7 +723,7 @@ function parsePageDiffSelection(
 
   const contextRaw = readPageDiffValueFlag(flags, "context", opts);
   if (format === "semantic" && contextRaw !== undefined) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--context is only supported with --format unified or text.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--context is not supported with --format semantic.");
   }
   let context = 3;
   if (contextRaw !== undefined) {
@@ -745,7 +746,7 @@ function parsePageDiffSelection(
     fail(opts, 1, ERROR_CODES.USAGE, "--word-diff does not accept a value.");
   }
   if (format === "semantic" && wordDiffValue === true) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--word-diff is only supported with --format unified or text.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--word-diff is not supported with --format semantic.");
   }
 
   return {
@@ -770,7 +771,7 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
 
   const selection = parsePageDiffSelection(flags, opts);
   const client = await getClient(flags, opts);
-  if (selection.format === "semantic") {
+  if (selection.format === "semantic" || selection.format === "review") {
     let targetVersion = selection.to;
     if (targetVersion === undefined) {
       const current = await client.getPage(id);
@@ -789,6 +790,68 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
       const { changeSet } = shouldUseSemanticDiffSpillV1(pair)
         ? await buildPageDiffChangeSetWithSpillV1(pair)
         : await buildPageDiffChangeSetV1(pair);
+      if (selection.format === "review") {
+        const baselineStorage = pair.from.body.representation === "storage"
+          ? pair.from.body.value
+          : pair.from.storageSidecar;
+        const targetStorage = pair.to.body.representation === "storage"
+          ? pair.to.body.value
+          : pair.to.storageSidecar;
+        if (baselineStorage === undefined || targetStorage === undefined) {
+          fail(
+            opts,
+            1,
+            ERROR_CODES.VALIDATION,
+            "Exact Storage sidecars are required for combined review output.",
+            { classification: "review-storage-unavailable" },
+          );
+        }
+        const convOpts = await getConversionOptions(flags, opts);
+        const textDiff = generateDiff(
+          storageToMarkdown(baselineStorage, convOpts),
+          storageToMarkdown(targetStorage, convOpts),
+          {
+            oldLabel: `Version ${compareVersion}`,
+            newLabel: `Version ${targetVersion}`,
+            context: selection.context,
+          },
+        );
+        const wordDiff = selection.wordDiff
+          ? formatDiffWithWordChanges(textDiff)
+          : undefined;
+        if (opts.json) {
+          output({
+            schemaVersion: "1",
+            format: "review",
+            changeSet,
+            textDiff: {
+              hasChanges: textDiff.hasChanges,
+              additions: textDiff.additions,
+              deletions: textDiff.deletions,
+              unified: textDiff.unified,
+              ...(wordDiff === undefined ? {} : { wordDiff }),
+            },
+          }, opts);
+          return;
+        }
+
+        output(renderSemanticDiff(changeSet, { color: !selection.noColor }), opts);
+        output("\nText changes (Markdown)", opts);
+        if (!textDiff.hasChanges) {
+          output("No text changes after Markdown conversion.", opts);
+          return;
+        }
+        output(`${formatDiffSummary(textDiff)}\n`, opts);
+        output(
+          selection.wordDiff
+            ? formatDiffWithWordChanges(textDiff, { color: !selection.noColor })
+            : selection.noColor
+              ? textDiff.unified
+              : formatDiffWithColors(textDiff),
+          opts,
+        );
+        return;
+      }
       if (opts.json) {
         output({ schemaVersion: "1", changeSet }, opts);
         return;
@@ -2188,11 +2251,11 @@ Commands:
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
-  --format <name>    Diff format: unified (default), text, or semantic
+  --format <name>    Diff format: unified (default), text, semantic, or review
   --from <n>         Diff baseline version; target defaults to current
   --to <n>           Diff target version; requires --from
   --context <n>      Text/unified diff context lines (default: 3)
-  --word-diff        Show changed words inline in text/unified diffs
+  --word-diff        Show changed words inline in text/unified/review diffs
   --no-color         Disable ANSI diff colors (also honors NO_COLOR)
   --dry-run          Preview bulk operations without executing
   --reverse          Reverse sort order (for sort command)
@@ -2223,6 +2286,7 @@ Examples:
   atlcli wiki page diff --id 12345 --from 3 --to 5 --format unified --context 5
   atlcli wiki page diff --id 12345 --from 3 --to 5 --format text --word-diff
   atlcli wiki page diff --id 12345 --from 3 --format semantic --no-color
+  atlcli wiki page diff --id 12345 --from 3 --to 5 --format review --word-diff
   atlcli wiki page restore --id 12345 --version 3 --confirm
   atlcli wiki page comments --id 12345
   atlcli wiki page comments add --id 12345 "Great work!"

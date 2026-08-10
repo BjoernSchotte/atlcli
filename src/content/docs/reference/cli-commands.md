@@ -225,6 +225,8 @@ atlcli wiki page diff --id <id> --from <n> --to <n> --context <n>
 atlcli wiki page diff --id <id> --from <n> --to <n> --format text --word-diff
 atlcli wiki page diff --id <id> --from <n> --to <n> --format semantic
 atlcli wiki page diff --id <id> --from <n> --to <n> --format semantic --json
+atlcli wiki page diff --id <id> --from <n> --to <n> --format review --word-diff
+atlcli wiki page diff --id <id> --from <n> --to <n> --format review --json
 atlcli wiki page restore --id <id> --version <n> --confirm
 atlcli wiki page restore --id <id> --version <n> --message <text> --confirm
 ```
@@ -236,7 +238,10 @@ an explicit alias; `--word-diff` replaces paired changed lines with an inline
 `semantic` format emits a plain-language, grouped terminal review or one
 `atlcli.change-set/1` JSON envelope. The terminal view does not expose AST
 paths, raw canonical JSON, collection IDs, or attachment UUIDs; use `--json`
-when a tool needs exact paths and operation metadata. `--context` applies only to text/unified;
+when a tool needs exact paths and operation metadata. `review` combines that
+semantic view with Markdown text hunks acquired from the same exact-version
+pair; its JSON contains both `changeSet` and `textDiff`. `--context` applies to
+text/unified/review;
 `--no-color` and `NO_COLOR` disable ANSI output. Cloud prefers exact-version ADF
 for both sides and can fall back to exact Storage for both sides. Data Center
 uses Storage only; that path is contract-tested but not project-live-certified.
