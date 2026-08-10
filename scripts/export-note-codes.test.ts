@@ -71,6 +71,17 @@ const NON_EXPORT_NOTE_CODES = new Set([
   "chart-p0-diagnostic",
   "compiler-diagnostic",
   "legacy-pdf-error",
+  // ChangeDiagnosticV1 vocabulary. These diagnostics intentionally use the
+  // same generic `{ code, message }` shape, but belong to the host-neutral
+  // semantic change contract rather than the export reporting surface.
+  "ambiguous-match",
+  "limit-exceeded",
+  "missing-observed-value",
+  "opaque-source-change",
+  "policy-noise",
+  "source-fallback",
+  "source-incomplete",
+  "unavailable-transition",
 ]);
 
 const NON_EXPORT_NOTE_PREFIXES = new Set([

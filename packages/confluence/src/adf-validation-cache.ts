@@ -1,10 +1,12 @@
-import type { ValidatedAdfDocument } from "./adf-types.js";
+import {
+  isTrustedValidatedAdf,
+  type ValidatedAdfDocument,
+} from "@atlcli/change-set/adf";
 
-/**
- * Trust marker for values produced by the bounded validator in this module
- * graph. Structural lookalikes never bypass validation.
- */
-const trustedDocuments = new WeakSet<object>();
+export {
+  isTrustedValidatedAdf,
+  trustValidatedAdf,
+} from "@atlcli/change-set/adf";
 
 /**
  * Short-lived source-object cache. It avoids parsing the same ADF twice when a
@@ -12,23 +14,6 @@ const trustedDocuments = new WeakSet<object>();
  * bodies into serializable transport/job contracts.
  */
 const sourceDocuments = new WeakMap<object, ValidatedAdfDocument>();
-
-export function trustValidatedAdf(
-  validated: ValidatedAdfDocument,
-): ValidatedAdfDocument {
-  trustedDocuments.add(validated);
-  return validated;
-}
-
-export function isTrustedValidatedAdf(
-  value: unknown,
-): value is ValidatedAdfDocument {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    trustedDocuments.has(value)
-  );
-}
 
 export function cacheValidatedAdfForSource(
   source: object,

@@ -38,6 +38,14 @@ export interface FreezeDecision {
  * Recorded here as the single source the closure files render from.
  */
 export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
+  "@atlcli/change-set": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the dependency-free, host- and renderer-neutral semantic " +
+      "change contract. Keep it experimental while Confluence ADF/Storage adapters, Jira " +
+      "planning, and a real browser consumer prove the versioned contract and digest policy.",
+  },
   "@atlcli/export-blocks": {
     version: "0.x",
     frozen: false,

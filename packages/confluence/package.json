@@ -52,6 +52,7 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
+    "@atlcli/change-set": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/export-blocks": "workspace:*",
     "diff": "^8.0.2",

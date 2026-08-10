@@ -61,6 +61,7 @@
         "atlcli": "src/index.ts",
       },
       "dependencies": {
+        "@atlcli/change-set": "workspace:*",
         "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
@@ -125,6 +126,13 @@
         "wxt": "^0.20.27",
       },
     },
+    "packages/change-set": {
+      "name": "@atlcli/change-set",
+      "version": "0.1.0",
+      "devDependencies": {
+        "jsondiffpatch": "0.7.6",
+      },
+    },
     "packages/code-highlight": {
       "name": "@atlcli/code-highlight",
       "version": "1.0.0",
@@ -138,6 +146,7 @@
       "name": "@atlcli/confluence",
       "version": "1.0.0",
       "dependencies": {
+        "@atlcli/change-set": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/export-blocks": "workspace:*",
         "diff": "^8.0.2",
@@ -309,6 +318,7 @@
       "name": "@atlcli/jira",
       "version": "0.6.0",
       "dependencies": {
+        "@atlcli/change-set": "workspace:*",
         "@atlcli/core": "workspace:*",
       },
     },
@@ -461,6 +471,8 @@
 
     "@atlcli/browser-export-harness": ["@atlcli/browser-export-harness@workspace:apps/browser-export-harness"],
 
+    "@atlcli/change-set": ["@atlcli/change-set@workspace:packages/change-set"],
+
     "@atlcli/cli": ["@atlcli/cli@workspace:apps/cli"],
 
     "@atlcli/code-highlight": ["@atlcli/code-highlight@workspace:packages/code-highlight"],
@@ -556,6 +568,8 @@
     "@devicefarmer/adbkit-logcat": ["@devicefarmer/adbkit-logcat@2.1.3", "", {}, "sha512-yeaGFjNBc/6+svbDeul1tNHtNChw6h8pSHAt5D+JsedUrMTN7tla7B15WLDyekxsuS2XlZHRxpuC6m92wiwCNw=="],
 
     "@devicefarmer/adbkit-monkey": ["@devicefarmer/adbkit-monkey@1.2.1", "", {}, "sha512-ZzZY/b66W2Jd6NHbAhLyDWOEIBWC11VizGFk7Wx7M61JZRz7HR9Cq5P+65RKWUU7u6wgsE8Lmh9nE4Mz+U2eTg=="],
+
+    "@dmsnell/diff-match-patch": ["@dmsnell/diff-match-patch@1.1.0", "", {}, "sha512-yejLPmM5pjsGvxS9gXablUSbInW7H976c/FJ4iQxWIm7/38xBySRemTPDe34lhg1gVLbJntX0+sH0jYfU+PN9A=="],
 
     "@emmetio/abbreviation": ["@emmetio/abbreviation@2.3.3", "", { "dependencies": { "@emmetio/scanner": "^1.0.4" } }, "sha512-mgv58UrU3rh4YgbE/TzgLQwJ3pFsHHhCLqY20aJq+9comytTXUDNGG/SMtSeMJdkpxgXSXunBGLD8Boka3JyVA=="],
 
@@ -1478,6 +1492,8 @@
     "json5": ["json5@2.2.3", "", { "bin": { "json5": "lib/cli.js" } }, "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg=="],
 
     "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
+
+    "jsondiffpatch": ["jsondiffpatch@0.7.6", "", { "dependencies": { "@dmsnell/diff-match-patch": "^1.1.0" }, "bin": { "jsondiffpatch": "bin/jsondiffpatch.js" } }, "sha512-zE9+AXFq+MkTolDor2Cw1nJzLC0aleqPkYf52Kb4Kn4mJcka/gFHpGI2JBVEJCfWOvBl0OoxZS+wuLdislQcqg=="],
 
     "jsonfile": ["jsonfile@6.2.1", "", { "dependencies": { "universalify": "^2.0.0" }, "optionalDependencies": { "graceful-fs": "^4.1.6" } }, "sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q=="],
 
