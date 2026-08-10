@@ -303,6 +303,65 @@ describe("Chat answer contract", () => {
     );
   });
 
+  test("repairs repeated evidence blocks and retains their most informative wording", () => {
+    const draft = {
+      blocks: [{
+        markdown: "- `PIPE_WORKERS=16` – Vom Autor als somewhat educated guess bezeichnet.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }, {
+        markdown: "- `PIPE_WORKERS=16` – Vom Autor als somewhat educated guess bezeichnet.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }, {
+        markdown: "- `PIPE_WORKERS=16` – Parallelisiert die Verarbeitung und wird vom Autor als somewhat educated guess bezeichnet.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }],
+      gaps: [],
+    };
+
+    expect(chatDraftNeedsHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+    const repaired = chatDraftForFinalizationAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+    expect(repaired?.blocks).toHaveLength(1);
+    expect(repaired?.blocks[0]?.markdown).toContain("Parallelisiert die Verarbeitung");
+    expect(chatMarkdownIntegrityIssuesV1(draft.blocks.map((block) => block.markdown).join("\n")))
+      .toContain("repeated-prose");
+    expect(chatMarkdownIntegrityIssuesV1(repaired!.blocks[0]!.markdown))
+      .not.toContain("repeated-prose");
+  });
+
+  test("preserves similarly formatted blocks that carry distinct facts", () => {
+    const inspection = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "- `DIRECT=1` – Die Messung steigt von 0,65 auf 1,08 tok/s.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "- `URING=1` – Die Messung steigt von 1,08 auf 1,13 tok/s.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+    expect(inspection.rejectionReasons).toEqual([]);
+    expect(inspection.draft?.blocks).toHaveLength(2);
+  });
+
   test("classifies terminal repair rejection without retaining draft content", () => {
     expect(inspectChatDraftAfterHostRepairV1({
       draft: {

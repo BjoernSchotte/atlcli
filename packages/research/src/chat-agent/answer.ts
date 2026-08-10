@@ -514,6 +514,7 @@ function strongMarkerCountV1(markdown: string): number {
 export const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1 = [
   "incomplete-prose",
   "observation-classification-conflict",
+  "repeated-prose",
 ] as const;
 
 export type ChatMarkdownIntegrityIssueV1 =
@@ -566,6 +567,57 @@ function containsObservationClassificationConflictV1(markdown: string): boolean 
     /\b(?:all|these)\s+(?:measurements|values)\b.{0,80}\b(?:are|remain)\b.{0,40}\b(?:conjecture|speculation|hypothetical|unmeasured|unverified)\b/u.test(prose);
 }
 
+function normalizedProseTokensV1(value: string): string[] {
+  return proseWithoutPresentationMarkupV1(value)
+    .normalize("NFKC")
+    .toLocaleLowerCase("de-DE")
+    .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/u, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .split(/\s+/u)
+    .filter((token) => token.length > 0);
+}
+
+function redundantProseV1(left: string, right: string): boolean {
+  const leftTokens = normalizedProseTokensV1(left);
+  const rightTokens = normalizedProseTokensV1(right);
+  if (leftTokens.length === 0 || rightTokens.length === 0) return false;
+  if (leftTokens.join(" ") === rightTokens.join(" ")) return true;
+  if (Math.min(leftTokens.length, rightTokens.length) < 6) return false;
+  if (leftTokens[0] !== rightTokens[0] || leftTokens[1] !== rightTokens[1]) {
+    return false;
+  }
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  const intersection = [...leftSet].filter((token) => rightSet.has(token)).length;
+  const union = new Set([...leftSet, ...rightSet]).size;
+  return intersection / Math.min(leftSet.size, rightSet.size) >= 0.9 &&
+    intersection / union >= 0.6;
+}
+
+function markdownProseUnitsV1(markdown: string): string[] {
+  let inFence = false;
+  return markdown.split("\n").flatMap((line) => {
+    const trimmed = line.trim();
+    if (/^```/u.test(trimmed)) {
+      inFence = !inFence;
+      return [];
+    }
+    if (
+      inFence || !trimmed ||
+      /^(?:#{1,6}\s|\|\s*[-:]+|---+$)/u.test(trimmed)
+    ) return [];
+    return [trimmed];
+  });
+}
+
+function containsRepeatedProseV1(markdown: string): boolean {
+  const units = markdownProseUnitsV1(markdown);
+  return units.some((left, index) =>
+    units.slice(index + 1).some((right) => redundantProseV1(left, right))
+  );
+}
+
 /**
  * Deterministic publication guard for defects that are visible without source
  * bodies. It deliberately detects only high-confidence structural or explicit
@@ -579,6 +631,7 @@ export function chatMarkdownIntegrityIssuesV1(
   if (containsObservationClassificationConflictV1(markdown)) {
     issues.push("observation-classification-conflict");
   }
+  if (containsRepeatedProseV1(markdown)) issues.push("repeated-prose");
   return issues;
 }
 
@@ -684,6 +737,50 @@ function collapseRedundantRequestFacetAlternativesV1(
   return blocks.filter((_block, index) => !removed.has(index));
 }
 
+function sameAnswerBlockBindingV1(
+  left: ChatAnswerBlockV2,
+  right: ChatAnswerBlockV2,
+): boolean {
+  return left.assertion === right.assertion &&
+    left.scope === right.scope &&
+    [...new Set(left.sourceRefs)].sort().join("\u0000") ===
+      [...new Set(right.sourceRefs)].sort().join("\u0000");
+}
+
+/**
+ * Remove only high-confidence repeated blocks with the same evidence binding.
+ * Prefer the more informative wording; distinct facts or differently sourced
+ * statements remain separate even when their presentation is similar.
+ */
+function collapseRedundantAnswerBlocksV1(
+  blocks: readonly ChatAnswerBlockV2[],
+): ChatAnswerBlockV2[] {
+  const removed = new Set<number>();
+  for (let left = 0; left < blocks.length; left += 1) {
+    if (removed.has(left)) continue;
+    for (let right = left + 1; right < blocks.length; right += 1) {
+      if (removed.has(right)) continue;
+      const leftBlock = blocks[left]!;
+      const rightBlock = blocks[right]!;
+      if (
+        !sameAnswerBlockBindingV1(leftBlock, rightBlock) ||
+        !redundantProseV1(leftBlock.markdown, rightBlock.markdown)
+      ) continue;
+      const leftTokens = normalizedProseTokensV1(leftBlock.markdown).length;
+      const rightTokens = normalizedProseTokensV1(rightBlock.markdown).length;
+      if (
+        rightTokens > leftTokens ||
+        (rightTokens === leftTokens && rightBlock.markdown.length > leftBlock.markdown.length)
+      ) {
+        removed.add(left);
+        break;
+      }
+      removed.add(right);
+    }
+  }
+  return blocks.filter((_block, index) => !removed.has(index));
+}
+
 function escapedRegularExpressionV1(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
@@ -776,6 +873,9 @@ export function chatDraftNeedsHostRepairV1(input: {
   }).length > 0) {
     return true;
   }
+  if (collapseRedundantAnswerBlocksV1(draft.blocks).length !== draft.blocks.length) {
+    return true;
+  }
   if (draft.blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return true;
   }
@@ -823,6 +923,7 @@ export const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1 = [
   "orphan-heading",
   "missing-request-facet",
   "repeated-request-facet",
+  "repeated-prose",
   "incomplete-prose",
   "observation-classification-conflict",
 ] as const;
@@ -859,7 +960,7 @@ export function inspectChatDraftAfterHostRepairV1(input: {
     }));
   const blocks = coalesceRequestFacetLabelsV1(
     collapseRedundantRequestFacetAlternativesV1(
-      balancedBlocks,
+      collapseRedundantAnswerBlocksV1(balancedBlocks),
       input.requestFacets ?? [],
     ),
     input.requestFacets ?? [],
