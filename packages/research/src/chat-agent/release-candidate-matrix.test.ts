@@ -219,6 +219,22 @@ describe("release-candidate quality matrix contract", () => {
     expect(result.failureCodes).toContain("wrong-source");
   });
 
+  test("propagates the answer-integrity gate from the private proof", async () => {
+    const value = await matrix();
+    const live = value.proofs.find((entry) => entry.proofId === "private-cli-quality")!;
+    const run = live.runs[0]!;
+    run.status = "failed";
+    run.failureCodes = ["answer-integrity-failed"];
+    run.checks.find((entry) => entry.check === "answer-integrity")!.status = "failed";
+    live.status = "failed";
+    live.failureCodes = ["answer-integrity-failed"];
+    await resign(value);
+
+    const result = await evaluate(value);
+    expect(result.passed).toBe(false);
+    expect(result.failureCodes).toContain("answer-integrity-failed");
+  });
+
   test("rejects free-form, tenant, URL, identifying private ID, and mismatched aggregates", async () => {
     const base = await proof(CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1[0]!);
     for (const forbidden of [

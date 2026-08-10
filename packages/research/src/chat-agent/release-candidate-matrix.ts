@@ -42,6 +42,7 @@ export const CHAT_RELEASE_CANDIDATE_CHECKS_V1 = [
   "visible-activity",
   "follow-up-coherence",
   "latency-cost-tradeoff",
+  "answer-integrity",
 ] as const;
 export type ChatReleaseCandidateCheckV1 =
   (typeof CHAT_RELEASE_CANDIDATE_CHECKS_V1)[number];
@@ -73,6 +74,7 @@ export const CHAT_RELEASE_CANDIDATE_FAILURE_CODES_V1 = [
   "stale-proof",
   "latency-exceeded",
   "cost-exceeded",
+  "answer-integrity-failed",
 ] as const;
 export type ChatReleaseCandidateFailureCodeV1 =
   (typeof CHAT_RELEASE_CANDIDATE_FAILURE_CODES_V1)[number];
@@ -287,7 +289,7 @@ export const CHAT_RELEASE_CANDIDATE_REQUIREMENTS_V1: readonly ProofRequirementV1
     requiredVariants: ["quick", "auto", "deep", "deep-research"],
     requiredChecks: [
       "source-selection", "citation-support", "required-fact-coverage", "claim-support", "outcome", "mode-isolation",
-      "three-turn-new-acquisition", "follow-up-coherence",
+      "three-turn-new-acquisition", "follow-up-coherence", "answer-integrity",
     ],
     maximumDurationMs: ALL_LIMITS,
     maximumCostMicros: LIVE_COST_LIMITS,

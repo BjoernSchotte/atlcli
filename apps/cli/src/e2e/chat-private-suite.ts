@@ -12,6 +12,7 @@ import {
   type ChatReleaseCandidateRunV1,
   type ChatReleaseCandidateVariantV1,
 } from "../../../../packages/research/src/chat-agent/release-candidate-matrix.js";
+import { chatMarkdownIntegrityIssuesV1 } from "../../../../packages/research/src/chat-agent/answer.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
 const SUITE_SCHEMA = "atlcli.chat-private-suite/v1";
@@ -493,6 +494,7 @@ function failureCodes(checks: readonly ChatReleaseCandidateCheckResultV1[]): Cha
   if (failed.has("outcome")) codes.push("outcome-incorrect");
   if (failed.has("mode-isolation")) codes.push("mode-isolation-failed");
   if (failed.has("three-turn-new-acquisition") || failed.has("follow-up-coherence")) codes.push("lifecycle-failed");
+  if (failed.has("answer-integrity")) codes.push("answer-integrity-failed");
   return codes;
 }
 
@@ -515,6 +517,9 @@ async function privateRun(input: {
     check("mode-isolation", input.answers.every((answer) => answer.qualityMode === input.variant)),
     check("three-turn-new-acquisition", connected, threeTurn),
     check("follow-up-coherence", connected && scored.slice(1).every((entry) => entry.outcome), input.variant !== "deep-research" && input.entry.turns.length > 1),
+    check("answer-integrity", input.answers.every((answer) =>
+      chatMarkdownIntegrityIssuesV1(answer.markdown).length === 0
+    )),
   ];
   const failures = failureCodes(checks);
   const sum = (key: "durationMs" | "modelCalls" | "ptcCalls" | "httpCalls" | "inputTokens" | "outputTokens") =>

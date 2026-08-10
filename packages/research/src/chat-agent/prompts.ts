@@ -59,6 +59,8 @@ export function chatAnswerOutputInstructionV1(
     "Before finalizing, check every explicitly requested facet in the user's question once. Cover each facet with a supported answer block or a precise typed gap; never silently omit one.",
     "Do not repeat a fact, heading, qualification, or conclusion in another block.",
     "Return only the finished wording. Do not leave abandoned sentence alternatives, unmatched Markdown emphasis, or a lower-case continuation in a separate block.",
+    "Every factual sentence must be grammatically complete. Never end a sentence or block with an unfinished connector such as als, soll, mit, für, as, should, with, or for.",
+    "Keep evidence classifications mutually consistent: the same values cannot be both directly measured and conjectural. If measured observations and interpretation differ, label the two groups explicitly.",
     "Finish the complete ChatAnswerDraftV2 JSON inside this limit.",
   ].join(" ");
 }

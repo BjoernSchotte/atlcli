@@ -511,6 +511,72 @@ function strongMarkerCountV1(markdown: string): number {
   return [...withoutCode.matchAll(/\*\*/gu)].length;
 }
 
+export const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1 = [
+  "incomplete-prose",
+  "observation-classification-conflict",
+] as const;
+
+export type ChatMarkdownIntegrityIssueV1 =
+  typeof CHAT_MARKDOWN_INTEGRITY_ISSUES_V1[number];
+
+function proseWithoutPresentationMarkupV1(value: string): string {
+  return value
+    .replace(/```[\s\S]*?```/gu, " ")
+    .replace(/`([^`\n]*)`/gu, "$1")
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/gu, "$1")
+    .replace(/\[\[source:[^\]]+\]\]/gu, " ")
+    .replace(/[*_~]+/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function containsIncompleteProseV1(markdown: string): boolean {
+  let inFence = false;
+  return markdown.split("\n").some((line) => {
+    const trimmed = line.trim();
+    if (/^```/u.test(trimmed)) {
+      inFence = !inFence;
+      return false;
+    }
+    if (
+      inFence ||
+      !trimmed ||
+      /^(?:#{1,6}\s|\||[-*+]\s+\[[ xX]\]\s|---+$)/u.test(trimmed)
+    ) return false;
+    const prose = proseWithoutPresentationMarkupV1(
+      trimmed.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/u, ""),
+    );
+    if (!prose || /[.!?…:“”'"`)\]}]$/u.test(prose)) return false;
+    return /\b(?:als|soll|sollen|sollte|sollten|wird|werden|wurde|wurden|durch|mit|f[üu]r|von|zu|um|weil|dass|indem|w[äa]hrend|sowie|und|oder|aber|as|should|would|will|is|are|was|were|with|for|by|from|into|because|that|while|and|or|but)\s*$/iu.test(prose);
+  });
+}
+
+function containsObservationClassificationConflictV1(markdown: string): boolean {
+  const prose = proseWithoutPresentationMarkupV1(markdown).toLocaleLowerCase("de-DE");
+  const measured = /\b(?:direkt|explizit|tats[äa]chlich|reproduzierbar(?:e[nrms]?)?)\s+(?:gemessen|beobachtet|nachgewiesen|belegt)\b/u.test(prose) ||
+    /\b(?:messwerte?|werte)\b.{0,60}\b(?:gemessen|reproduzierbar|beobachtet|nachgewiesen)\b/u.test(prose) ||
+    /\b(?:directly|explicitly|reproducibly)\s+(?:measured|observed|verified|reproduced)\b/u.test(prose);
+  if (!measured) return false;
+  return /\b(?:alle|s[äa]mtliche|diese)\s+(?:mess)?werte\b.{0,80}\b(?:sind|bleiben|gelten\s+als)\b.{0,40}\b(?:vermutung|spekulation|hypothese|hypothetisch|nicht\s+gemessen|nicht\s+belegt)\b/u.test(prose) ||
+    /\b(?:all|these)\s+(?:measurements|values)\b.{0,80}\b(?:are|remain)\b.{0,40}\b(?:conjecture|speculation|hypothetical|unmeasured|unverified)\b/u.test(prose);
+}
+
+/**
+ * Deterministic publication guard for defects that are visible without source
+ * bodies. It deliberately detects only high-confidence structural or explicit
+ * self-classification conflicts; broader semantic review remains human-owned.
+ */
+export function chatMarkdownIntegrityIssuesV1(
+  markdown: string,
+): ChatMarkdownIntegrityIssueV1[] {
+  const issues: ChatMarkdownIntegrityIssueV1[] = [];
+  if (containsIncompleteProseV1(markdown)) issues.push("incomplete-prose");
+  if (containsObservationClassificationConflictV1(markdown)) {
+    issues.push("observation-classification-conflict");
+  }
+  return issues;
+}
+
 function normalizedRequestFacetV1(value: string): string {
   return value
     .normalize("NFKC")
@@ -561,6 +627,11 @@ export function chatDraftNeedsHostRepairV1(input: {
   if (draft.blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return true;
   }
+  if (chatMarkdownIntegrityIssuesV1(
+    draft.blocks.map((block) => block.markdown).join("\n\n"),
+  ).length > 0) {
+    return true;
+  }
   if (input.detailEvidence.length === 0) return false;
   const factual = draft.blocks.filter((block) => block.assertion !== "none");
   if (factual.length === 0) return true;
@@ -609,6 +680,8 @@ export const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1 = [
   "missing-detailed-factual-block",
   "orphan-heading",
   "missing-request-facet",
+  "incomplete-prose",
+  "observation-classification-conflict",
 ] as const;
 
 export type ChatDraftRepairRejectionReasonV1 =
@@ -637,6 +710,12 @@ export function inspectChatDraftAfterHostRepairV1(input: {
     }));
   if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return { rejectionReasons: ["malformed-factual-markdown"] };
+  }
+  const integrityIssues = chatMarkdownIntegrityIssuesV1(
+    blocks.map((block) => block.markdown).join("\n\n"),
+  );
+  if (integrityIssues.length > 0) {
+    return { rejectionReasons: integrityIssues };
   }
   const sections = input.readSectionReferences ?? [];
   const detailedFactual = blocks.filter((block) =>
@@ -1034,6 +1113,13 @@ export function finalizeChatAnswerV1(input: {
   messageMarkdown = documentationAbsenceProjection.markdown;
   messageMarkdown = removeStandaloneEvidencePlaceholderLinesV1(messageMarkdown);
   messageMarkdown = removeAbandonedMarkdownFragmentsV1(messageMarkdown);
+  const integrityIssues = chatMarkdownIntegrityIssuesV1(messageMarkdown);
+  if (integrityIssues.length > 0) {
+    throw new ChatContractError(
+      "invalid-report",
+      `The Chat answer contains incomplete or contradictory prose (${integrityIssues.join(",")}).`,
+    );
+  }
   const citationPlaceholders = chatEvidencePlaceholdersV1(messageMarkdown);
   const citationIds = [...new Set(citationPlaceholders.map((entry) => entry.sourceId))];
   const citationKeys = [...new Set(citationPlaceholders.map((entry) =>

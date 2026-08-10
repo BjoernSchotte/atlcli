@@ -13,6 +13,7 @@ import {
 } from "../quality-policy.js";
 import { createMemoryResearchWorkspace } from "../workspace.js";
 import {
+  chatMarkdownIntegrityIssuesV1,
   chatDraftForFinalizationAfterHostRepairV1,
   chatDraftMissingRequestFacetsV1,
   chatDraftNeedsHostRepairV1,
@@ -235,6 +236,86 @@ describe("Chat answer contract", () => {
       detailEvidence: [],
       requestFacets: ["First facet", "Second facet"],
     })).toEqual({ rejectionReasons: ["orphan-heading"] });
+  });
+
+  test("repairs and rejects incomplete factual prose instead of publishing a dangling clause", () => {
+    const draft = {
+      blocks: [{
+        markdown: "Die Quelle bezeichnet die gemessene Einstellung selbst als",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }],
+      gaps: [],
+    };
+
+    expect(chatMarkdownIntegrityIssuesV1(draft.blocks[0]!.markdown)).toEqual([
+      "incomplete-prose",
+    ]);
+    expect(chatDraftNeedsHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+    expect(inspectChatDraftAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toEqual({ rejectionReasons: ["incomplete-prose"] });
+    expect(() => finalizeChatAnswerV1({
+      draft,
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    })).toThrow("incomplete or contradictory prose");
+  });
+
+  test("rejects an explicit measured-versus-conjectural self-contradiction", () => {
+    const markdown = [
+      "Die drei Werte wurden direkt gemessen.",
+      "Diese Werte sind daher eine Vermutung.",
+    ].join(" ");
+    const draft = {
+      blocks: [{
+        markdown,
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }],
+      gaps: [],
+    };
+
+    expect(chatMarkdownIntegrityIssuesV1(markdown)).toEqual([
+      "observation-classification-conflict",
+    ]);
+    expect(chatDraftNeedsHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+    expect(inspectChatDraftAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toEqual({ rejectionReasons: ["observation-classification-conflict"] });
+  });
+
+  test("allows measured observations and separately labelled interpretation", () => {
+    const markdown = [
+      "Der Durchsatz wurde direkt gemessen.",
+      "Die vermutete Ursache der Abweichung bleibt hingegen eine Hypothese.",
+    ].join(" ");
+
+    expect(chatMarkdownIntegrityIssuesV1(markdown)).toEqual([]);
+    expect(chatDraftNeedsHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown,
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(false);
   });
 
   test("drops a trailing orphan heading only when the remaining answer stays complete", () => {
