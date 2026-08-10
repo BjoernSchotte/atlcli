@@ -524,11 +524,19 @@ Ubuntu Node 24, Windows Node 24, typecheck/browser/build, publishing consumers, 
 the required aggregator passed in run `30705797902`. Non-required timing telemetry
 is intentionally outside that gate.
 
+That run records the original acceptance proof, not the permanent per-PR
+cadence. The CI-throughput rollout keeps pinned Astro 7.1.6 on Ubuntu Node
+22.12 as ordinary merge-ready proof. Latest Astro 7.x on Ubuntu and pinned
+Astro on Windows run as scheduled/manual compatibility canaries and remain
+blocking on release tags. Windows local publishing support is retained without
+putting the multi-minute Windows runner on every pull request.
+
 ## T11/T12 final verification and cleanup boundary (2026-08-01)
 
-The minimum fixture pins Astro `7.1.6`; the required CI matrix proves the minimum
-Ubuntu Node 22.12 lane, latest supported 7.x on Ubuntu Node 24, and Windows Node 24
-path portability. The real read-only Cloud E2E used `mayflower` against `DOCSY` and
+The minimum fixture pins Astro `7.1.6`; ordinary required CI proves the minimum
+Ubuntu Node 22.12 lane, while release-blocking compatibility canaries prove latest
+supported 7.x on Ubuntu Node 24 and Windows Node 24 path portability. The real
+read-only Cloud E2E used `mayflower` against `DOCSY` and
 the complete 98-page space, with the explicit partial asset policy retaining all
 pages and surfacing three visible blocked-asset fallbacks. No Data Center provider
 was available for a live run; DC behavior is fixture-proven and the live provider

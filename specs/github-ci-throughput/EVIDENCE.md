@@ -19,11 +19,11 @@ open until the live sample gates in `PLAN.md` are satisfied.
   merge-ready `required`
 - Ready-PR routing: conservative package/capability closures; workflow,
   lockfile, global, unknown, main-push, scheduled, and manual inputs fail open
-- Quality DAG: static quality, Bun shards, pinned Astro platforms, and optional
+- Quality DAG: static quality, Bun shards, pinned Ubuntu Astro, and optional
   attestation start independently; the duplicate publishing job and reusable
   aggregate tail are removed
-- Floating latest Astro 7: scheduled/manual advisory canary; release tags keep
-  the compatibility check blocking
+- Floating latest Astro 7 and pinned Windows Astro: scheduled/manual advisory
+  canaries; release tags keep both compatibility checks blocking
 - Official GitHub Actions in the touched workflows use their current Node 24
   majors (`checkout@v7`, `setup-node@v7`, `github-script@v9`, `cache@v6`,
   `upload-artifact@v7`, and `download-artifact@v8`)
@@ -142,7 +142,7 @@ environment. No customer identifier or credential was copied into this file.
 | Package build reuse | Held | Same-SHA artifact/co-located evidence absent |
 | Selective product routing | Implemented, live validation pending | Conservative dependency closures and fail-open overrides are covered locally; post-change PR evidence is still required |
 | Draft-fast | Implemented, live validation pending | Live PR head/draft state is checked at selection; ready proof is checked again inside the final aggregate |
-| Quality DAG flattening | Implemented | Duplicate publishing proof and reusable aggregate tail removed; pinned Astro platforms run in parallel |
+| Quality DAG flattening | Implemented | Duplicate publishing proof and reusable aggregate tail removed; pinned Ubuntu Astro runs in parallel while Windows compatibility moves off ordinary PRs |
 | Pinned PDF font cache | Implemented | Content-addressed per-OS cache; `fonts:ensure` still verifies every restored file |
 | Browser branch parallelism | Held | Isolation and ten-run comparison incomplete |
 | Merge queue activation | Deferred | External repository ownership decision required |

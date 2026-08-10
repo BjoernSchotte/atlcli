@@ -289,11 +289,12 @@ describe("CI workflow policy", () => {
     expect(required).not.toContain("browser-system-chrome-canary");
   });
 
-  it("uses Node 24 action runtimes and keeps the isolated Windows sink cacheless", async () => {
+  it("uses Node 24 action runtimes and keeps Windows platform lanes cacheless", async () => {
     const ci = await workflow("ci.yml");
     const reusable = await workflow("reusable-quality.yml");
     const workflows = `${ci}\n${reusable}`;
     const windowsSink = block(ci, /^ {2}pdf-sink-windows:\s*$/, 2);
+    const windowsAstro = block(reusable, /^ {2}publishing-platform-windows:\s*$/, 2);
 
     expect(workflows).toContain("actions/checkout@v7");
     expect(workflows).toContain("actions/setup-node@v7");
@@ -308,6 +309,9 @@ describe("CI workflow policy", () => {
     expect(windowsSink).not.toBeNull();
     expect(windowsSink).not.toContain("Restore Bun package cache");
     expect(windowsSink).not.toContain("actions/cache@");
+    expect(windowsAstro).not.toBeNull();
+    expect(windowsAstro).not.toContain("Restore Bun package cache");
+    expect(windowsAstro).not.toContain("actions/cache@");
   });
 
   it("keeps required quality branches parallel and removes duplicate publishing and aggregate tails", async () => {
@@ -315,6 +319,7 @@ describe("CI workflow policy", () => {
     const staticQuality = block(reusable, /^ {2}static-quality:\s*$/, 2);
     const tests = block(reusable, /^ {2}tests:\s*$/, 2);
     const publishing = block(reusable, /^ {2}publishing-platform:\s*$/, 2);
+    const windows = block(reusable, /^ {2}publishing-platform-windows:\s*$/, 2);
     const latest = block(reusable, /^ {2}publishing-platform-latest:\s*$/, 2);
     const attestation = block(reusable, /^ {2}security-attestation:\s*$/, 2);
     const complete = block(reusable, /^ {2}quality-complete:\s*$/, 2);
@@ -349,9 +354,18 @@ describe("CI workflow policy", () => {
     expect(publishing).toContain("packages/web-publish-starlight/src/starlight-renderer.test.ts");
     expect(publishing).toContain('ATLCLI_CONSUMER_SMOKE: "1"');
     expect(publishing).toContain("minimum-astro");
-    expect(publishing).toContain("windows-astro");
-    expect(publishing).toContain("if: runner.os != 'Windows'");
+    expect(publishing).not.toContain("windows-latest");
     expect(publishing).not.toContain("latest-astro-7");
+
+    expect(windows).not.toBeNull();
+    expect(windows).toContain("runs-on: windows-latest");
+    expect(windows).toContain("github.event_name == 'schedule'");
+    expect(windows).toContain("github.ref_type == 'tag'");
+    expect(windows).toContain(
+      "continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}",
+    );
+    expect(windows).toContain("packages/web-publish-astro/src/astro-consumer.test.ts");
+    expect(windows).toContain("packages/web-publish-starlight/src/starlight-renderer.test.ts");
 
     expect(latest).not.toBeNull();
     expect(latest).toContain("github.event_name == 'schedule'");
