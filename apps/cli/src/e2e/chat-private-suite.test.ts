@@ -300,6 +300,10 @@ describe("private Chat release suite", () => {
         "classification-conflict",
         `Supported fact 1. Die Werte wurden direkt gemessen. Diese Werte sind eine Vermutung. [Quelle](${sourceUrl})`,
       ],
+      [
+        "detached-continuation",
+        `Supported fact 1. [Quelle](${sourceUrl})\n\nda der Autor die übrigen Werte nur abgeleitet hat.`,
+      ],
     ] as const) {
       const root = await mkdtemp(join(tmpdir(), `atlcli-chat-private-${name}-`));
       roots.push(root);

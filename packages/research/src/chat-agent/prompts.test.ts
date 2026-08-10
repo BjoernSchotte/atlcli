@@ -94,6 +94,7 @@ describe("Chat supervisor prompt", () => {
     expect(repair).toContain("REPAIR OUTPUT CONTRACT (quick, hard limit)");
     expect(repair).toContain("at most 350 visible words and 16 blocks");
     expect(repair).toContain("grammatically complete");
+    expect(repair).toContain("detached lowercase continuation paragraph");
     expect(repair).toContain("cannot be both directly measured and conjectural");
     expect(repair).toContain("Finish the complete ChatAnswerDraftV2 JSON");
   });

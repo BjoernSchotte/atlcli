@@ -269,6 +269,33 @@ describe("Chat answer contract", () => {
     })).toThrow("incomplete or contradictory prose");
   });
 
+  test("rejects a detached lowercase continuation paragraph", () => {
+    const markdown = [
+      "Die drei Einstellungen wurden direkt gemessen.",
+      "",
+      "da der Autor die übrigen Werte nur aus der Dokumentation abgeleitet hat.",
+    ].join("\n");
+    const draft = {
+      blocks: [{
+        markdown,
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }],
+      gaps: [],
+    };
+
+    expect(chatMarkdownIntegrityIssuesV1(markdown)).toEqual(["incomplete-prose"]);
+    expect(chatDraftNeedsHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toBe(true);
+    expect(inspectChatDraftAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toEqual({ rejectionReasons: ["incomplete-prose"] });
+  });
+
   test("rejects an explicit measured-versus-conjectural self-contradiction", () => {
     const markdown = [
       "Die drei Werte wurden direkt gemessen.",
@@ -316,6 +343,9 @@ describe("Chat answer contract", () => {
       },
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
     })).toBe(false);
+    expect(chatMarkdownIntegrityIssuesV1(
+      "Da die Ursache nicht gemessen wurde, bleibt sie ausdrücklich eine Hypothese.",
+    )).toEqual([]);
   });
 
   test("drops a trailing orphan heading only when the remaining answer stays complete", () => {

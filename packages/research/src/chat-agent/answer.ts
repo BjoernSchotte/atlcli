@@ -546,6 +546,9 @@ function containsIncompleteProseV1(markdown: string): boolean {
     const prose = proseWithoutPresentationMarkupV1(
       trimmed.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/u, ""),
     );
+    if (/^(?:da|weil|obwohl|während|indem|wobei|sodass|sofern|because|although|whereas|which)\b/u.test(prose)) {
+      return true;
+    }
     if (!prose || /[.!?…:“”'"`)\]}]$/u.test(prose)) return false;
     return /\b(?:als|soll|sollen|sollte|sollten|wird|werden|wurde|wurden|durch|mit|f[üu]r|von|zu|um|weil|dass|indem|w[äa]hrend|sowie|und|oder|aber|as|should|would|will|is|are|was|were|with|for|by|from|into|because|that|while|and|or|but)\s*$/iu.test(prose);
   });
