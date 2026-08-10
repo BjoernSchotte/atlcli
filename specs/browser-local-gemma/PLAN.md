@@ -630,7 +630,7 @@ hardening.
       verifies every length/digest, atomically activates the manifest, and
       exposes only `not-installed`, `installing`, `ready`, and terminal `error`
       states for G0.
-- [ ] Package Transformers.js plus the resolved ONNX Runtime Web JS/WASM in the
+- [x] Package Transformers.js plus the resolved ONNX Runtime Web JS/WASM in the
       real WXT/MV3 build; do not add remote executable code or a separate page/
       application.
 - [ ] Configure Transformers.js model resolution/fetching so the engine can load

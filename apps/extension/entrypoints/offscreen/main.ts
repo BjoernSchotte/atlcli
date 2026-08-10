@@ -32,6 +32,11 @@ import {
   IndexedDbResearchSessionStoreV1,
   recoverExpiredResearchSessionsAtSafeBoundaryV1,
 } from "@atlcli/research/browser";
+import { LOCAL_GEMMA_G0_MANIFEST_V1 } from "../../utils/local-model/manifest.js";
+import {
+  isLocalModelActivationV1,
+  LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1,
+} from "../../utils/local-model/storage.js";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
 
@@ -57,6 +62,26 @@ async function recoverResearchSessionsAfterOffscreenStart(): Promise<void> {
 
 void recoverResearchSessionsAfterOffscreenStart().catch((error) =>
   console.error("Durable research recovery after offscreen startup failed", error),
+);
+
+let localModelWorker: Worker | undefined;
+
+async function restoreInstalledLocalModelWorkerV1(): Promise<void> {
+  const stored = await chrome.storage.local.get(LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1);
+  if (!isLocalModelActivationV1(
+    stored[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1],
+    LOCAL_GEMMA_G0_MANIFEST_V1,
+  )) {
+    return;
+  }
+  localModelWorker = new Worker(new URL("../../workers/local-model.ts", import.meta.url), {
+    type: "module",
+    name: "atlcli-local-model",
+  });
+}
+
+void restoreInstalledLocalModelWorkerV1().catch((error) =>
+  console.error("Installed local model worker recovery failed", error),
 );
 
 const pdfHost = new ChromeWorkerCompilerHost({
