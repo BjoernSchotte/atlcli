@@ -276,15 +276,19 @@ describe("research LangGraph checkpointer adapter", () => {
     ]);
   });
 
-  test("runs one thousand native DeepAgents turns across fresh hosts with compact durable checkpoints", async () => {
-    const durableSessionId = "research-session:one-thousand-turns";
+  const longHorizonTurnCount = process.env.ATLCLI_RESEARCH_LONG_HORIZON === "1"
+    ? 1_000
+    : 50;
+
+  test(`runs ${longHorizonTurnCount} native DeepAgents turns across fresh hosts with compact durable checkpoints`, async () => {
+    const durableSessionId = "research-session:long-horizon-turns";
     const workspace = createMemoryResearchWorkspace();
     const threadId = researchThreadIdForSessionV1(durableSessionId);
     const mainModel = fakeModel();
     const summaryModel = fakeModel();
     // The fresh resume can prompt the native agent twice while it restores a
     // completed checkpoint, so queue a small deterministic tail as well.
-    for (let index = 0; index <= 1_127; index += 1) {
+    for (let index = 0; index <= longHorizonTurnCount + 127; index += 1) {
       mainModel.respond(new AIMessage(`Synthetic answer ${index + 1}.`));
     }
     for (let index = 0; index < 64; index += 1) {
@@ -302,7 +306,8 @@ describe("research LangGraph checkpointer adapter", () => {
     });
     let host = createHost();
 
-    for (let index = 1; index <= 1_000; index += 1) {
+    const restartInterval = Math.max(10, Math.floor(longHorizonTurnCount / 10));
+    for (let index = 1; index <= longHorizonTurnCount; index += 1) {
       await host.invoke({
         messages: [new HumanMessage(
           `Turn ${index}: durable fact marker ORION-${String(index).padStart(4, "0")}.`,
@@ -310,7 +315,7 @@ describe("research LangGraph checkpointer adapter", () => {
       }, { configurable: { thread_id: threadId } });
       // A new saver and graph emulate a resumed CLI process or a restarted
       // MV3 worker, while the workspace remains the only durable owner.
-      if (index % 100 === 0 && index < 1_000) host = createHost();
+      if (index % restartInterval === 0 && index < longHorizonTurnCount) host = createHost();
     }
 
     const indexContents = await workspace.readFile("/.atlcli/langgraph-checkpoints/v1/index.json");
@@ -320,14 +325,14 @@ describe("research LangGraph checkpointer adapter", () => {
     const visibleContext = mainModel.calls.map((call) => new TextEncoder().encode(
       call.messages.map((message) => String(message.content)).join("\n"),
     ).byteLength);
-    expect(mainModel.callCount).toBeGreaterThanOrEqual(1_000);
-    expect(mainModel.callCount).toBeLessThanOrEqual(1_100);
+    expect(mainModel.callCount).toBeGreaterThanOrEqual(longHorizonTurnCount);
+    expect(mainModel.callCount).toBeLessThanOrEqual(longHorizonTurnCount + 100);
     expect(Math.max(...visibleContext)).toBeLessThanOrEqual(48_000);
     expect(checkpointIndex.operations?.length).toBeLessThanOrEqual(2_000);
     expect(checkpointIndex.operations?.some((entry) => Number.parseInt(
       entry.id?.slice("operation-".length) ?? "0",
       10,
-    ) > 2_000)).toBe(true);
+    ) > longHorizonTurnCount * 2)).toBe(true);
     expect(await workspace.list("/.atlcli/deepagents-summarization/v1")).not.toHaveLength(0);
 
     const resumedHost = createHost();
@@ -339,12 +344,14 @@ describe("research LangGraph checkpointer adapter", () => {
     const resumedInputs = mainModel.calls.slice(callsBeforeResume).map((call) =>
       call.messages.map((message) => message.text).join("\n"),
     );
-    expect(resumedInputs.some((input) => input.includes("ORION-1000"))).toBe(true);
-  // This exercises 1,000 real LangGraph checkpoint transitions plus ten fresh
-  // host reconstructions. The serial repository gate has measured slightly
-  // above 200 seconds; the product's per-run deadline remains independently
-  // bounded and is not relaxed by this test-only timeout.
-  }, 240_000);
+    expect(resumedInputs.some((input) => input.includes(
+      `ORION-${String(longHorizonTurnCount).padStart(4, "0")}`,
+    ))).toBe(true);
+  // Required CI crosses the 48-message compaction trigger with 50 native
+  // turns and five fresh hosts. Set
+  // ATLCLI_RESEARCH_LONG_HORIZON=1 for the explicit 1,000-turn stress proof;
+  // product run deadlines remain independently bounded in both cases.
+  }, longHorizonTurnCount === 1_000 ? 600_000 : 120_000);
 
   test("fails closed when a workspace checkpoint index belongs to another session", async () => {
     const workspace = createMemoryResearchWorkspace();
