@@ -9,6 +9,7 @@ import {
 import {
   detectDirectSetupRequirements,
   loadTestLaneMetadata,
+  mergeTestDurationSnapshot,
   planTestLanes,
   testLaneMatrix,
   validateDirectSetupOwnership,
@@ -67,6 +68,66 @@ function group(
 }
 
 describe("duration-aware test lanes", () => {
+  test("merges a same-run duration snapshot without treating zero-time files as free", () => {
+    const merged = mergeTestDurationSnapshot(
+      metadata([
+        {
+          path: "pkg/owned.test.ts",
+          lane: "pdf-typst",
+          requirements: ["fonts"],
+        },
+      ]),
+      {
+        schema: 1,
+        baselineSha: "b".repeat(40),
+        sourceRun: "https://github.com/example/repo/actions/runs/1",
+        samples: 4,
+        files: [
+          { file: "pkg/owned.test.ts", durationSeconds: 8 },
+          { file: "pkg/general.test.ts", durationSeconds: 3 },
+          { file: "pkg/rounded.test.ts", durationSeconds: 0 },
+        ],
+      },
+    );
+
+    expect(merged.baselineSha).toBe("b".repeat(40));
+    expect(merged.files).toContainEqual({
+      path: "pkg/owned.test.ts",
+      lane: "pdf-typst",
+      requirements: ["fonts"],
+      durationSeconds: 8,
+    });
+    expect(merged.files).toContainEqual({
+      path: "pkg/general.test.ts",
+      durationSeconds: 3,
+    });
+    expect(merged.files.some(({ path }) => path === "pkg/rounded.test.ts")).toBe(false);
+  });
+
+  test("rejects malformed and duplicate duration evidence", () => {
+    const base = {
+      schema: 1 as const,
+      baselineSha: SHA,
+      sourceRun: "run",
+      samples: 1,
+    };
+    expect(() =>
+      mergeTestDurationSnapshot(metadata(), {
+        ...base,
+        files: [
+          { file: "pkg/a.test.ts", durationSeconds: 1 },
+          { file: "./pkg/a.test.ts", durationSeconds: 2 },
+        ],
+      }),
+    ).toThrow("duplicate test-duration snapshot");
+    expect(() =>
+      mergeTestDurationSnapshot(metadata(), {
+        ...base,
+        files: [{ file: "pkg/a.test.ts", durationSeconds: -1 }],
+      }),
+    ).toThrow("invalid test-duration snapshot");
+  });
+
   test("uses deterministic LPT balancing independent of inventory order", () => {
     const inventory = ["pkg/a.test.ts", "pkg/b.test.ts", "pkg/c.test.ts", "pkg/d.test.ts"];
     const files = [
@@ -182,6 +243,10 @@ describe("duration-aware test lanes", () => {
       sourceFor: (path) => readFileSync(resolve(import.meta.dir, "../..", path), "utf8"),
     });
     const result = planTestLanes(inventory, realMetadata, "general-3x1");
+    expect(realMetadata.baselineSha).toBe("d3a5d82b5587670db666b82f4d19f9716bc42c71");
+    expect(
+      realMetadata.files.filter(({ durationSeconds }) => durationSeconds !== undefined),
+    ).toHaveLength(620);
     expect(
       result.groups
         .filter(({ lane }) => lane === "general")
@@ -279,6 +344,7 @@ describe("duration-aware test lanes", () => {
     expect(matrix.include.find(({ executionGroups }) => executionGroups.length === 2)).toMatchObject({
       group: "general-1",
       workers: 2,
+      fonts: true,
       executionGroups: ["general-1-parallel", "general-1-serial"],
     });
     const shared = result.groups.filter(({ job }) => job === "general-1");
@@ -355,6 +421,11 @@ describe("duration-aware test lanes", () => {
     expect(result.groups.map(({ id }) => id)).toEqual([
       "general-1-parallel",
       "package-contract",
+      "pdf-typst",
+    ]);
+    const matrix = testLaneMatrix(result);
+    expect(matrix.include.every(({ fonts }) => fonts)).toBe(true);
+    expect(matrix.include.filter(({ poppler }) => poppler).map(({ group }) => group)).toEqual([
       "pdf-typst",
     ]);
   });

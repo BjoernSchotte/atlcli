@@ -589,7 +589,7 @@ jobs:
         if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true'
         uses: actions/download-artifact@v8
         with:
-          pattern: bun-test-shard-*-${{ github.sha }}
+          pattern: bun-test-junit-*-${{ github.sha }}
           path: test-results
 
       - name: Read same-attempt Actions jobs
@@ -613,7 +613,7 @@ jobs:
 
       - name: Summarize timing evidence
         env:
-          CI_TEST_TOPOLOGY: ${{ needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true' && 'legacy-4-shard' || 'not-run' }}
+          CI_TEST_TOPOLOGY: ${{ needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true' && 'general-3x1' || 'not-run' }}
           CI_PROOF_MODE: ${{ needs.changes.outputs.proofMode }}
           CI_ROUTE_CODE: ${{ needs.changes.outputs.code }}
           CI_ROUTE_CONSUMER: ${{ needs.changes.outputs.consumer }}

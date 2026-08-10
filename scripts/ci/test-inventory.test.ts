@@ -17,6 +17,8 @@ describe("test inventory", () => {
         "a/same.test.ts",
         "pkg/alpha_test.jsx",
         "pkg/bravo.spec.js",
+        "pkg/browser.test.mjs",
+        "pkg/node.spec.cjs",
         "pkg/charlie_spec.tsx",
         "pkg/not-a-test.ts",
         "./pkg/bravo.spec.js",
@@ -25,7 +27,9 @@ describe("test inventory", () => {
       "a/same.test.ts",
       "pkg/alpha_test.jsx",
       "pkg/bravo.spec.js",
+      "pkg/browser.test.mjs",
       "pkg/charlie_spec.tsx",
+      "pkg/node.spec.cjs",
       "z/same.test.ts",
     ]);
   });
@@ -41,6 +45,7 @@ describe("test inventory", () => {
         "packages/x/generated/schema_test.ts",
         "coverage/report.test.ts",
         "playwright-report/output.test.ts",
+        "spikes/experiment/contract.test.ts",
         "test-results/retry.spec.ts",
         "packages/x/src/index.test.ts",
       ]),
