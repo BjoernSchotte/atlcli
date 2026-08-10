@@ -747,6 +747,13 @@ function sameAnswerBlockBindingV1(
       [...new Set(right.sourceRefs)].sort().join("\u0000");
 }
 
+function leadingCodeListSubjectV1(markdown: string): string | undefined {
+  const match = markdown.match(
+    /^\s*[-*+]\s+`([^`\n]{1,120})`\s*(?:[–—:-]|$)/u,
+  );
+  return match?.[1]?.normalize("NFKC").toLocaleLowerCase("en-US").trim();
+}
+
 /**
  * Remove only high-confidence repeated blocks with the same evidence binding.
  * Prefer the more informative wording; distinct facts or differently sourced
@@ -762,9 +769,12 @@ function collapseRedundantAnswerBlocksV1(
       if (removed.has(right)) continue;
       const leftBlock = blocks[left]!;
       const rightBlock = blocks[right]!;
+      const leftSubject = leadingCodeListSubjectV1(leftBlock.markdown);
+      const sameCodeListSubject = leftSubject !== undefined &&
+        leftSubject === leadingCodeListSubjectV1(rightBlock.markdown);
       if (
         !sameAnswerBlockBindingV1(leftBlock, rightBlock) ||
-        !redundantProseV1(leftBlock.markdown, rightBlock.markdown)
+        (!sameCodeListSubject && !redundantProseV1(leftBlock.markdown, rightBlock.markdown))
       ) continue;
       const leftTokens = normalizedProseTokensV1(leftBlock.markdown).length;
       const rightTokens = normalizedProseTokensV1(rightBlock.markdown).length;
@@ -857,6 +867,7 @@ export function chatDraftNeedsHostRepairV1(input: {
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
   requestFacets?: readonly string[];
+  question?: string;
 }): boolean {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (!parsed.success) return false;
@@ -874,6 +885,12 @@ export function chatDraftNeedsHostRepairV1(input: {
     return true;
   }
   if (collapseRedundantAnswerBlocksV1(draft.blocks).length !== draft.blocks.length) {
+    return true;
+  }
+  const rankedBlocks = normalizeMeasuredRankingBlocksV1(draft.blocks, input.question);
+  if (rankedBlocks.some((block, index) =>
+    block.id !== draft.blocks[index]?.id || block.markdown !== draft.blocks[index]?.markdown
+  )) {
     return true;
   }
   if (draft.blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
@@ -913,6 +930,7 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
   requestFacets?: readonly string[];
+  question?: string;
 }): ChatAgentDraftV2 | undefined {
   return inspectChatDraftAfterHostRepairV1(input).draft;
 }
@@ -932,12 +950,152 @@ export const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1 = [
 export type ChatDraftRepairRejectionReasonV1 =
   typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
 
+type ChatMeasuredRankingDirectionV1 = "ascending" | "descending";
+
+interface ChatMeasuredRankingEntryV1 {
+  block: ChatAnswerBlockV2;
+  originalIndex: number;
+  changes: ReadonlyMap<string, number>;
+}
+
+function requestedMeasuredRankingDirectionV1(
+  question: string | undefined,
+): ChatMeasuredRankingDirectionV1 | undefined {
+  if (!question) return undefined;
+  const normalized = question.toLocaleLowerCase("de-DE");
+  if (
+    /(?:aufsteigend|ascending|smallest|lowest|least|kleinste|niedrigste|geringste)/u
+      .test(normalized)
+  ) {
+    return "ascending";
+  }
+  if (
+    /(?:absteigend|descending|greatest|strongest|highest|biggest|\btop\b|groesste|größte|staerkste|stärkste|hoechste|höchste|wirkungsvollste)/u
+      .test(normalized)
+  ) {
+    return "descending";
+  }
+  return undefined;
+}
+
+function localizedDecimalV1(value: string): number | undefined {
+  const parsed = Number(value.replace(/\s/gu, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeComparableUnitV1(value: string): string {
+  return value
+    .toLocaleLowerCase("en-US")
+    .replace(/tokens?/gu, "tok")
+    .replace(/\s+/gu, "");
+}
+
+function measuredChangesFromBlockV1(
+  block: ChatAnswerBlockV2,
+  originalIndex: number,
+): ChatMeasuredRankingEntryV1 | undefined {
+  if (!/^(\s*(?:[-*+]\s+)?)(?:\*\*|__)?\d+[.)](?=\s)/u.test(block.markdown)) {
+    return undefined;
+  }
+  const prose = proseWithoutPresentationMarkupV1(block.markdown);
+  const candidates = [
+    ...prose.matchAll(
+      /(?:vorher|before)[\s\S]{0,180}?(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)[\s\S]{0,220}?(?:nachher|after)[\s\S]{0,180}?(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)/giu,
+    ),
+    ...prose.matchAll(
+      /(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)?\s*(?:→|->|bis|to)\s*(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)/giu,
+    ),
+  ];
+  const byUnit = new Map<string, number[]>();
+  for (const candidate of candidates) {
+    const before = localizedDecimalV1(candidate[1] ?? "");
+    const after = localizedDecimalV1(candidate[3] ?? "");
+    const beforeUnit = candidate[2] ?? candidate[4];
+    const afterUnit = candidate[4] ?? candidate[2];
+    if (before === undefined || after === undefined || !beforeUnit || !afterUnit) {
+      continue;
+    }
+    const unit = normalizeComparableUnitV1(beforeUnit);
+    if (unit !== normalizeComparableUnitV1(afterUnit)) continue;
+    const relativeChange = before === 0
+      ? after - before
+      : (after - before) / Math.abs(before);
+    byUnit.set(unit, [...(byUnit.get(unit) ?? []), relativeChange]);
+  }
+  const changes = new Map(
+    [...byUnit].flatMap(([unit, values]) => values.length === 1
+      ? [[unit, values[0]!] as const]
+      : []),
+  );
+  return changes.size > 0 ? { block, originalIndex, changes } : undefined;
+}
+
+function renumberMeasuredRankingBlockV1(
+  block: ChatAnswerBlockV2,
+  rank: number,
+): ChatAnswerBlockV2 {
+  const markdown = block.markdown.replace(
+    /^(\s*(?:[-*+]\s+)?)(\*\*|__)?\d+([.)])(?=\s)/u,
+    (_match, prefix: string, emphasis: string | undefined, punctuation: string) =>
+      `${prefix}${emphasis ?? ""}${rank}${punctuation}`,
+  );
+  return markdown === block.markdown ? block : { ...block, markdown };
+}
+
+/**
+ * When a user explicitly asks for a measured ranking and the answer itself
+ * exposes comparable before/after values, their order is deterministic. Sort
+ * only those already evidence-bound blocks and change no factual wording. If
+ * values or units are not directly comparable, retain the model order and let
+ * the normal quality boundary handle the uncertainty.
+ */
+function normalizeMeasuredRankingBlocksV1(
+  blocks: readonly ChatAnswerBlockV2[],
+  question: string | undefined,
+): ChatAnswerBlockV2[] {
+  const direction = requestedMeasuredRankingDirectionV1(question);
+  if (!direction) return [...blocks];
+  const entries = blocks.flatMap((block, originalIndex) => {
+    const entry = measuredChangesFromBlockV1(block, originalIndex);
+    return entry ? [entry] : [];
+  });
+  if (entries.length < 2) {
+    return [...blocks];
+  }
+  const commonUnits = [...entries[0]!.changes.keys()].filter((unit) =>
+    entries.every((entry) => entry.changes.has(unit))
+  );
+  if (commonUnits.length !== 1) return [...blocks];
+  const unit = commonUnits[0]!;
+  const sorted = [...entries].sort((left, right) => {
+    const leftChange = left.changes.get(unit)!;
+    const rightChange = right.changes.get(unit)!;
+    const comparison = direction === "descending"
+      ? rightChange - leftChange
+      : leftChange - rightChange;
+    return comparison || left.originalIndex - right.originalIndex;
+  });
+  const rankedIndexes = entries.map((entry) => entry.originalIndex);
+  const first = Math.min(...rankedIndexes);
+  const last = Math.max(...rankedIndexes);
+  const rankedIndexSet = new Set(rankedIndexes);
+  return [
+    ...blocks.slice(0, first),
+    ...sorted.map((entry, rank) => renumberMeasuredRankingBlockV1(entry.block, rank + 1)),
+    ...blocks.slice(first, last + 1).filter((_block, offset) =>
+      !rankedIndexSet.has(first + offset)
+    ),
+    ...blocks.slice(last + 1),
+  ];
+}
+
 /** Return closed, body-free diagnostics for one rejected terminal repair. */
 export function inspectChatDraftAfterHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
   requestFacets?: readonly string[];
+  question?: string;
 }): {
   draft?: ChatAgentDraftV2;
   rejectionReasons: ChatDraftRepairRejectionReasonV1[];
@@ -959,12 +1117,15 @@ export function inspectChatDraftAfterHostRepairV1(input: {
       // safe here: it changes no words, evidence, assertion, or source binding.
       markdown: balanceGermanClosingQuotesV1(block.markdown),
     }));
-  const blocks = coalesceRequestFacetLabelsV1(
-    collapseRedundantRequestFacetAlternativesV1(
-      collapseRedundantAnswerBlocksV1(balancedBlocks),
+  const blocks = normalizeMeasuredRankingBlocksV1(
+    coalesceRequestFacetLabelsV1(
+      collapseRedundantRequestFacetAlternativesV1(
+        collapseRedundantAnswerBlocksV1(balancedBlocks),
+        input.requestFacets ?? [],
+      ),
       input.requestFacets ?? [],
     ),
-    input.requestFacets ?? [],
+    input.question,
   );
   if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return { rejectionReasons: ["malformed-factual-markdown"] };

@@ -340,6 +340,30 @@ describe("Chat answer contract", () => {
       .not.toContain("repeated-prose");
   });
 
+  test("keeps one informative bullet for a repeated code-marked parameter", () => {
+    const repaired = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "- `--mode stable` – Die dokumentierte Voreinstellung.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "- `--mode stable` – Die dokumentierte Voreinstellung; der schnellere Versuch wurde wegen Qualitätsfehlern verworfen.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+
+    expect(repaired.rejectionReasons).toEqual([]);
+    expect(repaired.draft?.blocks).toHaveLength(1);
+    expect(repaired.draft?.blocks[0]?.markdown).toContain("Qualitätsfehlern verworfen");
+  });
+
   test("preserves similarly formatted blocks that carry distinct facts", () => {
     const inspection = inspectChatDraftAfterHostRepairV1({
       draft: {
@@ -360,6 +384,69 @@ describe("Chat answer contract", () => {
     });
     expect(inspection.rejectionReasons).toEqual([]);
     expect(inspection.draft?.blocks).toHaveLength(2);
+  });
+
+  test("orders an explicit measured ranking by comparable before-after deltas", () => {
+    const draft = {
+      blocks: [{
+        id: "rank:ram",
+        markdown: "**1. Cache-Budget** – Trefferquote 10 % → 70 %; Durchsatz 1 tok/s → 1,5 tok/s.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }, {
+        id: "rank:direct",
+        markdown: "**2. Direkter Zugriff** – Durchsatz 2 tok/s → 4 tok/s.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }, {
+        id: "ranking:summary",
+        markdown: "**Vorher-/Nachher-Werte:** Die drei vergleichbaren Durchsatzmessungen sind oben vollständig aufgeführt.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }, {
+        id: "rank:uring",
+        markdown: "**3. Asynchrones I/O** – Vorher: 4 tok/s. Nachher: 4,4 tok/s.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }],
+      gaps: [],
+    };
+    const question = "Welche drei Hebel hatten den größten messbaren Einfluss?";
+
+    expect(chatDraftNeedsHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      question,
+    })).toBe(true);
+    const inspection = inspectChatDraftAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      question,
+    });
+    expect(inspection.rejectionReasons).toEqual([]);
+    expect(inspection.draft?.blocks.map((block) => block.id)).toEqual([
+      "rank:direct",
+      "rank:ram",
+      "rank:uring",
+      "ranking:summary",
+    ]);
+    expect(inspection.draft?.blocks.slice(0, 3)
+      .map((block) => block.markdown.match(/^\*\*(\d+)\./u)?.[1]))
+      .toEqual(["1", "2", "3"]);
+
+    expect(inspectChatDraftAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    }).draft?.blocks.map((block) => block.id)).toEqual([
+      "rank:ram",
+      "rank:direct",
+      "ranking:summary",
+      "rank:uring",
+    ]);
   });
 
   test("classifies terminal repair rejection without retaining draft content", () => {
