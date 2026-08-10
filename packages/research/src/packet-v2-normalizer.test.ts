@@ -1,0 +1,450 @@
+import { describe, expect, test } from "bun:test";
+import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
+import {
+  createResearchEvidenceRecordV1,
+  validateResearchEvidenceSpanV1,
+  WorkspaceResearchEvidenceStoreV1,
+} from "./evidence-store.js";
+import {
+  createHostValidationAbstentionPacketV2,
+  normalizeResearchPacketModelBodyV2,
+  normalizeResearchPacketReferenceModelBodyV2,
+} from "./packet-v2-normalizer.js";
+import { createMemoryResearchWorkspace } from "./workspace.js";
+
+const scope = {
+  siteOrigin: "https://example.atlassian.net",
+  jiraProjectKeys: ["ATLCLI"],
+  confluenceSpaceKeys: ["DOCSY"],
+};
+
+const binding = {
+  schema: "atlcli.research-scope-binding/v1" as const,
+  id: "scope-binding:packet-normalizer:jira:ATLCLI",
+  tenantOrigin: scope.siteOrigin,
+  product: "jira" as const,
+  entityKind: "project" as const,
+  entityRef: "scope-key:jira:ATLCLI",
+  key: "ATLCLI",
+  name: "ATLCLI",
+  source: "cli_flag" as const,
+  authority: "locked" as const,
+};
+
+async function retainedEvidence(input: {
+  store: WorkspaceResearchEvidenceStoreV1;
+  id: string;
+  text: string;
+}) {
+  const created = await createResearchEvidenceRecordV1({
+    source: {
+      id: input.id,
+      product: "jira",
+      title: `${input.id} fixture`,
+      url: `https://example.atlassian.net/browse/${input.id.slice("jira:".length)}`,
+      issueKey: input.id.slice("jira:".length),
+      projectKey: "ATLCLI",
+      updatedAt: "2026-08-01T12:00:00.000Z",
+    },
+    content: {
+      text: input.text,
+      linkTargets: [],
+      truncated: false,
+      inputBytes: input.text.length,
+    },
+    scope,
+    scopeBindings: [binding],
+    capturedAt: "2026-08-01T12:01:00.000Z",
+  });
+  await input.store.put(created.record, created.chunks);
+  return created;
+}
+
+describe("V2 research packet normalization", () => {
+  test("derives a quote-free journal packet from host-verified claims", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const first = await retainedEvidence({
+      store: evidenceStore,
+      id: "jira:ATLCLI-42",
+      text: "The delivery ticket explicitly links to the operating guide.",
+    });
+    const second = await retainedEvidence({
+      store: evidenceStore,
+      id: "jira:ATLCLI-43",
+      text: "The operating guide requires verification before publication.",
+    });
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+    const firstQuote = "explicitly links to the operating guide";
+    const secondQuote = "requires verification before publication";
+
+    const packet = await normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [
+          {
+            id: "candidate:link",
+            classification: "fact",
+            summary: "The delivery ticket references the guide.",
+            support: [{ sourceId: first.record.source.id, quote: firstQuote }],
+          },
+          {
+            id: "candidate:verification",
+            classification: "fact",
+            summary: "The guide imposes a verification requirement.",
+            support: [{ sourceId: second.record.source.id, quote: secondQuote }],
+          },
+        ],
+        contradictionCandidates: [{
+          id: "contradiction:delivery-check",
+          claimCandidateIds: ["candidate:link", "candidate:verification"],
+          summary: "The two requirements need joint review before delivery.",
+        }],
+        outlineProposals: [{
+          id: "outline:delivery",
+          sectionId: "section:delivery",
+          title: "Delivery readiness",
+          question: "What evidence connects delivery to verification?",
+          claimCandidateIds: ["candidate:link", "candidate:verification"],
+          dependsOnSectionIds: [],
+          coverageTargetIds: ["target:delivery"],
+        }],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      detailEvidence: [
+        {
+          source: first.record.source,
+          content: { text: first.chunks[0]!.text, linkTargets: [], truncated: false, inputBytes: first.chunks[0]!.text.length },
+          evidenceId: first.record.id,
+        },
+        {
+          source: second.record.source,
+          content: { text: second.chunks[0]!.text, linkTargets: [], truncated: false, inputBytes: second.chunks[0]!.text.length },
+          evidenceId: second.record.id,
+        },
+      ],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    });
+
+    expect(packet.claims).toHaveLength(2);
+    expect(packet.claims.map((claim) => claim.claimId)).toEqual([
+      expect.stringMatching(/^claim:[a-f0-9]{48}$/),
+      expect.stringMatching(/^claim:[a-f0-9]{48}$/),
+    ]);
+    expect(packet.contradictions).toEqual([expect.objectContaining({
+      claimIds: packet.claims.map((claim) => claim.claimId),
+      evidenceIds: [first.record.id, second.record.id].sort(),
+    })]);
+    expect(packet.outlineProposals).toEqual([expect.objectContaining({
+      claimIds: packet.claims.map((claim) => claim.claimId),
+      evidenceIds: [first.record.id, second.record.id].sort(),
+    })]);
+    expect(JSON.stringify(packet)).not.toContain("\"quote\"");
+    expect(JSON.stringify(packet)).not.toContain(firstQuote);
+    expect(JSON.stringify(packet)).not.toContain(secondQuote);
+    const admitted = await claimLedger.list();
+    expect(admitted).toMatchObject({
+      claims: [
+        { freshness: "current", evidenceIds: [first.record.id] },
+        { freshness: "current", evidenceIds: [second.record.id] },
+      ],
+    });
+    const retained = new Map([
+      [first.record.id, first],
+      [second.record.id, second],
+    ]);
+    for (const claim of admitted.claims) {
+      expect(claim.classification).toBe("fact");
+      for (const span of claim.evidenceSpans) {
+        const evidence = retained.get(span.evidenceId);
+        expect(evidence).toBeDefined();
+        await expect(validateResearchEvidenceSpanV1(
+          evidence!.record,
+          evidence!.chunks,
+          span,
+        )).resolves.toEqual(span);
+      }
+    }
+  });
+
+  test("rejects a non-verbatim model packet before it becomes a canonical packet", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const retained = await retainedEvidence({
+      store: evidenceStore,
+      id: "jira:ATLCLI-44",
+      text: "The ticket links to the operating guide.",
+    });
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+
+    await expect(normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [{
+          id: "candidate:invalid",
+          classification: "fact",
+          summary: "The ticket references the guide.",
+          support: [{ sourceId: retained.record.source.id, quote: "The ticket references the guide." }],
+        }],
+        contradictionCandidates: [],
+        outlineProposals: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      detailEvidence: [{
+        source: retained.record.source,
+        content: { text: retained.chunks[0]!.text, linkTargets: [], truncated: false, inputBytes: retained.chunks[0]!.text.length },
+        evidenceId: retained.record.id,
+      }],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    })).rejects.toThrow("does not exactly match");
+    await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
+  });
+
+  test("retains verified claims when another candidate fails exact-evidence validation", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const retained = await retainedEvidence({
+      store: evidenceStore,
+      id: "jira:ATLCLI-46",
+      text: "The ticket requires a documented verification step before publication.",
+    });
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+    const packet = await normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [
+          {
+            id: "candidate:verified",
+            classification: "fact",
+            summary: "The ticket requires verification before publication.",
+            support: [{
+              sourceId: retained.record.source.id,
+              quote: "requires a documented verification step before publication",
+            }],
+          },
+          {
+            id: "candidate:rejected",
+            classification: "fact",
+            summary: "The ticket requires an executive approval.",
+            support: [{
+              sourceId: retained.record.source.id,
+              quote: "requires an executive approval",
+            }],
+          },
+        ],
+        contradictionCandidates: [{
+          id: "contradiction:mixed",
+          claimCandidateIds: ["candidate:verified", "candidate:rejected"],
+          summary: "The proposed requirements may conflict.",
+        }],
+        outlineProposals: [{
+          id: "outline:mixed",
+          sectionId: "section:mixed",
+          title: "Mixed support",
+          question: "Which requirements are supported?",
+          claimCandidateIds: ["candidate:verified", "candidate:rejected"],
+          dependsOnSectionIds: [],
+          coverageTargetIds: ["target:mixed"],
+        }],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      detailEvidence: [{
+        source: retained.record.source,
+        content: {
+          text: retained.chunks[0]!.text,
+          linkTargets: [],
+          truncated: false,
+          inputBytes: retained.chunks[0]!.text.length,
+        },
+        evidenceId: retained.record.id,
+      }],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    });
+
+    expect(packet.claims).toEqual([{
+      candidateId: "candidate:verified",
+      claimId: expect.stringMatching(/^claim:[a-f0-9]{48}$/),
+    }]);
+    expect(packet.contradictions).toEqual([]);
+    expect(packet.outlineProposals).toEqual([]);
+    expect(packet.coverageLimits).toContain(
+      "One or more proposed claims failed host exact-evidence validation and were omitted.",
+    );
+    expect(JSON.stringify(packet)).not.toContain("requires an executive approval");
+    await expect(claimLedger.list()).resolves.toMatchObject({
+      claims: [{ statement: "The ticket requires verification before publication." }],
+    });
+  });
+
+  test("converts a rejected claim candidate into an explicit host-validation abstention", () => {
+    const packet = createHostValidationAbstentionPacketV2({
+      schema: "atlcli.research-packet-body/v2",
+      claimCandidates: [{
+        id: "candidate:invalid",
+        classification: "fact",
+        summary: "The ticket references the guide.",
+        support: [{ sourceId: "jira:ATLCLI-44", quote: "The ticket references the guide." }],
+      }],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [{
+        id: "gap:existing",
+        summary: "The bounded source set did not establish an explicit cross-product link.",
+        sourceIds: ["jira:untrusted"],
+      }],
+      proposedFollowUps: [{
+        id: "follow-up:untrusted",
+        objective: "Read the model-proposed source.",
+        reasonCode: "coverage_gap",
+        sourceIds: ["jira:untrusted"],
+      }],
+      coverageLimits: [],
+    }, ["jira:ATLCLI-44"]);
+
+    expect(packet).toMatchObject({
+      claims: [],
+      contradictions: [],
+      outlineProposals: [],
+      gaps: [
+        { id: "gap:existing", sourceIds: [] },
+        { id: "gap:host-claim-validation", sourceIds: [] },
+      ],
+      proposedFollowUps: [{ id: "follow-up:untrusted", sourceIds: [] }],
+      abstentionReason: "No claim candidate passed host exact-evidence validation.",
+    });
+    expect(packet.coverageLimits).toContain(
+      "One or more proposed claims failed host exact-evidence validation and were omitted.",
+    );
+    expect(JSON.stringify(packet)).not.toContain("The ticket references the guide.");
+  });
+
+  test("removes model evidence references outside the retrieved detail set", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+    await expect(normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [],
+        contradictionCandidates: [],
+        outlineProposals: [],
+        gaps: [{
+          id: "gap:no-detail",
+          summary: "No detailed source was available for the bounded lookup.",
+          sourceIds: ["wiki:unretrieved"],
+        }],
+        proposedFollowUps: [{
+          id: "follow-up:unretrieved",
+          objective: "Read the model-proposed source.",
+          reasonCode: "coverage_gap",
+          sourceIds: ["wiki:unretrieved"],
+        }],
+        coverageLimits: ["No detailed source was retrieved."],
+        abstentionReason: "The bounded lookup has no detail-backed support.",
+      },
+      detailEvidence: [],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    })).resolves.toMatchObject({
+      claims: [],
+      gaps: [{ id: "gap:no-detail", sourceIds: [] }],
+      proposedFollowUps: [{ id: "follow-up:unretrieved", sourceIds: [] }],
+      abstentionReason: "The bounded lookup has no detail-backed support.",
+    });
+    await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
+  });
+
+  test("carries only admitted current claims through an analysis-only V2 packet", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const retained = await retainedEvidence({
+      store: evidenceStore,
+      id: "jira:ATLCLI-45",
+      text: "The ticket requires a documented verification step.",
+    });
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+    const rawQuote = "requires a documented verification step";
+    const rootPacket = await normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [{
+          id: "candidate:verification",
+          classification: "fact",
+          summary: "The ticket requires verification.",
+          support: [{ sourceId: retained.record.source.id, quote: rawQuote }],
+        }],
+        contradictionCandidates: [],
+        outlineProposals: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      detailEvidence: [{
+        source: retained.record.source,
+        content: { text: retained.chunks[0]!.text, linkTargets: [], truncated: false, inputBytes: retained.chunks[0]!.text.length },
+        evidenceId: retained.record.id,
+      }],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    });
+    const claimId = rootPacket.claims[0]!.claimId;
+    const analysisPacket = await normalizeResearchPacketReferenceModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-reference-model/v2",
+        claimIds: [claimId],
+        contradictions: [],
+        outlineProposals: [{
+          id: "proposal:verification",
+          sectionId: "section:verification",
+          title: "Verification",
+          question: "What requirement is supported?",
+          claimIds: [claimId],
+          dependsOnSectionIds: [],
+          coverageTargetIds: ["target:verification"],
+        }],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      allowedClaimIds: [claimId],
+      allowedSourceIds: [retained.record.source.id],
+      claimLedger,
+      checkedAt: "2026-08-01T12:03:00.000Z",
+    });
+    expect(analysisPacket).toMatchObject({
+      claims: [],
+      referencedClaimIds: [claimId],
+      outlineProposals: [{ claimIds: [claimId], evidenceIds: [retained.record.id] }],
+    });
+    expect(JSON.stringify(analysisPacket)).not.toContain(rawQuote);
+    await expect(normalizeResearchPacketReferenceModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-reference-model/v2",
+        claimIds: [`claim:${"d".repeat(48)}`],
+        contradictions: [],
+        outlineProposals: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      allowedClaimIds: [claimId],
+      allowedSourceIds: [retained.record.source.id],
+      claimLedger,
+      checkedAt: "2026-08-01T12:03:00.000Z",
+    })).rejects.toThrow("outside its admitted dependencies");
+  });
+});

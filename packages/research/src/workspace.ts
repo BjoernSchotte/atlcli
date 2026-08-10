@@ -1,0 +1,92 @@
+import { ResearchContractError } from "./contracts.js";
+
+export const RESEARCH_WORKSPACE_SCHEMA_V1 = "atlcli.research-workspace/v1" as const;
+export const RESEARCH_ONE_SHOT_REQUEST_PATH_V1 = "/session/request.json" as const;
+
+export interface ResearchWorkspace {
+  readFile(path: string): Promise<string | undefined>;
+  writeFile(path: string, contents: string): Promise<void>;
+  remove(path: string): Promise<void>;
+  list(prefix?: string): Promise<string[]>;
+}
+
+/** Normalize and validate the portable virtual path contract. */
+export function normalizeResearchWorkspacePath(value: string): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 512 || value.includes("\u0000")) {
+    throw new ResearchContractError("invalid-request", "Workspace path is invalid.");
+  }
+  const candidate = value.replaceAll("\\", "/");
+  if (!candidate.startsWith("/")) throw new ResearchContractError("access-denied", "Workspace paths must be absolute virtual paths.");
+  const parts = candidate.split("/");
+  const normalized: string[] = [];
+  for (const part of parts) {
+    if (!part || part === ".") continue;
+    if (part === "..") throw new ResearchContractError("access-denied", "Workspace path traversal is not allowed.");
+    normalized.push(part);
+  }
+  return `/${normalized.join("/")}`;
+}
+
+/** Return whether a normalized virtual path is the requested path or one of its descendants. */
+export function researchWorkspacePathMatchesPrefix(path: string, prefix: string): boolean {
+  return prefix === "/" || path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/**
+ * Creates a private subtree view without exposing the parent workspace. It is
+ * used for host-owned DeepAgentsJS internals such as summarized conversation
+ * history: that data remains durable, but never becomes model filesystem data.
+ */
+export function createNamespacedResearchWorkspace(
+  parent: ResearchWorkspace,
+  root: string,
+): ResearchWorkspace {
+  const normalizedRoot = normalizeResearchWorkspacePath(root);
+  const absolutePath = (path: string): string => {
+    const normalized = normalizeResearchWorkspacePath(path);
+    return normalizedRoot === "/" || normalized === "/"
+      ? normalizedRoot === "/" ? normalized : normalizedRoot
+      : `${normalizedRoot}${normalized}`;
+  };
+  const relativePath = (path: string): string | undefined => {
+    if (!researchWorkspacePathMatchesPrefix(path, normalizedRoot)) return undefined;
+    const suffix = path.slice(normalizedRoot.length);
+    return suffix || "/";
+  };
+  return {
+    readFile: (path) => parent.readFile(absolutePath(path)),
+    writeFile: (path, contents) => parent.writeFile(absolutePath(path), contents),
+    remove: (path) => parent.remove(absolutePath(path)),
+    async list(prefix = "/") {
+      const paths = await parent.list(absolutePath(prefix));
+      return paths.map(relativePath).filter((path): path is string => path !== undefined).sort();
+    },
+  };
+}
+
+/** Small deterministic browser/test backend; hosts may replace it with IndexedDB. */
+export function createMemoryResearchWorkspace(): ResearchWorkspace {
+  const files = new Map<string, string>();
+  return {
+    async readFile(path) {
+      return files.get(normalizeResearchWorkspacePath(path));
+    },
+    async writeFile(path, contents) {
+      const normalized = normalizeResearchWorkspacePath(path);
+      if (typeof contents !== "string" || contents.length > 2_000_000) {
+        throw new ResearchContractError("limit-exceeded", "Workspace file is too large.");
+      }
+      files.set(normalized, contents);
+    },
+    async remove(path) {
+      const normalized = normalizeResearchWorkspacePath(path);
+      for (const key of files.keys()) {
+        if (researchWorkspacePathMatchesPrefix(key, normalized)) files.delete(key);
+      }
+    },
+    async list(prefix = "/") {
+      const normalized = normalizeResearchWorkspacePath(prefix);
+      return [...files.keys()].filter((key) => researchWorkspacePathMatchesPrefix(key, normalized)).sort();
+    },
+  };
+}

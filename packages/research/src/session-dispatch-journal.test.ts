@@ -1,0 +1,924 @@
+import { describe, expect, test } from "bun:test";
+import {
+  DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1,
+  createResearchBriefV1,
+} from "./brief.js";
+import {
+  RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+  composeResearchGraphV1,
+  reviseResearchGraphSelectionV1,
+  type ResearchGraphProposalV1,
+} from "./graph.js";
+import { assessResearchRetrievalV1 } from "./retrieval-assessment.js";
+import { initializeResearchSessionTurnV1 } from "./session-runtime.js";
+import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
+import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
+import { createResearchSessionV1 } from "./session.js";
+import { createResearchScopeDiscoveryV1 } from "./scope-discovery.js";
+import {
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+  type ResearchTaskAttemptV1,
+} from "./workflow-contracts.js";
+
+const createdAt = "2026-08-01T16:00:00.000Z";
+
+function bytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+async function initializedJournal(options: {
+  scopeExpansionMode?: "strict" | "ask" | "exact-linked";
+} = {}) {
+  const brief = createResearchBriefV1({
+    sessionId: "research-session:dispatch-journal",
+    turnId: "research-turn:dispatch-journal",
+    objective: "Find related Jira and Confluence records.",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["DOCS"],
+    },
+    asOf: createdAt,
+    timezone: "UTC",
+    requestedPlanApproval: "automatic",
+    requestedReconciliation: "required",
+    scopeDiscoveryPolicy: {
+      ...DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1,
+      expansionMode: options.scopeExpansionMode ?? "ask",
+    },
+  });
+  const store = new InMemoryResearchSessionStoreV1();
+  const session = await initializeResearchSessionTurnV1({
+    store,
+    session: createResearchSessionV1({
+      sessionId: brief.sessionId,
+      ownerId: "owner:dispatch-journal",
+      createdAt,
+      leaseExpiresAt: "2026-08-01T16:10:00.000Z",
+    }),
+    brief,
+    graph: composeResearchGraphV1(brief),
+    approveAutomatically: true,
+    at: createdAt,
+  });
+  const journal = new ResearchSessionDispatchJournalV1({
+    store,
+    sessionId: session.sessionId,
+    turnId: brief.turnId,
+    now: (() => {
+      let sequence = 0;
+      return () => `2026-08-01T16:00:${String(++sequence).padStart(2, "0")}.000Z`;
+    })(),
+  });
+  const catalog = session.turns[0]!.graph!;
+  const selectedNodeIds = new Set(catalog.nodes
+    .filter((node) => node.kind !== "repair")
+    .map((node) => node.id));
+  const proposal: ResearchGraphProposalV1 = {
+    schema: "atlcli.research-graph-proposal/v1",
+    basedOnBriefRevision: catalog.basedOnBriefRevision,
+    basedOnGraphRevision: catalog.revision,
+    nodes: catalog.nodes.filter((node) => selectedNodeIds.has(node.id)).map((node) => ({
+      nodeId: node.id,
+      dependencies: node.dependencies.filter((dependency) => selectedNodeIds.has(dependency)),
+      reasonCodes: [...node.reasonCodes],
+    })),
+  };
+  const graph = await journal.commitGraphSelection(proposal);
+  return {
+    store,
+    sessionId: session.sessionId,
+    turnId: brief.turnId,
+    journal,
+    catalog,
+    graph,
+  };
+}
+
+function attemptFor(
+  graph: Awaited<ReturnType<typeof initializedJournal>>["graph"],
+  nodeId: string,
+): ResearchTaskAttemptV1 {
+  const node = graph.nodes.find((candidate) => candidate.id === nodeId)!;
+  return {
+    schema: "atlcli.research-task-attempt/v1",
+    taskId: `task:dispatch-${node.id.replace("research-node:", "")}`,
+    nodeId: node.id,
+    graphRevision: graph.revision,
+    attempt: 1,
+    executor: node.executor,
+    ...(node.roleId ? { roleId: node.roleId } : {}),
+    grantedCapabilityIds: [...node.grantedCapabilityIds],
+    typedIntentRefs: [...node.typedIntentRefs],
+    expectedOutputSchema: node.roleId === "reconciler"
+      ? RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+      : RESEARCH_PACKET_BODY_SCHEMA_V1,
+    budget: { ...node.budget },
+    status: "ready",
+    dispatchState: "not_started",
+    createdAt: graph.createdAt,
+  };
+}
+
+describe("durable research task dispatch journal", () => {
+  test("persists a host-observed catalog candidate without creating authority", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("jira.project.search"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:jira-research:1",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "jira.project.search",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-project",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "research-scope-entity:related-project",
+          key: "RELATED",
+          name: "Related project",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node received this candidate from a bounded metadata catalog.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:jira.project.search:1",
+          "capability:jira.project.search",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns[0]!;
+    expect(turn.scopeDiscoveries).toEqual([
+      expect.objectContaining({
+        candidate: expect.objectContaining({ key: "RELATED" }),
+        capability: "jira.project.search",
+      }),
+    ]);
+    expect(turn.scopeCandidates).toContainEqual(expect.objectContaining({ key: "RELATED" }));
+    expect(turn.scopeBindings).toEqual([]);
+    expect(turn.scopeDiscoveryDispositions).toEqual([]);
+    expect(turn.scopeExpansionProposals).toEqual([]);
+  });
+
+  test("atomically records central scope decisions and pauses before a whole-scope read", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:jira-research:linked-project",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "atlassian.reference.resolve",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-project",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "research-scope-entity:related-project",
+          key: "RELATED",
+          name: "Related project",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node resolved an exact current-tenant reference.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:atlassian.reference.resolve:1",
+          "capability:atlassian.reference.resolve",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    const result = await journal.dispositionScopeDiscoveries({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: "scope-discovery:jira-research:linked-project",
+        decision: "propose_whole_scope",
+        reasonCode: "exact_reference",
+      }],
+    });
+
+    expect(result).toMatchObject({
+      dispositions: [{
+        discoveryId: "scope-discovery:jira-research:linked-project",
+        decision: "propose_whole_scope",
+        reasonCode: "exact_reference",
+      }],
+      proposal: {
+        candidateId: "research-scope-candidate:related-project",
+        expansionKind: "whole_scope",
+        status: "proposed",
+      },
+    });
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns[0]!;
+    expect(stored!.status).toBe("waiting_scope_approval");
+    expect(turn.scopeBindings).toEqual([]);
+    expect(turn.scopeDiscoveryDispositions).toEqual([
+      expect.objectContaining({
+        proposedExpansionId: result.proposal!.id,
+        candidateId: "research-scope-candidate:related-project",
+      }),
+    ]);
+    expect(turn.scopeExpansionProposals).toEqual([
+      expect.objectContaining({
+        id: result.proposal!.id,
+        provenanceRefs: expect.arrayContaining([
+          "scope-discovery:jira-research:linked-project",
+          `task:${attempt.taskId}`,
+          "capability:atlassian.reference.resolve",
+        ]),
+      }),
+    ]);
+  });
+
+  test("preauthorizes one verified exact link without widening its parent scope", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal({
+      scopeExpansionMode: "exact-linked",
+    });
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:wiki-research:linked-page",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "atlassian.reference.resolve",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:related-page",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:related-page",
+          key: "1001",
+          name: "Related exact page",
+          canonicalUrl: "https://example.atlassian.net/wiki/spaces/RELATED/pages/1001",
+          match: "exact_link",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node resolved an exact current-tenant reference.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:atlassian.reference.resolve:1",
+          "capability:atlassian.reference.resolve",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    const result = await journal.dispositionScopeDiscoveries({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: "scope-discovery:wiki-research:linked-page",
+        decision: "propose_exact_entity",
+        reasonCode: "exact_reference",
+      }],
+    });
+
+    expect(result).toMatchObject({
+      proposal: {
+        candidateId: "research-scope-candidate:related-page",
+        expansionKind: "exact_entity",
+        status: "approved",
+      },
+      preauthorizedExactBinding: {
+        entityKind: "page",
+        source: "research_discovery",
+        authority: "approved",
+        key: "1001",
+      },
+    });
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns[0]!;
+    expect(stored!.status).toBe("running");
+    expect(turn.brief!.scope.confluenceSpaceKeys).toEqual(["DOCS"]);
+    expect(turn.scopeBindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: result.preauthorizedExactBinding!.id,
+        entityKind: "page",
+        source: "research_discovery",
+        authority: "approved",
+      }),
+    ]));
+    expect(turn.scopeExpansionProposals).toEqual([
+      expect.objectContaining({
+        id: result.proposal!.id,
+        status: "approved",
+        approvedBindingId: result.preauthorizedExactBinding!.id,
+      }),
+    ]);
+  });
+
+  test("rejects exact-link expansion in strict mode", async () => {
+    const { journal, graph } = await initializedJournal({ scopeExpansionMode: "strict" });
+    const node = graph.nodes.find((candidate) =>
+      candidate.grantedCapabilityIds.includes("atlassian.reference.resolve"),
+    )!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.recordScopeDiscoveries({
+      graphRevision: graph.revision,
+      discoveries: [createResearchScopeDiscoveryV1({
+        id: "scope-discovery:wiki-research:strict-page",
+        taskId: attempt.taskId,
+        nodeId: node.id,
+        graphRevision: graph.revision,
+        capability: "atlassian.reference.resolve",
+        candidate: {
+          schema: "atlcli.research-scope-candidate/v1",
+          id: "research-scope-candidate:strict-page",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:strict-page",
+          key: "1002",
+          name: "Strict exact page",
+          canonicalUrl: "https://example.atlassian.net/wiki/spaces/RELATED/pages/1002",
+          match: "exact_link",
+          status: "current",
+          accessible: true,
+          providerFreshnessAt: createdAt,
+        },
+        reason: "An admitted research node resolved an exact current-tenant reference.",
+        provenanceRefs: [
+          `task:${attempt.taskId}`,
+          "ptc:atlassian.reference.resolve:1",
+          "capability:atlassian.reference.resolve",
+        ],
+        observedAt: createdAt,
+      })],
+    });
+
+    await expect(journal.dispositionScopeDiscoveries({
+      graphRevision: graph.revision,
+      decisions: [{
+        discoveryId: "scope-discovery:wiki-research:strict-page",
+        decision: "propose_exact_entity",
+        reasonCode: "exact_reference",
+      }],
+    })).rejects.toThrow("cannot expand this scope");
+  });
+
+  test("commits selected graph, ready task, dispatch start, and accepted packet through one session journal", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) => candidate.status === "ready")!;
+    const attempt = attemptFor(graph, node.id);
+
+    await expect(journal.admitAndStart(attempt)).resolves.toMatchObject({
+      taskId: attempt.taskId,
+      status: "running",
+      dispatchState: "dispatch_started",
+    });
+    const body = {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+      answeredQuestion: "No detail-backed relationship was observed.",
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["No details were available."],
+    };
+    const packet = await journal.acceptPacket({
+      taskId: attempt.taskId,
+      graphRevision: graph.revision,
+      body,
+      usage: {
+        capabilityCalls: 0,
+        inputTokens: 1,
+        outputTokens: 1,
+        resultBytes: bytes(body),
+        durationMs: 1,
+        costMicros: 0,
+      },
+      availableSourceIds: [],
+      maximumResultBytes: attempt.budget.maxResultBytes,
+      budgetState: {
+        schema: "atlcli.research-run-budget/v1",
+        ptcCalls: 2,
+        httpAttempts: 2,
+        responseBytes: 256,
+        pages: { jira: 1, confluence: 0 },
+        items: { jira: 1, confluence: 0 },
+        details: { jira: 1, confluence: 0 },
+      },
+    });
+
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(packet).toMatchObject({ taskId: attempt.taskId, packetRef: `packet:${attempt.taskId}:1` });
+    expect(packet.graph.nodes.find((candidate) => candidate.id === node.id)?.status).toBe("complete");
+    expect(turn.tasks).toMatchObject([{ taskId: attempt.taskId, status: "complete", dispatchState: "result_committed" }]);
+    expect(turn.budgetState).toMatchObject({
+      schema: "atlcli.research-run-budget/v1",
+      ptcCalls: 2,
+      details: { jira: 1, confluence: 0 },
+    });
+    expect(turn.acceptedPackets).toMatchObject([{ packetRef: packet.packetRef }]);
+    expect(turn.graph?.nodes.find((candidate) => candidate.id === node.id)).toMatchObject({
+      status: "complete",
+      packetRef: packet.packetRef,
+    });
+    expect((await store.events(sessionId)).map((event) => event.kind).slice(-4)).toEqual([
+      "commit_graph_selection",
+      "admit_tasks",
+      "dispatch_started",
+      "accept_packet",
+    ]);
+  });
+
+  test("serializes concurrently scheduled ready nodes instead of racing the session CAS", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal();
+    const ready = graph.nodes.filter((node) => node.status === "ready");
+    expect(ready).toHaveLength(2);
+
+    const started = await Promise.all(ready.map((node) => journal.admitAndStart(attemptFor(graph, node.id))));
+
+    expect(started.map((attempt) => attempt.status)).toEqual(["running", "running"]);
+    const stored = await store.read(sessionId);
+    expect(stored?.turns[0]?.tasks.map((attempt) => attempt.status)).toEqual(["running", "running"]);
+    expect((await store.events(sessionId)).filter((event) => event.kind === "dispatch_started")).toHaveLength(2);
+  });
+
+  test("persists a session-wide provider reservation before the next provider call", async () => {
+    const { store, sessionId, journal } = await initializedJournal();
+    const budgetState = {
+      schema: "atlcli.research-model-budget/v1" as const,
+      limits: {
+        maxModelCalls: 16,
+        maxTotalModelInputTokens: 80_000,
+        maxTotalModelOutputTokens: 64_000,
+        maxModelCostMicros: 2_000_000,
+      },
+      snapshot: {
+        calls: 1,
+        inputTokens: 2_000,
+        outputTokens: 8_000,
+        costMicros: 196_000,
+      },
+    };
+
+    await expect(journal.recordModelBudget(budgetState)).resolves.toEqual(budgetState);
+    expect((await store.read(sessionId))?.modelBudgetState).toEqual(budgetState);
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_model_budget");
+  });
+
+  test("releases an authentication wait without clearing the provider budget", async () => {
+    const { store, sessionId, journal } = await initializedJournal();
+    const budgetState = {
+      schema: "atlcli.research-model-budget/v1" as const,
+      limits: {
+        maxModelCalls: 16,
+        maxTotalModelInputTokens: 80_000,
+        maxTotalModelOutputTokens: 64_000,
+        maxModelCostMicros: 2_000_000,
+      },
+      snapshot: { calls: 1, inputTokens: 2_000, outputTokens: 8_000, costMicros: 196_000 },
+    };
+    await journal.recordModelBudget(budgetState);
+    await expect(journal.waitForAuthentication()).resolves.toMatchObject({ status: "waiting_authentication" });
+    const waiting = await store.read(sessionId);
+    expect(waiting?.modelBudgetState).toEqual(budgetState);
+  });
+
+  test("records an unknown provider outcome and then quarantines the active graph node", async () => {
+    const { store, sessionId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) => candidate.status === "ready")!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await expect(journal.markOutcomeUnknown(attempt.taskId, graph.revision)).resolves.toMatchObject({
+      status: "outcome_unknown",
+      dispatchState: "outcome_unknown",
+    });
+    await expect(journal.quarantine(attempt.taskId, graph.revision, "late-result")).resolves.toMatchObject({
+      status: "quarantined",
+    });
+
+    const stored = await store.read(sessionId);
+    expect(stored?.turns[0]?.graph?.nodes.find((candidate) => candidate.id === node.id)).toMatchObject({
+      status: "quarantined",
+      stopReason: "late-result",
+    });
+  });
+
+  test("marks a durable run failed when execution ends before report validation", async () => {
+    const { store, sessionId, journal } = await initializedJournal();
+
+    await expect(journal.fail()).resolves.toMatchObject({ status: "failed" });
+    expect((await store.read(sessionId))?.turns[0]?.failureReason)
+      .toBe("Research execution ended before report validation.");
+  });
+
+  test("records body-free retrieval assessments at contiguous settled-wave checkpoints", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 0,
+      httpAttemptsRemaining: 0,
+    });
+
+    await expect(journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+    })).resolves.toMatchObject({
+      graphRevision: graph.revision,
+      wave: 1,
+      assessment: { action: assessment.action, reason: assessment.reason },
+    });
+
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.retrievalAssessments).toEqual([expect.objectContaining({
+      graphRevision: graph.revision,
+      wave: 1,
+      assessment,
+    })]);
+    expect(turn.graph?.researchWavesCompleted).toBe(1);
+    await expect(journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+    })).rejects.toThrow("terminal decision");
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_retrieval_assessment");
+  });
+
+  test("issues and atomically consumes one durable continuation for a non-terminal wave", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    expect(assessment).toMatchObject({ action: "continue", reason: "unread_ranked_candidates" });
+
+    const issued = await journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    expect(issued.continuation).toMatchObject({
+      id: `research-continuation:${graph.revision}.1`,
+      status: "issued",
+    });
+
+    const resumedJournal = new ResearchSessionDispatchJournalV1({
+      store,
+      sessionId,
+      turnId,
+      now: () => "2026-08-01T16:01:00.000Z",
+    });
+    await expect(resumedJournal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).resolves.toMatchObject({
+      id: issued.continuation!.id,
+      status: "consumed",
+      graph: { researchWavesCompleted: 1 },
+    });
+    await expect(journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).rejects.toThrow("already consumed");
+
+    await expect(journal.reissueRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).resolves.toMatchObject({
+      id: issued.continuation!.id,
+      status: "issued",
+    });
+
+    const turn = (await store.read(sessionId))!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.retrievalAssessments?.[0]?.continuation).toMatchObject({
+      id: issued.continuation!.id,
+      status: "issued",
+    });
+    expect((await store.events(sessionId)).slice(-3).map((event) => event.kind)).toEqual([
+      "record_retrieval_assessment",
+      "consume_retrieval_continuation",
+      "reissue_retrieval_continuation",
+    ]);
+  });
+
+  test("never reissues a consumed continuation once a later task admission was durable", async () => {
+    const { journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    const issued = await journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    await journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    });
+    const ready = graph.nodes.find((node) => node.status === "ready");
+    if (!ready) throw new Error("Synthetic continuation graph is missing a ready task.");
+    await journal.admitAndStart(attemptFor(graph, ready.id));
+    await expect(journal.reissueRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).rejects.toThrow("cannot be safely reissued");
+  });
+
+  test("acknowledges a requested pause only after an issued retrieval continuation", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const node = graph.nodes.find((candidate) => candidate.status === "ready")!;
+    const attempt = attemptFor(graph, node.id);
+    await journal.admitAndStart(attempt);
+    await journal.acceptPacket({
+      taskId: attempt.taskId,
+      graphRevision: graph.revision,
+      body: {
+        schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+        answeredQuestion: "The first bounded acquisition wave completed.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      usage: { capabilityCalls: 0, inputTokens: 0, outputTokens: 0, resultBytes: 256, durationMs: 1, costMicros: 0 },
+      availableSourceIds: [],
+      maximumResultBytes: node.budget.maxResultBytes,
+    });
+    const beforePause = (await store.read(sessionId))!;
+    await store.commit(sessionId, {
+      kind: "request_pause",
+      expectedRevision: beforePause.revision,
+      expectedLeaseEpoch: beforePause.lease.epoch,
+      at: "2026-08-01T16:01:00.000Z",
+    });
+    const checkpointJournal = new ResearchSessionDispatchJournalV1({
+      store,
+      sessionId,
+      turnId,
+      now: () => "2026-08-01T16:02:00.000Z",
+    });
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: ["jira:DEMO-1", "jira:DEMO-2"],
+        detailedSourceIds: ["jira:DEMO-1"],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: true,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    await checkpointJournal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    await expect(checkpointJournal.acknowledgePauseAtRetrievalCheckpoint()).resolves.toBe(true);
+    const paused = (await store.read(sessionId))!;
+    expect(paused).toMatchObject({ status: "paused" });
+    expect(paused.turns.find((candidate) => candidate.id === turnId)).toMatchObject({
+      pausedAt: "2026-08-01T16:02:00.000Z",
+      retrievalAssessments: [expect.objectContaining({
+        continuation: expect.objectContaining({ status: "issued" }),
+      })],
+    });
+  });
+
+  test("permits one finalization continuation after a terminal retrieval decision", async () => {
+    const { store, sessionId, turnId, journal, graph } = await initializedJournal();
+    const assessment = assessResearchRetrievalV1({
+      products: [{
+        product: "jira",
+        rankedSourceIds: [],
+        detailedSourceIds: [],
+        searchAttempted: true,
+        searchComplete: true,
+        canSearchMore: false,
+        canReadMoreDetails: false,
+      }],
+      ptcCallsRemaining: 2,
+      httpAttemptsRemaining: 2,
+    });
+    expect(assessment).toMatchObject({ action: "stop", reason: "no_ranked_candidates" });
+
+    const issued = await journal.recordRetrievalAssessment({
+      graphRevision: graph.revision,
+      assessment,
+      issueContinuation: true,
+    });
+    await expect(journal.consumeRetrievalContinuation({
+      graphRevision: graph.revision,
+      wave: issued.wave!,
+      continuationId: issued.continuation!.id,
+    })).resolves.toMatchObject({
+      id: issued.continuation!.id,
+      status: "consumed",
+      assessment: { action: "stop", reason: "no_ranked_candidates" },
+    });
+    const turn = (await store.read(sessionId))!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.retrievalAssessments?.[0]?.continuation).toMatchObject({
+      id: issued.continuation!.id,
+      status: "consumed",
+    });
+  });
+
+  test("commits a host-validated graph revision with its durable revision history", async () => {
+    const { store, sessionId, turnId, journal, catalog, graph } = await initializedJournal();
+    const revised = reviseResearchGraphSelectionV1(catalog, graph, {
+      schema: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+      basedOnBriefRevision: graph.basedOnBriefRevision,
+      basedOnGraphRevision: graph.revision,
+      nodes: graph.nodes.map((node) => ({
+        nodeId: node.id,
+        dependencies: [...node.dependencies],
+        reasonCodes: [...node.reasonCodes],
+        priority: node.roleId === "synthesizer" ? node.priority - 1 : node.priority,
+      })),
+      prune: [],
+    });
+
+    await expect(journal.applyGraphRevision({
+      graph: revised,
+      evidenceIds: ["evidence:wave-one"],
+      gapIds: ["gap:coverage-one"],
+      reason: "coverage_gap",
+    })).resolves.toMatchObject({ revision: graph.revision + 1 });
+    const turn = (await store.read(sessionId))!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn.graphRevisions).toEqual([
+      expect.objectContaining({ graph: expect.objectContaining({ revision: graph.revision }) }),
+      expect.objectContaining({
+        graph: expect.objectContaining({ revision: graph.revision + 1 }),
+        evidenceIds: ["evidence:wave-one"],
+        gapIds: ["gap:coverage-one"],
+      }),
+    ]);
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("apply_graph_revision");
+  });
+
+  test("commits every reconciliation disposition and the optional repair activation in one CAS event", async () => {
+    const { store, sessionId, turnId, journal, catalog, graph } = await initializedJournal();
+    const reconciliationNode = graph.nodes.find((node) => node.roleId === "reconciler")!;
+    const repairNode = catalog.nodes.find((node) => node.kind === "repair")!;
+    let reconciliationPacketRef = "";
+
+    for (const node of graph.nodes.filter((candidate) => candidate.roleId !== "synthesizer")) {
+      const attempt = attemptFor(graph, node.id);
+      await journal.admitAndStart(attempt);
+      const body = node.roleId === "reconciler"
+        ? {
+            schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+            defects: [{
+              id: "defect:coverage-gap",
+              severity: "important",
+              target: { kind: "coverage", id: "coverage:question" },
+              code: "missing_coverage",
+              references: [],
+              explanation: "One bounded coverage check remains.",
+              suggestedAction: "add_follow_up",
+            }],
+            proposedFollowUps: [{
+              id: "follow-up:coverage-gap",
+              defectId: "defect:coverage-gap",
+              objective: "Perform one bounded coverage check.",
+              reasonCode: "coverage_gap",
+              sourceIds: [],
+            }],
+          }
+        : {
+            schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+            answeredQuestion: "No further detail was available.",
+            sourceIds: [],
+            findingCandidates: [],
+            relationshipCandidates: [],
+            gaps: [],
+            proposedFollowUps: [],
+            coverageLimits: [],
+          };
+      const packet = await journal.acceptPacket({
+        taskId: attempt.taskId,
+        graphRevision: graph.revision,
+        body,
+        usage: {
+          capabilityCalls: 0,
+          inputTokens: 1,
+          outputTokens: 1,
+          resultBytes: bytes(body),
+          durationMs: 1,
+          costMicros: 0,
+        },
+        availableSourceIds: [],
+        maximumResultBytes: attempt.budget.maxResultBytes,
+      });
+      if (node.id === reconciliationNode.id) reconciliationPacketRef = packet.packetRef;
+    }
+
+    const recorded = await journal.recordReconciliation({
+      dispositions: [{
+        schema: "atlcli.reconciliation-disposition/v1",
+        id: "reconciliation-disposition:r1:1",
+        reconciliationPacketRef,
+        defectId: "defect:coverage-gap",
+        basedOnGraphRevision: graph.revision,
+        decision: "add_follow_up",
+        reasonCode: "material_defect",
+        resultingGraphRevision: graph.revision,
+        resultingNodeId: repairNode.id,
+        resultingClaimIds: [],
+        recordedAt: "2026-08-01T16:02:00.000Z",
+      }],
+      repair: {
+        nodeId: repairNode.id,
+        reconciliationTaskId: `task:dispatch-${reconciliationNode.id.replace("research-node:", "")}`,
+        followUpId: "follow-up:coverage-gap",
+      },
+    });
+
+    expect(recorded.dispositions).toHaveLength(1);
+    expect(recorded.repairAuthorization).toMatchObject({
+      nodeId: repairNode.id,
+      reconciliationTaskId: `task:dispatch-${reconciliationNode.id.replace("research-node:", "")}`,
+      followUp: { id: "follow-up:coverage-gap" },
+    });
+    expect(recorded.graph.nodes.find((node) => node.id === repairNode.id)).toMatchObject({
+      status: "ready",
+      dependencies: [reconciliationNode.id],
+    });
+    expect(recorded.graph.nodes.find((node) => node.roleId === "synthesizer")).toMatchObject({
+      status: "blocked",
+      dependencies: expect.arrayContaining([repairNode.id]),
+    });
+
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn).toMatchObject({
+      reconciliationCommittedAt: expect.any(String),
+      repairAuthorization: { nodeId: repairNode.id },
+    });
+    expect(turn.latentRepairNode).toBeUndefined();
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_reconciliation");
+  });
+});

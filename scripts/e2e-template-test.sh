@@ -6,7 +6,7 @@ set -e
 
 CLI="bun $(dirname "$0")/../dist/index.js"
 DOCSY_DIR="$HOME/docsy"
-TEST_PROFILE="mayflowergmbh-atlassian-net"
+TEST_PROFILE="${ATLCLI_E2E_PROFILE:-example-profile}"
 TEST_SPACE="DOCSY"
 EXPORT_DIR="/tmp/atlcli-template-export-test"
 

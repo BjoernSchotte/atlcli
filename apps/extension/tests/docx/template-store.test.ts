@@ -19,7 +19,7 @@ import {
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 import { scanTemplate } from "@atlcli/docx/scan";
 
-const SITE = "https://mayflower.atlassian.net";
+const SITE = "https://tenant-a.atlassian.net";
 
 let factory: IDBFactory;
 

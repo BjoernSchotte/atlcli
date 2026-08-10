@@ -220,6 +220,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
     frozen: false,
     reasoning: "STAYS 0.x: never API-reviewed; the plugin loader story predates the freeze work.",
   },
+  "@atlcli/research": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: the host-neutral research contracts, scope discovery, and dynamic graph " +
+      "composition are being proven by the issue 138 CLI and browser-extension spike. Keep " +
+      "the surface experimental until both host shapes complete their acceptance gates.",
+  },
   "@atlcli/template-pack": {
     version: "0.x",
     frozen: false,

@@ -1,10 +1,14 @@
 import { defineConfig } from "wxt";
+import { fileURLToPath } from "node:url";
 // Relative src import (not "@atlcli/docx/vite"): this config is loaded by
 // wxt's own config loader (jiti, Node-style resolution) which does not request
 // the "development" export condition — the package specifier would resolve to
 // dist/ and break `bun install` (postinstall: wxt prepare) on a fresh clone
 // before any build exists.
 import { DOCX_BROWSER_VITE_DEFINES } from "../../packages/docx/src/vite";
+
+const researchBrowserModule = (name: string): string =>
+  fileURLToPath(new URL(`./utils/research/${name}.ts`, import.meta.url));
 
 // WXT config for the atlcli Chrome extension (spec 002).
 //
@@ -47,7 +51,11 @@ export default defineConfig({
     // CDN, which answers `Access-Control-Allow-Origin: *` — incompatible with
     // the session fetch's `credentials: "include"` unless the host permission
     // exempts that hop from CORS too (spec 005 image embedding, E2E finding).
-    host_permissions: ["*://*.atlassian.net/*", "https://api.media.atlassian.com/*"],
+    host_permissions: [
+      "*://*.atlassian.net/*",
+      "https://api.media.atlassian.com/*",
+      "https://api.anthropic.com/*",
+    ],
     // WASM in extension pages requires 'wasm-unsafe-eval' (Chrome >= 103).
     // Deliberately NOT 'unsafe-eval' — asserted by the Task 2 test.
     content_security_policy: {
@@ -55,6 +63,54 @@ export default defineConfig({
     },
   },
   vite: () => ({
+    plugins: [
+      {
+        name: "research-browser-only-optional-dependencies",
+        enforce: "pre",
+        resolveId(source, importer) {
+          if (source === "langsmith/experimental/sandbox") {
+            return researchBrowserModule("langsmith-sandbox-browser-stub");
+          }
+
+          // Streamdown's public barrel eagerly retains lazy Mermaid and Shiki
+          // chunks even when callers override `code` and disable controls.
+          // Those optional rich renderers contain string-to-code paths that
+          // violate the extension-page CSP. The chat supplies its own safe
+          // code renderer, so keep Streamdown's parser/streaming renderer while
+          // replacing only the unreachable rich-block modules in MV3 builds.
+          if (importer?.includes("streamdown/dist/")) {
+            if (source.startsWith("./code-block-") || source.startsWith("./mermaid-")) {
+              return researchBrowserModule("streamdown-rich-block-browser-stub");
+            }
+            if (source === "mermaid") {
+              return researchBrowserModule("streamdown-mermaid-browser-stub");
+            }
+          }
+
+          // Anthropic SDK 0.115 imports its optional Node credential providers
+          // eagerly from client.mjs. ChatAnthropic always supplies the user's
+          // session-only apiKey, so these branches are unreachable. Alias only
+          // the three imports from that exact upstream client module.
+          if (
+            !importer?.includes("@anthropic-ai/sdk/client.mjs") &&
+            !importer?.includes("@anthropic-ai/sdk/client.js")
+          ) {
+            return null;
+          }
+
+          if (source === "./lib/credentials/types.mjs") {
+            return researchBrowserModule("anthropic-browser-credential-types");
+          }
+          if (source === "./lib/credentials/token-cache.mjs") {
+            return researchBrowserModule("anthropic-browser-token-cache");
+          }
+          if (source === "./lib/credentials/credential-chain.mjs") {
+            return researchBrowserModule("anthropic-browser-credential-chain");
+          }
+          return null;
+        },
+      },
+    ],
     // Belt-and-suspenders for PLAN §6 risk 4: force Vite to resolve the
     // `browser` export condition of @atlcli/core so the Node barrel (with
     // node: imports) is never pulled into the extension bundle.
@@ -63,6 +119,44 @@ export default defineConfig({
       // packages to live src/ (their exports list the development condition
       // first), so `wxt dev` never serves stale dist/ output.
       conditions: ["development", "browser"],
+      alias: [
+        {
+          find: "langsmith/experimental/sandbox",
+          replacement: researchBrowserModule("langsmith-sandbox-browser-stub"),
+        },
+        {
+          find: "json-schema-to-typescript",
+          replacement: researchBrowserModule(
+            "json-schema-to-typescript-browser"
+          ),
+        },
+        {
+          find: "micromatch",
+          replacement: researchBrowserModule("micromatch-browser"),
+        },
+        {
+          find: "./lib/credentials/types.mjs",
+          replacement: researchBrowserModule(
+            "anthropic-browser-credential-types"
+          ),
+        },
+        {
+          find: "./lib/credentials/token-cache.mjs",
+          replacement: researchBrowserModule("anthropic-browser-token-cache"),
+        },
+        {
+          find: "./lib/credentials/credential-chain.mjs",
+          replacement: researchBrowserModule(
+            "anthropic-browser-credential-chain"
+          ),
+        },
+        {
+          find: /^deepagents$/,
+          replacement: fileURLToPath(
+            new URL("./utils/research/deepagents-browser-compat.ts", import.meta.url)
+          ),
+        },
+      ],
     },
     // PDF.js imports workerSrc on the main thread for its LoopbackPort fallback.
     // Preserve the bootstrap's WorkerMessageHandler export instead of emitting
@@ -84,6 +178,14 @@ export default defineConfig({
     // `@atlcli/docx/browser-entry` (a real shim, not a scan suppression). Bare
     // `typeof Buffer` (not a member access) is left alone — it correctly reads
     // as "undefined", keeping the libs on their Uint8Array feature-branch.
-    define: { ...DOCX_BROWSER_VITE_DEFINES },
+    define: {
+      ...DOCX_BROWSER_VITE_DEFINES,
+      // LangChain's approximate token counter has a guarded Node fast-path
+      // for Buffer.byteLength. The guard selects its string-length fallback in
+      // browsers, but the unreachable member expression still violates the
+      // artifact gate. Keep the exact UTF-8 behavior without a Buffer global.
+      "Buffer.byteLength":
+        "(value => new TextEncoder().encode(String(value)).byteLength)",
+    },
   }),
 });

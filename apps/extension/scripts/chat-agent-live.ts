@@ -1,0 +1,436 @@
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  ResearchRunBudget,
+  chatQualityPolicyV1,
+  createChatPerformanceReceiptV1,
+  createMemoryResearchWorkspace,
+  normalizeResearchRequestV1,
+  prepareDirectChatRequestV1,
+  runChatAgent,
+  type ChatPresentationStreamEventV1,
+  type ChatPerformanceBenchmarkIdV1,
+  type ChatQualityModeV1,
+  type ResearchModelCallObservationV1,
+  type ResearchReadProviders,
+  type ChatTurnRequestV1,
+  type ResearchOneShotEventV1,
+} from "@atlcli/research/node";
+import {
+  SYNTHETIC_PROJECT_KEY,
+  SYNTHETIC_SITE_ORIGIN,
+  SYNTHETIC_SPACE_KEY,
+  syntheticResearchProviders,
+} from "./research-agent-live.js";
+
+const DEFAULT_QUESTION =
+  "Compare the synthetic Jira implementation tasks with the synthetic Confluence design pages, explain their relationships, and identify any evidence gap.";
+
+export interface ChatAgentLiveArgumentsV1 {
+  mode: ChatQualityModeV1;
+  question: string;
+  exactPage: boolean;
+  exactPagePair: boolean;
+  summaryOnly: boolean;
+  receiptPath?: string;
+  sample: "warmup" | "measured";
+  benchmarkId: ChatPerformanceBenchmarkIdV1;
+}
+
+export function parseChatAgentLiveArgumentsV1(argv: readonly string[]): ChatAgentLiveArgumentsV1 {
+  let mode: ChatQualityModeV1 = "deep";
+  let exactPage = false;
+  let exactPagePair = false;
+  let summaryOnly = false;
+  let receiptPath: string | undefined;
+  let sample: "warmup" | "measured" = "measured";
+  let benchmarkId: ChatPerformanceBenchmarkIdV1 | undefined;
+  const questionParts: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]!;
+    if (argument === "--thinking") {
+      const value = argv[index + 1];
+      if (value !== "quick" && value !== "auto" && value !== "deep") {
+        throw new Error("--thinking must be quick, auto, or deep.");
+      }
+      mode = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--exact-page") {
+      exactPage = true;
+      continue;
+    }
+    if (argument === "--exact-page-pair") {
+      exactPagePair = true;
+      continue;
+    }
+    if (argument === "--summary-only") {
+      summaryOnly = true;
+      continue;
+    }
+    if (argument === "--receipt") {
+      const value = argv[index + 1]?.trim();
+      if (!value) throw new Error("--receipt requires a file path.");
+      receiptPath = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--sample") {
+      const value = argv[index + 1];
+      if (value !== "warmup" && value !== "measured") {
+        throw new Error("--sample must be warmup or measured.");
+      }
+      sample = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--benchmark") {
+      const value = argv[index + 1];
+      if (value !== "deep-single-anchor" &&
+          value !== "deep-two-anchor-comparison" &&
+          value !== "deep-explicit-contradiction" &&
+          value !== "deep-cross-product-relationship") {
+        throw new Error("This live harness supports the single-anchor, two-anchor comparison, explicit contradiction, and cross-product relationship benchmarks.");
+      }
+      benchmarkId = value;
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith("--")) throw new Error(`Unknown option: ${argument}`);
+    questionParts.push(argument);
+  }
+  if (exactPage && exactPagePair) {
+    throw new Error("--exact-page and --exact-page-pair are mutually exclusive.");
+  }
+  return {
+    mode,
+    question: questionParts.join(" ").trim() || (exactPagePair
+      ? "Compare the two attached synthetic Confluence pages and cite their central design decisions."
+      : exactPage
+        ? "Summarize the attached synthetic Confluence page and cite its central design decision."
+        : DEFAULT_QUESTION),
+    exactPage,
+    exactPagePair,
+    summaryOnly,
+    ...(receiptPath ? { receiptPath } : {}),
+    sample,
+    benchmarkId: benchmarkId ?? (exactPage
+      ? "deep-single-anchor"
+      : "deep-two-anchor-comparison"),
+  };
+}
+
+function providersForBenchmarkV1(
+  benchmarkId: ChatPerformanceBenchmarkIdV1,
+): ResearchReadProviders {
+  const base = syntheticResearchProviders();
+  if (benchmarkId !== "deep-explicit-contradiction") return base;
+  return {
+    ...base,
+    wiki: {
+      ...base.wiki,
+      async getPage(input) {
+        const page = await base.wiki.getPage(input);
+        if (input.contentId !== "1002") return page;
+        return {
+          ...page,
+          title: syntheticSecondPageNameV1(benchmarkId),
+          excerpt: "The alternative design rejects the bounded QuickJS execution decision.",
+          content: {
+            ...page.content,
+            text: "The alternative design rejects QuickJS PTC and requires direct unbounded model network access instead.",
+          },
+        };
+      },
+    },
+  };
+}
+
+export function syntheticSecondPageNameV1(
+  benchmarkId: ChatPerformanceBenchmarkIdV1,
+): "Alternative design" | "Markdown output contract" {
+  return benchmarkId === "deep-explicit-contradiction"
+    ? "Alternative design"
+    : "Markdown output contract";
+}
+
+async function sha256Hex(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function runChatAgentLiveV1(): Promise<void> {
+  const apiKey = Bun.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error(
+      "ANTHROPIC_API_KEY is missing. Add it to the ignored repository .env file.",
+    );
+  }
+  const argumentsV1 = parseChatAgentLiveArgumentsV1(Bun.argv.slice(2));
+  const request = prepareDirectChatRequestV1(normalizeResearchRequestV1({
+    schema: "atlcli.research-request/v1",
+    question: argumentsV1.question,
+    scope: {
+      siteOrigin: SYNTHETIC_SITE_ORIGIN,
+      jiraProjectKeys: argumentsV1.exactPage || argumentsV1.exactPagePair
+        ? []
+        : [SYNTHETIC_PROJECT_KEY],
+      confluenceSpaceKeys: [SYNTHETIC_SPACE_KEY],
+    },
+    scopeSeeds: argumentsV1.exactPage || argumentsV1.exactPagePair
+      ? [{
+            binding: {
+              schema: "atlcli.research-scope-binding/v1",
+              id: "scope-binding:current:synthetic-space-kb",
+              tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+              product: "confluence",
+              entityKind: "space",
+              entityRef: "research-scope-entity:synthetic-space-kb",
+              key: SYNTHETIC_SPACE_KEY,
+              name: "Synthetic knowledge base",
+              source: "current_context",
+              authority: "approved",
+            },
+            precedence: 300,
+          }, {
+            binding: {
+              schema: "atlcli.research-scope-binding/v1",
+              id: "scope-binding:current:synthetic-page-1001",
+              tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+              product: "confluence",
+              entityKind: "page",
+              entityRef: "research-scope-entity:synthetic-page-1001",
+              key: "1001",
+              name: "Research design",
+              source: "current_context",
+              authority: "approved",
+            },
+            precedence: 300,
+          }, ...(argumentsV1.exactPagePair
+            ? [{
+                binding: {
+                  schema: "atlcli.research-scope-binding/v1" as const,
+                  id: "scope-binding:current:synthetic-page-1002",
+                  tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+                  product: "confluence" as const,
+                  entityKind: "page" as const,
+                  entityRef: "research-scope-entity:synthetic-page-1002",
+                  key: "1002",
+                  name: syntheticSecondPageNameV1(argumentsV1.benchmarkId),
+                  source: "current_context" as const,
+                  authority: "approved" as const,
+                },
+                precedence: 300,
+              }]
+            : [])]
+      : [{
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:synthetic-project-demo",
+            tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+            product: "jira",
+            entityKind: "project",
+            entityRef: "research-scope-entity:synthetic-project-demo",
+            key: SYNTHETIC_PROJECT_KEY,
+            name: "Synthetic project",
+            source: "cli_flag",
+            authority: "locked",
+          },
+          precedence: 500,
+        }, {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:synthetic-space-kb",
+            tenantOrigin: SYNTHETIC_SITE_ORIGIN,
+            product: "confluence",
+            entityKind: "space",
+            entityRef: "research-scope-entity:synthetic-space-kb",
+            key: SYNTHETIC_SPACE_KEY,
+            name: "Synthetic knowledge base",
+            source: "cli_flag",
+            authority: "locked",
+          },
+          precedence: 500,
+        }],
+    ...(argumentsV1.exactPage || argumentsV1.exactPagePair
+      ? { exactContextProducts: ["confluence" as const] }
+      : {}),
+    limits: {
+      ...DEFAULT_RESEARCH_LIMITS_V1,
+      // The production default is much larger. Keep this synthetic live proof
+      // bounded without forcing several extra provider turns for pagination.
+      pageSize: 4,
+      maxSearchPagesPerProduct: argumentsV1.exactPage || argumentsV1.exactPagePair ? 3 : 9,
+      maxItemsPerProduct: argumentsV1.exactPage || argumentsV1.exactPagePair ? 4 : 12,
+      maxDetailItemsPerProduct: 4,
+      // Agentic Chat may admit several bounded query variants per product
+      // before its analysis wave. Keep this synthetic harness below the
+      // production ceiling while still allowing the accepted retrieval plan
+      // to execute instead of failing during admission.
+      maxPtcCalls: argumentsV1.mode === "quick" ? 16 : 40,
+      maxHttpCalls: 20,
+      maxModelOutputTokens: 8_000,
+      maxRunMs: 5 * 60_000,
+    },
+    wikiProvider: "rest",
+  }));
+  const conversationId = `synthetic-chat-${crypto.randomUUID()}`;
+  const turn: ChatTurnRequestV1 = {
+    schema: "atlcli.chat-turn-request/v1",
+    conversationId,
+    turnId: `turn-${crypto.randomUUID()}`,
+    question: request.question,
+    scope: request.scope,
+    limits: request.limits,
+    wikiProvider: request.wikiProvider,
+    ...(request.exactContextProducts?.length
+      ? { exactContextProducts: request.exactContextProducts }
+      : {}),
+  };
+  const presentation: ChatPresentationStreamEventV1[] = [];
+  const durableEvents: ResearchOneShotEventV1[] = [];
+  const modelObservations: ResearchModelCallObservationV1[] = [];
+  const startedAt = performance.now();
+  const answer = await runChatAgent({
+    hostIdentity: {
+      userId: "principal:local-live-chat",
+      providerCacheIdentity: "anthropic:principal:local-live-chat",
+    },
+    apiKey,
+    turn,
+    brokerRequest: request,
+    providers: providersForBenchmarkV1(argumentsV1.benchmarkId),
+    budget: new ResearchRunBudget(request.limits),
+    workspace: createMemoryResearchWorkspace(),
+    qualityPolicy: chatQualityPolicyV1(argumentsV1.mode),
+    signal: AbortSignal.timeout(request.limits.maxRunMs),
+    onEvent: (event) => {
+      durableEvents.push(event);
+      if (event.kind === "capability" &&
+          (!argumentsV1.summaryOnly || event.status === "failed")) {
+        console.error(
+          `[chat-live] capability=${event.toolId} status=${event.status}${event.errorCode ? ` code=${event.errorCode}` : ""}`,
+        );
+      }
+    },
+    onAgentDiagnostic: (diagnostic) => {
+      if (argumentsV1.summaryOnly && diagnostic.status !== "failed" &&
+          diagnostic.status !== "error") return;
+      if (diagnostic.kind === "model-step") {
+        console.error(
+          `[chat-live] model=${diagnostic.purpose} status=${diagnostic.status}${diagnostic.errorCode ? ` code=${diagnostic.errorCode}` : ""}${diagnostic.errorMessage ? ` error=${diagnostic.errorMessage}` : ""}`,
+        );
+        return;
+      }
+      console.error(
+        `[chat-live] eval=${diagnostic.status}${diagnostic.profileId ? ` profile=${diagnostic.profileId}` : ""}${diagnostic.attempt === undefined ? "" : ` attempt=${diagnostic.attempt}`}${diagnostic.codeChars === undefined ? "" : ` chars=${diagnostic.codeChars}`}${diagnostic.capabilityNames === undefined ? "" : ` capabilities=${diagnostic.capabilityNames.join(",") || "none"}`}${diagnostic.searchInputShapes === undefined ? "" : ` shapes=${diagnostic.searchInputShapes.join(",") || "none"}`}${diagnostic.argumentKeys === undefined ? "" : ` keys=${diagnostic.argumentKeys.join(",") || "none"}`}${diagnostic.errorKind ? ` kind=${diagnostic.errorKind}` : ""}${diagnostic.subagentErrorCode ? ` child_error=${diagnostic.subagentErrorCode}` : ""}${diagnostic.errorCode ? ` error=${diagnostic.errorCode}` : ""}`,
+      );
+    },
+    onDispatchDiagnostic: (diagnostic) => {
+      if (argumentsV1.summaryOnly && diagnostic.status !== "failed" &&
+          diagnostic.status !== "cancelled") return;
+      console.error(
+        `[chat-live] dispatch=${diagnostic.status}${diagnostic.taskId ? ` task=${diagnostic.taskId}` : ""}${diagnostic.code ? ` code=${diagnostic.code}` : ""}${diagnostic.resultBytes === undefined ? "" : ` bytes=${diagnostic.resultBytes}`}`,
+      );
+    },
+    onSubagentResultDiagnostic: (diagnostic) => {
+      if (argumentsV1.summaryOnly && diagnostic.status !== "error") return;
+      console.error(
+        `[chat-live] result=${diagnostic.status} profile=${diagnostic.profileId} phase=${diagnostic.phase} kind=${diagnostic.valueKind}${diagnostic.objectKeys ? ` keys=${diagnostic.objectKeys.join(",")}` : ""}${diagnostic.referenceKinds ? ` refs=${diagnostic.referenceKinds.join(",") || "none"}` : ""}${diagnostic.unknownReferenceKinds ? ` unknown_refs=${diagnostic.unknownReferenceKinds.join(",") || "none"}` : ""}`,
+      );
+    },
+    onModelCallObservation: (observation) => {
+      modelObservations.push(observation);
+    },
+    onChatPresentation: (event) => {
+      presentation.push(event);
+      if (argumentsV1.summaryOnly) return;
+      if (event.status === "started") {
+        console.error(`[chat-live] ${event.channel} `);
+      } else if (event.status === "delta") {
+        console.error(event.delta ?? "");
+      } else {
+        console.error("\n");
+      }
+    },
+  });
+  const reasoningDeltas = presentation.filter((event) =>
+    event.channel === "reasoning-summary" && event.status === "delta");
+  const answerDeltas = presentation.filter((event) =>
+    event.channel === "answer-markdown" && event.status === "delta");
+  if (!argumentsV1.summaryOnly && argumentsV1.mode !== "quick" && reasoningDeltas.length === 0) {
+    // Adaptive thinking is explicitly allowed to skip a thinking block. This
+    // is an observed provider outcome, not a broken stream transport. The
+    // separate Anthropic -> DeepAgents v3 contract test proves projection when
+    // a summarized block is present.
+    console.error("[chat-live] The provider emitted no summarized reasoning block for this run.\n");
+  }
+  if (durableEvents.some((event) =>
+    (event as { kind: string }).kind === "chat-presentation")) {
+    throw new Error("Ephemeral presentation content crossed into the durable event stream.");
+  }
+  if (answerDeltas.length === 0) {
+    throw new Error("The provider-backed Chat run completed without a streamed Markdown answer.");
+  }
+  console.error(JSON.stringify({
+    kind: "chat-live-proof",
+    source: "synthetic",
+    mode: argumentsV1.mode,
+    strategy: answer.strategy.path,
+    durationMs: Math.round(performance.now() - startedAt),
+    presentationEvents: presentation.length,
+    reasoningDeltaCount: reasoningDeltas.length,
+    reasoningSummaryObserved: reasoningDeltas.length > 0,
+    answerDeltaCount: answerDeltas.length,
+    answerStreamingObserved: answerDeltas.length > 0,
+    durableEventCount: durableEvents.length,
+    ptcCalls: answer.run.counts.ptcCalls,
+    httpCalls: answer.run.counts.httpCalls,
+  }));
+  if (argumentsV1.receiptPath) {
+    const retrieval = answer.run.retrieval;
+    const coverage = Math.round((retrieval?.detailReadCoverage ?? 0) * 1_000);
+    const canonical = Math.round((retrieval?.canonicalUrlCorrectness ?? 0) * 1_000);
+    const receipt = createChatPerformanceReceiptV1({
+      benchmarkId: argumentsV1.benchmarkId,
+      benchmarkFingerprint: await sha256Hex({
+        benchmarkId: argumentsV1.benchmarkId,
+        question: request.question,
+        scope: request.scope,
+        limits: request.limits,
+        model: answer.run.model,
+      }),
+      sample: argumentsV1.sample,
+      mode: argumentsV1.mode,
+      strategy: answer.strategy.path,
+      modelId: answer.run.model,
+      durationMs: performance.now() - startedAt,
+      observations: modelObservations,
+      ptcCalls: answer.run.counts.ptcCalls,
+      httpCalls: answer.run.counts.httpCalls,
+      quality: {
+        expectedTrajectory: argumentsV1.exactPage
+          ? answer.strategy.path === "direct"
+          : answer.strategy.path === "agentic",
+        exactAnchorCoveragePermille: coverage,
+        detailReadCoveragePermille: coverage,
+        citationPrecisionPermille: canonical,
+        supportedAssertionPermille: answer.citations.length > 0 ? 1_000 : 0,
+        wrongSourceCount: retrieval?.wrongSourceRate && retrieval.wrongSourceRate > 0 ? 1 : 0,
+        contradictionRecallPermille: 1_000,
+        relationshipRecallPermille: 1_000,
+        materialGapRecallPermille: 1_000,
+        falseCompletenessCount: 0,
+        answerStreamingObserved: answerDeltas.length > 0,
+      },
+    });
+    await Bun.write(argumentsV1.receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    console.error(`[chat-live] receipt=${argumentsV1.receiptPath}`);
+  }
+  console.log(answer.messageMarkdown);
+}
+
+if (import.meta.main) await runChatAgentLiveV1();

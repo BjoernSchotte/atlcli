@@ -51,6 +51,8 @@ export interface JiraProject {
   avatarUrls?: Record<string, string>;
   /** Whether the project is simplified (next-gen) */
   simplified?: boolean;
+  /** Whether the project is archived (returned by project search when available). */
+  archived?: boolean;
 }
 
 /** Project category */
@@ -194,6 +196,16 @@ export interface JiraIssueFields {
   subtasks?: JiraIssueRef[];
   /** Issue links */
   issuelinks?: JiraIssueLink[];
+  /**
+   * Bounded comment field returned with an issue detail read. Jira may return
+   * only the first page; `total` makes that limitation explicit to callers.
+   */
+  comment?: {
+    comments?: JiraComment[];
+    startAt?: number;
+    maxResults?: number;
+    total?: number;
+  };
   /** Time tracking */
   timetracking?: {
     originalEstimate?: string;

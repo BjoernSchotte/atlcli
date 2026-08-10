@@ -20,6 +20,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { useT } from "../../utils/i18n/context.js";
+import type { AppWorkspace } from "../../utils/ports/settings.js";
 import type { ResolvedScreen, ScreenProps } from "../../utils/screens/registry.js";
 import { Alert, AlertTitle } from "../ui/alert.js";
 import { cn } from "../ui/utils.js";
@@ -38,6 +39,28 @@ interface PlannedArea {
   descriptionKey: "area.safeOps.description" | "area.automations.description";
   icon: typeof ShieldCheck;
 }
+
+interface ActiveWorkspace {
+  id: AppWorkspace;
+  labelKey: "area.ai" | "area.publishing";
+  descriptionKey: "area.ai.description" | "area.publishing.description";
+  icon: typeof Sparkles;
+}
+
+const ACTIVE_WORKSPACES: readonly ActiveWorkspace[] = [
+  {
+    id: "ai",
+    labelKey: "area.ai",
+    descriptionKey: "area.ai.description",
+    icon: Sparkles,
+  },
+  {
+    id: "publishing",
+    labelKey: "area.publishing",
+    descriptionKey: "area.publishing.description",
+    icon: PanelsTopLeft,
+  },
+];
 
 const PLANNED_AREAS: readonly PlannedArea[] = [
   {
@@ -59,7 +82,9 @@ export function AppShell({
   version,
   screens,
   active,
+  activeWorkspace,
   onNavigate,
+  onWorkspaceNavigate,
   screenProps,
   layout = "compact",
 }: {
@@ -67,16 +92,22 @@ export function AppShell({
   version: string;
   screens: readonly ResolvedScreen[];
   active: ResolvedScreen | null;
+  activeWorkspace: AppWorkspace;
   onNavigate: (id: string) => void;
+  onWorkspaceNavigate: (workspace: AppWorkspace) => void;
   screenProps: ScreenProps;
   layout?: ShellLayout;
 }): React.JSX.Element {
   const t = useT();
   const visible = screens.filter((screen) => screen.visible);
-  const primary = visible.filter(
-    (screen) => (screen.definition.navigation ?? "primary") === "primary"
+  const primary = visible.filter((screen) =>
+    (screen.definition.navigation ?? "primary") === "primary"
+    && (screen.definition.workspace ?? "publishing") === activeWorkspace
   );
   const utility = visible.filter((screen) => screen.definition.navigation === "utility");
+  const activeWorkspaceDefinition = ACTIVE_WORKSPACES.find(
+    (workspace) => workspace.id === activeWorkspace,
+  )!;
   const [menuOpen, setMenuOpen] = useState(false);
   const [plannedMessage, setPlannedMessage] = useState<string | null>(null);
   const switcherRef = useRef<HTMLButtonElement | null>(null);
@@ -264,6 +295,7 @@ export function AppShell({
   }
 
   const activeIsPrimary = activePrimary >= 0;
+  const showsPrimaryNav = activeWorkspace === "publishing" || primary.length > 1;
 
   return (
     <main
@@ -272,7 +304,7 @@ export function AppShell({
       className={cn(
         "mx-auto box-border flex flex-col bg-background text-foreground",
         layout === "compact"
-          ? "min-h-dvh max-w-[400px]"
+          ? "h-dvh max-w-[400px] overflow-hidden"
           : "h-dvh max-w-none overflow-hidden"
       )}
     >
@@ -283,7 +315,7 @@ export function AppShell({
               {t("app.version", { version })}
             </span>
             <img
-              className="size-8 shrink-0 object-contain"
+              className="size-10 shrink-0 object-contain"
               src="/kiteweave-icon.svg"
               alt={t("brand.kiteweave")}
               data-testid="kiteweave-brand"
@@ -302,7 +334,7 @@ export function AppShell({
             >
               <span className="grid min-w-0 gap-px">
                 <strong className="truncate text-sm font-bold tracking-[-0.015em]">
-                  {t("area.publishing")}
+                  {t(activeWorkspaceDefinition.labelKey)}
                 </strong>
                 <span className="truncate text-xs font-medium text-muted-foreground">
                   {t("brand.browser")}
@@ -334,29 +366,53 @@ export function AppShell({
                 </span>
               </div>
               <div className="grid gap-0.5 px-1.5 pb-2">
-                <button
-                  ref={(node) => {
-                    menuItemRefs.current[0] = node;
-                  }}
-                  type="button"
-                  role="menuitem"
-                  aria-current="page"
-                  onClick={() => closeMenu(true)}
-                  className="grid min-h-[58px] w-full grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border-0 bg-accent px-2 text-left"
-                >
-                  <span className="grid size-[34px] place-items-center rounded-lg border border-primary/25 bg-background text-primary">
-                    <PanelsTopLeft size={17} aria-hidden="true" />
-                  </span>
-                  <span className="grid min-w-0 gap-0.5">
-                    <strong className="text-[13px] font-bold">{t("area.publishing")}</strong>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {t("area.publishing.description")}
-                    </span>
-                  </span>
-                  <span className="rounded-full border border-primary/25 bg-background px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-primary">
-                    {t("nav.active")}
-                  </span>
-                </button>
+                {ACTIVE_WORKSPACES.map((workspace, index) => {
+                  const Icon = workspace.icon;
+                  const isActive = workspace.id === activeWorkspace;
+                  return (
+                    <button
+                      key={workspace.id}
+                      ref={(node) => {
+                        menuItemRefs.current[index] = node;
+                      }}
+                      type="button"
+                      role="menuitem"
+                      aria-current={isActive ? "page" : undefined}
+                      data-testid={`area-${workspace.id}`}
+                      onClick={() => {
+                        setPlannedMessage(null);
+                        // A utility screen such as Settings does not belong to
+                        // either workspace. Re-selecting the visually active
+                        // workspace must therefore return to its first screen,
+                        // even though the workspace id itself did not change.
+                        onWorkspaceNavigate(workspace.id);
+                        closeMenu(true);
+                      }}
+                      className={cn(
+                        "grid min-h-[58px] w-full grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border-0 px-2 text-left",
+                        isActive ? "bg-accent" : "bg-transparent hover:bg-muted",
+                      )}
+                    >
+                      <span className={cn(
+                        "grid size-[34px] place-items-center rounded-lg border bg-background",
+                        isActive ? "border-primary/25 text-primary" : "text-muted-foreground",
+                      )}>
+                        <Icon size={17} aria-hidden="true" />
+                      </span>
+                      <span className="grid min-w-0 gap-0.5">
+                        <strong className="text-[13px] font-bold">{t(workspace.labelKey)}</strong>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {t(workspace.descriptionKey)}
+                        </span>
+                      </span>
+                      {isActive && (
+                        <span className="rounded-full border border-primary/25 bg-background px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-primary">
+                          {t("nav.active")}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
 
                 {PLANNED_AREAS.map((area, index) => {
                   const Icon = area.icon;
@@ -365,7 +421,7 @@ export function AppShell({
                     <button
                       key={area.labelKey}
                       ref={(node) => {
-                        menuItemRefs.current[index + 1] = node;
+                        menuItemRefs.current[index + ACTIVE_WORKSPACES.length] = node;
                       }}
                       type="button"
                       role="menuitem"
@@ -397,7 +453,10 @@ export function AppShell({
                   <div className="mt-1 grid gap-0.5 border-t pt-1">
                     {utility.map((screen, index) => (
                       <React.Fragment key={screen.definition.id}>
-                        {utilityMenuItem(screen, index + PLANNED_AREAS.length + 1)}
+                        {utilityMenuItem(
+                          screen,
+                          index + PLANNED_AREAS.length + ACTIVE_WORKSPACES.length,
+                        )}
                       </React.Fragment>
                     ))}
                   </div>
@@ -413,36 +472,40 @@ export function AppShell({
             </section>
           </header>
 
-          <nav aria-label={t("nav.sections")} data-testid="app-nav" className="border-b bg-background">
-            <div
-              className="publishing-primary-nav flex"
-              role="tablist"
-              aria-label={t("nav.sections")}
-            >
-              {primary.map((screen, index) => (
-                <React.Fragment key={screen.definition.id}>
-                  {primaryTab(screen, index)}
-                </React.Fragment>
-              ))}
-            </div>
-          </nav>
+          {showsPrimaryNav && (
+            <nav aria-label={t("nav.sections")} data-testid="app-nav" className="border-b bg-background">
+              <div
+                className="publishing-primary-nav flex"
+                role="tablist"
+                aria-label={t("nav.sections")}
+              >
+                {primary.map((screen, index) => (
+                  <React.Fragment key={screen.definition.id}>
+                    {primaryTab(screen, index)}
+                  </React.Fragment>
+                ))}
+              </div>
+            </nav>
+          )}
         </>
       )}
 
       <section
         id={active ? `screen-panel-${active.definition.id}` : undefined}
-        role={layout === "compact" && activeIsPrimary ? "tabpanel" : undefined}
+        role={layout === "compact" && showsPrimaryNav && activeIsPrimary ? "tabpanel" : undefined}
         aria-labelledby={
-          layout === "compact" && activeIsPrimary
+          layout === "compact" && showsPrimaryNav && activeIsPrimary
             ? `screen-tab-${active?.definition.id}`
             : undefined
         }
-        tabIndex={layout === "compact" && activeIsPrimary ? 0 : undefined}
+        tabIndex={layout === "compact" && showsPrimaryNav && activeIsPrimary ? 0 : undefined}
         data-testid={active ? `screen-${active.definition.id}` : "screen-none"}
         className={
           layout === "full"
             ? "min-h-0 flex-1 overflow-hidden"
-            : "min-h-0 flex-1 overflow-y-auto px-4 py-[18px]"
+            : activeWorkspace === "ai"
+              ? "min-h-0 flex-1 overflow-hidden px-4 py-[18px]"
+              : "min-h-0 flex-1 overflow-y-auto px-4 py-[18px]"
         }
       >
         {active === null ? null : active.available ? (
@@ -473,7 +536,7 @@ export function AppShell({
               <LockKeyhole className="shrink-0 text-success" size={14} aria-hidden="true" />
               <span className="truncate">{site ?? title}</span>
             </span>
-            <span className="shrink-0">{t("area.publishing")}</span>
+            <span className="shrink-0">{t(activeWorkspaceDefinition.labelKey)}</span>
           </footer>
         </>
       )}

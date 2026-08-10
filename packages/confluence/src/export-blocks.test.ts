@@ -451,6 +451,27 @@ describe("storageToBlocks — links & mentions", () => {
     ]);
   });
 
+  test("preserves an authored Storage smart-link appearance", () => {
+    const out = blocks(
+      '<p><a href="https://tenant-a.atlassian.net/wiki/spaces/DEMO/pages/1001" data-card-appearance="inline" local-id="card-1">Decision page</a></p>',
+    );
+    const content = (out[0] as { content: InlineNode[] }).content;
+    expect(content).toEqual([{
+      type: "smartCard",
+      card: {
+        appearance: "inline",
+        source: "url",
+        url: "https://tenant-a.atlassian.net/wiki/spaces/DEMO/pages/1001",
+        target: {
+          kind: "external",
+          href: "https://tenant-a.atlassian.net/wiki/spaces/DEMO/pages/1001",
+        },
+        title: "Decision page",
+        localId: "card-1",
+      },
+    }]);
+  });
+
   test("Confluence ri:url link preserves its target and rich display text", () => {
     const out = blocks(
       '<p>See <ac:link><ri:url ri:value="https://x.test/y"/>' +
@@ -2330,21 +2351,21 @@ describe("storage parse budget — realistic pages are NOT rejected", () => {
 
 describe("storageToBlocks — datasource smart links", () => {
   /**
-   * The VERBATIM `<a data-datasource>` element of DOCSY page 1126236245
-   * ("M1 Abnahme Abschnitt 7.7") — the artifact that exposed this defect.
+   * A privacy-sanitized `<a data-datasource>` fixture preserving the captured
+   * Confluence Cloud structure that exposed this defect.
    * Before the fix this walked into a `{ type: "link" }` inline node and the
    * export report was empty.
    */
   const REAL_DATASOURCE_LINK =
-    '<a href="https://mayflowergmbh.atlassian.net/issues/?jql=project%20in%20(GROW)%20and%20status%20in%20(Review)%20ORDER%20BY%20created%20DESC" ' +
+    '<a href="https://example.atlassian.net/issues/?jql=project%20in%20(DEMO)%20and%20status%20in%20(Review)%20ORDER%20BY%20created%20DESC" ' +
     'local-id="fbd3bb04abe6" data-card-appearance="block" ' +
     'data-datasource="{&quot;id&quot;:&quot;d8b75300-dfda-4519-b6cd-e49abbd50401&quot;,' +
-    "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca&quot;," +
-    "&quot;jql&quot;:&quot;project in (GROW) and status in (Review) ORDER BY created DESC&quot;}," +
+    "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;11111111-2222-4333-8444-555555555555&quot;," +
+    "&quot;jql&quot;:&quot;project in (DEMO) and status in (Review) ORDER BY created DESC&quot;}," +
     "&quot;views&quot;:[{&quot;type&quot;:&quot;table&quot;,&quot;properties&quot;:{&quot;columns&quot;:[" +
     "{&quot;key&quot;:&quot;issuetype&quot;},{&quot;key&quot;:&quot;key&quot;},{&quot;key&quot;:&quot;summary&quot;}," +
     "{&quot;key&quot;:&quot;assignee&quot;},{&quot;key&quot;:&quot;priority&quot;},{&quot;key&quot;:&quot;status&quot;}," +
-    '{&quot;key&quot;:&quot;updated&quot;}]}}]}">https://mayflowergmbh.atlassian.net/issues/?jql=…</a>';
+    '{&quot;key&quot;:&quot;updated&quot;}]}}]}">https://example.atlassian.net/issues/?jql=…</a>';
 
   function datasourceLink(payload: unknown, href = "https://acme.atlassian.net/issues/?jql=x"): string {
     const attr = JSON.stringify(payload).replaceAll('"', "&quot;");
@@ -2360,7 +2381,7 @@ describe("storageToBlocks — datasource smart links", () => {
     expect(block.type).toBe("unknown");
     expect(block.macroName).toBe("jira");
     expect(macroParamText(block.params, "jqlQuery")).toBe(
-      "project in (GROW) and status in (Review) ORDER BY created DESC"
+      "project in (DEMO) and status in (Review) ORDER BY created DESC"
     );
     expect(macroParamText(block.params, "columns")).toBe(
       "issuetype,key,summary,assignee,priority,status,updated"

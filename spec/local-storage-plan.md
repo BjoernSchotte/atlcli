@@ -51,8 +51,8 @@ Content here...
 {
   "schemaVersion": 1,
   "space": "DOCSY",
-  "baseUrl": "https://mayflowergmbh.atlassian.net",
-  "profile": "mayflowergmbh-atlassian-net",
+  "baseUrl": "https://example.atlassian.net",
+  "profile": "example-profile",
   "settings": {
     "autoCreatePages": false,
     "preserveHierarchy": true,

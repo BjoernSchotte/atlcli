@@ -527,6 +527,27 @@ describe("ConfluenceClient ADF page reads", () => {
     expect(result.complete).toBe(false);
   });
 
+  test("honors a caller-owned inline-comment request budget", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({
+        results: [],
+        _links: { next: "/wiki/api/v2/pages/123/inline-comments?cursor=more" },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://comment-request-budget.example.invalid"),
+    ).listPageInlineCommentsForExport("123", {
+      maxInlineComments: 20,
+      maxRequests: 1,
+    });
+
+    expect(result).toEqual({ comments: [], complete: false });
+    expect(calls).toBe(1);
+  });
+
   test("bounds attachment metadata and marks a truncated index incomplete", async () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({
       results: [

@@ -28,6 +28,9 @@
     "check:browser": "turbo run check:browser:internal",
     "check:browser:internal": "bun scripts/check-browser-build.ts",
     "check:readme-media": "bun scripts/ci/validate-readme-media.ts",
+    "check:research-privacy": "bun scripts/ci/research-privacy.ts",
+    "check:chat-performance": "bun scripts/chat-performance-ratchet.ts",
+    "check:chat-release-candidate": "bun scripts/chat-release-candidate-matrix.ts",
     "typecheck:extension": "turbo run typecheck --filter=@atlcli/extension",
     "typecheck:pdf-compiler-browser": "turbo run typecheck --filter=@atlcli/pdf-compiler-browser",
     "typecheck:browser-export-harness": "turbo run typecheck --filter=@atlcli/browser-export-harness",
@@ -91,5 +94,11 @@
     "terser": "^5.44.1",
     "turbo": "^2.7.4",
     "typescript": "^5.9.3"
+  },
+  "patchedDependencies": {
+    "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch"
+  },
+  "overrides": {
+    "deepagents": "https://pkg.pr.new/deepagents@717"
   }
 }

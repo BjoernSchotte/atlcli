@@ -31,7 +31,7 @@ import { findPhase1AsyncViolations } from "./phase1-sync-guard.js";
 import { openLegacyV1Connection, seedLegacyV1 } from "./seed-v1.js";
 
 const DB_NAME = "atlcli-docx";
-const SITE = "https://mayflower.atlassian.net";
+const SITE = "https://tenant-a.atlassian.net";
 
 let factory: IDBFactory;
 

@@ -12,7 +12,7 @@
  * deleted (SPIKE.md hypothesis H4). If that test ever needs a `chrome` shim to
  * pass, something re-coupled.
  */
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppPorts } from "../../utils/ports/index.js";
 import { I18nProvider } from "../../utils/i18n/context.js";
 import { resolveLocale } from "../../utils/i18n/messages.js";
@@ -23,6 +23,7 @@ import {
   type ScreenProps,
 } from "../../utils/screens/registry.js";
 import { defaultScreens, SCREEN_IDS } from "../screens/index.js";
+import type { AppWorkspace } from "../../utils/ports/settings.js";
 import { AppShell, type ShellLayout } from "./AppShell.js";
 import { ExportRunsProvider } from "./export-runs.js";
 import { PublishingDraftProvider } from "./publishing-draft.js";
@@ -44,7 +45,7 @@ export interface ExportAppProps {
    * global.
    */
   localeCandidates?: readonly (string | null | undefined)[];
-  /** Screen to open first. Defaults to Export. */
+  /** Screen to open first. When omitted, the last workspace or Kiteweave AI opens. */
   initialScreenId?: string;
   /**
    * How much room the host gives the shell. Defaults to the 400 px side panel;
@@ -62,7 +63,7 @@ export function ExportApp({
   ports,
   screens = defaultScreens,
   localeCandidates,
-  initialScreenId = SCREEN_IDS.export,
+  initialScreenId,
   layout = "compact",
 }: ExportAppProps): React.JSX.Element {
   return (
@@ -84,8 +85,8 @@ function LocalizedApp({
   localeCandidates,
   initialScreenId,
   layout,
-}: Required<Pick<ExportAppProps, "ports" | "screens" | "initialScreenId" | "layout">> &
-  Pick<ExportAppProps, "localeCandidates">): React.JSX.Element {
+}: Required<Pick<ExportAppProps, "ports" | "screens" | "layout">> &
+  Pick<ExportAppProps, "localeCandidates" | "initialScreenId">): React.JSX.Element {
   const { settings } = useAppSettings();
   const locale = useMemo(
     () => resolveLocale([settings.locale, ...(localeCandidates ?? browserLocales())]),
@@ -112,9 +113,10 @@ function AppBody({
 }: {
   ports: AppPorts;
   screens: readonly ScreenDefinition[];
-  initialScreenId: string;
+  initialScreenId?: string;
   layout: ShellLayout;
 }): React.JSX.Element {
+  const { settings, loaded: settingsLoaded, update: updateSettings } = useAppSettings();
   // Bound wrappers, not raw method references: `ports` may be an object literal
   // whose methods use `this`, and a stable identity keeps the subscription
   // effect from re-running on every render.
@@ -127,7 +129,17 @@ function AppBody({
     [ports]
   );
   const { state, retry, identity } = usePageContext(watchPageContext, loadPage);
-  const [requestedScreenId, setRequestedScreenId] = useState(initialScreenId);
+  const initialScreen = initialScreenId ?? SCREEN_IDS.research;
+  const workspaceForScreen = useCallback((screenId: string): AppWorkspace | null => {
+    const definition = screens.find((screen) => screen.id === screenId);
+    if (!definition || definition.navigation === "utility") return null;
+    return definition.workspace ?? "publishing";
+  }, [screens]);
+  const [requestedScreenId, setRequestedScreenId] = useState(initialScreen);
+  const [activeWorkspace, setActiveWorkspace] = useState<AppWorkspace>(
+    () => workspaceForScreen(initialScreen) ?? "ai",
+  );
+  const restoredWorkspace = useRef(false);
 
   const resolved = useMemo(
     () =>
@@ -142,11 +154,48 @@ function AppBody({
     [resolved, requestedScreenId]
   );
 
+  const firstScreenInWorkspace = useCallback((workspace: AppWorkspace): string => {
+    const candidate = resolved.find((screen) =>
+      screen.visible
+      && (screen.definition.navigation ?? "primary") === "primary"
+      && (screen.definition.workspace ?? "publishing") === workspace
+      && screen.available
+    ) ?? resolved.find((screen) =>
+      screen.visible
+      && (screen.definition.navigation ?? "primary") === "primary"
+      && (screen.definition.workspace ?? "publishing") === workspace
+    );
+    return candidate?.definition.id ?? (workspace === "ai" ? SCREEN_IDS.research : SCREEN_IDS.export);
+  }, [resolved]);
+
+  const navigateWorkspace = useCallback((workspace: AppWorkspace): void => {
+    setActiveWorkspace(workspace);
+    setRequestedScreenId(firstScreenInWorkspace(workspace));
+    void updateSettings({ lastWorkspace: workspace });
+  }, [firstScreenInWorkspace, updateSettings]);
+
+  const navigateScreen = useCallback((screenId: string): void => {
+    const workspace = workspaceForScreen(screenId);
+    if (workspace) {
+      setActiveWorkspace(workspace);
+      void updateSettings({ lastWorkspace: workspace });
+    }
+    setRequestedScreenId(screenId);
+  }, [updateSettings, workspaceForScreen]);
+
+  useEffect(() => {
+    if (!settingsLoaded || restoredWorkspace.current || initialScreenId !== undefined) return;
+    restoredWorkspace.current = true;
+    const workspace = settings.lastWorkspace ?? "ai";
+    setActiveWorkspace(workspace);
+    setRequestedScreenId(firstScreenInWorkspace(workspace));
+  }, [firstScreenInWorkspace, initialScreenId, settings.lastWorkspace, settingsLoaded]);
+
   const screenProps: ScreenProps = {
     ports,
     page: state,
     retry,
-    navigate: setRequestedScreenId,
+    navigate: navigateScreen,
   };
 
   return (
@@ -157,7 +206,9 @@ function AppBody({
           version={ports.host.version}
           screens={resolved}
           active={active}
-          onNavigate={setRequestedScreenId}
+          activeWorkspace={activeWorkspace}
+          onNavigate={navigateScreen}
+          onWorkspaceNavigate={navigateWorkspace}
           screenProps={screenProps}
           layout={layout}
         />

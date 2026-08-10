@@ -8,6 +8,7 @@
  * renders a sentence with a hole in it. Both are pinned here.
  */
 import { describe, expect, it } from "bun:test";
+import { CHAT_SEMANTIC_ACTIVITY_CODES_V1 } from "@atlcli/research";
 import {
   CATALOGS,
   FALLBACK_LOCALE,
@@ -55,6 +56,18 @@ describe("message catalogues", () => {
     expect(CATALOGS.de["nav.sections"]).toBe("Bereiche");
     expect(CATALOGS.de["screen.settings.label"]).toBe("Einstellungen");
     expect(CATALOGS.de["screen.activity.label"]).toBe("Verlauf");
+  });
+
+  it("presents every durable Chat activity state in both locales", () => {
+    for (const locale of LOCALES) {
+      for (const code of CHAT_SEMANTIC_ACTIVITY_CODES_V1) {
+        for (const status of ["started", "completed", "failed"] as const) {
+          const key = `research.chat.activity.${code}.${status}` as MessageKey;
+          expect(CATALOGS[locale][key], `${locale}:${code}:${status}`).toBeString();
+          expect(CATALOGS[locale][key].trim().length).toBeGreaterThan(0);
+        }
+      }
+    }
   });
 });
 

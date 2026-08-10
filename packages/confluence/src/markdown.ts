@@ -4,6 +4,8 @@ import sub from "markdown-it-sub";
 import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
+import { KNOWN_MACROS } from "./known-macros.js";
+export { KNOWN_MACROS } from "./known-macros.js";
 import { sha256HexOfUtf8 } from "./sha256.js";
 import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
@@ -1138,8 +1140,6 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-export const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index", "contributors", "change-history", "loremipsum"];
-
 /**
  * Strip table `<colgroup>`/`<col>` column-sizing metadata emitted by the modern
  * Confluence Cloud editor.

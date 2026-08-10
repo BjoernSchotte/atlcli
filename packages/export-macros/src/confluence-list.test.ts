@@ -9,7 +9,7 @@ import type {
   MacroPageScope,
 } from "./types.js";
 
-const SITE = "https://mayflowergmbh.atlassian.net";
+const SITE = "https://example.atlassian.net";
 const LIST_URL = `${SITE}/wiki/search?text=&contributors=70121%3Aabc`;
 
 /** The author's column selection on DOCSY page 1126236229, verbatim. */

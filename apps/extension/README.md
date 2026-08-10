@@ -1,10 +1,12 @@
 # @atlcli/extension
 
-Chrome extension (Manifest V3) workspace for atlcli — spec `002-extension-workspace`.
-It detects Confluence pages and exports DOCX and PDF from a side panel. The extension owns
-Chrome/session policy, IndexedDB template and job stores, background/offscreen routing, browser
-downloads, and UI. Reusable format behavior lives in `@atlcli/docx`, `@atlcli/pdf`, and the
-browser-only `@atlcli/pdf-compiler-browser` package.
+Chrome extension (Manifest V3) workspace for atlcli — spec
+`002-extension-workspace`. It detects Atlassian pages, exports Confluence
+content to DOCX and PDF, and includes a bounded Jira + Confluence research
+spike. The extension owns Chrome/session policy, IndexedDB template and job
+stores, background/offscreen routing, browser downloads, and UI. Reusable
+format behavior lives in `@atlcli/docx`, `@atlcli/pdf`, and the browser-only
+`@atlcli/pdf-compiler-browser` package.
 
 Built with [WXT](https://wxt.dev) `0.20.x` (Vite-based, MV3-aware) and React 19.
 The side-panel UI is branded **Kiteweave Browser**; the package and manifest retain the
@@ -33,6 +35,7 @@ utils/
   offscreen.ts        # idempotent ensureOffscreen() helper
 workers/
   pdf-compiler.ts      # static WASM/font/license imports + compiler package
+  research-agent.ts    # DeepAgentsJS + QuickJS PTC in a fresh worker per run
 scripts/
   check-output-build.ts  # manifest, inventory, CSP, and runtime-leak scan
 ```
@@ -78,11 +81,81 @@ this manual step is only needed for `build` (production) artifacts.
 Inspect the service worker via the **service worker** link on the card; the
 offscreen document appears in the card's inspect list while a WASM job is active.
 
+## Kiteweave AI: Chat and Research
+
+The AI workspace has two separate agent runtimes:
+
+- **Chat** answers ordinary questions and follow-ups. **Automatic** chooses the
+  bounded strategy, **Quick** prioritizes latency, and **Think deeper** may use
+  a short supervisor workflow with focused subagents. It does not execute the
+  long Deep Research graph.
+- **Research** is the explicit long-running mode for broader, cited Jira and
+  Confluence investigation and a downloadable Markdown report.
+
+The fixed synthetic release gate targets a maximum 120-second median and a
+180-second worst-of-three for a two-source **Think deeper** Chat. Simple attached
+pages stay on the direct path and are normally much faster. Provider and
+Atlassian latency can vary; the UI continues to stream user-facing progress and
+always keeps **Stop** available. Research keeps its separate, up-to-ten-minute
+report workflow and is never selected merely because Chat uses **Think deeper**.
+
+Provider routing is an adapter concern rather than a Chat behavior. The current
+Anthropic adapter uses one model ID and a bounded non-thinking finalization
+corridor for drafting, repair, and synthesis. Run diagnostics expose only safe
+aggregate counts by effective route and never prompts, source text, URLs,
+credentials, or hidden reasoning.
+
+Both modes bind an attached page directly by its ID. Jira is added only when
+the question, an explicit context, or a Jira reference discovered in the page
+requires it. Chat and Research share read-only capability contracts, but Chat
+never falls through to the Research runtime.
+
+The Research spike creates one cited Markdown report from bounded, read-only
+Jira and Confluence searches. It uses `claude-sonnet-4-6` through
+DeepAgentsJS. The central supervisor composes a question-specific workflow
+from a bounded declarative subagent catalog; retrieval subagents can call only
+the granted Jira search/detail and Confluence search/detail capabilities
+through `@langchain/quickjs`.
+
+1. Open a Jira or Confluence page on the Atlassian Cloud site you want to
+   research, then open the extension side panel.
+2. Select **Chat** or **Research**.
+3. Enter an Anthropic API key under **Settings → AI**. Session-only storage is
+   the default and is cleared when Chrome or the extension restarts. Optional
+   **Remember on this device** stores the key in this Chrome profile until it
+   is forgotten or the extension is removed. Both storage areas are restricted
+   to trusted extension pages and workers; websites and content scripts cannot
+   read the key. **Forget key** removes both copies immediately.
+4. Enter a question. Name the Jira project key and Confluence space key in the
+   question, or fill the two explicit key fields. Explicit fields are locked;
+   the detected current Jira/Confluence context is a separate removable seed
+   and cannot replace them.
+5. Optionally select **From** and **To**, review the resolved site and limits,
+   and confirm the disclosure.
+6. Send the Chat message or select **Run research**. Use the visible stop
+   control to terminate the active worker. A stopped turn remains resumable at
+   its last safe durable checkpoint.
+7. Review **Formatted** or **Raw Markdown**, then copy or download the `.md`
+   result.
+
+The key and Atlassian session never enter QuickJS. QuickJS has no `fetch`,
+Chrome, filesystem, shell, raw JQL/CQL/GraphQL, write tools, or persistent
+memory. The supervisor sandbox can dispatch only the declared bounded task
+roles; retrieval sandboxes receive only their allowlisted read capabilities.
+Search cursors and detail references are opaque, run-scoped host values.
+Jira/Confluence content selected for the report is sent to Anthropic only after
+the disclosure is confirmed.
+
+The report contract is structured data with a deterministic Markdown
+projection. Markdown is the portable hand-off for a later DOCX/PDF adapter;
+this spike does not yet connect it to the export engines.
+
 ## Checks
 
 ```bash
 bun run --cwd apps/extension typecheck     # wxt prepare && tsc --noEmit
 bun run --cwd apps/extension check:output  # scan built bundle for leaks
+bun run --cwd apps/extension test:research-extension-browser:prebuilt
 ```
 
 The repository-level `bun run check:browser-export-harness` and

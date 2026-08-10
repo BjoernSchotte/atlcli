@@ -39,6 +39,8 @@ import type {
   TemplateLibraryPort,
 } from "./export.js";
 import type { SettingsStore } from "./settings.js";
+import type { ResearchPort } from "../research/contracts.js";
+import type { ChatAgentPortV1 } from "@atlcli/research";
 
 /**
  * What the host knows about the page it is showing.
@@ -74,6 +76,14 @@ export interface AppPorts {
    */
   loadPage(contentId: string): Promise<LoadedPage>;
 
+  /**
+   * Navigate the host's current content surface to a validated source URL.
+   * Portable presenters may omit this port and fall back to a normal link;
+   * the side panel uses it for same-page section citations so it does not open
+   * a duplicate Confluence tab.
+   */
+  navigateToSource?(input: { url: string }): Promise<void>;
+
   /** `null` when this host cannot produce PDFs. */
   pdf: PdfExportPort | null;
   /** `null` when this host cannot produce Word documents. */
@@ -81,6 +91,10 @@ export interface AppPorts {
   /** `null` when this host cannot persist template bytes. */
   docxTemplates: DocxTemplateStore | null;
   settings: SettingsStore;
+  /** Single-shot, bounded Jira + Confluence research. */
+  research?: ResearchPort | null;
+  /** Ordinary Chat controls and streams, independent from Deep Research. */
+  chat?: ChatAgentPortV1 | null;
 
   /**
    * The multi-slot template library (spec 010 T5.2).

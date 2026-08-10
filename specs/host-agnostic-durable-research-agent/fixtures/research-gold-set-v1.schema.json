@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlcli.example/schemas/research-gold-set-v1.schema.json",
+  "title": "AtlcliResearchGoldSetV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "createdAt",
+    "asOf",
+    "question",
+    "scope",
+    "permissionContext",
+    "sources",
+    "gold",
+    "comparison",
+    "reviewPolicy"
+  ],
+  "properties": {
+    "schema": { "const": "atlcli.research-gold-set/v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,119}$" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "asOf": { "type": "string", "format": "date-time" },
+    "question": { "type": "string", "minLength": 1, "maxLength": 8000 },
+    "scope": { "$ref": "#/$defs/scope" },
+    "permissionContext": { "$ref": "#/$defs/permissionContext" },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "gold": { "$ref": "#/$defs/gold" },
+    "comparison": { "$ref": "#/$defs/comparison" },
+    "reviewPolicy": { "$ref": "#/$defs/reviewPolicy" }
+  },
+  "$defs": {
+    "stringId": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "uniqueStringIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/stringId" }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["siteOrigin", "jiraProjectKeys", "confluenceSpaceKeys"],
+      "properties": {
+        "siteOrigin": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "jiraProjectKeys": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 20,
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" }
+        },
+        "confluenceSpaceKeys": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 20,
+          "items": { "type": "string", "minLength": 1, "maxLength": 255 }
+        },
+        "timeWindow": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "string", "format": "date" },
+            "to": { "type": "string", "format": "date" }
+          }
+        }
+      }
+    },
+    "permissionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "visibleOnly", "accountFingerprint"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "visibleOnly": { "const": true },
+        "accountFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Local salted fingerprint; never an account id or email."
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "product",
+        "canonicalUrl",
+        "title",
+        "versionRef",
+        "updatedAt",
+        "snapshotSha256"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/stringId" },
+        "product": { "enum": ["jira", "confluence"] },
+        "canonicalUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "versionRef": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "snapshotSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "snapshotPath": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\.\\.).+$",
+          "description": "Optional path relative to the private gold-set directory."
+        }
+      }
+    },
+    "supportEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary", "sourceIds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stringId" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "sourceIds": { "$ref": "#/$defs/uniqueStringIds" }
+      }
+    },
+    "abstention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "expected"],
+      "properties": {
+        "questionId": { "$ref": "#/$defs/stringId" },
+        "expected": { "type": "boolean" }
+      }
+    },
+    "gold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relevantSourceIds",
+        "requiredDetailSourceIds",
+        "claims",
+        "verifiedRelationships",
+        "abstentions",
+        "completenessCriteria",
+        "requiredBranchIds",
+        "expectedScopeEntityIds",
+        "catalogEntityIds",
+        "necessaryScopeExpansionIds",
+        "adversarialConditions"
+      ],
+      "properties": {
+        "relevantSourceIds": { "$ref": "#/$defs/uniqueStringIds" },
+        "requiredDetailSourceIds": { "$ref": "#/$defs/uniqueStringIds" },
+        "claims": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 500,
+          "items": { "$ref": "#/$defs/supportEntry" }
+        },
+        "verifiedRelationships": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 500,
+          "items": { "$ref": "#/$defs/supportEntry" }
+        },
+        "abstentions": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/abstention" }
+        },
+        "completenessCriteria": { "$ref": "#/$defs/uniqueStringIds" },
+        "requiredBranchIds": { "$ref": "#/$defs/uniqueStringIds" },
+        "expectedScopeEntityIds": { "$ref": "#/$defs/uniqueStringIds" },
+        "catalogEntityIds": { "$ref": "#/$defs/uniqueStringIds" },
+        "necessaryScopeExpansionIds": { "$ref": "#/$defs/uniqueStringIds" },
+        "adversarialConditions": { "$ref": "#/$defs/uniqueStringIds" }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxRunMs", "maxModelCostUsd"],
+      "properties": {
+        "maxRunMs": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
+        "maxModelCostUsd": { "type": "number", "minimum": 0 },
+        "maxModelInputTokens": { "type": "integer", "minimum": 1 },
+        "maxModelOutputTokens": { "type": "integer", "minimum": 1 },
+        "maxHttpCalls": { "type": "integer", "minimum": 1 },
+        "maxPtcCalls": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["systems", "budget"],
+      "properties": {
+        "systems": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "native-jira-confluence",
+              "issue-138-poc",
+              "s0",
+              "s1",
+              "s2",
+              "s3",
+              "rovo",
+              "rovo-deep-research"
+            ]
+          }
+        },
+        "budget": { "$ref": "#/$defs/budget" }
+      }
+    },
+    "reviewPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blind", "minimumReviewers", "minimumRepeats", "maximumRepeats"],
+      "properties": {
+        "blind": { "const": true },
+        "minimumReviewers": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "minimumRepeats": { "type": "integer", "minimum": 3, "maximum": 5 },
+        "maximumRepeats": { "type": "integer", "minimum": 3, "maximum": 5 }
+      }
+    }
+  }
+}

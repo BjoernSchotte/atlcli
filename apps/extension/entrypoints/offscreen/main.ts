@@ -24,6 +24,40 @@ import {
 import { createExtensionExportQueueRunner } from "../../utils/export-jobs/queue-runner.js";
 import { BrowserRenderReservationPoolV1 } from "../../utils/export-jobs/render-reservation.js";
 import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
+import { ResearchAgentWorkerHost } from "../../utils/research/worker-host.js";
+import {
+  normalizeAnthropicApiKey,
+} from "../../utils/research/credential.js";
+import {
+  IndexedDbResearchSessionStoreV1,
+  recoverExpiredResearchSessionsAtSafeBoundaryV1,
+} from "@atlcli/research/browser";
+
+const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
+
+/**
+ * MV3 can discard this document without an orderly worker shutdown. On every
+ * recreation, fence and release only pre-proven durable boundaries; never
+ * infer the outcome of a provider call that was in flight when the document
+ * disappeared. A later user-triggered resume owns actual continuation work.
+ */
+async function recoverResearchSessionsAfterOffscreenStart(): Promise<void> {
+  const store = await IndexedDbResearchSessionStoreV1.open();
+  try {
+    await recoverExpiredResearchSessionsAtSafeBoundaryV1({
+      store,
+      ownerId: "owner:browser-recovery",
+      leaseDurationMs: BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1,
+      at: new Date().toISOString(),
+    });
+  } finally {
+    store.close();
+  }
+}
+
+void recoverResearchSessionsAfterOffscreenStart().catch((error) =>
+  console.error("Durable research recovery after offscreen startup failed", error),
+);
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
@@ -31,6 +65,14 @@ const pdfHost = new ChromeWorkerCompilerHost({
       type: "module",
       name: "atlcli-pdf-compiler",
   }),
+});
+
+const researchHost = new ResearchAgentWorkerHost({
+  createWorker: () =>
+    new Worker(new URL("../../workers/research-agent.ts", import.meta.url), {
+      type: "module",
+      name: "atlcli-research-agent",
+    }),
 });
 
 const exportCatalog = new IndexedDbExportJobCatalog();
@@ -121,5 +163,82 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       });
     },
     runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
+    runResearch: async (
+      runId,
+      sessionId,
+      turnId,
+      key,
+      mode,
+      request,
+      policy,
+      qualityPolicy,
+      hostIdentity,
+      resumeAnswer,
+      resumeCheckpoint,
+    ) => {
+      const apiKey = normalizeAnthropicApiKey(key);
+      return researchHost.run({
+        runId,
+        sessionId,
+        turnId,
+        apiKey,
+        mode,
+        request,
+        policy,
+        ...(qualityPolicy ? { qualityPolicy } : {}),
+        ...(hostIdentity ? { hostIdentity } : {}),
+        ...(resumeAnswer ? { resumeAnswer } : {}),
+        ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
+        onProgress: (progress) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:progress",
+            runId,
+            progress,
+          }).catch(() => undefined);
+        },
+        onEvent: (event) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:event",
+            runId,
+            event,
+          }).catch(() => undefined);
+        },
+        onChatPresentation: (event) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:chat-presentation",
+            runId,
+            event,
+          }).catch(() => undefined);
+        },
+      });
+    },
+    resumeResearch: async (runId, sessionId, turnId, key) => {
+      const apiKey = normalizeAnthropicApiKey(key);
+      return researchHost.run({
+        runId,
+        sessionId,
+        turnId,
+        apiKey,
+        resume: true,
+        onProgress: (progress) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:progress",
+            runId,
+            progress,
+          }).catch(() => undefined);
+        },
+        onEvent: (event) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:event",
+            runId,
+            event,
+          }).catch(() => undefined);
+        },
+      });
+    },
+    pauseResearch: async (runId) => researchHost.pause(runId),
+    cancelResearch: async (runId) => researchHost.cancel(runId),
+    controlChat: async (runId, controlId, control) =>
+      researchHost.control(runId, controlId, control),
   })
 );

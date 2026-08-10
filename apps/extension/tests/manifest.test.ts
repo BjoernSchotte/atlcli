@@ -49,13 +49,14 @@ describe("built manifest.json", () => {
     );
   });
 
-  it("declares atlassian.net + media-CDN host permissions", () => {
+  it("declares only Atlassian, media-CDN and Anthropic host permissions", () => {
     // api.media.atlassian.com: attachment downloads 302 to the media CDN;
     // without this host permission the redirect hop falls back to normal CORS
     // and its wildcard ACAO rejects the credentialed session fetch (spec 005).
     expect(manifest.host_permissions).toEqual([
       "*://*.atlassian.net/*",
       "https://api.media.atlassian.com/*",
+      "https://api.anthropic.com/*",
     ]);
   });
 

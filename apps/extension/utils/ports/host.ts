@@ -28,6 +28,8 @@ export type HostCapability =
   | "durable-jobs"
   /** Can render a PDF preview of the bytes an export would produce (T5.3). */
   | "pdf-preview"
+  /** Can run the private read-only research spike. */
+  | "research"
   /** Preferences survive a reload. */
   | "settings-persistence"
   /** Can adjust selected controls in the surrounding Confluence page UI. */

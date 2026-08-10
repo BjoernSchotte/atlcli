@@ -30,6 +30,7 @@ const DOM_GLOBALS = [
   "Event",
   "CustomEvent",
   "MouseEvent",
+  "KeyboardEvent",
   "File",
   "FileList",
   "Blob",

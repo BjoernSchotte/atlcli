@@ -74,6 +74,21 @@ describe("redactSensitive", () => {
     expect(result.email).toBe("user@example.com");
   });
 
+  test("redacts command-line spellings commonly used for API keys", () => {
+    const result = redactSensitive({
+      key: "secret-1",
+      "api-key": "secret-2",
+      "anthropic-key": "secret-3",
+      project: "DEMO",
+    });
+    expect(result).toEqual({
+      key: "[REDACTED]",
+      "api-key": "[REDACTED]",
+      "anthropic-key": "[REDACTED]",
+      project: "DEMO",
+    });
+  });
+
   test("redacts password fields", () => {
     const input = { password: "secret", username: "admin" };
     const result = redactSensitive(input);
