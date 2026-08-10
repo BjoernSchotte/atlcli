@@ -1,5 +1,10 @@
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
-import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
+import {
+  createMiddleware,
+  providerStrategy,
+  toolStrategy,
+  type ModelRequest,
+} from "langchain";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
@@ -138,6 +143,14 @@ import {
   type ChatSubagentModelStreamEventV1,
   type ChatSubagentResultDiagnosticV1,
 } from "./workflow-runtime.js";
+
+// LangChain's ModelRequest type still narrows named tool selection to the
+// OpenAI function envelope even though provider adapters accept a tool name.
+// Keep the runtime value provider-neutral so ChatAnthropic can project it to
+// `{ type: "tool", name: "eval" }` instead of forwarding an invalid envelope.
+const CHAT_EVAL_TOOL_CHOICE_V1 = "eval" as unknown as NonNullable<
+  ModelRequest["toolChoice"]
+>;
 
 export function chatRecursionLimitV1(maxPtcCalls: number): number {
   const boundedCalls = Math.max(1, Math.min(24, Math.trunc(maxPtcCalls)));
@@ -478,10 +491,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
                   "After that single evidence attempt, answer only from its result or report a concise evidence gap.",
                 ].join("\n")),
               ),
-              toolChoice: {
-                type: "function",
-                function: { name: "eval" },
-              },
+              toolChoice: CHAT_EVAL_TOOL_CHOICE_V1,
             });
           }
         } catch (error) {

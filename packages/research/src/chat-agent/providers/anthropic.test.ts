@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { ChatAnthropic } from "@langchain/anthropic";
+import { tool } from "@langchain/core/tools";
 import { createDeepAgent } from "deepagents/node";
 import { providerStrategy, toolStrategy } from "langchain";
 import { z } from "zod/v4";
@@ -96,6 +97,51 @@ describe("Anthropic Chat model binding", () => {
     });
     expect(quick.model).toMatchObject({ maxTokens: 4_096 });
     expect(quick.modelForPreference?.("fast")).toMatchObject({ maxTokens: 2_048 });
+  });
+
+  it("maps a provider-neutral named tool choice to Anthropic's tool selector", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const model = new ChatAnthropic({
+      model: "claude-sonnet-4-6",
+      apiKey: "synthetic-key",
+      maxTokens: 1_024,
+      maxRetries: 0,
+      streaming: false,
+      clientOptions: {
+        fetch: async (_url, init) => {
+          requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return new Response(JSON.stringify({
+            id: "msg_named_tool_choice",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-6",
+            content: [{
+              type: "tool_use",
+              id: "tool_eval_1",
+              name: "eval",
+              input: { code: "return true" },
+            }],
+            stop_reason: "tool_use",
+            stop_sequence: null,
+            usage: { input_tokens: 12, output_tokens: 8 },
+          }), { headers: { "content-type": "application/json" } });
+        },
+      },
+    });
+    const evalTool = tool(
+      async ({ code }) => code,
+      {
+        name: "eval",
+        description: "Evaluate one admitted synthetic expression.",
+        schema: z.object({ code: z.string() }).strict(),
+      },
+    );
+
+    await model.bindTools([evalTool], { tool_choice: "eval" }).invoke([
+      { role: "user", content: "Use the synthetic evaluator." },
+    ]);
+
+    expect(requestBody?.tool_choice).toEqual({ type: "tool", name: "eval" });
   });
 
   it("uses streaming models, provider-enforced structured output, and documented summarized reasoning", () => {

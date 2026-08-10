@@ -2111,7 +2111,7 @@ describe("separate Chat root", () => {
     expect((response as AIMessage).text).toBe("Accepted direct answer.");
   });
 
-  test("forces one current-turn evidence access before accepting a retained-context answer", async () => {
+  test("forces one current-turn evidence access with a provider-neutral named tool choice", async () => {
     let attempted = false;
     const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
       evidenceAccessRequired: true,
@@ -2145,10 +2145,7 @@ describe("separate Chat root", () => {
     );
 
     expect(requests).toHaveLength(2);
-    expect(requests[1]!.toolChoice).toEqual({
-      type: "function",
-      function: { name: "eval" },
-    });
+    expect(requests[1]!.toolChoice).toBe("eval");
     expect(requests[1]!.systemText).toContain("Evidence correction for this turn");
     expect((response as AIMessage).tool_calls?.[0]?.name).toBe("eval");
   });
