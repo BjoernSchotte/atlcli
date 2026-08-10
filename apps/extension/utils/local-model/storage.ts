@@ -83,6 +83,20 @@ function isExactFileInventory(
   });
 }
 
+function isExactLocalGemmaSelection(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const expected = LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1;
+  return (
+    Object.keys(candidate).length === Object.keys(expected).length &&
+    candidate.schema === expected.schema &&
+    candidate.providerId === expected.providerId &&
+    candidate.modelId === expected.modelId &&
+    candidate.modelRevision === expected.modelRevision &&
+    candidate.dtype === expected.dtype
+  );
+}
+
 export function isLocalModelActivationV1(
   value: unknown,
   manifest: LocalModelManifestV1,
@@ -95,8 +109,7 @@ export function isLocalModelActivationV1(
     typeof candidate.installedAt === "string" &&
     !Number.isNaN(Date.parse(candidate.installedAt)) &&
     candidate.aggregateByteLength === manifest.aggregateByteLength &&
-    JSON.stringify(candidate.selection) ===
-      JSON.stringify(LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1) &&
+    isExactLocalGemmaSelection(candidate.selection) &&
     isExactFileInventory(candidate.files, manifest)
   );
 }
@@ -122,16 +135,48 @@ async function verifyCachedActivationV1(
 
 async function assertStorageCapacityV1(
   deps: BrowserLocalModelInstallerDepsV1,
+  missingBytes: number,
 ): Promise<void> {
   await deps.requestPersistence?.().catch(() => false);
   const estimate = await deps.estimateStorage?.();
   if (!estimate || estimate.quota === undefined) return;
   const free = estimate.quota - (estimate.usage ?? 0);
-  const required = deps.manifest.aggregateByteLength + INSTALL_STORAGE_HEADROOM_BYTES_V1;
+  const required = missingBytes === 0
+    ? 0
+    : missingBytes + INSTALL_STORAGE_HEADROOM_BYTES_V1;
   if (free < required) {
     throw new Error(
       `Not enough browser storage. Gemma needs ${required.toLocaleString("en-US")} free bytes.`,
     );
+  }
+}
+
+async function reuseVerifiedCachedFileV1(input: {
+  cache: LocalModelCacheV1;
+  manifest: LocalModelManifestV1;
+  file: LocalModelManifestFileV1;
+}): Promise<boolean> {
+  const { cache, manifest, file } = input;
+  const url = localModelRemoteUrlV1(manifest, file.path);
+  const response = await cache.match(url);
+  if (!response?.body) return false;
+
+  const hash = sha256.create();
+  const reader = response.body.getReader();
+  let fileBytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      hash.update(chunk.value);
+      fileBytes += chunk.value.byteLength;
+      if (fileBytes > file.byteLength) return false;
+    }
+    return fileBytes === file.byteLength && bytesToHex(hash.digest()) === file.sha256;
+  } catch {
+    return false;
+  } finally {
+    await reader.cancel().catch(() => undefined);
   }
 }
 
@@ -222,7 +267,6 @@ export function createBrowserLocalModelPortV1(
       installation = (async () => {
         try {
           await deps.activationStore.clear();
-          await assertStorageCapacityV1(deps);
           const cache = await deps.openCache();
           let receivedBytes = 0;
           publish({
@@ -231,7 +275,28 @@ export function createBrowserLocalModelPortV1(
             totalBytes: deps.manifest.aggregateByteLength,
             currentFile: deps.manifest.files[0]?.path ?? "",
           });
+          const reusableFiles = new Set<string>();
           for (const file of deps.manifest.files) {
+            if (await reuseVerifiedCachedFileV1({ cache, manifest: deps.manifest, file })) {
+              reusableFiles.add(file.path);
+              receivedBytes += file.byteLength;
+              publish({
+                status: "installing",
+                receivedBytes,
+                totalBytes: deps.manifest.aggregateByteLength,
+                currentFile: file.path,
+              });
+            } else {
+              await cache.delete(localModelRemoteUrlV1(deps.manifest, file.path))
+                .catch(() => false);
+            }
+          }
+          await assertStorageCapacityV1(
+            deps,
+            deps.manifest.aggregateByteLength - receivedBytes,
+          );
+          for (const file of deps.manifest.files) {
+            if (reusableFiles.has(file.path)) continue;
             receivedBytes += await streamFileIntoCacheV1({
               deps,
               cache,

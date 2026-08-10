@@ -816,6 +816,70 @@ describe("portable Research screen", () => {
       .toContain("The shared Chat port answered");
   });
 
+  it("rechecks a completed local Gemma installation when Chat submits", async () => {
+    const starts: string[] = [];
+    let localReady = false;
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    const chat = fakeChatPort({
+      async startTurn(input) {
+        starts.push(input.qualityPolicy.mode);
+        return chatAnswer;
+      },
+    });
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "KB", chat, {
+          settings: memorySettingsStore({
+            ...DEFAULT_SETTINGS,
+            modelSelection: LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+          }),
+          localModel: {
+            status: async () => localReady
+              ? {
+                  status: "ready",
+                  aggregateByteLength: 4_924_946_442,
+                }
+              : { status: "not-installed" },
+            install: async () => ({
+              status: "ready",
+              aggregateByteLength: 4_924_946_442,
+            }),
+            subscribe: (listener) => {
+              listener({ status: "not-installed" });
+              return () => undefined;
+            },
+          },
+        })} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    localReady = true;
+    await dom.setValue("research-chat-thinking", "quick");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "Answer after local installation.");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(starts).toEqual(["quick"]);
+    expect(dom.find("research-chat-answer").textContent)
+      .toContain("The shared Chat port answered");
+  });
+
   it("renders the compact chat surface and opens an intentionally empty add menu", async () => {
     const port: ResearchPort = {
       hasApiKey: async () => true,

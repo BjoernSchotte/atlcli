@@ -1556,12 +1556,19 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   useEffect(() => {
     let active = true;
+    let unsubscribeLocalModel: (() => void) | undefined;
     void (async () => {
       const settings = ports.settings ? await ports.settings.load() : undefined;
       const provider = settings?.modelSelection.providerId ?? "anthropic";
-      const ready = provider === "local-gemma"
-        ? (await ports.localModel?.status())?.status === "ready"
-        : await port?.hasApiKey() ?? false;
+      let ready: boolean;
+      if (provider === "local-gemma") {
+        unsubscribeLocalModel = ports.localModel?.subscribe((state) => {
+          if (active) setHasKey(state.status === "ready");
+        });
+        ready = (await ports.localModel?.status())?.status === "ready";
+      } else {
+        ready = await port?.hasApiKey() ?? false;
+      }
       if (!active) return;
       setSelectedModelProvider(provider);
       setHasKey(ready);
@@ -1573,6 +1580,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     });
     return () => {
       active = false;
+      unsubscribeLocalModel?.();
     };
   }, [port, ports.localModel, ports.settings]);
 
@@ -2112,7 +2120,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           return true;
         }
       }
-      if (!hasKey) {
+      const modelReady = selectedModelProvider === "local-gemma"
+        ? (await ports.localModel?.status())?.status === "ready"
+        : hasKey;
+      if (!modelReady) {
         throw new ResearchContractError(
           "missing-key",
           t(selectedModelProvider === "local-gemma"
