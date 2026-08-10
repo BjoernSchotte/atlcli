@@ -148,4 +148,27 @@ describe("Chat supervisor prompt", () => {
   test("does not manufacture a checklist for an ordinary unenumerated question", () => {
     expect(deriveChatRequestChecklistV1("Worum geht es auf dieser Seite?")).toEqual([]);
   });
+
+  test("preserves repeated interrogative and answer-with facets", () => {
+    const question = [
+      "Welche Betriebsart und welche Sicherheitsabwägung gilt?",
+      "Antworte mit den zentralen Einstellungen und der begründeten Einsatzgrenze.",
+    ].join(" ");
+
+    expect(deriveChatRequestChecklistV1(question)).toEqual([
+      "Betriebsart",
+      "Sicherheitsabwägung",
+      "den zentralen Einstellungen",
+      "der begründeten Einsatzgrenze",
+    ]);
+    const prompt = buildChatTurnPromptV1({
+      question,
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: [],
+      anchors: [],
+    });
+    expect(prompt).toContain('"Betriebsart"');
+    expect(prompt).toContain('"der begründeten Einsatzgrenze"');
+    expect(prompt).toContain("Cover every checklist item exactly once");
+  });
 });

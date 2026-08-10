@@ -8,12 +8,17 @@ export interface ChatAnswerOutputContractV1 {
 }
 
 const REQUEST_LIST_VERB_V1 =
-  /\b(?:nenne|nenn|liste|liste\s+auf|gib|beschreibe|erkläre|erklaere|vergleiche|name|list|state|give|provide|describe|explain|compare|include)\b/giu;
+  /\b(?:antworte|beantworte|nenne|nenn|liste|liste\s+auf|gib|beschreibe|erkläre|erklaere|vergleiche|answer|name|list|state|give|provide|describe|explain|compare|include)\b/giu;
 const REQUEST_LIST_SEPARATOR_V1 = /\s*(?:,|;|\bund\b|\boder\b|\band\b|\bor\b)\s*/giu;
+const REQUEST_INTERROGATIVE_FACET_V1 =
+  /\b(?:welche(?:r|s|n|m)?|which)\s+(.+?)(?=\s+(?:und|oder|and|or)\s+(?:welche(?:r|s|n|m)?|which)\s+|[?!.]|$)/giu;
+const REQUEST_INTERROGATIVE_PREDICATE_V1 =
+  /\s+(?:gilt|gelten|ist|sind|war|waren|soll|sollen|wird|werden|trifft|treffen|applies?|is|are|was|were|should|will)(?:\s+.*)?$/iu;
 
 function compactRequestFacetV1(value: string): string | undefined {
   const compact = value
     .replace(/https:\/\/\S+/giu, "")
+    .replace(/^\s*(?:(?:bitte|please|mir|uns|me|us|mit|with|including)\s+)+/iu, "")
     .replace(/[.:!?]+$/gu, "")
     .replace(/\s+/gu, " ")
     .trim();
@@ -26,17 +31,25 @@ function compactRequestFacetV1(value: string): string | undefined {
  */
 export function deriveChatRequestChecklistV1(question: string): string[] {
   const withoutUrls = question.replace(/https:\/\/\S+/giu, " ").replace(/\s+/gu, " ").trim();
+  const interrogative = [...withoutUrls.matchAll(REQUEST_INTERROGATIVE_FACET_V1)]
+    .map((match) => compactRequestFacetV1(
+      (match[1] ?? "").replace(REQUEST_INTERROGATIVE_PREDICATE_V1, ""),
+    ))
+    .filter((value): value is string => value !== undefined);
+  const interrogativeFacets = interrogative.length >= 2 ? interrogative : [];
   const matches = [...withoutUrls.matchAll(REQUEST_LIST_VERB_V1)];
   const trigger = matches.at(-1);
-  if (!trigger || trigger.index === undefined) return [];
-  const verbEnd = trigger.index + trigger[0].length;
-  const tail = withoutUrls.slice(verbEnd).replace(/^\s*[:\-–—]?\s*/u, "").trim();
-  const listed = tail
-    .split(REQUEST_LIST_SEPARATOR_V1)
-    .map(compactRequestFacetV1)
-    .filter((value): value is string => value !== undefined);
-  if (listed.length < 2) return [];
-  return [...new Set(listed)].slice(0, 8);
+  const listed = !trigger || trigger.index === undefined
+    ? []
+    : withoutUrls
+        .slice(trigger.index + trigger[0].length)
+        .replace(/^\s*[:\-–—]?\s*/u, "")
+        .trim()
+        .split(REQUEST_LIST_SEPARATOR_V1)
+        .map(compactRequestFacetV1)
+        .filter((value): value is string => value !== undefined);
+  const listedFacets = listed.length >= 2 ? listed : [];
+  return [...new Set([...interrogativeFacets, ...listedFacets])].slice(0, 8);
 }
 
 export function chatAnswerOutputContractV1(

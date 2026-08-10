@@ -46,6 +46,7 @@ import {
   CHAT_RETRIEVAL_ASSESSMENT_PATH_V1,
   CHAT_RETRIEVAL_PLAN_PATH_V1,
 } from "./retrieval-plan.js";
+import { deriveChatRequestChecklistV1 } from "./prompts.js";
 import { createKiteweaveResearchAgent } from "../agent-runtime-core.js";
 
 const turn: ChatTurnRequestV1 = {
@@ -221,6 +222,32 @@ describe("Chat answer contract", () => {
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
       requestFacets,
     })).toBeDefined();
+  });
+
+  test("forces repair when an interrogative or answer-with facet is omitted", () => {
+    const requestFacets = deriveChatRequestChecklistV1([
+      "Welche Betriebsart und welche Sicherheitsabwägung gilt?",
+      "Antworte mit den zentralen Einstellungen und der begründeten Einsatzgrenze.",
+    ].join(" "));
+    const incomplete = {
+      blocks: [{
+        markdown: "**Betriebsart:** lokal.\n\n**Sicherheitsabwägung:** begrenzt.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }],
+      gaps: [],
+    };
+
+    expect(chatDraftMissingRequestFacetsV1({ draft: incomplete, requestFacets })).toEqual([
+      "den zentralen Einstellungen",
+      "der begründeten Einsatzgrenze",
+    ]);
+    expect(chatDraftNeedsHostRepairV1({
+      draft: incomplete,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      requestFacets,
+    })).toBe(true);
   });
 
   test("keeps one complete phrasing when terminal repair repeats the same facet alternatives", () => {
