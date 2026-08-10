@@ -614,7 +614,7 @@ hardening.
       Gemma 4 E4B ONNX model revisions for the proof; record the selected model
       class/task, `q4f16` file inventory, per-file length/digest, aggregate size,
       license, and notice without yet building the complete lifecycle manager.
-- [ ] Add `@huggingface/transformers` only to the browser-extension runtime
+- [x] Add `@huggingface/transformers` only to the browser-extension runtime
       dependency boundary; keep Transformers.js/ORT imports out of the shared
       provider-neutral research package and prevent Node-only entry points from
       entering the packed extension.
