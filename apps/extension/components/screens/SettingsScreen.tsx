@@ -12,6 +12,11 @@ import { useI18n } from "../../utils/i18n/context.js";
 import { isLocale, LOCALES } from "../../utils/i18n/messages.js";
 import { hasCapability } from "../../utils/ports/host.js";
 import { useAppSettings } from "../app/settings-context.js";
+import {
+  BROWSER_MODEL_DESCRIPTORS_V1,
+  browserModelDescriptorByKey,
+  browserModelSelectionKey,
+} from "../../utils/local-model/selection.js";
 import { Alert } from "../ui/alert.js";
 import { Card, CardContent } from "../ui/card.js";
 import { Button } from "../ui/button.js";
@@ -139,66 +144,103 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
       <Card data-testid="settings-ai">
         <CardContent className="flex flex-col gap-1.5 p-3">
           <p className="m-0 text-sm font-medium">{t("settings.ai.title")}</p>
-          <p className="m-0 text-xs text-muted-foreground">{t("settings.ai.provider.anthropic")}</p>
-          <Label htmlFor="settings-ai-key">{t("research.key")}</Label>
-          <Input
-            id="settings-ai-key"
-            data-testid="settings-ai-key"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={apiKey}
-            placeholder={t("research.key.placeholder")}
-            onChange={(event) => setApiKey(event.target.value)}
-            disabled={!research}
-          />
-          <FieldHelp>
-            {!research
-              ? t("settings.ai.unavailable")
-              : hasApiKey
-                ? t(
-                    rememberApiKey
-                      ? "settings.ai.keyStoredDevice"
-                      : "settings.ai.keyStoredSession",
-                  )
-                : apiKey.trim()
-                  ? t("research.key.pending")
-                  : t("research.key.missing")}
-          </FieldHelp>
-          {research && (
-            <CheckboxField
-              data-testid="settings-ai-remember-key"
-              checked={rememberApiKey}
-              label={t("settings.ai.rememberDevice")}
-              help={t("settings.ai.rememberDeviceHelp")}
-              onChange={(event) => void updateApiKeyPersistence(event.target.checked)}
-            />
-          )}
-          {(apiKey.trim() || hasApiKey) && research && (
-            <div className="flex gap-2">
-              {apiKey.trim() && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void storeApiKey()}
-                  data-testid="settings-ai-store-key"
-                >
-                  {t("research.key.store")}
-                </Button>
+          <Label htmlFor="settings-ai-model">{t("settings.ai.model.label")}</Label>
+          <Select
+            id="settings-ai-model"
+            data-testid="settings-ai-model"
+            value={browserModelSelectionKey(settings.modelSelection)}
+            onChange={(event) => {
+              const descriptor = browserModelDescriptorByKey(event.target.value);
+              if (!descriptor) return;
+              setFailed(false);
+              void update({ modelSelection: descriptor.selection }).catch(() =>
+                setFailed(true)
+              );
+            }}
+          >
+            {BROWSER_MODEL_DESCRIPTORS_V1.map((descriptor) => (
+              <option
+                key={browserModelSelectionKey(descriptor.selection)}
+                value={browserModelSelectionKey(descriptor.selection)}
+              >
+                {descriptor.label}
+              </option>
+            ))}
+          </Select>
+          <FieldHelp>{t("settings.ai.model.help")}</FieldHelp>
+
+          {settings.modelSelection.providerId === "anthropic" ? (
+            <div className="flex flex-col gap-1.5" data-testid="settings-ai-anthropic">
+              <p className="m-0 text-xs text-muted-foreground">
+                {t("settings.ai.provider.anthropic")}
+              </p>
+              <Label htmlFor="settings-ai-key">{t("research.key")}</Label>
+              <Input
+                id="settings-ai-key"
+                data-testid="settings-ai-key"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={apiKey}
+                placeholder={t("research.key.placeholder")}
+                onChange={(event) => setApiKey(event.target.value)}
+                disabled={!research}
+              />
+              <FieldHelp>
+                {!research
+                  ? t("settings.ai.unavailable")
+                  : hasApiKey
+                    ? t(
+                        rememberApiKey
+                          ? "settings.ai.keyStoredDevice"
+                          : "settings.ai.keyStoredSession",
+                      )
+                    : apiKey.trim()
+                      ? t("research.key.pending")
+                      : t("research.key.missing")}
+              </FieldHelp>
+              {research && (
+                <CheckboxField
+                  data-testid="settings-ai-remember-key"
+                  checked={rememberApiKey}
+                  label={t("settings.ai.rememberDevice")}
+                  help={t("settings.ai.rememberDeviceHelp")}
+                  onChange={(event) => void updateApiKeyPersistence(event.target.checked)}
+                />
               )}
-              {hasApiKey && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void forgetApiKey()}
-                  data-testid="settings-ai-forget-key"
-                >
-                  {t("research.key.forget")}
-                </Button>
+              {(apiKey.trim() || hasApiKey) && research && (
+                <div className="flex gap-2">
+                  {apiKey.trim() && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void storeApiKey()}
+                      data-testid="settings-ai-store-key"
+                    >
+                      {t("research.key.store")}
+                    </Button>
+                  )}
+                  {hasApiKey && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void forgetApiKey()}
+                      data-testid="settings-ai-forget-key"
+                    >
+                      {t("research.key.forget")}
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
+          ) : (
+            <div className="flex flex-col gap-1.5" data-testid="settings-ai-local-gemma">
+              <p className="m-0 text-xs text-muted-foreground">
+                {t("settings.ai.provider.localGemma")}
+              </p>
+              <FieldHelp>{t("settings.ai.localGemma.installRequired")}</FieldHelp>
+            </div>
           )}
-          <FieldHelp>{t("settings.ai.futureLocal")}</FieldHelp>
           {aiError && (
             <Alert role="alert" tone="danger" data-testid="settings-ai-error">
               {aiError}

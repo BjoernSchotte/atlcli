@@ -8,6 +8,11 @@ import type { AppPorts } from "../utils/ports/index.js";
 import type { ResearchPort } from "../utils/research/contracts.js";
 import type { ScreenProps } from "../utils/screens/registry.js";
 import { createReactHarness } from "./react-harness.js";
+import {
+  ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
+  browserModelSelectionKey,
+  LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+} from "../utils/local-model/selection.js";
 
 const dom = createReactHarness();
 
@@ -66,7 +71,7 @@ describe("AI settings", () => {
 
     expect(values).toEqual([{ value: "synthetic-key", persistence: "device" }]);
     expect(dom.find("settings-ai").textContent).toContain("remembered on this device");
-    expect(dom.find("settings-ai").textContent).toContain("local-model option");
+    expect(dom.find("settings-ai-model").textContent).toContain("Gemma 4 E4B (local)");
 
     await dom.click("settings-ai-remember-key");
     expect(persistence).toBe("session");
@@ -74,5 +79,43 @@ describe("AI settings", () => {
 
     await dom.click("settings-ai-forget-key");
     expect(stored).toBe(false);
+  });
+
+  it("defaults to Anthropic and persists the exact local Gemma selection", async () => {
+    const store = memorySettingsStore();
+    const research: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async () => { throw new Error("unused"); },
+      run: async () => { throw new Error("unused"); },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <SettingsProvider store={store}>
+        <I18nProvider locale="en">
+          <SettingsScreen {...screenProps(research)} />
+        </I18nProvider>
+      </SettingsProvider>,
+    );
+
+    expect((dom.find("settings-ai-model") as HTMLSelectElement).value).toBe(
+      browserModelSelectionKey(ANTHROPIC_BROWSER_MODEL_SELECTION_V1),
+    );
+    expect(dom.maybeFind("settings-ai-anthropic")).not.toBeNull();
+
+    await dom.setValue(
+      "settings-ai-model",
+      browserModelSelectionKey(LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1),
+    );
+
+    expect(dom.maybeFind("settings-ai-anthropic")).toBeNull();
+    expect(dom.find("settings-ai-local-gemma").textContent).toContain(
+      "runs locally in this browser",
+    );
+    expect((await store.load()).modelSelection).toEqual(
+      LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+    );
   });
 });

@@ -622,7 +622,7 @@ hardening.
       that the G0 manifest selects only the required text-Chat components and
       dtype; STOP if the runtime insists on downloading the entire repository or
       unused vision/audio weights.
-- [ ] Add the minimal production `BrowserModelSelectionV1` descriptor and render
+- [x] Add the minimal production `BrowserModelSelectionV1` descriptor and render
       Anthropic plus Gemma in the existing Settings model selector; Anthropic
       remains the migration/default selection.
 - [ ] Add an explicit, happy-path **Install Gemma** action to the existing
