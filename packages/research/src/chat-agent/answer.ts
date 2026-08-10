@@ -737,14 +737,20 @@ function collapseRedundantRequestFacetAlternativesV1(
   return blocks.filter((_block, index) => !removed.has(index));
 }
 
-function sameAnswerBlockBindingV1(
+function compatibleAnswerBlockBindingV1(
   left: ChatAnswerBlockV2,
   right: ChatAnswerBlockV2,
+  sourceReferenceIsDetailed?: (sourceRef: string) => boolean,
 ): boolean {
-  return left.assertion === right.assertion &&
-    left.scope === right.scope &&
-    [...new Set(left.sourceRefs)].sort().join("\u0000") ===
-      [...new Set(right.sourceRefs)].sort().join("\u0000");
+  if (left.assertion !== right.assertion || left.scope !== right.scope) {
+    return false;
+  }
+  const leftRefs = [...new Set(left.sourceRefs)].sort();
+  const rightRefs = [...new Set(right.sourceRefs)].sort();
+  if (leftRefs.join("\u0000") === rightRefs.join("\u0000")) return true;
+  return sourceReferenceIsDetailed !== undefined &&
+    leftRefs.length > 0 && rightRefs.length > 0 &&
+    [...leftRefs, ...rightRefs].every(sourceReferenceIsDetailed);
 }
 
 function leadingCodeListSubjectV1(markdown: string): string | undefined {
@@ -761,34 +767,49 @@ function leadingCodeListSubjectV1(markdown: string): string | undefined {
  */
 function collapseRedundantAnswerBlocksV1(
   blocks: readonly ChatAnswerBlockV2[],
+  sourceReferenceIsDetailed?: (sourceRef: string) => boolean,
 ): ChatAnswerBlockV2[] {
+  const result = blocks.map((block) => ({
+    ...block,
+    sourceRefs: [...block.sourceRefs],
+  }));
   const removed = new Set<number>();
-  for (let left = 0; left < blocks.length; left += 1) {
+  for (let left = 0; left < result.length; left += 1) {
     if (removed.has(left)) continue;
-    for (let right = left + 1; right < blocks.length; right += 1) {
+    for (let right = left + 1; right < result.length; right += 1) {
       if (removed.has(right)) continue;
-      const leftBlock = blocks[left]!;
-      const rightBlock = blocks[right]!;
+      const leftBlock = result[left]!;
+      const rightBlock = result[right]!;
       const leftSubject = leadingCodeListSubjectV1(leftBlock.markdown);
       const sameCodeListSubject = leftSubject !== undefined &&
         leftSubject === leadingCodeListSubjectV1(rightBlock.markdown);
       if (
-        !sameAnswerBlockBindingV1(leftBlock, rightBlock) ||
+        !compatibleAnswerBlockBindingV1(
+          leftBlock,
+          rightBlock,
+          sourceReferenceIsDetailed,
+        ) ||
         (!sameCodeListSubject && !redundantProseV1(leftBlock.markdown, rightBlock.markdown))
       ) continue;
       const leftTokens = normalizedProseTokensV1(leftBlock.markdown).length;
       const rightTokens = normalizedProseTokensV1(rightBlock.markdown).length;
+      const mergedSourceRefs = [...new Set([
+        ...leftBlock.sourceRefs,
+        ...rightBlock.sourceRefs,
+      ])];
       if (
         rightTokens > leftTokens ||
         (rightTokens === leftTokens && rightBlock.markdown.length > leftBlock.markdown.length)
       ) {
+        result[right] = { ...rightBlock, sourceRefs: mergedSourceRefs };
         removed.add(left);
         break;
       }
+      result[left] = { ...leftBlock, sourceRefs: mergedSourceRefs };
       removed.add(right);
     }
   }
-  return blocks.filter((_block, index) => !removed.has(index));
+  return result.filter((_block, index) => !removed.has(index));
 }
 
 function escapedRegularExpressionV1(value: string): string {
@@ -884,7 +905,14 @@ export function chatDraftNeedsHostRepairV1(input: {
   }).length > 0) {
     return true;
   }
-  if (collapseRedundantAnswerBlocksV1(draft.blocks).length !== draft.blocks.length) {
+  if (collapseRedundantAnswerBlocksV1(
+    draft.blocks,
+    (sourceRef) => sourceReferenceIsDetailedV2(
+      sourceRef,
+      input.detailEvidence,
+      input.readSectionReferences ?? [],
+    ),
+  ).length !== draft.blocks.length) {
     return true;
   }
   const rankedBlocks = normalizeMeasuredRankingBlocksV1(draft.blocks, input.question);
@@ -1120,7 +1148,14 @@ export function inspectChatDraftAfterHostRepairV1(input: {
   const blocks = normalizeMeasuredRankingBlocksV1(
     coalesceRequestFacetLabelsV1(
       collapseRedundantRequestFacetAlternativesV1(
-        collapseRedundantAnswerBlocksV1(balancedBlocks),
+        collapseRedundantAnswerBlocksV1(
+          balancedBlocks,
+          (sourceRef) => sourceReferenceIsDetailedV2(
+            sourceRef,
+            input.detailEvidence,
+            input.readSectionReferences ?? [],
+          ),
+        ),
         input.requestFacets ?? [],
       ),
       input.requestFacets ?? [],

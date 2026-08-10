@@ -364,6 +364,42 @@ describe("Chat answer contract", () => {
     expect(repaired.draft?.blocks[0]?.markdown).toContain("Qualitätsfehlern verworfen");
   });
 
+  test("merges repeated supported prose that names different detailed sources", () => {
+    const secondSource = {
+      ...syntheticPageSource,
+      id: "wiki:1002",
+      title: "Second synthetic page",
+      url: "https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1002",
+      contentId: "1002",
+    };
+    const repaired = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "Der belegte Standardpfad bleibt für diese Aufgabe unverändert bestehen.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "Der belegte Standardpfad bleibt für diese Aufgabe unverändert bestehen und wird weiterhin empfohlen.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [secondSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [
+        { source: syntheticPageSource, content: syntheticCompleteContent },
+        { source: secondSource, content: syntheticCompleteContent },
+      ],
+    });
+
+    expect(repaired.rejectionReasons).toEqual([]);
+    expect(repaired.draft?.blocks).toEqual([expect.objectContaining({
+      markdown: expect.stringContaining("weiterhin empfohlen"),
+      sourceRefs: [syntheticPageSource.id, secondSource.id],
+    })]);
+  });
+
   test("preserves similarly formatted blocks that carry distinct facts", () => {
     const inspection = inspectChatDraftAfterHostRepairV1({
       draft: {
