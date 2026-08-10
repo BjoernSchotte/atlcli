@@ -266,7 +266,7 @@ describe("Chat answer contract", () => {
     expect(repaired?.blocks[1]?.markdown).toContain("tatsächlichen Laufzeit");
   });
 
-  test("rejects materially different repeated facet blocks instead of discarding evidence", () => {
+  test("preserves materially different repeated facet blocks while displaying their label once", () => {
     const requestFacets = ["Modellgröße", "Messung und Vermutung trennen"];
     const inspection = inspectChatDraftAfterHostRepairV1({
       draft: {
@@ -292,7 +292,14 @@ describe("Chat answer contract", () => {
       requestFacets,
     });
 
-    expect(inspection).toEqual({ rejectionReasons: ["repeated-request-facet"] });
+    expect(inspection.rejectionReasons).toEqual([]);
+    expect(inspection.draft?.blocks).toHaveLength(3);
+    expect(inspection.draft?.blocks.filter((block) =>
+      block.markdown.includes("Messung und Vermutung trennen")
+    )).toHaveLength(1);
+    expect(inspection.draft?.blocks[2]?.markdown).toBe(
+      "Die vermutete Ursache wird in der Quelle nicht bestätigt.",
+    );
   });
 
   test("classifies terminal repair rejection without retaining draft content", () => {

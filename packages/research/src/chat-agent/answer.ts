@@ -652,7 +652,11 @@ function collapseRedundantRequestFacetAlternativesV1(
   for (const facet of requestFacets) {
     const normalizedFacet = normalizedRequestFacetV1(facet);
     const indexes = requestFacetBlockIndexesV1(blocks, facet)
-      .filter((index) => !removed.has(index));
+      .filter((index) =>
+        !removed.has(index) &&
+        blocks[index]!.assertion === "none" &&
+        blocks[index]!.sourceRefs.length === 0
+      );
     if (indexes.length < 2 || !normalizedFacet) continue;
     const keeper = [...indexes].sort((left, right) => {
       const tokenDelta = requestFacetRemainderTokensV1(
@@ -678,6 +682,46 @@ function collapseRedundantRequestFacetAlternativesV1(
     }
   }
   return blocks.filter((_block, index) => !removed.has(index));
+}
+
+function escapedRegularExpressionV1(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function stripRequestFacetLabelV1(markdown: string, facet: string): string | undefined {
+  const exact = escapedRegularExpressionV1(facet.trim());
+  const label = new RegExp(
+    `^(\\s*(?:#{1,6}\\s+|[-*+]\\s+)?)(?:\\*\\*|__)?\\s*${exact}\\s*(?::|[–—-])?\\s*(?:\\*\\*|__)?\\s*`,
+    "iu",
+  );
+  const stripped = markdown.replace(label, "$1").trim();
+  return stripped !== markdown.trim() && stripped.length > 0 ? stripped : undefined;
+}
+
+/**
+ * Distinct blocks may legitimately answer different parts of one requested
+ * facet. Preserve all of their content while displaying the verbatim facet
+ * label only once, preferring the evidence-bound block as its owner. Removing
+ * a repeated presentation label changes neither claim text nor source binding.
+ */
+function coalesceRequestFacetLabelsV1(
+  blocks: readonly ChatAnswerBlockV2[],
+  requestFacets: readonly string[],
+): ChatAnswerBlockV2[] {
+  let result = [...blocks];
+  for (const facet of requestFacets) {
+    const indexes = requestFacetBlockIndexesV1(result, facet);
+    if (indexes.length < 2) continue;
+    const owner = indexes.find((index) =>
+      result[index]!.assertion !== "none" && result[index]!.sourceRefs.length > 0
+    ) ?? indexes[0]!;
+    result = result.map((block, index) => {
+      if (index === owner || !indexes.includes(index)) return block;
+      const markdown = stripRequestFacetLabelV1(block.markdown, facet);
+      return markdown ? { ...block, markdown } : block;
+    });
+  }
+  return result;
 }
 
 function repeatedRequestFacetsV1(input: {
@@ -813,8 +857,11 @@ export function inspectChatDraftAfterHostRepairV1(input: {
       // safe here: it changes no words, evidence, assertion, or source binding.
       markdown: balanceGermanClosingQuotesV1(block.markdown),
     }));
-  const blocks = collapseRedundantRequestFacetAlternativesV1(
-    balancedBlocks,
+  const blocks = coalesceRequestFacetLabelsV1(
+    collapseRedundantRequestFacetAlternativesV1(
+      balancedBlocks,
+      input.requestFacets ?? [],
+    ),
     input.requestFacets ?? [],
   );
   if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
