@@ -432,7 +432,7 @@ describe("wiki page diff CLI shell", () => {
   ];
 
   for (const { args, message } of usageCases) {
-    it(`fails closed before I/O: ${message}`, async () => {
+    it(`fails closed before I/O for ${args.join(" ")}: ${message}`, async () => {
       const result = await runPageDiff(args);
 
       expect(result.exitCode).toBe(1);
