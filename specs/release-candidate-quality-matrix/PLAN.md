@@ -1,7 +1,8 @@
 # Release-candidate quality matrix
 
-> Status: T0-T2 complete; the private CLI matrix exists and has run, but T3 is
-> not accepted because two quality checks still fail and the installed-MV3 plus
+> Status: T0-T2 complete; the private CLI matrix exists and has run. A targeted
+> three-turn Auto rerun now passes every frozen local-gold and lifecycle check,
+> while the refreshed full private matrix, installed-MV3 subset, and explicit
 > operator-review gates remain open. T4 reconciliation has started, but its
 > verification and final receipt gates remain open. This slice turns the
 > existing Chat gold labels and isolated functional tests into one executable,
@@ -128,6 +129,13 @@ mode `0600`, contain only opaque case IDs, checks, aggregate measurements, and
 fingerprints, and remain outside Git.
 
 ## T3 - Run the private read-only operator matrix
+
+Proof update (2026-08-10): a revision-bound, three-turn Auto run passed source
+selection, citation support, required-fact coverage, claim support, outcome,
+mode isolation, new-acquisition lifecycle, follow-up coherence, and answer
+integrity. The neutral proof and all private inputs and outputs remain outside
+Git. This proves the repaired Auto path only; it does not close the full private
+matrix or installed-extension/operator gates below.
 
 - [x] Add a private-suite runner that executes opaque external cases through
       Quick, Auto, Deep, and optional Deep Research variants.
