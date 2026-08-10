@@ -23,7 +23,7 @@
     "release": "bun scripts/release.ts",
     "build:cli": "bun run --cwd apps/cli build",
     "lint": "echo 'no lint configured'",
-    "test": "bun --conditions=development test",
+    "test": "bun --conditions=development test --path-ignore-patterns='spikes/**'",
     "typecheck": "bunx tsc --noEmit && bun run typecheck:extension && bun run typecheck:pdf-compiler-browser && bun run typecheck:browser-export-harness",
     "check:browser": "turbo run check:browser:internal",
     "check:browser:internal": "bun scripts/check-browser-build.ts",

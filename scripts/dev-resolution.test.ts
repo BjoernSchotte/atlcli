@@ -70,4 +70,14 @@ describe("development-condition resolution (spec 009)", () => {
       extensionPackage.scripts?.["test:jobs-extension-browser:prebuilt"],
     ).toStartWith("node --conditions=development ");
   });
+
+  it("keeps independently locked spikes outside root test discovery", () => {
+    const rootPackage = JSON.parse(
+      readFileSync(join(REPO_ROOT, "package.json"), "utf8"),
+    ) as { scripts?: Record<string, string> };
+
+    expect(rootPackage.scripts?.test).toContain(
+      "--path-ignore-patterns='spikes/**'",
+    );
+  });
 });
