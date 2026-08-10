@@ -297,6 +297,10 @@ bun run docs:check
 bun run build
 bun scripts/api-report.ts
 bun scripts/api-closure.ts
+bun install --cwd spikes/pierre-diffs-renderer --frozen-lockfile
+bun run --cwd spikes/pierre-diffs-renderer test
+bun run --cwd spikes/pierre-diffs-renderer typecheck
+bun run --cwd spikes/pierre-diffs-renderer build
 ```
 
 The machine-readable `gates` object records correctness, determinism, 10k time,
@@ -309,6 +313,12 @@ closure reports also passed. The focused streaming/spill coverage proves
 canonical chunk parity, digest parity, browser-neutral ports, ADF/Storage shard
 reconstruction, large-lane ChangeSet parity, validation-failure cleanup, and
 the existing typed input budgets.
+
+After the text, combined-review, and Pierre follow-ups, the final complete
+repository run passed **6,570 tests with 16 configured skips, 0 failures, and
+32,977 assertions across 500 files**. The isolated Pierre suite passed its two
+parser/adapter contracts, frozen install, TypeScript check, browser build, and
+the final real-world Chromium rendering proof.
 
 ## Remaining work
 
