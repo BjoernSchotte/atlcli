@@ -94,6 +94,11 @@ export interface ChatPrivateSuiteArgumentsV1 {
   variant?: ChatReleaseCandidateVariantV1;
 }
 
+export interface ChatPrivateProofAuthorityV1 {
+  /** Test-only injection seam; production callers always use the clean Git checkout. */
+  sourceRevision?: () => Promise<string>;
+}
+
 export function chatPrivateSuiteEnvironmentV1(
   args: ChatPrivateSuiteArgumentsV1,
   base: Record<string, string | undefined> = process.env,
@@ -531,8 +536,34 @@ async function privateRun(input: {
   });
 }
 
+export function requireCleanPrivateProofRevisionV1(input: {
+  revision: string;
+  porcelainStatus: string;
+}): string {
+  const revision = input.revision.trim();
+  if (!/^[0-9a-f]{40}$/u.test(revision)) {
+    throw new Error("Private release proof requires one full Git commit revision.");
+  }
+  if (input.porcelainStatus.trim()) {
+    throw new Error(
+      "Private release proof requires a clean worktree; commit or remove every tracked and untracked change first.",
+    );
+  }
+  return revision;
+}
+
 async function sourceRevision(): Promise<string> {
-  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPOSITORY_ROOT, encoding: "utf8" }).trim();
+  const porcelainStatus = execFileSync(
+    "git",
+    ["status", "--porcelain=v1", "--untracked-files=all"],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" },
+  );
+  const revision = execFileSync(
+    "git",
+    ["rev-parse", "HEAD"],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" },
+  );
+  return requireCleanPrivateProofRevisionV1({ revision, porcelainStatus });
 }
 
 async function writeProof(path: string, proof: ChatReleaseCandidateProofV1): Promise<void> {
@@ -543,6 +574,7 @@ export async function runChatPrivateSuiteV1(
   args: ChatPrivateSuiteArgumentsV1,
   suite: ChatPrivateSuiteV1,
   runner: ChatPrivateProcessRunnerV1,
+  authority: ChatPrivateProofAuthorityV1 = {},
 ): Promise<ChatReleaseCandidateProofV1> {
   await mkdir(args.outputDirectory, { recursive: true, mode: 0o700 });
   const runs: ChatReleaseCandidateRunV1[] = [];
@@ -570,7 +602,8 @@ export async function runChatPrivateSuiteV1(
   }
   const proof = await finalizeChatReleaseCandidateProofV1({
     proofId: "private-cli-quality", producer: "private-cli-runner", producedAt: new Date().toISOString(),
-    sourceRevision: await sourceRevision(), manifestFingerprint: await fingerprintChatReleaseCandidateManifestV1(), runs,
+    sourceRevision: await (authority.sourceRevision ?? sourceRevision)(),
+    manifestFingerprint: await fingerprintChatReleaseCandidateManifestV1(), runs,
   });
   await writeProof(join(args.outputDirectory, "private-cli-proof.json"), proof);
   return proof;
@@ -600,13 +633,17 @@ function parseReview(value: unknown): ChatPrivateReviewV1 {
   return { schema: REVIEW_SCHEMA, runs, installedRuns };
 }
 
-export async function finalizeChatPrivateReviewV1(args: ChatPrivateSuiteArgumentsV1, reviewValue: unknown): Promise<{
+export async function finalizeChatPrivateReviewV1(
+  args: ChatPrivateSuiteArgumentsV1,
+  reviewValue: unknown,
+  authority: ChatPrivateProofAuthorityV1 = {},
+): Promise<{
   operator: ChatReleaseCandidateProofV1;
   installed: ChatReleaseCandidateProofV1;
 }> {
   await mkdir(args.outputDirectory, { recursive: true, mode: 0o700 });
   const review = parseReview(reviewValue);
-  const revision = await sourceRevision();
+  const revision = await (authority.sourceRevision ?? sourceRevision)();
   const manifest = await fingerprintChatReleaseCandidateManifestV1();
   const operatorRuns = await Promise.all(review.runs.map(async (entry) => {
     const decisions = entry.review;

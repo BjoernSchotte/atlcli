@@ -12,11 +12,13 @@ import {
   privateFactGroupMatchesV1,
   privateForbiddenClaimMatchesV1,
   projectPrivateAnswerV1,
+  requireCleanPrivateProofRevisionV1,
   runChatPrivateSuiteV1,
   selectChatPrivateSuiteV1,
 } from "./chat-private-suite.js";
 
 const roots: string[] = [];
+const cleanAuthority = { sourceRevision: async () => "a".repeat(40) };
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -97,6 +99,22 @@ describe("private Chat release suite", () => {
       ATLCLI_DISABLE_UPDATE_CHECK: "1",
       ATLCLI_RESEARCH_SESSIONS_DIR: "/private/output/sessions",
     });
+  });
+
+  test("refuses to issue revision-bound private proofs from a dirty worktree", () => {
+    const revision = "a".repeat(40);
+    expect(requireCleanPrivateProofRevisionV1({
+      revision: ` ${revision}\n`,
+      porcelainStatus: "",
+    })).toBe(revision);
+    expect(() => requireCleanPrivateProofRevisionV1({
+      revision,
+      porcelainStatus: " M packages/research/src/runtime.ts\n",
+    })).toThrow("clean worktree");
+    expect(() => requireCleanPrivateProofRevisionV1({
+      revision: "short",
+      porcelainStatus: "",
+    })).toThrow("full Git commit revision");
   });
 
   test("selects one opaque case and variant for a bounded live proof", () => {
@@ -228,7 +246,7 @@ describe("private Chat release suite", () => {
         stdout: context.variant === "deep-research" ? researchOutput() : chatOutput(context.variant, context.turnIndex + 1),
         stderr: "Private live activity and provider trace",
       };
-    });
+    }, cleanAuthority);
     expect(proof.status).toBe("passed");
     expect(proof.measurements.caseCount).toBe(2);
     expect(proof.measurements.runCount).toBe(7);
@@ -265,7 +283,7 @@ describe("private Chat release suite", () => {
         },
       }),
       stderr: "",
-    }));
+    }), cleanAuthority);
 
     expect(proof.status).toBe("failed");
     expect(proof.failureCodes).toContain("required-fact-missing");
@@ -291,7 +309,7 @@ describe("private Chat release suite", () => {
     ].map((entry) => ({ ...entry, sourceSelection: true, citationSupport: true, outcome: true, modeIsolation: true, visibleActivity: true }));
     const result = await finalizeChatPrivateReviewV1(args, {
       schema: "atlcli.chat-private-review/v1", runs, installedRuns,
-    });
+    }, cleanAuthority);
     expect(result.operator.status).toBe("passed");
     expect(result.installed.status).toBe("passed");
     const persisted = await readFile(join(args.outputDirectory, "private-operator-proof.json"), "utf8");
