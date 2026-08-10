@@ -16100,6 +16100,7 @@ export type ExportBlock = {
     initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
+    highlightLines?: readonly number[];
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
     localId?: string;
@@ -16136,6 +16137,12 @@ export type ExportBlock = {
 } | ({
     type: "layout";
 } & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
+} | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
