@@ -618,7 +618,7 @@ hardening.
       dependency boundary; keep Transformers.js/ORT imports out of the shared
       provider-neutral research package and prevent Node-only entry points from
       entering the packed extension.
-- [ ] Use Transformers.js `ModelRegistry` to enumerate required files and assert
+- [x] Use Transformers.js `ModelRegistry` to enumerate required files and assert
       that the G0 manifest selects only the required text-Chat components and
       dtype; STOP if the runtime insists on downloading the entire repository or
       unused vision/audio weights.
