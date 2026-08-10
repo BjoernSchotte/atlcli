@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { SystemMessage } from "@langchain/core/messages";
 import { scoreChatEvaluationV1 } from "../evaluation.js";
 import { chatQualityPolicyV1 } from "../../quality-policy.js";
@@ -85,11 +88,24 @@ describe("customer-free production Chat runtime", () => {
   });
 
   test("produces one body-free passing proof for all 20 by 3 Chat runs", async () => {
+    const proofPath = process.env.ATLCLI_RUNTIME_CHAT_PROOF_PATH;
+    if (proofPath && !isAbsolute(proofPath)) {
+      throw new Error("ATLCLI_RUNTIME_CHAT_PROOF_PATH must be absolute.");
+    }
     const proof = await runChatProductionRuntimeProofV1({
-      producedAt: "2026-08-09T12:00:00.000Z",
-      sourceRevision: "1".repeat(40),
+      producedAt: proofPath ? new Date().toISOString() : "2026-08-09T12:00:00.000Z",
+      sourceRevision: proofPath
+        ? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim()
+        : "1".repeat(40),
       manifestFingerprint: await fingerprintChatReleaseCandidateManifestV1(),
     });
+
+    if (proofPath) {
+      writeFileSync(proofPath, `${JSON.stringify(proof, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    }
 
     expect(proof.runs.filter((run) => run.status === "failed").map((run) => ({
       caseId: run.caseId,

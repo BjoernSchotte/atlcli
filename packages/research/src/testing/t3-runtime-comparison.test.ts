@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { fakeModel } from "@langchain/core/testing";
 import { AIMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
@@ -613,6 +616,10 @@ describe("T3 S0–S3 real runtime comparison", () => {
   });
 
   test("produces a body-free passing proof from three separate Deep Research controls", async () => {
+    const proofPath = process.env.ATLCLI_RUNTIME_RESEARCH_PROOF_PATH;
+    if (proofPath && !isAbsolute(proofPath)) {
+      throw new Error("ATLCLI_RUNTIME_RESEARCH_PROOF_PATH must be absolute.");
+    }
     const runs: ChatReleaseCandidateRunV1[] = [];
     for (const variant of ["S1", "S2", "S3"] as const) {
       runs.push(await releaseControlRun(variant));
@@ -620,11 +627,20 @@ describe("T3 S0–S3 real runtime comparison", () => {
     const proof = await finalizeChatReleaseCandidateProofV1({
       proofId: "runtime-deep-research-control",
       producer: "bun-production-runtime",
-      producedAt: "2026-08-09T12:00:00.000Z",
-      sourceRevision: "1".repeat(40),
+      producedAt: proofPath ? new Date().toISOString() : "2026-08-09T12:00:00.000Z",
+      sourceRevision: proofPath
+        ? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim()
+        : "1".repeat(40),
       manifestFingerprint: await fingerprintChatReleaseCandidateManifestV1(),
       runs,
     });
+
+    if (proofPath) {
+      writeFileSync(proofPath, `${JSON.stringify(proof, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    }
 
     expect(proof.status).toBe("passed");
     expect(proof.caseIds).toEqual(Object.values(controlCaseByVariant).sort());
