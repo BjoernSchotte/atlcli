@@ -30,4 +30,5 @@
  */
 
 export * from "./client.js";
+export * from "./change-set.js";
 export * from "./types.js";
