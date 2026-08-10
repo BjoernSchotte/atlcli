@@ -102,7 +102,10 @@ describe("customer-free production Chat runtime", () => {
     expect(proof.runs.every((run) => run.status === "passed")).toBe(true);
     expect(JSON.stringify(proof)).not.toContain("messageMarkdown");
     expect(JSON.stringify(proof)).not.toContain("canonicalUrl");
-  });
+  // The proof executes 60 complete runtime observations. Five seconds is too
+  // close to the measured serial runtime and would make this release gate
+  // machine-load dependent without changing any product deadline.
+  }, 10_000);
 
   for (const scenario of CHAT_RECOVERY_GOLD_SCENARIOS_V1) {
     for (const mode of ["quick", "auto", "deep"] as const) {

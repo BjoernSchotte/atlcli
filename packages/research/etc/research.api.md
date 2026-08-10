@@ -867,6 +867,19 @@ export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
     readonly maximumFalseCompletenessCount: 0;
 }>;
 
+// export: CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1
+export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
+    "invalid-schema",
+    "malformed-factual-markdown",
+    "missing-detailed-factual-block",
+    "orphan-heading",
+    "missing-request-facet",
+    "repeated-request-facet",
+    "repeated-prose",
+    "incomplete-prose",
+    "observation-classification-conflict"
+];
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -875,6 +888,13 @@ export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interacti
 
 // export: CHAT_INTERACTION_STATE_SCHEMA_V1
 export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
+export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
+    "incomplete-prose",
+    "observation-classification-conflict",
+    "repeated-prose"
+];
 
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
@@ -900,6 +920,9 @@ export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatP
 
 // export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
 export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
+// export: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1
+export declare const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1: "atlcli.chat-ptc-reference-rejection/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -1273,6 +1296,18 @@ export interface ChatAnswerGapV1 {
     sourceIds: string[];
 }
 
+// export: chatAnswerOutputContractV1
+export declare function chatAnswerOutputContractV1(qualityMode: ChatQualityModeV1): ChatAnswerOutputContractV1;
+
+// export: ChatAnswerOutputContractV1
+export interface ChatAnswerOutputContractV1 {
+    maxWords: number;
+    maxBlocks: number;
+}
+
+// export: chatAnswerOutputInstructionV1
+export declare function chatAnswerOutputInstructionV1(qualityMode: ChatQualityModeV1, repair?: boolean): string;
+
 // export: ChatAnswerV1
 export interface ChatAnswerV1 {
     schema: typeof CHAT_ANSWER_SCHEMA_V1;
@@ -1432,6 +1467,33 @@ export interface ChatDeepFinalCeilingResultV1 {
     maximumModelCalls: number;
 }
 
+// export: chatDraftForFinalizationAfterHostRepairV1
+export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): ChatAgentDraftV2 | undefined;
+
+// export: chatDraftMissingRequestFacetsV1
+export declare function chatDraftMissingRequestFacetsV1(input: {
+    draft: unknown;
+    requestFacets: readonly string[];
+}): string[];
+
+// export: chatDraftNeedsHostRepairV1
+export declare function chatDraftNeedsHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): boolean;
+
+// export: ChatDraftRepairRejectionReasonV1
+export type ChatDraftRepairRejectionReasonV1 = typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
+
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
     evidenceId: string;
@@ -1557,6 +1619,12 @@ export interface ChatInteractionStateV1 {
         resolvedAt: string;
     }>;
 }
+
+// export: chatMarkdownIntegrityIssuesV1
+export declare function chatMarkdownIntegrityIssuesV1(markdown: string): ChatMarkdownIntegrityIssueV1[];
+
+// export: ChatMarkdownIntegrityIssueV1
+export type ChatMarkdownIntegrityIssueV1 = typeof CHAT_MARKDOWN_INTEGRITY_ISSUES_V1[number];
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -1727,6 +1795,14 @@ export interface ChatPresentationStreamEventV1 {
     channel: "reasoning-summary" | "answer-markdown";
     status: "started" | "delta" | "reset" | "completed";
     delta?: string;
+}
+
+// export: ChatPtcReferenceRejectionV1
+export interface ChatPtcReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-anchor-ref";
+    currentAnchorRefs: string[];
 }
 
 // export: ChatQualityModeV1
@@ -2423,6 +2499,15 @@ export declare function completeChatTurnV1(input: {
     completedAt: string;
 }): ChatSessionV1;
 
+// export: completeResearchReportClaimSelectionV2
+export declare function completeResearchReportClaimSelectionV2(input: {
+    acceptedClaimIds: readonly string[];
+    selectedClaimIds?: readonly string[];
+    outlineClaimIds: readonly string[];
+    requiredOutlineClaimGroups?: readonly (readonly string[])[];
+    supersededClaimIds?: readonly string[];
+}): string[];
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -2571,6 +2656,7 @@ export declare function createChatSessionV1(input: {
 export declare function createChatStrategyDecisionControllerV1(input: {
     decision: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    initiallyAcknowledged?: boolean;
     onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
@@ -2614,6 +2700,12 @@ export declare function createChatWorkflowProposalControllerV1(input: {
     acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
     assertAccepted(): void;
 };
+
+// export: createCompactChatReferenceFactoryV1
+export declare function createCompactChatReferenceFactoryV1(input: {
+    prefix: "a" | "s" | "c";
+    reservedRefs?: readonly string[];
+}): () => string;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -2825,6 +2917,9 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
+// export: deriveChatRequestChecklistV1
+export declare function deriveChatRequestChecklistV1(question: string): string[];
+
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -2954,6 +3049,16 @@ export interface FinalizeResearchReportV2Input {
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
     reconciliation?: readonly ResearchReportReconciliationV2[];
+    coverageTargets?: readonly {
+        id: string;
+        question: string;
+    }[];
+    acceptedGaps?: readonly {
+        id: string;
+        summary: string;
+        targetId?: string;
+        sourceIds: readonly string[];
+    }[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -3111,6 +3216,18 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: inspectChatDraftAfterHostRepairV1
+export declare function inspectChatDraftAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): {
+    draft?: ChatAgentDraftV2;
+    rejectionReasons: ChatDraftRepairRejectionReasonV1[];
+};
 
 // export: interruptChatTurnV1
 export declare function interruptChatTurnV1(input: {
@@ -3364,7 +3481,7 @@ export declare function parseResearchRetrievalAssessmentV1(value: unknown): Rese
 export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
-export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 
 // export: pauseChatTurnV1
 export declare function pauseChatTurnV1(input: {
@@ -3454,7 +3571,7 @@ export declare function projectResearchReconciliationInputV1(input: {
 export declare function projectResearchReportDraftArtifactV1(input: {
     turnId: string;
     graphRevision?: number;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     updatedAt: string;
 }): ResearchReportDraftArtifactV1;
 
@@ -3882,29 +3999,8 @@ export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1
 export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     title: z.ZodString;
-    executiveSummary: z.ZodString;
-    findings: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            fact: "fact";
-            inference: "inference";
-        }>;
-        summary: z.ZodString;
-        detail: z.ZodOptional<z.ZodString>;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    relationships: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            verified: "verified";
-            hypothesis: "hypothesis";
-        }>;
-        jiraIssueKey: z.ZodString;
-        confluenceContentId: z.ZodString;
-        summary: z.ZodString;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    limitations: z.ZodArray<z.ZodString>;
     selectedClaimIds: z.ZodArray<z.ZodString>;
-}, z.core.$strict>;
+}, z.core.$strip>;
 
 // export: RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1: "atlcli.research-evidence-chunk/v1";
@@ -3914,6 +4010,9 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
+
+// export: RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2
+export declare const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown>;
 
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
@@ -3926,6 +4025,7 @@ export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.researc
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "atlassian.bound.read",
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
@@ -4146,7 +4246,7 @@ export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
     };
     readonly synthesizer: {
         readonly profile: "strong-reasoner";
-        readonly reasoning: "thorough";
+        readonly reasoning: "balanced";
     };
 };
 
@@ -4379,7 +4479,7 @@ export interface ResearchAcceptedPacketV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
-    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     hostObservedUsage: ResearchTaskUsageV1;
     acceptedAt: string;
 }
@@ -4550,6 +4650,7 @@ export declare class ResearchCapabilityBroker {
         sourceId: string;
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
+    searchAttemptedProducts(): ResearchProduct[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
@@ -6113,8 +6214,9 @@ export interface ResearchReconciliationDefectV1 {
         id: string;
     };
     code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     references: ResearchSupportRefV1[];
-    explanation: string;
+    explanation?: string;
     suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
 }
 
@@ -6225,7 +6327,7 @@ export interface ResearchReportDraftArtifactV1 {
     turnId: string;
     graphRevision?: number;
     updatedAt: string;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 }
 
 // export: ResearchReportLanguageV1
@@ -6238,6 +6340,8 @@ export interface ResearchReportReconciliationV2 {
         kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
         id: string;
     };
+    defectCode?: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }
@@ -6455,6 +6559,7 @@ export interface ResearchRunBudgetStateV1 {
 
 // export: ResearchRunCountsV1
 export interface ResearchRunCountsV1 {
+    modelCalls?: number;
     ptcCalls: number;
     httpCalls: number;
     jiraItems: number;
@@ -9151,6 +9256,19 @@ export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
     readonly maximumFalseCompletenessCount: 0;
 }>;
 
+// export: CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1
+export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
+    "invalid-schema",
+    "malformed-factual-markdown",
+    "missing-detailed-factual-block",
+    "orphan-heading",
+    "missing-request-facet",
+    "repeated-request-facet",
+    "repeated-prose",
+    "incomplete-prose",
+    "observation-classification-conflict"
+];
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -9159,6 +9277,13 @@ export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interacti
 
 // export: CHAT_INTERACTION_STATE_SCHEMA_V1
 export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
+export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
+    "incomplete-prose",
+    "observation-classification-conflict",
+    "repeated-prose"
+];
 
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
@@ -9184,6 +9309,9 @@ export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatP
 
 // export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
 export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
+// export: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1
+export declare const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1: "atlcli.chat-ptc-reference-rejection/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -9557,6 +9685,18 @@ export interface ChatAnswerGapV1 {
     sourceIds: string[];
 }
 
+// export: chatAnswerOutputContractV1
+export declare function chatAnswerOutputContractV1(qualityMode: ChatQualityModeV1): ChatAnswerOutputContractV1;
+
+// export: ChatAnswerOutputContractV1
+export interface ChatAnswerOutputContractV1 {
+    maxWords: number;
+    maxBlocks: number;
+}
+
+// export: chatAnswerOutputInstructionV1
+export declare function chatAnswerOutputInstructionV1(qualityMode: ChatQualityModeV1, repair?: boolean): string;
+
 // export: ChatAnswerV1
 export interface ChatAnswerV1 {
     schema: typeof CHAT_ANSWER_SCHEMA_V1;
@@ -9716,6 +9856,33 @@ export interface ChatDeepFinalCeilingResultV1 {
     maximumModelCalls: number;
 }
 
+// export: chatDraftForFinalizationAfterHostRepairV1
+export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): ChatAgentDraftV2 | undefined;
+
+// export: chatDraftMissingRequestFacetsV1
+export declare function chatDraftMissingRequestFacetsV1(input: {
+    draft: unknown;
+    requestFacets: readonly string[];
+}): string[];
+
+// export: chatDraftNeedsHostRepairV1
+export declare function chatDraftNeedsHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): boolean;
+
+// export: ChatDraftRepairRejectionReasonV1
+export type ChatDraftRepairRejectionReasonV1 = typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
+
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
     evidenceId: string;
@@ -9841,6 +10008,12 @@ export interface ChatInteractionStateV1 {
         resolvedAt: string;
     }>;
 }
+
+// export: chatMarkdownIntegrityIssuesV1
+export declare function chatMarkdownIntegrityIssuesV1(markdown: string): ChatMarkdownIntegrityIssueV1[];
+
+// export: ChatMarkdownIntegrityIssueV1
+export type ChatMarkdownIntegrityIssueV1 = typeof CHAT_MARKDOWN_INTEGRITY_ISSUES_V1[number];
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -10011,6 +10184,14 @@ export interface ChatPresentationStreamEventV1 {
     channel: "reasoning-summary" | "answer-markdown";
     status: "started" | "delta" | "reset" | "completed";
     delta?: string;
+}
+
+// export: ChatPtcReferenceRejectionV1
+export interface ChatPtcReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-anchor-ref";
+    currentAnchorRefs: string[];
 }
 
 // export: ChatQualityModeV1
@@ -10707,6 +10888,15 @@ export declare function completeChatTurnV1(input: {
     completedAt: string;
 }): ChatSessionV1;
 
+// export: completeResearchReportClaimSelectionV2
+export declare function completeResearchReportClaimSelectionV2(input: {
+    acceptedClaimIds: readonly string[];
+    selectedClaimIds?: readonly string[];
+    outlineClaimIds: readonly string[];
+    requiredOutlineClaimGroups?: readonly (readonly string[])[];
+    supersededClaimIds?: readonly string[];
+}): string[];
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -10855,6 +11045,7 @@ export declare function createChatSessionV1(input: {
 export declare function createChatStrategyDecisionControllerV1(input: {
     decision: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    initiallyAcknowledged?: boolean;
     onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
@@ -10898,6 +11089,12 @@ export declare function createChatWorkflowProposalControllerV1(input: {
     acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
     assertAccepted(): void;
 };
+
+// export: createCompactChatReferenceFactoryV1
+export declare function createCompactChatReferenceFactoryV1(input: {
+    prefix: "a" | "s" | "c";
+    reservedRefs?: readonly string[];
+}): () => string;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -11100,6 +11297,9 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
+// export: deriveChatRequestChecklistV1
+export declare function deriveChatRequestChecklistV1(question: string): string[];
+
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -11229,6 +11429,16 @@ export interface FinalizeResearchReportV2Input {
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
     reconciliation?: readonly ResearchReportReconciliationV2[];
+    coverageTargets?: readonly {
+        id: string;
+        question: string;
+    }[];
+    acceptedGaps?: readonly {
+        id: string;
+        summary: string;
+        targetId?: string;
+        sourceIds: readonly string[];
+    }[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -11386,6 +11596,18 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: inspectChatDraftAfterHostRepairV1
+export declare function inspectChatDraftAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): {
+    draft?: ChatAgentDraftV2;
+    rejectionReasons: ChatDraftRepairRejectionReasonV1[];
+};
 
 // export: interruptChatTurnV1
 export declare function interruptChatTurnV1(input: {
@@ -11639,7 +11861,7 @@ export declare function parseResearchRetrievalAssessmentV1(value: unknown): Rese
 export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
-export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 
 // export: pauseChatTurnV1
 export declare function pauseChatTurnV1(input: {
@@ -11729,7 +11951,7 @@ export declare function projectResearchReconciliationInputV1(input: {
 export declare function projectResearchReportDraftArtifactV1(input: {
     turnId: string;
     graphRevision?: number;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     updatedAt: string;
 }): ResearchReportDraftArtifactV1;
 
@@ -12157,29 +12379,8 @@ export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1
 export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     title: z.ZodString;
-    executiveSummary: z.ZodString;
-    findings: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            fact: "fact";
-            inference: "inference";
-        }>;
-        summary: z.ZodString;
-        detail: z.ZodOptional<z.ZodString>;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    relationships: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            verified: "verified";
-            hypothesis: "hypothesis";
-        }>;
-        jiraIssueKey: z.ZodString;
-        confluenceContentId: z.ZodString;
-        summary: z.ZodString;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    limitations: z.ZodArray<z.ZodString>;
     selectedClaimIds: z.ZodArray<z.ZodString>;
-}, z.core.$strict>;
+}, z.core.$strip>;
 
 // export: RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1: "atlcli.research-evidence-chunk/v1";
@@ -12189,6 +12390,9 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
+
+// export: RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2
+export declare const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown>;
 
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
@@ -12201,6 +12405,7 @@ export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.researc
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "atlassian.bound.read",
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
@@ -12421,7 +12626,7 @@ export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
     };
     readonly synthesizer: {
         readonly profile: "strong-reasoner";
-        readonly reasoning: "thorough";
+        readonly reasoning: "balanced";
     };
 };
 
@@ -12654,7 +12859,7 @@ export interface ResearchAcceptedPacketV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
-    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     hostObservedUsage: ResearchTaskUsageV1;
     acceptedAt: string;
 }
@@ -12825,6 +13030,7 @@ export declare class ResearchCapabilityBroker {
         sourceId: string;
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
+    searchAttemptedProducts(): ResearchProduct[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
@@ -14388,8 +14594,9 @@ export interface ResearchReconciliationDefectV1 {
         id: string;
     };
     code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     references: ResearchSupportRefV1[];
-    explanation: string;
+    explanation?: string;
     suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
 }
 
@@ -14500,7 +14707,7 @@ export interface ResearchReportDraftArtifactV1 {
     turnId: string;
     graphRevision?: number;
     updatedAt: string;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 }
 
 // export: ResearchReportLanguageV1
@@ -14513,6 +14720,8 @@ export interface ResearchReportReconciliationV2 {
         kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
         id: string;
     };
+    defectCode?: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }
@@ -14730,6 +14939,7 @@ export interface ResearchRunBudgetStateV1 {
 
 // export: ResearchRunCountsV1
 export interface ResearchRunCountsV1 {
+    modelCalls?: number;
     ptcCalls: number;
     httpCalls: number;
     jiraItems: number;
@@ -17415,6 +17625,19 @@ export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
     readonly maximumFalseCompletenessCount: 0;
 }>;
 
+// export: CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1
+export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
+    "invalid-schema",
+    "malformed-factual-markdown",
+    "missing-detailed-factual-block",
+    "orphan-heading",
+    "missing-request-facet",
+    "repeated-request-facet",
+    "repeated-prose",
+    "incomplete-prose",
+    "observation-classification-conflict"
+];
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -17423,6 +17646,13 @@ export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interacti
 
 // export: CHAT_INTERACTION_STATE_SCHEMA_V1
 export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
+export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
+    "incomplete-prose",
+    "observation-classification-conflict",
+    "repeated-prose"
+];
 
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
@@ -17448,6 +17678,9 @@ export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatP
 
 // export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
 export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
+// export: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1
+export declare const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1: "atlcli.chat-ptc-reference-rejection/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -17821,6 +18054,18 @@ export interface ChatAnswerGapV1 {
     sourceIds: string[];
 }
 
+// export: chatAnswerOutputContractV1
+export declare function chatAnswerOutputContractV1(qualityMode: ChatQualityModeV1): ChatAnswerOutputContractV1;
+
+// export: ChatAnswerOutputContractV1
+export interface ChatAnswerOutputContractV1 {
+    maxWords: number;
+    maxBlocks: number;
+}
+
+// export: chatAnswerOutputInstructionV1
+export declare function chatAnswerOutputInstructionV1(qualityMode: ChatQualityModeV1, repair?: boolean): string;
+
 // export: ChatAnswerV1
 export interface ChatAnswerV1 {
     schema: typeof CHAT_ANSWER_SCHEMA_V1;
@@ -17980,6 +18225,33 @@ export interface ChatDeepFinalCeilingResultV1 {
     maximumModelCalls: number;
 }
 
+// export: chatDraftForFinalizationAfterHostRepairV1
+export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): ChatAgentDraftV2 | undefined;
+
+// export: chatDraftMissingRequestFacetsV1
+export declare function chatDraftMissingRequestFacetsV1(input: {
+    draft: unknown;
+    requestFacets: readonly string[];
+}): string[];
+
+// export: chatDraftNeedsHostRepairV1
+export declare function chatDraftNeedsHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): boolean;
+
+// export: ChatDraftRepairRejectionReasonV1
+export type ChatDraftRepairRejectionReasonV1 = typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
+
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
     evidenceId: string;
@@ -18105,6 +18377,12 @@ export interface ChatInteractionStateV1 {
         resolvedAt: string;
     }>;
 }
+
+// export: chatMarkdownIntegrityIssuesV1
+export declare function chatMarkdownIntegrityIssuesV1(markdown: string): ChatMarkdownIntegrityIssueV1[];
+
+// export: ChatMarkdownIntegrityIssueV1
+export type ChatMarkdownIntegrityIssueV1 = typeof CHAT_MARKDOWN_INTEGRITY_ISSUES_V1[number];
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -18275,6 +18553,14 @@ export interface ChatPresentationStreamEventV1 {
     channel: "reasoning-summary" | "answer-markdown";
     status: "started" | "delta" | "reset" | "completed";
     delta?: string;
+}
+
+// export: ChatPtcReferenceRejectionV1
+export interface ChatPtcReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-anchor-ref";
+    currentAnchorRefs: string[];
 }
 
 // export: ChatQualityModeV1
@@ -18971,6 +19257,15 @@ export declare function completeChatTurnV1(input: {
     completedAt: string;
 }): ChatSessionV1;
 
+// export: completeResearchReportClaimSelectionV2
+export declare function completeResearchReportClaimSelectionV2(input: {
+    acceptedClaimIds: readonly string[];
+    selectedClaimIds?: readonly string[];
+    outlineClaimIds: readonly string[];
+    requiredOutlineClaimGroups?: readonly (readonly string[])[];
+    supersededClaimIds?: readonly string[];
+}): string[];
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -19119,6 +19414,7 @@ export declare function createChatSessionV1(input: {
 export declare function createChatStrategyDecisionControllerV1(input: {
     decision: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    initiallyAcknowledged?: boolean;
     onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
@@ -19162,6 +19458,12 @@ export declare function createChatWorkflowProposalControllerV1(input: {
     acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
     assertAccepted(): void;
 };
+
+// export: createCompactChatReferenceFactoryV1
+export declare function createCompactChatReferenceFactoryV1(input: {
+    prefix: "a" | "s" | "c";
+    reservedRefs?: readonly string[];
+}): () => string;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -19373,6 +19675,9 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
+// export: deriveChatRequestChecklistV1
+export declare function deriveChatRequestChecklistV1(question: string): string[];
+
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -19502,6 +19807,16 @@ export interface FinalizeResearchReportV2Input {
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
     reconciliation?: readonly ResearchReportReconciliationV2[];
+    coverageTargets?: readonly {
+        id: string;
+        question: string;
+    }[];
+    acceptedGaps?: readonly {
+        id: string;
+        summary: string;
+        targetId?: string;
+        sourceIds: readonly string[];
+    }[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -19659,6 +19974,18 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: inspectChatDraftAfterHostRepairV1
+export declare function inspectChatDraftAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): {
+    draft?: ChatAgentDraftV2;
+    rejectionReasons: ChatDraftRepairRejectionReasonV1[];
+};
 
 // export: interruptChatTurnV1
 export declare function interruptChatTurnV1(input: {
@@ -19912,7 +20239,7 @@ export declare function parseResearchRetrievalAssessmentV1(value: unknown): Rese
 export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
-export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 
 // export: pauseChatTurnV1
 export declare function pauseChatTurnV1(input: {
@@ -20002,7 +20329,7 @@ export declare function projectResearchReconciliationInputV1(input: {
 export declare function projectResearchReportDraftArtifactV1(input: {
     turnId: string;
     graphRevision?: number;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     updatedAt: string;
 }): ResearchReportDraftArtifactV1;
 
@@ -20430,29 +20757,8 @@ export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1
 export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     title: z.ZodString;
-    executiveSummary: z.ZodString;
-    findings: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            fact: "fact";
-            inference: "inference";
-        }>;
-        summary: z.ZodString;
-        detail: z.ZodOptional<z.ZodString>;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    relationships: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            verified: "verified";
-            hypothesis: "hypothesis";
-        }>;
-        jiraIssueKey: z.ZodString;
-        confluenceContentId: z.ZodString;
-        summary: z.ZodString;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    limitations: z.ZodArray<z.ZodString>;
     selectedClaimIds: z.ZodArray<z.ZodString>;
-}, z.core.$strict>;
+}, z.core.$strip>;
 
 // export: RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1: "atlcli.research-evidence-chunk/v1";
@@ -20462,6 +20768,9 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
+
+// export: RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2
+export declare const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown>;
 
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
@@ -20474,6 +20783,7 @@ export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_SCHEMA_V1: "atlcli.researc
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "atlassian.bound.read",
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
@@ -20694,7 +21004,7 @@ export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
     };
     readonly synthesizer: {
         readonly profile: "strong-reasoner";
-        readonly reasoning: "thorough";
+        readonly reasoning: "balanced";
     };
 };
 
@@ -20927,7 +21237,7 @@ export interface ResearchAcceptedPacketV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
-    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     hostObservedUsage: ResearchTaskUsageV1;
     acceptedAt: string;
 }
@@ -21098,6 +21408,7 @@ export declare class ResearchCapabilityBroker {
         sourceId: string;
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
+    searchAttemptedProducts(): ResearchProduct[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
@@ -22661,8 +22972,9 @@ export interface ResearchReconciliationDefectV1 {
         id: string;
     };
     code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     references: ResearchSupportRefV1[];
-    explanation: string;
+    explanation?: string;
     suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
 }
 
@@ -22773,7 +23085,7 @@ export interface ResearchReportDraftArtifactV1 {
     turnId: string;
     graphRevision?: number;
     updatedAt: string;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 }
 
 // export: ResearchReportLanguageV1
@@ -22786,6 +23098,8 @@ export interface ResearchReportReconciliationV2 {
         kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
         id: string;
     };
+    defectCode?: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }
@@ -23003,6 +23317,7 @@ export interface ResearchRunBudgetStateV1 {
 
 // export: ResearchRunCountsV1
 export interface ResearchRunCountsV1 {
+    modelCalls?: number;
     ptcCalls: number;
     httpCalls: number;
     jiraItems: number;
@@ -25329,6 +25644,9 @@ export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): st
 // export: buildResearchAcquisitionProgram
 export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string, maxDetailItems: number, maxSearchCalls?: number): string;
 
+// export: buildResearchBoundAcquisitionProgramV1
+export declare function buildResearchBoundAcquisitionProgramV1(anchors: readonly BoundEntityAnchorV1[], maxDetailItems: number): string;
+
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
@@ -25708,6 +26026,19 @@ export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
     readonly maximumFalseCompletenessCount: 0;
 }>;
 
+// export: CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1
+export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
+    "invalid-schema",
+    "malformed-factual-markdown",
+    "missing-detailed-factual-block",
+    "orphan-heading",
+    "missing-request-facet",
+    "repeated-request-facet",
+    "repeated-prose",
+    "incomplete-prose",
+    "observation-classification-conflict"
+];
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -25716,6 +26047,13 @@ export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interacti
 
 // export: CHAT_INTERACTION_STATE_SCHEMA_V1
 export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
+export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
+    "incomplete-prose",
+    "observation-classification-conflict",
+    "repeated-prose"
+];
 
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
@@ -25741,6 +26079,9 @@ export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatP
 
 // export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
 export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
+// export: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1
+export declare const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1: "atlcli.chat-ptc-reference-rejection/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -26123,6 +26464,18 @@ export interface ChatAnswerGapV1 {
     sourceIds: string[];
 }
 
+// export: chatAnswerOutputContractV1
+export declare function chatAnswerOutputContractV1(qualityMode: ChatQualityModeV1): ChatAnswerOutputContractV1;
+
+// export: ChatAnswerOutputContractV1
+export interface ChatAnswerOutputContractV1 {
+    maxWords: number;
+    maxBlocks: number;
+}
+
+// export: chatAnswerOutputInstructionV1
+export declare function chatAnswerOutputInstructionV1(qualityMode: ChatQualityModeV1, repair?: boolean): string;
+
 // export: ChatAnswerV1
 export interface ChatAnswerV1 {
     schema: typeof CHAT_ANSWER_SCHEMA_V1;
@@ -26282,6 +26635,33 @@ export interface ChatDeepFinalCeilingResultV1 {
     maximumModelCalls: number;
 }
 
+// export: chatDraftForFinalizationAfterHostRepairV1
+export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): ChatAgentDraftV2 | undefined;
+
+// export: chatDraftMissingRequestFacetsV1
+export declare function chatDraftMissingRequestFacetsV1(input: {
+    draft: unknown;
+    requestFacets: readonly string[];
+}): string[];
+
+// export: chatDraftNeedsHostRepairV1
+export declare function chatDraftNeedsHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): boolean;
+
+// export: ChatDraftRepairRejectionReasonV1
+export type ChatDraftRepairRejectionReasonV1 = typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
+
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
     evidenceId: string;
@@ -26407,6 +26787,12 @@ export interface ChatInteractionStateV1 {
         resolvedAt: string;
     }>;
 }
+
+// export: chatMarkdownIntegrityIssuesV1
+export declare function chatMarkdownIntegrityIssuesV1(markdown: string): ChatMarkdownIntegrityIssueV1[];
+
+// export: ChatMarkdownIntegrityIssueV1
+export type ChatMarkdownIntegrityIssueV1 = typeof CHAT_MARKDOWN_INTEGRITY_ISSUES_V1[number];
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -26577,6 +26963,14 @@ export interface ChatPresentationStreamEventV1 {
     channel: "reasoning-summary" | "answer-markdown";
     status: "started" | "delta" | "reset" | "completed";
     delta?: string;
+}
+
+// export: ChatPtcReferenceRejectionV1
+export interface ChatPtcReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-anchor-ref";
+    currentAnchorRefs: string[];
 }
 
 // export: ChatQualityModeV1
@@ -27287,6 +27681,18 @@ export declare function completeChatTurnV1(input: {
     completedAt: string;
 }): ChatSessionV1;
 
+// export: completeResearchNodeStructuredCandidateV1
+export declare function completeResearchNodeStructuredCandidateV1(node: Pick<ResearchGraphNodeV1, "outputSchema" | "grantedCapabilityIds">, candidate: unknown): unknown;
+
+// export: completeResearchReportClaimSelectionV2
+export declare function completeResearchReportClaimSelectionV2(input: {
+    acceptedClaimIds: readonly string[];
+    selectedClaimIds?: readonly string[];
+    outlineClaimIds: readonly string[];
+    requiredOutlineClaimGroups?: readonly (readonly string[])[];
+    supersededClaimIds?: readonly string[];
+}): string[];
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -27521,6 +27927,7 @@ export declare function createChatSessionV1(input: {
 export declare function createChatStrategyDecisionControllerV1(input: {
     decision: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    initiallyAcknowledged?: boolean;
     onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
@@ -27564,6 +27971,12 @@ export declare function createChatWorkflowProposalControllerV1(input: {
     acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
     assertAccepted(): void;
 };
+
+// export: createCompactChatReferenceFactoryV1
+export declare function createCompactChatReferenceFactoryV1(input: {
+    prefix: "a" | "s" | "c";
+    reservedRefs?: readonly string[];
+}): () => string;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -27823,6 +28236,9 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
+// export: deriveChatRequestChecklistV1
+export declare function deriveChatRequestChecklistV1(question: string): string[];
+
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -27865,6 +28281,7 @@ export interface DynamicResearchSubagentOptions {
     maxSearchPagesPerProduct: number;
     maxDetailItemsPerProduct: number;
     maxPacketChars: number;
+    structuredOutputStrategy?: "tool" | "provider";
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     createModelBudgetMiddleware?: (node: ResearchGraphNodeV1 & {
         roleId: ResearchGraphRoleV1;
@@ -27998,6 +28415,16 @@ export interface FinalizeResearchReportV2Input {
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
     reconciliation?: readonly ResearchReportReconciliationV2[];
+    coverageTargets?: readonly {
+        id: string;
+        question: string;
+    }[];
+    acceptedGaps?: readonly {
+        id: string;
+        summary: string;
+        targetId?: string;
+        sourceIds: readonly string[];
+    }[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -28156,6 +28583,18 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: inspectChatDraftAfterHostRepairV1
+export declare function inspectChatDraftAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): {
+    draft?: ChatAgentDraftV2;
+    rejectionReasons: ChatDraftRepairRejectionReasonV1[];
+};
+
 // export: interruptChatTurnV1
 export declare function interruptChatTurnV1(input: {
     session: ChatSessionV1;
@@ -28313,6 +28752,9 @@ export declare function normalizeResearchPacketReferenceModelBodyV2(input: {
     checkedAt: string;
 }): Promise<ResearchPacketBodyV2>;
 
+// export: normalizeResearchReconciliationCandidateV1
+export declare function normalizeResearchReconciliationCandidateV1(candidate: unknown): unknown;
+
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
@@ -28342,6 +28784,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: optionalAnalysisFallbackForStructuredOutputFailureV1
+export declare function optionalAnalysisFallbackForStructuredOutputFailureV1(role: ResearchGraphRoleV1, error: unknown): ResearchPacketReferenceModelBodyV2 | undefined;
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
@@ -28411,7 +28856,7 @@ export declare function parseResearchRetrievalAssessmentV1(value: unknown): Rese
 export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
-export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 
 // export: pauseChatTurnV1
 export declare function pauseChatTurnV1(input: {
@@ -28501,7 +28946,7 @@ export declare function projectResearchReconciliationInputV1(input: {
 export declare function projectResearchReportDraftArtifactV1(input: {
     turnId: string;
     graphRevision?: number;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     updatedAt: string;
 }): ResearchReportDraftArtifactV1;
 
@@ -28946,29 +29391,8 @@ export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1
 export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     title: z.ZodString;
-    executiveSummary: z.ZodString;
-    findings: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            fact: "fact";
-            inference: "inference";
-        }>;
-        summary: z.ZodString;
-        detail: z.ZodOptional<z.ZodString>;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    relationships: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            verified: "verified";
-            hypothesis: "hypothesis";
-        }>;
-        jiraIssueKey: z.ZodString;
-        confluenceContentId: z.ZodString;
-        summary: z.ZodString;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    limitations: z.ZodArray<z.ZodString>;
     selectedClaimIds: z.ZodArray<z.ZodString>;
-}, z.core.$strict>;
+}, z.core.$strip>;
 
 // export: RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1: "atlcli.research-evidence-chunk/v1";
@@ -28978,6 +29402,9 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
+
+// export: RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2
+export declare const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown>;
 
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
@@ -28993,6 +29420,7 @@ export declare const RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1: false;
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "atlassian.bound.read",
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
@@ -29219,7 +29647,7 @@ export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
     };
     readonly synthesizer: {
         readonly profile: "strong-reasoner";
-        readonly reasoning: "thorough";
+        readonly reasoning: "balanced";
     };
 };
 
@@ -29397,6 +29825,18 @@ export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY
 export declare const RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY: "atlcli_research_structured_output_repair";
 
+// export: RESEARCH_SUBAGENT_MODEL_CALL_LIMITS_V1
+export declare const RESEARCH_SUBAGENT_MODEL_CALL_LIMITS_V1: {
+    readonly provider: {
+        readonly toolFree: 1;
+        readonly acquisition: 2;
+    };
+    readonly tool: {
+        readonly toolFree: 2;
+        readonly acquisition: 3;
+    };
+};
+
 // export: RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1
 export declare const RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1: Readonly<Record<ResearchGraphRoleV1, number>>;
 
@@ -29469,7 +29909,7 @@ export interface ResearchAcceptedPacketV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
-    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     hostObservedUsage: ResearchTaskUsageV1;
     acceptedAt: string;
 }
@@ -29658,6 +30098,7 @@ export declare class ResearchCapabilityBroker {
         sourceId: string;
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
+    searchAttemptedProducts(): ResearchProduct[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
@@ -31281,8 +31722,9 @@ export interface ResearchReconciliationDefectV1 {
         id: string;
     };
     code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     references: ResearchSupportRefV1[];
-    explanation: string;
+    explanation?: string;
     suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
 }
 
@@ -31396,7 +31838,7 @@ export interface ResearchReportDraftArtifactV1 {
     turnId: string;
     graphRevision?: number;
     updatedAt: string;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 }
 
 // export: ResearchReportLanguageV1
@@ -31409,6 +31851,8 @@ export interface ResearchReportReconciliationV2 {
         kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
         id: string;
     };
+    defectCode?: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }
@@ -31626,6 +32070,7 @@ export interface ResearchRunBudgetStateV1 {
 
 // export: ResearchRunCountsV1
 export interface ResearchRunCountsV1 {
+    modelCalls?: number;
     ptcCalls: number;
     httpCalls: number;
     jiraItems: number;
@@ -33228,6 +33673,9 @@ export interface ResolveResearchSessionScopeClarificationInputV1 {
 // export: resolveResearchSessionScopeClarificationV1
 export declare function resolveResearchSessionScopeClarificationV1(input: ResolveResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
 
+// export: responseSchemaForResearchNodeV1
+export declare function responseSchemaForResearchNodeV1(node: Pick<ResearchGraphNodeV1, "roleId" | "outputSchema" | "grantedCapabilityIds">): Record<string, unknown>;
+
 // export: responseSchemaForResearchRole
 export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1, outputSchema?: ResearchTaskOutputSchemaV1): Record<string, unknown>;
 
@@ -34078,6 +34526,9 @@ export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): st
 // export: buildResearchAcquisitionProgram
 export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string, maxDetailItems: number, maxSearchCalls?: number): string;
 
+// export: buildResearchBoundAcquisitionProgramV1
+export declare function buildResearchBoundAcquisitionProgramV1(anchors: readonly BoundEntityAnchorV1[], maxDetailItems: number): string;
+
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
@@ -34457,6 +34908,19 @@ export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
     readonly maximumFalseCompletenessCount: 0;
 }>;
 
+// export: CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1
+export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
+    "invalid-schema",
+    "malformed-factual-markdown",
+    "missing-detailed-factual-block",
+    "orphan-heading",
+    "missing-request-facet",
+    "repeated-request-facet",
+    "repeated-prose",
+    "incomplete-prose",
+    "observation-classification-conflict"
+];
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -34465,6 +34929,13 @@ export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interacti
 
 // export: CHAT_INTERACTION_STATE_SCHEMA_V1
 export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
+export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
+    "incomplete-prose",
+    "observation-classification-conflict",
+    "repeated-prose"
+];
 
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
@@ -34490,6 +34961,9 @@ export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatP
 
 // export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
 export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
+// export: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1
+export declare const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1: "atlcli.chat-ptc-reference-rejection/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -34872,6 +35346,18 @@ export interface ChatAnswerGapV1 {
     sourceIds: string[];
 }
 
+// export: chatAnswerOutputContractV1
+export declare function chatAnswerOutputContractV1(qualityMode: ChatQualityModeV1): ChatAnswerOutputContractV1;
+
+// export: ChatAnswerOutputContractV1
+export interface ChatAnswerOutputContractV1 {
+    maxWords: number;
+    maxBlocks: number;
+}
+
+// export: chatAnswerOutputInstructionV1
+export declare function chatAnswerOutputInstructionV1(qualityMode: ChatQualityModeV1, repair?: boolean): string;
+
 // export: ChatAnswerV1
 export interface ChatAnswerV1 {
     schema: typeof CHAT_ANSWER_SCHEMA_V1;
@@ -35031,6 +35517,33 @@ export interface ChatDeepFinalCeilingResultV1 {
     maximumModelCalls: number;
 }
 
+// export: chatDraftForFinalizationAfterHostRepairV1
+export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): ChatAgentDraftV2 | undefined;
+
+// export: chatDraftMissingRequestFacetsV1
+export declare function chatDraftMissingRequestFacetsV1(input: {
+    draft: unknown;
+    requestFacets: readonly string[];
+}): string[];
+
+// export: chatDraftNeedsHostRepairV1
+export declare function chatDraftNeedsHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): boolean;
+
+// export: ChatDraftRepairRejectionReasonV1
+export type ChatDraftRepairRejectionReasonV1 = typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
+
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
     evidenceId: string;
@@ -35156,6 +35669,12 @@ export interface ChatInteractionStateV1 {
         resolvedAt: string;
     }>;
 }
+
+// export: chatMarkdownIntegrityIssuesV1
+export declare function chatMarkdownIntegrityIssuesV1(markdown: string): ChatMarkdownIntegrityIssueV1[];
+
+// export: ChatMarkdownIntegrityIssueV1
+export type ChatMarkdownIntegrityIssueV1 = typeof CHAT_MARKDOWN_INTEGRITY_ISSUES_V1[number];
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -35326,6 +35845,14 @@ export interface ChatPresentationStreamEventV1 {
     channel: "reasoning-summary" | "answer-markdown";
     status: "started" | "delta" | "reset" | "completed";
     delta?: string;
+}
+
+// export: ChatPtcReferenceRejectionV1
+export interface ChatPtcReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-anchor-ref";
+    currentAnchorRefs: string[];
 }
 
 // export: ChatQualityModeV1
@@ -36025,6 +36552,18 @@ export declare function completeChatTurnV1(input: {
     completedAt: string;
 }): ChatSessionV1;
 
+// export: completeResearchNodeStructuredCandidateV1
+export declare function completeResearchNodeStructuredCandidateV1(node: Pick<ResearchGraphNodeV1, "outputSchema" | "grantedCapabilityIds">, candidate: unknown): unknown;
+
+// export: completeResearchReportClaimSelectionV2
+export declare function completeResearchReportClaimSelectionV2(input: {
+    acceptedClaimIds: readonly string[];
+    selectedClaimIds?: readonly string[];
+    outlineClaimIds: readonly string[];
+    requiredOutlineClaimGroups?: readonly (readonly string[])[];
+    supersededClaimIds?: readonly string[];
+}): string[];
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -36259,6 +36798,7 @@ export declare function createChatSessionV1(input: {
 export declare function createChatStrategyDecisionControllerV1(input: {
     decision: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    initiallyAcknowledged?: boolean;
     onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
@@ -36302,6 +36842,12 @@ export declare function createChatWorkflowProposalControllerV1(input: {
     acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
     assertAccepted(): void;
 };
+
+// export: createCompactChatReferenceFactoryV1
+export declare function createCompactChatReferenceFactoryV1(input: {
+    prefix: "a" | "s" | "c";
+    reservedRefs?: readonly string[];
+}): () => string;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -36561,6 +37107,9 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
+// export: deriveChatRequestChecklistV1
+export declare function deriveChatRequestChecklistV1(question: string): string[];
+
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -36603,6 +37152,7 @@ export interface DynamicResearchSubagentOptions {
     maxSearchPagesPerProduct: number;
     maxDetailItemsPerProduct: number;
     maxPacketChars: number;
+    structuredOutputStrategy?: "tool" | "provider";
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     createModelBudgetMiddleware?: (node: ResearchGraphNodeV1 & {
         roleId: ResearchGraphRoleV1;
@@ -36751,6 +37301,16 @@ export interface FinalizeResearchReportV2Input {
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
     reconciliation?: readonly ResearchReportReconciliationV2[];
+    coverageTargets?: readonly {
+        id: string;
+        question: string;
+    }[];
+    acceptedGaps?: readonly {
+        id: string;
+        summary: string;
+        targetId?: string;
+        sourceIds: readonly string[];
+    }[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -36909,6 +37469,18 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: inspectChatDraftAfterHostRepairV1
+export declare function inspectChatDraftAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): {
+    draft?: ChatAgentDraftV2;
+    rejectionReasons: ChatDraftRepairRejectionReasonV1[];
+};
+
 // export: interruptChatTurnV1
 export declare function interruptChatTurnV1(input: {
     session: ChatSessionV1;
@@ -37066,6 +37638,9 @@ export declare function normalizeResearchPacketReferenceModelBodyV2(input: {
     checkedAt: string;
 }): Promise<ResearchPacketBodyV2>;
 
+// export: normalizeResearchReconciliationCandidateV1
+export declare function normalizeResearchReconciliationCandidateV1(candidate: unknown): unknown;
+
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
@@ -37095,6 +37670,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: optionalAnalysisFallbackForStructuredOutputFailureV1
+export declare function optionalAnalysisFallbackForStructuredOutputFailureV1(role: ResearchGraphRoleV1, error: unknown): ResearchPacketReferenceModelBodyV2 | undefined;
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
@@ -37164,7 +37742,7 @@ export declare function parseResearchRetrievalAssessmentV1(value: unknown): Rese
 export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
-export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 
 // export: pauseChatTurnV1
 export declare function pauseChatTurnV1(input: {
@@ -37254,7 +37832,7 @@ export declare function projectResearchReconciliationInputV1(input: {
 export declare function projectResearchReportDraftArtifactV1(input: {
     turnId: string;
     graphRevision?: number;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     updatedAt: string;
 }): ResearchReportDraftArtifactV1;
 
@@ -37699,29 +38277,8 @@ export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1
 export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     title: z.ZodString;
-    executiveSummary: z.ZodString;
-    findings: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            fact: "fact";
-            inference: "inference";
-        }>;
-        summary: z.ZodString;
-        detail: z.ZodOptional<z.ZodString>;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    relationships: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            verified: "verified";
-            hypothesis: "hypothesis";
-        }>;
-        jiraIssueKey: z.ZodString;
-        confluenceContentId: z.ZodString;
-        summary: z.ZodString;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    limitations: z.ZodArray<z.ZodString>;
     selectedClaimIds: z.ZodArray<z.ZodString>;
-}, z.core.$strict>;
+}, z.core.$strip>;
 
 // export: RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1: "atlcli.research-evidence-chunk/v1";
@@ -37731,6 +38288,9 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
+
+// export: RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2
+export declare const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown>;
 
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
@@ -37746,6 +38306,7 @@ export declare const RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1: false;
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "atlassian.bound.read",
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
@@ -37972,7 +38533,7 @@ export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
     };
     readonly synthesizer: {
         readonly profile: "strong-reasoner";
-        readonly reasoning: "thorough";
+        readonly reasoning: "balanced";
     };
 };
 
@@ -38150,6 +38711,18 @@ export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY
 export declare const RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY: "atlcli_research_structured_output_repair";
 
+// export: RESEARCH_SUBAGENT_MODEL_CALL_LIMITS_V1
+export declare const RESEARCH_SUBAGENT_MODEL_CALL_LIMITS_V1: {
+    readonly provider: {
+        readonly toolFree: 1;
+        readonly acquisition: 2;
+    };
+    readonly tool: {
+        readonly toolFree: 2;
+        readonly acquisition: 3;
+    };
+};
+
 // export: RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1
 export declare const RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1: Readonly<Record<ResearchGraphRoleV1, number>>;
 
@@ -38222,7 +38795,7 @@ export interface ResearchAcceptedPacketV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
-    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     hostObservedUsage: ResearchTaskUsageV1;
     acceptedAt: string;
 }
@@ -38411,6 +38984,7 @@ export declare class ResearchCapabilityBroker {
         sourceId: string;
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
+    searchAttemptedProducts(): ResearchProduct[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
@@ -40034,8 +40608,9 @@ export interface ResearchReconciliationDefectV1 {
         id: string;
     };
     code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     references: ResearchSupportRefV1[];
-    explanation: string;
+    explanation?: string;
     suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
 }
 
@@ -40149,7 +40724,7 @@ export interface ResearchReportDraftArtifactV1 {
     turnId: string;
     graphRevision?: number;
     updatedAt: string;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 }
 
 // export: ResearchReportLanguageV1
@@ -40162,6 +40737,8 @@ export interface ResearchReportReconciliationV2 {
         kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
         id: string;
     };
+    defectCode?: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }
@@ -40379,6 +40956,7 @@ export interface ResearchRunBudgetStateV1 {
 
 // export: ResearchRunCountsV1
 export interface ResearchRunCountsV1 {
+    modelCalls?: number;
     ptcCalls: number;
     httpCalls: number;
     jiraItems: number;
@@ -41984,6 +42562,9 @@ export interface ResolveResearchSessionScopeClarificationInputV1 {
 
 // export: resolveResearchSessionScopeClarificationV1
 export declare function resolveResearchSessionScopeClarificationV1(input: ResolveResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: responseSchemaForResearchNodeV1
+export declare function responseSchemaForResearchNodeV1(node: Pick<ResearchGraphNodeV1, "roleId" | "outputSchema" | "grantedCapabilityIds">): Record<string, unknown>;
 
 // export: responseSchemaForResearchRole
 export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1, outputSchema?: ResearchTaskOutputSchemaV1): Record<string, unknown>;
@@ -43778,6 +44359,8 @@ export interface ResearchReportReconciliationV2 {
         kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
         id: string;
     };
+    defectCode?: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }
@@ -43865,6 +44448,7 @@ export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprov
 
 // export: ResearchRunCountsV1
 export interface ResearchRunCountsV1 {
+    modelCalls?: number;
     ptcCalls: number;
     httpCalls: number;
     jiraItems: number;
@@ -44073,6 +44657,7 @@ export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "atlassian.bound.read",
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
@@ -44871,6 +45456,9 @@ export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): st
 // export: buildResearchAcquisitionProgram
 export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string, maxDetailItems: number, maxSearchCalls?: number): string;
 
+// export: buildResearchBoundAcquisitionProgramV1
+export declare function buildResearchBoundAcquisitionProgramV1(anchors: readonly BoundEntityAnchorV1[], maxDetailItems: number): string;
+
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
@@ -45250,6 +45838,19 @@ export declare const CHAT_DEEP_FINAL_CEILINGS_V1: Readonly<{
     readonly maximumFalseCompletenessCount: 0;
 }>;
 
+// export: CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1
+export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
+    "invalid-schema",
+    "malformed-factual-markdown",
+    "missing-detailed-factual-block",
+    "orphan-heading",
+    "missing-request-facet",
+    "repeated-request-facet",
+    "repeated-prose",
+    "incomplete-prose",
+    "observation-classification-conflict"
+];
+
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
 export declare const CHAT_EVIDENCE_MEMORY_SCHEMA_V1: "atlcli.chat-evidence-memory/v1";
 
@@ -45258,6 +45859,13 @@ export declare const CHAT_INTERACTION_STATE_PATH_V1: "/.atlcli/chat/v1/interacti
 
 // export: CHAT_INTERACTION_STATE_SCHEMA_V1
 export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-state/v1";
+
+// export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
+export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
+    "incomplete-prose",
+    "observation-classification-conflict",
+    "repeated-prose"
+];
 
 // export: CHAT_OPERATIONAL_MEMORY_SCHEMA_V1
 export declare const CHAT_OPERATIONAL_MEMORY_SCHEMA_V1: "atlcli.chat-operational-memory/v1";
@@ -45283,6 +45891,9 @@ export declare const CHAT_PERFORMANCE_BENCHMARK_MATRIX_V1: Readonly<Record<ChatP
 
 // export: CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1
 export declare const CHAT_PERFORMANCE_RECEIPT_SCHEMA_V1: "atlcli.chat-performance-receipt/v1";
+
+// export: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1
+export declare const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1: "atlcli.chat-ptc-reference-rejection/v1";
 
 // export: CHAT_QUALITY_MODES_V1
 export declare const CHAT_QUALITY_MODES_V1: readonly [
@@ -45665,6 +46276,18 @@ export interface ChatAnswerGapV1 {
     sourceIds: string[];
 }
 
+// export: chatAnswerOutputContractV1
+export declare function chatAnswerOutputContractV1(qualityMode: ChatQualityModeV1): ChatAnswerOutputContractV1;
+
+// export: ChatAnswerOutputContractV1
+export interface ChatAnswerOutputContractV1 {
+    maxWords: number;
+    maxBlocks: number;
+}
+
+// export: chatAnswerOutputInstructionV1
+export declare function chatAnswerOutputInstructionV1(qualityMode: ChatQualityModeV1, repair?: boolean): string;
+
 // export: ChatAnswerV1
 export interface ChatAnswerV1 {
     schema: typeof CHAT_ANSWER_SCHEMA_V1;
@@ -45824,6 +46447,33 @@ export interface ChatDeepFinalCeilingResultV1 {
     maximumModelCalls: number;
 }
 
+// export: chatDraftForFinalizationAfterHostRepairV1
+export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): ChatAgentDraftV2 | undefined;
+
+// export: chatDraftMissingRequestFacetsV1
+export declare function chatDraftMissingRequestFacetsV1(input: {
+    draft: unknown;
+    requestFacets: readonly string[];
+}): string[];
+
+// export: chatDraftNeedsHostRepairV1
+export declare function chatDraftNeedsHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): boolean;
+
+// export: ChatDraftRepairRejectionReasonV1
+export type ChatDraftRepairRejectionReasonV1 = typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
+
 // export: ChatEvidenceMemoryEntryV1
 export interface ChatEvidenceMemoryEntryV1 {
     evidenceId: string;
@@ -45949,6 +46599,12 @@ export interface ChatInteractionStateV1 {
         resolvedAt: string;
     }>;
 }
+
+// export: chatMarkdownIntegrityIssuesV1
+export declare function chatMarkdownIntegrityIssuesV1(markdown: string): ChatMarkdownIntegrityIssueV1[];
+
+// export: ChatMarkdownIntegrityIssueV1
+export type ChatMarkdownIntegrityIssueV1 = typeof CHAT_MARKDOWN_INTEGRITY_ISSUES_V1[number];
 
 // export: ChatModelBindingV1
 export interface ChatModelBindingV1 {
@@ -46119,6 +46775,14 @@ export interface ChatPresentationStreamEventV1 {
     channel: "reasoning-summary" | "answer-markdown";
     status: "started" | "delta" | "reset" | "completed";
     delta?: string;
+}
+
+// export: ChatPtcReferenceRejectionV1
+export interface ChatPtcReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-anchor-ref";
+    currentAnchorRefs: string[];
 }
 
 // export: ChatQualityModeV1
@@ -46818,6 +47482,18 @@ export declare function completeChatTurnV1(input: {
     completedAt: string;
 }): ChatSessionV1;
 
+// export: completeResearchNodeStructuredCandidateV1
+export declare function completeResearchNodeStructuredCandidateV1(node: Pick<ResearchGraphNodeV1, "outputSchema" | "grantedCapabilityIds">, candidate: unknown): unknown;
+
+// export: completeResearchReportClaimSelectionV2
+export declare function completeResearchReportClaimSelectionV2(input: {
+    acceptedClaimIds: readonly string[];
+    selectedClaimIds?: readonly string[];
+    outlineClaimIds: readonly string[];
+    requiredOutlineClaimGroups?: readonly (readonly string[])[];
+    supersededClaimIds?: readonly string[];
+}): string[];
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
@@ -47052,6 +47728,7 @@ export declare function createChatSessionV1(input: {
 export declare function createChatStrategyDecisionControllerV1(input: {
     decision: ChatStrategyDecisionV1;
     budget: ResearchRunBudget;
+    initiallyAcknowledged?: boolean;
     onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
 }): {
     tool: DynamicStructuredTool;
@@ -47095,6 +47772,12 @@ export declare function createChatWorkflowProposalControllerV1(input: {
     acceptedResponse(): ChatWorkflowAdmissionResponseV1 | undefined;
     assertAccepted(): void;
 };
+
+// export: createCompactChatReferenceFactoryV1
+export declare function createCompactChatReferenceFactoryV1(input: {
+    prefix: "a" | "s" | "c";
+    reservedRefs?: readonly string[];
+}): () => string;
 
 // export: createHostValidationAbstentionPacketV2
 export declare function createHostValidationAbstentionPacketV2(modelBody: unknown, allowedSourceIds?: readonly string[]): ResearchPacketBodyV2;
@@ -47354,6 +48037,9 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
+// export: deriveChatRequestChecklistV1
+export declare function deriveChatRequestChecklistV1(question: string): string[];
+
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -47396,6 +48082,7 @@ export interface DynamicResearchSubagentOptions {
     maxSearchPagesPerProduct: number;
     maxDetailItemsPerProduct: number;
     maxPacketChars: number;
+    structuredOutputStrategy?: "tool" | "provider";
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     createModelBudgetMiddleware?: (node: ResearchGraphNodeV1 & {
         roleId: ResearchGraphRoleV1;
@@ -47544,6 +48231,16 @@ export interface FinalizeResearchReportV2Input {
     limitations?: readonly string[];
     selectedSourceIds?: readonly string[];
     reconciliation?: readonly ResearchReportReconciliationV2[];
+    coverageTargets?: readonly {
+        id: string;
+        question: string;
+    }[];
+    acceptedGaps?: readonly {
+        id: string;
+        summary: string;
+        targetId?: string;
+        sourceIds: readonly string[];
+    }[];
     run: ResearchRunSummaryV1;
     checkedAt: string;
 }
@@ -47702,6 +48399,18 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: inspectChatDraftAfterHostRepairV1
+export declare function inspectChatDraftAfterHostRepairV1(input: {
+    draft: unknown;
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+    requestFacets?: readonly string[];
+    question?: string;
+}): {
+    draft?: ChatAgentDraftV2;
+    rejectionReasons: ChatDraftRepairRejectionReasonV1[];
+};
+
 // export: interruptChatTurnV1
 export declare function interruptChatTurnV1(input: {
     session: ChatSessionV1;
@@ -47859,6 +48568,9 @@ export declare function normalizeResearchPacketReferenceModelBodyV2(input: {
     checkedAt: string;
 }): Promise<ResearchPacketBodyV2>;
 
+// export: normalizeResearchReconciliationCandidateV1
+export declare function normalizeResearchReconciliationCandidateV1(candidate: unknown): unknown;
+
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
@@ -47888,6 +48600,9 @@ export declare function openDurableChatConversationWorkspaceV1(input: {
     createdAt: string;
     leaseExpiresAt: string;
 }): Promise<ResearchWorkspace>;
+
+// export: optionalAnalysisFallbackForStructuredOutputFailureV1
+export declare function optionalAnalysisFallbackForStructuredOutputFailureV1(role: ResearchGraphRoleV1, error: unknown): ResearchPacketReferenceModelBodyV2 | undefined;
 
 // export: parseChatInteractionStateV1
 export declare function parseChatInteractionStateV1(value: unknown): ChatInteractionStateV1;
@@ -47957,7 +48672,7 @@ export declare function parseResearchRetrievalAssessmentV1(value: unknown): Rese
 export declare function parseResearchRunBudgetStateV1(value: unknown, limits?: ResearchLimitsV1): ResearchRunBudgetStateV1;
 
 // export: parseResearchTaskBodyV1
-export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 
 // export: pauseChatTurnV1
 export declare function pauseChatTurnV1(input: {
@@ -48047,7 +48762,7 @@ export declare function projectResearchReconciliationInputV1(input: {
 export declare function projectResearchReportDraftArtifactV1(input: {
     turnId: string;
     graphRevision?: number;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     updatedAt: string;
 }): ResearchReportDraftArtifactV1;
 
@@ -48492,29 +49207,8 @@ export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1
 export declare const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     title: z.ZodString;
-    executiveSummary: z.ZodString;
-    findings: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            fact: "fact";
-            inference: "inference";
-        }>;
-        summary: z.ZodString;
-        detail: z.ZodOptional<z.ZodString>;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    relationships: z.ZodArray<z.ZodObject<{
-        classification: z.ZodEnum<{
-            verified: "verified";
-            hypothesis: "hypothesis";
-        }>;
-        jiraIssueKey: z.ZodString;
-        confluenceContentId: z.ZodString;
-        summary: z.ZodString;
-        sourceIds: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>>;
-    limitations: z.ZodArray<z.ZodString>;
     selectedClaimIds: z.ZodArray<z.ZodString>;
-}, z.core.$strict>;
+}, z.core.$strip>;
 
 // export: RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1: "atlcli.research-evidence-chunk/v1";
@@ -48524,6 +49218,9 @@ export declare const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1: "atlcli.research-eviden
 
 // export: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1
 export declare const RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1: "atlcli.research-evidence-store-index/v1";
+
+// export: RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2
+export declare const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown>;
 
 // export: RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1
 export declare const RESEARCH_GAP_ASSESSMENT_ARTIFACT_ID_V1: "artifact:gap-assessment";
@@ -48539,6 +49236,7 @@ export declare const RESEARCH_GENERAL_PURPOSE_SUBAGENT_ENABLED_V1: false;
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "atlassian.bound.read",
     "jira.issue.search",
     "jira.issue.get",
     "wiki.search",
@@ -48765,7 +49463,7 @@ export declare const RESEARCH_ROLE_MODEL_PROFILES_V1: {
     };
     readonly synthesizer: {
         readonly profile: "strong-reasoner";
-        readonly reasoning: "thorough";
+        readonly reasoning: "balanced";
     };
 };
 
@@ -48943,6 +49641,18 @@ export declare const RESEARCH_SESSION_SCOPE_REVISION_SCHEMA_V1: "atlcli.research
 // export: RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY
 export declare const RESEARCH_STRUCTURED_OUTPUT_REPAIR_CONFIG_KEY: "atlcli_research_structured_output_repair";
 
+// export: RESEARCH_SUBAGENT_MODEL_CALL_LIMITS_V1
+export declare const RESEARCH_SUBAGENT_MODEL_CALL_LIMITS_V1: {
+    readonly provider: {
+        readonly toolFree: 1;
+        readonly acquisition: 2;
+    };
+    readonly tool: {
+        readonly toolFree: 2;
+        readonly acquisition: 3;
+    };
+};
+
 // export: RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1
 export declare const RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1: Readonly<Record<ResearchGraphRoleV1, number>>;
 
@@ -49015,7 +49725,7 @@ export interface ResearchAcceptedPacketV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
-    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
     hostObservedUsage: ResearchTaskUsageV1;
     acceptedAt: string;
 }
@@ -49204,6 +49914,7 @@ export declare class ResearchCapabilityBroker {
         sourceId: string;
     }[]): void;
     sourceLedger(): ResearchSourceReferenceV1[];
+    searchAttemptedProducts(): ResearchProduct[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     readSectionReferenceLedger(): ResearchReadSectionReferenceV1[];
     exactAnchors(): BoundEntityAnchorV1[];
@@ -50827,8 +51538,9 @@ export interface ResearchReconciliationDefectV1 {
         id: string;
     };
     code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     references: ResearchSupportRefV1[];
-    explanation: string;
+    explanation?: string;
     suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
 }
 
@@ -50942,7 +51654,7 @@ export interface ResearchReportDraftArtifactV1 {
     turnId: string;
     graphRevision?: number;
     updatedAt: string;
-    draft: ResearchAgentDraftV1;
+    draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 }
 
 // export: ResearchReportLanguageV1
@@ -50955,6 +51667,8 @@ export interface ResearchReportReconciliationV2 {
         kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
         id: string;
     };
+    defectCode?: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    gapIds?: string[];
     decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }
@@ -51172,6 +51886,7 @@ export interface ResearchRunBudgetStateV1 {
 
 // export: ResearchRunCountsV1
 export interface ResearchRunCountsV1 {
+    modelCalls?: number;
     ptcCalls: number;
     httpCalls: number;
     jiraItems: number;
@@ -52777,6 +53492,9 @@ export interface ResolveResearchSessionScopeClarificationInputV1 {
 
 // export: resolveResearchSessionScopeClarificationV1
 export declare function resolveResearchSessionScopeClarificationV1(input: ResolveResearchSessionScopeClarificationInputV1): Promise<ResearchSessionV1>;
+
+// export: responseSchemaForResearchNodeV1
+export declare function responseSchemaForResearchNodeV1(node: Pick<ResearchGraphNodeV1, "roleId" | "outputSchema" | "grantedCapabilityIds">): Record<string, unknown>;
 
 // export: responseSchemaForResearchRole
 export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1, outputSchema?: ResearchTaskOutputSchemaV1): Record<string, unknown>;

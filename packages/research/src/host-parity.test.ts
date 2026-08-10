@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fakeModel } from "@langchain/core/testing";
+import { AIMessage } from "@langchain/core/messages";
 import {
   RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
   RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
@@ -12,7 +13,6 @@ import {
   createMemoryResearchWorkspace,
   createResearchBriefV1,
   createResearchSessionV1,
-  encodeResearchTaskDescriptionV1,
   initializeResearchSessionTurnV1,
   normalizeResearchRequestV1,
   type ResearchOneShotEventV1,
@@ -54,20 +54,9 @@ const graph = composeResearchGraphV1(createResearchBriefV1({
   requestedPlanApproval: "automatic",
   requestedReconciliation: "auto",
 }));
-const jiraNode = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
-const wikiNode = graph.nodes.find((node) => node.id === "research-node:wiki-research")!;
-const joinNode = graph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
-const coverageNode = graph.nodes.find((node) => node.id === "research-node:coverage-moderation")!;
-const reconciliationNode = graph.nodes.find((node) => node.roleId === "reconciler")!;
-const synthesizerNode = graph.nodes.find((node) => node.roleId === "synthesizer")!;
-
 const draft = {
   title: "Cross-host synthetic report",
-  executiveSummary: "No source evidence was supplied to this parity run.",
   selectedClaimIds: [],
-  findings: [],
-  relationships: [],
-  limitations: ["Synthetic host-parity scenario."],
 };
 
 const emptyPacket = (answeredQuestion: string) => ({
@@ -88,21 +77,26 @@ const critique = {
     severity: "important",
     target: { kind: "coverage", id: "coverage:primary-question" },
     code: "missing_coverage",
+    gapIds: [],
     references: [],
-    explanation: "The synthetic host-parity scenario contains no source evidence.",
     suggestedAction: "abstain",
   }],
   proposedFollowUps: [],
 };
 
 function model() {
-  const selectedNodeIds = new Set(graph.nodes
-    .filter((node) => node.kind !== "repair")
-    .map((node) => node.id));
+  const jiraNode = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
+  const wikiNode = graph.nodes.find((node) => node.id === "research-node:wiki-research")!;
+  const joinNode = graph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+  const coverageNode = graph.nodes.find((node) => node.id === "research-node:coverage-moderation")!;
+  const reconcilerNode = graph.nodes.find((node) => node.roleId === "reconciler")!;
+  const synthesizerNode = graph.nodes.find((node) => node.roleId === "synthesizer")!;
+  const selected = [jiraNode, wikiNode, joinNode, coverageNode, reconcilerNode, synthesizerNode];
+  const selectedNodeIds = new Set(selected.map((node) => node.id));
   const proposal = {
     basedOnBriefRevision: graph.basedOnBriefRevision,
     basedOnGraphRevision: graph.revision,
-    nodes: graph.nodes.filter((node) => selectedNodeIds.has(node.id)).map((node) => ({
+    nodes: selected.map((node) => ({
       nodeId: node.id,
       dependencies: node.dependencies.filter((dependency) => selectedNodeIds.has(dependency)),
       reasonCodes: [node.reasonCodes[0]!],
@@ -110,112 +104,62 @@ function model() {
   };
   const taskId = (node: typeof jiraNode) => researchTaskIdForNodeV1(graph, node);
   const subagentType = (node: typeof jiraNode) => researchSubagentTypeForNodeV1(node);
+  const dependency = (node: typeof jiraNode, variable: string) =>
+    `{ taskId: ${JSON.stringify(taskId(node))}, result: ${variable} }`;
   const code = `
     const acceptedGraph = JSON.parse(await tools.researchGraphPropose(${JSON.stringify(proposal)}));
-    const packets = await Promise.all([
+    if (acceptedGraph.schema !== "atlcli.accepted-research-graph/v1") throw new Error("Graph proposal was not accepted.");
+    const [jira, wiki] = await Promise.all([
       task({
-        description: ${JSON.stringify(encodeResearchTaskDescriptionV1({
-          taskId: taskId(jiraNode),
-          objective: jiraNode.objective,
-        }))},
+        description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(jiraNode))}, objective: ${JSON.stringify(jiraNode.objective)} }),
         subagentType: ${JSON.stringify(subagentType(jiraNode))},
         responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
       }),
       task({
-        description: ${JSON.stringify(encodeResearchTaskDescriptionV1({
-          taskId: taskId(wikiNode),
-          objective: wikiNode.objective,
-        }))},
+        description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(wikiNode))}, objective: ${JSON.stringify(wikiNode.objective)} }),
         subagentType: ${JSON.stringify(subagentType(wikiNode))},
         responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
       })
     ]);
     const joined = await task({
-      description: JSON.stringify({
-        schema: "atlcli.research-task-dispatch/v1",
-        taskId: ${JSON.stringify(taskId(joinNode))},
-        objective: ${JSON.stringify(joinNode.objective)},
-        dependencyResults: [
-          { taskId: ${JSON.stringify(taskId(jiraNode))}, result: packets[0] },
-          { taskId: ${JSON.stringify(taskId(wikiNode))}, result: packets[1] }
-        ]
-      }),
+      description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(joinNode))}, objective: ${JSON.stringify(joinNode.objective)}, dependencyResults: [${dependency(jiraNode, "jira")}, ${dependency(wikiNode, "wiki")}] }),
       subagentType: ${JSON.stringify(subagentType(joinNode))},
       responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
     });
     const coverage = await task({
-      description: JSON.stringify({
-        schema: "atlcli.research-task-dispatch/v1",
-        taskId: ${JSON.stringify(taskId(coverageNode))},
-        objective: ${JSON.stringify(coverageNode.objective)},
-        dependencyResults: [
-          { taskId: ${JSON.stringify(taskId(jiraNode))}, result: packets[0] },
-          { taskId: ${JSON.stringify(taskId(wikiNode))}, result: packets[1] },
-          { taskId: ${JSON.stringify(taskId(joinNode))}, result: joined }
-        ]
-      }),
+      description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(coverageNode))}, objective: ${JSON.stringify(coverageNode.objective)}, dependencyResults: [${dependency(jiraNode, "jira")}, ${dependency(wikiNode, "wiki")}, ${dependency(joinNode, "joined")}] }),
       subagentType: ${JSON.stringify(subagentType(coverageNode))},
       responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
     });
     const critique = await task({
-      description: JSON.stringify({
-        schema: "atlcli.research-task-dispatch/v1",
-        taskId: ${JSON.stringify(taskId(reconciliationNode))},
-        objective: ${JSON.stringify(reconciliationNode.objective)},
-        dependencyResults: [
-          { taskId: ${JSON.stringify(taskId(jiraNode))}, result: packets[0] },
-          { taskId: ${JSON.stringify(taskId(wikiNode))}, result: packets[1] },
-          { taskId: ${JSON.stringify(taskId(joinNode))}, result: joined },
-          { taskId: ${JSON.stringify(taskId(coverageNode))}, result: coverage }
-        ]
-      }),
-      subagentType: ${JSON.stringify(subagentType(reconciliationNode))},
+      description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(reconcilerNode))}, objective: ${JSON.stringify(reconcilerNode.objective)}, dependencyResults: [${dependency(jiraNode, "jira")}, ${dependency(wikiNode, "wiki")}, ${dependency(joinNode, "joined")}, ${dependency(coverageNode, "coverage")}] }),
+      subagentType: ${JSON.stringify(subagentType(reconcilerNode))},
       responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
     });
-    JSON.parse(await tools.researchReconciliationDispositions({
-      basedOnGraphRevision: ${graph.revision},
-      reconciliationTaskId: ${JSON.stringify(taskId(reconciliationNode))},
-      decisions: [{
-        defectId: "defect:host-parity-coverage",
-        decision: "abstain",
-        reasonCode: "material_defect"
-      }]
-    }));
+    JSON.parse(await tools.researchReconciliationDispositions({ basedOnGraphRevision: ${graph.revision}, reconciliationTaskId: ${JSON.stringify(taskId(reconcilerNode))}, decisions: [{ defectId: "defect:host-parity-coverage", decision: "abstain", reasonCode: "material_defect" }] }));
     const finalDraft = await task({
-      description: JSON.stringify({
-        schema: "atlcli.research-task-dispatch/v1",
-        taskId: ${JSON.stringify(taskId(synthesizerNode))},
-        objective: ${JSON.stringify(synthesizerNode.objective)},
-        dependencyResults: [
-          { taskId: ${JSON.stringify(taskId(jiraNode))}, result: packets[0] },
-          { taskId: ${JSON.stringify(taskId(wikiNode))}, result: packets[1] },
-          { taskId: ${JSON.stringify(taskId(joinNode))}, result: joined },
-          { taskId: ${JSON.stringify(taskId(coverageNode))}, result: coverage },
-          { taskId: ${JSON.stringify(taskId(reconciliationNode))}, result: critique }
-        ]
-      }),
-      subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizerNode))},
+      description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(synthesizerNode))}, objective: ${JSON.stringify(synthesizerNode.objective)}, dependencyResults: [${dependency(jiraNode, "jira")}, ${dependency(wikiNode, "wiki")}, ${dependency(joinNode, "joined")}, ${dependency(coverageNode, "coverage")}, ${dependency(reconcilerNode, "critique")}] }),
+      subagentType: ${JSON.stringify(subagentType(synthesizerNode))},
       responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
     });
     finalDraft;
   `;
   return fakeModel()
-    .respondWithTools([{ name: "eval", args: { code } }]);
+    .respondWithTools([{ name: "eval", args: { code } }])
+    .respond(new AIMessage("The accepted workflow completed."));
 }
 
 function subagentModels() {
-  const packetModel = (answeredQuestion: string) => fakeModel()
-    .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket(answeredQuestion) }]);
-  return {
-    [jiraNode.id]: packetModel("Jira branch"),
-    [wikiNode.id]: packetModel("Confluence branch"),
-    [joinNode.id]: packetModel("Joined branch"),
-    [coverageNode.id]: packetModel("Coverage branch"),
-    [reconciliationNode.id]: fakeModel()
-      .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }]),
-    [synthesizerNode.id]: fakeModel()
-      .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }]),
-  };
+  return Object.fromEntries(graph.nodes
+    .filter((node) => node.kind !== "repair" && node.roleId)
+    .map((node) => [node.id, node.roleId === "reconciler"
+      ? fakeModel().respondWithTools([{ name: "ReconciliationBodyV1", args: critique }])
+      : node.roleId === "synthesizer"
+        ? fakeModel().respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+        : fakeModel().respondWithTools([{
+            name: "ResearchPacketBodyV1",
+            args: emptyPacket(node.objective),
+          }])]));
 }
 
 const providers = {
@@ -242,23 +186,20 @@ describe("research one-shot host parity", () => {
       runId: "host-parity",
       now: () => Date.parse("2026-07-31T12:00:00.000Z"),
     };
-
-    const [nodeReport, browserReport] = await Promise.all([
-      runNodeResearchAgent({
-        ...common,
-        model: model(),
-        subagentModelsByNode: subagentModels(),
-        workspace: nodeWorkspace,
-        options: { onEvent: (event) => nodeEvents.push(event) },
-      }),
-      runBrowserResearchAgent({
-        ...common,
-        model: model(),
-        subagentModelsByNode: subagentModels(),
-        workspace: browserWorkspace,
-        options: { onEvent: (event) => browserEvents.push(event) },
-      }),
-    ]);
+    const nodeReport = await runNodeResearchAgent({
+      ...common,
+      model: model(),
+      subagentModelsByNode: subagentModels(),
+      workspace: nodeWorkspace,
+      options: { onEvent: (event) => nodeEvents.push(event) },
+    });
+    const browserReport = await runBrowserResearchAgent({
+      ...common,
+      model: model(),
+      subagentModelsByNode: subagentModels(),
+      workspace: browserWorkspace,
+      options: { onEvent: (event) => browserEvents.push(event) },
+    });
     expect(nodeReport).toEqual(browserReport);
     expect(new TextEncoder().encode(nodeReport.markdown)).toEqual(
       new TextEncoder().encode(browserReport.markdown),
@@ -305,11 +246,7 @@ const resumedRequest = normalizeResearchRequestV1({
 
 const resumedDraft = {
   title: "Recovered cross-host synthetic report",
-  executiveSummary: "The recovered branches contain no source evidence.",
   selectedClaimIds: [],
-  findings: [],
-  relationships: [],
-  limitations: ["Synthetic resumed host-parity scenario."],
 };
 
 const resumedCritique = {
@@ -319,8 +256,8 @@ const resumedCritique = {
     severity: "important",
     target: { kind: "coverage", id: "coverage:primary-question" },
     code: "missing_coverage",
+    gapIds: [],
     references: [],
-    explanation: "The recovered synthetic scenario contains no source evidence.",
     suggestedAction: "abstain",
   }],
   proposedFollowUps: [],
@@ -502,7 +439,7 @@ async function createResumedRuntimeInput() {
       subagentType: critiqueTask.subagentType,
       responseSchema: responseSchemas[critiqueTask.outputSchema]
     });
-    JSON.parse(await tools.researchReconciliationDispositions({
+    const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({
       basedOnGraphRevision: continuation.graphRevision,
       reconciliationTaskId: critiqueTask.taskId,
       decisions: [{
@@ -511,6 +448,16 @@ async function createResumedRuntimeInput() {
         reasonCode: "material_defect"
       }]
     }));
+    const repairTask = acceptedDispositions.repairTask;
+    const repairResult = repairTask === undefined ? null : await task({
+      description: JSON.stringify({
+        schema: "atlcli.research-task-dispatch/v1",
+        taskId: repairTask.taskId,
+        objective: repairTask.objective
+      }),
+      subagentType: repairTask.subagentType,
+      responseSchema: responseSchemas[repairTask.outputSchema]
+    });
     const synthesisFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
     const synthesisTask = synthesisFrontier.tasks[0];
     const finalDraft = await task({
@@ -525,8 +472,7 @@ async function createResumedRuntimeInput() {
     finalDraft;
   `;
   const model = fakeModel()
-    .respondWithTools([{ name: "eval", args: { code: supervisorCode } }])
-    .respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: resumedDraft }]);
+    .respondWithTools([{ name: "eval", args: { code: supervisorCode } }]);
   const subagentModelsByNode = {
     ["research-node:cross-product-join"]: fakeModel().respondWithTools([{
       name: "ResearchPacketBodyV1",

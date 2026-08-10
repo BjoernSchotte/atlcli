@@ -3,9 +3,9 @@
 > Status: T0-T2 complete; the refreshed private CLI matrix passes all frozen
 > local-gold, lifecycle, mode-isolation, and integrity checks across seven
 > Quick, Auto, Deep, and separate Deep Research runs. The installed-MV3 subset
-> and explicit operator-review gates remain open. T4 reconciliation has
-> started, but its
-> verification and final receipt gates remain open. This slice turns the
+> is complete; the explicit operator-review gates remain open. T4 reconciliation has
+> a customer-free evidence record, but its monolithic root-suite and final
+> revision-bound receipt gates remain open. This slice turns the
 > existing Chat gold labels and isolated functional tests into one executable,
 > privacy-safe release decision. Private Atlassian questions, sources, answers,
 > URLs, and transcripts remain outside Git.
@@ -149,7 +149,7 @@ gold only; it does not close installed-extension or operator-review gates.
 - [x] Run at least two approved real Confluence pages individually and one
       connected follow-up; include both a simple and a materially analytical
       question.
-- [ ] Run a small installed-extension subset after rebuilding/reloading it.
+- [x] Run a small installed-extension subset after rebuilding/reloading it.
 
 Acceptance:
 
@@ -161,7 +161,7 @@ Acceptance:
 
 - [ ] Run focused tests, full tests, typecheck, production build, browser/output
       gates, public API/closure gates, and `check:research-privacy`.
-- [ ] Add an evidence record containing only customer-free methodology,
+- [x] Add an evidence record containing only customer-free methodology,
       aggregate measurements, commands, and commit references.
 - [x] Mark superseded status in the older Chat quality plans without pretending
       that contract-only checks were runtime evidence.
@@ -172,7 +172,7 @@ Acceptance:
 
 - [ ] One command produces a passing release-candidate receipt from the required
       synthetic, packed, lifecycle, and private proof inputs.
-- [ ] A staged-diff privacy scan passes immediately before commit and push.
+- [x] A staged-diff privacy scan passes immediately before commit and push.
 
 ## Unresolved questions
 

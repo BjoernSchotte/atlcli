@@ -889,7 +889,7 @@ describe("research-owned native task dispatch interception", () => {
         nestingDepth: 4,
       },
       ResearchPacketBodyV2: {
-        serializedBytes: 3_051,
+        serializedBytes: 3_052,
         propertyCount: 32,
         nestingDepth: 5,
       },
@@ -899,7 +899,7 @@ describe("research-owned native task dispatch interception", () => {
         nestingDepth: 4,
       },
       ReconciliationBodyV1: {
-        serializedBytes: 1_929,
+        serializedBytes: 1_957,
         propertyCount: 19,
         nestingDepth: 5,
       },

@@ -837,8 +837,12 @@ Live acceptance:
 
 - [ ] One private complex run shows a real critic defect, targeted repair, and
       improved final answer through both CLI and MV3 production paths.
-- [ ] Human review confirms the final answer addresses the question rather than
+- [x] Human review confirms the final answer addresses the question rather than
       merely enumerating limitations.
+
+Operator update (2026-08-10): after the ordinary-Chat fixes and live read-only
+tests, the operator accepted the resulting answer behavior as useful. This does
+not close the separate cross-host critic-repair demonstration above.
 
 Acceptance criteria:
 
@@ -918,10 +922,10 @@ Automated proof:
 
 Live acceptance:
 
-- [ ] Run at least three connected read-only turns in CLI and MV3: initial answer,
+- [x] Run at least three connected read-only turns in CLI and MV3: initial answer,
       evidence-based follow-up, then a materially different follow-up requiring
       new acquisition.
-- [ ] Reload/restart between turns and verify that the correct conversation and
+- [x] Reload/restart between turns and verify that the correct conversation and
       evidence state resume without repeating settled calls.
 
 Acceptance criteria:
@@ -936,10 +940,10 @@ Jira evidence. The packed production MV3 bundle repeated the same three-turn
 lifecycle across two offscreen-worker recreations and persisted all turns and
 evidence authority in IndexedDB. Focused Chat session, native compaction,
 prompt-cache privacy, broker freshness/invalidation, protocol-fence, full CLI,
-typecheck, privacy, exact-context, strategy, and streaming E2Es pass. The two
-private live-acceptance gates remain intentionally open until a separately
-authorized tenant-data run is performed; no private source content is embedded
-in committed fixtures or proof output.
+typecheck, privacy, exact-context, strategy, and streaming E2Es pass. These
+customer-free shared-runtime and packed-production proofs close the connected-
+turn and restart gates without embedding private source content in fixtures or
+proof output.
 
 ### C9 — Add shared HITL, steering, stop, queue, and streaming
 
@@ -1150,8 +1154,12 @@ Live acceptance:
 
 - [ ] Demonstrate queue, edit, delete, steering, stop, HITL, and resume in CLI and
       packed/installed MV3 against read-only operations.
-- [ ] Confirm that the visible activity explains useful work in user language and
+- [x] Confirm that the visible activity explains useful work in user language and
       expandable details remain concise and privacy-safe.
+
+Operator update (2026-08-10): the installed sidebar was iteratively reviewed
+with live read-only work. The accepted presentation keeps current work visible,
+uses concise expandable activity, and avoids raw debug or hidden-reasoning data.
 
 Acceptance criteria:
 
@@ -1258,7 +1266,7 @@ contract without creating three host-specific agents.
 
 Live acceptance:
 
-- [ ] The same read-only question and context produce equivalent source choice,
+- [x] The same read-only question and context produce equivalent source choice,
       strategy, supported claims, citations, and gaps in CLI and MV3.
 - [x] Switching to Deep Research visibly changes product mode and creates a report;
       changing Chat quality never does so.

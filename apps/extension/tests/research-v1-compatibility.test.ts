@@ -148,7 +148,7 @@ _None._
 
 - Model: \`fixture-model\`
 - Confluence provider: \`rest\`
-- Complete: yes
+- Run completed: yes
 - Duration: 1000 ms
 - Calls: 2 PTC / 4 HTTP
 - Search candidates: 1 Jira / 1 Confluence

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fakeModel } from "@langchain/core/testing";
+import { AIMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { runResearchAgent } from "../agent-runtime.node.js";
 import {
@@ -116,6 +117,11 @@ const draft = {
   findings: [],
   relationships: [],
   limitations: ["Customer-free deterministic runtime comparison."],
+};
+
+const dynamicDraft = {
+  title: draft.title,
+  selectedClaimIds: [],
 };
 
 const SINGLE_AGENT_PROGRAM = `
@@ -360,7 +366,8 @@ function workflowProgram(graph: ResearchGraphV1): string {
 
 function supervisorModel(graph: ResearchGraphV1): BaseChatModel {
   return fakeModel()
-    .respondWithTools([{ name: "eval", args: { code: workflowProgram(graph) } }]);
+    .respondWithTools([{ name: "eval", args: { code: workflowProgram(graph) } }])
+    .respond(new AIMessage("The accepted workflow completed."));
 }
 
 function subagentModels(graph: ResearchGraphV1): Partial<Record<string, BaseChatModel>> {
@@ -373,7 +380,7 @@ function subagentModels(graph: ResearchGraphV1): Partial<Record<string, BaseChat
       : node.roleId === "reconciler"
         ? fakeModel().respondWithTools([{ name: "ReconciliationBodyV1", args: emptyCritique }])
         : node.roleId === "synthesizer"
-          ? fakeModel().respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: draft }])
+          ? fakeModel().respondWithTools([{ name: "AtlcliDynamicResearchAgentDraftV1", args: dynamicDraft }])
           : fakeModel().respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket(node.objective) }]),
     ]));
 }
