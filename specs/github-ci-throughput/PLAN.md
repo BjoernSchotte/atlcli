@@ -1,6 +1,6 @@
 # GitHub CI throughput and merge-ready latency
 
-- Status: proposed
+- Status: implemented locally; live promotion evidence pending
 - Planning baseline: `27d2e95bd90ea0695f5f7442efec807ec1dca155`
   (`main`, 2026-07-30)
 - Investigation reference:

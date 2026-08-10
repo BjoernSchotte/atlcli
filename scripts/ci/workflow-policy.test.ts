@@ -42,13 +42,20 @@ const yamlLiteral = (source: string, header: RegExp): string | null => {
 
 const requiredGateEnv = {
   CHANGES: "success",
-  CODE_REQUIRED: "true",
+  PROOF_MODE: "required",
+  STATIC_REQUIRED: "true",
+  UNIT_REQUIRED: "true",
+  ASTRO_REQUIRED: "true",
   CONSUMER_REQUIRED: "true",
+  PDF_REQUIRED: "true",
+  BROWSER_REQUIRED: "true",
   DOCS_REQUIRED: "true",
   README_MEDIA_REQUIRED: "true",
   EVENT_NAME: "pull_request",
+  PRIVACY: "success",
   DOCS: "success",
   README_MEDIA: "success",
+  DRAFT_QUALITY: "skipped",
   TEST: "success",
   CONSUMER: "success",
   MACOS: "success",
@@ -72,11 +79,12 @@ function runRequiredGate(
 }
 
 describe("CI workflow policy", () => {
-  it("keeps one stable required check around selectively skipped jobs", async () => {
+  it("emits exactly one mode-named aggregate around selectively skipped jobs", async () => {
     const ci = await workflow("ci.yml");
     expect(ci).toContain("bun scripts/ci/classify-changes.ts --full");
     expect(ci).toContain("bun scripts/ci/classify-changes.ts --null");
-    expect(ci).toContain("name: required");
+    expect(ci).toContain("bun scripts/ci/proof-mode.ts");
+    expect(ci).toContain("name: ${{ needs.changes.outputs.aggregateStatusName }}");
     expect(ci).toContain("if: always()");
     expect(ci).toContain("uses: ./.github/workflows/reusable-quality.yml");
     expect(ci).toContain("uses: ./.github/workflows/reusable-consumer-smoke.yml");
@@ -85,18 +93,25 @@ describe("CI workflow policy", () => {
     expect(readmeMedia).toContain("if: needs.changes.outputs.readmeMedia == 'true'");
     expect(readmeMedia).toContain("bun run check:readme-media");
     const required = ci.slice(ci.indexOf("  required:"));
+    expect(required).toContain("- research-privacy");
     expect(required).toContain("- readme-media");
-    expect(required).toContain("CODE_REQUIRED: ${{ needs.changes.outputs.code }}");
+    expect(required).toContain("PROOF_MODE: ${{ needs.changes.outputs.proofMode }}");
+    expect(required).toContain("STATIC_REQUIRED: ${{ needs.changes.outputs.staticQuality }}");
+    expect(required).toContain("UNIT_REQUIRED: ${{ needs.changes.outputs.unitTests }}");
+    expect(required).toContain("ASTRO_REQUIRED: ${{ needs.changes.outputs.astroPlatform }}");
     expect(required).toContain("CONSUMER_REQUIRED: ${{ needs.changes.outputs.consumer }}");
+    expect(required).toContain("PDF_REQUIRED: ${{ needs.changes.outputs.pdfPlatform }}");
+    expect(required).toContain("BROWSER_REQUIRED: ${{ needs.changes.outputs.browserHarness }}");
     expect(required).toContain("DOCS_REQUIRED: ${{ needs.changes.outputs.docs }}");
     expect(required).toContain("README_MEDIA_REQUIRED: ${{ needs.changes.outputs.readmeMedia }}");
     expect(required).toContain("EVENT_NAME: ${{ github.event_name }}");
-    expect(required).toContain('require_result "Product quality" "$CODE_REQUIRED" "$TEST"');
+    expect(required).toContain('require_result "Tracked research privacy" "true" "$PRIVACY"');
+    expect(required).toContain('require_result "Product quality" "$QUALITY_REQUIRED" "$TEST"');
     expect(required).toContain('require_result "Pinned consumer smoke" "$CONSUMER_REQUIRED" "$CONSUMER"');
     expect(required).toContain('require_result "Documentation" "$DOCS_SELECTED" "$DOCS"');
   });
 
-  it("accepts skipped jobs only when their route is genuinely unselected", async () => {
+  it("accepts only the exact gate result set selected by required, draft, or stale proof", async () => {
     const ci = await workflow("ci.yml");
     const required = ci.slice(ci.indexOf("  required:"));
     const script = yamlLiteral(required, /^ {8}run: \|$/);
@@ -105,8 +120,12 @@ describe("CI workflow policy", () => {
     expect(runRequiredGate(script!).exitCode).toBe(0);
     expect(
       runRequiredGate(script!, {
-        CODE_REQUIRED: "false",
+        STATIC_REQUIRED: "false",
+        UNIT_REQUIRED: "false",
+        ASTRO_REQUIRED: "false",
         CONSUMER_REQUIRED: "false",
+        PDF_REQUIRED: "false",
+        BROWSER_REQUIRED: "false",
         DOCS_REQUIRED: "true",
         README_MEDIA_REQUIRED: "false",
         TEST: "skipped",
@@ -121,7 +140,35 @@ describe("CI workflow policy", () => {
     // Main pushes intentionally delegate docs build/deploy to docs.yml.
     expect(runRequiredGate(script!, { EVENT_NAME: "push", DOCS: "skipped" }).exitCode).toBe(0);
 
+    expect(
+      runRequiredGate(script!, {
+        PROOF_MODE: "draft-fast",
+        DRAFT_QUALITY: "success",
+        TEST: "skipped",
+        CONSUMER: "skipped",
+        MACOS: "skipped",
+        WINDOWS: "skipped",
+        BROWSER: "skipped",
+      }).exitCode,
+    ).toBe(0);
+
+    expect(
+      runRequiredGate(script!, {
+        PROOF_MODE: "superseded",
+        PRIVACY: "skipped",
+        DOCS: "skipped",
+        README_MEDIA: "skipped",
+        DRAFT_QUALITY: "skipped",
+        TEST: "skipped",
+        CONSUMER: "skipped",
+        MACOS: "skipped",
+        WINDOWS: "skipped",
+        BROWSER: "skipped",
+      }).exitCode,
+    ).toBe(0);
+
     for (const overrides of [
+      { PRIVACY: "skipped" },
       { TEST: "skipped" },
       { CONSUMER: "skipped" },
       { DOCS: "skipped" },
@@ -130,7 +177,17 @@ describe("CI workflow policy", () => {
       { BROWSER: "skipped" },
       { README_MEDIA: "skipped" },
       { CHANGES: "skipped" },
-      { CODE_REQUIRED: "false", TEST: "success" },
+      {
+        STATIC_REQUIRED: "false",
+        UNIT_REQUIRED: "false",
+        ASTRO_REQUIRED: "false",
+        TEST: "success",
+      },
+      {
+        PROOF_MODE: "draft-fast",
+        DRAFT_QUALITY: "success",
+        TEST: "success",
+      },
     ]) {
       const result = runRequiredGate(script!, overrides);
       expect(result.exitCode, `unexpectedly accepted ${JSON.stringify(overrides)}`).not.toBe(0);
@@ -143,13 +200,18 @@ describe("CI workflow policy", () => {
     expect(ci).toContain("group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}");
     expect(ci).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
     expect(ci).toMatch(/schedule:\n\s+# Full unfiltered drift guard/);
+    expect(ci).toContain("FULL_RUN: ${{ github.event_name == 'push'");
   });
 
   it("revalidates a pull request when it leaves draft", async () => {
     const ci = await workflow("ci.yml");
     const trigger = pullRequestTrigger(ci);
     expect(trigger).not.toBeNull();
-    expect(trigger).toContain("types: [opened, synchronize, reopened, ready_for_review]");
+    expect(trigger).toContain(
+      "types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]",
+    );
+    expect(ci).toContain("pull.draft");
+    expect(ci).toContain("pull.head.sha !== process.env.EXPECTED_HEAD_SHA");
   });
 
   it("is ready to run full proof for merge-queue candidates", async () => {
@@ -161,7 +223,7 @@ describe("CI workflow policy", () => {
     expect(ci).toContain("github.event_name == 'merge_group'");
     const required = block(ci, /^ {2}required:\s*$/, 2);
     expect(required).not.toBeNull();
-    expect(required).toContain("name: required");
+    expect(required).toContain("name: ${{ needs.changes.outputs.aggregateStatusName }}");
   });
 
   it("spells out the same trigger types on every pull_request workflow", async () => {
@@ -227,15 +289,43 @@ describe("CI workflow policy", () => {
     expect(required).not.toContain("browser-system-chrome-canary");
   });
 
-  it("keeps four complete blocking Bun shards with unique reports and a fail-closed aggregate", async () => {
+  it("uses Node 24 action runtimes and keeps Windows platform lanes cacheless", async () => {
+    const ci = await workflow("ci.yml");
+    const reusable = await workflow("reusable-quality.yml");
+    const workflows = `${ci}\n${reusable}`;
+    const windowsSink = block(ci, /^ {2}pdf-sink-windows:\s*$/, 2);
+    const windowsAstro = block(reusable, /^ {2}publishing-platform-windows:\s*$/, 2);
+
+    expect(workflows).toContain("actions/checkout@v7");
+    expect(workflows).toContain("actions/setup-node@v7");
+    expect(workflows).toContain("actions/github-script@v9");
+    expect(workflows).toContain("actions/cache@v6");
+    expect(workflows).toContain("actions/upload-artifact@v7");
+    expect(workflows).toContain("actions/download-artifact@v8");
+    expect(workflows).not.toMatch(
+      /actions\/(?:checkout@v6|setup-node@v6|github-script@v8|cache(?:\/restore)?@v4|upload-artifact@v4|download-artifact@v5)/,
+    );
+
+    expect(windowsSink).not.toBeNull();
+    expect(windowsSink).not.toContain("Restore Bun package cache");
+    expect(windowsSink).not.toContain("actions/cache@");
+    expect(windowsAstro).not.toBeNull();
+    expect(windowsAstro).not.toContain("Restore Bun package cache");
+    expect(windowsAstro).not.toContain("actions/cache@");
+  });
+
+  it("keeps required quality branches parallel and removes duplicate publishing and aggregate tails", async () => {
     const reusable = await workflow("reusable-quality.yml");
     const staticQuality = block(reusable, /^ {2}static-quality:\s*$/, 2);
     const tests = block(reusable, /^ {2}tests:\s*$/, 2);
-    const publishing = block(reusable, /^ {2}publishing:\s*$/, 2);
+    const publishing = block(reusable, /^ {2}publishing-platform:\s*$/, 2);
+    const windows = block(reusable, /^ {2}publishing-platform-windows:\s*$/, 2);
+    const latest = block(reusable, /^ {2}publishing-platform-latest:\s*$/, 2);
     const attestation = block(reusable, /^ {2}security-attestation:\s*$/, 2);
     const complete = block(reusable, /^ {2}quality-complete:\s*$/, 2);
 
     expect(staticQuality).not.toBeNull();
+    expect(staticQuality).toContain("if: inputs.run_static_quality");
     expect(staticQuality).toContain("bun run typecheck");
     expect(staticQuality).toContain("bun run check:browser");
     expect(staticQuality).toContain("bun run build");
@@ -243,6 +333,7 @@ describe("CI workflow policy", () => {
     expect(staticQuality).not.toContain("bun run test");
 
     expect(tests).not.toBeNull();
+    expect(tests).toContain("if: inputs.run_tests");
     expect(tests).toContain("fail-fast: false");
     expect(tests).toContain("shard: [1, 2, 3, 4]");
     expect(tests).toContain('bun run test --shard="${SHARD}/4"');
@@ -258,28 +349,39 @@ describe("CI workflow policy", () => {
     expect(tests).not.toContain("continue-on-error:");
 
     expect(publishing).not.toBeNull();
-    expect(publishing).toContain("Astro publishing package and consumer gates");
+    expect(publishing).toContain("if: inputs.run_astro_platform");
     expect(publishing).toContain("packages/web-publish-astro/src/astro-consumer.test.ts");
     expect(publishing).toContain("packages/web-publish-starlight/src/starlight-renderer.test.ts");
-    expect(publishing).toContain("scripts/consumer-smoke.test.ts");
     expect(publishing).toContain('ATLCLI_CONSUMER_SMOKE: "1"');
+    expect(publishing).toContain("minimum-astro");
+    expect(publishing).not.toContain("windows-latest");
+    expect(publishing).not.toContain("latest-astro-7");
+
+    expect(windows).not.toBeNull();
+    expect(windows).toContain("runs-on: windows-latest");
+    expect(windows).toContain("github.event_name == 'schedule'");
+    expect(windows).toContain("github.ref_type == 'tag'");
+    expect(windows).toContain(
+      "continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}",
+    );
+    expect(windows).toContain("packages/web-publish-astro/src/astro-consumer.test.ts");
+    expect(windows).toContain("packages/web-publish-starlight/src/starlight-renderer.test.ts");
+
+    expect(latest).not.toBeNull();
+    expect(latest).toContain("github.event_name == 'schedule'");
+    expect(latest).toContain(
+      "continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}",
+    );
 
     expect(attestation).not.toBeNull();
-    expect(attestation).toContain("needs: [static-quality, tests, publishing]");
+    expect(attestation).not.toContain("needs:");
     expect(attestation).toContain("if: inputs.emit_security_attestation");
     expect(attestation).toContain("fetch-depth: 2");
     expect(attestation).toContain("attestation.commit !== process.env.GITHUB_SHA");
     expect(attestation).toContain("security-attestation-${{ github.sha }}");
 
-    expect(complete).not.toBeNull();
-    expect(complete).toContain("if: always()");
-    expect(complete).toContain("needs: [static-quality, tests, publishing, publishing-platform, security-attestation]");
-    expect(complete).toContain('[[ "$STATIC_QUALITY" != "success" ]]');
-    expect(complete).toContain('[[ "$TESTS" != "success" ]]');
-    expect(complete).toContain('[[ "$PUBLISHING" != "success" ]]');
-    expect(complete).toContain(
-      '[[ "$ATTESTATION_REQUIRED" == "true" && "$ATTESTATION" != "success" ]]',
-    );
+    expect(complete).toBeNull();
+    expect(block(reusable, /^ {2}publishing:\s*$/, 2)).toBeNull();
   });
 
   it("keeps timing telemetry outside every required status dependency graph", async () => {
@@ -290,7 +392,7 @@ describe("CI workflow policy", () => {
     expect(telemetry).toContain("name: Non-required CI timing telemetry");
     expect(telemetry).toContain("needs: [changes, required]");
     expect(telemetry).toContain("if: always()");
-    expect(telemetry).toContain("actions/download-artifact@v5");
+    expect(telemetry).toContain("actions/download-artifact@v8");
     expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
     expect(required).not.toBeNull();
     expect(required).not.toContain("telemetry");

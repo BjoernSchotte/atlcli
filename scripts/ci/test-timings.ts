@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { normalizeRepositoryTestPath } from "./test-inventory.js";
 
 export type TestOutcome = "passed" | "failed" | "skipped";
@@ -36,6 +37,24 @@ export interface TimingSnapshot {
   sourceRun: string;
   samples: number;
   files: FileTiming[];
+}
+
+export interface TopologyTimingComparison {
+  schema: 1;
+  legacyNamespace: string;
+  candidateNamespace: string;
+  files: number;
+  testcases: number;
+  legacyDurationSeconds: number;
+  candidateDurationSeconds: number;
+  deltaSeconds: number;
+  ratio: number | null;
+  fileDeltas: Array<{
+    file: string;
+    legacyDurationSeconds: number;
+    candidateDurationSeconds: number;
+    deltaSeconds: number;
+  }>;
 }
 
 const ATTRIBUTE_PATTERN =
@@ -206,8 +225,183 @@ export function createTimingSnapshot(options: {
   };
 }
 
+function artifactsByIdentity(artifacts: readonly LaneTimingArtifact[]): Map<string, TestcaseTiming> {
+  assertDisjointLaneOwnership(artifacts);
+  const result = new Map<string, TestcaseTiming>();
+  for (const testcase of artifacts.flatMap((artifact) => artifact.testcases)) {
+    if (result.has(testcase.identity)) {
+      throw new Error(`duplicate testcase identity across lanes: ${testcase.identity}`);
+    }
+    result.set(testcase.identity, testcase);
+  }
+  return result;
+}
+
+function singleNamespace(artifacts: readonly LaneTimingArtifact[], label: string): string {
+  const namespaces = [...new Set(artifacts.map((artifact) => artifact.namespace))];
+  if (namespaces.length !== 1) throw new Error(`${label} must contain exactly one namespace`);
+  return namespaces[0]!;
+}
+
+export function compareTopologyTimings(options: {
+  legacy: readonly LaneTimingArtifact[];
+  candidate: readonly LaneTimingArtifact[];
+}): TopologyTimingComparison {
+  const legacyNamespace = singleNamespace(options.legacy, "legacy artifacts");
+  const candidateNamespace = singleNamespace(options.candidate, "candidate artifacts");
+  if (legacyNamespace === candidateNamespace) {
+    throw new Error("legacy and candidate namespaces must differ");
+  }
+  const legacy = artifactsByIdentity(options.legacy);
+  const candidate = artifactsByIdentity(options.candidate);
+  const legacyIds = [...legacy.keys()].sort((left, right) => left.localeCompare(right));
+  const candidateIds = [...candidate.keys()].sort((left, right) => left.localeCompare(right));
+  const missing = legacyIds.filter((identity) => !candidate.has(identity));
+  const extra = candidateIds.filter((identity) => !legacy.has(identity));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `topology testcase identity mismatch: missing=${missing.length}, extra=${extra.length}`,
+    );
+  }
+  for (const identity of legacyIds) {
+    const left = legacy.get(identity)!;
+    const right = candidate.get(identity)!;
+    if (left.outcome !== right.outcome) {
+      throw new Error(`topology testcase outcome mismatch: ${identity}`);
+    }
+  }
+
+  const aggregate = (testcases: Iterable<TestcaseTiming>): Map<string, number> => {
+    const files = new Map<string, number>();
+    for (const testcase of testcases) {
+      files.set(testcase.file, (files.get(testcase.file) ?? 0) + testcase.durationSeconds);
+    }
+    return files;
+  };
+  const legacyFiles = aggregate(legacy.values());
+  const candidateFiles = aggregate(candidate.values());
+  const fileDeltas = [...legacyFiles.entries()]
+    .map(([file, legacyDurationSeconds]) => {
+      const candidateDurationSeconds = candidateFiles.get(file);
+      if (candidateDurationSeconds === undefined) {
+        throw new Error(`topology file identity mismatch: ${file}`);
+      }
+      return {
+        file,
+        legacyDurationSeconds,
+        candidateDurationSeconds,
+        deltaSeconds: candidateDurationSeconds - legacyDurationSeconds,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.deltaSeconds - left.deltaSeconds || left.file.localeCompare(right.file),
+    );
+  const legacyDurationSeconds = fileDeltas.reduce(
+    (total, file) => total + file.legacyDurationSeconds,
+    0,
+  );
+  const candidateDurationSeconds = fileDeltas.reduce(
+    (total, file) => total + file.candidateDurationSeconds,
+    0,
+  );
+  return {
+    schema: 1,
+    legacyNamespace,
+    candidateNamespace,
+    files: fileDeltas.length,
+    testcases: legacyIds.length,
+    legacyDurationSeconds,
+    candidateDurationSeconds,
+    deltaSeconds: candidateDurationSeconds - legacyDurationSeconds,
+    ratio: legacyDurationSeconds === 0 ? null : candidateDurationSeconds / legacyDurationSeconds,
+    fileDeltas,
+  };
+}
+
+export function topologyComparisonMarkdown(comparison: TopologyTimingComparison): string {
+  const ratio = comparison.ratio === null ? "unavailable" : comparison.ratio.toFixed(3);
+  return [
+    "## Legacy vs candidate test timing",
+    "",
+    `- Identity proof: ${comparison.files} files / ${comparison.testcases} testcases`,
+    `- Legacy testcase time: ${comparison.legacyDurationSeconds.toFixed(3)}s`,
+    `- Candidate testcase time: ${comparison.candidateDurationSeconds.toFixed(3)}s`,
+    `- Candidate / legacy ratio: ${ratio}`,
+    "",
+    "### Largest candidate regressions",
+    "",
+    ...comparison.fileDeltas
+      .slice(0, 20)
+      .map((file) => `- \`${file.file}\`: ${file.deltaSeconds.toFixed(3)}s`),
+    "",
+  ].join("\n");
+}
+
+function filesRecursively(directory: string): string[] {
+  const result: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) result.push(...filesRecursively(path));
+    else if (entry.isFile()) result.push(path);
+  }
+  return result.sort((left, right) => left.localeCompare(right));
+}
+
+function junitArtifacts(directory: string, namespace: string): LaneTimingArtifact[] {
+  return filesRecursively(directory)
+    .filter((path) => extname(path) === ".xml")
+    .map((path) =>
+      parseBunJUnit(readFileSync(path, "utf8"), {
+        namespace,
+        lane: basename(path, ".xml"),
+      }),
+    );
+}
+
+function option(args: readonly string[], name: string): string {
+  const index = args.indexOf(name);
+  const value = index >= 0 ? args[index + 1] : undefined;
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function writeJson(path: string, value: unknown): void {
+  const resolved = resolve(path);
+  mkdirSync(dirname(resolved), { recursive: true });
+  writeFileSync(resolved, `${JSON.stringify(value, null, 2)}\n`);
+}
+
 async function main(): Promise<void> {
-  const [path, namespace = "legacy", lane = "lane"] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  if (args[0] === "snapshot") {
+    const artifacts = junitArtifacts(option(args, "--junit"), option(args, "--namespace"));
+    writeJson(
+      option(args, "--out"),
+      createTimingSnapshot({
+        baselineSha: option(args, "--baseline-sha"),
+        sourceRun: option(args, "--source-run"),
+        artifacts,
+      }),
+    );
+    return;
+  }
+  if (args[0] === "compare") {
+    const comparison = compareTopologyTimings({
+      legacy: junitArtifacts(
+        option(args, "--legacy-junit"),
+        option(args, "--legacy-namespace"),
+      ),
+      candidate: junitArtifacts(
+        option(args, "--candidate-junit"),
+        option(args, "--candidate-namespace"),
+      ),
+    });
+    writeJson(option(args, "--out"), comparison);
+    process.stdout.write(topologyComparisonMarkdown(comparison));
+    return;
+  }
+  const [path, namespace = "legacy", lane = "lane"] = args;
   if (!path) throw new Error("usage: bun scripts/ci/test-timings.ts <junit.xml> [namespace] [lane]");
   process.stdout.write(
     `${JSON.stringify(parseBunJUnit(readFileSync(path, "utf8"), { namespace, lane }), null, 2)}\n`,

@@ -49,6 +49,16 @@ export interface TestLanePlan {
   groups: TestExecutionGroup[];
 }
 
+export interface TestLaneMatrixEntry {
+  topology: TestTopology;
+  group: string;
+  lane: TestLane;
+  workers: 1 | 2;
+  fonts: boolean;
+  poppler: boolean;
+  executionGroups: string[];
+}
+
 const TOPOLOGIES = new Set<TestTopology>([
   "general-2x1",
   "general-3x1",
@@ -62,6 +72,20 @@ const REQUIREMENTS = new Set<SetupRequirement>([
   "typst-runtime",
 ]);
 
+const DIRECT_SETUP_PATTERNS: ReadonlyArray<{
+  requirement: Extract<SetupRequirement, "fonts" | "poppler">;
+  pattern: RegExp;
+}> = [
+  {
+    requirement: "poppler",
+    pattern: /\b(?:pdffonts|pdfinfo|pdftoppm|pdftotext)\b/u,
+  },
+  {
+    requirement: "fonts",
+    pattern: /(?:ensurePdfFonts|packageBytes\s*\(\s*[`"']@atlcli\/pdf\/fonts\/)/u,
+  },
+];
+
 interface ValidatedEntry extends TestLaneMetadataEntry {
   path: string;
   lane: TestLane;
@@ -74,6 +98,33 @@ interface AssignmentUnit {
   weight: number;
   requirements: SetupRequirement[];
   atomicGroup?: string;
+}
+
+export function detectDirectSetupRequirements(source: string): SetupRequirement[] {
+  return DIRECT_SETUP_PATTERNS
+    .filter(({ pattern }) => pattern.test(source))
+    .map(({ requirement }) => requirement);
+}
+
+export function validateDirectSetupOwnership(options: {
+  inventory: readonly string[];
+  metadata: TestLaneMetadata;
+  sourceFor: (path: string) => string;
+}): void {
+  const entries = new Map(
+    options.metadata.files.map((entry) => [normalizeRepositoryTestPath(entry.path), entry]),
+  );
+  const failures: string[] = [];
+  for (const path of options.inventory) {
+    const detected = detectDirectSetupRequirements(options.sourceFor(path));
+    if (detected.length === 0) continue;
+    const declared = new Set(entries.get(path)?.requirements ?? []);
+    const missing = detected.filter((requirement) => !declared.has(requirement));
+    if (missing.length > 0) failures.push(`${path}: ${missing.join(",")}`);
+  }
+  if (failures.length > 0) {
+    throw new Error(`direct test setup ownership is incomplete: ${failures.join("; ")}`);
+  }
 }
 
 function percentile95(values: readonly number[]): number {
@@ -358,6 +409,33 @@ export function explainTestLanePlan(plan: TestLanePlan): string {
   return lines.join("\n");
 }
 
+export function testLaneMatrix(plan: TestLanePlan): { include: TestLaneMatrixEntry[] } {
+  const byJob = new Map<string, TestExecutionGroup[]>();
+  for (const group of plan.groups) {
+    const groups = byJob.get(group.job) ?? [];
+    groups.push(group);
+    byJob.set(group.job, groups);
+  }
+  return {
+    include: [...byJob.entries()].map(([job, groups]) => {
+      const requirements = new Set(groups.flatMap((group) => group.requirements));
+      const lanes = uniqueSorted(groups.map((group) => group.lane));
+      if (lanes.length !== 1) {
+        throw new Error(`logical test job spans multiple lanes: ${job}`);
+      }
+      return {
+        topology: plan.topology,
+        group: job,
+        lane: lanes[0]!,
+        workers: Math.max(...groups.map((group) => group.workers)) as 1 | 2,
+        fonts: requirements.has("fonts"),
+        poppler: requirements.has("poppler"),
+        executionGroups: groups.map((group) => group.id),
+      };
+    }),
+  };
+}
+
 export function loadTestLaneMetadata(
   path = resolve(import.meta.dir, "test-lanes.json"),
 ): TestLaneMetadata {
@@ -377,24 +455,20 @@ function topologyFromArgs(args: readonly string[]): TestTopology {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  const inventory = discoverTestFiles();
+  const metadata = loadTestLaneMetadata();
+  validateDirectSetupOwnership({
+    inventory,
+    metadata,
+    sourceFor: (path) => readFileSync(resolve(import.meta.dir, "../..", path), "utf8"),
+  });
   const plan = planTestLanes(
-    discoverTestFiles(),
-    loadTestLaneMetadata(),
+    inventory,
+    metadata,
     topologyFromArgs(args),
   );
   if (args.includes("--matrix")) {
-    process.stdout.write(
-      `${JSON.stringify({
-        include: plan.groups.map((group) => ({
-          topology: plan.topology,
-          group: group.id,
-          lane: group.lane,
-          workers: group.workers,
-          fonts: group.requirements.includes("fonts"),
-          poppler: group.requirements.includes("poppler"),
-        })),
-      })}\n`,
-    );
+    process.stdout.write(`${JSON.stringify(testLaneMatrix(plan))}\n`);
   } else if (args.includes("--json")) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
   } else {

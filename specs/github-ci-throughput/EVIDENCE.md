@@ -6,8 +6,8 @@ open until the live sample gates in `PLAN.md` are satisfied.
 ## Implementation snapshot
 
 - Planning baseline SHA: `9ffbe22e604413226a863064da31dc6981f76ce0`
-- Baseline Bun inventory: 405 test files
-- Current implementation inventory: 410 test files
+- PR #139 merge baseline SHA: `5310e90e696697d4f61e0f4c22836e0c826c5b4d`
+- Duration-aware topology inventory: 609 eligible test files
 - Required topology: `legacy-4-shard` (unchanged)
 - Candidate topologies: `general-2x1`, `general-3x1`,
   `general-2x2-workers`
@@ -15,6 +15,57 @@ open until the live sample gates in `PLAN.md` are satisfied.
 - System Chrome: scheduled/manual non-required compatibility canary
 - Merge queue: workflow trigger ready; repository transfer and queue activation
   remain external and deferred
+- PR proof modes: live-state-validated `draft-fast`, `superseded`, and
+  merge-ready `required`
+- Ready-PR routing: conservative package/capability closures; workflow,
+  lockfile, global, unknown, main-push, scheduled, and manual inputs fail open
+- Quality DAG: static quality, Bun shards, pinned Ubuntu Astro, and optional
+  attestation start independently; the duplicate publishing job and reusable
+  aggregate tail are removed
+- Floating latest Astro 7 and pinned Windows Astro: scheduled/manual advisory
+  canaries; release tags keep both compatibility checks blocking
+- Official GitHub Actions in the touched workflows use their current Node 24
+  majors (`checkout@v7`, `setup-node@v7`, `github-script@v9`, `cache@v6`,
+  `upload-artifact@v7`, and `download-artifact@v8`)
+- Windows platform lanes deliberately skip the shared Bun package cache after
+  live restores outlasted the complete Linux/browser proof paths
+
+## PR #139 observed bottleneck
+
+The final green PR run
+([Actions run 31395422582](https://github.com/BjoernSchotte/atlcli/actions/runs/31395422582))
+started classification at 13:55:55 UTC and completed the stable `required`
+check at 14:07:51 UTC: 11 minutes 56 seconds from first runner start to green.
+It consumed about 42.6 runner-minutes.
+
+The final critical path was structurally serial:
+
+1. static quality completed at 13:58:21;
+2. the duplicate Astro publishing job ran until 14:02:22;
+3. only then did the Astro platform matrix start;
+4. the Windows Astro leg completed at 14:07:37;
+5. two aggregate runner jobs followed before telemetry.
+
+The workflow changes in this branch remove that serial publishing/platform
+chain, remove the inner aggregate runner, and move floating-latest Astro away
+from ordinary PR/main proof. No post-change GitHub timing is claimed yet.
+
+## PR #150 live rollout observation
+
+The first full ready-PR run on rebased head `d09d8e3`
+([Actions run 31401969872](https://github.com/BjoernSchotte/atlcli/actions/runs/31401969872))
+confirmed that classification completed in 12 seconds and all selected product
+branches started in parallel. Static quality completed in 1 minute 29 seconds,
+the packed browser proof in 2 minutes 22 seconds, the pinned consumer proof in
+3 minutes 43 seconds, and the slowest complete Bun shard in 5 minutes 37
+seconds.
+
+That run was intentionally superseded before aggregation: `pdf-sink-windows`
+remained inside the legacy `actions/cache@v4` Bun-cache restore for more than
+eight minutes after every other selected job was green. This is diagnostic
+evidence, not a final post-change timing. The follow-up removes that cache from
+the isolated sink and updates the official GitHub Actions runtimes before the
+merge proof is repeated.
 
 ## Local synthetic proof
 
@@ -27,14 +78,15 @@ open until the live sample gates in `PLAN.md` are satisfied.
 | Deterministic LPT lanes and argv-safe runner | Passed focused tests |
 | Workflow dependency and non-required telemetry policy | Passed focused tests |
 | Security attestation dependency-free policy | Passed focused tests |
-| Complete root suite | 5,938 passed, 15 skipped, 0 failed across 410 files |
+| Complete root suite | 7,711 passed, 16 skipped, 0 failed across 611 files (four CI shards) |
 | TypeScript typecheck (root, extension, compiler, harness) | Passed |
-| Complete build | Passed, 20 Turbo tasks |
+| Complete build | Passed, 27 Turbo tasks |
 | Full Bun/npm/pnpm consumer proof | 12 passed, 0 failed |
-| Documentation check/build | Passed, 78 pages built |
+| Documentation check/build | Passed, 90 pages built |
 | Neutral bundled-Chromium harness | 6 passed, 0 failed |
 | Packed MV3 PDF.js worker proof | 2 passed, 0 failed |
-| Packed MV3 durable-jobs proof | 23 passed, 0 failed |
+| Packed MV3 durable-jobs proof | 24 passed, 0 failed |
+| Packed MV3 Rovo visibility proof | 2 passed, 0 failed |
 | Browser/Node shape parity | Passed |
 | Required local Atlassian E2E | Not run: `ATLCLI_E2E_PAGE_ID` is unavailable |
 
@@ -88,7 +140,9 @@ environment. No customer identifier or credential was copied into this file.
 | Duration-aware test topology | Measuring | Required lane remains legacy |
 | System Chrome neutral harness | Canary only | Cannot replace matched Chromium/MV3 proof |
 | Package build reuse | Held | Same-SHA artifact/co-located evidence absent |
-| Selective product routing | Held | Shadow graph and observation gate incomplete |
-| Draft-fast | Held | Depends on selective routing and live PR-state proof |
+| Selective product routing | Implemented, live validation pending | Conservative dependency closures and fail-open overrides are covered locally; post-change PR evidence is still required |
+| Draft-fast | Implemented, live validation pending | Live PR head/draft state is checked at selection; ready proof is checked again inside the final aggregate |
+| Quality DAG flattening | Implemented | Duplicate publishing proof and reusable aggregate tail removed; pinned Ubuntu Astro runs in parallel while Windows compatibility moves off ordinary PRs |
+| Pinned PDF font cache | Implemented | Content-addressed per-OS cache; `fonts:ensure` still verifies every restored file |
 | Browser branch parallelism | Held | Isolation and ten-run comparison incomplete |
 | Merge queue activation | Deferred | External repository ownership decision required |

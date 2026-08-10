@@ -11,7 +11,7 @@ on:
     # newest run still points at an outdated moment in time. Every
     # `pull_request`-triggered workflow in this repo carries this same list;
     # scripts/ci/workflow-policy.test.ts enforces it.
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # Inactive until a repository merge queue is enabled. Keeping the trigger on
   # the default branch first prevents a future queue from waiting forever for
   # a required context that no workflow can create.
@@ -25,6 +25,7 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -38,10 +39,21 @@ jobs:
     outputs:
       code: ${{ steps.routes.outputs.code }}
       consumer: ${{ steps.routes.outputs.consumer }}
+      staticQuality: ${{ steps.routes.outputs.staticQuality }}
+      unitTests: ${{ steps.routes.outputs.unitTests }}
+      packageContracts: ${{ steps.routes.outputs.packageContracts }}
+      astroPublishing: ${{ steps.routes.outputs.astroPublishing }}
+      astroPlatform: ${{ steps.routes.outputs.astroPlatform }}
+      pdfPlatform: ${{ steps.routes.outputs.pdfPlatform }}
+      browserHarness: ${{ steps.routes.outputs.browserHarness }}
       docs: ${{ steps.routes.outputs.docs }}
       readmeMedia: ${{ steps.routes.outputs.readmeMedia }}
+      researchPrivacy: ${{ steps.routes.outputs.researchPrivacy }}
+      proofMode: ${{ steps.proof.outputs.mode }}
+      aggregateStatusName: ${{ steps.proof.outputs.aggregateStatusName }}
+      validatedHeadSha: ${{ steps.proof.outputs.validatedHeadSha }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -57,7 +69,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
-          FULL_RUN: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' }}
+          FULL_RUN: ${{ github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' }}
         run: |
           if [[ "${{ github.event_name }}" == "merge_group" ]] && \
              { [[ -z "$MERGE_GROUP_BASE_SHA" ]] || [[ -z "$MERGE_GROUP_HEAD_SHA" ]]; }; then
@@ -82,13 +94,41 @@ jobs:
           git diff --name-only -z "$BASE_SHA" "$HEAD_SHA" | \
             bun scripts/ci/classify-changes.ts --null >> "$GITHUB_OUTPUT"
 
+      - name: Read current pull request state
+        id: current-pr
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: pull } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput("number", String(pull.number));
+            core.setOutput("headSha", pull.head.sha);
+            core.setOutput("draft", String(pull.draft));
+
+      - name: Select live-state-aware proof mode
+        id: proof
+        env:
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          CI_EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          CI_EVENT_PR_DRAFT: ${{ github.event.pull_request.draft }}
+          CI_CURRENT_PR_NUMBER: ${{ steps.current-pr.outputs.number }}
+          CI_CURRENT_PR_HEAD_SHA: ${{ steps.current-pr.outputs.headSha }}
+          CI_CURRENT_PR_DRAFT: ${{ steps.current-pr.outputs.draft }}
+        run: bun scripts/ci/proof-mode.ts
+
   research-privacy:
     name: Tracked research privacy
     needs: changes
+    if: needs.changes.outputs.proofMode != 'superseded'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -101,14 +141,14 @@ jobs:
   docs:
     name: Documentation
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && github.event_name != 'push'
+    if: needs.changes.outputs.docs == 'true' && github.event_name != 'push' && needs.changes.outputs.proofMode != 'superseded'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22.12.0"
 
@@ -129,11 +169,11 @@ jobs:
   readme-media:
     name: README media
     needs: changes
-    if: needs.changes.outputs.readmeMedia == 'true'
+    if: needs.changes.outputs.readmeMedia == 'true' && needs.changes.outputs.proofMode != 'superseded'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -143,34 +183,82 @@ jobs:
       - name: Validate README media
         run: bun run check:readme-media
 
-  test:
-    name: Product quality
+  draft-quality:
+    name: Draft type and CI policy feedback
     needs: changes
-    if: needs.changes.outputs.code == 'true'
-    uses: ./.github/workflows/reusable-quality.yml
-
-  consumer-smoke:
-    name: Pinned consumer smoke
-    needs: changes
-    if: needs.changes.outputs.consumer == 'true'
-    uses: ./.github/workflows/reusable-consumer-smoke.yml
-    with:
-      leg: pinned
-
-  # Platform gates stay complete for every product change. Path-level pruning
-  # can be added later only after the dependency closures are machine-derived.
-  pdf-cli-macos:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: macos-latest
+    if: needs.changes.outputs.proofMode == 'draft-fast' && (needs.changes.outputs.staticQuality == 'true' || needs.changes.outputs.unitTests == 'true')
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore Turbo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-quality-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-quality-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check draft
+        run: bun run typecheck
+
+      - name: Check CI policy contracts
+        run: bun run test scripts/ci/classify-changes.test.ts scripts/ci/proof-mode.test.ts scripts/ci/workflow-policy.test.ts
+
+  test:
+    name: Product quality
+    needs: changes
+    if: needs.changes.outputs.proofMode == 'required' && (needs.changes.outputs.staticQuality == 'true' || needs.changes.outputs.unitTests == 'true' || needs.changes.outputs.astroPlatform == 'true')
+    uses: ./.github/workflows/reusable-quality.yml
+    with:
+      run_static_quality: ${{ needs.changes.outputs.staticQuality == 'true' }}
+      run_tests: ${{ needs.changes.outputs.unitTests == 'true' }}
+      run_astro_platform: ${{ needs.changes.outputs.astroPlatform == 'true' }}
+
+  consumer-smoke:
+    name: Pinned consumer smoke
+    needs: changes
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.consumer == 'true'
+    uses: ./.github/workflows/reusable-consumer-smoke.yml
+    with:
+      leg: pinned
+
+  # Platform gates follow conservative, tested dependency closures. Global,
+  # workflow, lockfile, and unknown paths still fail open to every gate.
+  pdf-cli-macos:
+    needs: changes
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.pdfPlatform == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -186,22 +274,16 @@ jobs:
 
   pdf-sink-windows:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.pdfPlatform == 'true'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
-
-      - name: Restore Bun package cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -211,11 +293,11 @@ jobs:
 
   browser-export-harness:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.browserHarness == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -223,13 +305,19 @@ jobs:
           bun-version: 1.3.14
 
       - name: Restore Bun package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
 
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
+
       - name: Restore Turbo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .turbo
           key: ${{ runner.os }}-turbo-browser-${{ github.sha }}
@@ -238,7 +326,7 @@ jobs:
             ${{ runner.os }}-turbo-
 
       - name: Restore Playwright Chromium
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-1.55.0
@@ -287,12 +375,12 @@ jobs:
   browser-system-chrome-canary:
     name: Non-required system Chrome compatibility
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.browserHarness == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -300,10 +388,16 @@ jobs:
           bun-version: 1.3.14
 
       - name: Restore Bun package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -340,12 +434,14 @@ jobs:
         run: bun run test:browser-export-harness
 
   required:
-    name: required
+    name: ${{ needs.changes.outputs.aggregateStatusName }}
     if: always()
     needs:
       - changes
+      - research-privacy
       - docs
       - readme-media
+      - draft-quality
       - test
       - consumer-smoke
       - pdf-cli-macos
@@ -353,17 +449,46 @@ jobs:
       - browser-export-harness
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
+      - name: Revalidate current merge-ready pull request
+        if: github.event_name == 'pull_request' && needs.changes.outputs.proofMode == 'required'
+        uses: actions/github-script@v9
+        env:
+          EXPECTED_HEAD_SHA: ${{ needs.changes.outputs.validatedHeadSha }}
+        with:
+          script: |
+            const { data: pull } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            if (pull.draft) {
+              core.setFailed("Pull request returned to Draft before required proof completed");
+            }
+            if (pull.head.sha !== process.env.EXPECTED_HEAD_SHA) {
+              core.setFailed(`Pull request head changed from ${process.env.EXPECTED_HEAD_SHA} to ${pull.head.sha}`);
+            }
+
       - name: Require every selected gate to pass
         env:
           CHANGES: ${{ needs.changes.result }}
-          CODE_REQUIRED: ${{ needs.changes.outputs.code }}
+          PROOF_MODE: ${{ needs.changes.outputs.proofMode }}
+          STATIC_REQUIRED: ${{ needs.changes.outputs.staticQuality }}
+          UNIT_REQUIRED: ${{ needs.changes.outputs.unitTests }}
+          ASTRO_REQUIRED: ${{ needs.changes.outputs.astroPlatform }}
           CONSUMER_REQUIRED: ${{ needs.changes.outputs.consumer }}
+          PDF_REQUIRED: ${{ needs.changes.outputs.pdfPlatform }}
+          BROWSER_REQUIRED: ${{ needs.changes.outputs.browserHarness }}
           DOCS_REQUIRED: ${{ needs.changes.outputs.docs }}
           README_MEDIA_REQUIRED: ${{ needs.changes.outputs.readmeMedia }}
           EVENT_NAME: ${{ github.event_name }}
+          PRIVACY: ${{ needs.research-privacy.result }}
           DOCS: ${{ needs.docs.result }}
           README_MEDIA: ${{ needs.readme-media.result }}
+          DRAFT_QUALITY: ${{ needs.draft-quality.result }}
           TEST: ${{ needs.test.result }}
           CONSUMER: ${{ needs.consumer-smoke.result }}
           MACOS: ${{ needs.pdf-cli-macos.result }}
@@ -389,6 +514,18 @@ jobs:
             exit 1
           fi
 
+          if [[ "$PROOF_MODE" == "superseded" ]]; then
+            for result in "$PRIVACY" "$DOCS" "$README_MEDIA" "$DRAFT_QUALITY" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER"; do
+              if [[ "$result" != "skipped" ]]; then
+                echo "::error::Superseded proof unexpectedly executed a product gate with result=$result"
+                exit 1
+              fi
+            done
+            exit 0
+          fi
+
+          require_result "Tracked research privacy" "true" "$PRIVACY"
+
           DOCS_SELECTED="$DOCS_REQUIRED"
           if [[ "$EVENT_NAME" == "push" ]]; then
             # docs.yml owns main-push deployment; CI's docs job intentionally
@@ -398,11 +535,32 @@ jobs:
 
           require_result "Documentation" "$DOCS_SELECTED" "$DOCS"
           require_result "README media" "$README_MEDIA_REQUIRED" "$README_MEDIA"
-          require_result "Product quality" "$CODE_REQUIRED" "$TEST"
+
+          QUALITY_REQUIRED="false"
+          if [[ "$STATIC_REQUIRED" == "true" || "$UNIT_REQUIRED" == "true" || "$ASTRO_REQUIRED" == "true" ]]; then
+            QUALITY_REQUIRED="true"
+          fi
+
+          if [[ "$PROOF_MODE" == "draft-fast" ]]; then
+            DRAFT_REQUIRED="false"
+            if [[ "$STATIC_REQUIRED" == "true" || "$UNIT_REQUIRED" == "true" ]]; then
+              DRAFT_REQUIRED="true"
+            fi
+            require_result "Draft quality" "$DRAFT_REQUIRED" "$DRAFT_QUALITY"
+            require_result "Product quality" "false" "$TEST"
+            require_result "Pinned consumer smoke" "false" "$CONSUMER"
+            require_result "macOS PDF" "false" "$MACOS"
+            require_result "Windows PDF sink" "false" "$WINDOWS"
+            require_result "Browser export harness" "false" "$BROWSER"
+            exit 0
+          fi
+
+          require_result "Draft quality" "false" "$DRAFT_QUALITY"
+          require_result "Product quality" "$QUALITY_REQUIRED" "$TEST"
           require_result "Pinned consumer smoke" "$CONSUMER_REQUIRED" "$CONSUMER"
-          require_result "macOS PDF" "$CODE_REQUIRED" "$MACOS"
-          require_result "Windows PDF sink" "$CODE_REQUIRED" "$WINDOWS"
-          require_result "Browser export harness" "$CODE_REQUIRED" "$BROWSER"
+          require_result "macOS PDF" "$PDF_REQUIRED" "$MACOS"
+          require_result "Windows PDF sink" "$PDF_REQUIRED" "$WINDOWS"
+          require_result "Browser export harness" "$BROWSER_REQUIRED" "$BROWSER"
 
   # Measurement is deliberately downstream from, and non-blocking for, the
   # stable required check. A telemetry failure stays visible without delaying
@@ -417,7 +575,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -428,14 +586,14 @@ jobs:
         run: mkdir -p test-results
 
       - name: Download same-run JUnit artifacts
-        if: needs.changes.outputs.code == 'true'
-        uses: actions/download-artifact@v5
+        if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true'
+        uses: actions/download-artifact@v8
         with:
           pattern: bun-test-shard-*-${{ github.sha }}
           path: test-results
 
       - name: Read same-attempt Actions jobs
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const jobs = await github.paginate(
@@ -455,11 +613,20 @@ jobs:
 
       - name: Summarize timing evidence
         env:
-          CI_TEST_TOPOLOGY: legacy-4-shard
+          CI_TEST_TOPOLOGY: ${{ needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true' && 'legacy-4-shard' || 'not-run' }}
+          CI_PROOF_MODE: ${{ needs.changes.outputs.proofMode }}
           CI_ROUTE_CODE: ${{ needs.changes.outputs.code }}
           CI_ROUTE_CONSUMER: ${{ needs.changes.outputs.consumer }}
+          CI_ROUTE_STATIC_QUALITY: ${{ needs.changes.outputs.staticQuality }}
+          CI_ROUTE_UNIT_TESTS: ${{ needs.changes.outputs.unitTests }}
+          CI_ROUTE_PACKAGE_CONTRACTS: ${{ needs.changes.outputs.packageContracts }}
+          CI_ROUTE_ASTRO_PUBLISHING: ${{ needs.changes.outputs.astroPublishing }}
+          CI_ROUTE_ASTRO_PLATFORM: ${{ needs.changes.outputs.astroPlatform }}
+          CI_ROUTE_PDF_PLATFORM: ${{ needs.changes.outputs.pdfPlatform }}
+          CI_ROUTE_BROWSER_HARNESS: ${{ needs.changes.outputs.browserHarness }}
           CI_ROUTE_DOCS: ${{ needs.changes.outputs.docs }}
           CI_ROUTE_README_MEDIA: ${{ needs.changes.outputs.readmeMedia }}
+          CI_ROUTE_RESEARCH_PRIVACY: ${{ needs.changes.outputs.researchPrivacy }}
         run: |
           bun scripts/ci/telemetry-summary.ts \
             --junit test-results \
@@ -468,7 +635,7 @@ jobs:
 
       - name: Upload timing evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-timing-${{ github.run_attempt }}-${{ github.sha }}
           path: ci-timing.json
