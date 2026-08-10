@@ -116,6 +116,60 @@ describe("diffSemanticTreesV1", () => {
     expect(semantic.changeSet.summary.modifies).toBeGreaterThan(0);
   });
 
+  test("does not render repeated unchanged line breaks as delete and insert", async () => {
+    const paragraphWithBreaks = (middle: string) => ({
+      type: "paragraph",
+      content: [
+        { type: "text", text: "First" },
+        { type: "hardBreak" },
+        { type: "text", text: middle },
+        { type: "hardBreak" },
+        { type: "text", text: "Last" },
+      ],
+    });
+    const result = await diff(
+      doc([paragraphWithBreaks("Before")]),
+      doc([paragraphWithBreaks("After")]),
+    );
+
+    expect(result.changeSet.summary).toMatchObject({
+      inserts: 0,
+      deletes: 0,
+      modifies: 1,
+    });
+    expect(result.changeSet.operations.some((operation) =>
+      (operation.kind === "insert" && JSON.stringify(operation.after).includes("line-break")) ||
+      (operation.kind === "delete" && JSON.stringify(operation.before).includes("line-break"))
+    )).toBe(false);
+  });
+
+  test("treats private media upload metadata as policy noise", async () => {
+    const media = (privateMetadata: boolean) => doc([{
+      type: "mediaSingle",
+      attrs: { layout: "center", width: 760, widthType: "pixel" },
+      content: [{
+        type: "media",
+        attrs: {
+          type: "file",
+          id: "media-1",
+          collection: "content-1",
+          alt: "Architecture overview.png",
+          ...(privateMetadata ? {
+            __fileMimeType: "image/png",
+            __fileName: "Architecture overview.png",
+            __fileSize: 123_456,
+          } : {}),
+        },
+      }],
+    }]);
+    const result = await diff(media(true), media(false));
+
+    expect(result.changeSet.summary.noOp).toBe(true);
+    expect(result.changeSet.operations).toHaveLength(0);
+    expect(result.sourceChanges.length).toBeGreaterThan(0);
+    expect(result.sourceChanges.every((change) => change.classification === "policy-noise")).toBe(true);
+  });
+
   test("claims moves only from unique stable identities or unique exact subtrees", async () => {
     const stable = await diff(
       doc([paragraph("A", "a"), paragraph("B", "b"), paragraph("C", "c")]),

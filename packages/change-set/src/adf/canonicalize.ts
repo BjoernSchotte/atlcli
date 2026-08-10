@@ -166,6 +166,59 @@ function identityHints(
   ));
 }
 
+const INTERNAL_MEDIA_METADATA_ATTRIBUTES = new Set([
+  "__fileMimeType",
+  "__fileName",
+  "__fileSize",
+]);
+
+function nodeIdentityHints(
+  node: AdfNode,
+  unknownAttrs: ReadonlySet<string>,
+  children: readonly CanonicalSourceNodeV1[],
+): IdentityHintV1[] {
+  const hints = identityHints(node.type, node.attrs ?? {}, unknownAttrs);
+
+  // Atlassian sometimes serializes private editor upload metadata on media
+  // nodes and drops it again on the next save. Keep it in the exact source
+  // digest, but do not present that transport churn as a content change.
+  if (
+    (node.type === "media" || node.type === "mediaInline") &&
+    unknownAttrs.size > 0 &&
+    [...unknownAttrs].every((attribute) => INTERNAL_MEDIA_METADATA_ATTRIBUTES.has(attribute))
+  ) {
+    hints.push({
+      kind: "node-id",
+      value: "internal-media-metadata",
+      stability: "context",
+      attribute: "$opaqueAttributes",
+      semantic: false,
+    });
+  }
+
+  // mediaSingle is the user-visible block while the durable media identity is
+  // carried by its only child. Propagate that identity to the wrapper so a
+  // metadata-only child change cannot turn the whole image into delete+insert.
+  if (node.type === "mediaSingle" && children.length === 1) {
+    const mediaHints = children[0]!.identityHints.filter((hint) =>
+      hint.kind === "media-id" && hint.stability === "stable"
+    );
+    if (mediaHints.length === 1) {
+      hints.push({
+        kind: "media-id",
+        value: mediaHints[0]!.value,
+        stability: "stable",
+        semantic: false,
+      });
+    }
+  }
+
+  return hints.sort((left, right) => compareText(
+    `${left.kind}\u0000${left.value}\u0000${left.attribute ?? ""}`,
+    `${right.kind}\u0000${right.value}\u0000${right.attribute ?? ""}`,
+  ));
+}
+
 function canonicalMarks(
   marks: readonly AdfMark[] | undefined,
   nodePath: string,
@@ -279,7 +332,7 @@ function canonicalNode(
     ...(marks ? { marks } : {}),
     children: merged,
     sourcePath: path,
-    identityHints: identityHints(node.type, node.attrs ?? {}, unknownAttrs),
+    identityHints: nodeIdentityHints(node, unknownAttrs, merged),
   };
 }
 
@@ -329,13 +382,13 @@ function semanticAttributes(node: CanonicalSourceNodeV1): {
   const output: Record<string, CanonicalJsonValue> = {};
   let opaque = false;
   for (const [key, value] of Object.entries(node.attributes)) {
+    const hint = node.identityHints.find((candidate) => candidate.attribute === key && candidate.semantic === false);
+    if (hint) continue;
     if (key === "$opaqueAttributes" || key === "$opaqueEnvelope") {
       output[key] = value;
       opaque = true;
       continue;
     }
-    const hint = node.identityHints.find((candidate) => candidate.attribute === key && candidate.semantic === false);
-    if (hint) continue;
     output[key] = value;
   }
   if (node.marks) {

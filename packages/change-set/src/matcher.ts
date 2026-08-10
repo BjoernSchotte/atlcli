@@ -230,7 +230,7 @@ function alignChildren<T extends { kind: string; identityHints: readonly Identit
         severity: "warning",
         message: "Repeated stable identities were not used to claim a move.",
         path: parentPath,
-      }, `stable|${pathKey(parentPath)}|${key}`);
+      }, `stable|${pathKey(parentPath)}`);
     }
   }
 
@@ -267,7 +267,7 @@ function alignChildren<T extends { kind: string; identityHints: readonly Identit
         severity: "warning",
         message: "Repeated equal subtrees were aligned conservatively without move claims.",
         path: parentPath,
-      }, `exact|${pathKey(parentPath)}|${key}`);
+      }, `exact|${pathKey(parentPath)}`);
     }
   }
 
@@ -289,7 +289,7 @@ function alignChildren<T extends { kind: string; identityHints: readonly Identit
         severity: "warning",
         message: "Repeated shallow matches were aligned conservatively without move claims.",
         path: parentPath,
-      }, `sequence|${pathKey(parentPath)}|${key}`);
+      }, `sequence|${pathKey(parentPath)}`);
     }
   }
   candidates.sort((left, right) => left.beforeIndex - right.beforeIndex);
@@ -298,6 +298,20 @@ function alignChildren<T extends { kind: string; identityHints: readonly Identit
     if (candidate.afterIndex <= lastAfter) continue;
     claim(candidate.beforeIndex, candidate.afterIndex, "sequence");
     lastAfter = candidate.afterIndex;
+    context.instrumentation.sequenceMatches += 1;
+  }
+
+  // Repeated equal nodes are intentionally not move anchors, but an equal
+  // node that stayed at the same sibling index is still an unambiguous
+  // no-change alignment. Pairing it here removes delete+insert churn for
+  // repeated hard breaks and empty paragraphs without manufacturing moves.
+  const sameIndexLimit = Math.min(before.length, after.length);
+  for (let index = 0; index < sameIndexLimit; index += 1) {
+    if (!unmatchedBefore.has(index) || !unmatchedAfter.has(index)) continue;
+    if (!ambiguousBefore.has(index) || !ambiguousAfter.has(index)) continue;
+    compareCandidate(context);
+    if (subtreeSignature(before[index]!) !== subtreeSignature(after[index]!)) continue;
+    claim(index, index, "sequence");
     context.instrumentation.sequenceMatches += 1;
   }
 

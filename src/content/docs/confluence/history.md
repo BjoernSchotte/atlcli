@@ -94,8 +94,10 @@ atlcli wiki page diff --id 12345 --from 7 --to 3
 ### Semantic Diff
 
 The default `unified` format converts Storage content to Markdown and prints a
-line-oriented patch. Opt into the tree-oriented format when you need a bounded,
-machine-reviewable description of structural changes:
+line-oriented patch. Opt into `semantic` for an end-user review of structural
+changes. Terminal output describes headings, paragraphs, images, lists and
+other blocks in plain language; AST paths, raw node JSON and private media IDs
+remain available only in the machine-readable ChangeSet:
 
 ```bash
 # Human-readable tree diff
@@ -104,6 +106,13 @@ atlcli wiki page diff --id 12345 --from 3 --to 7 --format semantic
 # Exactly one JSON document containing atlcli.change-set/1
 atlcli wiki page diff --id 12345 --from 3 --to 7 --format semantic --json
 ```
+
+Repeated unlabeled changes are grouped, for example `Added 7 images` or
+`Added 4 empty paragraphs`. When Confluence does not expose enough stable
+metadata to match media safely, the terminal reports one grouped review item
+instead of guessing or printing attachment internals. `Coverage: degraded`
+means that review item must be resolved before treating the result as a
+complete SafeOps approval.
 
 ### Diff Options
 
@@ -303,7 +312,7 @@ done
 | `--to requires --from` | The target version was supplied without a baseline | Add `--from <n>` or omit `--to` to compare with current |
 | `page-version-mismatch` | Confluence returned a different version than requested | Retry after edits finish; do not rely on the partial result |
 | `invalid-adf-response` or Storage parse failure | The source is malformed or exceeds a safety budget | Inspect the error details; atlcli intentionally does not emit a complete-looking diff |
-| `Completeness: degraded` | An opaque construct, ambiguity, fallback, or limit affected interpretation | Review diagnostics and opaque operations before using the output as a SafeOps check |
+| `Coverage: degraded` | An opaque construct, missing stable media metadata, fallback, or limit affected interpretation | Review the grouped warnings and machine-readable opaque operations before using the output as a SafeOps check |
 
 ## Related Topics
 

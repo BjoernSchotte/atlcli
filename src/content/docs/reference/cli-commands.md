@@ -229,8 +229,10 @@ atlcli wiki page restore --id <id> --version <n> --message <text> --confirm
 ```
 
 Page diff defaults to the existing line-oriented `unified` format. The opt-in
-`semantic` format emits a tree-oriented terminal review or one
-`atlcli.change-set/1` JSON envelope. `--context` applies only to `unified`;
+`semantic` format emits a plain-language, grouped terminal review or one
+`atlcli.change-set/1` JSON envelope. The terminal view does not expose AST
+paths, raw canonical JSON, collection IDs, or attachment UUIDs; use `--json`
+when a tool needs exact paths and operation metadata. `--context` applies only to `unified`;
 `--no-color` and `NO_COLOR` disable ANSI output. Cloud prefers exact-version ADF
 for both sides and can fall back to exact Storage for both sides. Data Center
 uses Storage only; that path is contract-tested but not project-live-certified.

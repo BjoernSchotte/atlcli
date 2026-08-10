@@ -107,14 +107,14 @@ nodes, and less than 256 MiB additional peak RSS at 100k nodes.
 
 | Candidate / fixture | p50 | p95 | Preparation | Additional peak RSS | Gate result |
 |---|---:|---:|---:|---:|---|
-| Owned spill ADF 10k | 186.82 ms | 201.44 ms | 3.13 ms | 91.5 MiB | Pass |
-| Owned spill Storage 10k | 150.19 ms | 151.53 ms | 1.83 ms | 77.8 MiB | Pass |
-| Owned spill ADF 100k | 1,683.58 ms | 1,684.00 ms | 27.81 ms | 252.2 MiB | Pass |
-| Owned spill Storage 100k | 1,775.13 ms | 1,843.36 ms | 10.77 ms | 238.7 MiB | Pass |
-| `jsondiffpatch` ADF 10k | 50.20 ms | 51.24 ms | 64.73 ms | 160.0 MiB | Informational pass |
-| `jsondiffpatch` Storage 10k | 53.13 ms | 54.04 ms | 35.20 ms | 149.6 MiB | Informational pass |
-| `jsondiffpatch` ADF 100k | 373.80 ms | 428.76 ms | 506.83 ms | 1,244.8 MiB | RSS rejection |
-| `jsondiffpatch` Storage 100k | 427.67 ms | 427.84 ms | 268.96 ms | 1,051.0 MiB | RSS rejection |
+| Owned spill ADF 10k | 181.60 ms | 183.25 ms | 2.79 ms | 92.5 MiB | Pass |
+| Owned spill Storage 10k | 148.79 ms | 149.52 ms | 1.62 ms | 79.3 MiB | Pass |
+| Owned spill ADF 100k | 1,827.57 ms | 1,836.19 ms | 28.87 ms | 240.1 MiB | Pass |
+| Owned spill Storage 100k | 1,526.10 ms | 1,586.88 ms | 12.92 ms | 236.9 MiB | Pass |
+| `jsondiffpatch` ADF 10k | 49.40 ms | 52.07 ms | 64.55 ms | 163.3 MiB | Informational pass |
+| `jsondiffpatch` Storage 10k | 54.60 ms | 55.79 ms | 33.30 ms | 146.7 MiB | Informational pass |
+| `jsondiffpatch` ADF 100k | 422.60 ms | 453.35 ms | 555.56 ms | 1,254.6 MiB | RSS rejection |
+| `jsondiffpatch` Storage 100k | 478.09 ms | 500.30 ms | 289.80 ms | 1,051.8 MiB | RSS rejection |
 
 The candidate's stress timing does not overturn the correctness verdict, and its
 100k observations are explicitly failed with `rss-gate-exceeded-postrun`.
@@ -124,13 +124,13 @@ that the spill lane removes:
 
 | Phase / measurement | Result |
 |---|---:|
-| Preparation | 506.70 ms |
-| RSS retained after preparation | 474.39 MiB |
-| Baseline digest | 508.80 ms |
-| Target digest | 475.67 ms |
-| RSS retained after both digests | 779.75 MiB |
-| Complete diff | 2,074.73 ms |
-| Peak RSS | 981.86 MiB |
+| Preparation | 549.02 ms |
+| RSS retained after preparation | 478.89 MiB |
+| Baseline digest | 517.62 ms |
+| Target digest | 519.34 ms |
+| RSS retained after both digests | 777.50 MiB |
+| Complete diff | 2,274.86 ms |
+| Peak RSS | 982.59 MiB |
 | Candidate comparisons | 299,998 |
 
 The implemented correction is architectural rather than a matcher shortcut:
@@ -159,16 +159,16 @@ byte-identical ChangeSets and identical exact-source changes through both lanes.
 
 Repeated canonical output bytes are identical. Bun and the actual
 Node-compatible runtime produced the same digest:
-`70b877503e0b3286a368e347831e332f06d67e7c7f87c5c90d43fedb52967071`.
+`d9ea6b89bd7da049cf24fc96c2fd703dbd245d96dee017c4ba3908df34b8ba01`.
 
 The isolated browser bundle measurement uses `Bun.build`, ESM, browser target,
 dependency bundling, minification, no source map, and gzip level 9:
 
 | Bundle | Minified | Gzip |
 |---|---:|---:|
-| Owned entry | 26,298 B | 8,237 B |
-| Hypothetical promoted candidate adapter | 43,950 B | 13,465 B |
-| Signed candidate delta | +17,652 B | +5,228 B |
+| Owned entry | 26,500 B | 8,292 B |
+| Hypothetical promoted candidate adapter | 44,146 B | 13,520 B |
+| Signed candidate delta | +17,646 B | +5,228 B |
 
 Both builds were byte-deterministic and the candidate delta is below the 50 KiB
 gzip limit. Bundle size is therefore not the rejection reason. The repository's
@@ -197,6 +197,19 @@ retained here; page IDs, URLs, account data and live bodies are not committed.
   spill threshold. Two live semantic JSON runs were byte-identical, complete,
   and reported one modification with zero false moves or opaque operations. The
   unified compatibility view also exited 0.
+- A separate existing Cloud page was then used as a real-world readability
+  probe without persisting its title, ID, URL, body, attachment IDs, or account
+  data. The probe exposed repeated line-break churn and raw media-node dumps in
+  the first terminal renderer. Regression fixes now align unchanged repeated
+  nodes at the same position, classify private editor upload metadata as
+  policy noise, propagate stable media identity to its wrapper, and render
+  grouped plain-language changes without AST paths, raw JSON, collection IDs,
+  or attachment UUIDs.
+- The non-adjacent real-world comparison is complete and presents one named
+  image, one named heading, grouped images, and grouped empty paragraphs. The
+  adjacent comparison correctly remains degraded where Confluence does not
+  expose enough stable media metadata; it emits one grouped review warning
+  instead of guessing at image correspondence.
 - Before deletion, the synthetic title, `DOCSY` space and version 5 ownership
   markers were re-read. Deletion succeeded; a subsequent read exited 1 with
   empty stdout and confirmed HTTP 404.
@@ -223,7 +236,7 @@ bun scripts/api-closure.ts
 The machine-readable `gates` object records correctness, determinism, 10k time,
 100k time, and 100k RSS as `true`.
 
-The focused semantic-diff suite passed with **115 tests, 0 failures and 520
+The focused semantic-diff suite passed with **119 tests, 0 failures and 538
 assertions**. The full repository suite exited 0. ADF drift, all 31 browser
 entrypoints, TypeScript, Astro docs, all 27 build packages, API reports and API
 closure reports also passed. The focused streaming/spill coverage proves

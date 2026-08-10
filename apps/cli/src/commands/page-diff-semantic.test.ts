@@ -361,10 +361,13 @@ describe("wiki page diff CLI shell", () => {
     expect(terminal.exitCode, terminal.stderr).toBe(0);
     expect(terminal.stderr).toBe("");
     expect(terminal.stdout).toContain(
-      "Wiki page \"Page Diff CLI Fixture\"  v2 -> v3  [data-center / storage]",
+      "Wiki page \"Page Diff CLI Fixture\" — version 2 → 3 (Data Center, Storage)",
     );
+    expect(terminal.stdout).toContain("~ Changed Text: “Second content” → “Third content”");
     expect(terminal.stdout).toContain("Summary:");
-    expect(terminal.stdout).toContain("Completeness: complete");
+    expect(terminal.stdout).toContain("Coverage: complete");
+    expect(terminal.stdout).not.toContain("content[");
+    expect(terminal.stdout).not.toContain('"attributes"');
     expect(terminal.stdout).not.toContain("\u001b[");
     expect(requests.map((request) => `${request.method} ${request.pathname}`).sort()).toEqual([
       `GET /rest/api/content/${PAGE_ID}/version/2`,

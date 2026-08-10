@@ -100,16 +100,15 @@ describe("renderSemanticDiff", () => {
   it("renders deterministic version and representation provenance", () => {
     const rendered = renderSemanticDiff(fixture());
     expect(rendered).toBe(
-      "Wiki page \"API Reference\"  v3 -> v7  [cloud / atlas_doc_format]\n" +
+      "Wiki page \"API Reference\" — version 3 → 7 (Cloud, ADF)\n" +
       "\n" +
-      "~ content[0].text: Use API tokens. -> Use scoped API tokens.\n" +
-      "+ content[1]: {\"kind\":\"panel\",\"label\":\"Migration warning\"}\n" +
-      "> content[4] -> content[2] [exact-subtree]\n" +
-      "! opaque macro attribute changed at content[8]\n" +
-      "! opaque-source-change at content[8]: Unknown macro attribute changed.\n" +
+      "~ Changed “Use API tokens.” → “Use scoped API tokens.” (block 1)\n" +
+      "+ Added Panel “Migration warning” (block 2)\n" +
+      "> Moved Table row from block 5 to block 3\n" +
+      "! Review required: opaque macro attribute changed (block 9)\n" +
       "\n" +
-      "Summary: 1 added, 0 deleted, 1 modified, 1 moved, 1 opaque\n" +
-      "Completeness: degraded",
+      "Summary: 1 added, 0 removed, 1 changed, 1 moved, 1 requiring review\n" +
+      "Coverage: degraded",
     );
     expect(renderSemanticDiff(fixture())).toBe(rendered);
     expect(rendered).not.toContain("\u001b[");
@@ -117,8 +116,8 @@ describe("renderSemanticDiff", () => {
 
   it("adds ANSI only when explicitly enabled", () => {
     const rendered = renderSemanticDiff(fixture(), { color: true });
-    expect(rendered).toContain("\u001b[36m~ content[0].text");
-    expect(rendered).toContain("\u001b[33m! opaque-source-change");
+    expect(rendered).toContain("\u001b[36m~ Changed “Use API tokens.”");
+    expect(rendered).toContain("\u001b[33m! Review required: opaque macro attribute changed");
   });
 
   it("bounds presentation values without changing the ChangeSet", () => {
@@ -133,7 +132,7 @@ describe("renderSemanticDiff", () => {
     }, ...changeSet.operations.slice(1)];
     const snapshot = JSON.stringify(changeSet);
     const rendered = renderSemanticDiff(changeSet, { maxValueCharacters: 16 });
-    expect(rendered).toContain("xxxxxxxxxxxxxxx… -> yyyyyyyyyyyyyyy…");
+    expect(rendered).toContain("“xxxxxxxxxxxxxxx…” → “yyyyyyyyyyyyyyy…”");
     expect(JSON.stringify(changeSet)).toBe(snapshot);
     expect(before).not.toBe(snapshot);
   });
@@ -152,6 +151,90 @@ describe("renderSemanticDiff", () => {
     changeSet.limits = { truncated: true, emittedOperations: 0, totalOperations: 1 };
     const rendered = renderSemanticDiff(changeSet);
     expect(rendered).toContain("No semantic changes.");
-    expect(rendered).toContain("Completeness: degraded; truncated");
+    expect(rendered).toContain("Coverage: degraded; truncated");
+  });
+
+  it("renders media and diagnostics without AST paths, raw JSON, or private IDs", () => {
+    const changeSet = fixture();
+    changeSet.operations = [{
+      ...changeSet.operations[1]!,
+      kind: "insert",
+      after: {
+        kind: "mediaSingle",
+        attributes: { layout: "center", width: 760 },
+        coverage: "exact",
+        children: [{
+          kind: "media",
+          attributes: {
+            alt: "Architecture overview.png",
+            collection: "contentId-synthetic-page",
+            id: "synthetic-media-uuid",
+          },
+          coverage: "exact",
+          children: [],
+        }],
+      },
+    }];
+    changeSet.summary = {
+      inserts: 1,
+      deletes: 0,
+      modifies: 0,
+      moves: 0,
+      opaque: 0,
+      noOp: false,
+    };
+    changeSet.completeness = {
+      status: "complete",
+      diagnostics: [
+        {
+          code: "ambiguous-match",
+          severity: "warning",
+          message: "first internal matcher detail",
+          path: ["content", 2],
+        },
+        {
+          code: "ambiguous-match",
+          severity: "warning",
+          message: "second internal matcher detail",
+          path: ["content", 8],
+        },
+      ],
+    };
+
+    const rendered = renderSemanticDiff(changeSet);
+    expect(rendered).toContain('+ Added Image “Architecture overview.png” (block 2)');
+    expect(rendered.match(/Some repeated elements/gu)?.length).toBe(1);
+    expect(rendered).not.toContain("content[");
+    expect(rendered).not.toContain("attributes");
+    expect(rendered).not.toContain("contentId-");
+    expect(rendered).not.toContain("synthetic-media-uuid");
+  });
+
+  it("groups repeated unlabeled blocks and review operations", () => {
+    const changeSet = fixture();
+    const insert = changeSet.operations[1]!;
+    const opaque = changeSet.operations[3]!;
+    if (insert.kind !== "insert" || opaque.kind !== "opaque-change") {
+      throw new Error("renderer fixture operation kinds drifted");
+    }
+    changeSet.operations = [
+      { ...insert, id: "5".repeat(64), path: ["content", 1], after: { kind: "paragraph", attributes: {}, coverage: "exact", children: [] } },
+      { ...insert, id: "6".repeat(64), path: ["content", 3], after: { kind: "paragraph", attributes: {}, coverage: "exact", children: [] } },
+      { ...opaque, id: "7".repeat(64), path: ["content", 5], reason: "An exact source change was not represented by the semantic projection.", after: { kind: "mediaSingle", attributes: {}, coverage: "exact", children: [] } },
+      { ...opaque, id: "8".repeat(64), path: ["content", 7], reason: "An exact source change was not represented by the semantic projection.", after: { kind: "mediaSingle", attributes: {}, coverage: "exact", children: [] } },
+    ];
+    changeSet.summary = {
+      inserts: 2,
+      deletes: 0,
+      modifies: 0,
+      moves: 0,
+      opaque: 2,
+      noOp: false,
+    };
+
+    const rendered = renderSemanticDiff(changeSet);
+    expect(rendered).toContain("+ Added 2 empty paragraphs");
+    expect(rendered).toContain("! 2 images require review: Confluence did not expose enough stable media metadata to match them safely.");
+    expect(rendered).not.toContain("opaque-source-change");
   });
 });
