@@ -45,6 +45,7 @@ import type {
   ResearchWorkerResponseV1,
 } from "../utils/research/worker-protocol.js";
 import { openDurableChatConversationWorkspaceV1 } from "../utils/research/chat-conversation.js";
+import { createLocalGemmaChatModelBindingV1 } from "../utils/local-model/langchain-proxy.js";
 
 function post(message: ResearchWorkerResponseV1): void {
   globalThis.postMessage(message);
@@ -221,6 +222,15 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           };
           const answer = await runChatAgent({
             apiKey,
+            ...(message.modelBinding?.kind === "local-gemma"
+              ? {
+                  modelBinding: createLocalGemmaChatModelBindingV1({
+                    port: message.modelBinding.port,
+                    modelId: message.modelBinding.modelId,
+                    maxOutputTokens: request.limits.maxModelOutputTokens,
+                  }),
+                }
+              : {}),
             turn,
             brokerRequest: request,
             providers,

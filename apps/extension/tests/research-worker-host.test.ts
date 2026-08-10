@@ -25,10 +25,12 @@ class FakeWorker {
     | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   posted: ResearchWorkerRequestV1[] = [];
+  transfers: Array<Transferable[] | undefined> = [];
   terminated = false;
 
-  postMessage(message: ResearchWorkerRequestV1): void {
+  postMessage(message: ResearchWorkerRequestV1, transfer?: Transferable[]): void {
     this.posted.push(message);
+    this.transfers.push(transfer);
   }
 
   terminate(): void {
@@ -93,6 +95,35 @@ const qualityPolicy = {
 } as const;
 
 describe("dedicated research worker host", () => {
+  it("transfers the local model port into the existing Chat worker", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const channel = new MessageChannel();
+    const running = host.run({
+      runId: "chat-local-1",
+      sessionId: "chat-session:local",
+      turnId: "chat-turn:local",
+      apiKey: "",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      modelBinding: {
+        kind: "local-gemma",
+        modelId: "fixture/model",
+        port: channel.port1,
+      },
+    });
+    expect(worker.posted[0]).toMatchObject({
+      kind: "research-worker:run",
+      apiKey: "",
+      modelBinding: { kind: "local-gemma", modelId: "fixture/model" },
+    });
+    expect(worker.transfers[0]).toEqual([channel.port1]);
+    worker.emit({ kind: "research-worker:complete", runId: "chat-local-1", answer });
+    expect(await running).toBe(answer);
+    channel.port2.close();
+  });
+
   it("transports a typed Chat checkpoint continuation without token replay state", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });

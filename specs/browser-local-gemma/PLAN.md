@@ -637,10 +637,10 @@ hardening.
 - [x] Configure Transformers.js model resolution/fetching so the engine can load
       only the verified local manifest files and cannot contact Hugging Face or
       another model host after installation.
-- [ ] Add the thin offscreen-owned model host, bounded `MessagePort` transport to
+- [x] Add the thin offscreen-owned model host, bounded `MessagePort` transport to
       the fresh per-run agent worker, local `BaseChatModel` proxy, and
       `ChatModelBindingV1` required by the existing `runChatAgent`.
-- [ ] Replace the API-key-only run gate just enough for the existing background
+- [x] Replace the API-key-only run gate just enough for the existing background
       and worker path to resolve either the Anthropic binding or a verified local
       binding; do not fork `ChatAgentPortV1` or the Chat workflow.
 
@@ -672,9 +672,9 @@ hardening.
 
 Automated proof:
 
-- [ ] `bun run check:extension-output` accepts the packed runtime artifacts and
+- [x] `bun run check:extension-output` accepts the packed runtime artifacts and
       still rejects remote executable code.
-- [ ] Focused adapter fixtures reject malformed/unknown tool calls and accept
+- [x] Focused adapter fixtures reject malformed/unknown tool calls and accept
       the required `eval` plus terminal structured-answer sequence.
 - [ ] A caller-path assertion proves every G0 acceptance run entered through the
       existing `ResearchScreen`/port/background path; direct runtime/adapter

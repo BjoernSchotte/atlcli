@@ -48,11 +48,11 @@ import {
   normalizeChatQualityPolicyV1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
-import { normalizeAnthropicApiKey } from "../utils/research/credential.js";
 import {
   chromeBrowserCredentialStorageV1,
   readBrowserApiKeyV1,
 } from "../utils/research/browser-credential-storage.js";
+import { normalizeAnthropicApiKey } from "../utils/research/credential.js";
 import { profileFromTabUrl } from "../utils/profile.js";
 import {
   ResearchScopeCatalogBroker,
@@ -100,6 +100,12 @@ import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
 import { createOffscreenActivityTracker } from "../utils/pdf/offscreen-activity.js";
 import { createDurableIdleGate } from "../utils/jobs/idle-gate.js";
+import {
+  APP_SETTINGS_STORAGE_KEY,
+  normalizeSettings,
+} from "../utils/ports/settings.js";
+import { LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1 } from "../utils/local-model/storage.js";
+import { resolveBrowserChatModelRunBindingV1 } from "../utils/local-model/run-binding.js";
 import {
   countInFlightPdfJobs,
   listPdfJobMeta,
@@ -538,9 +544,22 @@ export default defineBackground({
         "The active Atlassian tab no longer matches the research site."
       );
     }
-    const apiKey = normalizeAnthropicApiKey(
-      await readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
-    );
+    const storedSettings = await chrome.storage.local.get(APP_SETTINGS_STORAGE_KEY);
+    const modelSelection = normalizeSettings(
+      storedSettings[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection;
+    const modelRunBinding = await resolveBrowserChatModelRunBindingV1({
+      selection: modelSelection,
+      mode,
+      readAnthropicApiKey: () =>
+        readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
+      readLocalActivation: async () => {
+        const storedActivation = await chrome.storage.local.get(
+          LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1,
+        );
+        return storedActivation[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1];
+      },
+    });
     if (activeResearchRuns.has(runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
     }
@@ -553,7 +572,8 @@ export default defineBackground({
         runId,
         sessionId,
         turnId,
-        apiKey,
+        apiKey: modelRunBinding.apiKey,
+        modelProvider: modelRunBinding.modelProvider,
         mode,
         request,
         policy,

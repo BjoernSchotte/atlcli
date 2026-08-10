@@ -64,6 +64,7 @@ export interface OffscreenListenerDeps {
     resumeCheckpoint?: {
       kind: "stream-interruption" | "steering";
     },
+    modelProvider?: "anthropic" | "local-gemma",
   ) => Promise<ResearchReport | ChatAnswerV1>;
   resumeResearch?: (
     runId: string,
@@ -426,6 +427,7 @@ export function handleOffscreenMessage(
           message.hostIdentity,
           message.resumeAnswer,
           message.resumeCheckpoint,
+          message.modelProvider,
         )
         : Promise.reject(new Error("Research worker host is not configured.")))
         .then((report) => sendResponse({

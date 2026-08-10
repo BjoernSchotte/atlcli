@@ -6,6 +6,7 @@ import {
 } from "../utils/listeners.js";
 import type { ExtResponse, OffscreenResponse } from "../utils/messages.js";
 import type {
+  ChatAnswerV1,
   ResearchReportV1,
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
@@ -457,6 +458,39 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       ok: true,
       report,
     }]);
+  });
+
+  it("passes the local provider marker with an empty credential", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    const request = { schema: "atlcli.research-request/v1" } as ResearchRequestV1;
+    const answer = { schema: "atlcli.chat-answer/v1" } as ChatAnswerV1;
+    const received: unknown[] = [];
+    expect(handleOffscreenMessage(
+      {
+        kind: "offscreen:research-run",
+        runId: "run-local-1",
+        sessionId: "research-session:local-1",
+        turnId: "research-turn:local-1",
+        apiKey: "",
+        modelProvider: "local-gemma",
+        mode: "chat",
+        request,
+        hostIdentity: {
+          userId: "browser-principal:synthetic-local",
+          providerCacheIdentity: "local:browser-principal:synthetic-local",
+        },
+      },
+      cap.sendResponse,
+      {
+        ...okOffscreenDeps,
+        runResearch: async (...args) => {
+          received.push(args[3], args[4], args[11]);
+          return answer;
+        },
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(received).toEqual(["", "chat", "local-gemma"]);
   });
 
   it("returns a typed durable Chat question from the offscreen host", async () => {

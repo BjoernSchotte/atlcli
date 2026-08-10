@@ -697,6 +697,7 @@ export type OffscreenRequest =
       sessionId: string;
       turnId: string;
       apiKey: string;
+      modelProvider?: "anthropic" | "local-gemma";
       mode: "chat" | "research";
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
@@ -1189,12 +1190,16 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; modelProvider?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "modelProvider", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
-      isResearchApiKey(run.apiKey) &&
+      (run.modelProvider === undefined || run.modelProvider === "anthropic" ||
+        run.modelProvider === "local-gemma") &&
+      (run.modelProvider === "local-gemma"
+        ? run.apiKey === "" && run.mode === "chat"
+        : isResearchApiKey(run.apiKey)) &&
       (run.mode === "chat" || run.mode === "research") &&
       typeof run.request === "object" &&
       run.request !== null &&

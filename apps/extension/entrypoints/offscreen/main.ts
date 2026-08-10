@@ -37,6 +37,7 @@ import {
   isLocalModelActivationV1,
   LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1,
 } from "../../utils/local-model/storage.js";
+import { LocalModelWorkerHostV1 } from "../../utils/local-model/worker-host.js";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
 
@@ -64,9 +65,10 @@ void recoverResearchSessionsAfterOffscreenStart().catch((error) =>
   console.error("Durable research recovery after offscreen startup failed", error),
 );
 
-let localModelWorker: Worker | undefined;
+let localModelHost: LocalModelWorkerHostV1 | undefined;
 
 async function restoreInstalledLocalModelWorkerV1(): Promise<void> {
+  if (localModelHost) return;
   const stored = await chrome.storage.local.get(LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1);
   if (!isLocalModelActivationV1(
     stored[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1],
@@ -74,15 +76,27 @@ async function restoreInstalledLocalModelWorkerV1(): Promise<void> {
   )) {
     return;
   }
-  localModelWorker = new Worker(new URL("../../workers/local-model.ts", import.meta.url), {
+  const worker = new Worker(new URL("../../workers/local-model.ts", import.meta.url), {
     type: "module",
     name: "atlcli-local-model",
   });
+  localModelHost = new LocalModelWorkerHostV1(
+    LOCAL_GEMMA_G0_MANIFEST_V1.modelId,
+    worker,
+  );
 }
 
 void restoreInstalledLocalModelWorkerV1().catch((error) =>
   console.error("Installed local model worker recovery failed", error),
 );
+
+async function connectInstalledLocalModelV1() {
+  await restoreInstalledLocalModelWorkerV1();
+  if (!localModelHost) {
+    throw new Error("The selected local model is not installed and active.");
+  }
+  return localModelHost.connect();
+}
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
@@ -200,13 +214,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       hostIdentity,
       resumeAnswer,
       resumeCheckpoint,
+      modelProvider,
     ) => {
-      const apiKey = normalizeAnthropicApiKey(key);
+      const apiKey = modelProvider === "local-gemma"
+        ? ""
+        : normalizeAnthropicApiKey(key);
       return researchHost.run({
         runId,
         sessionId,
         turnId,
         apiKey,
+        ...(modelProvider === "local-gemma"
+          ? { modelBinding: await connectInstalledLocalModelV1() }
+          : {}),
         mode,
         request,
         policy,

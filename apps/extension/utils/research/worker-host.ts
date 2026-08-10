@@ -25,7 +25,7 @@ import type {
 interface WorkerLike {
   onmessage: ((event: MessageEvent<ResearchWorkerResponseV1>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
-  postMessage(message: ResearchWorkerRequestV1): void;
+  postMessage(message: ResearchWorkerRequestV1, transfer?: Transferable[]): void;
   terminate(): void;
 }
 
@@ -50,6 +50,11 @@ interface ResearchAgentWorkerRunInput {
   policy?: ResearchOneShotPolicyV1;
   qualityPolicy?: ChatQualityPolicyV1;
   hostIdentity?: ChatHostIdentityV1;
+  modelBinding?: {
+    kind: "local-gemma";
+    modelId: string;
+    port: MessagePort;
+  };
   resumeAnswer?: ChatUserQuestionAnswerV1;
   resumeCheckpoint?: {
     kind: "stream-interruption" | "steering";
@@ -129,14 +134,16 @@ export class ResearchAgentWorkerHost {
         reject(new ResearchContractError(classified.code, classified.message));
       };
       if (input.resume) {
-        worker.postMessage({
+        const request: ResearchWorkerRequestV1 = {
           kind: "research-worker:run",
           runId: input.runId,
           sessionId: input.sessionId,
           turnId: input.turnId,
           apiKey: input.apiKey,
           resume: true,
-        });
+          ...(input.modelBinding ? { modelBinding: input.modelBinding } : {}),
+        };
+        worker.postMessage(request, input.modelBinding ? [input.modelBinding.port] : undefined);
         return;
       }
       if (!input.request) {
@@ -146,7 +153,7 @@ export class ResearchAgentWorkerHost {
         ));
         return;
       }
-      worker.postMessage({
+      const request: ResearchWorkerRequestV1 = {
         kind: "research-worker:run",
         runId: input.runId,
         sessionId: input.sessionId,
@@ -157,9 +164,11 @@ export class ResearchAgentWorkerHost {
         ...(input.policy ? { policy: input.policy } : {}),
         ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
         ...(input.hostIdentity ? { hostIdentity: input.hostIdentity } : {}),
+        ...(input.modelBinding ? { modelBinding: input.modelBinding } : {}),
         ...(input.resumeAnswer ? { resumeAnswer: input.resumeAnswer } : {}),
         ...(input.resumeCheckpoint ? { resumeCheckpoint: input.resumeCheckpoint } : {}),
-      });
+      };
+      worker.postMessage(request, input.modelBinding ? [input.modelBinding.port] : undefined);
     }).finally(() => {
       const active = this.#active.get(input.runId);
       if (active?.worker === worker) {

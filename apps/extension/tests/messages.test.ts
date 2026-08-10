@@ -828,6 +828,25 @@ describe("message guards", () => {
     })).toBe(true);
     expect(isOffscreenRequest({
       ...offscreenChatRun,
+      apiKey: "",
+      modelProvider: "local-gemma",
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      ...offscreenChatRun,
+      apiKey: "",
+      modelProvider: "local-gemma",
+      mode: "research",
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+    })).toBe(false);
+    expect(isOffscreenRequest({
+      ...offscreenChatRun,
       hostIdentity: {
         userId: "browser-principal:synthetic",
         providerCacheIdentity: "provider-cache:synthetic",

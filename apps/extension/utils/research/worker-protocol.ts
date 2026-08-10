@@ -42,6 +42,11 @@ export type ResearchWorkerRequestV1 =
       policy?: ResearchOneShotPolicyV1;
       qualityPolicy?: ChatQualityPolicyV1;
       hostIdentity?: ChatHostIdentityV1;
+      modelBinding?: {
+        kind: "local-gemma";
+        modelId: string;
+        port: MessagePort;
+      };
       resumeAnswer?: ChatUserQuestionAnswerV1;
       resumeCheckpoint?: {
         kind: "stream-interruption" | "steering";
@@ -59,6 +64,11 @@ export type ResearchWorkerRequestV1 =
       turnId: string;
       apiKey: string;
       resume: true;
+      modelBinding?: {
+        kind: "local-gemma";
+        modelId: string;
+        port: MessagePort;
+      };
     };
 
 export type ResearchWorkerResponseV1 =
