@@ -14,14 +14,17 @@ import {
 } from "./actions-timings.js";
 import {
   assertDisjointLaneOwnership,
+  createTimingSnapshot,
   parseBunJUnit,
   type FileTiming,
+  type TimingSnapshot,
 } from "./test-timings.js";
 
 export interface CiTelemetrySummary {
   schema: 1;
   commitSha: string;
   sourceRun: string;
+  proofMode: string;
   topology: string;
   routes: Record<string, boolean>;
   files: number;
@@ -33,12 +36,37 @@ export interface CiTelemetrySummary {
     durationSeconds: number;
   }>;
   slowestFiles: FileTiming[];
+  timingSnapshot: TimingSnapshot;
   actions: ActionsTimingSummary;
+}
+
+const ROUTE_ENVIRONMENT: ReadonlyArray<readonly [string, string]> = [
+  ["code", "CI_ROUTE_CODE"],
+  ["consumer", "CI_ROUTE_CONSUMER"],
+  ["staticQuality", "CI_ROUTE_STATIC_QUALITY"],
+  ["unitTests", "CI_ROUTE_UNIT_TESTS"],
+  ["packageContracts", "CI_ROUTE_PACKAGE_CONTRACTS"],
+  ["astroPublishing", "CI_ROUTE_ASTRO_PUBLISHING"],
+  ["astroPlatform", "CI_ROUTE_ASTRO_PLATFORM"],
+  ["pdfPlatform", "CI_ROUTE_PDF_PLATFORM"],
+  ["browserHarness", "CI_ROUTE_BROWSER_HARNESS"],
+  ["docs", "CI_ROUTE_DOCS"],
+  ["readmeMedia", "CI_ROUTE_README_MEDIA"],
+  ["researchPrivacy", "CI_ROUTE_RESEARCH_PRIVACY"],
+];
+
+export function routesFromEnvironment(
+  environment: Readonly<Record<string, string | undefined>>,
+): Record<string, boolean> {
+  return Object.fromEntries(
+    ROUTE_ENVIRONMENT.map(([route, variable]) => [route, environment[variable] === "true"]),
+  );
 }
 
 export function buildCiTelemetrySummary(options: {
   commitSha: string;
   sourceRun: string;
+  proofMode: string;
   topology: string;
   routes: Record<string, boolean>;
   junit: Array<{ lane: string; xml: string }>;
@@ -57,6 +85,7 @@ export function buildCiTelemetrySummary(options: {
     schema: 1,
     commitSha: options.commitSha.toLowerCase(),
     sourceRun: options.sourceRun,
+    proofMode: options.proofMode,
     topology: options.topology,
     routes: options.routes,
     files: files.length,
@@ -80,6 +109,11 @@ export function buildCiTelemetrySummary(options: {
           left.file.localeCompare(right.file),
       )
       .slice(0, 20),
+    timingSnapshot: createTimingSnapshot({
+      baselineSha: options.commitSha,
+      sourceRun: options.sourceRun,
+      artifacts,
+    }),
     actions: summarizeActionsJobs(options.jobs, options.dependencies),
   };
 }
@@ -88,6 +122,7 @@ export function telemetryMarkdown(summary: CiTelemetrySummary): string {
   const lines = [
     "## CI timing telemetry",
     "",
+    `- Proof mode: \`${summary.proofMode}\``,
     `- Topology: \`${summary.topology}\``,
     `- Test files / cases: ${summary.files} / ${summary.testcases}`,
     `- Workflow wall time: ${summary.actions.workflowWallSeconds ?? "unavailable"}s`,
@@ -153,13 +188,9 @@ async function main(): Promise<void> {
       process.env.GITHUB_RUN_ID
         ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
         : "local",
+    proofMode: process.env.CI_PROOF_MODE ?? "unknown",
     topology: process.env.CI_TEST_TOPOLOGY ?? "legacy-4-shard",
-    routes: {
-      code: process.env.CI_ROUTE_CODE === "true",
-      consumer: process.env.CI_ROUTE_CONSUMER === "true",
-      docs: process.env.CI_ROUTE_DOCS === "true",
-      readmeMedia: process.env.CI_ROUTE_README_MEDIA === "true",
-    },
+    routes: routesFromEnvironment(process.env),
     junit,
     jobs: jobsPayload.jobs,
     dependencies: jobsPayload.dependencies,

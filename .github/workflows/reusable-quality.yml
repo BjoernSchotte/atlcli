@@ -3,6 +3,21 @@ name: Reusable product quality
 on:
   workflow_call:
     inputs:
+      run_static_quality:
+        description: Run repository typecheck and build contracts
+        required: false
+        default: true
+        type: boolean
+      run_tests:
+        description: Run the complete required Bun test inventory
+        required: false
+        default: true
+        type: boolean
+      run_astro_platform:
+        description: Run pinned Astro platform compatibility contracts
+        required: false
+        default: true
+        type: boolean
       emit_security_attestation:
         description: Emit and upload a security attestation for this exact SHA
         required: false
@@ -15,6 +30,7 @@ permissions:
 jobs:
   static-quality:
     name: Linux typecheck, browser checks, and build
+    if: inputs.run_static_quality
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -30,6 +46,12 @@ jobs:
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v4
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Cache Turbo
         uses: actions/cache@v4
@@ -63,6 +85,7 @@ jobs:
 
   tests:
     name: Linux Bun tests (${{ matrix.shard }}/4)
+    if: inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -82,6 +105,12 @@ jobs:
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v4
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -150,49 +179,9 @@ jobs:
           path: test-results/bun-test-shard-${{ matrix.shard }}.log
           if-no-files-found: error
 
-  publishing:
-    name: Astro publishing package and consumer gates
-    needs: static-quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22.12.0"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Restore Bun package cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run publishing package, pack, and consumer gates
-        env:
-          ATLCLI_CONSUMER_SMOKE: "1"
-        run: >-
-          bun --conditions=development test
-          packages/export-blocks-astro/src/packed-consumer.test.ts
-          packages/web-publish-astro/src/astro-consumer.test.ts
-          packages/web-publish-starlight/src/starlight-renderer.test.ts
-          scripts/pack-check.test.ts
-          scripts/publishable-deps.test.ts
-          scripts/dist-hygiene.test.ts
-          scripts/consumer-smoke.test.ts
-
   publishing-platform:
     name: Astro platform (${{ matrix.lane }}, ${{ matrix.os }}, Node ${{ matrix.node }})
-    needs: publishing
+    if: inputs.run_astro_platform
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -203,10 +192,6 @@ jobs:
             os: ubuntu-latest
             node: "22.12.0"
             astro: "7.1.6"
-          - lane: latest-astro-7
-            os: ubuntu-latest
-            node: "24"
-            astro: "latest-7"
           - lane: windows-astro
             os: windows-latest
             node: "24"
@@ -233,27 +218,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Resolve latest supported Astro 7.x
-        if: matrix.astro == 'latest-7'
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const paths = [
-            'packages/web-publish-astro/fixtures/astro-consumer/package.json',
-            'packages/web-publish-starlight/fixtures/published-consumer/package.json',
-          ];
-          for (const file of paths) {
-            const packageJson = JSON.parse(fs.readFileSync(file, 'utf8'));
-            packageJson.dependencies.astro = '^7.1.6';
-            fs.writeFileSync(file, `${JSON.stringify(packageJson, null, 2)}\n`);
-          }
-          NODE
-          # Resolve from the repository workspace so local workspace:* packages
-          # remain resolvable; running `bun add --cwd <fixture>` treats the
-          # fixture as an isolated workspace and fails before Astro is tested.
-          bun install --no-progress
-
       - name: Verify Astro version lane
         shell: bash
         env:
@@ -272,9 +236,7 @@ jobs:
           });
           if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
           const actual = versions[0];
-          if (process.env.EXPECTED_ASTRO === 'latest-7') {
-            if (!/^7\./.test(actual)) throw new Error(`latest Astro 7.x lane resolved ${actual}`);
-          } else if (actual !== process.env.EXPECTED_ASTRO) {
+          if (actual !== process.env.EXPECTED_ASTRO) {
             throw new Error(`expected Astro ${process.env.EXPECTED_ASTRO}, got ${actual}`);
           }
           console.log(`Astro ${actual} verified for ${process.env.EXPECTED_ASTRO} lane`);
@@ -289,9 +251,84 @@ jobs:
           packages/web-publish-astro/src/astro-consumer.test.ts
           packages/web-publish-starlight/src/starlight-renderer.test.ts
 
+  # A floating dependency lane is useful drift evidence, not per-commit proof.
+  # Keep it off pull requests and ordinary main pushes so it cannot lengthen
+  # merge-ready feedback or make a merge depend on registry drift.
+  publishing-platform-latest:
+    name: Astro platform canary (latest Astro 7, Node 24)
+    if: inputs.run_astro_platform && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag')
+    continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve latest supported Astro 7.x
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const paths = [
+            'packages/web-publish-astro/fixtures/astro-consumer/package.json',
+            'packages/web-publish-starlight/fixtures/published-consumer/package.json',
+          ];
+          for (const file of paths) {
+            const packageJson = JSON.parse(fs.readFileSync(file, 'utf8'));
+            packageJson.dependencies.astro = '^7.1.6';
+            fs.writeFileSync(file, `${JSON.stringify(packageJson, null, 2)}\n`);
+          }
+          NODE
+          bun install --no-progress
+
+      - name: Verify Astro 7.x resolution
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const fixtures = [
+            'packages/web-publish-astro/fixtures/astro-consumer',
+            'packages/web-publish-starlight/fixtures/published-consumer',
+          ];
+          const versions = fixtures.map((fixture) => {
+            const packagePath = require.resolve('astro/package.json', { paths: [path.resolve(fixture)] });
+            return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
+          });
+          if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
+          if (!/^7\./.test(versions[0])) throw new Error(`latest Astro 7.x lane resolved ${versions[0]}`);
+          console.log(`Astro ${versions[0]} verified for latest Astro 7.x lane`);
+          NODE
+
+      - name: Run packed Astro and Starlight consumers
+        env:
+          ATLCLI_CONSUMER_SMOKE: "1"
+        run: >-
+          bun --conditions=development test
+          packages/export-blocks-astro/src/packed-consumer.test.ts
+          packages/web-publish-astro/src/astro-consumer.test.ts
+          packages/web-publish-starlight/src/starlight-renderer.test.ts
+
   security-attestation:
     name: Exact-SHA security attestation
-    needs: [static-quality, tests, publishing]
     if: inputs.emit_security_attestation
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -312,6 +349,7 @@ jobs:
 
       - name: Verify security attestation SHA
         run: |
+          # shellcheck disable=SC2016
           bun -e '
             const attestation = await Bun.file("security-attestation.json").json();
             if (attestation.commit !== process.env.GITHUB_SHA) {
@@ -327,44 +365,3 @@ jobs:
           name: security-attestation-${{ github.sha }}
           path: security-attestation.json
           if-no-files-found: error
-
-  quality-complete:
-    name: Linux quality complete
-    if: always()
-    needs: [static-quality, tests, publishing, publishing-platform, security-attestation]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require every quality gate to pass
-        env:
-          STATIC_QUALITY: ${{ needs.static-quality.result }}
-          TESTS: ${{ needs.tests.result }}
-          PUBLISHING: ${{ needs.publishing.result }}
-          PUBLISHING_PLATFORM: ${{ needs.publishing-platform.result }}
-          ATTESTATION: ${{ needs.security-attestation.result }}
-          ATTESTATION_REQUIRED: ${{ inputs.emit_security_attestation }}
-        run: |
-          if [[ "$STATIC_QUALITY" != "success" ]]; then
-            echo "::error::Static quality finished with result: $STATIC_QUALITY"
-            exit 1
-          fi
-          if [[ "$TESTS" != "success" ]]; then
-            echo "::error::One or more Bun test shards finished with result: $TESTS"
-            exit 1
-          fi
-          if [[ "$PUBLISHING" != "success" ]]; then
-            echo "::error::Astro publishing package/consumer gates finished with result: $PUBLISHING"
-            exit 1
-          fi
-          if [[ "$PUBLISHING_PLATFORM" != "success" ]]; then
-            echo "::error::Astro platform matrix finished with result: $PUBLISHING_PLATFORM"
-            exit 1
-          fi
-          if [[ "$ATTESTATION_REQUIRED" == "true" && "$ATTESTATION" != "success" ]]; then
-            echo "::error::The required exact-SHA attestation finished with result: $ATTESTATION"
-            exit 1
-          fi
-          if [[ "$ATTESTATION_REQUIRED" != "true" && "$ATTESTATION" != "skipped" ]]; then
-            echo "::error::The unselected attestation finished with unexpected result: $ATTESTATION"
-            exit 1
-          fi

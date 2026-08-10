@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildCiTelemetrySummary,
+  routesFromEnvironment,
   telemetryMarkdown,
 } from "./telemetry-summary.js";
 
@@ -13,10 +14,27 @@ function junit(file: string, seconds: number): string {
 }
 
 describe("CI telemetry summary", () => {
+  test("records every granular route without treating missing values as selected", () => {
+    expect(
+      routesFromEnvironment({
+        CI_ROUTE_CODE: "true",
+        CI_ROUTE_ASTRO_PLATFORM: "true",
+        CI_ROUTE_PDF_PLATFORM: "false",
+      }),
+    ).toMatchObject({
+      code: true,
+      astroPlatform: true,
+      pdfPlatform: false,
+      browserHarness: false,
+      researchPrivacy: false,
+    });
+  });
+
   test("combines disjoint lane JUnit with Actions timing data", () => {
     const summary = buildCiTelemetrySummary({
       commitSha: "a".repeat(40),
       sourceRun: "run-1",
+      proofMode: "required",
       topology: "legacy-4-shard",
       routes: { code: true },
       junit: [
@@ -37,12 +55,19 @@ describe("CI telemetry summary", () => {
     });
     expect(summary).toMatchObject({
       schema: 1,
+      proofMode: "required",
       files: 2,
       testcases: 2,
     });
     expect(summary.slowestFiles[0]).toMatchObject({
       file: "pkg/slow.test.ts",
       durationSeconds: 2,
+    });
+    expect(summary.timingSnapshot).toMatchObject({
+      schema: 1,
+      baselineSha: "a".repeat(40),
+      sourceRun: "run-1",
+      samples: 2,
     });
     expect(telemetryMarkdown(summary)).toContain("legacy-4-shard");
   });
@@ -52,6 +77,7 @@ describe("CI telemetry summary", () => {
       buildCiTelemetrySummary({
         commitSha: "a".repeat(40),
         sourceRun: "run-1",
+        proofMode: "required",
         topology: "candidate",
         routes: {},
         junit: [

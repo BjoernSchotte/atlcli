@@ -1,12 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { buildTestLaneCommand } from "./run-test-lane.js";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
+  buildTestLaneCommand,
+  executionPhases,
+  mergeJunitDocuments,
+} from "./run-test-lane.js";
+import {
+  detectDirectSetupRequirements,
+  loadTestLaneMetadata,
   planTestLanes,
+  testLaneMatrix,
+  validateDirectSetupOwnership,
   type TestExecutionGroup,
   type TestLaneMetadata,
   type TestLaneMetadataEntry,
   type TestTopology,
 } from "./test-lanes.js";
+import { discoverTestFiles } from "./test-inventory.js";
 
 const SHA = "a".repeat(40);
 
@@ -138,6 +149,47 @@ describe("duration-aware test lanes", () => {
     ]);
   });
 
+  test("detects and fail-closes direct Poppler and pinned-font setup ownership", () => {
+    const popplerSource = `Bun.spawn(["${"pdf" + "toppm"}"]);`;
+    const fontSource = `${"ensure" + "PdfFonts"}();`;
+    expect(
+      detectDirectSetupRequirements(`${popplerSource} ${fontSource}`),
+    ).toEqual(["poppler", "fonts"]);
+    expect(() =>
+      validateDirectSetupOwnership({
+        inventory: ["pkg/proof.test.ts"],
+        metadata: metadata([{ path: "pkg/proof.test.ts", requirements: ["poppler"] }]),
+        sourceFor: () => `${popplerSource} ${fontSource}`,
+      }),
+    ).toThrow("fonts");
+    expect(() =>
+      validateDirectSetupOwnership({
+        inventory: ["pkg/proof.test.ts"],
+        metadata: metadata([
+          { path: "pkg/proof.test.ts", requirements: ["fonts", "poppler"] },
+        ]),
+        sourceFor: () => `${popplerSource} ${fontSource}`,
+      }),
+    ).not.toThrow();
+  });
+
+  test("keeps every directly detected repository setup in its owning lane", () => {
+    const inventory = discoverTestFiles();
+    const realMetadata = loadTestLaneMetadata();
+    validateDirectSetupOwnership({
+      inventory,
+      metadata: realMetadata,
+      sourceFor: (path) => readFileSync(resolve(import.meta.dir, "../..", path), "utf8"),
+    });
+    const result = planTestLanes(inventory, realMetadata, "general-3x1");
+    expect(
+      result.groups
+        .filter(({ lane }) => lane === "general")
+        .flatMap(({ requirements }) => requirements)
+        .filter((requirement) => requirement === "fonts" || requirement === "poppler"),
+    ).toEqual([]);
+  });
+
   test("keeps atomic groups indivisible in a separate serial execution group", () => {
     const result = plan(
       ["pkg/a.test.ts", "pkg/b.test.ts", "pkg/safe.test.ts"],
@@ -207,6 +259,49 @@ describe("duration-aware test lanes", () => {
     expect(
       buildTestLaneCommand(group(), "junit/general-1.xml"),
     ).not.toContain("--parallel=2");
+  });
+
+  test("keeps safe and serial phases on one logical matrix runner", () => {
+    const result = plan(
+      ["pkg/safe-a.test.ts", "pkg/safe-b.test.ts", "pkg/stateful.test.ts"],
+      [
+        {
+          path: "pkg/stateful.test.ts",
+          durationSeconds: 2,
+          atomicGroup: "stateful",
+          requirements: ["stateful"],
+        },
+      ],
+      "general-2x2-workers",
+    );
+    const matrix = testLaneMatrix(result);
+    expect(matrix.include).toHaveLength(2);
+    expect(matrix.include.find(({ executionGroups }) => executionGroups.length === 2)).toMatchObject({
+      group: "general-1",
+      workers: 2,
+      executionGroups: ["general-1-parallel", "general-1-serial"],
+    });
+    const shared = result.groups.filter(({ job }) => job === "general-1");
+    expect(executionPhases(shared)).toHaveLength(2);
+
+    expect(executionPhases(shared.map((phase) => ({ ...phase, workers: 1 })))).toMatchObject([
+      {
+        id: "general-1",
+        workers: 1,
+        files: expect.arrayContaining(["pkg/stateful.test.ts"]),
+      },
+    ]);
+  });
+
+  test("merges bounded JUnit phase documents for one logical runner", () => {
+    const merged = mergeJunitDocuments([
+      '<?xml version="1.0"?><testsuites><testsuite name="safe" /></testsuites>',
+      '<testsuites tests="1"><testsuite name="serial" /></testsuites>',
+    ]);
+    expect(merged).toContain('<testsuite name="safe" />');
+    expect(merged).toContain('<testsuite name="serial" />');
+    expect(merged.match(/<testsuites>/g)).toHaveLength(1);
+    expect(() => mergeJunitDocuments(["<testsuite />"])).toThrow("testsuites envelope");
   });
 
   test("rejects empty, duplicate, escaping, implicit, and unsafe parallel groups", () => {

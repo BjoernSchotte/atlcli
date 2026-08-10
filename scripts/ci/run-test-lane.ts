@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { discoverTestFiles, normalizeRepositoryTestPath } from "./test-inventory.js";
 import {
@@ -46,6 +47,38 @@ export function buildTestLaneCommand(
   return args;
 }
 
+export function executionPhases(groups: readonly TestExecutionGroup[]): TestExecutionGroup[] {
+  if (groups.length === 0) throw new Error("logical test job has no execution groups");
+  const jobs = new Set(groups.map((group) => group.job));
+  if (jobs.size !== 1) throw new Error("execution groups must share one logical job");
+  if (groups.every((group) => group.workers === 1)) {
+    return [
+      {
+        id: groups[0]!.job,
+        job: groups[0]!.job,
+        lane: groups[0]!.lane,
+        mode: "serial",
+        workers: 1,
+        files: groups.flatMap((group) => group.files),
+        requirements: [...new Set(groups.flatMap((group) => group.requirements))].sort(),
+        atomicGroups: [...new Set(groups.flatMap((group) => group.atomicGroups))].sort(),
+        estimatedSeconds: groups.reduce((total, group) => total + group.estimatedSeconds, 0),
+      },
+    ];
+  }
+  return [...groups];
+}
+
+export function mergeJunitDocuments(documents: readonly string[]): string {
+  if (documents.length === 0) throw new Error("at least one JUnit document is required");
+  const bodies = documents.map((document) => {
+    const match = document.match(/<testsuites\b[^>]*>([\s\S]*)<\/testsuites\s*>\s*$/u);
+    if (!match) throw new Error("malformed JUnit XML: missing testsuites envelope");
+    return match[1]!.trim();
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>\n${bodies.join("\n")}\n</testsuites>\n`;
+}
+
 function option(args: readonly string[], name: string): string {
   const index = args.indexOf(name);
   const value = index >= 0 ? args[index + 1] : undefined;
@@ -59,16 +92,40 @@ async function main(): Promise<void> {
   const groupId = option(args, "--group");
   const junitFile = option(args, "--junit");
   const plan = planTestLanes(discoverTestFiles(), loadTestLaneMetadata(), topology);
-  const group = plan.groups.find((candidate) => candidate.id === groupId);
-  if (!group) throw new Error(`unknown execution group for ${topology}: ${groupId}`);
-
-  const child = Bun.spawn(buildTestLaneCommand(group, junitFile), {
-    cwd: resolve(import.meta.dir, "../.."),
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
+  const selected = plan.groups.filter(
+    (candidate) => candidate.job === groupId || candidate.id === groupId,
+  );
+  if (selected.length === 0) throw new Error(`unknown execution group for ${topology}: ${groupId}`);
+  const phases = executionPhases(selected);
+  const partFiles = phases.map((_, index) =>
+    phases.length === 1 ? junitFile : `${junitFile}.part-${index + 1}.xml`,
+  );
+  let exitCode = 0;
+  for (const [index, phase] of phases.entries()) {
+    const child = Bun.spawn(buildTestLaneCommand(phase, partFiles[index]!), {
+      cwd: resolve(import.meta.dir, "../.."),
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    exitCode = await child.exited;
+    if (exitCode !== 0) break;
+  }
+  const completedParts = partFiles.filter((path) => {
+    try {
+      readFileSync(path);
+      return true;
+    } catch {
+      return false;
+    }
   });
-  const exitCode = await child.exited;
+  if (phases.length > 1 && completedParts.length > 0) {
+    writeFileSync(
+      junitFile,
+      mergeJunitDocuments(completedParts.map((path) => readFileSync(path, "utf8"))),
+    );
+    for (const path of completedParts) rmSync(path);
+  }
   if (exitCode !== 0) process.exit(exitCode);
 }
 

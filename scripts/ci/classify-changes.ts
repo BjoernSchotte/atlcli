@@ -2,15 +2,26 @@
  * Conservative CI routing for GitHub Actions.
  *
  * Documentation-only changes may skip product gates. Anything unknown, global,
- * or workflow-related fails open and runs every gate. Keep this module pure so
- * path policy changes are reviewable and covered by unit tests.
+ * or workflow-related fails open and runs every gate. Capability closures are
+ * explicit so an unrelated product surface does not silently acquire an
+ * expensive platform gate merely because it lives below `packages/`.
  */
 
 export interface CiRoutes {
+  /** Compatibility aggregate for callers that have not adopted granular routes. */
   code: boolean;
+  /** Compatibility aggregate for the pinned package-consumer gate. */
   consumer: boolean;
+  staticQuality: boolean;
+  unitTests: boolean;
+  packageContracts: boolean;
+  astroPublishing: boolean;
+  astroPlatform: boolean;
+  pdfPlatform: boolean;
+  browserHarness: boolean;
   docs: boolean;
   readmeMedia: boolean;
+  researchPrivacy: boolean;
 }
 
 const SITE_DOC_PREFIXES = ["src/content/", "src/components/", "src/styles/", "public/"];
@@ -20,6 +31,88 @@ const DOCUMENTATION_PREFIXES = ["docs/", "spec/", "specs/", ".github/ISSUE_TEMPL
 const DOCUMENTATION_FILES = new Set(["README.md", "CHANGELOG.md", "LICENSE", "NOTICE", ".impeccable.md"]);
 const README_MEDIA_PREFIX = "assets/readme/";
 const PRODUCT_PREFIXES = ["apps/", "packages/", "patches/", "plugins/", "scripts/", "services/"];
+
+/** Transitive workspace inputs of the three Astro publishing packages. */
+const ASTRO_PACKAGE_PREFIXES = [
+  "packages/confluence/",
+  "packages/core/",
+  "packages/export-blocks/",
+  "packages/export-blocks-astro/",
+  "packages/export-charts-tanstack/",
+  "packages/export-macros/",
+  "packages/web-publish/",
+  "packages/web-publish-astro/",
+  "packages/web-publish-starlight/",
+];
+
+/** Transitive workspace inputs of the PDF/compiler/template platform surface. */
+const PDF_PACKAGE_PREFIXES = [
+  "packages/code-highlight/",
+  "packages/confluence/",
+  "packages/core/",
+  "packages/diagram/",
+  "packages/docx/",
+  "packages/docx-template-intake/",
+  "packages/export-blocks/",
+  "packages/export-charts-tanstack/",
+  "packages/export-fixtures/",
+  "packages/export-jobs/",
+  "packages/export-macros/",
+  "packages/export-media/",
+  "packages/export-node/",
+  "packages/export-wiring/",
+  "packages/pdf/",
+  "packages/pdf-compiler-browser/",
+  "packages/pdf-template-authoring/",
+  "packages/template-pack/",
+];
+
+/** Transitive workspace inputs of the extension and browser export harness. */
+const BROWSER_PACKAGE_PREFIXES = [
+  "packages/code-highlight/",
+  "packages/confluence/",
+  "packages/core/",
+  "packages/diagram/",
+  "packages/docx/",
+  "packages/docx-template-intake/",
+  "packages/export-blocks/",
+  "packages/export-charts-tanstack/",
+  "packages/export-fixtures/",
+  "packages/export-jobs/",
+  "packages/export-macros/",
+  "packages/export-media/",
+  "packages/export-wiring/",
+  "packages/jira/",
+  "packages/pdf/",
+  "packages/pdf-compiler-browser/",
+  "packages/pdf-template-authoring/",
+  "packages/research/",
+  "packages/template-pack/",
+  "packages/web-publish/",
+];
+
+function noRoutes(): CiRoutes {
+  return {
+    code: false,
+    consumer: false,
+    staticQuality: false,
+    unitTests: false,
+    packageContracts: false,
+    astroPublishing: false,
+    astroPlatform: false,
+    pdfPlatform: false,
+    browserHarness: false,
+    docs: false,
+    readmeMedia: false,
+    researchPrivacy: false,
+  };
+}
+
+function allRoutes(): CiRoutes {
+  return Object.fromEntries(
+    Object.keys(noRoutes()).map((name) => [name, true]),
+  ) as unknown as CiRoutes;
+}
 
 function normalized(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/^\.\//, "");
@@ -41,39 +134,101 @@ function isDocumentationOnly(path: string): boolean {
 }
 
 function affectsSiteDocs(path: string): boolean {
-  return SITE_DOC_FILES.has(path) || startsWithAny(path, SITE_DOC_PREFIXES) || GLOBAL_FILES.has(path);
+  return SITE_DOC_FILES.has(path) || startsWithAny(path, SITE_DOC_PREFIXES);
 }
 
 function affectsConsumers(path: string): boolean {
-  return (
-    startsWithAny(path, ["packages/", "patches/", "scripts/"]) ||
-    GLOBAL_FILES.has(path) ||
-    path === ".github/workflows/ci.yml" ||
-    path === ".github/workflows/consumer-smoke.yml" ||
-    path === ".github/workflows/reusable-consumer-smoke.yml"
-  );
+  return startsWithAny(path, ["packages/", "patches/", "scripts/"]);
+}
+
+function enableProductQuality(routes: CiRoutes): void {
+  routes.code = true;
+  routes.staticQuality = true;
+  routes.unitTests = true;
+}
+
+function enablePackageContracts(routes: CiRoutes): void {
+  routes.consumer = true;
+  routes.packageContracts = true;
+}
+
+function enableAstro(routes: CiRoutes): void {
+  routes.astroPublishing = true;
+  routes.astroPlatform = true;
+}
+
+function enableEveryProductCapability(routes: CiRoutes): void {
+  enableProductQuality(routes);
+  enablePackageContracts(routes);
+  enableAstro(routes);
+  routes.pdfPlatform = true;
+  routes.browserHarness = true;
+}
+
+function classifyProductCapability(path: string, routes: CiRoutes): void {
+  enableProductQuality(routes);
+  if (affectsConsumers(path)) enablePackageContracts(routes);
+
+  if (startsWithAny(path, ASTRO_PACKAGE_PREFIXES)) enableAstro(routes);
+  if (startsWithAny(path, PDF_PACKAGE_PREFIXES)) routes.pdfPlatform = true;
+  if (startsWithAny(path, BROWSER_PACKAGE_PREFIXES)) routes.browserHarness = true;
+
+  if (path.startsWith("apps/extension/") || path.startsWith("apps/browser-export-harness/")) {
+    routes.browserHarness = true;
+  }
+  if (
+    path.startsWith("apps/cli/src/commands/export-pdf") ||
+    path.startsWith("apps/cli/src/commands/export-rasterizer") ||
+    path.startsWith("apps/cli/build") ||
+    path === "apps/cli/package.json" ||
+    path === "apps/cli/turbo.json"
+  ) {
+    routes.pdfPlatform = true;
+  }
+
+  // Dependency patches can affect any runtime even when their package name is
+  // not represented by a workspace directory.
+  if (path.startsWith("patches/")) {
+    enableEveryProductCapability(routes);
+  }
+
+  // CI orchestration changes must exercise every candidate capability. Other
+  // scripts stay on static/unit/package proof unless they own a named surface.
+  if (path.startsWith("scripts/ci/")) {
+    enableEveryProductCapability(routes);
+  }
+  if (
+    path.startsWith("scripts/check-browser-build") ||
+    path.startsWith("scripts/clean-browser-artifacts")
+  ) {
+    routes.browserHarness = true;
+  }
+  if (path.startsWith("scripts/verapdf/")) routes.pdfPlatform = true;
 }
 
 export function classifyChanges(paths: readonly string[], full = false): CiRoutes {
-  if (full || paths.length === 0) {
-    return { code: true, consumer: true, docs: true, readmeMedia: true };
-  }
+  if (full || paths.length === 0) return allRoutes();
 
-  const routes: CiRoutes = { code: false, consumer: false, docs: false, readmeMedia: false };
+  const routes = noRoutes();
   for (const rawPath of paths) {
     const path = normalized(rawPath);
     if (!path) continue;
 
-    if (path.startsWith(".github/workflows/")) {
-      return { code: true, consumer: true, docs: true, readmeMedia: true };
+    // The privacy scanner protects the complete tracked tree, so every real
+    // change receives the lightweight gate irrespective of its product route.
+    routes.researchPrivacy = true;
+
+    if (path.startsWith(".github/workflows/") || GLOBAL_FILES.has(path)) {
+      return allRoutes();
     }
 
-    if (path === "README.md" || path.startsWith(README_MEDIA_PREFIX)) routes.readmeMedia = true;
+    if (path === "README.md" || path.startsWith(README_MEDIA_PREFIX)) {
+      routes.readmeMedia = true;
+    }
     if (affectsSiteDocs(path)) routes.docs = true;
-    if (affectsConsumers(path)) routes.consumer = true;
 
-    if (GLOBAL_FILES.has(path) || startsWithAny(path, PRODUCT_PREFIXES)) {
-      routes.code = true;
+    if (startsWithAny(path, PRODUCT_PREFIXES)) {
+      classifyProductCapability(path, routes);
       continue;
     }
 
@@ -81,7 +236,7 @@ export function classifyChanges(paths: readonly string[], full = false): CiRoute
 
     // Unknown paths are deliberately fail-open. A new top-level build surface
     // must receive full CI until this policy explicitly classifies it.
-    return { code: true, consumer: true, docs: true, readmeMedia: true };
+    return allRoutes();
   }
 
   return routes;
