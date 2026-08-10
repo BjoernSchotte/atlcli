@@ -41,6 +41,7 @@ import type {
 import type { SettingsStore } from "./settings.js";
 import type { ResearchPort } from "../research/contracts.js";
 import type { ChatAgentPortV1 } from "@atlcli/research";
+import type { BrowserLocalModelPortV1 } from "../local-model/storage.js";
 
 /**
  * What the host knows about the page it is showing.
@@ -95,6 +96,8 @@ export interface AppPorts {
   research?: ResearchPort | null;
   /** Ordinary Chat controls and streams, independent from Deep Research. */
   chat?: ChatAgentPortV1 | null;
+  /** Browser-owned local model installation and readiness, when supported. */
+  localModel?: BrowserLocalModelPortV1 | null;
 
   /**
    * The multi-slot template library (spec 010 T5.2).

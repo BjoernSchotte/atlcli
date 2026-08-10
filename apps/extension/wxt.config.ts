@@ -55,6 +55,7 @@ export default defineConfig({
       "*://*.atlassian.net/*",
       "https://api.media.atlassian.com/*",
       "https://api.anthropic.com/*",
+      "https://huggingface.co/*",
     ],
     // WASM in extension pages requires 'wasm-unsafe-eval' (Chrome >= 103).
     // Deliberately NOT 'unsafe-eval' — asserted by the Task 2 test.

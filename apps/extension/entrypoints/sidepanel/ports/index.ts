@@ -33,6 +33,7 @@ import { chromeDocxExportPort, chromeDocxTemplateStore } from "./docx.js";
 import { chromeTemplateLibrary } from "./templates.js";
 import { chromeSettingsStore } from "./settings.js";
 import { chromeChatAgentPort, chromeResearchPort } from "./research.js";
+import { chromeBrowserLocalModelPortV1 } from "./local-model.js";
 
 /**
  * What the Chrome side panel can actually do today.
@@ -106,6 +107,7 @@ export function createChromePorts(): AppPorts {
     settings: chromeSettingsStore(),
     research,
     chat: chromeChatAgentPort(research),
+    localModel: chromeBrowserLocalModelPortV1(),
     // `countScopePages` is deliberately NOT supplied — see the note above.
   };
 }

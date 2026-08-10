@@ -17,6 +17,7 @@ import {
   browserModelDescriptorByKey,
   browserModelSelectionKey,
 } from "../../utils/local-model/selection.js";
+import type { BrowserLocalModelStateV1 } from "../../utils/local-model/storage.js";
 import { Alert } from "../ui/alert.js";
 import { Card, CardContent } from "../ui/card.js";
 import { Button } from "../ui/button.js";
@@ -41,10 +42,14 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
   const { settings, update } = useAppSettings();
   const [failed, setFailed] = useState(false);
   const research = ports.research;
+  const localModel = ports.localModel;
   const [apiKey, setApiKey] = useState("");
   const [hasApiKey, setHasApiKey] = useState(false);
   const [rememberApiKey, setRememberApiKey] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [localModelState, setLocalModelState] = useState<BrowserLocalModelStateV1>({
+    status: "not-installed",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +72,26 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
       });
     return () => { cancelled = true; };
   }, [research]);
+
+  useEffect(() => {
+    if (settings.modelSelection.providerId !== "local-gemma" || !localModel) return;
+    let cancelled = false;
+    const unsubscribe = localModel.subscribe((state) => {
+      if (!cancelled) setLocalModelState(state);
+    });
+    void localModel.status().catch((error) => {
+      if (!cancelled) {
+        setLocalModelState({
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [localModel, settings.modelSelection.providerId]);
 
   async function storeApiKey(): Promise<void> {
     const candidate = apiKey.trim();
@@ -238,7 +263,54 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
               <p className="m-0 text-xs text-muted-foreground">
                 {t("settings.ai.provider.localGemma")}
               </p>
-              <FieldHelp>{t("settings.ai.localGemma.installRequired")}</FieldHelp>
+              <FieldHelp>
+                {t("settings.ai.localGemma.size", { size: "4.59 GiB" })}
+              </FieldHelp>
+              {!localModel ? (
+                <Alert role="alert" tone="danger" data-testid="settings-ai-local-error">
+                  {t("settings.ai.localGemma.unavailable")}
+                </Alert>
+              ) : localModelState.status === "ready" ? (
+                <Alert role="status" tone="success" data-testid="settings-ai-local-ready">
+                  {t("settings.ai.localGemma.ready")}
+                </Alert>
+              ) : localModelState.status === "installing" ? (
+                <div data-testid="settings-ai-local-installing">
+                  <FieldHelp>
+                    {t("settings.ai.localGemma.installing", {
+                      percent: String(Math.floor(
+                        (localModelState.receivedBytes / localModelState.totalBytes) * 100,
+                      )),
+                    })}
+                  </FieldHelp>
+                  <progress
+                    className="w-full"
+                    max={localModelState.totalBytes}
+                    value={localModelState.receivedBytes}
+                    aria-label={t("settings.ai.localGemma.installingLabel")}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {localModelState.status === "error" && (
+                    <Alert role="alert" tone="danger" data-testid="settings-ai-local-error">
+                      {localModelState.message}
+                    </Alert>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="settings-ai-local-install"
+                    onClick={() => void localModel.install()}
+                  >
+                    {t(
+                      localModelState.status === "error"
+                        ? "settings.ai.localGemma.retry"
+                        : "settings.ai.localGemma.install",
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           {aiError && (
