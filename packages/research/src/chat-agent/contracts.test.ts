@@ -222,6 +222,79 @@ describe("Chat answer contract", () => {
     })).toBeDefined();
   });
 
+  test("keeps one complete phrasing when terminal repair repeats the same facet alternatives", () => {
+    const requestFacets = ["Modellgröße", "Messung und Vermutung trennen"];
+    const draft = {
+      blocks: [{
+        markdown: "**Modellgröße:** Das Modell umfasst vier Einheiten.",
+        assertion: "positive" as const,
+        scope: "none" as const,
+        sourceRefs: [syntheticPageSource.id],
+      }, {
+        markdown: "**Messung und Vermutung trennen:** Die vier Einheiten sind direkt dokumentiert; eine Aussage zur Laufzeit bleibt eine ungemessene Vermutung.",
+        assertion: "none" as const,
+        scope: "none" as const,
+        sourceRefs: [],
+      }, {
+        markdown: "**Messung und Vermutung trennen:** Direkt dokumentiert sind die vier Einheiten; die Aussage zur Laufzeit bleibt dagegen eine ungemessene Vermutung.",
+        assertion: "none" as const,
+        scope: "none" as const,
+        sourceRefs: [],
+      }, {
+        markdown: "**Messung und Vermutung trennen:** Direkt dokumentiert sind vier Einheiten; eine Aussage zur tatsächlichen Laufzeit bleibt dagegen eine ungemessene Vermutung.",
+        assertion: "none" as const,
+        scope: "none" as const,
+        sourceRefs: [],
+      }],
+      gaps: [],
+    };
+
+    expect(chatDraftNeedsHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      requestFacets,
+    })).toBe(true);
+    const repaired = chatDraftForFinalizationAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      requestFacets,
+    });
+    expect(repaired?.blocks).toHaveLength(2);
+    expect(repaired?.blocks.filter((block) =>
+      block.markdown.includes("Messung und Vermutung trennen")
+    )).toHaveLength(1);
+    expect(repaired?.blocks[1]?.markdown).toContain("tatsächlichen Laufzeit");
+  });
+
+  test("rejects materially different repeated facet blocks instead of discarding evidence", () => {
+    const requestFacets = ["Modellgröße", "Messung und Vermutung trennen"];
+    const inspection = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "**Modellgröße:** Das Modell umfasst vier Einheiten.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "**Messung und Vermutung trennen:** Die gemessene Startzeit beträgt zwölf Sekunden.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "**Messung und Vermutung trennen:** Die vermutete Ursache wird in der Quelle nicht bestätigt.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      requestFacets,
+    });
+
+    expect(inspection).toEqual({ rejectionReasons: ["repeated-request-facet"] });
+  });
+
   test("classifies terminal repair rejection without retaining draft content", () => {
     expect(inspectChatDraftAfterHostRepairV1({
       draft: {
