@@ -304,6 +304,14 @@ describe("private Chat release suite", () => {
         "detached-continuation",
         `Supported fact 1. [Quelle](${sourceUrl})\n\nda der Autor die übrigen Werte nur abgeleitet hat.`,
       ],
+      [
+        "detached-conjunction",
+        `Supported fact 1. [Quelle](${sourceUrl})\n\nund die übrigen Werte nur abgeleitet wurden.`,
+      ],
+      [
+        "reproducibility-conflict",
+        `Supported fact 1. Die Werte sind belastbare Messungen. Diese Werte sind nicht als reproduzierbare Produktivmessungen einzustufen. [Quelle](${sourceUrl})`,
+      ],
     ] as const) {
       const root = await mkdtemp(join(tmpdir(), `atlcli-chat-private-${name}-`));
       roots.push(root);

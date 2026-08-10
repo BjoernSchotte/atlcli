@@ -294,6 +294,22 @@ describe("Chat answer contract", () => {
       draft,
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
     })).toEqual({ rejectionReasons: ["incomplete-prose"] });
+
+    expect(() => finalizeChatAnswerV1({
+      draft: {
+        messageMarkdown: [
+          `Die protokollierten Werte sind belastbare Messungen. [[source:${syntheticPageSource.id}]]`,
+          "",
+          "und die übrigen Einstellungen wurden nur abgeleitet.",
+        ].join("\n"),
+        citationSourceIds: [syntheticPageSource.id],
+        gaps: [],
+      },
+      sources: [syntheticPageSource],
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      run,
+    })).toThrow("incomplete or contradictory prose");
   });
 
   test("rejects an explicit measured-versus-conjectural self-contradiction", () => {
@@ -322,6 +338,11 @@ describe("Chat answer contract", () => {
       draft,
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
     })).toEqual({ rejectionReasons: ["observation-classification-conflict"] });
+
+    expect(chatMarkdownIntegrityIssuesV1([
+      "Die Werte sind belastbare Messungen.",
+      "Diese Werte sind nicht als reproduzierbare Produktivmessungen einzustufen.",
+    ].join(" "))).toEqual(["observation-classification-conflict"]);
   });
 
   test("allows measured observations and separately labelled interpretation", () => {

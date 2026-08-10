@@ -546,7 +546,7 @@ function containsIncompleteProseV1(markdown: string): boolean {
     const prose = proseWithoutPresentationMarkupV1(
       trimmed.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/u, ""),
     );
-    if (/^(?:da|weil|obwohl|während|indem|wobei|sodass|sofern|because|although|whereas|which)\b/u.test(prose)) {
+    if (/^(?:da|weil|obwohl|während|indem|wobei|sodass|sofern|und|oder|aber|because|although|whereas|which|and|or|but)\b/u.test(prose)) {
       return true;
     }
     if (!prose || /[.!?…:“”'"`)\]}]$/u.test(prose)) return false;
@@ -558,9 +558,11 @@ function containsObservationClassificationConflictV1(markdown: string): boolean 
   const prose = proseWithoutPresentationMarkupV1(markdown).toLocaleLowerCase("de-DE");
   const measured = /\b(?:direkt|explizit|tats[äa]chlich|reproduzierbar(?:e[nrms]?)?)\s+(?:gemessen|beobachtet|nachgewiesen|belegt)\b/u.test(prose) ||
     /\b(?:messwerte?|werte)\b.{0,60}\b(?:gemessen|reproduzierbar|beobachtet|nachgewiesen)\b/u.test(prose) ||
+    /\bbelastbare[nrms]?\s+messungen\b/u.test(prose) ||
     /\b(?:directly|explicitly|reproducibly)\s+(?:measured|observed|verified|reproduced)\b/u.test(prose);
   if (!measured) return false;
   return /\b(?:alle|s[äa]mtliche|diese)\s+(?:mess)?werte\b.{0,80}\b(?:sind|bleiben|gelten\s+als)\b.{0,40}\b(?:vermutung|spekulation|hypothese|hypothetisch|nicht\s+gemessen|nicht\s+belegt)\b/u.test(prose) ||
+    /\b(?:alle|s[äa]mtliche|diese)\s+(?:mess)?werte\b.{0,160}\bnicht\s+als\s+reproduzierbare\s+(?:produktiv)?messungen\b/u.test(prose) ||
     /\b(?:all|these)\s+(?:measurements|values)\b.{0,80}\b(?:are|remain)\b.{0,40}\b(?:conjecture|speculation|hypothetical|unmeasured|unverified)\b/u.test(prose);
 }
 
@@ -787,8 +789,12 @@ function removeAbandonedMarkdownFragmentsV1(markdown: string): string {
   const continuation = /^(?:das|der|die|den|dem|ein(?:e[rmns]?)?|dies(?:e[rmns]?)?|und|aber|the|this|that|and|but|however)\b/u;
   for (const paragraph of paragraphs) {
     const previous = joined.at(-1);
+    const previousProse = previous === undefined
+      ? ""
+      : proseWithoutPresentationMarkupV1(previous);
     if (
       previous &&
+      !/[.!?…:“”'"`)\]}]$/u.test(previousProse) &&
       continuation.test(paragraph.trimStart()) &&
       !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||```)/u.test(previous.trimStart()) &&
       !/```\s*$/u.test(previous.trimEnd())
