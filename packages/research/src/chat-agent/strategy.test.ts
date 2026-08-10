@@ -375,6 +375,31 @@ describe("host-owned Chat strategy decisions", () => {
     expect(accepted).toEqual(["agentic"]);
   });
 
+  test("treats a durably persisted host decision as admitted without charging a ceremonial PTC", async () => {
+    const decision = deriveChatStrategyDecisionV1({
+      qualityPolicy: chatQualityPolicyV1("auto"),
+      question: "Compare the rollout criteria in both pages.",
+      scope,
+      anchors: [pageAnchor],
+    });
+    const budget = new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1);
+    const accepted: string[] = [];
+    const controller = createChatStrategyDecisionControllerV1({
+      decision,
+      budget,
+      initiallyAcknowledged: true,
+      onAcknowledged: (value) => {
+        accepted.push(value.execution);
+      },
+    });
+
+    expect(() => controller.assertAcknowledged()).not.toThrow();
+    expect(controller.acknowledgedDecision()).toEqual(decision);
+    expect(JSON.parse(await controller.tool.invoke({}))).toEqual(decision);
+    expect(budget.counts().ptcCalls).toBe(0);
+    expect(accepted).toEqual([]);
+  });
+
   test("does not expose an acknowledgement when its publication fails", async () => {
     const decision = deriveChatStrategyDecisionV1({
       qualityPolicy: chatQualityPolicyV1("auto"),

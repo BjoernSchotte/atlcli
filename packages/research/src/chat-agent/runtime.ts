@@ -42,9 +42,9 @@ import { classifyResearchError, redactResearchSecrets } from "../redaction.js";
 import { ChatTurnWorkspaceCheckpointerV1 } from "../workspace-checkpointer.js";
 import type { ResearchDispatchDiagnosticV1 } from "../dispatch-adapter.js";
 import {
-  chatDraftForFinalizationAfterHostRepairV1,
   chatDraftNeedsHostRepairV1,
   finalizeChatAnswerV1,
+  inspectChatDraftAfterHostRepairV1,
 } from "./answer.js";
 import { WorkspaceChatActivityJournalV1 } from "./activity.js";
 import { deriveChatAuxiliaryReadNeedsV1 } from "./auxiliary.js";
@@ -399,7 +399,6 @@ export function createChatDirectToolSurfaceMiddlewareV1(
     agenticWorkflowComplete?: () => boolean;
     nativeStructuredOutput?: boolean;
     answerOutputInstruction?: string;
-    strategyAcknowledged?: () => boolean;
     evidenceAccessRequired?: boolean;
     evidenceAccessAttempted?: () => boolean;
     terminalRepairOnly?: () => boolean;
@@ -461,26 +460,6 @@ export function createChatDirectToolSurfaceMiddlewareV1(
           response = await handler(filteredRequest);
           const calledTools = diagnosticMessage(response).toolNames;
           if (
-            !terminalRepairOnly &&
-            options.strategyAcknowledged &&
-            !options.strategyAcknowledged() &&
-            !calledTools.includes("eval")
-          ) {
-            response = await handler({
-              ...filteredRequest,
-              systemMessage: filteredRequest.systemMessage.concat(
-                new SystemMessage([
-                  "Protocol correction for this turn:",
-                  "Do not answer yet. Call the eval tool now and acknowledge the host-provided strategy with tools.chatStrategyDecide({}).",
-                  "After that accepted acknowledgement, continue the original request without widening scope or repeating this correction.",
-                ].join("\n")),
-              ),
-              toolChoice: {
-                type: "function",
-                function: { name: "eval" },
-              },
-            });
-          } else if (
             !terminalRepairOnly &&
             options.evidenceAccessRequired &&
             !options.evidenceAccessAttempted?.() &&
@@ -674,7 +653,7 @@ function createChatCodeInterpreterMiddlewareV1(
   if (options.agentic) {
     evaluator.description = [
       "Advance the host-bounded agentic Chat workflow in a persistent QuickJS session.",
-      "In one eval program, first acknowledge chatStrategyDecide, then call chatWorkflowPropose exactly once, then call chatWorkflowRun exactly once.",
+      "In one eval program, call chatWorkflowPropose exactly once, then call chatWorkflowRun exactly once. The immutable host strategy is already accepted; chatStrategyDecide may be inspected but is not a prerequisite.",
       "The host executes every ready specialist wave, deterministic review checkpoint, optional repair, and terminal synthesis without returning intermediate transitions to the supervisor.",
       "Never construct, copy, or invoke a task dispatch yourself.",
     ].join(" ");
@@ -1375,6 +1354,7 @@ export function createKiteweaveChatAgent(
           : createChatStrategyDecisionControllerV1({
               decision: strategyDecision,
               budget,
+              initiallyAcknowledged: true,
             });
         emitActivity("strategy", "started");
         await persistAcceptedStrategy(strategyDecision);
@@ -2017,9 +1997,6 @@ export function createKiteweaveChatAgent(
                     },
                   }
                 : {}),
-              ...(strategyController
-                ? { strategyAcknowledged: () => strategyController.acknowledgedDecision() !== undefined }
-                : {}),
               evidenceAccessRequired: strategyDecision.requiredCapabilities.some(
                 (capability) => capability !== "chat-answer",
               ),
@@ -2042,8 +2019,8 @@ export function createKiteweaveChatAgent(
               subagents: strategyDecision.execution === "agentic",
               toolName: "eval",
               systemPrompt: strategyDecision.execution === "agentic"
-                ? "The eval tool runs an agentic Chat workflow in a persistent QuickJS REPL. Top-level await is available. In one program acknowledge strategy, submit the dynamic graph, and call the host-owned terminal workflow runner. The low-level task bridge and intermediate transition controls are unavailable. Console is unavailable."
-                : "The eval tool runs JavaScript in a persistent QuickJS REPL. Top-level await is available. Return the useful value as the final expression; console is intentionally unavailable. External reads are possible only through the documented tools.* functions. When chatStrategyDecide is present, call it exactly once before any Atlassian content capability.",
+                ? "The eval tool runs an agentic Chat workflow in a persistent QuickJS REPL. Top-level await is available. The host strategy is already accepted. In one program submit the dynamic graph and call the host-owned terminal workflow runner. The low-level task bridge and intermediate transition controls are unavailable. Console is unavailable."
+                : "The eval tool runs JavaScript in a persistent QuickJS REPL. Top-level await is available. Return the useful value as the final expression; console is intentionally unavailable. External reads are possible only through the documented tools.* functions. The host strategy is already accepted; chatStrategyDecide may be inspected but is never a prerequisite for content work.",
               memoryLimitBytes: turn.limits.maxInterpreterMemoryBytes,
               maxStackSizeBytes: 320 * 1024,
               executionTimeoutMs: strategyDecision.execution === "agentic"
@@ -2472,16 +2449,17 @@ export function createKiteweaveChatAgent(
               signal: controller.signal,
             });
             await modelBudgetWrite;
-            const repairedDraft = chatDraftForFinalizationAfterHostRepairV1({
+            const repairedInspection = inspectChatDraftAfterHostRepairV1({
               draft: finalResult.structuredResponse,
               detailEvidence: broker.detailEvidenceLedger(),
               readSectionReferences: broker.readSectionReferenceLedger(),
               requestFacets: requestChecklist,
             });
+            const repairedDraft = repairedInspection.draft;
             if (!repairedDraft) {
               throw new ChatContractError(
                 "invalid-report",
-                "The Chat answer repair did not produce a complete evidence-bound draft.",
+                `The Chat answer repair did not produce a complete evidence-bound draft (${repairedInspection.rejectionReasons.join(",")}).`,
               );
             }
             finalDraft = repairedDraft;

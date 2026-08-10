@@ -600,8 +600,32 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
   requestFacets?: readonly string[];
 }): ChatAgentDraftV2 | undefined {
+  return inspectChatDraftAfterHostRepairV1(input).draft;
+}
+
+export const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1 = [
+  "invalid-schema",
+  "malformed-factual-markdown",
+  "missing-detailed-factual-block",
+  "orphan-heading",
+  "missing-request-facet",
+] as const;
+
+export type ChatDraftRepairRejectionReasonV1 =
+  typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
+
+/** Return closed, body-free diagnostics for one rejected terminal repair. */
+export function inspectChatDraftAfterHostRepairV1(input: {
+  draft: unknown;
+  detailEvidence: readonly ResearchDetailEvidenceV1[];
+  readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+  requestFacets?: readonly string[];
+}): {
+  draft?: ChatAgentDraftV2;
+  rejectionReasons: ChatDraftRepairRejectionReasonV1[];
+} {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
-  if (!parsed.success) return undefined;
+  if (!parsed.success) return { rejectionReasons: ["invalid-schema"] };
   const draft = normalizeChatAgentDraftV2(parsed.data);
   const blocks = draft.blocks
     .filter((block) =>
@@ -612,7 +636,7 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
       markdown: removeAbandonedTrailingGermanQuoteSentenceV1(block.markdown),
     }));
   if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
-    return undefined;
+    return { rejectionReasons: ["malformed-factual-markdown"] };
   }
   const sections = input.readSectionReferences ?? [];
   const detailedFactual = blocks.filter((block) =>
@@ -620,31 +644,45 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
       sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
     )
   );
-  if (input.detailEvidence.length > 0 && detailedFactual.length === 0) {
-    return undefined;
+  const evidenceBoundGap = draft.gaps.some((gap) =>
+    gap.sourceIds.length > 0 && gap.sourceIds.every((sourceId) =>
+      sourceReferenceIsDetailedV2(sourceId, input.detailEvidence, sections)
+    )
+  );
+  if (
+    input.detailEvidence.length > 0 &&
+    detailedFactual.length === 0 &&
+    !evidenceBoundGap
+  ) {
+    return { rejectionReasons: ["missing-detailed-factual-block"] };
   }
-  let pendingHeading = false;
-  for (const block of blocks) {
-    if (block.assertion === "none" && isMarkdownHeadingBlockV1(block.markdown)) {
-      if (pendingHeading) return undefined;
-      pendingHeading = true;
-      continue;
+  const repairedBlocks = blocks.filter((block, index) => {
+    if (!(block.assertion === "none" && isMarkdownHeadingBlockV1(block.markdown))) {
+      return true;
     }
-    if (block.assertion !== "none" && block.sourceRefs.some((sourceRef) =>
-      sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
-    )) {
-      pendingHeading = false;
-    }
+    const nextHeading = blocks.findIndex((candidate, candidateIndex) =>
+      candidateIndex > index &&
+      candidate.assertion === "none" &&
+      isMarkdownHeadingBlockV1(candidate.markdown)
+    );
+    const sectionEnd = nextHeading === -1 ? blocks.length : nextHeading;
+    return blocks.slice(index + 1, sectionEnd).some((candidate) =>
+      candidate.assertion !== "none" && candidate.sourceRefs.some((sourceRef) =>
+        sourceReferenceIsDetailedV2(sourceRef, input.detailEvidence, sections)
+      )
+    );
+  });
+  if (repairedBlocks.length === 0) {
+    return { rejectionReasons: ["orphan-heading"] };
   }
-  if (pendingHeading) return undefined;
-  const repaired = { ...draft, blocks };
+  const repaired = { ...draft, blocks: repairedBlocks };
   if (chatDraftMissingRequestFacetsV1({
     draft: repaired,
     requestFacets: input.requestFacets ?? [],
   }).length > 0) {
-    return undefined;
+    return { rejectionReasons: ["missing-request-facet"] };
   }
-  return repaired;
+  return { draft: repaired, rejectionReasons: [] };
 }
 
 /**

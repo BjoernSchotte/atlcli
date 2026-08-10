@@ -274,13 +274,17 @@ export function deriveChatAcquisitionProductsV1(input: {
 export function createChatStrategyDecisionControllerV1(input: {
   decision: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
+  /** The host already persisted this immutable decision before root execution. */
+  initiallyAcknowledged?: boolean;
   onAcknowledged?: (decision: ChatStrategyDecisionV1) => void | Promise<void>;
 }): {
   tool: DynamicStructuredTool;
   acknowledgedDecision(): ChatStrategyDecisionV1 | undefined;
   assertAcknowledged(): void;
 } {
-  let acknowledged: ChatStrategyDecisionV1 | undefined;
+  let acknowledged: ChatStrategyDecisionV1 | undefined = input.initiallyAcknowledged
+    ? structuredClone(input.decision)
+    : undefined;
   let acknowledging = false;
   const strategyTool = tool(async () => {
     if (acknowledged) {

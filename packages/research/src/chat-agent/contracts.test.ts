@@ -17,6 +17,7 @@ import {
   chatDraftMissingRequestFacetsV1,
   chatDraftNeedsHostRepairV1,
   finalizeChatAnswerV1,
+  inspectChatDraftAfterHostRepairV1,
 } from "./answer.js";
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V2,
@@ -218,6 +219,77 @@ describe("Chat answer contract", () => {
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
       requestFacets,
     })).toBeDefined();
+  });
+
+  test("classifies terminal repair rejection without retaining draft content", () => {
+    expect(inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "## First facet",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [],
+      requestFacets: ["First facet", "Second facet"],
+    })).toEqual({ rejectionReasons: ["orphan-heading"] });
+  });
+
+  test("drops a trailing orphan heading only when the remaining answer stays complete", () => {
+    const inspected = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [
+          {
+            markdown: "The supported finding remains publishable.",
+            assertion: "positive",
+            scope: "none",
+            sourceRefs: [syntheticPageSource.id],
+          },
+          {
+            markdown: "## Abandoned alternative",
+            assertion: "none",
+            scope: "none",
+            sourceRefs: [],
+          },
+        ],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+    expect(inspected.rejectionReasons).toEqual([]);
+    expect(inspected.draft?.blocks.map((block) => block.markdown)).toEqual([
+      "The supported finding remains publishable.",
+    ]);
+  });
+
+  test("accepts a repaired abstention only when its gap is bound to detail evidence", () => {
+    const draft = {
+      blocks: [{
+        markdown: "The requested owner cannot be supported from the page that was read.",
+        assertion: "none" as const,
+        scope: "none" as const,
+        sourceRefs: [],
+      }],
+      gaps: [{
+        code: "no-detail-evidence" as const,
+        message: "The detailed page does not identify the requested owner.",
+        sourceIds: [syntheticPageSource.id],
+      }],
+    };
+
+    expect(inspectChatDraftAfterHostRepairV1({
+      draft,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    }).draft).toBeDefined();
+    expect(inspectChatDraftAfterHostRepairV1({
+      draft: {
+        ...draft,
+        gaps: [{ ...draft.gaps[0], sourceIds: ["wiki:invented"] }],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    })).toEqual({ rejectionReasons: ["missing-detailed-factual-block"] });
   });
 
   test("accepts a repaired draft only after dropping safe prose and preserving non-empty evidence sections", () => {
@@ -1759,7 +1831,6 @@ describe("separate Chat root", () => {
     const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
       terminalRepairOnly: () => true,
       answerOutputInstruction: "Return the accepted ChatAnswerDraftV2 shape.",
-      strategyAcknowledged: () => false,
       evidenceAccessRequired: true,
       evidenceAccessAttempted: () => false,
     });
@@ -1787,11 +1858,8 @@ describe("separate Chat root", () => {
     expect((response as AIMessage).text).toBe("Corrected terminal answer.");
   });
 
-  test("recovers one premature answer by requiring the turn-local strategy acknowledgement", async () => {
-    let acknowledged = false;
-    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
-      strategyAcknowledged: () => acknowledged,
-    });
+  test("does not add a model round trip for an already host-accepted strategy", async () => {
+    const middleware = createChatDirectToolSurfaceMiddlewareV1();
     const requests: Array<{ toolChoice?: unknown; systemText: string }> = [];
     const response = await middleware.wrapModelCall?.(
       {
@@ -1803,29 +1871,12 @@ describe("separate Chat root", () => {
           toolChoice: request.toolChoice,
           systemText: request.systemMessage?.text ?? "",
         });
-        if (requests.length === 1) {
-          return new AIMessage("Premature answer.") as never;
-        }
-        acknowledged = true;
-        return new AIMessage({
-          content: "",
-          tool_calls: [{
-            id: "call:strategy",
-            name: "eval",
-            args: { code: "await tools.chatStrategyDecide({})" },
-            type: "tool_call",
-          }],
-        }) as never;
+        return new AIMessage("Accepted direct answer.") as never;
       },
     );
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(1);
     expect(requests[0]!.toolChoice).toBeUndefined();
-    expect(requests[1]!.toolChoice).toEqual({
-      type: "function",
-      function: { name: "eval" },
-    });
-    expect(requests[1]!.systemText).toContain("Protocol correction for this turn");
-    expect((response as AIMessage).tool_calls?.[0]?.name).toBe("eval");
+    expect((response as AIMessage).text).toBe("Accepted direct answer.");
   });
 
   test("forces one current-turn evidence access before accepting a retained-context answer", async () => {

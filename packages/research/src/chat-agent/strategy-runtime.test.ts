@@ -703,12 +703,12 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(replayedActivity).toEqual(emittedActivity);
   });
 
-  test("Auto records a host-accepted direct strategy through QuickJS", async () => {
+  test("Auto records a host-accepted direct strategy without a ceremonial QuickJS call", async () => {
     const input = request("Answer this simple conversational question.");
     const workspace = createMemoryResearchWorkspace();
     const answer = await runtime.runChatAgent({
       ...input,
-      model: model(true),
+      model: model(false),
       providers,
       workspace,
       qualityPolicy: chatQualityPolicyV1("auto"),
@@ -719,7 +719,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
       expectedComplexity: "simple",
       delegated: false,
     });
-    expect(answer.run.counts.ptcCalls).toBe(1);
+    expect(answer.run.counts.ptcCalls).toBe(0);
   });
 
   test("persists the host workflow before applying provider quality controls", async () => {
@@ -794,7 +794,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
         "multi-source-comparison",
         "contradiction-risk",
       ]);
-      expect(answer.run.counts.ptcCalls).toBe(4);
+      expect(answer.run.counts.ptcCalls).toBe(3);
       expect(observations.filter((observation) => observation.role === "root")).toHaveLength(1);
       expect(trajectoryModel.callCount).toBeLessThanOrEqual(10);
       expect(events.every(isResearchOneShotEventV1)).toBe(true);
@@ -809,7 +809,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
     }
   });
 
-  test("repairs one Auto response that initially bypasses its required strategy decision", async () => {
+  test("accepts a simple Auto answer after the host persisted its strategy", async () => {
     const input = request("Answer this simple conversational question.");
     const bypassThenRepair = fakeModel()
       .respondWithTools([{
@@ -817,23 +817,6 @@ describe("real QuickJS Chat strategy trajectory", () => {
         args: {
           blocks: [{
             id: "answer-block:premature",
-            markdown: "This premature answer must not be accepted.",
-            sourceRefs: [],
-            assertion: "none",
-            scope: "none",
-          }],
-          gaps: [],
-        },
-      }])
-      .respondWithTools([{
-        name: "eval",
-        args: { code: "JSON.parse(await tools.chatStrategyDecide({}))" },
-      }])
-      .respondWithTools([{
-        name: "ChatAnswerDraftV2",
-        args: {
-          blocks: [{
-            id: "answer-block:repaired",
             markdown: "A bounded synthetic Chat answer.",
             sourceRefs: [],
             assertion: "none",
@@ -851,6 +834,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
     });
     expect(answer.strategy).toMatchObject({ path: "direct", qualityMode: "auto" });
     expect(answer.messageMarkdown).toBe("A bounded synthetic Chat answer.");
+    expect(bypassThenRepair.callCount).toBe(1);
   });
 
   test("reserves the final agentic evidence review instead of letting acquisition exhaust PTC", () => {
