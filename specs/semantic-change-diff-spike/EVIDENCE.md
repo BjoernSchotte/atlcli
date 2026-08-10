@@ -1,7 +1,7 @@
 # Semantic Change Diff Spike — Evidence
 
-Status: **functionally proven; streaming/spill performance gates passed**  
-Measured: 2026-08-10  
+Status: **functionally proven; streaming/spill performance gates passed**
+Measured: 2026-08-10
 Decision: **keep the owned matcher; do not promote `jsondiffpatch` into runtime code**
 
 ## Contents
