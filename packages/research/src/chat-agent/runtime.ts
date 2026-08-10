@@ -2445,6 +2445,7 @@ export function createKiteweaveChatAgent(
                 "Make every factual sentence grammatically complete; do not leave a clause ending in a connector or auxiliary verb.",
                 "Do not leave a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but.",
                 "Do not classify the same evidence as both directly measured and conjectural. Separate observations from interpretation explicitly when the user asks for that distinction.",
+                "Apply the user's selection predicate before its requested count: a top-N measured list may contain only explicitly comparable measured items; move unmeasured mechanisms or hypotheses to a separate caveat.",
               ].join("\n"))],
             }, {
               configurable: { thread_id: checkpoint.threadId },
