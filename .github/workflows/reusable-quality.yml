@@ -149,13 +149,13 @@ jobs:
       matrix:
         include:
           - group: general-1
-            fonts: false
+            fonts: true
             poppler: false
           - group: general-2
-            fonts: false
+            fonts: true
             poppler: false
           - group: general-3
-            fonts: false
+            fonts: true
             poppler: false
           - group: pdf-typst
             fonts: true

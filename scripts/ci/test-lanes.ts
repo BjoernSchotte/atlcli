@@ -439,7 +439,10 @@ export function testLaneMatrix(plan: TestLanePlan): { include: TestLaneMatrixEnt
         group: job,
         lane: lanes[0]!,
         workers: Math.max(...groups.map((group) => group.workers)) as 1 | 2,
-        fonts: requirements.has("fonts"),
+        // The CLI module graph imports the packaged default PDF fonts before
+        // command dispatch. Explicit-file lanes therefore need the font assets
+        // even when their test sources do not directly exercise PDF rendering.
+        fonts: true,
         poppler: requirements.has("poppler"),
         executionGroups: groups.map((group) => group.id),
       };

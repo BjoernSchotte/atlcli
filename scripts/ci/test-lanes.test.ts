@@ -344,6 +344,7 @@ describe("duration-aware test lanes", () => {
     expect(matrix.include.find(({ executionGroups }) => executionGroups.length === 2)).toMatchObject({
       group: "general-1",
       workers: 2,
+      fonts: true,
       executionGroups: ["general-1-parallel", "general-1-serial"],
     });
     const shared = result.groups.filter(({ job }) => job === "general-1");
@@ -420,6 +421,11 @@ describe("duration-aware test lanes", () => {
     expect(result.groups.map(({ id }) => id)).toEqual([
       "general-1-parallel",
       "package-contract",
+      "pdf-typst",
+    ]);
+    const matrix = testLaneMatrix(result);
+    expect(matrix.include.every(({ fonts }) => fonts)).toBe(true);
+    expect(matrix.include.filter(({ poppler }) => poppler).map(({ group }) => group)).toEqual([
       "pdf-typst",
     ]);
   });

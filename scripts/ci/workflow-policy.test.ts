@@ -348,6 +348,7 @@ describe("CI workflow policy", () => {
     expect(tests).toContain("--topology general-3x1");
     expect(tests).toContain('if: matrix.poppler');
     expect(tests).toContain('if: matrix.fonts');
+    expect(tests).not.toContain("fonts: false");
     expect(tests).not.toContain("--parallel=2");
     expect(tests).toContain("TEST_EXIT=${PIPESTATUS[0]}");
     expect(tests).toContain("0 fail");
