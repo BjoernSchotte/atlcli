@@ -17,16 +17,31 @@ import {
 
 const providers = {
   jira: {
-    async searchPage() { return { items: [] }; },
-    async getIssue() { throw new Error("unexpected Jira detail read"); },
+    async searchPage() {
+      return { items: [] };
+    },
+    async getIssue() {
+      throw new Error("unexpected Jira detail read");
+    },
   },
   wiki: {
-    async searchPage() { return { items: [] }; },
-    async getPage() { throw new Error("unexpected Confluence detail read"); },
+    async searchPage() {
+      return { items: [] };
+    },
+    async getPage() {
+      throw new Error("unexpected Confluence detail read");
+    },
   },
 };
 
-function request(): {
+function request(
+  options: {
+    suffix?: string;
+    question?: string;
+    jiraProjectKeys?: string[];
+    confluenceSpaceKeys?: string[];
+  } = {},
+): {
   turn: {
     schema: "atlcli.chat-turn-request/v1";
     conversationId: string;
@@ -40,8 +55,8 @@ function request(): {
 } {
   const scope = {
     siteOrigin: "https://synthetic.atlassian.net",
-    jiraProjectKeys: [] as string[],
-    confluenceSpaceKeys: [] as string[],
+    jiraProjectKeys: options.jiraProjectKeys ?? [],
+    confluenceSpaceKeys: options.confluenceSpaceKeys ?? [],
   };
   const limits = {
     ...DEFAULT_RESEARCH_LIMITS_V1,
@@ -50,12 +65,14 @@ function request(): {
     maxTotalModelOutputTokens: 128_000,
     maxModelCostMicros: 100_000_000,
   };
-  const question = "Give the bounded synthetic local answer.";
+  const question =
+    options.question ?? "Give the bounded synthetic local answer.";
+  const suffix = options.suffix ?? "integration";
   return {
     turn: {
       schema: "atlcli.chat-turn-request/v1",
-      conversationId: "chat-conversation:local-model-integration",
-      turnId: "chat-turn:local-model-integration",
+      conversationId: `chat-conversation:local-model-${suffix}`,
+      turnId: `chat-turn:local-model-${suffix}`,
       question,
       scope,
       limits,
@@ -74,31 +91,41 @@ function request(): {
 describe("local Gemma shared Chat-agent path", () => {
   it("round-trips eval and a structured answer through the real browser runChatAgent", async () => {
     const channel = new MessageChannel();
-    const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] = [];
-    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+    const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] =
+      [];
+    channel.port2.onmessage = (
+      event: MessageEvent<LocalModelPortRequestV1>,
+    ) => {
       const message = event.data;
       if (message.kind !== "generate") return;
       requests.push(message);
-      const toolCalls = requests.length === 1
-        ? [{
-            id: "local-eval-1",
-            name: "eval",
-            arguments: { code: "JSON.stringify({ localBridge: true })" },
-          }]
-        : [{
-            id: "local-answer-1",
-            name: "ChatAnswerDraftV2",
-            arguments: {
-              blocks: [{
-                id: "answer-block:local-integration",
-                markdown: "A bounded synthetic local Chat answer.",
-                sourceRefs: [],
-                assertion: "none",
-                scope: "none",
-              }],
-              gaps: [],
-            },
-          }];
+      const toolCalls =
+        requests.length === 1
+          ? [
+              {
+                id: "local-eval-1",
+                name: "eval",
+                arguments: { code: "JSON.stringify({ localBridge: true })" },
+              },
+            ]
+          : [
+              {
+                id: "local-answer-1",
+                name: "ChatAnswerDraftV2",
+                arguments: {
+                  blocks: [
+                    {
+                      id: "answer-block:local-integration",
+                      markdown: "A bounded synthetic local Chat answer.",
+                      sourceRefs: [],
+                      assertion: "none",
+                      scope: "none",
+                    },
+                  ],
+                  gaps: [],
+                },
+              },
+            ];
       channel.port2.postMessage({
         schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
         kind: "complete",
@@ -112,7 +139,11 @@ describe("local Gemma shared Chat-agent path", () => {
     channel.port2.start();
     const workspace = createMemoryResearchWorkspace();
     const presentation: ChatPresentationStreamEventV1[] = [];
-    const diagnostics: Array<{ kind: string; status: string; errorMessage?: string }> = [];
+    const diagnostics: Array<{
+      kind: string;
+      status: string;
+      errorMessage?: string;
+    }> = [];
     try {
       let answer;
       try {
@@ -134,46 +165,55 @@ describe("local Gemma shared Chat-agent path", () => {
           onAgentDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
         });
       } catch (error) {
-        throw new Error(JSON.stringify({
-          cause: error instanceof Error ? error.message : String(error),
-          requestCount: requests.length,
-          diagnostics,
-        }));
+        throw new Error(
+          JSON.stringify({
+            cause: error instanceof Error ? error.message : String(error),
+            requestCount: requests.length,
+            diagnostics,
+          }),
+        );
       }
 
       expect(requests).toHaveLength(2);
-      expect(requests[0]!.tools.map((tool) => tool.function.name))
-        .toContain("eval");
-      expect(requests[0]!.tools.map((tool) => tool.function.name))
-        .toContain("ChatAnswerDraftV2");
-      expect(requests[1]!.messages).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          role: "tool",
-          name: "eval",
-          tool_call_id: "local-eval-1",
-        }),
-      ]));
+      expect(requests[0]!.tools.map((tool) => tool.function.name)).toContain(
+        "eval",
+      );
+      expect(requests[0]!.tools.map((tool) => tool.function.name)).toContain(
+        "ChatAnswerDraftV2",
+      );
+      expect(requests[1]!.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "tool",
+            name: "eval",
+            tool_call_id: "local-eval-1",
+          }),
+        ]),
+      );
       expect(answer).toMatchObject({
         schema: "atlcli.chat-answer/v1",
         messageMarkdown: "A bounded synthetic local Chat answer.",
         strategy: { qualityMode: "quick", path: "direct", delegated: false },
       });
-      expect(presentation).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          channel: "answer-markdown",
-          status: "delta",
-          delta: "A bounded synthetic local Chat answer.",
-        }),
-        expect.objectContaining({
-          channel: "answer-markdown",
-          status: "completed",
-        }),
-      ]));
+      expect(presentation).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            channel: "answer-markdown",
+            status: "delta",
+            delta: "A bounded synthetic local Chat answer.",
+          }),
+          expect.objectContaining({
+            channel: "answer-markdown",
+            status: "completed",
+          }),
+        ]),
+      );
       const session = JSON.parse(
         (await workspace.readFile(CHAT_SESSION_PATH_V1))!,
       ) as ChatSessionV1;
-      expect(session.binding.providerCacheIdentity)
-        .toBe("provider-cache:local-model-integration");
+      expect(session.binding.providerCacheIdentity).toBe(
+        "provider-cache:local-model-integration",
+      );
       expect(session.conversation.recentTurns.at(-1)).toMatchObject({
         status: "complete",
         finalAnswer: {
@@ -186,4 +226,261 @@ describe("local Gemma shared Chat-agent path", () => {
       channel.port2.close();
     }
   }, 30_000);
+
+  for (const mode of ["auto", "deep"] as const) {
+    it(`runs the ${mode} direct strategy through the local binding`, async () => {
+      const channel = new MessageChannel();
+      const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] =
+        [];
+      channel.port2.onmessage = (
+        event: MessageEvent<LocalModelPortRequestV1>,
+      ) => {
+        const message = event.data;
+        if (message.kind !== "generate") return;
+        requests.push(message);
+        channel.port2.postMessage({
+          schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+          kind: "complete",
+          requestId: message.requestId,
+          text: "",
+          toolCalls: [
+            {
+              id: `local-${mode}-answer`,
+              name: "ChatAnswerDraftV2",
+              arguments: {
+                blocks: [
+                  {
+                    id: `answer-block:local-${mode}`,
+                    markdown: `A bounded synthetic local ${mode} answer.`,
+                    sourceRefs: [],
+                    assertion: "none",
+                    scope: "none",
+                  },
+                ],
+                gaps: [],
+              },
+            },
+          ],
+          inputTokens: 32,
+          outputTokens: 16,
+        });
+      };
+      channel.port2.start();
+      try {
+        const answer = await runChatAgent({
+          ...request(),
+          modelBinding: createLocalGemmaChatModelBindingV1({
+            port: channel.port1,
+            modelId: "fixture/local-gemma",
+            maxOutputTokens: 512,
+          }),
+          providers,
+          workspace: createMemoryResearchWorkspace(),
+          hostIdentity: {
+            userId: `principal:local-${mode}-integration`,
+            providerCacheIdentity: `provider-cache:local-${mode}-integration`,
+          },
+          qualityPolicy: chatQualityPolicyV1(mode),
+        });
+
+        expect(requests).toHaveLength(1);
+        expect(requests[0]!.tools.map((tool) => tool.function.name)).toContain(
+          "ChatAnswerDraftV2",
+        );
+        expect(answer).toMatchObject({
+          messageMarkdown: `A bounded synthetic local ${mode} answer.`,
+          strategy: { qualityMode: mode, path: "direct", delegated: false },
+        });
+      } finally {
+        channel.port1.close();
+        channel.port2.close();
+      }
+    }, 30_000);
+  }
+
+  for (const mode of ["auto", "deep"] as const) {
+    it(`runs the agentic ${mode} workflow through the local binding`, async () => {
+      const channel = new MessageChannel();
+      const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] =
+        [];
+      const workflowCode = `
+const acceptedStrategy = JSON.parse(await tools.chatStrategyDecide({}));
+globalThis.syntheticWorkflow = JSON.parse(await tools.chatWorkflowPropose({
+  tasks: [
+    { taskId: "task:compare", profileId: "comparison-analyst", objective: "Compare the bounded synthetic positions.", dependencyTaskIds: [] },
+    { taskId: "task:contradiction", profileId: "contradiction-checker", objective: "Check the bounded synthetic positions for contradictions.", dependencyTaskIds: ["task:compare"] },
+    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft the bounded synthetic answer.", dependencyTaskIds: ["task:compare", "task:contradiction"] },
+    { taskId: "task:critic", profileId: "answer-critic", objective: "Check the bounded synthetic evidence state.", dependencyTaskIds: ["task:draft"] },
+    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the conversational answer.", dependencyTaskIds: ["task:draft", "task:critic"] }
+  ],
+  maxConcurrency: 1
+}));
+globalThis.syntheticWorkflowRun = JSON.parse(await tools.chatWorkflowRun({}));
+syntheticWorkflowRun;`;
+      const scriptedResponses = [
+        {
+          toolCalls: [
+            {
+              id: "agentic-root-eval",
+              name: "eval",
+              arguments: { code: workflowCode },
+            },
+          ],
+        },
+        {
+          toolCalls: [
+            {
+              id: "agentic-analysis-1",
+              name: "ChatAnalysisPacketV1",
+              arguments: {
+                schema: "atlcli.chat-analysis-packet/v1",
+                claimRefs: [],
+                relationshipRefs: [],
+                contradictions: [],
+                gaps: [],
+              },
+            },
+          ],
+        },
+        {
+          toolCalls: [
+            {
+              id: "agentic-analysis-2",
+              name: "ChatAnalysisPacketV1",
+              arguments: {
+                schema: "atlcli.chat-analysis-packet/v1",
+                claimRefs: [],
+                relationshipRefs: [],
+                contradictions: [],
+                gaps: [],
+              },
+            },
+          ],
+        },
+        {
+          toolCalls: [
+            {
+              id: "agentic-provisional",
+              name: "ChatProvisionalAnswerDraftV1",
+              arguments: {
+                blocks: [
+                  {
+                    id: "answer-block:agentic-provisional",
+                    markdown: "A bounded provisional synthetic local answer.",
+                    sourceRefs: [],
+                    assertion: "none",
+                    scope: "none",
+                  },
+                ],
+                gaps: [
+                  {
+                    code: "no-detail-evidence",
+                    message:
+                      "The synthetic fixture has no detailed source evidence.",
+                    sourceIds: [],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          toolCalls: [
+            {
+              id: "agentic-critique",
+              name: "ChatCritiquePacketV1",
+              arguments: {
+                schema: "atlcli.chat-critique-packet/v1",
+                defects: [],
+                readyForSynthesis: true,
+              },
+            },
+          ],
+        },
+        {
+          toolCalls: [
+            {
+              id: "agentic-final",
+              name: "ChatAnswerDraftV2",
+              arguments: {
+                blocks: [
+                  {
+                    id: "answer-block:agentic-final",
+                    markdown: "A bounded synthetic agentic local Chat answer.",
+                    sourceRefs: [],
+                    assertion: "none",
+                    scope: "none",
+                  },
+                ],
+                gaps: [
+                  {
+                    code: "no-detail-evidence",
+                    message:
+                      "The synthetic fixture has no detailed source evidence.",
+                    sourceIds: [],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ];
+      channel.port2.onmessage = (
+        event: MessageEvent<LocalModelPortRequestV1>,
+      ) => {
+        const message = event.data;
+        if (message.kind !== "generate") return;
+        requests.push(message);
+        const response = scriptedResponses[requests.length - 1];
+        if (!response) throw new Error("unexpected local agentic model call");
+        channel.port2.postMessage({
+          schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+          kind: "complete",
+          requestId: message.requestId,
+          text: "",
+          toolCalls: response.toolCalls,
+          inputTokens: 48,
+          outputTokens: 24,
+        });
+      };
+      channel.port2.start();
+      try {
+        const answer = await runChatAgent({
+          ...request({
+            suffix: `agentic-${mode}`,
+            question:
+              "Compare the two bounded positions and check for contradictions.",
+          }),
+          modelBinding: createLocalGemmaChatModelBindingV1({
+            port: channel.port1,
+            modelId: "fixture/local-gemma",
+            maxOutputTokens: 1_024,
+          }),
+          providers,
+          workspace: createMemoryResearchWorkspace(),
+          hostIdentity: {
+            userId: `principal:local-${mode}-agentic`,
+            providerCacheIdentity: `provider-cache:local-${mode}-agentic`,
+          },
+          qualityPolicy: chatQualityPolicyV1(mode),
+        });
+
+        expect(requests).toHaveLength(scriptedResponses.length);
+        expect(answer).toMatchObject({
+          strategy: { qualityMode: mode, path: "agentic", delegated: true },
+        });
+        expect(answer.messageMarkdown).toContain(
+          "A bounded synthetic agentic local Chat answer.",
+        );
+        expect(answer.gaps).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ code: "no-detail-evidence" }),
+          ]),
+        );
+      } finally {
+        channel.port1.close();
+        channel.port2.close();
+      }
+    }, 30_000);
+  }
 });
