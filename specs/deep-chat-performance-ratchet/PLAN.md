@@ -15,7 +15,8 @@
 > and update this plan's assumptions before editing code. Do not preserve a stale
 > line-level implementation merely to satisfy this document.
 
-Status: **In progress; T0, T2, and T5 proven; T1 rejected and reverted**
+Status: **Complete; T0 and T2-T7 are proven. T1 was rejected, fully reverted,
+and is intentionally left unchecked as a non-blocking failed experiment.**
 
 - **Priority:** P1 performance and cost correction after functional Deep Chat proof
 - **Effort:** L, delivered as eight independently proven slices
