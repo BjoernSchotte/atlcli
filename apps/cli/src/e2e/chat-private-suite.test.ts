@@ -190,6 +190,10 @@ describe("private Chat release suite", () => {
       "Der Korridor ist ein Festpreis.",
       ["kein Festpreis", "weder einen Festpreis", "nicht als Festpreis"],
     )).toBe(false);
+    expect(privateFactGroupMatchesV1(
+      "Der Korridor ist eine Indikation ohne Festpreischarakter.",
+      ["kein Festpreis", "weder einen Festpreis", "nicht als Festpreis"],
+    )).toBe(true);
   });
 
   test("matches bounded commercial abbreviations and German adjective inflections", () => {
