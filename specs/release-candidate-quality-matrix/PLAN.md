@@ -1,10 +1,10 @@
 # Release-candidate quality matrix
 
-> Status: T0-T2 complete; the private CLI matrix exists and has run. Targeted
-> three-turn Auto and separate Deep Research reruns now pass every applicable
-> frozen local-gold, lifecycle, mode-isolation, and integrity check, while the
-> refreshed full private matrix, installed-MV3 subset, and explicit
-> operator-review gates remain open. T4 reconciliation has started, but its
+> Status: T0-T2 complete; the refreshed private CLI matrix passes all frozen
+> local-gold, lifecycle, mode-isolation, and integrity checks across seven
+> Quick, Auto, Deep, and separate Deep Research runs. The installed-MV3 subset
+> and explicit operator-review gates remain open. T4 reconciliation has
+> started, but its
 > verification and final receipt gates remain open. This slice turns the
 > existing Chat gold labels and isolated functional tests into one executable,
 > privacy-safe release decision. Private Atlassian questions, sources, answers,
@@ -131,12 +131,12 @@ fingerprints, and remain outside Git.
 
 ## T3 - Run the private read-only operator matrix
 
-Proof update (2026-08-10): revision-bound three-turn Auto and one-shot Deep
-Research runs passed every applicable source-selection, citation-support,
-required-fact, claim-support, outcome, mode-isolation, lifecycle, follow-up, and
-answer-integrity check. The neutral proofs and all private inputs and outputs
-remain outside Git. These targeted proofs do not close the refreshed full
-private matrix or installed-extension/operator gates below.
+Proof update (2026-08-10): the revision-bound full private CLI matrix passed all
+nine applicable source-selection, citation-support, required-fact,
+claim-support, outcome, mode-isolation, lifecycle, follow-up, and
+answer-integrity checks across two cases and seven runs. The neutral proof and
+all private inputs and outputs remain outside Git. This closes frozen local
+gold only; it does not close installed-extension or operator-review gates.
 
 - [x] Add a private-suite runner that executes opaque external cases through
       Quick, Auto, Deep, and optional Deep Research variants.
@@ -153,7 +153,8 @@ private matrix or installed-extension/operator gates below.
 
 Acceptance:
 
-- [ ] Every private case passes its frozen local gold and operator review.
+- [x] Every private case and variant passes its frozen local gold.
+- [ ] Every private case passes explicit operator review.
 - [ ] The committed receipt exposes only non-identifying aggregate evidence.
 
 ## T4 - Close the ratchet and reconcile plans
