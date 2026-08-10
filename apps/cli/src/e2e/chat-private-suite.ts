@@ -541,6 +541,22 @@ function failureCodes(checks: readonly ChatReleaseCandidateCheckResultV1[]): Cha
   return codes;
 }
 
+/**
+ * Research reports intentionally restate supported claims between their summary,
+ * findings, and per-claim source notes. The conversational de-duplication
+ * heuristic is therefore not a valid report gate. Grammar and evidence-
+ * classification conflicts remain blocking in every mode.
+ */
+export function privateAnswerIntegrityIssuesV1(
+  markdown: string,
+  variant: ChatReleaseCandidateVariantV1,
+): string[] {
+  const issues = chatMarkdownIntegrityIssuesV1(markdown);
+  return variant === "deep-research"
+    ? issues.filter((issue) => issue !== "repeated-prose")
+    : issues;
+}
+
 async function privateRun(input: {
   entry: ChatPrivateCaseV1;
   variant: ChatReleaseCandidateVariantV1;
@@ -561,7 +577,7 @@ async function privateRun(input: {
     check("three-turn-new-acquisition", connected, threeTurn),
     check("follow-up-coherence", connected && scored.slice(1).every((entry) => entry.outcome), input.variant !== "deep-research" && input.entry.turns.length > 1),
     check("answer-integrity", input.answers.every((answer) =>
-      chatMarkdownIntegrityIssuesV1(answer.markdown).length === 0
+      privateAnswerIntegrityIssuesV1(answer.markdown, input.variant).length === 0
     )),
   ];
   const failures = failureCodes(checks);

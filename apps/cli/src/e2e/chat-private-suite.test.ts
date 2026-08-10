@@ -9,6 +9,7 @@ import {
   normalizePrivateSourceIdentityV1,
   parseChatPrivateSuiteArgumentsV1,
   parseChatPrivateSuiteV1,
+  privateAnswerIntegrityIssuesV1,
   privateFactGroupMatchesV1,
   privateForbiddenClaimMatchesV1,
   privateOrderedFactGroupsMatchV1,
@@ -376,6 +377,24 @@ describe("private Chat release suite", () => {
       expect(proof.failureCodes).toContain("answer-integrity-failed");
       expect(proof.failureCodes).not.toContain("required-fact-missing");
     }
+  });
+
+  test("allows report repetition without weakening Deep Research integrity", () => {
+    const repeated = [
+      "# Bericht",
+      "Supported fact 1 establishes the bounded result from the accepted source.",
+      "## Ergebnisse",
+      "Supported fact 1 establishes the bounded result from the accepted source.",
+    ].join("\n\n");
+    expect(privateAnswerIntegrityIssuesV1(repeated, "quick")).toContain("repeated-prose");
+    expect(privateAnswerIntegrityIssuesV1(repeated, "deep-research")).toEqual([]);
+
+    const incomplete = `${repeated}\n\nDie Quelle bezeichnet die Einstellung als`;
+    expect(privateAnswerIntegrityIssuesV1(incomplete, "deep-research"))
+      .toContain("incomplete-prose");
+    const conflicting = `${repeated}\n\nDie Werte wurden direkt gemessen. Diese Werte sind eine Vermutung.`;
+    expect(privateAnswerIntegrityIssuesV1(conflicting, "deep-research"))
+      .toContain("observation-classification-conflict");
   });
 
   test("compiles explicit operator and installed-extension decisions into neutral proofs", async () => {
