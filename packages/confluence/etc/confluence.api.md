@@ -11212,6 +11212,9 @@ export declare function formatDiffSummary(diff: DiffResult): string;
 // export: formatDiffWithColors
 export declare function formatDiffWithColors(diff: DiffResult): string;
 
+// export: formatDiffWithWordChanges
+export declare function formatDiffWithWordChanges(diff: DiffResult, options?: WordDiffFormatOptions): string;
+
 // export: formatFileSize
 export declare function formatFileSize(bytes: number): string;
 
@@ -12953,6 +12956,11 @@ export interface WebhookServerOptions {
     secret?: string;
     filterPageIds?: Set<string>;
     filterSpaceKeys?: Set<string>;
+}
+
+// export: WordDiffFormatOptions
+export interface WordDiffFormatOptions {
+    color?: boolean;
 }
 
 // export: writeAttachmentBase

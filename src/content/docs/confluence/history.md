@@ -94,7 +94,10 @@ atlcli wiki page diff --id 12345 --from 7 --to 3
 ### Semantic Diff
 
 The default `unified` format converts Storage content to Markdown and prints a
-line-oriented patch. Opt into `semantic` for an end-user review of structural
+line-oriented patch. `text` is an explicit alias for that format. Add
+`--word-diff` to pair changed lines and mark removed words as `[-old-]` and
+added words as `{+new+}`; this is a review presentation, not an applicable
+patch. Opt into `semantic` for an end-user review of structural
 changes. Terminal output describes headings, paragraphs, images, lists and
 other blocks in plain language; AST paths, raw node JSON and private media IDs
 remain available only in the machine-readable ChangeSet:
@@ -121,13 +124,18 @@ complete SafeOps approval.
 | `--version` | Compare this version with current |
 | `--from` | Start version for comparison |
 | `--to` | End version for comparison |
-| `--format` | `unified` (default) or `semantic` |
-| `--context` | Unified diff context lines (default: 3); invalid with `semantic` |
+| `--format` | `unified` (default), `text`, or `semantic` |
+| `--context` | Text/unified diff context lines (default: 3); invalid with `semantic` |
+| `--word-diff` | Mark changed words inline in text/unified output |
 | `--no-color` | Disable colored output |
 | `--json` | Emit one JSON document; semantic mode returns `changeSet` |
 
 `--to` requires `--from`. Do not combine `--version` with `--from` or `--to`.
 Versions must be positive integers.
+
+With `--json`, text/unified mode always retains the applicable `unified` patch.
+When `--word-diff` is present, the JSON document also contains the ANSI-free
+`wordDiff` review presentation.
 
 ### Cloud and Data Center
 

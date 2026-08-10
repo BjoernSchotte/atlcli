@@ -218,6 +218,25 @@ Data Center remains **implemented · contract-tested · not project-live-certifi
 No live DC environment was supplied, so the evidence makes no claim about live
 DC endpoint behavior.
 
+### Text and word-diff follow-up
+
+The Option B follow-up keeps the no-flag unified terminal and JSON contracts
+unchanged. `--format text` is output-compatible with explicit `unified`, while
+`--word-diff` renders paired line replacements with inline removed/added word
+markers. Machine output retains the applicable `unified` patch and adds an
+ANSI-free `wordDiff` field only when explicitly requested.
+
+A read-only real-world Cloud comparison used the operator-supplied page from
+version 1 to version 3. The text/word command exited 0 with empty stderr and
+reported only line additions in two hunks, so no replacement markers were
+expected in that particular output. The complete live output was shown in the
+task and was not saved in Git. The committed evidence contains no title, page
+identifier, URL, body, attachment name, tenant identifier, or account data.
+
+Focused proof covers text/unified alias parity, unchanged legacy terminal and
+JSON goldens, ANSI-free JSON, word replacements, insertions, Unicode, unpaired
+lines, flag validation before I/O, and current shell completions.
+
 ## Verification commands
 
 ```bash

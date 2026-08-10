@@ -1451,6 +1451,8 @@ revision:
 ```text
 packages/change-set/**
 packages/confluence/src/adf-*.ts
+packages/confluence/src/diff.ts
+packages/confluence/src/diff.test.ts
 packages/confluence/src/page-body*.ts
 packages/confluence/src/client.ts
 packages/confluence/src/index.browser.ts
@@ -1468,6 +1470,8 @@ packages/jira/etc/**
 apps/cli/src/commands/page.ts
 apps/cli/src/commands/page-diff-*.test.ts
 apps/cli/src/index.ts
+apps/cli/src/completions.ts
+apps/cli/src/completions.test.ts
 apps/cli/src/semantic-diff-spill*.ts
 scripts/adf-drift.ts
 scripts/api-closure.ts
@@ -1546,6 +1550,33 @@ All boxes must be checked:
 - [x] DC is labeled `implemented · contract-tested · not project-live-certified`.
 - [x] Documentation describes current behavior rather than planned flags.
 - [x] No private/live source bodies or identifiers are committed.
+
+### 18.1 Accepted follow-up sequence: text, review, Pierre
+
+The spike continues in three separately proven and committed increments:
+
+1. **Option B — text/word diff.** Add `--format text` as an explicit alias for
+   the unchanged default unified lane and add `--word-diff` as a review-only
+   inline presentation powered by the existing `diff` package. The applicable
+   patch remains available as `unified`; JSON adds `wordDiff` only when the
+   flag is present.
+2. **Option C — combined review.** Add an opt-in format that combines the
+   plain-language semantic summary with bounded text hunks while retaining
+   each neutral source representation in JSON.
+3. **Pierre prototype.** Exercise `@pierre/diffs` directly against the neutral
+   text-diff output at a renderer boundary. React, Shiki, DOM, and worker
+   dependencies must not enter `@atlcli/change-set`, the Confluence/Jira
+   adapters, or the core CLI command path.
+
+Each increment requires focused/full proportional gates, a read-only live
+v1 -> current comparison of the operator-supplied Mayflower page, an output
+shown directly in the task, privacy inspection, then its own commit and push.
+No live source body, page identifier, URL, or generated rendering is committed.
+
+- [x] Option B text alias and word diff are contract-tested and live-proven.
+- [ ] Option C combined review is contract-tested and live-proven.
+- [ ] The Pierre prototype is isolated, evaluated, and live-proven without
+      contaminating the host-neutral core.
 
 ## 19. STOP conditions
 

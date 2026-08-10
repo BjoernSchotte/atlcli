@@ -276,10 +276,46 @@ describe("wiki page diff CLI shell", () => {
     expect(requests).toHaveLength(4);
   }, 30_000);
 
+  it("treats text as an output-compatible explicit alias for unified", async () => {
+    const unified = await runPageDiff([
+      "--id", PAGE_ID, "--from", "2", "--to", "3", "--format", "unified", "--no-color",
+    ]);
+    const text = await runPageDiff([
+      "--id", PAGE_ID, "--from", "2", "--to", "3", "--format", "text", "--no-color",
+    ]);
+
+    expect(unified.exitCode, unified.stderr).toBe(0);
+    expect(text.exitCode, text.stderr).toBe(0);
+    expect(text.stdout).toBe(unified.stdout);
+  }, 30_000);
+
+  it("renders word changes for terminal review without changing the patch", async () => {
+    const terminal = await runPageDiff([
+      "--id", PAGE_ID, "--from", "2", "--to", "3", "--format", "text",
+      "--word-diff", "--no-color",
+    ]);
+    const json = await runPageDiff([
+      "--id", PAGE_ID, "--from", "2", "--to", "3", "--format", "text",
+      "--word-diff", "--json",
+    ]);
+
+    expect(terminal.exitCode, terminal.stderr).toBe(0);
+    expect(terminal.stderr).toBe("");
+    expect(terminal.stdout).toContain("~ [-Second-]{+Third+} content");
+    expect(terminal.stdout).not.toContain("\u001b[");
+
+    expect(json.exitCode, json.stderr).toBe(0);
+    const parsed = parseJson(json.stdout);
+    expect(parsed.wordDiff).toContain("~ [-Second-]{+Third+} content");
+    expect(parsed.unified).toContain("-Second content");
+    expect(parsed.unified).toContain("+Third content");
+    expect(json.stdout).not.toContain("\u001b[");
+  }, 30_000);
+
   const usageCases: Array<{ args: string[]; message: string }> = [
     {
       args: ["--id", PAGE_ID, "--format", "side-by-side"],
-      message: "--format must be either 'unified' or 'semantic'.",
+      message: "--format must be 'unified', 'text', or 'semantic'.",
     },
     {
       args: ["--id", PAGE_ID, "--version", "2", "--from", "1"],
@@ -311,7 +347,15 @@ describe("wiki page diff CLI shell", () => {
     },
     {
       args: ["--id", PAGE_ID, "--format", "semantic", "--context", "3"],
-      message: "--context is only supported with --format unified.",
+      message: "--context is only supported with --format unified or text.",
+    },
+    {
+      args: ["--id", PAGE_ID, "--format", "semantic", "--word-diff"],
+      message: "--word-diff is only supported with --format unified or text.",
+    },
+    {
+      args: ["--id", PAGE_ID, "--word-diff=true"],
+      message: "--word-diff does not accept a value.",
     },
     {
       args: ["--id", PAGE_ID, "--no-color=true"],

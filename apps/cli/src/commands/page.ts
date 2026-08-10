@@ -25,6 +25,7 @@ import {
   ConversionOptions,
   generateDiff,
   formatDiffWithColors,
+  formatDiffWithWordChanges,
   formatDiffSummary,
   readPageDiffPair,
   buildPageDiffChangeSetV1,
@@ -649,7 +650,7 @@ async function handleHistory(flags: Record<string, string | boolean | string[]>,
   }
 }
 
-type PageDiffFormat = "unified" | "semantic";
+type PageDiffFormat = "unified" | "text" | "semantic";
 
 type PageDiffSelection = {
   format: PageDiffFormat;
@@ -657,6 +658,7 @@ type PageDiffSelection = {
   to?: number;
   context: number;
   noColor: boolean;
+  wordDiff: boolean;
 };
 
 function readPageDiffValueFlag(
@@ -698,8 +700,13 @@ function parsePageDiffSelection(
   opts: OutputOptions,
 ): PageDiffSelection {
   const formatRaw = readPageDiffValueFlag(flags, "format", opts);
-  if (formatRaw !== undefined && formatRaw !== "unified" && formatRaw !== "semantic") {
-    fail(opts, 1, ERROR_CODES.USAGE, "--format must be either 'unified' or 'semantic'.");
+  if (
+    formatRaw !== undefined
+    && formatRaw !== "unified"
+    && formatRaw !== "text"
+    && formatRaw !== "semantic"
+  ) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--format must be 'unified', 'text', or 'semantic'.");
   }
   const format: PageDiffFormat = formatRaw ?? "unified";
 
@@ -715,7 +722,7 @@ function parsePageDiffSelection(
 
   const contextRaw = readPageDiffValueFlag(flags, "context", opts);
   if (format === "semantic" && contextRaw !== undefined) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--context is only supported with --format unified.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--context is only supported with --format unified or text.");
   }
   let context = 3;
   if (contextRaw !== undefined) {
@@ -733,6 +740,14 @@ function parsePageDiffSelection(
     fail(opts, 1, ERROR_CODES.USAGE, "--no-color does not accept a value.");
   }
 
+  const wordDiffValue = flags["word-diff"];
+  if (wordDiffValue !== undefined && wordDiffValue !== true) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--word-diff does not accept a value.");
+  }
+  if (format === "semantic" && wordDiffValue === true) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--word-diff is only supported with --format unified or text.");
+  }
+
   return {
     format,
     from: versionRaw !== undefined
@@ -743,6 +758,7 @@ function parsePageDiffSelection(
     to: toRaw !== undefined ? parsePageDiffVersion(toRaw, "to", opts) : undefined,
     context,
     noColor: noColorValue === true || Object.hasOwn(process.env, "NO_COLOR"),
+    wordDiff: wordDiffValue === true,
   };
 }
 
@@ -839,6 +855,9 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
   });
 
   if (opts.json) {
+    const wordDiff = selection.wordDiff
+      ? formatDiffWithWordChanges(diff)
+      : undefined;
     output({
       schemaVersion: "1",
       pageId: id,
@@ -849,6 +868,7 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
       additions: diff.additions,
       deletions: diff.deletions,
       unified: diff.unified,
+      ...(wordDiff === undefined ? {} : { wordDiff }),
     }, opts);
     return;
   }
@@ -861,7 +881,14 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
   output(`\nDiff for "${targetPage.title}"`, opts);
   output(`Comparing version ${compareVersion} → ${targetVersion}`, opts);
   output(`${formatDiffSummary(diff)}\n`, opts);
-  output(selection.noColor ? diff.unified : formatDiffWithColors(diff), opts);
+  output(
+    selection.wordDiff
+      ? formatDiffWithWordChanges(diff, { color: !selection.noColor })
+      : selection.noColor
+        ? diff.unified
+        : formatDiffWithColors(diff),
+    opts,
+  );
 }
 
 async function handleRestore(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -2161,10 +2188,11 @@ Commands:
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
-  --format <name>    Diff format: unified (default) or semantic
+  --format <name>    Diff format: unified (default), text, or semantic
   --from <n>         Diff baseline version; target defaults to current
   --to <n>           Diff target version; requires --from
-  --context <n>      Unified diff context lines (default: 3)
+  --context <n>      Text/unified diff context lines (default: 3)
+  --word-diff        Show changed words inline in text/unified diffs
   --no-color         Disable ANSI diff colors (also honors NO_COLOR)
   --dry-run          Preview bulk operations without executing
   --reverse          Reverse sort order (for sort command)
@@ -2193,6 +2221,7 @@ Examples:
   atlcli wiki page history --id 12345 --limit 5
   atlcli wiki page diff --id 12345 --version 3
   atlcli wiki page diff --id 12345 --from 3 --to 5 --format unified --context 5
+  atlcli wiki page diff --id 12345 --from 3 --to 5 --format text --word-diff
   atlcli wiki page diff --id 12345 --from 3 --format semantic --no-color
   atlcli wiki page restore --id 12345 --version 3 --confirm
   atlcli wiki page comments --id 12345
