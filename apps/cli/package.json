@@ -8,6 +8,7 @@
     "atlcli": "src/index.ts"
   },
   "dependencies": {
+    "@atlcli/change-set": "workspace:*",
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/export-node": "workspace:*",

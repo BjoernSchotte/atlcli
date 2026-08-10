@@ -68,6 +68,8 @@ import ts from "typescript";
 
 /** The entrypoints that MUST build for the browser (spec 001 §6). */
 export const BROWSER_ENTRYPOINTS = [
+  "packages/change-set/src/index.ts",
+  "packages/change-set/src/adf/index.ts",
   "packages/export-blocks/src/index.ts",
   "packages/web-publish/src/index.ts",
   "packages/confluence/src/markdown.ts",

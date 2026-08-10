@@ -7,6 +7,28 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: ADF_ATTRIBUTE_POLICY_V1
+export declare const ADF_ATTRIBUTE_POLICY_V1: Readonly<{
+    readonly schema: "atlcli.adf-attribute-policy/1";
+    readonly defaults: Readonly<{
+        validated: "semantic";
+        unknown: "opaque";
+    }>;
+    readonly nodeIdentityOnly: Readonly<{
+        "*": readonly string[];
+        codeBlock: readonly string[];
+    }>;
+    readonly markIdentityOnly: Readonly<{
+        annotation: readonly string[];
+        fragment: readonly string[];
+        link: readonly string[];
+    }>;
+    readonly noise: Readonly<{
+        attributes: readonly string[];
+        structural: readonly string[];
+    }>;
+}>;
+
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
@@ -103,6 +125,16 @@ export interface AdfAnnotationIdentity {
 export interface AdfAnnotationReply {
     bodyText: string;
     created?: string;
+}
+
+// export: AdfAttributePolicyClassV1
+export type AdfAttributePolicyClassV1 = "semantic" | "identity-only" | "noise" | "opaque";
+
+// export: AdfCanonicalizationResultV1
+export interface AdfCanonicalizationResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
 }
 
 // export: AdfCoverageLevel
@@ -234,6 +266,12 @@ export interface AdfResolvedMediaAttachment {
     mediaType?: string;
     webuiLink?: string;
     downloadLink?: string;
+}
+
+// export: AdfStreamingShardOptionsV1
+export interface AdfStreamingShardOptionsV1 {
+    budget?: Partial<AdfParseBudget>;
+    batchNodes?: number;
 }
 
 // export: adfToBlocks
@@ -451,6 +489,16 @@ export interface BlocksResult {
     degraded?: boolean;
 }
 
+// export: BuildPageDiffChangeSetOptionsV1
+export interface BuildPageDiffChangeSetOptionsV1 {
+    adfBudget?: Partial<AdfParseBudget>;
+    storageBudget?: Partial<StorageChangeTreeBudgetV1>;
+    matcherLimits?: Partial<SemanticDiffLimitsV1>;
+}
+
+// export: buildPageDiffChangeSetV1
+export declare function buildPageDiffChangeSetV1(pair: PageDiffPairV1, options?: BuildPageDiffChangeSetOptionsV1): Promise<SemanticDiffResultV1>;
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -468,6 +516,19 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
+// export: canonicalizeAdfV1
+export declare function canonicalizeAdfV1(input: string | unknown | ValidatedAdfDocument, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): AdfCanonicalizationResultV1;
+
+// export: CanonicalizeStorageOptionsV1
+export interface CanonicalizeStorageOptionsV1 {
+    budget?: Partial<StorageChangeTreeBudgetV1>;
+}
+
+// export: canonicalizeStorageV1
+export declare function canonicalizeStorageV1(storage: string, options?: CanonicalizeStorageOptionsV1): StorageChangeTreeResultV1;
 
 // export: CanonicalLegacyEmojiName
 export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
@@ -660,6 +721,14 @@ export declare class ChartValidationErrorV1 extends Error {
     constructor(message: string);
 }
 
+// export: classifyAdfAttributeV1
+export declare function classifyAdfAttributeV1(input: {
+    scope: "node" | "mark";
+    type: string;
+    attribute: string;
+    unknown?: boolean;
+}): AdfAttributePolicyClassV1;
+
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
 
@@ -781,6 +850,9 @@ export declare class ConfluenceClient {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
+    getPageAdfAtVersion(id: string, version: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
@@ -976,9 +1048,14 @@ export declare class ConfluenceClient {
     getPageHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
-    getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
+    getPageAtVersion(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageDiffSource(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageDiffSourceV1>;
     restorePageVersion(pageId: string, version: number, message?: string): Promise<ConfluencePage>;
     getFooterComments(pageId: string, options?: {
         limit?: number;
@@ -1347,6 +1424,9 @@ export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
 // export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
 export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
+// export: DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1
+export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChangeTreeBudgetV1>;
 
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
@@ -1779,7 +1859,7 @@ export declare class ExportPageReadError extends Error {
 }
 
 // export: ExportPageReadErrorKind
-export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-diff-source-selection" | "invalid-page-version" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
 
 // export: ExportPageSource
 export interface ExportPageSource {
@@ -2149,6 +2229,9 @@ export declare function isSafeLinkScheme(href: string): boolean;
 // export: isSupportedAdfNodeType
 export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
+// export: isTrustedValidatedAdf
+export declare function isTrustedValidatedAdf(value: unknown): value is ValidatedAdfDocument;
+
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
@@ -2402,6 +2485,27 @@ export interface PageComments {
     inlineComments: InlineComment[];
 }
 
+// export: PageDiffPairV1
+export interface PageDiffPairV1 {
+    from: PageDiffSourceV1;
+    to: PageDiffSourceV1;
+    representation: PageBody["representation"];
+}
+
+// export: PageDiffSourceFallbackReason
+export type PageDiffSourceFallbackReason = "data-center" | "adf-version-unavailable";
+
+// export: PageDiffSourceV1
+export interface PageDiffSourceV1 {
+    id: string;
+    title: string;
+    version: number;
+    deployment: "cloud" | "data-center";
+    body: PageBody;
+    storageSidecar?: string;
+    fallbackReason?: PageDiffSourceFallbackReason;
+}
+
 // export: PageHistory
 export interface PageHistory {
     pageId: string;
@@ -2611,6 +2715,14 @@ export declare function projectTypedEmoji(input: {
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
+// export: readPageDiffPair
+export declare function readPageDiffPair(client: ConfluenceClient, pageId: string, fromVersion: number, toVersion: number, options?: {
+    signal?: AbortSignal;
+}): Promise<PageDiffPairV1>;
+
+// export: renderSemanticDiff
+export declare function renderSemanticDiff(changeSet: ChangeSetV1, options?: SemanticDiffRenderOptions): string;
+
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
@@ -2670,6 +2782,9 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: selectPageDiffPair
+export declare function selectPageDiffPair(from: PageDiffSourceV1, to: PageDiffSourceV1): PageDiffPairV1;
+
 // export: SEMANTIC_CALLOUT_ICONS
 export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
 
@@ -2678,6 +2793,12 @@ export interface SemanticCalloutIcon {
     kind: StandardCalloutKind;
     symbol: string;
     label: string;
+}
+
+// export: SemanticDiffRenderOptions
+export interface SemanticDiffRenderOptions {
+    color?: boolean;
+    maxValueCharacters?: number;
 }
 
 // export: SmartCardAppearance
@@ -2727,6 +2848,24 @@ export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
     type: "status";
 }>, "text" | "color" | "style">): string;
 
+// export: StorageChangeTreeBudgetV1
+export interface StorageChangeTreeBudgetV1 extends StorageParseBudget {
+    maxInputBytes: number;
+}
+
+// export: StorageChangeTreeInputErrorV1
+export declare class StorageChangeTreeInputErrorV1 extends Error {
+    readonly kind: "input-too-large";
+    constructor(kind: "input-too-large", message: string);
+}
+
+// export: StorageChangeTreeResultV1
+export interface StorageChangeTreeResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
+}
+
 // export: StorageParseBudget
 export interface StorageParseBudget {
     maxNodes: number;
@@ -2742,6 +2881,9 @@ export declare class StorageParseError extends Error {
 
 // export: StorageParseErrorKind
 export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
+// export: storageSemanticTreeSnapshotV1
+export declare function storageSemanticTreeSnapshotV1(storage: string, ref: Omit<SnapshotRefV1, "digest">, options?: CanonicalizeStorageOptionsV1): SemanticTreeSnapshotV1;
 
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
@@ -3008,6 +3150,9 @@ export interface TreeSourceVersion {
     title: string;
 }
 
+// export: trustValidatedAdf
+export declare function trustValidatedAdf(validated: ValidatedAdfDocument): ValidatedAdfDocument;
+
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
 
@@ -3077,8 +3222,22 @@ export interface ValidatedAdfDocument {
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
 
+// export: visitAdfSemanticJsonShardsV1
+export declare function visitAdfSemanticJsonShardsV1(input: string, visitor: SemanticTreeShardVisitorV1, options?: AdfStreamingShardOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitAdfSemanticShardsV1
+export declare function visitAdfSemanticShardsV1(input: string | unknown | ValidatedAdfDocument, visitor: SemanticTreeShardVisitorV1, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): SemanticTreeShardVisitResultV1;
+
 // export: visitExportBlocksV1
 export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
+
+// export: visitStorageSemanticShardsV1
+export declare function visitStorageSemanticShardsV1(storage: string, visitor: SemanticTreeShardVisitorV1, options?: CanonicalizeStorageOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitXmlTopLevel
+export declare function visitXmlTopLevel(input: string, budget: StorageParseBudget, visitor: (node: XmlNode, index: number) => void): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -3110,6 +3269,28 @@ export interface XmlText {
 ### Entry point `. (default)`
 
 ```ts
+// export: ADF_ATTRIBUTE_POLICY_V1
+export declare const ADF_ATTRIBUTE_POLICY_V1: Readonly<{
+    readonly schema: "atlcli.adf-attribute-policy/1";
+    readonly defaults: Readonly<{
+        validated: "semantic";
+        unknown: "opaque";
+    }>;
+    readonly nodeIdentityOnly: Readonly<{
+        "*": readonly string[];
+        codeBlock: readonly string[];
+    }>;
+    readonly markIdentityOnly: Readonly<{
+        annotation: readonly string[];
+        fragment: readonly string[];
+        link: readonly string[];
+    }>;
+    readonly noise: Readonly<{
+        attributes: readonly string[];
+        structural: readonly string[];
+    }>;
+}>;
+
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
@@ -3206,6 +3387,16 @@ export interface AdfAnnotationIdentity {
 export interface AdfAnnotationReply {
     bodyText: string;
     created?: string;
+}
+
+// export: AdfAttributePolicyClassV1
+export type AdfAttributePolicyClassV1 = "semantic" | "identity-only" | "noise" | "opaque";
+
+// export: AdfCanonicalizationResultV1
+export interface AdfCanonicalizationResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
 }
 
 // export: AdfCoverageLevel
@@ -3337,6 +3528,12 @@ export interface AdfResolvedMediaAttachment {
     mediaType?: string;
     webuiLink?: string;
     downloadLink?: string;
+}
+
+// export: AdfStreamingShardOptionsV1
+export interface AdfStreamingShardOptionsV1 {
+    budget?: Partial<AdfParseBudget>;
+    batchNodes?: number;
 }
 
 // export: adfToBlocks
@@ -3554,6 +3751,16 @@ export interface BlocksResult {
     degraded?: boolean;
 }
 
+// export: BuildPageDiffChangeSetOptionsV1
+export interface BuildPageDiffChangeSetOptionsV1 {
+    adfBudget?: Partial<AdfParseBudget>;
+    storageBudget?: Partial<StorageChangeTreeBudgetV1>;
+    matcherLimits?: Partial<SemanticDiffLimitsV1>;
+}
+
+// export: buildPageDiffChangeSetV1
+export declare function buildPageDiffChangeSetV1(pair: PageDiffPairV1, options?: BuildPageDiffChangeSetOptionsV1): Promise<SemanticDiffResultV1>;
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -3571,6 +3778,19 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
+// export: canonicalizeAdfV1
+export declare function canonicalizeAdfV1(input: string | unknown | ValidatedAdfDocument, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): AdfCanonicalizationResultV1;
+
+// export: CanonicalizeStorageOptionsV1
+export interface CanonicalizeStorageOptionsV1 {
+    budget?: Partial<StorageChangeTreeBudgetV1>;
+}
+
+// export: canonicalizeStorageV1
+export declare function canonicalizeStorageV1(storage: string, options?: CanonicalizeStorageOptionsV1): StorageChangeTreeResultV1;
 
 // export: CanonicalLegacyEmojiName
 export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
@@ -3763,6 +3983,14 @@ export declare class ChartValidationErrorV1 extends Error {
     constructor(message: string);
 }
 
+// export: classifyAdfAttributeV1
+export declare function classifyAdfAttributeV1(input: {
+    scope: "node" | "mark";
+    type: string;
+    attribute: string;
+    unknown?: boolean;
+}): AdfAttributePolicyClassV1;
+
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
 
@@ -3884,6 +4112,9 @@ export declare class ConfluenceClient {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
+    getPageAdfAtVersion(id: string, version: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
@@ -4079,9 +4310,14 @@ export declare class ConfluenceClient {
     getPageHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
-    getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
+    getPageAtVersion(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageDiffSource(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageDiffSourceV1>;
     restorePageVersion(pageId: string, version: number, message?: string): Promise<ConfluencePage>;
     getFooterComments(pageId: string, options?: {
         limit?: number;
@@ -4450,6 +4686,9 @@ export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
 // export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
 export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
+// export: DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1
+export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChangeTreeBudgetV1>;
 
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
@@ -4882,7 +5121,7 @@ export declare class ExportPageReadError extends Error {
 }
 
 // export: ExportPageReadErrorKind
-export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-diff-source-selection" | "invalid-page-version" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
 
 // export: ExportPageSource
 export interface ExportPageSource {
@@ -5252,6 +5491,9 @@ export declare function isSafeLinkScheme(href: string): boolean;
 // export: isSupportedAdfNodeType
 export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
+// export: isTrustedValidatedAdf
+export declare function isTrustedValidatedAdf(value: unknown): value is ValidatedAdfDocument;
+
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
@@ -5505,6 +5747,27 @@ export interface PageComments {
     inlineComments: InlineComment[];
 }
 
+// export: PageDiffPairV1
+export interface PageDiffPairV1 {
+    from: PageDiffSourceV1;
+    to: PageDiffSourceV1;
+    representation: PageBody["representation"];
+}
+
+// export: PageDiffSourceFallbackReason
+export type PageDiffSourceFallbackReason = "data-center" | "adf-version-unavailable";
+
+// export: PageDiffSourceV1
+export interface PageDiffSourceV1 {
+    id: string;
+    title: string;
+    version: number;
+    deployment: "cloud" | "data-center";
+    body: PageBody;
+    storageSidecar?: string;
+    fallbackReason?: PageDiffSourceFallbackReason;
+}
+
 // export: PageHistory
 export interface PageHistory {
     pageId: string;
@@ -5714,6 +5977,14 @@ export declare function projectTypedEmoji(input: {
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
+// export: readPageDiffPair
+export declare function readPageDiffPair(client: ConfluenceClient, pageId: string, fromVersion: number, toVersion: number, options?: {
+    signal?: AbortSignal;
+}): Promise<PageDiffPairV1>;
+
+// export: renderSemanticDiff
+export declare function renderSemanticDiff(changeSet: ChangeSetV1, options?: SemanticDiffRenderOptions): string;
+
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
@@ -5773,6 +6044,9 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: selectPageDiffPair
+export declare function selectPageDiffPair(from: PageDiffSourceV1, to: PageDiffSourceV1): PageDiffPairV1;
+
 // export: SEMANTIC_CALLOUT_ICONS
 export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
 
@@ -5781,6 +6055,12 @@ export interface SemanticCalloutIcon {
     kind: StandardCalloutKind;
     symbol: string;
     label: string;
+}
+
+// export: SemanticDiffRenderOptions
+export interface SemanticDiffRenderOptions {
+    color?: boolean;
+    maxValueCharacters?: number;
 }
 
 // export: SmartCardAppearance
@@ -5830,6 +6110,24 @@ export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
     type: "status";
 }>, "text" | "color" | "style">): string;
 
+// export: StorageChangeTreeBudgetV1
+export interface StorageChangeTreeBudgetV1 extends StorageParseBudget {
+    maxInputBytes: number;
+}
+
+// export: StorageChangeTreeInputErrorV1
+export declare class StorageChangeTreeInputErrorV1 extends Error {
+    readonly kind: "input-too-large";
+    constructor(kind: "input-too-large", message: string);
+}
+
+// export: StorageChangeTreeResultV1
+export interface StorageChangeTreeResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
+}
+
 // export: StorageParseBudget
 export interface StorageParseBudget {
     maxNodes: number;
@@ -5845,6 +6143,9 @@ export declare class StorageParseError extends Error {
 
 // export: StorageParseErrorKind
 export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
+// export: storageSemanticTreeSnapshotV1
+export declare function storageSemanticTreeSnapshotV1(storage: string, ref: Omit<SnapshotRefV1, "digest">, options?: CanonicalizeStorageOptionsV1): SemanticTreeSnapshotV1;
 
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
@@ -6111,6 +6412,9 @@ export interface TreeSourceVersion {
     title: string;
 }
 
+// export: trustValidatedAdf
+export declare function trustValidatedAdf(validated: ValidatedAdfDocument): ValidatedAdfDocument;
+
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
 
@@ -6180,8 +6484,22 @@ export interface ValidatedAdfDocument {
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
 
+// export: visitAdfSemanticJsonShardsV1
+export declare function visitAdfSemanticJsonShardsV1(input: string, visitor: SemanticTreeShardVisitorV1, options?: AdfStreamingShardOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitAdfSemanticShardsV1
+export declare function visitAdfSemanticShardsV1(input: string | unknown | ValidatedAdfDocument, visitor: SemanticTreeShardVisitorV1, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): SemanticTreeShardVisitResultV1;
+
 // export: visitExportBlocksV1
 export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
+
+// export: visitStorageSemanticShardsV1
+export declare function visitStorageSemanticShardsV1(storage: string, visitor: SemanticTreeShardVisitorV1, options?: CanonicalizeStorageOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitXmlTopLevel
+export declare function visitXmlTopLevel(input: string, budget: StorageParseBudget, visitor: (node: XmlNode, index: number) => void): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -6213,6 +6531,28 @@ export interface XmlText {
 ### Entry point `./browser`
 
 ```ts
+// export: ADF_ATTRIBUTE_POLICY_V1
+export declare const ADF_ATTRIBUTE_POLICY_V1: Readonly<{
+    readonly schema: "atlcli.adf-attribute-policy/1";
+    readonly defaults: Readonly<{
+        validated: "semantic";
+        unknown: "opaque";
+    }>;
+    readonly nodeIdentityOnly: Readonly<{
+        "*": readonly string[];
+        codeBlock: readonly string[];
+    }>;
+    readonly markIdentityOnly: Readonly<{
+        annotation: readonly string[];
+        fragment: readonly string[];
+        link: readonly string[];
+    }>;
+    readonly noise: Readonly<{
+        attributes: readonly string[];
+        structural: readonly string[];
+    }>;
+}>;
+
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
@@ -6309,6 +6649,16 @@ export interface AdfAnnotationIdentity {
 export interface AdfAnnotationReply {
     bodyText: string;
     created?: string;
+}
+
+// export: AdfAttributePolicyClassV1
+export type AdfAttributePolicyClassV1 = "semantic" | "identity-only" | "noise" | "opaque";
+
+// export: AdfCanonicalizationResultV1
+export interface AdfCanonicalizationResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
 }
 
 // export: AdfCoverageLevel
@@ -6440,6 +6790,12 @@ export interface AdfResolvedMediaAttachment {
     mediaType?: string;
     webuiLink?: string;
     downloadLink?: string;
+}
+
+// export: AdfStreamingShardOptionsV1
+export interface AdfStreamingShardOptionsV1 {
+    budget?: Partial<AdfParseBudget>;
+    batchNodes?: number;
 }
 
 // export: adfToBlocks
@@ -6657,6 +7013,16 @@ export interface BlocksResult {
     degraded?: boolean;
 }
 
+// export: BuildPageDiffChangeSetOptionsV1
+export interface BuildPageDiffChangeSetOptionsV1 {
+    adfBudget?: Partial<AdfParseBudget>;
+    storageBudget?: Partial<StorageChangeTreeBudgetV1>;
+    matcherLimits?: Partial<SemanticDiffLimitsV1>;
+}
+
+// export: buildPageDiffChangeSetV1
+export declare function buildPageDiffChangeSetV1(pair: PageDiffPairV1, options?: BuildPageDiffChangeSetOptionsV1): Promise<SemanticDiffResultV1>;
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -6674,6 +7040,19 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
+// export: canonicalizeAdfV1
+export declare function canonicalizeAdfV1(input: string | unknown | ValidatedAdfDocument, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): AdfCanonicalizationResultV1;
+
+// export: CanonicalizeStorageOptionsV1
+export interface CanonicalizeStorageOptionsV1 {
+    budget?: Partial<StorageChangeTreeBudgetV1>;
+}
+
+// export: canonicalizeStorageV1
+export declare function canonicalizeStorageV1(storage: string, options?: CanonicalizeStorageOptionsV1): StorageChangeTreeResultV1;
 
 // export: CanonicalLegacyEmojiName
 export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
@@ -6866,6 +7245,14 @@ export declare class ChartValidationErrorV1 extends Error {
     constructor(message: string);
 }
 
+// export: classifyAdfAttributeV1
+export declare function classifyAdfAttributeV1(input: {
+    scope: "node" | "mark";
+    type: string;
+    attribute: string;
+    unknown?: boolean;
+}): AdfAttributePolicyClassV1;
+
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
 
@@ -6987,6 +7374,9 @@ export declare class ConfluenceClient {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
+    getPageAdfAtVersion(id: string, version: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
@@ -7182,9 +7572,14 @@ export declare class ConfluenceClient {
     getPageHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
-    getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
+    getPageAtVersion(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageDiffSource(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageDiffSourceV1>;
     restorePageVersion(pageId: string, version: number, message?: string): Promise<ConfluencePage>;
     getFooterComments(pageId: string, options?: {
         limit?: number;
@@ -7553,6 +7948,9 @@ export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
 // export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
 export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
+// export: DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1
+export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChangeTreeBudgetV1>;
 
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
@@ -7985,7 +8383,7 @@ export declare class ExportPageReadError extends Error {
 }
 
 // export: ExportPageReadErrorKind
-export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-diff-source-selection" | "invalid-page-version" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
 
 // export: ExportPageSource
 export interface ExportPageSource {
@@ -8355,6 +8753,9 @@ export declare function isSafeLinkScheme(href: string): boolean;
 // export: isSupportedAdfNodeType
 export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
+// export: isTrustedValidatedAdf
+export declare function isTrustedValidatedAdf(value: unknown): value is ValidatedAdfDocument;
+
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
@@ -8608,6 +9009,27 @@ export interface PageComments {
     inlineComments: InlineComment[];
 }
 
+// export: PageDiffPairV1
+export interface PageDiffPairV1 {
+    from: PageDiffSourceV1;
+    to: PageDiffSourceV1;
+    representation: PageBody["representation"];
+}
+
+// export: PageDiffSourceFallbackReason
+export type PageDiffSourceFallbackReason = "data-center" | "adf-version-unavailable";
+
+// export: PageDiffSourceV1
+export interface PageDiffSourceV1 {
+    id: string;
+    title: string;
+    version: number;
+    deployment: "cloud" | "data-center";
+    body: PageBody;
+    storageSidecar?: string;
+    fallbackReason?: PageDiffSourceFallbackReason;
+}
+
 // export: PageHistory
 export interface PageHistory {
     pageId: string;
@@ -8817,6 +9239,14 @@ export declare function projectTypedEmoji(input: {
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
+// export: readPageDiffPair
+export declare function readPageDiffPair(client: ConfluenceClient, pageId: string, fromVersion: number, toVersion: number, options?: {
+    signal?: AbortSignal;
+}): Promise<PageDiffPairV1>;
+
+// export: renderSemanticDiff
+export declare function renderSemanticDiff(changeSet: ChangeSetV1, options?: SemanticDiffRenderOptions): string;
+
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
@@ -8876,6 +9306,9 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: selectPageDiffPair
+export declare function selectPageDiffPair(from: PageDiffSourceV1, to: PageDiffSourceV1): PageDiffPairV1;
+
 // export: SEMANTIC_CALLOUT_ICONS
 export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
 
@@ -8884,6 +9317,12 @@ export interface SemanticCalloutIcon {
     kind: StandardCalloutKind;
     symbol: string;
     label: string;
+}
+
+// export: SemanticDiffRenderOptions
+export interface SemanticDiffRenderOptions {
+    color?: boolean;
+    maxValueCharacters?: number;
 }
 
 // export: SmartCardAppearance
@@ -8933,6 +9372,24 @@ export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
     type: "status";
 }>, "text" | "color" | "style">): string;
 
+// export: StorageChangeTreeBudgetV1
+export interface StorageChangeTreeBudgetV1 extends StorageParseBudget {
+    maxInputBytes: number;
+}
+
+// export: StorageChangeTreeInputErrorV1
+export declare class StorageChangeTreeInputErrorV1 extends Error {
+    readonly kind: "input-too-large";
+    constructor(kind: "input-too-large", message: string);
+}
+
+// export: StorageChangeTreeResultV1
+export interface StorageChangeTreeResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
+}
+
 // export: StorageParseBudget
 export interface StorageParseBudget {
     maxNodes: number;
@@ -8948,6 +9405,9 @@ export declare class StorageParseError extends Error {
 
 // export: StorageParseErrorKind
 export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
+// export: storageSemanticTreeSnapshotV1
+export declare function storageSemanticTreeSnapshotV1(storage: string, ref: Omit<SnapshotRefV1, "digest">, options?: CanonicalizeStorageOptionsV1): SemanticTreeSnapshotV1;
 
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
@@ -9214,6 +9674,9 @@ export interface TreeSourceVersion {
     title: string;
 }
 
+// export: trustValidatedAdf
+export declare function trustValidatedAdf(validated: ValidatedAdfDocument): ValidatedAdfDocument;
+
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
 
@@ -9283,8 +9746,22 @@ export interface ValidatedAdfDocument {
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
 
+// export: visitAdfSemanticJsonShardsV1
+export declare function visitAdfSemanticJsonShardsV1(input: string, visitor: SemanticTreeShardVisitorV1, options?: AdfStreamingShardOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitAdfSemanticShardsV1
+export declare function visitAdfSemanticShardsV1(input: string | unknown | ValidatedAdfDocument, visitor: SemanticTreeShardVisitorV1, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): SemanticTreeShardVisitResultV1;
+
 // export: visitExportBlocksV1
 export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
+
+// export: visitStorageSemanticShardsV1
+export declare function visitStorageSemanticShardsV1(storage: string, visitor: SemanticTreeShardVisitorV1, options?: CanonicalizeStorageOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitXmlTopLevel
+export declare function visitXmlTopLevel(input: string, budget: StorageParseBudget, visitor: (node: XmlNode, index: number) => void): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -9520,6 +9997,16 @@ export interface BrokenLinkSummary {
 // export: buildCqlFromScope
 export declare function buildCqlFromScope(scope: SyncScope): string | null;
 
+// export: BuildPageDiffChangeSetOptionsV1
+export interface BuildPageDiffChangeSetOptionsV1 {
+    adfBudget?: Partial<AdfParseBudget>;
+    storageBudget?: Partial<StorageChangeTreeBudgetV1>;
+    matcherLimits?: Partial<SemanticDiffLimitsV1>;
+}
+
+// export: buildPageDiffChangeSetV1
+export declare function buildPageDiffChangeSetV1(pair: PageDiffPairV1, options?: BuildPageDiffChangeSetOptionsV1): Promise<SemanticDiffResultV1>;
+
 // export: buildPathMap
 export declare function buildPathMap(pages: PageHierarchyInfo[], options?: BuildPathMapOptions | Set<string>): Map<string, ComputedPath>;
 
@@ -9547,6 +10034,14 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
+// export: CanonicalizeStorageOptionsV1
+export interface CanonicalizeStorageOptionsV1 {
+    budget?: Partial<StorageChangeTreeBudgetV1>;
+}
+
+// export: canonicalizeStorageV1
+export declare function canonicalizeStorageV1(storage: string, options?: CanonicalizeStorageOptionsV1): StorageChangeTreeResultV1;
 
 // export: Caption
 export interface Caption {
@@ -9840,6 +10335,9 @@ export declare class ConfluenceClient {
     getPageAdf(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
+    getPageAdfAtVersion(id: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -10033,9 +10531,14 @@ export declare class ConfluenceClient {
     getPageHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
-    getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
+    getPageAtVersion(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageDiffSource(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageDiffSourceV1>;
     restorePageVersion(pageId: string, version: number, message?: string): Promise<ConfluencePage>;
     getFooterComments(pageId: string, options?: {
         limit?: number;
@@ -10365,6 +10868,9 @@ export declare const CURRENT_SCHEMA_VERSION = 2;
 
 // export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
 export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
+// export: DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1
+export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChangeTreeBudgetV1>;
 
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
@@ -10901,6 +11407,9 @@ export declare function formatDiffSummary(diff: DiffResult): string;
 
 // export: formatDiffWithColors
 export declare function formatDiffWithColors(diff: DiffResult): string;
+
+// export: formatDiffWithWordChanges
+export declare function formatDiffWithWordChanges(diff: DiffResult, options?: WordDiffFormatOptions): string;
 
 // export: formatFileSize
 export declare function formatFileSize(bytes: number): string;
@@ -11574,6 +12083,27 @@ export interface PageComments {
     inlineComments: InlineComment[];
 }
 
+// export: PageDiffPairV1
+export interface PageDiffPairV1 {
+    from: PageDiffSourceV1;
+    to: PageDiffSourceV1;
+    representation: PageBody["representation"];
+}
+
+// export: PageDiffSourceFallbackReason
+export type PageDiffSourceFallbackReason = "data-center" | "adf-version-unavailable";
+
+// export: PageDiffSourceV1
+export interface PageDiffSourceV1 {
+    id: string;
+    title: string;
+    version: number;
+    deployment: "cloud" | "data-center";
+    body: PageBody;
+    storageSidecar?: string;
+    fallbackReason?: PageDiffSourceFallbackReason;
+}
+
 // export: PageFilter
 export interface PageFilter {
     spaceKey?: string;
@@ -11840,6 +12370,11 @@ export declare function readCommentsFile(commentsPath: string): Promise<PageComm
 // export: readConfig
 export declare function readConfig(dir: string): Promise<AtlcliConfig>;
 
+// export: readPageDiffPair
+export declare function readPageDiffPair(client: ConfluenceClient, pageId: string, fromVersion: number, toVersion: number, options?: {
+    signal?: AbortSignal;
+}): Promise<PageDiffPairV1>;
+
 // export: readState
 export declare function readState(dir: string): Promise<AtlcliState>;
 
@@ -11851,6 +12386,9 @@ export declare function removeBackup(atlcliDir: string): Promise<boolean>;
 
 // export: removePageState
 export declare function removePageState(state: AtlcliState, pageId: string): void;
+
+// export: renderSemanticDiff
+export declare function renderSemanticDiff(changeSet: ChangeSetV1, options?: SemanticDiffRenderOptions): string;
 
 // export: reorderChildren
 export declare function reorderChildren(client: ConfluenceClient, parentId: string, newOrder: string[]): Promise<number>;
@@ -11937,6 +12475,9 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: selectPageDiffPair
+export declare function selectPageDiffPair(from: PageDiffSourceV1, to: PageDiffSourceV1): PageDiffPairV1;
+
 // export: SEMANTIC_CALLOUT_ICONS
 export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
 
@@ -11945,6 +12486,12 @@ export interface SemanticCalloutIcon {
     kind: StandardCalloutKind;
     symbol: string;
     label: string;
+}
+
+// export: SemanticDiffRenderOptions
+export interface SemanticDiffRenderOptions {
+    color?: boolean;
+    maxValueCharacters?: number;
 }
 
 // export: setPageEditorVersion
@@ -12108,6 +12655,24 @@ export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
     type: "status";
 }>, "text" | "color" | "style">): string;
 
+// export: StorageChangeTreeBudgetV1
+export interface StorageChangeTreeBudgetV1 extends StorageParseBudget {
+    maxInputBytes: number;
+}
+
+// export: StorageChangeTreeInputErrorV1
+export declare class StorageChangeTreeInputErrorV1 extends Error {
+    readonly kind: "input-too-large";
+    constructor(kind: "input-too-large", message: string);
+}
+
+// export: StorageChangeTreeResultV1
+export interface StorageChangeTreeResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
+}
+
 // export: StorageLink
 export interface StorageLink {
     type: "internal" | "external" | "attachment" | "anchor";
@@ -12136,6 +12701,9 @@ export declare class StorageParseError extends Error {
 
 // export: StorageParseErrorKind
 export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
+// export: storageSemanticTreeSnapshotV1
+export declare function storageSemanticTreeSnapshotV1(storage: string, ref: Omit<SnapshotRefV1, "digest">, options?: CanonicalizeStorageOptionsV1): SemanticTreeSnapshotV1;
 
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
@@ -12524,6 +13092,12 @@ export type ValidationSeverity = "error" | "warning";
 // export: visitExportBlocksV1
 export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
 
+// export: visitStorageSemanticShardsV1
+export declare function visitStorageSemanticShardsV1(storage: string, visitor: SemanticTreeShardVisitorV1, options?: CanonicalizeStorageOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitXmlTopLevel
+export declare function visitXmlTopLevel(input: string, budget: StorageParseBudget, visitor: (node: XmlNode, index: number) => void): void;
+
 // export: WebhookEventType
 export type WebhookEventType = "page_created" | "page_updated" | "page_removed" | "page_trashed" | "page_restored" | "page_moved";
 
@@ -12580,6 +13154,11 @@ export interface WebhookServerOptions {
     filterSpaceKeys?: Set<string>;
 }
 
+// export: WordDiffFormatOptions
+export interface WordDiffFormatOptions {
+    color?: boolean;
+}
+
 // export: writeAttachmentBase
 export declare function writeAttachmentBase(dir: string, pageId: string, attachmentId: string, extension: string, content: Buffer): Promise<void>;
 
@@ -12616,6 +13195,28 @@ export interface XmlText {
 ### Entry point `./node`
 
 ```ts
+// export: ADF_ATTRIBUTE_POLICY_V1
+export declare const ADF_ATTRIBUTE_POLICY_V1: Readonly<{
+    readonly schema: "atlcli.adf-attribute-policy/1";
+    readonly defaults: Readonly<{
+        validated: "semantic";
+        unknown: "opaque";
+    }>;
+    readonly nodeIdentityOnly: Readonly<{
+        "*": readonly string[];
+        codeBlock: readonly string[];
+    }>;
+    readonly markIdentityOnly: Readonly<{
+        annotation: readonly string[];
+        fragment: readonly string[];
+        link: readonly string[];
+    }>;
+    readonly noise: Readonly<{
+        attributes: readonly string[];
+        structural: readonly string[];
+    }>;
+}>;
+
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
@@ -12712,6 +13313,16 @@ export interface AdfAnnotationIdentity {
 export interface AdfAnnotationReply {
     bodyText: string;
     created?: string;
+}
+
+// export: AdfAttributePolicyClassV1
+export type AdfAttributePolicyClassV1 = "semantic" | "identity-only" | "noise" | "opaque";
+
+// export: AdfCanonicalizationResultV1
+export interface AdfCanonicalizationResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
 }
 
 // export: AdfCoverageLevel
@@ -12843,6 +13454,12 @@ export interface AdfResolvedMediaAttachment {
     mediaType?: string;
     webuiLink?: string;
     downloadLink?: string;
+}
+
+// export: AdfStreamingShardOptionsV1
+export interface AdfStreamingShardOptionsV1 {
+    budget?: Partial<AdfParseBudget>;
+    batchNodes?: number;
 }
 
 // export: adfToBlocks
@@ -13060,6 +13677,16 @@ export interface BlocksResult {
     degraded?: boolean;
 }
 
+// export: BuildPageDiffChangeSetOptionsV1
+export interface BuildPageDiffChangeSetOptionsV1 {
+    adfBudget?: Partial<AdfParseBudget>;
+    storageBudget?: Partial<StorageChangeTreeBudgetV1>;
+    matcherLimits?: Partial<SemanticDiffLimitsV1>;
+}
+
+// export: buildPageDiffChangeSetV1
+export declare function buildPageDiffChangeSetV1(pair: PageDiffPairV1, options?: BuildPageDiffChangeSetOptionsV1): Promise<SemanticDiffResultV1>;
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -13077,6 +13704,19 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
+// export: canonicalizeAdfV1
+export declare function canonicalizeAdfV1(input: string | unknown | ValidatedAdfDocument, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): AdfCanonicalizationResultV1;
+
+// export: CanonicalizeStorageOptionsV1
+export interface CanonicalizeStorageOptionsV1 {
+    budget?: Partial<StorageChangeTreeBudgetV1>;
+}
+
+// export: canonicalizeStorageV1
+export declare function canonicalizeStorageV1(storage: string, options?: CanonicalizeStorageOptionsV1): StorageChangeTreeResultV1;
 
 // export: CanonicalLegacyEmojiName
 export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
@@ -13269,6 +13909,14 @@ export declare class ChartValidationErrorV1 extends Error {
     constructor(message: string);
 }
 
+// export: classifyAdfAttributeV1
+export declare function classifyAdfAttributeV1(input: {
+    scope: "node" | "mark";
+    type: string;
+    attribute: string;
+    unknown?: boolean;
+}): AdfAttributePolicyClassV1;
+
 // export: collectAdfMediaFileIds
 export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
 
@@ -13390,6 +14038,9 @@ export declare class ConfluenceClient {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
+    getPageAdfAtVersion(id: string, version: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
@@ -13585,9 +14236,14 @@ export declare class ConfluenceClient {
     getPageHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
-    getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
+    getPageAtVersion(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageDiffSource(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageDiffSourceV1>;
     restorePageVersion(pageId: string, version: number, message?: string): Promise<ConfluencePage>;
     getFooterComments(pageId: string, options?: {
         limit?: number;
@@ -13956,6 +14612,9 @@ export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
 
 // export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
 export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
+// export: DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1
+export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChangeTreeBudgetV1>;
 
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
@@ -14388,7 +15047,7 @@ export declare class ExportPageReadError extends Error {
 }
 
 // export: ExportPageReadErrorKind
-export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-diff-source-selection" | "invalid-page-version" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
 
 // export: ExportPageSource
 export interface ExportPageSource {
@@ -14758,6 +15417,9 @@ export declare function isSafeLinkScheme(href: string): boolean;
 // export: isSupportedAdfNodeType
 export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
+// export: isTrustedValidatedAdf
+export declare function isTrustedValidatedAdf(value: unknown): value is ValidatedAdfDocument;
+
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
@@ -15011,6 +15673,27 @@ export interface PageComments {
     inlineComments: InlineComment[];
 }
 
+// export: PageDiffPairV1
+export interface PageDiffPairV1 {
+    from: PageDiffSourceV1;
+    to: PageDiffSourceV1;
+    representation: PageBody["representation"];
+}
+
+// export: PageDiffSourceFallbackReason
+export type PageDiffSourceFallbackReason = "data-center" | "adf-version-unavailable";
+
+// export: PageDiffSourceV1
+export interface PageDiffSourceV1 {
+    id: string;
+    title: string;
+    version: number;
+    deployment: "cloud" | "data-center";
+    body: PageBody;
+    storageSidecar?: string;
+    fallbackReason?: PageDiffSourceFallbackReason;
+}
+
 // export: PageHistory
 export interface PageHistory {
     pageId: string;
@@ -15220,6 +15903,14 @@ export declare function projectTypedEmoji(input: {
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
+// export: readPageDiffPair
+export declare function readPageDiffPair(client: ConfluenceClient, pageId: string, fromVersion: number, toVersion: number, options?: {
+    signal?: AbortSignal;
+}): Promise<PageDiffPairV1>;
+
+// export: renderSemanticDiff
+export declare function renderSemanticDiff(changeSet: ChangeSetV1, options?: SemanticDiffRenderOptions): string;
+
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
@@ -15279,6 +15970,9 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: selectPageDiffPair
+export declare function selectPageDiffPair(from: PageDiffSourceV1, to: PageDiffSourceV1): PageDiffPairV1;
+
 // export: SEMANTIC_CALLOUT_ICONS
 export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
 
@@ -15287,6 +15981,12 @@ export interface SemanticCalloutIcon {
     kind: StandardCalloutKind;
     symbol: string;
     label: string;
+}
+
+// export: SemanticDiffRenderOptions
+export interface SemanticDiffRenderOptions {
+    color?: boolean;
+    maxValueCharacters?: number;
 }
 
 // export: SmartCardAppearance
@@ -15336,6 +16036,24 @@ export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
     type: "status";
 }>, "text" | "color" | "style">): string;
 
+// export: StorageChangeTreeBudgetV1
+export interface StorageChangeTreeBudgetV1 extends StorageParseBudget {
+    maxInputBytes: number;
+}
+
+// export: StorageChangeTreeInputErrorV1
+export declare class StorageChangeTreeInputErrorV1 extends Error {
+    readonly kind: "input-too-large";
+    constructor(kind: "input-too-large", message: string);
+}
+
+// export: StorageChangeTreeResultV1
+export interface StorageChangeTreeResultV1 {
+    sourceTree: CanonicalSourceNodeV1;
+    semanticTree: SemanticDocumentNodeV1;
+    diagnostics: readonly ChangeDiagnosticV1[];
+}
+
 // export: StorageParseBudget
 export interface StorageParseBudget {
     maxNodes: number;
@@ -15351,6 +16069,9 @@ export declare class StorageParseError extends Error {
 
 // export: StorageParseErrorKind
 export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
+// export: storageSemanticTreeSnapshotV1
+export declare function storageSemanticTreeSnapshotV1(storage: string, ref: Omit<SnapshotRefV1, "digest">, options?: CanonicalizeStorageOptionsV1): SemanticTreeSnapshotV1;
 
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
@@ -15617,6 +16338,9 @@ export interface TreeSourceVersion {
     title: string;
 }
 
+// export: trustValidatedAdf
+export declare function trustValidatedAdf(validated: ValidatedAdfDocument): ValidatedAdfDocument;
+
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
 
@@ -15686,8 +16410,22 @@ export interface ValidatedAdfDocument {
 // export: validateExportScope
 export declare function validateExportScope(scope: ExportScope): ExportScope;
 
+// export: visitAdfSemanticJsonShardsV1
+export declare function visitAdfSemanticJsonShardsV1(input: string, visitor: SemanticTreeShardVisitorV1, options?: AdfStreamingShardOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitAdfSemanticShardsV1
+export declare function visitAdfSemanticShardsV1(input: string | unknown | ValidatedAdfDocument, visitor: SemanticTreeShardVisitorV1, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): SemanticTreeShardVisitResultV1;
+
 // export: visitExportBlocksV1
 export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
+
+// export: visitStorageSemanticShardsV1
+export declare function visitStorageSemanticShardsV1(storage: string, visitor: SemanticTreeShardVisitorV1, options?: CanonicalizeStorageOptionsV1): SemanticTreeShardVisitResultV1;
+
+// export: visitXmlTopLevel
+export declare function visitXmlTopLevel(input: string, budget: StorageParseBudget, visitor: (node: XmlNode, index: number) => void): void;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -15757,6 +16495,9 @@ export declare class ConfluenceClient {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
+    getPageAdfAtVersion(id: string, version: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
@@ -15952,9 +16693,14 @@ export declare class ConfluenceClient {
     getPageHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
-    getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
+    getPageAtVersion(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageDiffSource(pageId: string, version: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageDiffSourceV1>;
     restorePageVersion(pageId: string, version: number, message?: string): Promise<ConfluencePage>;
     getFooterComments(pageId: string, options?: {
         limit?: number;

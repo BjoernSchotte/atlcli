@@ -111,6 +111,8 @@ export interface PageBodyToBlocksOptions
 /** Stable, body-free failure classification for export-specific page reads. */
 export type ExportPageReadErrorKind =
   | "adf-representation-unavailable"
+  | "invalid-diff-source-selection"
+  | "invalid-page-version"
   | "invalid-adf-response"
   | "invalid-storage-response"
   | "page-version-mismatch";

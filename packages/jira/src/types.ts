@@ -5,6 +5,10 @@
  * https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/
  */
 
+import type { AdfDocument, AdfNode } from "@atlcli/change-set/adf";
+
+export type { AdfDocument, AdfNode } from "@atlcli/change-set/adf";
+
 // ============ User Types ============
 
 /** Jira user (Cloud uses accountId, Server uses username) */
@@ -164,21 +168,6 @@ export interface JiraTransitionField {
   name: string;
   fieldId: string;
   allowedValues?: unknown[];
-}
-
-/** Atlassian Document Format (ADF) - rich text for Cloud */
-export interface AdfDocument {
-  type: "doc";
-  version: 1;
-  content: AdfNode[];
-}
-
-export interface AdfNode {
-  type: string;
-  content?: AdfNode[];
-  text?: string;
-  attrs?: Record<string, unknown>;
-  marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
 }
 
 /** Issue fields */

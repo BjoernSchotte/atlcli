@@ -81,8 +81,9 @@ async function main(): Promise<void> {
   await initializePlugins();
   const registry = getPluginRegistry();
 
-  // Global version: show version if --version/-v flag
-  if (versionRequested) {
+  // Global version: only treat --version/-v as the root command shortcut.
+  // Subcommands such as `wiki page diff --version 3` own their flag value.
+  if (versionRequested && !command) {
     output(versionInfo(), opts);
     return;
   }

@@ -149,6 +149,105 @@ export function formatDiffWithColors(diff: DiffResult): string {
   return lines.join("\n");
 }
 
+/** Options for the human-readable word-level diff presentation. */
+export interface WordDiffFormatOptions {
+  /** Add ANSI colors to changed fragments (default: false). */
+  color?: boolean;
+}
+
+const ANSI_RED = "\x1b[31m";
+const ANSI_GREEN = "\x1b[32m";
+const ANSI_CYAN = "\x1b[36m";
+const ANSI_RESET = "\x1b[0m";
+
+function formatWordChange(oldLine: string, newLine: string, color: boolean): string {
+  const parts = Diff.diffWordsWithSpace(oldLine, newLine);
+  let rendered = "~ ";
+  for (const part of parts) {
+    if (part.removed) {
+      const value = `[-${part.value}-]`;
+      rendered += color ? `${ANSI_RED}${value}${ANSI_RESET}` : value;
+    } else if (part.added) {
+      const value = `{+${part.value}+}`;
+      rendered += color ? `${ANSI_GREEN}${value}${ANSI_RESET}` : value;
+    } else {
+      rendered += part.value;
+    }
+  }
+  return rendered;
+}
+
+function isDeletionLine(line: string): boolean {
+  return line.startsWith("-") && !line.startsWith("---");
+}
+
+function isAdditionLine(line: string): boolean {
+  return line.startsWith("+") && !line.startsWith("+++");
+}
+
+/**
+ * Format a unified diff as a human-readable word-level presentation.
+ *
+ * Adjacent removed/added lines are paired positionally and rendered with
+ * `[-removed-]` and `{+added+}` fragments. Unpaired lines remain regular
+ * unified additions/deletions. The result is intended for review, not for
+ * applying as a patch.
+ */
+export function formatDiffWithWordChanges(
+  diff: DiffResult,
+  options: WordDiffFormatOptions = {},
+): string {
+  if (!diff.hasChanges) {
+    return "No changes";
+  }
+
+  const color = options.color ?? false;
+  const source = diff.unified.split("\n");
+  const rendered: string[] = [];
+
+  for (let index = 0; index < source.length;) {
+    const line = source[index]!;
+    if (isDeletionLine(line)) {
+      const removed: string[] = [];
+      while (index < source.length && isDeletionLine(source[index]!)) {
+        removed.push(source[index]!.slice(1));
+        index++;
+      }
+
+      const added: string[] = [];
+      while (index < source.length && isAdditionLine(source[index]!)) {
+        added.push(source[index]!.slice(1));
+        index++;
+      }
+
+      const paired = Math.min(removed.length, added.length);
+      for (let pairIndex = 0; pairIndex < paired; pairIndex++) {
+        rendered.push(formatWordChange(removed[pairIndex]!, added[pairIndex]!, color));
+      }
+      for (const value of removed.slice(paired)) {
+        const deletion = `-${value}`;
+        rendered.push(color ? `${ANSI_RED}${deletion}${ANSI_RESET}` : deletion);
+      }
+      for (const value of added.slice(paired)) {
+        const addition = `+${value}`;
+        rendered.push(color ? `${ANSI_GREEN}${addition}${ANSI_RESET}` : addition);
+      }
+      continue;
+    }
+
+    if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
+      rendered.push(color ? `${ANSI_CYAN}${line}${ANSI_RESET}` : line);
+    } else if (isAdditionLine(line)) {
+      rendered.push(color ? `${ANSI_GREEN}${line}${ANSI_RESET}` : line);
+    } else {
+      rendered.push(line);
+    }
+    index++;
+  }
+
+  return rendered.join("\n");
+}
+
 /**
  * Generate a summary of changes.
  *

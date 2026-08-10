@@ -7,6 +7,15 @@ description: "Page History - atlcli documentation"
 
 View version history, compare changes, and restore previous versions.
 
+## On this page
+
+- [Prerequisites](#prerequisites)
+- [View history](#view-history)
+- [Compare versions](#compare-versions-diff)
+- [Restore a version](#restore-version)
+- [JSON output](#json-output)
+- [Troubleshooting](#troubleshooting)
+
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)
@@ -25,7 +34,7 @@ Confluence tracks every edit as a version. atlcli provides:
 List all versions of a page:
 
 ```bash
-atlcli wiki page history 12345
+atlcli wiki page history --id 12345
 ```
 
 Output:
@@ -46,25 +55,13 @@ Options:
 | `--limit` | Number of versions to show |
 | `--json` | JSON output |
 
-## View Specific Version
-
-Get content at a specific version:
-
-```bash
-# View version 3
-atlcli wiki page get 12345 --version 3
-
-# Save to file
-atlcli wiki page get 12345 --version 3 > old-version.md
-```
-
 ## Compare Versions (Diff)
 
 ### Compare with Current
 
 ```bash
 # Compare version 3 with current
-atlcli wiki page diff 12345 --version 3
+atlcli wiki page diff --id 12345 --version 3
 ```
 
 Output:
@@ -85,8 +82,57 @@ Output:
 ### Compare Two Versions
 
 ```bash
-atlcli wiki page diff 12345 --from 2 --to 4
+atlcli wiki page diff --id 12345 --from 2 --to 4
 ```
+
+Reverse comparisons are valid and describe changes toward the requested target:
+
+```bash
+atlcli wiki page diff --id 12345 --from 7 --to 3
+```
+
+### Semantic Diff
+
+The default `unified` format converts Storage content to Markdown and prints a
+line-oriented patch. `text` is an explicit alias for that format. Add
+`--word-diff` to pair changed lines and mark removed words as `[-old-]` and
+added words as `{+new+}`; this is a review presentation, not an applicable
+patch. Opt into `semantic` for an end-user review of structural
+changes. Terminal output describes headings, paragraphs, images, lists and
+other blocks in plain language; AST paths, raw node JSON and private media IDs
+remain available only in the machine-readable ChangeSet:
+
+```bash
+# Human-readable tree diff
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format semantic
+
+# Exactly one JSON document containing atlcli.change-set/1
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format semantic --json
+```
+
+Repeated unlabeled changes are grouped, for example `Added 7 images` or
+`Added 4 empty paragraphs`. When Confluence does not expose enough stable
+metadata to match media safely, the terminal reports one grouped review item
+instead of guessing or printing attachment internals. `Coverage: degraded`
+means that review item must be resolved before treating the result as a
+complete SafeOps approval.
+
+### Combined Review
+
+Use `review` when an approver needs both views in one read-only result. atlcli
+acquires each exact version once, builds semantic changes from Cloud ADF (or
+the documented common Storage fallback), and builds text hunks from the exact
+Storage sidecars belonging to those same versions:
+
+```bash
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format review
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format review --word-diff
+atlcli wiki page diff --id 12345 --from 3 --to 7 --format review --json
+```
+
+Terminal output prints the plain-language semantic review followed by Markdown
+text changes. JSON emits one document with `changeSet` and `textDiff`; the
+latter always retains `unified` and adds `wordDiff` only when requested.
 
 ### Diff Options
 
@@ -95,15 +141,44 @@ atlcli wiki page diff 12345 --from 2 --to 4
 | `--version` | Compare this version with current |
 | `--from` | Start version for comparison |
 | `--to` | End version for comparison |
-| `--context` | Lines of context (default: 3) |
+| `--format` | `unified` (default), `text`, `semantic`, or `review` |
+| `--context` | Text-hunk context lines (default: 3); valid with text/unified/review |
+| `--word-diff` | Mark changed words inline in text/unified/review output |
 | `--no-color` | Disable colored output |
+| `--json` | Emit one JSON document; review mode returns `changeSet` plus `textDiff` |
+
+`--to` requires `--from`. Do not combine `--version` with `--from` or `--to`.
+Versions must be positive integers.
+
+With `--json`, text/unified mode always retains the applicable `unified` patch.
+When `--word-diff` is present, the JSON document also contains the ANSI-free
+`wordDiff` review presentation.
+
+### Cloud and Data Center
+
+- **Cloud:** atlcli requests both exact versions as ADF plus exact Storage
+  sidecars. It uses ADF only when both ADF reads are trustworthy; otherwise it
+  uses exact Storage for both sides and reports the fallback.
+- **Data Center:** atlcli uses exact Storage versions only and does not call the
+  Cloud v2 API. This path is contract-tested, but is not project-live-certified.
+
+Malformed bodies, permission failures, version mismatches, and parse-budget
+failures stop the comparison. They are never presented as a complete no-op.
+
+For larger bodies, semantic diff automatically switches to a bounded temporary
+spill lane. ADF is validated in top-level batches; Storage releases each parsed
+top-level subtree after writing its canonical record. Baseline and target are
+processed one version at a time, and the private temporary store is removed
+before terminal or JSON output is emitted. A spill, alignment, digest, or
+cleanup failure stops the command; atlcli does not retry through the
+higher-memory tree path.
 
 ## Restore Version
 
 Restore a page to a previous version:
 
 ```bash
-atlcli wiki page restore 12345 --version 3
+atlcli wiki page restore --id 12345 --version 3 --confirm
 ```
 
 Options:
@@ -122,14 +197,48 @@ When you restore, atlcli creates a new version (e.g., v6) with the old content. 
 ### Restore with Message
 
 ```bash
-atlcli wiki page restore 12345 --version 3 --message "Reverting breaking changes" --confirm
+atlcli wiki page restore --id 12345 --version 3 --message "Reverting breaking changes" --confirm
 ```
 
 ## JSON Output
 
 ```bash
-atlcli wiki page history 12345 --json
+atlcli wiki page history --id 12345 --json
 ```
+
+Semantic diff JSON uses a different, review-oriented envelope:
+
+```json
+{
+  "schemaVersion": "1",
+  "changeSet": {
+    "schema": "atlcli.change-set/1",
+    "subject": { "provider": "confluence", "kind": "page", "id": "12345" },
+    "baseline": {
+      "revision": "3",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "representation": "atlas_doc_format",
+      "deployment": "cloud",
+      "acquisition": "rest-v2"
+    },
+    "target": {
+      "revision": "7",
+      "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "representation": "atlas_doc_format",
+      "deployment": "cloud",
+      "acquisition": "rest-v2"
+    },
+    "completeness": { "status": "complete", "diagnostics": [] },
+    "summary": { "inserts": 0, "deletes": 0, "modifies": 0, "moves": 0, "opaque": 0, "noOp": true },
+    "operations": [],
+    "limits": { "truncated": false, "emittedOperations": 0 }
+  }
+}
+```
+
+Snapshot objects also contain canonical-source digests, deployment, and
+acquisition provenance. Operations contain bounded before/after values; the
+envelope never repeats a complete source document.
 
 ```json
 {
@@ -191,7 +300,7 @@ atlcli:
 
 ```bash
 # See who changed what
-atlcli wiki page history 12345 --json | \
+atlcli wiki page history --id 12345 --json | \
   jq '.versions[] | "\(.created): \(.author.displayName) - \(.message)"'
 ```
 
@@ -199,17 +308,17 @@ atlcli wiki page history 12345 --json | \
 
 ```bash
 # Find when content was removed
-atlcli wiki page diff 12345 --from 1 --to 5 | grep "^-"
+atlcli wiki page diff --id 12345 --from 1 --to 5 | grep "^-"
 
 # Restore if needed
-atlcli wiki page restore 12345 --version 3
+atlcli wiki page restore --id 12345 --version 3 --confirm
 ```
 
 ### Review Changes Before Merge
 
 ```bash
 # See what changed in latest version
-atlcli wiki page diff 12345 --version $(atlcli wiki page history 12345 --json | jq '.versions[1].number')
+atlcli wiki page diff --id 12345 --version $(atlcli wiki page history --id 12345 --json | jq '.versions[1].number')
 ```
 
 ### Batch History Export
@@ -217,9 +326,18 @@ atlcli wiki page diff 12345 --version $(atlcli wiki page history 12345 --json | 
 ```bash
 # Export history for all pages in space
 for id in $(atlcli wiki page list --space TEAM --json | jq -r '.pages[].id'); do
-  atlcli wiki page history $id --json > "history-$id.json"
+  atlcli wiki page history --id "$id" --json > "history-$id.json"
 done
 ```
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `--to requires --from` | The target version was supplied without a baseline | Add `--from <n>` or omit `--to` to compare with current |
+| `page-version-mismatch` | Confluence returned a different version than requested | Retry after edits finish; do not rely on the partial result |
+| `invalid-adf-response` or Storage parse failure | The source is malformed or exceeds a safety budget | Inspect the error details; atlcli intentionally does not emit a complete-looking diff |
+| `Coverage: degraded` | An opaque construct, missing stable media metadata, fallback, or limit affected interpretation | Review the grouped warnings and machine-readable opaque operations before using the output as a SafeOps check |
 
 ## Related Topics
 

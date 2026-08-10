@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import {
   generateDiff,
   formatDiffWithColors,
+  formatDiffWithWordChanges,
   formatDiffSummary,
   DiffResult,
 } from "./diff.js";
@@ -221,6 +222,52 @@ describe("formatDiffWithColors", () => {
 
     // Reset ANSI code
     expect(colored).toContain("\x1b[0m");
+  });
+});
+
+describe("formatDiffWithWordChanges", () => {
+  test("renders a paired line change with readable inline markers", () => {
+    const diff = generateDiff(
+      "Der Voicebot beantwortet Anfragen.\n",
+      "Der AI Voicebot beantwortet Kundenanfragen.\n",
+    );
+
+    const formatted = formatDiffWithWordChanges(diff);
+
+    expect(formatted).toContain(
+      "~ Der {+AI +}Voicebot beantwortet [-Anfragen-]{+Kundenanfragen+}.",
+    );
+    expect(formatted).not.toContain("\u001b[");
+    expect(formatted).not.toContain("-Der Voicebot");
+  });
+
+  test("marks replacements, including unicode content", () => {
+    const diff = generateDiff("Status: geplant ✅\n", "Status: bestätigt ✅\n");
+
+    expect(formatDiffWithWordChanges(diff)).toContain(
+      "~ Status: [-geplant-]{+bestätigt+} ✅",
+    );
+  });
+
+  test("keeps unpaired additions and deletions as line changes", () => {
+    const diff = generateDiff("A\nB\n", "A geändert\n");
+    const formatted = formatDiffWithWordChanges(diff);
+
+    expect(formatted).toContain("~ A{+ geändert+}");
+    expect(formatted).toContain("-B");
+  });
+
+  test("adds ANSI colors only when requested", () => {
+    const diff = generateDiff("Alt\n", "Neu\n");
+
+    expect(formatDiffWithWordChanges(diff, { color: true })).toContain("\u001b[31m[-Alt-]");
+    expect(formatDiffWithWordChanges(diff)).not.toContain("\u001b[");
+  });
+
+  test("returns 'No changes' for a no-op", () => {
+    const diff = generateDiff("Gleich\n", "Gleich\n");
+
+    expect(formatDiffWithWordChanges(diff)).toBe("No changes");
   });
 });
 

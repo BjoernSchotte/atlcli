@@ -8,7 +8,7 @@
 
 ```ts
 // export: AdfDocument
-export interface AdfDocument {
+export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
@@ -17,13 +17,10 @@ export interface AdfDocument {
 // export: AdfNode
 export interface AdfNode {
     type: string;
+    attrs?: Record<string, AdfJsonValue>;
     content?: AdfNode[];
+    marks?: AdfMark[];
     text?: string;
-    attrs?: Record<string, unknown>;
-    marks?: Array<{
-        type: string;
-        attrs?: Record<string, unknown>;
-    }>;
 }
 
 // export: BulkCreateResult
@@ -916,12 +913,21 @@ export interface JiraTransition {
     fields?: Record<string, JiraTransitionField>;
 }
 
+// export: JiraTransitionChangeInputV1
+export type JiraTransitionChangeInputV1 = JiraTransition | JiraTransitionPlanInputV1;
+
 // export: JiraTransitionField
 export interface JiraTransitionField {
     required: boolean;
     name: string;
     fieldId: string;
     allowedValues?: unknown[];
+}
+
+// export: JiraTransitionPlanInputV1
+export interface JiraTransitionPlanInputV1 {
+    transition: TransitionIssueInput["transition"];
+    availableTransitions: readonly JiraTransition[];
 }
 
 // export: JiraTransportEvent
@@ -978,6 +984,12 @@ export interface JiraWorklog {
     timeSpentSeconds: number;
     issueId: string;
 }
+
+// export: planJiraFieldChangesV1
+export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
+
+// export: planJiraTransitionV1
+export declare function planJiraTransitionV1(issue: JiraIssue, input: JiraTransitionChangeInputV1): Promise<ChangeSetV1>;
 
 // export: SprintMetrics
 export interface SprintMetrics {
@@ -1083,7 +1095,7 @@ export interface WorklogWithIssue {
 
 ```ts
 // export: AdfDocument
-export interface AdfDocument {
+export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
@@ -1092,13 +1104,10 @@ export interface AdfDocument {
 // export: AdfNode
 export interface AdfNode {
     type: string;
+    attrs?: Record<string, AdfJsonValue>;
     content?: AdfNode[];
+    marks?: AdfMark[];
     text?: string;
-    attrs?: Record<string, unknown>;
-    marks?: Array<{
-        type: string;
-        attrs?: Record<string, unknown>;
-    }>;
 }
 
 // export: aggregateWorklogs
@@ -2249,12 +2258,21 @@ export interface JiraTransition {
     fields?: Record<string, JiraTransitionField>;
 }
 
+// export: JiraTransitionChangeInputV1
+export type JiraTransitionChangeInputV1 = JiraTransition | JiraTransitionPlanInputV1;
+
 // export: JiraTransitionField
 export interface JiraTransitionField {
     required: boolean;
     name: string;
     fieldId: string;
     allowedValues?: unknown[];
+}
+
+// export: JiraTransitionPlanInputV1
+export interface JiraTransitionPlanInputV1 {
+    transition: TransitionIssueInput["transition"];
+    availableTransitions: readonly JiraTransition[];
 }
 
 // export: JiraTransportEvent
@@ -2466,6 +2484,12 @@ export declare function planDownloads<T extends {
     id: string;
     filename: string;
 }>(attachments: readonly T[]): PlannedDownload<T>[];
+
+// export: planJiraFieldChangesV1
+export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
+
+// export: planJiraTransitionV1
+export declare function planJiraTransitionV1(issue: JiraIssue, input: JiraTransitionChangeInputV1): Promise<ChangeSetV1>;
 
 // export: PlannedDownload
 export type PlannedDownload<T> = {
@@ -2677,7 +2701,7 @@ export declare function writeExportFile(data: ExportData, options: ExportOptions
 
 ```ts
 // export: AdfDocument
-export interface AdfDocument {
+export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
@@ -2686,13 +2710,10 @@ export interface AdfDocument {
 // export: AdfNode
 export interface AdfNode {
     type: string;
+    attrs?: Record<string, AdfJsonValue>;
     content?: AdfNode[];
+    marks?: AdfMark[];
     text?: string;
-    attrs?: Record<string, unknown>;
-    marks?: Array<{
-        type: string;
-        attrs?: Record<string, unknown>;
-    }>;
 }
 
 // export: BulkCreateResult
@@ -3585,12 +3606,21 @@ export interface JiraTransition {
     fields?: Record<string, JiraTransitionField>;
 }
 
+// export: JiraTransitionChangeInputV1
+export type JiraTransitionChangeInputV1 = JiraTransition | JiraTransitionPlanInputV1;
+
 // export: JiraTransitionField
 export interface JiraTransitionField {
     required: boolean;
     name: string;
     fieldId: string;
     allowedValues?: unknown[];
+}
+
+// export: JiraTransitionPlanInputV1
+export interface JiraTransitionPlanInputV1 {
+    transition: TransitionIssueInput["transition"];
+    availableTransitions: readonly JiraTransition[];
 }
 
 // export: JiraTransportEvent
@@ -3647,6 +3677,12 @@ export interface JiraWorklog {
     timeSpentSeconds: number;
     issueId: string;
 }
+
+// export: planJiraFieldChangesV1
+export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
+
+// export: planJiraTransitionV1
+export declare function planJiraTransitionV1(issue: JiraIssue, input: JiraTransitionChangeInputV1): Promise<ChangeSetV1>;
 
 // export: SprintMetrics
 export interface SprintMetrics {
@@ -3752,7 +3788,7 @@ export interface WorklogWithIssue {
 
 ```ts
 // export: AdfDocument
-export interface AdfDocument {
+export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
@@ -3761,13 +3797,10 @@ export interface AdfDocument {
 // export: AdfNode
 export interface AdfNode {
     type: string;
+    attrs?: Record<string, AdfJsonValue>;
     content?: AdfNode[];
+    marks?: AdfMark[];
     text?: string;
-    attrs?: Record<string, unknown>;
-    marks?: Array<{
-        type: string;
-        attrs?: Record<string, unknown>;
-    }>;
 }
 
 // export: aggregateWorklogs
@@ -4918,12 +4951,21 @@ export interface JiraTransition {
     fields?: Record<string, JiraTransitionField>;
 }
 
+// export: JiraTransitionChangeInputV1
+export type JiraTransitionChangeInputV1 = JiraTransition | JiraTransitionPlanInputV1;
+
 // export: JiraTransitionField
 export interface JiraTransitionField {
     required: boolean;
     name: string;
     fieldId: string;
     allowedValues?: unknown[];
+}
+
+// export: JiraTransitionPlanInputV1
+export interface JiraTransitionPlanInputV1 {
+    transition: TransitionIssueInput["transition"];
+    availableTransitions: readonly JiraTransition[];
 }
 
 // export: JiraTransportEvent
@@ -5135,6 +5177,12 @@ export declare function planDownloads<T extends {
     id: string;
     filename: string;
 }>(attachments: readonly T[]): PlannedDownload<T>[];
+
+// export: planJiraFieldChangesV1
+export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
+
+// export: planJiraTransitionV1
+export declare function planJiraTransitionV1(issue: JiraIssue, input: JiraTransitionChangeInputV1): Promise<ChangeSetV1>;
 
 // export: PlannedDownload
 export type PlannedDownload<T> = {
