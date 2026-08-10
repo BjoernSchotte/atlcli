@@ -111,6 +111,30 @@ The canonical source tree and semantic tree are intentionally separate:
   explicit `opaque-change` operation or a degraded-completeness diagnostic. It
   must never disappear as a no-op.
 
+Large documents add a second execution shape with the same ChangeSet contract:
+
+```text
+validated source, one version at a time
+              |
+              v
+browser-neutral canonical node/event projection
+              |
+              +---- incremental canonical-source SHA-256 sink
+              |
+              v
+injected bounded SpillStore (CLI: owned temporary SQLite file)
+              |
+              v
+parent-window matcher + completeness accounting -> ChangeSetV1
+```
+
+The in-memory tree path remains the reference implementation for small inputs.
+Above a calibrated threshold the CLI must not retain source and semantic trees
+for both versions. It ingests one exact-version source at a time into the
+injected store, releases the source, and then performs bounded parent-window
+matching. The portable package defines events, records, limits, and store/hash
+ports only; filesystem, SQLite, Node, and Bun stay in the CLI host adapter.
+
 ## 3. Current state and evidence
 
 The executor must re-open these files before changing anything. If these seams
@@ -134,6 +158,10 @@ This existing path must remain unchanged when `--format` is absent or equals
 ### 3.2 CLI/documentation drift to fix in the same slice
 
 - `apps/cli/src/commands/page.ts:645-684` currently accepts only `--version`.
+- `apps/cli/src/index.ts:44-46` currently treats any `--version` flag anywhere
+  in the argv as the global CLI-version request. Consequently
+  `wiki page diff --version N` exits before `handleDiff`; WP0 must characterize
+  this bug and WP6 must narrow the global shortcut to the root invocation.
 - `apps/cli/src/commands/page.ts:1995-2035` documents only part of the live
   command contract in built-in help.
 - `src/content/docs/confluence/history.md:65-99` already documents `--from`,
@@ -356,6 +384,9 @@ Implement deterministic JSON serialization with:
   infinity;
 - UTF-8 SHA-256 through browser-compatible Web Crypto for snapshot and plan
   digests;
+- a chunked canonical serializer plus injected incremental digest sink for the
+  spill lane; the CLI sink must use cryptographic SHA-256 and produce the exact
+  same digest as the Web Crypto one-shot reference path;
 - byte-identical output across repeated Bun and Node-compatible runs;
 - browser build safety for both package entrypoints, without claiming browser
   runtime determinism until a real browser execution harness exists.
@@ -733,6 +764,37 @@ The proof must model:
 This proves model fitness only. Do not wire the adapter into bulk commands, do
 not add a plan store, and do not mutate issues in this spike.
 
+## 9.1 Streaming and spill execution contract
+
+`@atlcli/change-set` must expose a browser-neutral `SpillStoreV1` port and
+canonical event/record types. The port is an ephemeral execution detail, not a
+durable audit database and not part of ChangeSet JSON. Its minimum operations
+must support:
+
+- beginning baseline and target snapshots;
+- appending bounded canonical/semantic node records in deterministic order;
+- finalizing each snapshot with its exact canonical-source digest;
+- reading one parent's ordered child window and unique stable-ID/subtree-hash
+  candidates without loading the complete document;
+- reconstructing only a bounded changed subtree/value for an emitted operation;
+- closing and erasing the execution store in `finally`, including parse,
+  matching, render, abort, and signal/error paths.
+
+The CLI implementation owns a freshly-created private temp directory and a
+single SQLite file below it. It must create an ownership marker containing a
+random execution nonce, use only resolved paths below that directory, never
+reuse caller-supplied paths, and verify ownership before recursive cleanup.
+Raw Atlassian response bodies are not stored in SQLite. Stored records contain
+only the bounded canonical node fields needed for matching and completeness.
+Temp paths and records must not appear in output, diagnostics, logs, fixtures,
+or evidence.
+
+Spill selection is deterministic and representation-neutral. The default lane
+uses the in-memory matcher below the calibrated source-byte/node threshold and
+the spill lane at or above it. Tests must allow the threshold to be forced so
+the same ADF and Storage goldens exercise both implementations. A spill failure
+is fatal; it must not silently retry through the high-memory path.
+
 ## 10. Dependency bake-off
 
 ### 10.1 Decisions fixed for the spike
@@ -831,7 +893,7 @@ Execute the work packages in three reviewable phases:
 | --- | --- | --- | --- |
 | A - Contract and matcher | WP0-WP3 | frozen legacy behavior, extracted ADF trust boundary, owned ChangeSet, goldset-backed matcher | contract/API review plus focused offline gates |
 | B - Confluence product slice | WP4-WP6 plus the Cloud portion of WP9 | Cloud ADF and DC Storage acquisition, terminal/JSON CLI diff | full offline matrix plus cleaned-up `mayflower` / `DOCSY` Cloud E2E |
-| C - Jira and decision evidence | WP7-WP8 plus final WP9 docs/gates | Jira SafeOps-format proof and dependency verdict | Jira goldens, bake-off evidence, full repository gates, second cleaned-up Cloud E2E if code changed after Phase B |
+| C - Jira and decision evidence | WP7-WP10 plus final WP9 docs/gates | Jira SafeOps-format proof, dependency verdict, and bounded large-document execution | Jira goldens, streaming/spill goldens, green 10k/100k gates, bake-off evidence, full repository gates, second cleaned-up Cloud E2E if code changed after Phase B |
 
 Each work package ends in a green focused test gate, but the repository rule is
 stronger: **do not create an implementation commit before the relevant Cloud
@@ -1081,23 +1143,28 @@ Files:
 
 - create `packages/confluence/src/render-semantic-diff.ts`
 - create `packages/confluence/src/render-semantic-diff.test.ts`
+- update `apps/cli/src/index.ts` only to stop a subcommand-local `--version`
+  value from triggering the root version banner
 - update `apps/cli/src/commands/page.ts`
 - create `apps/cli/src/commands/page-diff-semantic.test.ts`
 - update built-in help
 
 Tasks:
 
-1. Parse `--from`, `--to`, `--format`, the documented `--context` option, and
+1. Narrow the global version-banner shortcut to a root-level `atlcli --version`
+   invocation; prove `wiki page diff --version N` reaches the page command.
+2. Parse `--from`, `--to`, `--format`, the documented `--context` option, and
    command-local `--no-color` fail-closed according to section 5.1 and section
    8.1. `OutputOptions` currently contains only `json`, so do not pretend there
    is a global color policy: pass an explicit renderer option derived from
    `--no-color` and the conventional `NO_COLOR` environment variable. Preserve
    today's colored default when neither is present.
-2. Leave legacy unified behavior unchanged by default.
-3. Orchestrate exact version selection, source acquisition, adapter projection,
+3. Leave legacy unified output behavior unchanged by default once the
+   documented subcommand-local `--version` route is made reachable.
+4. Orchestrate exact version selection, source acquisition, adapter projection,
    matcher, and renderer in testable pure functions around the IO shell.
-4. Emit the versioned ChangeSet JSON envelope exactly once.
-5. Add real-process Cloud and DC HTTP-stub tests and assert no non-GET request.
+5. Emit the versioned ChangeSet JSON envelope exactly once.
+6. Add real-process Cloud and DC HTTP-stub tests and assert no non-GET request.
 
 Verify:
 
@@ -1193,6 +1260,57 @@ Expected: script exits 0 only when correctness gates pass; evidence contains no
 tenant data and records an explicit dependency verdict.
 
 Suggested commit: `test(changeset): add semantic diff bake-off evidence`
+
+### WP10 - Add streaming canonicalization and safe spill execution
+
+Files:
+
+- create `packages/change-set/src/streaming.ts`
+- create `packages/change-set/src/streaming.test.ts`
+- update ADF and Storage adapters with one-version-at-a-time event projection
+- create `apps/cli/src/semantic-diff-spill.ts`
+- create `apps/cli/src/semantic-diff-spill.test.ts`
+- update `apps/cli/src/commands/page.ts`
+- update `scripts/bench/semantic-diff-bakeoff.ts`
+- finalize `specs/semantic-change-diff-spike/EVIDENCE.md`
+
+Tasks:
+
+1. Define browser-neutral canonical events, bounded flat records,
+   `SpillStoreV1`, and incremental SHA-256 sink ports in the portable package.
+2. Project one validated ADF or parsed Storage version directly into records;
+   do not first construct and retain both source and semantic trees.
+3. Implement the CLI-owned private temporary SQLite store, deterministic
+   indexes, ownership marker, and verified cleanup in `finally`.
+4. Match parent windows conservatively using the same stable-ID,
+   exact-subtree, sequence, position, ambiguity, and completeness rules as the
+   reference matcher. Do not introduce a quadratic global matrix.
+5. Prove digest and ChangeSet byte parity with the reference path on the full
+   small goldset, including moves, ambiguity, opaque changes, and policy noise.
+6. Force spill failure/abort/render-error cases and prove no owned temp
+   directory remains and no path or body leaks to stdout/stderr/JSON.
+7. Switch the CLI deterministically to spill above the calibrated threshold;
+   keep small documents on the reference lane.
+8. Rerun the isolated 10k and 100k ADF/Storage workers. Both 10k p95 values
+   must be below 250 ms; both 100k p95 values below 2 s and additional peak RSS
+   below 256 MiB. Treat any red gate as an unfinished spike.
+
+Verify:
+
+```bash
+bun run test packages/change-set/src/streaming.test.ts \
+  apps/cli/src/semantic-diff-spill.test.ts \
+  apps/cli/src/commands/page-diff-semantic.test.ts
+bun --conditions=development scripts/bench/semantic-diff-bakeoff.ts
+bun run check:browser
+bun run typecheck
+```
+
+Expected: reference/spill parity is byte-identical on small goldens, all temp
+stores are removed on success and failure, and every 10k/100k time/RSS gate is
+green on the documented machine.
+
+Suggested commit: `feat(changeset): add streaming semantic diff spill lane`
 
 ### WP9 - Documentation, full gates, and live Cloud proof
 
@@ -1338,6 +1456,7 @@ packages/confluence/src/client.ts
 packages/confluence/src/index.browser.ts
 packages/confluence/src/internal.ts
 packages/confluence/src/storage-change-tree*.ts
+packages/confluence/src/export-blocks.ts
 packages/confluence/test-fixtures/adf*/**
 packages/confluence/package.json
 packages/confluence/etc/**
@@ -1348,9 +1467,13 @@ packages/jira/package.json
 packages/jira/etc/**
 apps/cli/src/commands/page.ts
 apps/cli/src/commands/page-diff-*.test.ts
+apps/cli/src/index.ts
+apps/cli/src/semantic-diff-spill*.ts
 scripts/adf-drift.ts
 scripts/api-closure.ts
 scripts/check-browser-build.ts
+scripts/check-browser-build.test.ts
+scripts/export-note-codes.test.ts
 scripts/bench/semantic-diff-bakeoff.ts
 src/content/docs/confluence/history.md
 src/content/docs/reference/cli-commands.md
@@ -1394,28 +1517,35 @@ this plan rather than mechanically applying stale steps.
 
 All boxes must be checked:
 
-- [ ] Existing unified `wiki page diff` terminal and JSON goldens are unchanged
+- [x] Existing unified `wiki page diff` terminal and JSON goldens are unchanged
       when `--format` is absent.
-- [ ] `--from`/`--to` work according to the documented compatibility matrix.
-- [ ] `--format semantic` emits a readable deterministic tree diff.
-- [ ] `--format semantic --json` emits exactly one valid
+- [x] `--from`/`--to` work according to the documented compatibility matrix.
+- [x] `--format semantic` emits a readable deterministic tree diff.
+- [x] `--format semantic --json` emits exactly one valid
       `atlcli.change-set/1` envelope with no ANSI/log contamination.
-- [ ] Cloud compares two exact same-representation snapshots and records
+- [x] Cloud compares two exact same-representation snapshots and records
       ADF/Storage provenance.
-- [ ] Data Center uses Storage only and performs zero Cloud v2 requests.
-- [ ] ADF and Storage validation budgets remain enforced.
-- [ ] No exact source meaning change can disappear as a semantic no-op.
-- [ ] The ambiguity corpus has zero false-positive moves.
-- [ ] Jira field/set/ADF/transition proofs validate against the same ChangeSet
+- [x] Data Center uses Storage only and performs zero Cloud v2 requests.
+- [x] ADF and Storage validation budgets remain enforced.
+- [x] No exact source meaning change can disappear as a semantic no-op.
+- [x] The ambiguity corpus has zero false-positive moves.
+- [x] Large ADF and Storage diffs stream one version at a time through the
+      injected spill store instead of retaining four complete trees.
+- [x] The CLI spill store is private, ownership-checked, removed on every exit,
+      and absent from terminal/JSON/log/evidence output.
+- [x] Spill and reference lanes emit byte-identical ChangeSets for the shared
+      correctness goldset.
+- [x] ADF and Storage satisfy the blocking 10k/100k time and RSS gates.
+- [x] Jira field/set/ADF/transition proofs validate against the same ChangeSet
       schema without a Confluence/export dependency.
-- [ ] `jsondiffpatch` remains dev-only unless a separately reviewed promotion
+- [x] `jsondiffpatch` remains dev-only unless a separately reviewed promotion
       decision is recorded.
-- [ ] Focused, full, typecheck, browser, build, package-contract, and docs gates
+- [x] Focused, full, typecheck, browser, build, package-contract, and docs gates
       pass.
-- [ ] Cloud live E2E is recorded and its temporary page is verifiably cleaned.
-- [ ] DC is labeled `implemented · contract-tested · not project-live-certified`.
-- [ ] Documentation describes current behavior rather than planned flags.
-- [ ] No private/live source bodies or identifiers are committed.
+- [x] Cloud live E2E is recorded and its temporary page is verifiably cleaned.
+- [x] DC is labeled `implemented · contract-tested · not project-live-certified`.
+- [x] Documentation describes current behavior rather than planned flags.
+- [x] No private/live source bodies or identifiers are committed.
 
 ## 19. STOP conditions
 
@@ -1432,6 +1562,8 @@ Stop and report; do not improvise if any of these occurs:
   quadratic matrix.
 - The neutral package would depend on Confluence, Jira, CLI, export models,
   React, Forge, WXT, DOM, Node, or Bun.
+- A spill-store or digest-sink failure would fall back to the retained-tree
+  path, leave an owned temp directory behind, or expose a temp path/body.
 - Jira would need to import Confluence or `@atlcli/export-blocks`.
 - Existing frozen Confluence public symbols would disappear during ADF
   extraction.
