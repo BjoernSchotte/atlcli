@@ -53,7 +53,7 @@ jobs:
       aggregateStatusName: ${{ steps.proof.outputs.aggregateStatusName }}
       validatedHeadSha: ${{ steps.proof.outputs.validatedHeadSha }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -97,7 +97,7 @@ jobs:
       - name: Read current pull request state
         id: current-pr
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const { data: pull } = await github.rest.pulls.get({
@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -145,10 +145,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22.12.0"
 
@@ -173,7 +173,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -190,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -198,13 +198,13 @@ jobs:
           bun-version: 1.3.14
 
       - name: Restore Bun package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
 
       - name: Restore Turbo cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .turbo
           key: ${{ runner.os }}-turbo-quality-${{ github.sha }}
@@ -247,7 +247,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -255,7 +255,7 @@ jobs:
           bun-version: 1.3.14
 
       - name: Restore pinned PDF fonts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: packages/pdf/.fonts
           key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
@@ -278,18 +278,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
-
-      - name: Restore Bun package cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -303,7 +297,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -311,19 +305,19 @@ jobs:
           bun-version: 1.3.14
 
       - name: Restore Bun package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
 
       - name: Restore pinned PDF fonts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: packages/pdf/.fonts
           key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Restore Turbo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .turbo
           key: ${{ runner.os }}-turbo-browser-${{ github.sha }}
@@ -332,7 +326,7 @@ jobs:
             ${{ runner.os }}-turbo-
 
       - name: Restore Playwright Chromium
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-1.55.0
@@ -386,7 +380,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -394,13 +388,13 @@ jobs:
           bun-version: 1.3.14
 
       - name: Restore Bun package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
 
       - name: Restore pinned PDF fonts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: packages/pdf/.fonts
           key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
@@ -461,7 +455,7 @@ jobs:
     steps:
       - name: Revalidate current merge-ready pull request
         if: github.event_name == 'pull_request' && needs.changes.outputs.proofMode == 'required'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           EXPECTED_HEAD_SHA: ${{ needs.changes.outputs.validatedHeadSha }}
         with:
@@ -581,7 +575,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -593,13 +587,13 @@ jobs:
 
       - name: Download same-run JUnit artifacts
         if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: bun-test-shard-*-${{ github.sha }}
           path: test-results
 
       - name: Read same-attempt Actions jobs
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const jobs = await github.paginate(
@@ -641,7 +635,7 @@ jobs:
 
       - name: Upload timing evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-timing-${{ github.run_attempt }}-${{ github.sha }}
           path: ci-timing.json

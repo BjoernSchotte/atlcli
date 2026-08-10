@@ -24,6 +24,12 @@ open until the live sample gates in `PLAN.md` are satisfied.
   aggregate tail are removed
 - Floating latest Astro 7: scheduled/manual advisory canary; release tags keep
   the compatibility check blocking
+- Official GitHub Actions in the touched workflows use their current Node 24
+  majors (`checkout@v7`, `setup-node@v7`, `github-script@v9`, `cache@v6`,
+  `upload-artifact@v7`, and `download-artifact@v8`)
+- The isolated Windows PDF sink deliberately skips the shared Bun package
+  cache after a live restore stalled longer than the complete Linux/browser
+  proof paths
 
 ## PR #139 observed bottleneck
 
@@ -44,6 +50,23 @@ The final critical path was structurally serial:
 The workflow changes in this branch remove that serial publishing/platform
 chain, remove the inner aggregate runner, and move floating-latest Astro away
 from ordinary PR/main proof. No post-change GitHub timing is claimed yet.
+
+## PR #150 live rollout observation
+
+The first full ready-PR run on rebased head `d09d8e3`
+([Actions run 31401969872](https://github.com/BjoernSchotte/atlcli/actions/runs/31401969872))
+confirmed that classification completed in 12 seconds and all selected product
+branches started in parallel. Static quality completed in 1 minute 29 seconds,
+the packed browser proof in 2 minutes 22 seconds, the pinned consumer proof in
+3 minutes 43 seconds, and the slowest complete Bun shard in 5 minutes 37
+seconds.
+
+That run was intentionally superseded before aggregation: `pdf-sink-windows`
+remained inside the legacy `actions/cache@v4` Bun-cache restore for more than
+eight minutes after every other selected job was green. This is diagnostic
+evidence, not a final post-change timing. The follow-up removes that cache from
+the isolated sink and updates the official GitHub Actions runtimes before the
+merge proof is repeated.
 
 ## Local synthetic proof
 

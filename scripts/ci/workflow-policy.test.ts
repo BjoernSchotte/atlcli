@@ -289,6 +289,27 @@ describe("CI workflow policy", () => {
     expect(required).not.toContain("browser-system-chrome-canary");
   });
 
+  it("uses Node 24 action runtimes and keeps the isolated Windows sink cacheless", async () => {
+    const ci = await workflow("ci.yml");
+    const reusable = await workflow("reusable-quality.yml");
+    const workflows = `${ci}\n${reusable}`;
+    const windowsSink = block(ci, /^ {2}pdf-sink-windows:\s*$/, 2);
+
+    expect(workflows).toContain("actions/checkout@v7");
+    expect(workflows).toContain("actions/setup-node@v7");
+    expect(workflows).toContain("actions/github-script@v9");
+    expect(workflows).toContain("actions/cache@v6");
+    expect(workflows).toContain("actions/upload-artifact@v7");
+    expect(workflows).toContain("actions/download-artifact@v8");
+    expect(workflows).not.toMatch(
+      /actions\/(?:checkout@v6|setup-node@v6|github-script@v8|cache(?:\/restore)?@v4|upload-artifact@v4|download-artifact@v5)/,
+    );
+
+    expect(windowsSink).not.toBeNull();
+    expect(windowsSink).not.toContain("Restore Bun package cache");
+    expect(windowsSink).not.toContain("actions/cache@");
+  });
+
   it("keeps required quality branches parallel and removes duplicate publishing and aggregate tails", async () => {
     const reusable = await workflow("reusable-quality.yml");
     const staticQuality = block(reusable, /^ {2}static-quality:\s*$/, 2);
@@ -356,7 +377,7 @@ describe("CI workflow policy", () => {
     expect(telemetry).toContain("name: Non-required CI timing telemetry");
     expect(telemetry).toContain("needs: [changes, required]");
     expect(telemetry).toContain("if: always()");
-    expect(telemetry).toContain("actions/download-artifact@v5");
+    expect(telemetry).toContain("actions/download-artifact@v8");
     expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
     expect(required).not.toBeNull();
     expect(required).not.toContain("telemetry");
