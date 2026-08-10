@@ -429,6 +429,26 @@ export async function fingerprintChatReleaseCandidateMatrixV1(
   return sha256(rest);
 }
 
+export async function finalizeChatReleaseCandidateMatrixV1(input: {
+  generatedAt: string;
+  sourceRevision: string;
+  manifestFingerprint: string;
+  proofs: readonly ChatReleaseCandidateProofV1[];
+}): Promise<ChatReleaseCandidateMatrixV1> {
+  const matrix: ChatReleaseCandidateMatrixV1 = {
+    schema: CHAT_RELEASE_CANDIDATE_MATRIX_SCHEMA_V1,
+    generatedAt: input.generatedAt,
+    sourceRevision: input.sourceRevision,
+    manifestFingerprint: input.manifestFingerprint,
+    proofs: input.proofs
+      .map((proof) => structuredClone(proof))
+      .sort((left, right) => left.proofId.localeCompare(right.proofId)),
+    receiptFingerprint: "0".repeat(64),
+  };
+  matrix.receiptFingerprint = await fingerprintChatReleaseCandidateMatrixV1(matrix);
+  return parseChatReleaseCandidateMatrixV1(matrix);
+}
+
 function uniqueKnown<T extends string>(values: unknown, allowed: readonly T[], label: string): T[] {
   if (!Array.isArray(values) || values.some((value) => typeof value !== "string" || !allowed.includes(value as T))) {
     throw new Error(`${label} is invalid.`);
