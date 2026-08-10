@@ -49,6 +49,38 @@ const boundSectionReadInputSchema = z.object({
   sectionRef: z.string().max(220),
 }).strict();
 
+export const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1 =
+  "atlcli.chat-ptc-reference-rejection/v1" as const;
+
+export interface ChatPtcReferenceRejectionV1 {
+  schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+  status: "rejected";
+  code: "unknown-anchor-ref";
+  currentAnchorRefs: string[];
+}
+
+/**
+ * Model-generated QuickJS must copy opaque references into PTC calls. Keep
+ * Chat-local references compact enough to copy reliably without weakening the
+ * host scope boundary: only refs registered in the current broker resolve.
+ */
+export function createCompactChatReferenceFactoryV1(input: {
+  prefix: "a" | "s" | "c";
+  reservedRefs?: readonly string[];
+}): () => string {
+  const reserved = new Set(
+    (input.reservedRefs ?? []).map((reference) => reference.split(":").at(-1)),
+  );
+  let sequence = 0;
+  return () => {
+    let candidate: string;
+    do candidate = `${input.prefix}${++sequence}`;
+    while (reserved.has(candidate));
+    reserved.add(candidate);
+    return candidate;
+  };
+}
+
 function sourceLabel(result: BoundEntityReadOutputV1): string {
   const identity = result.source.issueKey ??
     (result.source.contentId ? `Confluence ${result.source.contentId}` : result.source.sourceId);
@@ -69,6 +101,16 @@ export function createChatPtcToolsV1(
   const now = options.now ?? Date.now;
   const direct = tool(async (input) => {
     const callId = `${BOUND_ENTITY_READ_CAPABILITY_ID_V1}:${++sequence}`;
+    const currentAnchorRefs = broker.exactAnchors().map((anchor) => anchor.anchorRef);
+    if (!currentAnchorRefs.includes(input.anchorRef)) {
+      const rejection: ChatPtcReferenceRejectionV1 = {
+        schema: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1,
+        status: "rejected",
+        code: "unknown-anchor-ref",
+        currentAnchorRefs,
+      };
+      return JSON.stringify(rejection);
+    }
     await options.beforeInvoke?.(
       BOUND_ENTITY_READ_CAPABILITY_ID_V1,
       input,

@@ -16,7 +16,11 @@ import {
   type ResearchRelatedScopeCandidateV1,
   type ResearchReadProviders,
 } from "../broker.js";
-import { createChatPtcToolsV1 } from "./retrieval.js";
+import {
+  CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1,
+  createChatPtcToolsV1,
+  createCompactChatReferenceFactoryV1,
+} from "./retrieval.js";
 
 const ORIGIN = "https://tenant-a.atlassian.net";
 
@@ -229,6 +233,50 @@ describe("Chat exact-anchor retrieval", () => {
     expect(calls).toEqual(["wiki.get:1001"]);
     expect(observed).toHaveLength(1);
     expect(diagnostics).toEqual(["started", "success"]);
+  });
+
+  test("returns a bounded correction for a mistyped anchor without spending retrieval budget", async () => {
+    const calls: string[] = [];
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [
+        seed({ product: "confluence", entityKind: "page", key: "1001", name: "Attached page", id: "page-1001" }),
+      ],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), providers(calls), { createAnchorId: () => "a1" });
+    const tool = createChatPtcToolsV1(broker)
+      .find((candidate) => candidate.name === "atlassian_bound_read");
+    if (!tool) throw new Error("missing exact read tool");
+
+    const rejected = JSON.parse(await tool.invoke({
+      anchorRef: "research-anchor:a11",
+    }));
+    expect(rejected).toEqual({
+      schema: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1,
+      status: "rejected",
+      code: "unknown-anchor-ref",
+      currentAnchorRefs: ["research-anchor:a1"],
+    });
+    expect(calls).toEqual([]);
+    expect(broker.budget.counts()).toMatchObject({ ptcCalls: 0, httpCalls: 0 });
+
+    const accepted = JSON.parse(await tool.invoke({
+      anchorRef: rejected.currentAnchorRefs[0],
+    }));
+    expect(accepted.source.sourceId).toBe("wiki:1001");
+    expect(calls).toEqual(["wiki.get:1001"]);
+  });
+
+  test("creates compact deterministic Chat refs while skipping resumed values", () => {
+    const createAnchorId = createCompactChatReferenceFactoryV1({
+      prefix: "a",
+      reservedRefs: ["research-anchor:a1", "research-anchor:a3"],
+    });
+    expect([createAnchorId(), createAnchorId(), createAnchorId()]).toEqual([
+      "a2",
+      "a4",
+      "a5",
+    ]);
   });
 
   test("restores a turn-bound opaque anchor in a fresh broker without widening scope", async () => {

@@ -104,7 +104,10 @@ import {
   createChatAskUserQuestionToolV1,
 } from "./hitl.js";
 import { createChatDurableSummarizationMiddlewareV1 } from "./summarization.js";
-import { createChatPtcToolsV1 } from "./retrieval.js";
+import {
+  createChatPtcToolsV1,
+  createCompactChatReferenceFactoryV1,
+} from "./retrieval.js";
 import {
   ChatCandidateLedgerControllerV1,
   createChatRetrievalPlanV1,
@@ -1211,19 +1214,24 @@ export function createKiteweaveChatAgent(
             );
           }
         }
+        const resumedExactAnchors = acceptedSteering?.resume.exactAnchors ??
+          streamInterruption?.resume.exactAnchors ??
+          pendingQuestion?.resume.exactAnchors;
         const broker = new ResearchCapabilityBroker(
           input.brokerRequest,
           input.providers,
           {
             budget,
             scopeBindings,
-            ...((acceptedSteering?.resume.exactAnchors ??
-                streamInterruption?.resume.exactAnchors ??
-                pendingQuestion?.resume.exactAnchors)
+            createAnchorId: createCompactChatReferenceFactoryV1({
+              prefix: "a",
+              reservedRefs: resumedExactAnchors?.map((entry) => entry.anchorRef),
+            }),
+            createSectionId: createCompactChatReferenceFactoryV1({ prefix: "s" }),
+            createCaptureId: createCompactChatReferenceFactoryV1({ prefix: "c" }),
+            ...(resumedExactAnchors
               ? {
-                  exactAnchorResume: acceptedSteering?.resume.exactAnchors ??
-                    streamInterruption?.resume.exactAnchors ??
-                    pendingQuestion!.resume.exactAnchors,
+                  exactAnchorResume: resumedExactAnchors,
                 }
               : {}),
             evidence: {

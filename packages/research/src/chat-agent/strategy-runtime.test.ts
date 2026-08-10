@@ -16,7 +16,10 @@ import {
 } from "../contracts.js";
 import { isResearchOneShotEventV1 } from "../events.js";
 import { ResearchRunBudget } from "../budget.js";
-import { createResearchKeyScopeSeedV1 } from "../scope-discovery.js";
+import {
+  createResearchEntityScopeSeedV1,
+  createResearchKeyScopeSeedV1,
+} from "../scope-discovery.js";
 import {
   CAPABILITY_FREE_QUALITY_ADAPTER_V1,
   chatQualityPolicyV1,
@@ -374,6 +377,91 @@ describe("real QuickJS Chat strategy trajectory", () => {
       detailReadCandidates: 1,
       detailReadCoverage: 1,
     });
+  });
+
+  test("Quick recovers a mistyped compact exact ref without failing or repeating retrieval", async () => {
+    const input = request("Summarize the attached page.");
+    const pageSeed = createResearchEntityScopeSeedV1({
+      tenantOrigin: input.turn.scope.siteOrigin,
+      product: "confluence",
+      entityKind: "page",
+      key: "1001",
+      name: "Attached page",
+      source: "current_context",
+      authority: "approved",
+    });
+    input.turn = {
+      ...input.turn,
+      scope: { ...input.turn.scope, confluenceSpaceKeys: ["KB"] },
+      scopeSeeds: [pageSeed],
+      exactContextProducts: ["confluence"],
+    };
+    input.brokerRequest = {
+      ...input.brokerRequest,
+      scope: { ...input.brokerRequest.scope, confluenceSpaceKeys: ["KB"] },
+      scopeSeeds: [pageSeed],
+      exactContextProducts: ["confluence"],
+    };
+    const calls: string[] = [];
+    const exactProviders = {
+      jira: providers.jira,
+      wiki: {
+        async searchPage() { throw new Error("search must not run"); },
+        async getPage(page: { contentId: string }) {
+          calls.push(page.contentId);
+          return {
+            contentId: page.contentId,
+            spaceKey: "KB",
+            title: "Attached page",
+            content: {
+              text: "The attached page establishes the accepted decision.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 53,
+            },
+          };
+        },
+      },
+    };
+    const directModel = fakeModel()
+      .respondWithTools([{
+        name: "eval",
+        args: {
+          code: "JSON.parse(await tools.atlassianBoundRead({ anchorRef: 'research-anchor:a11' }))",
+        },
+      }])
+      .respondWithTools([{
+        name: "eval",
+        args: {
+          code: "JSON.parse(await tools.atlassianBoundRead({ anchorRef: 'research-anchor:a1' }))",
+        },
+      }])
+      .respondWithTools([{
+        name: "ChatAnswerDraftV2",
+        args: {
+          blocks: [{
+            id: "answer-block:attached-page",
+            markdown: "The attached page establishes the accepted decision.",
+            sourceRefs: ["wiki:1001"],
+            assertion: "positive",
+            scope: "none",
+          }],
+          gaps: [],
+        },
+      }]);
+
+    const answer = await runtime.runChatAgent({
+      ...input,
+      model: directModel,
+      providers: exactProviders,
+      workspace: createMemoryResearchWorkspace(),
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    });
+
+    expect(answer.messageMarkdown).toContain("accepted decision");
+    expect(answer.run.counts).toMatchObject({ ptcCalls: 1 });
+    expect(calls).toEqual(["1001"]);
+    expect(directModel.callCount).toBe(3);
   });
 
   test("pauses and resumes the production Chat root through one durable askUserQuestion checkpoint", async () => {
