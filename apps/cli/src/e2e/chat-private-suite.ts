@@ -25,6 +25,7 @@ interface ChatPrivateGoldV1 {
   requiredSourceUrls: string[];
   allowedSourceUrls: string[];
   requiredFactGroups: string[][];
+  requiredOrderedFactGroups: string[][];
   forbiddenClaims: string[];
   expectAbstention: boolean;
 }
@@ -150,6 +151,21 @@ function gold(value: unknown): ChatPrivateGoldV1 {
     requiredSourceUrls: strings(candidate.requiredSourceUrls, "Private required sources"),
     allowedSourceUrls: strings(candidate.allowedSourceUrls, "Private allowed sources"),
     requiredFactGroups: candidate.requiredFactGroups.map((group) => group.map((entry) => entry.trim())),
+    requiredOrderedFactGroups: candidate.requiredOrderedFactGroups === undefined
+      ? []
+      : (() => {
+          if (!Array.isArray(candidate.requiredOrderedFactGroups) ||
+              candidate.requiredOrderedFactGroups.length > 24 ||
+              candidate.requiredOrderedFactGroups.some((group) =>
+                !Array.isArray(group) || group.length === 0 || group.length > 8 ||
+                group.some((entry) => typeof entry !== "string" || !entry.trim())
+              )) {
+            throw new Error("Private ordered fact groups are invalid.");
+          }
+          return candidate.requiredOrderedFactGroups.map((group) =>
+            group.map((entry) => entry.trim())
+          );
+        })(),
     forbiddenClaims: strings(candidate.forbiddenClaims, "Private forbidden claims"),
     expectAbstention: candidate.expectAbstention,
   };
@@ -353,6 +369,30 @@ export function privateFactGroupMatchesV1(
   return alternatives.some((alternative) => body.includes(normalizedFact(alternative)));
 }
 
+/**
+ * Verify an operator-authored semantic order without persisting answer text in
+ * the release receipt. Each group may contain wording alternatives; the first
+ * matching occurrence of every successive group must move forward.
+ */
+export function privateOrderedFactGroupsMatchV1(
+  markdown: string,
+  groups: readonly (readonly string[])[],
+): boolean {
+  if (groups.length === 0) return true;
+  const body = normalizedFact(markdown);
+  let after = -1;
+  for (const alternatives of groups) {
+    const positions = alternatives
+      .map((alternative) => normalizedFact(alternative))
+      .filter(Boolean)
+      .map((alternative) => body.indexOf(alternative, after + 1))
+      .filter((position) => position >= 0);
+    if (positions.length === 0) return false;
+    after = Math.min(...positions);
+  }
+  return true;
+}
+
 export function privateForbiddenClaimMatchesV1(
   markdown: string,
   claim: string,
@@ -466,6 +506,9 @@ function evaluateGold(answer: ProjectedAnswerV1, gold: ChatPrivateGoldV1): {
   const body = normalized(answer.markdown);
   const facts = gold.requiredFactGroups.every((alternatives) =>
     privateFactGroupMatchesV1(answer.markdown, alternatives)
+  ) && privateOrderedFactGroupsMatchV1(
+    answer.markdown,
+    gold.requiredOrderedFactGroups,
   );
   const forbidden = gold.forbiddenClaims.some((claim) =>
     privateForbiddenClaimMatchesV1(answer.markdown, claim)

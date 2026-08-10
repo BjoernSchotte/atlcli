@@ -2512,7 +2512,7 @@ export function createKiteweaveChatAgent(
                 "Make every factual sentence grammatically complete; do not leave a clause ending in a connector or auxiliary verb.",
                 "Do not leave a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but.",
                 "Do not classify the same evidence as both directly measured and conjectural. Separate observations from interpretation explicitly when the user asks for that distinction.",
-                "Apply the user's selection predicate before its requested count: a top-N measured list may contain only explicitly comparable measured items; move unmeasured mechanisms or hypotheses to a separate caveat.",
+                "Apply the user's selection predicate before its requested count: a top-N measured list may contain only explicitly comparable measured items; move unmeasured mechanisms or hypotheses to a separate caveat. Preserve the requested ranking direction: greatest/highest/top means descending by the stated comparable metric unless the user explicitly asks for another direction; smallest/lowest means ascending.",
               ].join("\n"))],
             }, {
               configurable: { thread_id: checkpoint.threadId },

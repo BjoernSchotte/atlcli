@@ -129,6 +129,15 @@ describe("Chat dynamic workflow admission", () => {
     expect(synthesizer?.systemPrompt).toContain("do not invent auxiliary gaps");
   });
 
+  test("carries explicit ranking direction through drafting, critique, repair, and synthesis", () => {
+    const prompt = (id: "answer-drafter" | "answer-critic" | "answer-repairer" | "chat-synthesizer") =>
+      CHAT_SUBAGENT_PROFILES_V1.find((entry) => entry.id === id)?.systemPrompt ?? "";
+    expect(prompt("answer-drafter")).toContain("order them descending");
+    expect(prompt("answer-critic")).toContain("not ordered in the direction requested");
+    expect(prompt("answer-repairer")).toContain("ordered descending");
+    expect(prompt("chat-synthesizer")).toContain("ordered descending");
+  });
+
   test("registers the exact host-owned profile catalog with least-privilege capabilities", () => {
     expect(CHAT_SUBAGENT_PROFILES_V1.map((entry) => entry.id)).toEqual([
       "exact-context-reader",

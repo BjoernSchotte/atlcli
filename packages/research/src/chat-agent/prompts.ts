@@ -62,7 +62,7 @@ export function chatAnswerOutputInstructionV1(
     "Every factual sentence must be grammatically complete. Never end a sentence or block with an unfinished connector such as als, soll, mit, für, as, should, with, or for.",
     "Never emit a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but; merge it into an unfinished governing sentence or rewrite it as a complete sentence.",
     "Keep evidence classifications mutually consistent: the same values cannot be both directly measured and conjectural. If measured observations and interpretation differ, label the two groups explicitly.",
-    "Apply every user selection predicate before satisfying a requested count or ranking. If the user asks for the top N measured effects, every ranked item must have an explicit comparable measurement; place unmeasured mechanisms or hypotheses in a separate caveat and do not count them toward N.",
+    "Apply every user selection predicate before satisfying a requested count or ranking. If the user asks for the top N measured effects, every ranked item must have an explicit comparable measurement; place unmeasured mechanisms or hypotheses in a separate caveat and do not count them toward N. Preserve the requested order: greatest, strongest, highest, biggest, most, top, groesste, größte, staerkste, stärkste, hoechste, höchste, or wirkungsvollste means descending by the stated comparable metric unless the user explicitly requests another direction; smallest, lowest, least, kleinste, niedrigste, or geringste means ascending.",
     "Finish the complete ChatAnswerDraftV2 JSON inside this limit.",
   ].join(" ");
 }

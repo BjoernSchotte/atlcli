@@ -98,6 +98,8 @@ describe("Chat supervisor prompt", () => {
     expect(repair).toContain("cannot be both directly measured and conjectural");
     expect(repair).toContain("selection predicate before satisfying a requested count or ranking");
     expect(repair).toContain("do not count them toward N");
+    expect(repair).toContain("means descending by the stated comparable metric");
+    expect(repair).toContain("means ascending");
     expect(repair).toContain("Finish the complete ChatAnswerDraftV2 JSON");
   });
 

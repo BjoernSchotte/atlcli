@@ -11,6 +11,7 @@ import {
   parseChatPrivateSuiteV1,
   privateFactGroupMatchesV1,
   privateForbiddenClaimMatchesV1,
+  privateOrderedFactGroupsMatchV1,
   projectPrivateAnswerV1,
   requireCleanPrivateProofRevisionV1,
   runChatPrivateSuiteV1,
@@ -211,6 +212,39 @@ describe("private Chat release suite", () => {
       "Der Durchsatz stieg von 0,42 → 0,60 tok/s.",
       ["0,42 tok/s"],
     )).toBe(true);
+  });
+
+  test("requires operator-authored ranked facts in their declared order", () => {
+    const ranking = [
+      ["Hebel A: +0,43"],
+      ["Hebel B: +0,18"],
+      ["Hebel C: +0,05"],
+    ];
+    expect(privateOrderedFactGroupsMatchV1(
+      "1. Hebel A: +0,43\n2. Hebel B: +0,18\n3. Hebel C: +0,05",
+      ranking,
+    )).toBe(true);
+    expect(privateOrderedFactGroupsMatchV1(
+      "1. Hebel B: +0,18\n2. Hebel A: +0,43\n3. Hebel C: +0,05",
+      ranking,
+    )).toBe(false);
+    expect(privateOrderedFactGroupsMatchV1("Beliebige Antwort", [])).toBe(true);
+  });
+
+  test("parses optional private ordered fact groups without requiring them", () => {
+    const value = structuredClone(suite);
+    value.cases[0]!.turns[0]!.gold.requiredOrderedFactGroups = [
+      ["erster Messwert"],
+      ["zweiter Messwert"],
+    ];
+    expect(parseChatPrivateSuiteV1(value).cases[0]!.turns[0]!.gold)
+      .toMatchObject({
+        requiredOrderedFactGroups: [
+          ["erster Messwert"],
+          ["zweiter Messwert"],
+        ],
+      });
+    expect(suite.cases[1]!.turns[0]!.gold.requiredOrderedFactGroups).toEqual([]);
   });
 
   test("does not treat an explicit negation as a forbidden positive claim", () => {
