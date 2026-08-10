@@ -172,6 +172,55 @@ export function chatRootOutputTokenLimitV1(input: {
   return Math.min(input.configuredMaxOutputTokens, modeLimit);
 }
 
+function isLangChainSerializedUndefinedV1(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return Object.keys(candidate).length === 2 &&
+    candidate.lc === 2 &&
+    candidate.type === "undefined";
+}
+
+/**
+ * Normalize the provider-neutral terminal structured-output boundary.
+ *
+ * LangChain normally publishes provider-native structured output through
+ * `structuredResponse`. Some provider adapters retain a schema-valid terminal
+ * JSON object only as the final AI text after a same-thread repair. Accept that
+ * one exact envelope, but never mine JSON from prose, fences, an older message,
+ * or a tool-call turn.
+ */
+export function chatStructuredDraftFromAgentResultV1(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return undefined;
+  }
+  const candidate = result as {
+    structuredResponse?: unknown;
+    messages?: unknown;
+  };
+  if (
+    candidate.structuredResponse !== undefined &&
+    !isLangChainSerializedUndefinedV1(candidate.structuredResponse)
+  ) {
+    return candidate.structuredResponse;
+  }
+  if (!Array.isArray(candidate.messages)) return undefined;
+  const terminal = [...candidate.messages]
+    .reverse()
+    .find((message) => AIMessage.isInstance(message));
+  if (!terminal || terminal.tool_calls?.length || terminal.invalid_tool_calls?.length) {
+    return undefined;
+  }
+  const text = terminal.text.trim();
+  if (!text.startsWith("{") || !text.endsWith("}")) return undefined;
+  try {
+    const parsed = JSON.parse(text);
+    const validated = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(parsed);
+    return validated.success ? validated.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function isChatAnswerStructuredOutputErrorV1(value: unknown): boolean {
   const visited = new Set<unknown>();
   let current: unknown = value;
@@ -2421,7 +2470,7 @@ export function createKiteweaveChatAgent(
         let finalResult = result;
         let finalDraft = agenticWorkflow
           ? agenticWorkflow.assertComplete()
-          : result.structuredResponse;
+          : chatStructuredDraftFromAgentResultV1(result);
         if (
           !agenticWorkflow &&
           chatDraftNeedsHostRepairV1({
@@ -2472,7 +2521,7 @@ export function createKiteweaveChatAgent(
             });
             await modelBudgetWrite;
             const repairedInspection = inspectChatDraftAfterHostRepairV1({
-              draft: finalResult.structuredResponse,
+              draft: chatStructuredDraftFromAgentResultV1(finalResult),
               detailEvidence: broker.detailEvidenceLedger(),
               readSectionReferences: broker.readSectionReferenceLedger(),
               requestFacets: requestChecklist,

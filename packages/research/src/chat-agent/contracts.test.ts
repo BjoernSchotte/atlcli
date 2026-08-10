@@ -32,6 +32,7 @@ import {
 } from "./contracts.js";
 import {
   chatRecursionLimitV1,
+  chatStructuredDraftFromAgentResultV1,
   createChatDirectToolSurfaceMiddlewareV1,
   createKiteweaveChatAgent,
   projectChatAgentDiagnosticActivityV1,
@@ -2021,6 +2022,64 @@ describe("Chat answer contract", () => {
 });
 
 describe("separate Chat root", () => {
+  test("normalizes only one schema-valid terminal JSON envelope when provider-native output is absent", () => {
+    const draft = {
+      blocks: [{
+        id: "answer-block:native-terminal",
+        markdown: "A complete provider-native answer.",
+        sourceRefs: [],
+        assertion: "none",
+        scope: "none",
+      }],
+      gaps: [],
+    };
+    expect(chatStructuredDraftFromAgentResultV1({
+      messages: [new AIMessage(JSON.stringify(draft))],
+    })).toEqual(draft);
+    expect(chatStructuredDraftFromAgentResultV1({
+      structuredResponse: { lc: 2, type: "undefined" },
+      messages: [new AIMessage(JSON.stringify(draft))],
+    })).toEqual(draft);
+    expect(chatStructuredDraftFromAgentResultV1({
+      structuredResponse: { blocks: [] },
+      messages: [new AIMessage(JSON.stringify(draft))],
+    })).toEqual({ blocks: [] });
+  });
+
+  test("rejects prose, fences, stale messages, tool turns, and invalid terminal JSON", () => {
+    const draft = {
+      blocks: [{
+        id: "answer-block:abandoned",
+        markdown: "An abandoned answer.",
+        sourceRefs: [],
+        assertion: "none",
+        scope: "none",
+      }],
+      gaps: [],
+    };
+    const json = JSON.stringify(draft);
+    for (const content of [
+      `Here is the answer: ${json}`,
+      `\`\`\`json\n${json}\n\`\`\``,
+      `${json}\nDone.`,
+      "{malformed}",
+      JSON.stringify({ blocks: [] }),
+    ]) {
+      expect(chatStructuredDraftFromAgentResultV1({
+        messages: [new AIMessage(content)],
+      })).toBeUndefined();
+    }
+    expect(chatStructuredDraftFromAgentResultV1({
+      messages: [new AIMessage(json), new AIMessage("The later terminal answer is invalid.")],
+    })).toBeUndefined();
+    expect(chatStructuredDraftFromAgentResultV1({
+      messages: [new AIMessage({
+        content: json,
+        tool_calls: [{ id: "call:1", name: "eval", args: {} }],
+      })],
+    })).toBeUndefined();
+  });
+
   test("projects only complete JSON string units from a streamed answer envelope", () => {
     expect(streamedJsonStringFieldV1('{"messageMarkdown":"Hello\\n**wor', "messageMarkdown"))
       .toBe("Hello\n**wor");
